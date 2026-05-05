@@ -102,7 +102,10 @@ pub struct DescriptionCandidate {
 #[serde(rename_all = "camelCase")]
 pub struct EvalRun {
     pub id: String,
-    pub prompt_set_id: String,
+    pub prompt_set_id: Option<String>,
+    pub plugin_slug: String,
+    pub skill_name: String,
+    pub scenario_name: String,
     pub mode: EvalWorkbenchMode,
     pub status: String,
     pub summary: Value,
@@ -141,7 +144,10 @@ pub struct NewDescriptionCandidate {
 #[allow(dead_code)]
 pub struct NewEvalRun {
     pub id: Option<String>,
-    pub prompt_set_id: String,
+    pub prompt_set_id: Option<String>,
+    pub plugin_slug: String,
+    pub skill_name: String,
+    pub scenario_name: String,
     pub mode: EvalWorkbenchMode,
     pub status: String,
     pub summary: Value,
@@ -339,11 +345,14 @@ pub fn record_eval_run(conn: &mut Connection, input: NewEvalRun) -> Result<EvalR
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "INSERT INTO eval_runs (
-            id, prompt_set_id, mode, status, summary_json, created_at, completed_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            id, prompt_set_id, plugin_slug, skill_name, scenario_name, mode, status, summary_json, created_at, completed_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             run_id,
             input.prompt_set_id,
+            input.plugin_slug,
+            input.skill_name,
+            input.scenario_name,
             input.mode.as_str(),
             input.status,
             summary_json,
@@ -407,15 +416,13 @@ pub fn list_eval_runs(
     let sql = if mode.is_some() {
         "SELECT r.id
          FROM eval_runs r
-         JOIN eval_prompt_sets ps ON ps.id = r.prompt_set_id
-         WHERE ps.plugin_slug = ?1 AND ps.skill_name = ?2 AND r.mode = ?3
+         WHERE r.plugin_slug = ?1 AND r.skill_name = ?2 AND r.mode = ?3
          ORDER BY r.created_at DESC
          LIMIT ?4"
     } else {
         "SELECT r.id
          FROM eval_runs r
-         JOIN eval_prompt_sets ps ON ps.id = r.prompt_set_id
-         WHERE ps.plugin_slug = ?1 AND ps.skill_name = ?2
+         WHERE r.plugin_slug = ?1 AND r.skill_name = ?2
          ORDER BY r.created_at DESC
          LIMIT ?3"
     };
@@ -445,7 +452,7 @@ pub fn list_eval_runs(
 pub fn read_eval_run(conn: &Connection, run_id: &str) -> Result<Option<EvalRun>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, prompt_set_id, mode, status, summary_json, created_at, completed_at
+            "SELECT id, prompt_set_id, plugin_slug, skill_name, scenario_name, mode, status, summary_json, created_at, completed_at
              FROM eval_runs WHERE id = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -453,16 +460,19 @@ pub fn read_eval_run(conn: &Connection, run_id: &str) -> Result<Option<EvalRun>,
     let Some(row) = rows.next().map_err(|e| e.to_string())? else {
         return Ok(None);
     };
-    let mode_string: String = row.get(2).map_err(|e| e.to_string())?;
-    let summary_json: String = row.get(4).map_err(|e| e.to_string())?;
+    let mode_string: String = row.get(5).map_err(|e| e.to_string())?;
+    let summary_json: String = row.get(7).map_err(|e| e.to_string())?;
     let mut run = EvalRun {
         id: row.get(0).map_err(|e| e.to_string())?,
         prompt_set_id: row.get(1).map_err(|e| e.to_string())?,
+        plugin_slug: row.get(2).map_err(|e| e.to_string())?,
+        skill_name: row.get(3).map_err(|e| e.to_string())?,
+        scenario_name: row.get(4).map_err(|e| e.to_string())?,
         mode: EvalWorkbenchMode::parse(&mode_string)?,
-        status: row.get(3).map_err(|e| e.to_string())?,
+        status: row.get(6).map_err(|e| e.to_string())?,
         summary: serde_json::from_str(&summary_json).unwrap_or(Value::Object(Default::default())),
-        created_at: row.get(5).map_err(|e| e.to_string())?,
-        completed_at: row.get(6).map_err(|e| e.to_string())?,
+        created_at: row.get(8).map_err(|e| e.to_string())?,
+        completed_at: row.get(9).map_err(|e| e.to_string())?,
         results: vec![],
         description_candidates: vec![],
     };
@@ -610,6 +620,35 @@ mod tests {
     }
 
     #[test]
+    fn reads_scenario_backed_run_without_prompt_set_join() {
+        let conn = test_db();
+        conn.execute(
+            "INSERT INTO eval_runs (
+                id, prompt_set_id, plugin_slug, skill_name, scenario_name, mode, status, summary_json, created_at, completed_at
+            ) VALUES (?1, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL)",
+            rusqlite::params![
+                "run-file-backed",
+                "skills",
+                "forecast",
+                "Regression",
+                "performance",
+                "completed",
+                "{\"passRate\":1.0}",
+                "2026-05-05T00:00:00Z",
+            ],
+        )
+        .unwrap();
+
+        let run = read_eval_run(&conn, "run-file-backed").unwrap().unwrap();
+        let serialized = serde_json::to_value(&run).unwrap();
+
+        assert_eq!(serialized.get("scenarioName").and_then(Value::as_str), Some("Regression"));
+        assert_eq!(serialized.get("pluginSlug").and_then(Value::as_str), Some("skills"));
+        assert_eq!(serialized.get("skillName").and_then(Value::as_str), Some("forecast"));
+        assert_eq!(serialized.get("promptSetId"), Some(&Value::Null));
+    }
+
+    #[test]
     fn records_run_with_candidate_results_and_description_candidates() {
         let mut conn = test_db();
         let prompt_set = save_eval_prompt_set(
@@ -629,7 +668,10 @@ mod tests {
             &mut conn,
             NewEvalRun {
                 id: None,
-                prompt_set_id: prompt_set.id,
+                prompt_set_id: Some(prompt_set.id),
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "Trigger smoke".to_string(),
                 mode: EvalWorkbenchMode::Trigger,
                 status: "completed".to_string(),
                 summary: serde_json::json!({ "passRate": 1.0 }),
@@ -659,6 +701,54 @@ mod tests {
         assert_eq!(run.results[0].passed, true);
         assert_eq!(run.description_candidates.len(), 1);
         assert_eq!(run.description_candidates[0].rank, Some(1));
+    }
+
+    #[test]
+    fn lists_scenario_backed_runs_by_skill_and_mode_without_prompt_set_join() {
+        let conn = test_db();
+        conn.execute(
+            "INSERT INTO eval_runs (
+                id, prompt_set_id, plugin_slug, skill_name, scenario_name, mode, status, summary_json, created_at, completed_at
+            ) VALUES
+                (?1, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL),
+                (?9, NULL, ?10, ?11, ?12, ?13, ?14, ?15, ?16, NULL)",
+            rusqlite::params![
+                "run-trigger",
+                "skills",
+                "forecast",
+                "Routing checks",
+                "trigger",
+                "completed",
+                "{}",
+                "2026-05-05T00:00:01Z",
+                "run-performance",
+                "skills",
+                "forecast",
+                "Regression",
+                "performance",
+                "completed",
+                "{}",
+                "2026-05-05T00:00:00Z",
+            ],
+        )
+        .unwrap();
+
+        let trigger_runs = list_eval_runs(
+            &conn,
+            "skills",
+            "forecast",
+            Some(EvalWorkbenchMode::Trigger),
+            20,
+        )
+        .unwrap();
+        let serialized = serde_json::to_value(&trigger_runs[0]).unwrap();
+
+        assert_eq!(trigger_runs.len(), 1);
+        assert_eq!(trigger_runs[0].id, "run-trigger");
+        assert_eq!(
+            serialized.get("scenarioName").and_then(Value::as_str),
+            Some("Routing checks")
+        );
     }
 
     #[test]
@@ -693,7 +783,10 @@ mod tests {
             &mut conn,
             NewEvalRun {
                 id: Some("run-performance".to_string()),
-                prompt_set_id: performance_set.id,
+                prompt_set_id: Some(performance_set.id),
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "Performance".to_string(),
                 mode: EvalWorkbenchMode::Performance,
                 status: "completed".to_string(),
                 summary: serde_json::json!({}),
@@ -707,7 +800,10 @@ mod tests {
             &mut conn,
             NewEvalRun {
                 id: Some("run-trigger".to_string()),
-                prompt_set_id: trigger_set.id,
+                prompt_set_id: Some(trigger_set.id),
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "Trigger".to_string(),
                 mode: EvalWorkbenchMode::Trigger,
                 status: "completed".to_string(),
                 summary: serde_json::json!({}),

@@ -230,55 +230,6 @@ fn scenario_case_assertions_json(case: &scenarios::ScenarioCase) -> Value {
     )
 }
 
-fn save_prompt_set_mirror_for_scenario(
-    conn: &mut rusqlite::Connection,
-    scenario: &scenarios::Scenario,
-    plugin_slug: &str,
-    skill_name: &str,
-    mode: EvalWorkbenchMode,
-) -> Result<(), String> {
-    let prompt_set_id = scenario_prompt_set_id(plugin_slug, skill_name, &scenario.name, mode);
-    if !scenario.tags.iter().any(|tag| tag.matches_mode(mode)) {
-        let _ = db_delete_eval_prompt_set(conn, &prompt_set_id);
-        return Ok(());
-    }
-
-    let cases = scenario
-        .cases
-        .iter()
-        .enumerate()
-        .map(|(index, case)| crate::db::SaveEvalPromptCase {
-            id: Some(format!("{}:{}", prompt_set_id, case.id)),
-            prompt: case.prompt.clone(),
-            expected: if mode == EvalWorkbenchMode::Performance {
-                case.expected_outcome.clone()
-            } else {
-                None
-            },
-            should_trigger: if mode == EvalWorkbenchMode::Trigger {
-                case.should_trigger
-            } else {
-                None
-            },
-            assertions: scenario_case_assertions_json(case),
-            sort_order: Some(index as i64),
-        })
-        .collect();
-
-    db_save_prompt_set(
-        conn,
-        SaveEvalPromptSet {
-            id: Some(prompt_set_id),
-            plugin_slug: plugin_slug.to_string(),
-            skill_name: skill_name.to_string(),
-            mode,
-            name: scenario.name.clone(),
-            cases,
-        },
-    )?;
-    Ok(())
-}
-
 fn read_scenario(
     skills_path: &Path,
     plugin_slug: &str,
@@ -291,7 +242,7 @@ fn read_scenario(
 }
 
 fn load_or_create_prompt_set_for_scenario(
-    conn: &mut rusqlite::Connection,
+    _conn: &mut rusqlite::Connection,
     skills_path: &Path,
     plugin_slug: &str,
     skill_name: &str,
@@ -303,10 +254,39 @@ fn load_or_create_prompt_set_for_scenario(
         return Err("Scenario is not available for the selected mode".to_string());
     }
 
-    let prompt_set_id = scenario_prompt_set_id(plugin_slug, skill_name, scenario_name, mode);
-    save_prompt_set_mirror_for_scenario(conn, &scenario, plugin_slug, skill_name, mode)?;
-    db_read_eval_prompt_set(conn, &prompt_set_id)?
-        .ok_or_else(|| "Prompt set not found".to_string())
+    Ok(EvalPromptSet {
+        id: scenario_prompt_set_id(plugin_slug, skill_name, scenario_name, mode),
+        plugin_slug: plugin_slug.to_string(),
+        skill_name: skill_name.to_string(),
+        mode,
+        name: scenario.name,
+        cases: scenario
+            .cases
+            .into_iter()
+            .enumerate()
+            .map(|(index, case)| {
+                let assertions = scenario_case_assertions_json(&case);
+                crate::db::EvalPromptCase {
+                    id: case.id,
+                    prompt: case.prompt,
+                    expected: if mode == EvalWorkbenchMode::Performance {
+                        case.expected_outcome
+                    } else {
+                        None
+                    },
+                    should_trigger: if mode == EvalWorkbenchMode::Trigger {
+                        case.should_trigger
+                    } else {
+                        None
+                    },
+                    assertions,
+                    sort_order: index as i64,
+                }
+            })
+            .collect(),
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
 }
 
 fn validate_id(label: &str, value: &str) -> Result<(), String> {
@@ -465,7 +445,8 @@ fn load_sidecar_candidates(
             candidate_id,
             &prompt_set.plugin_slug,
             &prompt_set.skill_name,
-            Some(&prompt_set.id),
+            Some(&prompt_set.name),
+            Some(prompt_set.mode),
         )?;
         candidates.push(SidecarEvalCandidate {
             id: candidate.id,
@@ -486,27 +467,31 @@ fn read_owned_description_candidate(
     candidate_id: &str,
     plugin_slug: &str,
     skill_name: &str,
-    prompt_set_id: Option<&str>,
+    scenario_name: Option<&str>,
+    mode: Option<EvalWorkbenchMode>,
 ) -> Result<crate::db::DescriptionCandidate, String> {
     let candidate = read_description_candidate(conn, candidate_id)?
         .ok_or_else(|| format!("Description candidate not found: {candidate_id}"))?;
     let run = db_read_eval_run(conn, &candidate.run_id)?
         .ok_or_else(|| format!("Eval run not found for candidate: {candidate_id}"))?;
-    let candidate_prompt_set = db_read_eval_prompt_set(conn, &run.prompt_set_id)?
-        .ok_or_else(|| format!("Prompt set not found for candidate: {candidate_id}"))?;
 
-    if candidate_prompt_set.plugin_slug != plugin_slug
-        || candidate_prompt_set.skill_name != skill_name
-    {
+    if run.plugin_slug != plugin_slug || run.skill_name != skill_name {
         return Err(format!(
             "Description candidate does not belong to skill {} in plugin {}",
             skill_name, plugin_slug
         ));
     }
-    if let Some(expected_prompt_set_id) = prompt_set_id {
-        if candidate_prompt_set.id != expected_prompt_set_id {
+    if let Some(expected_scenario_name) = scenario_name {
+        if run.scenario_name != expected_scenario_name {
             return Err(
-                "Description candidate does not belong to the selected prompt set".to_string(),
+                "Description candidate does not belong to the selected scenario".to_string(),
+            );
+        }
+    }
+    if let Some(expected_mode) = mode {
+        if run.mode != expected_mode {
+            return Err(
+                "Description candidate does not belong to the selected mode".to_string(),
             );
         }
     }
@@ -1363,7 +1348,10 @@ where
 
     Ok(NewEvalRun {
         id: Some(run_id),
-        prompt_set_id: prompt_set.id,
+        prompt_set_id: None,
+        plugin_slug: prompt_set.plugin_slug.clone(),
+        skill_name: prompt_set.skill_name.clone(),
+        scenario_name: prompt_set.name.clone(),
         mode: prompt_set.mode,
         status: "completed".to_string(),
         summary: build_run_summary(&result),
@@ -1933,22 +1921,6 @@ pub fn save_scenario(
     scenarios::write_scenario_file(&path, &scenario)?;
     scenarios::delete_other_scenario_files(&eval_dir, &scenario.name, &path)?;
 
-    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-    save_prompt_set_mirror_for_scenario(
-        &mut conn,
-        &scenario,
-        &plugin_slug,
-        &skill_name,
-        EvalWorkbenchMode::Performance,
-    )?;
-    save_prompt_set_mirror_for_scenario(
-        &mut conn,
-        &scenario,
-        &plugin_slug,
-        &skill_name,
-        EvalWorkbenchMode::Trigger,
-    )?;
-
     Ok(scenario_to_dto(scenario))
 }
 
@@ -1966,26 +1938,6 @@ pub fn delete_scenario(
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     scenarios::delete_scenario_file(&eval_dir, &scenario_name)?;
-
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let _ = db_delete_eval_prompt_set(
-        &conn,
-        &scenario_prompt_set_id(
-            &plugin_slug,
-            &skill_name,
-            &scenario_name,
-            EvalWorkbenchMode::Performance,
-        ),
-    );
-    let _ = db_delete_eval_prompt_set(
-        &conn,
-        &scenario_prompt_set_id(
-            &plugin_slug,
-            &skill_name,
-            &scenario_name,
-            EvalWorkbenchMode::Trigger,
-        ),
-    );
     Ok(())
 }
 
@@ -2143,7 +2095,8 @@ pub async fn run_eval_workbench_legacy(
                         &candidate_id,
                         &prompt_set.plugin_slug,
                         &prompt_set.skill_name,
-                        Some(&prompt_set.id),
+                        Some(&prompt_set.name),
+                        Some(prompt_set.mode),
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?
@@ -2331,7 +2284,10 @@ pub async fn suggest_description_candidates_legacy(
         &mut conn,
         NewEvalRun {
             id: None,
-            prompt_set_id: prompt_set.id.clone(),
+            prompt_set_id: None,
+            plugin_slug: prompt_set.plugin_slug.clone(),
+            skill_name: prompt_set.skill_name.clone(),
+            scenario_name: prompt_set.name.clone(),
             mode: EvalWorkbenchMode::Trigger,
             status: "draft".to_string(),
             summary: serde_json::json!({ "candidateCount": candidate_count, "status": "draft" }),
@@ -2356,7 +2312,7 @@ pub fn apply_description_candidate_legacy(
     validate_id("Candidate id", &candidate_id)?;
     let candidate = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        read_owned_description_candidate(&conn, &candidate_id, &plugin_slug, &skill_name, None)?
+        read_owned_description_candidate(&conn, &candidate_id, &plugin_slug, &skill_name, None, None)?
     };
     let (skill_md_path, previous_content) =
         write_skill_description_to_disk(&db, &plugin_slug, &skill_name, &candidate.description)?;
@@ -2396,11 +2352,23 @@ pub async fn build_refine_improvement_brief_legacy(
 ) -> Result<RefineImprovementBrief, String> {
     validate_id("Run id", &run_id)?;
     let (run, prompt_set, skill_files) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let mut conn = db.0.lock().map_err(|e| e.to_string())?;
         let run =
             db_read_eval_run(&conn, &run_id)?.ok_or_else(|| "Eval run not found".to_string())?;
-        let prompt_set = db_read_eval_prompt_set(&conn, &run.prompt_set_id)?
-            .ok_or_else(|| "Eval prompt set not found".to_string())?;
+        let prompt_set = if let Some(prompt_set_id) = run.prompt_set_id.as_deref() {
+            db_read_eval_prompt_set(&conn, prompt_set_id)?
+                .ok_or_else(|| "Eval prompt set not found".to_string())?
+        } else {
+            let skills_path = resolve_skills_path(&db)?;
+            load_or_create_prompt_set_for_scenario(
+                &mut conn,
+                Path::new(&skills_path),
+                &run.plugin_slug,
+                &run.skill_name,
+                &run.scenario_name,
+                run.mode,
+            )?
+        };
         let skill_files = if run.mode == EvalWorkbenchMode::Performance {
             let skills_path = resolve_skills_path(&db)?;
             get_skill_content_inner_for_plugin(
@@ -2539,6 +2507,19 @@ mod tests {
         Db(std::sync::Mutex::new(conn))
     }
 
+    fn mirrored_scenario_prompt_set_count(
+        conn: &rusqlite::Connection,
+        plugin_slug: &str,
+        skill_name: &str,
+        mode: EvalWorkbenchMode,
+    ) -> usize {
+        db_list_eval_prompt_sets(conn, plugin_slug, skill_name, Some(mode))
+            .unwrap()
+            .into_iter()
+            .filter(|set| set.id.starts_with("scenario:"))
+            .count()
+    }
+
     fn db_state(db: &Db) -> tauri::State<'_, Db> {
         // SAFETY: `tauri::State<'_, T>` is a transparent wrapper over `&T`.
         // This keeps the tests on the command layer without needing the Tauri test runtime.
@@ -2586,7 +2567,10 @@ mod tests {
     fn builds_refine_brief_from_failed_results() {
         let run = EvalRun {
             id: "run-1".to_string(),
-            prompt_set_id: "prompt-set-1".to_string(),
+            prompt_set_id: Some("prompt-set-1".to_string()),
+            plugin_slug: "skills".to_string(),
+            skill_name: "forecast".to_string(),
+            scenario_name: "Regression".to_string(),
             mode: EvalWorkbenchMode::Performance,
             status: "completed".to_string(),
             summary: serde_json::json!({}),
@@ -2697,7 +2681,10 @@ mod tests {
             &mut conn,
             NewEvalRun {
                 id: Some("draft-run-a".to_string()),
-                prompt_set_id: prompt_set_a.id.clone(),
+                prompt_set_id: Some(prompt_set_a.id.clone()),
+                plugin_slug: prompt_set_a.plugin_slug.clone(),
+                skill_name: prompt_set_a.skill_name.clone(),
+                scenario_name: prompt_set_a.name.clone(),
                 mode: EvalWorkbenchMode::Trigger,
                 status: "draft".to_string(),
                 summary: serde_json::json!({}),
@@ -2720,11 +2707,12 @@ mod tests {
             "candidate-a",
             &prompt_set_b.plugin_slug,
             &prompt_set_b.skill_name,
-            Some(&prompt_set_b.id),
+            Some(&prompt_set_b.name),
+            Some(prompt_set_b.mode),
         )
         .unwrap_err();
 
-        assert!(error.contains("selected prompt set"));
+        assert!(error.contains("selected scenario"));
     }
 
     #[test]
@@ -2736,7 +2724,10 @@ mod tests {
             &mut conn,
             NewEvalRun {
                 id: Some("draft-run".to_string()),
-                prompt_set_id: prompt_set.id.clone(),
+                prompt_set_id: Some(prompt_set.id.clone()),
+                plugin_slug: prompt_set.plugin_slug.clone(),
+                skill_name: prompt_set.skill_name.clone(),
+                scenario_name: prompt_set.name.clone(),
                 mode: EvalWorkbenchMode::Trigger,
                 status: "draft".to_string(),
                 summary: serde_json::json!({}),
@@ -2758,7 +2749,8 @@ mod tests {
             "candidate-a",
             &prompt_set.plugin_slug,
             &prompt_set.skill_name,
-            Some(&prompt_set.id),
+            Some(&prompt_set.name),
+            Some(prompt_set.mode),
         )
         .unwrap();
 
@@ -2852,10 +2844,29 @@ mod tests {
         assert_eq!(response.tags, dto.tags);
         assert_eq!(response.cases.len(), 1);
         assert_eq!(response.cases[0].prompt, "Forecast next quarter revenue");
+        let conn = db.0.lock().unwrap();
+        assert_eq!(
+            mirrored_scenario_prompt_set_count(
+                &conn,
+                "skills",
+                "forecast",
+                EvalWorkbenchMode::Performance,
+            ),
+            0
+        );
+        assert_eq!(
+            mirrored_scenario_prompt_set_count(
+                &conn,
+                "skills",
+                "forecast",
+                EvalWorkbenchMode::Trigger,
+            ),
+            0
+        );
     }
 
     #[test]
-    fn delete_scenario_command_removes_saved_file() {
+    fn delete_scenario_command_removes_saved_file_without_deleting_prompt_set_rows() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());
         let dto = sample_scenario_dto("Regression");
@@ -2863,6 +2874,33 @@ mod tests {
         let path = scenarios::scenario_file_path(&eval_dir, &dto.name);
         let scenario = scenario_from_dto(dto.clone()).unwrap();
         scenarios::write_scenario_file(&path, &scenario).unwrap();
+        {
+            let mut conn = db.0.lock().unwrap();
+            db_save_prompt_set(
+                &mut conn,
+                SaveEvalPromptSet {
+                    id: Some(scenario_prompt_set_id(
+                        "skills",
+                        "forecast",
+                        "Regression",
+                        EvalWorkbenchMode::Performance,
+                    )),
+                    plugin_slug: "skills".to_string(),
+                    skill_name: "forecast".to_string(),
+                    mode: EvalWorkbenchMode::Performance,
+                    name: "Regression".to_string(),
+                    cases: vec![crate::db::SaveEvalPromptCase {
+                        id: Some("case-1".to_string()),
+                        prompt: "Forecast next quarter revenue".to_string(),
+                        expected: Some("Includes assumptions".to_string()),
+                        should_trigger: None,
+                        assertions: serde_json::json!([]),
+                        sort_order: Some(0),
+                    }],
+                },
+            )
+            .unwrap();
+        }
 
         delete_scenario(
             "skills".into(),
@@ -2873,6 +2911,17 @@ mod tests {
         .unwrap();
 
         assert!(!path.exists());
+        let conn = db.0.lock().unwrap();
+        assert_eq!(
+            mirrored_scenario_prompt_set_count(
+                &conn,
+                "skills",
+                "forecast",
+                EvalWorkbenchMode::Performance,
+            ),
+            1
+        );
+        drop(conn);
         let loaded = load_scenario(
             "skills".into(),
             "forecast".into(),
@@ -2935,6 +2984,19 @@ mod tests {
             prompt_set.cases[0].expected.as_deref(),
             Some("Includes assumptions")
         );
+        assert!(
+            db_read_eval_prompt_set(
+                &conn,
+                &scenario_prompt_set_id(
+                    "skills",
+                    "forecast",
+                    "Regression",
+                    EvalWorkbenchMode::Performance,
+                ),
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]
@@ -2981,6 +3043,19 @@ mod tests {
             prompt_set.cases[0].expected.as_deref(),
             Some("Uses latest assumptions")
         );
+        assert!(
+            db_read_eval_prompt_set(
+                &conn,
+                &scenario_prompt_set_id(
+                    "skills",
+                    "forecast",
+                    "Regression",
+                    EvalWorkbenchMode::Performance,
+                ),
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]
@@ -3008,6 +3083,19 @@ mod tests {
         assert_eq!(prompt_set.mode, EvalWorkbenchMode::Trigger);
         assert_eq!(prompt_set.cases.len(), 1);
         assert_eq!(prompt_set.cases[0].should_trigger, Some(true));
+        assert!(
+            db_read_eval_prompt_set(
+                &conn,
+                &scenario_prompt_set_id(
+                    "skills",
+                    "forecast",
+                    "Routing checks",
+                    EvalWorkbenchMode::Trigger,
+                ),
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]
