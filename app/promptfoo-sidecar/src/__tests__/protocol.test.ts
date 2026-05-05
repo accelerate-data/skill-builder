@@ -10,6 +10,11 @@ describe("promptfoo sidecar protocol", () => {
         mode: "trigger",
         skillName: "creating-skills",
         pluginSlug: "skill-creator",
+        scenarioName: "Smoke",
+        history: {
+          configDir: "/tmp/promptfoo-sidecar-tests",
+          persist: true,
+        },
         candidates: [
           {
             id: "baseline",
@@ -41,11 +46,65 @@ describe("promptfoo sidecar protocol", () => {
       mode: "trigger",
       skillName: "creating-skills",
       pluginSlug: "skill-creator",
+      scenarioName: "Smoke",
     });
+    if (request.type !== "run_eval") {
+      throw new Error("Expected run_eval request");
+    }
     expect(request.candidates).toHaveLength(1);
     expect(request.cases[0]?.assertions[0]).toEqual({
       type: "equals",
       value: "true",
+    });
+  });
+
+  it("parses a valid list_eval_history request", () => {
+    const request = parseSidecarRequest(
+      JSON.stringify({
+        id: "list-1",
+        type: "list_eval_history",
+        filter: {
+          configDir: "/tmp/promptfoo-sidecar-tests",
+          pluginSlug: "skill-creator",
+          skillName: "creating-skills",
+          scenarioName: "Smoke",
+          mode: "trigger",
+          limit: 10,
+          offset: 0,
+        },
+      }),
+    );
+
+    expect(request).toEqual({
+      id: "list-1",
+      type: "list_eval_history",
+      filter: {
+        configDir: "/tmp/promptfoo-sidecar-tests",
+        pluginSlug: "skill-creator",
+        skillName: "creating-skills",
+        scenarioName: "Smoke",
+        mode: "trigger",
+        limit: 10,
+        offset: 0,
+      },
+    });
+  });
+
+  it("parses a valid read_eval_history request", () => {
+    const request = parseSidecarRequest(
+      JSON.stringify({
+        id: "read-1",
+        type: "read_eval_history",
+        configDir: "/tmp/promptfoo-sidecar-tests",
+        evalId: "eval-123",
+      }),
+    );
+
+    expect(request).toEqual({
+      id: "read-1",
+      type: "read_eval_history",
+      configDir: "/tmp/promptfoo-sidecar-tests",
+      evalId: "eval-123",
     });
   });
 

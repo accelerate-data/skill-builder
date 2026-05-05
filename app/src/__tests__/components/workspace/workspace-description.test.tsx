@@ -2,13 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
-import {
-  mockListen,
-  resetTauriMocks,
-} from "@/test/mocks/tauri";
+import { mockListen, resetTauriMocks } from "@/test/mocks/tauri";
 
-const mockListEvalPromptSets = vi.fn();
-const mockSaveEvalPromptSet = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockSuggestDescriptionCandidates = vi.fn();
@@ -19,7 +14,15 @@ const mockBuildRefineImprovementBrief = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
 let progressListener:
-  | ((event: { payload: { runId: string; phase: string; completed: number; total: number; message: string } }) => void)
+  | ((event: {
+      payload: {
+        runId: string;
+        phase: string;
+        completed: number;
+        total: number;
+        message: string;
+      };
+    }) => void)
   | null = null;
 
 vi.mock("@/stores/refine-store", () => ({
@@ -37,8 +40,6 @@ vi.mock("@/lib/eval-workbench", async () => {
 
   return {
     ...actual,
-    listEvalPromptSets: (...args: unknown[]) => mockListEvalPromptSets(...args),
-    saveEvalPromptSet: (...args: unknown[]) => mockSaveEvalPromptSet(...args),
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     suggestDescriptionCandidates: (...args: unknown[]) =>
@@ -78,29 +79,37 @@ const skill: SkillSummary = {
   disableModelInvocation: null,
 };
 
-const triggerPromptSet = {
-  id: "prompt-set-trigger",
-  pluginSlug: "skills",
-  skillName: "trigger-skill",
-  mode: "trigger" as const,
+const triggerScenario = {
   name: "Routing checks",
-  createdAt: "2026-05-04T00:00:00Z",
-  updatedAt: "2026-05-04T00:00:00Z",
+  tags: ["trigger"] as const,
   cases: [
     {
       id: "case-1",
       prompt: "Reconcile open customer invoices",
-      expected: null,
+      expectedOutcome: null,
       shouldTrigger: true,
       assertions: [],
-      sortOrder: 0,
+    },
+  ],
+};
+
+const bothScenario = {
+  name: "Core workflow coverage",
+  tags: ["both"] as const,
+  cases: [
+    {
+      id: "case-1",
+      prompt: "Reconcile open customer invoices",
+      expectedOutcome: "Confirms invoice reconciliation steps",
+      shouldTrigger: true,
+      assertions: [],
     },
   ],
 };
 
 const runSummary = {
   id: "run-trigger-1",
-  promptSetId: "prompt-set-trigger",
+  scenarioName: "Routing checks",
   mode: "trigger" as const,
   status: "completed",
   summary: { passed: 3, total: 4 },
@@ -242,8 +251,6 @@ describe("WorkspaceDescription", () => {
       }
       return Promise.resolve(() => {});
     });
-    mockListEvalPromptSets.mockReset().mockResolvedValue([triggerPromptSet]);
-    mockSaveEvalPromptSet.mockReset().mockResolvedValue(triggerPromptSet);
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockSuggestDescriptionCandidates.mockReset().mockResolvedValue([
@@ -279,48 +286,52 @@ describe("WorkspaceDescription", () => {
     setPendingInitialMessage.mockReset();
   });
 
-  it("loads trigger prompt sets and run history from the eval workbench surface", async () => {
+  it("loads trigger run history from the eval workbench surface", async () => {
     render(
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
+        scenario={triggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
       />,
     );
 
     await waitFor(() =>
-      expect(mockListEvalPromptSets).toHaveBeenCalledWith(
+      expect(mockListEvalRuns).toHaveBeenCalledWith(
         "skills",
         "trigger-skill",
         "trigger",
+        20,
       ),
     );
-    expect(mockListEvalRuns).toHaveBeenCalledWith(
-      "skills",
-      "trigger-skill",
-      "trigger",
-      20,
-    );
-    expect(await screen.findByText("Routing checks")).toBeInTheDocument();
-    expect(screen.getByText("Reconcile open customer invoices")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Routing checks")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Reconcile open customer invoices"),
+    ).toBeInTheDocument();
   });
 
-  it("generates description candidates through the workbench command surface", async () => {
+  it("generates description candidates through the scenario command surface", async () => {
     const user = userEvent.setup();
 
     render(
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
+        scenario={triggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
       />,
     );
 
-    await screen.findByText("Routing checks");
-
+    await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
 
     await waitFor(() =>
       expect(mockSuggestDescriptionCandidates).toHaveBeenCalledWith({
-        promptSetId: "prompt-set-trigger",
+        pluginSlug: "skills",
+        skillName: "trigger-skill",
+        scenarioName: "Routing checks",
         baselineDescription:
           "Use when the user asks to reconcile customer invoices",
         candidateCount: 3,
@@ -331,6 +342,21 @@ describe("WorkspaceDescription", () => {
     ).toBeInTheDocument();
   });
 
+  it("exposes both trigger and performance fields for shared scenarios", async () => {
+    render(
+      <WorkspaceDescription
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={bothScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByLabelText(/expected outcome/i)).toBeInTheDocument();
+    expect(screen.getByText(/should trigger/i)).toBeInTheDocument();
+  });
+
   it("applies a generated candidate and reports it back to the shell", async () => {
     const user = userEvent.setup();
     const onApply = vi.fn();
@@ -339,11 +365,14 @@ describe("WorkspaceDescription", () => {
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
+        scenario={triggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
         onApply={onApply}
       />,
     );
 
-    await screen.findByText("Routing checks");
+    await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
     await screen.findByText(/invoice reconciliation or payment matching/i);
     await user.click(screen.getByRole("button", { name: /apply candidate 1/i }));
@@ -369,11 +398,14 @@ describe("WorkspaceDescription", () => {
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
+        scenario={triggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
         onNavigateToRefine={onNavigateToRefine}
       />,
     );
 
-    await screen.findByText("Routing checks");
+    await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByRole("heading", { name: "Candidate 1" });
     await user.click(screen.getByRole("button", { name: /send to refine/i }));
@@ -384,39 +416,39 @@ describe("WorkspaceDescription", () => {
       ),
     );
     expect(setPendingInitialMessage).toHaveBeenCalledWith(
-        "Tighten routing boundaries around invoice reconciliation",
+      "Tighten routing boundaries around invoice reconciliation",
     );
     expect(onNavigateToRefine).toHaveBeenCalled();
   });
 
   it("runs trigger comparison against the baseline plus candidates and recommends the best eval result", async () => {
     const user = userEvent.setup();
-    mockListEvalPromptSets.mockResolvedValue([
-      {
-        ...triggerPromptSet,
-        cases: [
-          ...triggerPromptSet.cases,
-          {
-            id: "case-2",
-            prompt: "Clean up old billing notes",
-            expected: null,
-            shouldTrigger: false,
-            assertions: [],
-            sortOrder: 1,
-          },
-        ],
-      },
-    ]);
+    const scenarioWithNegativeCase = {
+      ...triggerScenario,
+      cases: [
+        ...triggerScenario.cases,
+        {
+          id: "case-2",
+          prompt: "Clean up old billing notes",
+          expectedOutcome: null,
+          shouldTrigger: false,
+          assertions: [],
+        },
+      ],
+    };
     mockReadEvalRun.mockResolvedValue(runDetailWithBaselineComparison);
 
     render(
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
+        scenario={scenarioWithNegativeCase}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
       />,
     );
 
-    await screen.findByText("Routing checks");
+    await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
 
     expect(screen.getByRole("heading", { name: "Baseline" })).toBeInTheDocument();
@@ -427,7 +459,10 @@ describe("WorkspaceDescription", () => {
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
-        promptSetId: "prompt-set-trigger",
+        pluginSlug: "skills",
+        skillName: "trigger-skill",
+        scenarioName: "Routing checks",
+        mode: "trigger",
         candidateIds: ["candidate-1", "candidate-2"],
       }),
     );
@@ -461,18 +496,23 @@ describe("WorkspaceDescription", () => {
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
+        scenario={triggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
         onRunningChange={onRunningChange}
       />,
     );
 
-    await screen.findByText("Routing checks");
+    await screen.findByDisplayValue("Routing checks");
     onRunningChange.mockClear();
 
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
 
     await waitFor(() =>
       expect(mockSuggestDescriptionCandidates).toHaveBeenCalledWith({
-        promptSetId: "prompt-set-trigger",
+        pluginSlug: "skills",
+        skillName: "trigger-skill",
+        scenarioName: "Routing checks",
         baselineDescription:
           "Use when the user asks to reconcile customer invoices",
         candidateCount: 3,
@@ -502,9 +542,17 @@ describe("WorkspaceDescription", () => {
     const deferredRun = createDeferred(runSummary);
     mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
 
-    render(<WorkspaceDescription skill={skill} workspacePath="/workspace" />);
+    render(
+      <WorkspaceDescription
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={triggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
 
-    await screen.findByText("Routing checks");
+    await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
     await screen.findByText(/invoice reconciliation or payment matching/i);
     await user.click(screen.getByRole("button", { name: /run comparison/i }));
@@ -512,7 +560,10 @@ describe("WorkspaceDescription", () => {
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
-        promptSetId: "prompt-set-trigger",
+        pluginSlug: "skills",
+        skillName: "trigger-skill",
+        scenarioName: "Routing checks",
+        mode: "trigger",
         candidateIds: ["candidate-1", "candidate-2"],
       }),
     );

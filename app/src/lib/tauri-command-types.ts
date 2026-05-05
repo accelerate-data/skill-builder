@@ -38,12 +38,13 @@ import type {
 import type {
   ApplyDescriptionCandidateResponse,
   DescriptionCandidate,
-  EvalPromptSet,
   EvalRun,
   EvalWorkbenchMode,
   RefineImprovementBrief,
   RunEvalWorkbenchRequest,
-  SaveEvalPromptSet,
+  ScenarioDto,
+  ScenarioListItem,
+  SuggestAssertionsRequest,
   SuggestDescriptionCandidatesRequest,
 } from "@/lib/eval-workbench";
 import type {
@@ -445,17 +446,34 @@ export interface TauriCommandMap {
     args: { skillName: string; workspacePath: string };
     result: LatestBenchmarkResult | null;
   };
-  list_eval_prompt_sets: {
-    args: { pluginSlug: string; skillName: string; mode: EvalWorkbenchMode | null };
-    result: EvalPromptSet[];
+  list_scenarios: {
+    args: { pluginSlug: string; skillName: string };
+    result: ScenarioListItem[];
   };
-  save_eval_prompt_set: {
-    args: { promptSet: SaveEvalPromptSet };
-    result: EvalPromptSet;
+  load_scenario: {
+    args: { pluginSlug: string; skillName: string; scenarioName: string };
+    result: ScenarioDto | null;
   };
-  delete_eval_prompt_set: {
-    args: { promptSetId: string };
+  save_scenario: {
+    args: {
+      pluginSlug: string;
+      skillName: string;
+      scenario: ScenarioDto;
+      originalName: string | null;
+    };
+    result: ScenarioDto;
+  };
+  delete_scenario: {
+    args: { pluginSlug: string; skillName: string; scenarioName: string };
     result: void;
+  };
+  generate_scenarios: {
+    args: { pluginSlug: string; skillName: string };
+    result: ScenarioDto[];
+  };
+  suggest_assertions: {
+    args: { request: SuggestAssertionsRequest };
+    result: { type: string; value: string }[];
   };
   run_eval_workbench: {
     args: { request: RunEvalWorkbenchRequest };

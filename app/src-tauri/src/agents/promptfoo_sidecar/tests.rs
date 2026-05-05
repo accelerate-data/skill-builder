@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::process::{
-    extract_result_from_stdout, resolve_runner_from_dist_candidates, PromptfooSidecarPathError,
+    extract_run_result_from_stdout, resolve_runner_from_dist_candidates, PromptfooSidecarPathError,
 };
 use super::protocol::{
     parse_sidecar_event, EvalAssertion, EvalAssertionType, EvalCandidate, EvalCase, EvalExecution,
@@ -15,6 +15,9 @@ fn run_eval_request_serializes_sidecar_payload() {
         EvalMode::Trigger,
         "warehouse-domain",
         "skills",
+        "smoke",
+        None,
+        vec![],
         vec![EvalCandidate {
             id: "candidate-1".to_string(),
             label: "Candidate 1".to_string(),
@@ -44,7 +47,10 @@ fn run_eval_request_serializes_sidecar_payload() {
     assert_eq!(payload["mode"], "trigger");
     assert_eq!(payload["skillName"], "warehouse-domain");
     assert_eq!(payload["pluginSlug"], "skills");
-    assert_eq!(payload["candidates"][0]["description"], "Use for warehouse domain classification prompts.");
+    assert_eq!(
+        payload["candidates"][0]["description"],
+        "Use for warehouse domain classification prompts."
+    );
     assert_eq!(payload["cases"][0]["shouldTrigger"], true);
     assert_eq!(payload["cases"][0]["assertions"][0]["type"], "contains");
     assert_eq!(payload["executions"][0]["candidateId"], "candidate-1");
@@ -74,7 +80,7 @@ fn extracts_result_from_sidecar_stdout() {
     let stdout = r#"{"type":"progress","id":"run-1","completed":1,"total":1}
 {"type":"result","id":"run-1","result":{"mode":"trigger","total":1,"passed":1,"failed":0,"results":[{"caseId":"case-1","candidateId":"candidate-1","passed":true,"score":1.0,"output":{"invokedTargetSkill":true}}]}}"#;
 
-    let result = extract_result_from_stdout(stdout, "run-1").expect("result event");
+    let result = extract_run_result_from_stdout(stdout, "run-1").expect("result event");
 
     assert_eq!(result.mode, EvalMode::Trigger);
     assert_eq!(result.total, 1);
@@ -86,7 +92,7 @@ fn extracts_result_from_sidecar_stdout() {
 fn sidecar_error_event_is_returned() {
     let stdout = r#"{"type":"error","id":"run-1","message":"boom"}"#;
 
-    let error = extract_result_from_stdout(stdout, "run-1").expect_err("error event");
+    let error = extract_run_result_from_stdout(stdout, "run-1").expect_err("error event");
 
     assert!(error.contains("boom"));
 }

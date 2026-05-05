@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
@@ -78,14 +78,21 @@ vi.mock("@/lib/tauri", () => ({
   listSkills: vi.fn().mockResolvedValue([]),
 }));
 
-const mockListEvalPromptSets = vi.fn();
+const mockUseScenarios = vi.fn();
+const mockUseScenario = vi.fn();
+const mockUseSaveScenario = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
-const mockSaveEvalPromptSet = vi.fn();
 const mockSuggestDescriptionCandidates = vi.fn();
 const mockApplyDescriptionCandidate = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
+
+vi.mock("@/lib/queries/eval-scenarios", () => ({
+  useScenarios: (...args: unknown[]) => mockUseScenarios(...args),
+  useScenario: (...args: unknown[]) => mockUseScenario(...args),
+  useSaveScenario: (...args: unknown[]) => mockUseSaveScenario(...args),
+}));
 
 vi.mock("@/lib/eval-workbench", async () => {
   const actual = await vi.importActual<typeof import("@/lib/eval-workbench")>(
@@ -94,8 +101,6 @@ vi.mock("@/lib/eval-workbench", async () => {
 
   return {
     ...actual,
-    listEvalPromptSets: (...args: unknown[]) => mockListEvalPromptSets(...args),
-    saveEvalPromptSet: (...args: unknown[]) => mockSaveEvalPromptSet(...args),
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
@@ -139,49 +144,66 @@ vi.mock("@/components/refine/resizable-split-pane", () => ({
 
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 
-const performancePromptSet = {
-  id: "prompt-set-performance",
-  pluginSlug: "skills",
-  skillName: "sales-pipeline",
-  mode: "performance" as const,
+const performanceScenario = {
   name: "Regression",
-  createdAt: "2026-05-04T00:00:00Z",
-  updatedAt: "2026-05-04T00:00:00Z",
+  tags: ["performance"] as const,
   cases: [
     {
       id: "case-1",
       prompt: "Forecast next quarter revenue",
-      expected: "Includes assumptions",
+      expectedOutcome: "Includes assumptions",
       shouldTrigger: null,
       assertions: [],
-      sortOrder: 0,
     },
   ],
 };
 
-const triggerPromptSet = {
-  id: "prompt-set-trigger",
-  pluginSlug: "skills",
-  skillName: "sales-pipeline",
-  mode: "trigger" as const,
+const performanceScenarioSummary = {
+  name: "Regression",
+  tags: ["performance"] as const,
+};
+
+const triggerScenario = {
   name: "Routing checks",
-  createdAt: "2026-05-04T00:00:00Z",
-  updatedAt: "2026-05-04T00:00:00Z",
+  tags: ["trigger"] as const,
   cases: [
     {
       id: "case-1",
       prompt: "Reconcile open customer invoices",
-      expected: null,
+      expectedOutcome: null,
       shouldTrigger: true,
       assertions: [],
-      sortOrder: 0,
     },
   ],
 };
 
+const triggerScenarioSummary = {
+  name: "Routing checks",
+  tags: ["trigger"] as const,
+};
+
+const sharedScenario = {
+  name: "Core workflow coverage",
+  tags: ["both"] as const,
+  cases: [
+    {
+      id: "case-shared-1",
+      prompt: "Reconcile open customer invoices",
+      expectedOutcome: "Confirms invoice reconciliation steps",
+      shouldTrigger: true,
+      assertions: [],
+    },
+  ],
+};
+
+const sharedScenarioSummary = {
+  name: "Core workflow coverage",
+  tags: ["both"] as const,
+};
+
 const runSummary = {
   id: "run-1",
-  promptSetId: "prompt-set-performance",
+  scenarioName: "Regression",
   mode: "performance" as const,
   status: "completed",
   summary: { passed: 1, total: 1 },
@@ -227,10 +249,29 @@ const baseBuilderSkill: SkillSummary = {
 describe("WorkspaceShell", () => {
   beforeEach(() => {
     refineState.isRunning = false;
-    mockListEvalPromptSets.mockReset().mockImplementation((_pluginSlug, _skillName, mode) =>
-      Promise.resolve(mode === "trigger" ? [triggerPromptSet] : [performancePromptSet]),
+    mockUseScenarios.mockReset().mockReturnValue({
+      data: [performanceScenarioSummary, triggerScenarioSummary],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseScenario.mockReset().mockImplementation(
+      (skillName: string | null, pluginSlug: string, scenarioName: string | null) => ({
+        data:
+          skillName && pluginSlug && scenarioName === performanceScenario.name
+            ? performanceScenario
+            : skillName && pluginSlug && scenarioName === triggerScenario.name
+              ? triggerScenario
+              : null,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      }),
     );
-    mockSaveEvalPromptSet.mockReset().mockResolvedValue(performancePromptSet);
+    mockUseSaveScenario.mockReset().mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
+      isPending: false,
+    });
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
     mockReadEvalRun.mockReset().mockResolvedValue(runSummary);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
@@ -277,19 +318,15 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="refine" />,
     );
 
-    // Refine tab is active
     const refineTab = container.querySelector('[role="tab"][data-state="active"]');
     expect(refineTab?.textContent).toBe("Refine");
 
-    // Try to switch to Overview — click the first tab trigger
     const overviewTab = container.querySelector('[role="tab"]');
     await user.click(overviewTab!);
 
-    // Dialog should appear
     expect(screen.getByText("Process Running")).toBeInTheDocument();
     expect(screen.getByText(/process is still running/i)).toBeInTheDocument();
 
-    // Refine tab should still be active (check via container, not role query — dialog captures aria)
     const stillActive = container.querySelector('[role="tab"][data-state="active"]');
     expect(stillActive?.textContent).toBe("Refine");
 
@@ -308,10 +345,8 @@ describe("WorkspaceShell", () => {
     await user.click(overviewTab!);
     expect(screen.getByText("Process Running")).toBeInTheDocument();
 
-    // Click Leave
     await user.click(screen.getByRole("button", { name: "Leave" }));
 
-    // Overview should now be active
     const activeTab = container.querySelector('[role="tab"][data-state="active"]');
     expect(activeTab?.textContent).toBe("Overview");
 
@@ -330,10 +365,8 @@ describe("WorkspaceShell", () => {
     await user.click(overviewTab!);
     expect(screen.getByText("Process Running")).toBeInTheDocument();
 
-    // Click Stay
     await user.click(screen.getByRole("button", { name: "Stay" }));
 
-    // Dialog should close, Refine still active
     expect(screen.queryByText("Process Running")).not.toBeInTheDocument();
     const activeTab = container.querySelector('[role="tab"][data-state="active"]');
     expect(activeTab?.textContent).toBe("Refine");
@@ -350,8 +383,8 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
     );
 
-    await screen.findByText("Regression");
-    await user.click(await screen.findByRole("button", { name: /run prompt set/i }));
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(await screen.findByRole("button", { name: /run scenario/i }));
     await waitFor(() => expect(mockRunEvalWorkbench).toHaveBeenCalled());
 
     const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(
@@ -386,7 +419,7 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="description" />,
     );
 
-    await screen.findByText("Routing checks");
+    await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
     await waitFor(() =>
       expect(mockSuggestDescriptionCandidates).toHaveBeenCalled(),
@@ -413,6 +446,87 @@ describe("WorkspaceShell", () => {
     ]);
   });
 
+  it("loads scenario detail separately from the shared scenario list and keeps shared selections across tabs", async () => {
+    const user = userEvent.setup();
+
+    mockUseScenarios.mockReset().mockReturnValue({
+      data: [
+        performanceScenarioSummary,
+        sharedScenarioSummary,
+        triggerScenarioSummary,
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseScenario.mockReset().mockImplementation(
+      (_skillName: string | null, _pluginSlug: string, scenarioName: string | null) => ({
+        data:
+          scenarioName === performanceScenario.name
+            ? performanceScenario
+            : scenarioName === sharedScenario.name
+              ? sharedScenario
+              : scenarioName === triggerScenario.name
+                ? triggerScenario
+                : null,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      }),
+    );
+
+    render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+    );
+
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+    expect(mockUseScenario).toHaveBeenCalledWith(
+      "sales-pipeline",
+      "skills",
+      "Regression",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
+    expect(await screen.findByDisplayValue("Confirms invoice reconciliation steps")).toBeInTheDocument();
+    expect(mockUseScenario).toHaveBeenLastCalledWith(
+      "sales-pipeline",
+      "skills",
+      "Core workflow coverage",
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Trigger" }));
+    expect(await screen.findByDisplayValue("Confirms invoice reconciliation steps")).toBeInTheDocument();
+    expect(mockUseScenario).toHaveBeenLastCalledWith(
+      "sales-pipeline",
+      "skills",
+      "Core workflow coverage",
+    );
+  });
+
+  it("falls back to the first visible scenario when the selected one does not support the next tab", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+    );
+
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+    expect(mockUseScenario).toHaveBeenLastCalledWith(
+      "sales-pipeline",
+      "skills",
+      "Regression",
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Trigger" }));
+
+    expect(await screen.findByDisplayValue("Routing checks")).toBeInTheDocument();
+    expect(mockUseScenario).toHaveBeenLastCalledWith(
+      "sales-pipeline",
+      "skills",
+      "Routing checks",
+    );
+  });
+
   it("clears skillFiles cache when skill name changes", async () => {
     refineState.setSkillFiles.mockClear();
 
@@ -420,14 +534,11 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
     );
 
-    // Initial mount calls setSkillFiles([]) once for the initial skillName
     const callsAfterMount = refineState.setSkillFiles.mock.calls.length;
 
-    // Switch to a different skill
     const newSkill = { ...baseBuilderSkill, name: "new-skill" };
     rerender(<WorkspaceShell skill={newSkill} skillType="builder" />);
 
-    // Should have called setSkillFiles([]) again after the skill name changed
     expect(refineState.setSkillFiles.mock.calls.length).toBeGreaterThan(callsAfterMount);
     const lastCall = refineState.setSkillFiles.mock.calls.at(-1);
     expect(lastCall?.[0]).toEqual([]);

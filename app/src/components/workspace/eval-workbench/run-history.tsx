@@ -19,7 +19,7 @@ export function RunHistory({
       <div className="mb-3">
         <h2 className="text-sm font-semibold">Run history</h2>
         <p className="text-xs text-muted-foreground">
-          Review the latest app-owned workbench runs.
+          Review the latest local Promptfoo-backed workbench runs.
         </p>
       </div>
 

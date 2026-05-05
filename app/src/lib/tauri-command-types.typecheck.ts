@@ -1,9 +1,9 @@
 import { invokeCommand } from "@/lib/tauri";
-import type { SaveEvalPromptSet } from "@/lib/eval-workbench";
+import type { ScenarioDto } from "@/lib/eval-workbench";
 import type { AppSettings } from "@/lib/types";
 
 declare const settings: AppSettings;
-declare const promptSet: SaveEvalPromptSet;
+declare const scenario: ScenarioDto;
 
 void invokeCommand("get_settings", {});
 void invokeCommand("save_settings", { settings });
@@ -117,25 +117,45 @@ void invokeCommand("get_skill_history", {
   limit: "10",
 });
 
-void invokeCommand("list_eval_prompt_sets", {
+void invokeCommand("list_scenarios", {
   pluginSlug: "skills",
   skillName: "demo",
-  mode: "performance",
 });
 
-void invokeCommand("save_eval_prompt_set", { promptSet });
+void invokeCommand("load_scenario", {
+  pluginSlug: "skills",
+  skillName: "demo",
+  scenarioName: "Regression",
+});
+
+void invokeCommand("save_scenario", {
+  pluginSlug: "skills",
+  skillName: "demo",
+  scenario,
+  originalName: null,
+});
+
+void invokeCommand("generate_scenarios", {
+  pluginSlug: "skills",
+  skillName: "demo",
+});
 
 void invokeCommand("run_eval_workbench", {
   request: {
     runId: "run-1",
-    promptSetId: "prompt-set-1",
+    pluginSlug: "skills",
+    skillName: "demo",
+    scenarioName: "Regression",
+    mode: "performance",
     candidateIds: ["current-skill"],
   },
 });
 
 void invokeCommand("suggest_description_candidates", {
   request: {
-    promptSetId: "prompt-set-1",
+    pluginSlug: "skills",
+    skillName: "demo",
+    scenarioName: "Routing checks",
     baselineDescription: "Route invoice reconciliation requests",
     candidateCount: 3,
   },
@@ -144,7 +164,7 @@ void invokeCommand("suggest_description_candidates", {
 // @ts-expect-error workbench run request requires runId and candidateIds
 void invokeCommand("run_eval_workbench", {
   request: {
-    promptSetId: "prompt-set-1",
+    scenarioName: "Regression",
   },
 });
 

@@ -2,13 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
-import {
-  mockListen,
-  resetTauriMocks,
-} from "@/test/mocks/tauri";
+import { mockListen, resetTauriMocks } from "@/test/mocks/tauri";
 
-const mockListEvalPromptSets = vi.fn();
-const mockSaveEvalPromptSet = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
@@ -17,7 +12,15 @@ const mockBuildRefineImprovementBrief = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
 let progressListener:
-  | ((event: { payload: { runId: string; phase: string; completed: number; total: number; message: string } }) => void)
+  | ((event: {
+      payload: {
+        runId: string;
+        phase: string;
+        completed: number;
+        total: number;
+        message: string;
+      };
+    }) => void)
   | null = null;
 
 vi.mock("@/stores/refine-store", () => ({
@@ -35,8 +38,6 @@ vi.mock("@/lib/eval-workbench", async () => {
 
   return {
     ...actual,
-    listEvalPromptSets: (...args: unknown[]) => mockListEvalPromptSets(...args),
-    saveEvalPromptSet: (...args: unknown[]) => mockSaveEvalPromptSet(...args),
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
@@ -72,29 +73,23 @@ const skill: SkillSummary = {
   disableModelInvocation: null,
 };
 
-const performancePromptSet = {
-  id: "prompt-set-performance",
-  pluginSlug: "skills",
-  skillName: "forecast-skill",
-  mode: "performance" as const,
+const performanceScenario = {
   name: "Regression",
-  createdAt: "2026-05-04T00:00:00Z",
-  updatedAt: "2026-05-04T00:00:00Z",
+  tags: ["performance"] as const,
   cases: [
     {
       id: "case-1",
       prompt: "Forecast next quarter revenue",
-      expected: "Includes assumptions",
+      expectedOutcome: "Includes assumptions",
       shouldTrigger: null,
       assertions: [],
-      sortOrder: 0,
     },
   ],
 };
 
 const runSummary = {
   id: "run-1",
-  promptSetId: "prompt-set-performance",
+  scenarioName: "Regression",
   mode: "performance" as const,
   status: "completed",
   summary: { passed: 1, total: 1 },
@@ -140,8 +135,6 @@ describe("WorkspaceEvals", () => {
       }
       return Promise.resolve(() => {});
     });
-    mockListEvalPromptSets.mockReset().mockResolvedValue([performancePromptSet]);
-    mockSaveEvalPromptSet.mockReset().mockResolvedValue(performancePromptSet);
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
@@ -153,50 +146,84 @@ describe("WorkspaceEvals", () => {
     setPendingInitialMessage.mockReset();
   });
 
-  it("loads performance prompt sets and run history from the eval workbench surface", async () => {
-    render(<WorkspaceEvals skill={skill} workspacePath="/workspace" />);
+  it("loads performance run history from the eval workbench surface", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
 
     await waitFor(() =>
-      expect(mockListEvalPromptSets).toHaveBeenCalledWith(
+      expect(mockListEvalRuns).toHaveBeenCalledWith(
         "skills",
         "forecast-skill",
         "performance",
+        20,
       ),
     );
-    expect(mockListEvalRuns).toHaveBeenCalledWith(
-      "skills",
-      "forecast-skill",
-      "performance",
-      20,
-    );
-    expect(await screen.findByText("Regression")).toBeInTheDocument();
-    expect(screen.getByText("Forecast next quarter revenue")).toBeInTheDocument();
+    expect(
+      await screen.findByDisplayValue("Forecast next quarter revenue"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /run scenario/i })).toBeInTheDocument();
   });
 
-  it("saves a new performance prompt set through the workbench command surface", async () => {
+  it("saves a new performance scenario through the shared workbench surface", async () => {
     const user = userEvent.setup();
-    render(<WorkspaceEvals skill={skill} workspacePath="/workspace" />);
+    const onSaveScenario = vi.fn().mockResolvedValue({
+      name: "Smoke",
+      tags: ["performance"],
+      cases: [
+        {
+          id: "case-2",
+          prompt: "Summarize pipeline risk",
+          expectedOutcome: "Lists top blockers",
+          shouldTrigger: null,
+          assertions: [],
+        },
+      ],
+    });
+    const onStartNewScenario = vi.fn();
 
-    await screen.findByText("Regression");
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={onStartNewScenario}
+        onSaveScenario={onSaveScenario}
+      />,
+    );
 
-    await user.click(screen.getByRole("button", { name: /new prompt set/i }));
-    await user.clear(screen.getByLabelText(/prompt set name/i));
-    await user.type(screen.getByLabelText(/prompt set name/i), "Smoke");
-    await user.clear(screen.getByLabelText(/case prompt/i));
-    await user.type(screen.getByLabelText(/case prompt/i), "Summarize pipeline risk");
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+
+    await user.click(screen.getByRole("button", { name: /new scenario/i }));
+    expect(onStartNewScenario).toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText(/scenario name/i));
+    await user.type(screen.getByLabelText(/scenario name/i), "Smoke");
+    await user.clear(screen.getByLabelText(/user prompt/i));
+    await user.type(screen.getByLabelText(/user prompt/i), "Summarize pipeline risk");
     await user.clear(screen.getByLabelText(/expected outcome/i));
     await user.type(screen.getByLabelText(/expected outcome/i), "Lists top blockers");
-    await user.click(screen.getByRole("button", { name: /^save prompt set$/i }));
+    await user.click(screen.getByRole("button", { name: /^save scenario$/i }));
 
     await waitFor(() =>
-      expect(mockSaveEvalPromptSet).toHaveBeenCalledWith(
-        expect.objectContaining({
-          pluginSlug: "skills",
-          skillName: "forecast-skill",
-          mode: "performance",
-          name: "Smoke",
-        }),
-      ),
+      expect(onSaveScenario).toHaveBeenCalledWith({
+        name: "Smoke",
+        tags: ["performance"],
+        cases: [
+          expect.objectContaining({
+            prompt: "Summarize pipeline risk",
+            expectedOutcome: "Lists top blockers",
+            shouldTrigger: null,
+            assertions: [],
+          }),
+        ],
+      }),
     );
   });
 
@@ -208,11 +235,14 @@ describe("WorkspaceEvals", () => {
       <WorkspaceEvals
         skill={skill}
         workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
         onNavigateToRefine={onNavigateToRefine}
       />,
     );
 
-    await screen.findByText("Regression");
+    await screen.findByDisplayValue("Forecast next quarter revenue");
     await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText("Missed assumptions section");
     await user.click(screen.getByRole("button", { name: /send to refine/i }));
@@ -226,7 +256,7 @@ describe("WorkspaceEvals", () => {
     expect(onNavigateToRefine).toHaveBeenCalled();
   });
 
-  it("publishes real running state while a prompt set run is active", async () => {
+  it("publishes real running state while a scenario run is active", async () => {
     const user = userEvent.setup();
     const onRunningChange = vi.fn();
     const deferredRun = createDeferred(runSummary);
@@ -236,19 +266,25 @@ describe("WorkspaceEvals", () => {
       <WorkspaceEvals
         skill={skill}
         workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
         onRunningChange={onRunningChange}
       />,
     );
 
-    await screen.findByText("Regression");
+    await screen.findByDisplayValue("Forecast next quarter revenue");
     onRunningChange.mockClear();
 
-    await user.click(screen.getByRole("button", { name: /run prompt set/i }));
+    await user.click(screen.getByRole("button", { name: /run scenario/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
-        promptSetId: "prompt-set-performance",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
+        scenarioName: "Regression",
+        mode: "performance",
         candidateIds: ["current-skill"],
       }),
     );
@@ -266,15 +302,26 @@ describe("WorkspaceEvals", () => {
     const deferredRun = createDeferred(runSummary);
     mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
 
-    render(<WorkspaceEvals skill={skill} workspacePath="/workspace" />);
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
 
-    await screen.findByText("Regression");
-    await user.click(screen.getByRole("button", { name: /run prompt set/i }));
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /run scenario/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
-        promptSetId: "prompt-set-performance",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
+        scenarioName: "Regression",
+        mode: "performance",
         candidateIds: ["current-skill"],
       }),
     );

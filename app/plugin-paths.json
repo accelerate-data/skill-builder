@@ -1,6 +1,7 @@
 {
   "default_plugin_slug": "default",
   "skill_dir": "{root}/{plugin_slug}/skills/{skill_name}",
+  "eval_dir": "{root}/{plugin_slug}/evals/{skill_name}",
   "workspace_skill_dir": "{workspace}/{plugin_slug}/skills/{skill_name}",
   "tag_prefix": "{plugin_slug}/skills/{skill_name}/v",
   "tag_glob":   "{plugin_slug}/skills/{skill_name}/*",

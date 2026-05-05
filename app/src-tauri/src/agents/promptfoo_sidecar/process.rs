@@ -5,7 +5,10 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use super::protocol::{parse_sidecar_event, serialize_request, EvalRunResult, SidecarEvent};
+use super::protocol::{
+    parse_sidecar_event, serialize_request, EvalHistoryListResult, EvalHistoryReadResult,
+    EvalRunResult, ListEvalHistoryRequest, ReadEvalHistoryRequest, SidecarEvent,
+};
 use crate::agents::node_resolver::resolve_node_binary_for_preflight;
 
 const RUNNER_FILE: &str = "runner.js";
@@ -22,6 +25,30 @@ pub async fn run_eval(
     app_handle: &tauri::AppHandle,
     request: &super::protocol::RunEvalRequest,
 ) -> Result<EvalRunResult, String> {
+    let stdout = run_sidecar_request(app_handle, request).await?;
+    extract_run_result_from_stdout(&stdout, &request.id)
+}
+
+pub async fn list_eval_history(
+    app_handle: &tauri::AppHandle,
+    request: &ListEvalHistoryRequest,
+) -> Result<EvalHistoryListResult, String> {
+    let stdout = run_sidecar_request(app_handle, request).await?;
+    extract_history_list_result_from_stdout(&stdout, &request.id)
+}
+
+pub async fn read_eval_history(
+    app_handle: &tauri::AppHandle,
+    request: &ReadEvalHistoryRequest,
+) -> Result<EvalHistoryReadResult, String> {
+    let stdout = run_sidecar_request(app_handle, request).await?;
+    extract_history_read_result_from_stdout(&stdout, &request.id)
+}
+
+async fn run_sidecar_request<T: serde::Serialize>(
+    app_handle: &tauri::AppHandle,
+    request: &T,
+) -> Result<String, String> {
     let node_path = resolve_node_binary_for_preflight(app_handle)
         .await
         .map_err(|error| error.to_string())?;
@@ -64,12 +91,15 @@ pub async fn run_eval(
         let detail = if stderr.is_empty() {
             format!("Promptfoo sidecar exited with status {}", output.status)
         } else {
-            format!("Promptfoo sidecar exited with status {}: {stderr}", output.status)
+            format!(
+                "Promptfoo sidecar exited with status {}: {stderr}",
+                output.status
+            )
         };
         return Err(detail);
     }
 
-    extract_result_from_stdout(&String::from_utf8_lossy(&output.stdout), &request.id)
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 pub fn resolve_promptfoo_sidecar_path(
@@ -111,7 +141,7 @@ where
     Err(PromptfooSidecarPathError::Missing)
 }
 
-pub(crate) fn extract_result_from_stdout(
+pub(crate) fn extract_run_result_from_stdout(
     stdout: &str,
     request_id: &str,
 ) -> Result<EvalRunResult, String> {
@@ -130,6 +160,7 @@ pub(crate) fn extract_result_from_stdout(
                     latest_result = Some(result);
                 }
             }
+            SidecarEvent::HistoryListResult { .. } | SidecarEvent::HistoryReadResult { .. } => {}
             SidecarEvent::Error { id, message } => {
                 if id == request_id || id == "unknown" {
                     return Err(message);
@@ -139,6 +170,70 @@ pub(crate) fn extract_result_from_stdout(
     }
 
     latest_result.ok_or_else(|| "Promptfoo sidecar did not return a result event".to_string())
+}
+
+pub(crate) fn extract_history_list_result_from_stdout(
+    stdout: &str,
+    request_id: &str,
+) -> Result<EvalHistoryListResult, String> {
+    let mut latest_result = None;
+
+    for raw_line in stdout.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        match parse_sidecar_event(line)? {
+            SidecarEvent::Progress { .. }
+            | SidecarEvent::Result { .. }
+            | SidecarEvent::HistoryReadResult { .. } => {}
+            SidecarEvent::HistoryListResult { id, result } => {
+                if id == request_id {
+                    latest_result = Some(result);
+                }
+            }
+            SidecarEvent::Error { id, message } => {
+                if id == request_id || id == "unknown" {
+                    return Err(message);
+                }
+            }
+        }
+    }
+
+    latest_result.ok_or_else(|| "Promptfoo sidecar did not return a history list event".to_string())
+}
+
+pub(crate) fn extract_history_read_result_from_stdout(
+    stdout: &str,
+    request_id: &str,
+) -> Result<EvalHistoryReadResult, String> {
+    let mut latest_result = None;
+
+    for raw_line in stdout.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        match parse_sidecar_event(line)? {
+            SidecarEvent::Progress { .. }
+            | SidecarEvent::Result { .. }
+            | SidecarEvent::HistoryListResult { .. } => {}
+            SidecarEvent::HistoryReadResult { id, result } => {
+                if id == request_id {
+                    latest_result = Some(result);
+                }
+            }
+            SidecarEvent::Error { id, message } => {
+                if id == request_id || id == "unknown" {
+                    return Err(message);
+                }
+            }
+        }
+    }
+
+    latest_result.ok_or_else(|| "Promptfoo sidecar did not return a history read event".to_string())
 }
 
 fn normalize_path(path: &Path) -> Result<String, PromptfooSidecarPathError> {

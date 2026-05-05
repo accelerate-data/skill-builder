@@ -1,44 +1,36 @@
 import { invokeCommand } from "@/lib/tauri";
 
 export type EvalWorkbenchMode = "performance" | "trigger";
+export type ScenarioTag = "performance" | "trigger" | "both";
 
-export interface EvalPromptCase {
+export interface ScenarioAssertion {
+  type: string;
+  value: string;
+}
+
+export interface ScenarioCase {
   id: string;
   prompt: string;
-  expected: string | null;
+  expectedOutcome: string | null;
   shouldTrigger: boolean | null;
-  assertions: unknown[];
-  sortOrder: number;
+  assertions: ScenarioAssertion[];
 }
 
-export interface EvalPromptSet {
-  id: string;
-  pluginSlug: string;
-  skillName: string;
-  mode: EvalWorkbenchMode;
+export interface Scenario {
   name: string;
-  cases: EvalPromptCase[];
-  createdAt: string;
-  updatedAt: string;
+  tags: ScenarioTag[];
+  cases: ScenarioCase[];
 }
 
-export interface SaveEvalPromptCase {
-  id?: string | null;
-  prompt: string;
-  expected?: string | null;
-  shouldTrigger?: boolean | null;
-  assertions: unknown[];
-  sortOrder?: number | null;
-}
-
-export interface SaveEvalPromptSet {
-  id?: string | null;
-  pluginSlug: string;
-  skillName: string;
-  mode: EvalWorkbenchMode;
+export interface ScenarioSummary {
   name: string;
-  cases: SaveEvalPromptCase[];
+  tags: ScenarioTag[];
 }
+
+export type ScenarioDto = Scenario;
+export type ScenarioListItem = ScenarioSummary;
+export type SaveScenarioCase = ScenarioCase;
+export type SaveScenario = Scenario;
 
 export interface EvalRunResult {
   id: string;
@@ -62,7 +54,7 @@ export interface DescriptionCandidate {
 
 export interface EvalRun {
   id: string;
-  promptSetId: string;
+  scenarioName: string;
   mode: EvalWorkbenchMode;
   status: string;
   summary: Record<string, unknown>;
@@ -74,7 +66,10 @@ export interface EvalRun {
 
 export interface RunEvalWorkbenchRequest {
   runId: string;
-  promptSetId: string;
+  pluginSlug: string;
+  skillName: string;
+  scenarioName: string;
+  mode: EvalWorkbenchMode;
   candidateIds: string[];
 }
 
@@ -87,9 +82,18 @@ export interface EvalWorkbenchProgressEvent {
 }
 
 export interface SuggestDescriptionCandidatesRequest {
-  promptSetId: string;
+  pluginSlug: string;
+  skillName: string;
+  scenarioName: string;
   baselineDescription: string;
   candidateCount?: number | null;
+}
+
+export interface SuggestAssertionsRequest {
+  pluginSlug: string;
+  skillName: string;
+  prompt: string;
+  expectedOutcome: string;
 }
 
 export interface ApplyDescriptionCandidateResponse {
@@ -114,22 +118,41 @@ export interface TriggerComparisonEntry {
   metrics: TriggerComparisonMetrics | null;
 }
 
-export const listEvalPromptSets = (
+export const listScenarios = (pluginSlug: string, skillName: string) =>
+  invokeCommand("list_scenarios", { pluginSlug, skillName });
+
+export const loadScenario = (
   pluginSlug: string,
   skillName: string,
-  mode?: EvalWorkbenchMode | null,
+  scenarioName: string,
 ) =>
-  invokeCommand("list_eval_prompt_sets", {
+  invokeCommand("load_scenario", {
     pluginSlug,
     skillName,
-    mode: mode ?? null,
+    scenarioName,
   });
 
-export const saveEvalPromptSet = (promptSet: SaveEvalPromptSet) =>
-  invokeCommand("save_eval_prompt_set", { promptSet });
+export const saveScenario = (
+  pluginSlug: string,
+  skillName: string,
+  scenario: SaveScenario,
+  originalName?: string | null,
+) =>
+  invokeCommand("save_scenario", {
+    pluginSlug,
+    skillName,
+    scenario,
+    originalName: originalName ?? null,
+  });
 
-export const deleteEvalPromptSet = (promptSetId: string) =>
-  invokeCommand("delete_eval_prompt_set", { promptSetId });
+export const deleteScenario = (
+  pluginSlug: string,
+  skillName: string,
+  scenarioName: string,
+) => invokeCommand("delete_scenario", { pluginSlug, skillName, scenarioName });
+
+export const generateScenarios = (pluginSlug: string, skillName: string) =>
+  invokeCommand("generate_scenarios", { pluginSlug, skillName });
 
 export const runEvalWorkbench = (request: RunEvalWorkbenchRequest) =>
   invokeCommand("run_eval_workbench", { request });
@@ -157,6 +180,9 @@ export const suggestDescriptionCandidates = (
   request: SuggestDescriptionCandidatesRequest,
 ) => invokeCommand("suggest_description_candidates", { request });
 
+export const suggestAssertions = (request: SuggestAssertionsRequest) =>
+  invokeCommand("suggest_assertions", { request });
+
 export const applyDescriptionCandidate = (
   pluginSlug: string,
   skillName: string,
@@ -175,101 +201,121 @@ export const DEFAULT_DESCRIPTION_CANDIDATE_COUNT = 3;
 export const CURRENT_SKILL_CANDIDATE_ID = "current-skill";
 export const PERFORMANCE_CANDIDATE_IDS = ["current-skill"];
 
-export function createEmptyPromptCase(
+export function createEmptyScenarioCase(
   mode: EvalWorkbenchMode,
-): SaveEvalPromptCase {
+): SaveScenarioCase {
   return {
+    id: `case-${crypto.randomUUID().slice(0, 8)}`,
     prompt: "",
-    expected: mode === "performance" ? "" : null,
+    expectedOutcome: mode === "performance" ? "" : null,
     shouldTrigger: mode === "trigger" ? true : null,
     assertions: [],
-    sortOrder: null,
   };
 }
 
-export function createDraftPromptSet(
+export function createDraftScenario(
   mode: EvalWorkbenchMode,
-  pluginSlug: string,
-  skillName: string,
+  _pluginSlug = "",
+  _skillName = "",
   name = "",
-): SaveEvalPromptSet {
+): SaveScenario {
   return {
-    id: null,
-    pluginSlug,
-    skillName,
-    mode,
     name,
-    cases: [createEmptyPromptCase(mode)],
+    tags: [mode],
+    cases: [createEmptyScenarioCase(mode)],
   };
 }
 
-export function promptSetToDraft(promptSet: EvalPromptSet): SaveEvalPromptSet {
+export function scenarioSupportsMode(
+  scenario: Pick<ScenarioSummary, "tags">,
+  mode: EvalWorkbenchMode,
+): boolean {
+  return scenario.tags.includes("both") || scenario.tags.includes(mode);
+}
+
+export function scenarioToDraft(scenario: ScenarioDto): SaveScenario {
   return {
-    id: promptSet.id,
-    pluginSlug: promptSet.pluginSlug,
-    skillName: promptSet.skillName,
-    mode: promptSet.mode,
-    name: promptSet.name,
-    cases: promptSet.cases.map((caseItem) => ({
+    name: scenario.name,
+    tags: [...scenario.tags],
+    cases: scenario.cases.map((caseItem) => ({
       id: caseItem.id,
       prompt: caseItem.prompt,
-      expected: caseItem.expected,
+      expectedOutcome: caseItem.expectedOutcome,
       shouldTrigger: caseItem.shouldTrigger,
       assertions: Array.isArray(caseItem.assertions) ? caseItem.assertions : [],
-      sortOrder: caseItem.sortOrder,
     })),
   };
 }
 
-export function normalizePromptSet(
-  draft: SaveEvalPromptSet,
-): SaveEvalPromptSet {
+export function normalizeScenario(draft: SaveScenario): SaveScenario {
   return {
     ...draft,
     name: draft.name.trim(),
-    cases: draft.cases.map((caseItem, index) => ({
-      id: caseItem.id ?? null,
+    tags: Array.from(new Set(draft.tags)),
+    cases: draft.cases.map((caseItem) => ({
+      id: caseItem.id || `case-${crypto.randomUUID().slice(0, 8)}`,
       prompt: caseItem.prompt.trim(),
-      expected:
-        draft.mode === "performance"
-          ? (caseItem.expected ?? "").trim()
-          : null,
+      expectedOutcome: caseItem.expectedOutcome?.trim() ?? null,
       shouldTrigger:
-        draft.mode === "trigger" ? Boolean(caseItem.shouldTrigger) : null,
+        typeof caseItem.shouldTrigger === "boolean"
+          ? caseItem.shouldTrigger
+          : null,
       assertions: Array.isArray(caseItem.assertions) ? caseItem.assertions : [],
-      sortOrder: caseItem.sortOrder ?? index,
     })),
   };
 }
 
-export function validatePromptSet(
-  draft: SaveEvalPromptSet,
+export function validateScenario(
+  draft: SaveScenario,
+  mode?: EvalWorkbenchMode,
 ): string | null {
   if (!draft.name.trim()) {
-    return "Prompt set name is required.";
+    return "Scenario name is required.";
+  }
+  if (draft.tags.length === 0) {
+    return "Select at least one scenario mode.";
   }
   if (draft.cases.length === 0) {
-    return "At least one prompt case is required.";
+    return "At least one scenario case is required.";
   }
   for (const caseItem of draft.cases) {
     if (!caseItem.prompt.trim()) {
-      return "Each prompt case needs a prompt.";
+      return "Each scenario case needs a prompt.";
     }
     if (!Array.isArray(caseItem.assertions)) {
       return "Assertions must be an array.";
     }
-    if (
-      draft.mode === "performance" &&
-      !(caseItem.expected ?? "").trim() &&
-      caseItem.assertions.length === 0
-    ) {
-      return "Performance cases need an expected outcome or at least one assertion.";
+    if (scenarioSupportsMode(draft, "performance")) {
+      if (
+        !(caseItem.expectedOutcome ?? "").trim() &&
+        caseItem.assertions.length === 0
+      ) {
+        return "Performance cases need an expected outcome or at least one assertion.";
+      }
     }
-    if (draft.mode === "trigger" && typeof caseItem.shouldTrigger !== "boolean") {
-      return "Trigger cases must mark whether they should trigger.";
+    if (scenarioSupportsMode(draft, "trigger")) {
+      if (typeof caseItem.shouldTrigger !== "boolean") {
+        return "Trigger cases must mark whether they should trigger.";
+      }
     }
   }
+  if (mode && !scenarioSupportsMode(draft, mode)) {
+    return `This scenario is not tagged for ${mode} mode.`;
+  }
   return null;
+}
+
+export function areScenariosEqual(
+  left: ScenarioDto | null,
+  right: SaveScenario | null,
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return JSON.stringify(normalizeScenario(left)) === JSON.stringify(normalizeScenario(right));
 }
 
 export function summarizeRun(run: EvalRun): {
@@ -298,7 +344,7 @@ function createBaselineDescriptionCandidate(
 
 function summarizeTriggerResults(
   run: EvalRun | null,
-  promptCases: EvalPromptCase[],
+  promptCases: ScenarioCase[],
 ): Map<string, TriggerComparisonMetrics> {
   if (!run) {
     return new Map();
@@ -419,7 +465,7 @@ export function buildTriggerComparisonEntries(
   baselineDescription: string,
   candidates: DescriptionCandidate[],
   run: EvalRun | null,
-  promptCases: EvalPromptCase[],
+  promptCases: ScenarioCase[],
 ): TriggerComparisonEntry[] {
   const hasComparisonCandidates =
     candidates.length > 0 ||
@@ -452,7 +498,7 @@ export function getRecommendedCandidate(
   baselineDescription: string,
   candidates: DescriptionCandidate[],
   run: EvalRun | null,
-  promptCases: EvalPromptCase[],
+  promptCases: ScenarioCase[],
 ): DescriptionCandidate | null {
   if (!run || run.results.length === 0) {
     return null;

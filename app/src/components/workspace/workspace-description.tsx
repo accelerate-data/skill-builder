@@ -3,30 +3,31 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Sparkles, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import type {
+  DescriptionCandidate,
+  EvalRun,
+  EvalWorkbenchProgressEvent,
+  ScenarioDto,
+} from "@/lib/eval-workbench";
 import {
   applyDescriptionCandidate,
+  areScenariosEqual,
+  buildRefineImprovementBrief,
   buildTriggerCandidateIds,
   buildTriggerComparisonEntries,
-  buildRefineImprovementBrief,
   cancelEvalWorkbenchRun,
-  createDraftPromptSet,
+  createDraftScenario,
   DEFAULT_DESCRIPTION_CANDIDATE_COUNT,
-  type EvalWorkbenchProgressEvent,
   getErrorMessage,
   getRecommendedCandidate,
   getRunCandidateIds,
-  listEvalPromptSets,
   listEvalRuns,
-  normalizePromptSet,
-  promptSetToDraft,
+  normalizeScenario,
   readEvalRun,
   runEvalWorkbench,
-  saveEvalPromptSet,
+  scenarioToDraft,
   suggestDescriptionCandidates,
-  type DescriptionCandidate,
-  type EvalRun,
-  type SaveEvalPromptSet,
-  validatePromptSet,
+  validateScenario,
 } from "@/lib/eval-workbench";
 import {
   setEvalsCancelHandler,
@@ -42,6 +43,11 @@ import { RunHistory } from "./eval-workbench/run-history";
 interface WorkspaceDescriptionProps {
   skill: SkillSummary;
   workspacePath: string;
+  scenario: ScenarioDto | null;
+  scenarioLoading?: boolean;
+  onStartNewScenario: () => void;
+  onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
+  saveScenarioPending?: boolean;
   onRunningChange?: (running: boolean) => void;
   onApply?: (newDescription: string, newVersion: string) => void;
   onNavigateToRefine?: () => void;
@@ -50,30 +56,28 @@ interface WorkspaceDescriptionProps {
 export function WorkspaceDescription({
   skill,
   workspacePath,
+  scenario,
+  scenarioLoading = false,
+  onStartNewScenario,
+  onSaveScenario,
+  saveScenarioPending = false,
   onRunningChange,
   onApply,
   onNavigateToRefine,
 }: WorkspaceDescriptionProps) {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
   const [running, setRunning] = useState(false);
   const [sendingToRefine, setSendingToRefine] = useState(false);
-  const [promptSets, setPromptSets] = useState<Awaited<
-    ReturnType<typeof listEvalPromptSets>
-  >>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
-  const [selectedPromptSetId, setSelectedPromptSetId] = useState<string | null>(
-    null,
-  );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRun, setSelectedRun] = useState<EvalRun | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<EvalWorkbenchProgressEvent | null>(
     null,
   );
-  const [draft, setDraft] = useState<SaveEvalPromptSet>(() =>
-    createDraftPromptSet("trigger", skill.plugin_slug, skill.name),
+  const [draft, setDraft] = useState<ScenarioDto>(() =>
+    createDraftScenario("trigger"),
   );
   const [candidates, setCandidates] = useState<DescriptionCandidate[]>([]);
   const [appliedDescription, setAppliedDescription] = useState<string | null>(
@@ -83,19 +87,31 @@ export function WorkspaceDescription({
   const [actionError, setActionError] = useState<string | null>(null);
   const isRunning = generatingCandidates || running;
 
+  useEffect(() => {
+    if (scenario) {
+      setDraft(scenarioToDraft(scenario));
+      setCandidates([]);
+      setActionError(null);
+      return;
+    }
+    if (!scenarioLoading) {
+      setDraft(createDraftScenario("trigger"));
+      setCandidates([]);
+      setActionError(null);
+    }
+  }, [scenario, scenarioLoading]);
+
   const baselineDescription = skill.description ?? "";
-  const activePromptSet =
-    promptSets.find((promptSet) => promptSet.id === selectedPromptSetId) ?? null;
-  const activePromptCases = activePromptSet?.cases ?? [];
+  const activeScenarioCases = scenario?.cases ?? [];
   const recommendedCandidate = useMemo(
     () =>
       getRecommendedCandidate(
         baselineDescription,
         candidates.length > 0 ? candidates : selectedRun?.descriptionCandidates ?? [],
         selectedRun,
-        activePromptCases,
+        activeScenarioCases,
       ),
-    [activePromptCases, baselineDescription, candidates, selectedRun],
+    [activeScenarioCases, baselineDescription, candidates, selectedRun],
   );
   const comparisonEntries = useMemo(
     () =>
@@ -103,9 +119,9 @@ export function WorkspaceDescription({
         baselineDescription,
         candidates.length > 0 ? candidates : selectedRun?.descriptionCandidates ?? [],
         selectedRun,
-        activePromptCases,
+        activeScenarioCases,
       ),
-    [activePromptCases, baselineDescription, candidates, selectedRun],
+    [activeScenarioCases, baselineDescription, candidates, selectedRun],
   );
 
   useEffect(() => {
@@ -157,30 +173,14 @@ export function WorkspaceDescription({
     setLoading(true);
     setError(null);
     try {
-      const [nextPromptSets, nextRuns] = await Promise.all([
-        listEvalPromptSets(skill.plugin_slug, skill.name, "trigger"),
-        listEvalRuns(skill.plugin_slug, skill.name, "trigger", 20),
-      ]);
-      setPromptSets(nextPromptSets);
+      const nextRuns = await listEvalRuns(skill.plugin_slug, skill.name, "trigger", 20);
       setRuns(nextRuns);
-
-      const selectedPromptSet =
-        nextPromptSets.find((promptSet) => promptSet.id === selectedPromptSetId) ??
-        nextPromptSets[0] ??
-        null;
-      if (selectedPromptSet) {
-        setSelectedPromptSetId(selectedPromptSet.id);
-        setDraft(promptSetToDraft(selectedPromptSet));
-      } else {
-        setSelectedPromptSetId(null);
-        setDraft(createDraftPromptSet("trigger", skill.plugin_slug, skill.name));
-      }
     } catch (loadError) {
       setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
     }
-  }, [selectedPromptSetId, skill.name, skill.plugin_slug]);
+  }, [skill.name, skill.plugin_slug]);
 
   useEffect(() => {
     if (!workspacePath) {
@@ -202,30 +202,25 @@ export function WorkspaceDescription({
     }
   }
 
-  async function handleSavePromptSet() {
-    const validationError = validatePromptSet(draft);
+  async function handleSaveScenario() {
+    const validationError = validateScenario(draft);
     if (validationError) {
       setActionError(validationError);
       return;
     }
 
-    setSaving(true);
     setActionError(null);
     try {
-      const saved = await saveEvalPromptSet(normalizePromptSet(draft));
-      setSelectedPromptSetId(saved.id);
-      setDraft(promptSetToDraft(saved));
-      await refresh();
+      const saved = await onSaveScenario(normalizeScenario(draft));
+      setDraft(scenarioToDraft(saved));
     } catch (saveError) {
       setActionError(getErrorMessage(saveError));
-    } finally {
-      setSaving(false);
     }
   }
 
   async function handleGenerateCandidates() {
-    if (!draft.id) {
-      setActionError("Save the prompt set before generating candidates.");
+    if (!scenario || !areScenariosEqual(scenario, draft)) {
+      setActionError("Save the scenario before generating candidates.");
       return;
     }
     if (!baselineDescription.trim()) {
@@ -237,7 +232,9 @@ export function WorkspaceDescription({
     setActionError(null);
     try {
       const nextCandidates = await suggestDescriptionCandidates({
-        promptSetId: draft.id,
+        pluginSlug: skill.plugin_slug,
+        skillName: skill.name,
+        scenarioName: scenario.name,
         baselineDescription,
         candidateCount: DEFAULT_DESCRIPTION_CANDIDATE_COUNT,
       });
@@ -250,8 +247,8 @@ export function WorkspaceDescription({
   }
 
   async function handleRunComparison() {
-    if (!draft.id) {
-      setActionError("Save the prompt set before running a comparison.");
+    if (!scenario || !areScenariosEqual(scenario, draft)) {
+      setActionError("Save the scenario before running a comparison.");
       return;
     }
 
@@ -271,7 +268,10 @@ export function WorkspaceDescription({
     try {
       const run = await runEvalWorkbench({
         runId,
-        promptSetId: draft.id,
+        pluginSlug: skill.plugin_slug,
+        skillName: skill.name,
+        scenarioName: scenario.name,
+        mode: "trigger",
         candidateIds,
       });
       setRuns((currentRuns) => [
@@ -369,6 +369,9 @@ export function WorkspaceDescription({
               <h1 className="text-base font-semibold">Eval Workbench</h1>
               <Badge variant="outline">Trigger</Badge>
             </div>
+            {scenario ? (
+              <p className="mt-1 text-sm font-medium">{scenario.name}</p>
+            ) : null}
             <p className="mt-1 text-sm text-muted-foreground">
               Generate description candidates, compare them, then push the best
               findings into Refine.
@@ -392,7 +395,11 @@ export function WorkspaceDescription({
               Run comparison
             </Button>
             {running && activeRunId ? (
-              <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleCancelRun()}
+              >
                 <Square className="mr-1 size-3.5" />
                 Cancel
               </Button>
@@ -403,28 +410,6 @@ export function WorkspaceDescription({
           <p className="mt-3 text-xs text-muted-foreground">
             {progress.message} ({progress.completed}/{progress.total})
           </p>
-        ) : null}
-
-        {promptSets.length > 0 ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {promptSets.map((promptSet) => (
-              <Button
-                key={promptSet.id}
-                type="button"
-                size="sm"
-                variant={
-                  selectedPromptSetId === promptSet.id ? "secondary" : "outline"
-                }
-                onClick={() => {
-                  setSelectedPromptSetId(promptSet.id);
-                  setDraft(promptSetToDraft(promptSet));
-                  setActionError(null);
-                }}
-              >
-                {promptSet.name}
-              </Button>
-            ))}
-          </div>
         ) : null}
       </section>
 
@@ -458,15 +443,16 @@ export function WorkspaceDescription({
 
       <PromptSetEditor
         draft={draft}
+        mode="trigger"
         onChange={setDraft}
-        onSave={() => void handleSavePromptSet()}
+        onSave={() => void handleSaveScenario()}
         onNew={() => {
-          setSelectedPromptSetId(null);
-          setDraft(createDraftPromptSet("trigger", skill.plugin_slug, skill.name));
+          onStartNewScenario();
+          setDraft(createDraftScenario("trigger"));
           setCandidates([]);
           setActionError(null);
         }}
-        saveDisabled={saving}
+        saveDisabled={saveScenarioPending}
       />
 
       <section className="rounded-lg border bg-card p-4">

@@ -57,6 +57,18 @@ pub struct EvalCandidate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct EvalDescriptionCandidate {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    #[serde(default)]
+    pub rationale: Option<String>,
+    #[serde(default)]
+    pub rank: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct EvalExecution {
     pub case_id: String,
     pub candidate_id: String,
@@ -64,48 +76,128 @@ pub struct EvalExecution {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RequestType {
-    RunEval,
+#[serde(rename_all = "camelCase")]
+pub struct EvalHistoryConfig {
+    pub config_dir: String,
+    #[serde(default)]
+    pub persist: Option<bool>,
 }
 
-fn default_request_type() -> RequestType {
-    RequestType::RunEval
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvalHistoryMetadata {
+    pub source: String,
+    pub plugin_slug: String,
+    pub skill_name: String,
+    pub scenario_name: String,
+    pub mode: EvalMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RunEvalRequest {
     pub id: String,
-    #[serde(rename = "type", default = "default_request_type")]
-    pub request_type: RequestType,
+    #[serde(rename = "type")]
+    pub request_type: &'static str,
     pub mode: EvalMode,
     pub skill_name: String,
     pub plugin_slug: String,
+    pub scenario_name: String,
+    #[serde(default)]
+    pub history: Option<EvalHistoryConfig>,
+    #[serde(default)]
+    pub description_candidates: Vec<EvalDescriptionCandidate>,
     pub candidates: Vec<EvalCandidate>,
     pub cases: Vec<EvalCase>,
     pub executions: Vec<EvalExecution>,
 }
 
 impl RunEvalRequest {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: impl Into<String>,
         mode: EvalMode,
         skill_name: impl Into<String>,
         plugin_slug: impl Into<String>,
+        scenario_name: impl Into<String>,
+        history: Option<EvalHistoryConfig>,
+        description_candidates: Vec<EvalDescriptionCandidate>,
         candidates: Vec<EvalCandidate>,
         cases: Vec<EvalCase>,
         executions: Vec<EvalExecution>,
     ) -> Self {
         Self {
             id: id.into(),
-            request_type: RequestType::RunEval,
+            request_type: "run_eval",
             mode,
             skill_name: skill_name.into(),
             plugin_slug: plugin_slug.into(),
+            scenario_name: scenario_name.into(),
+            history,
+            description_candidates,
             candidates,
             cases,
             executions,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListEvalHistoryFilter {
+    pub config_dir: String,
+    pub plugin_slug: String,
+    pub skill_name: String,
+    #[serde(default)]
+    pub scenario_name: Option<String>,
+    #[serde(default)]
+    pub mode: Option<EvalMode>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+    #[serde(default)]
+    pub offset: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListEvalHistoryRequest {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub request_type: &'static str,
+    pub filter: ListEvalHistoryFilter,
+}
+
+impl ListEvalHistoryRequest {
+    pub fn new(id: impl Into<String>, filter: ListEvalHistoryFilter) -> Self {
+        Self {
+            id: id.into(),
+            request_type: "list_eval_history",
+            filter,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadEvalHistoryRequest {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub request_type: &'static str,
+    pub config_dir: String,
+    pub eval_id: String,
+}
+
+impl ReadEvalHistoryRequest {
+    pub fn new(
+        id: impl Into<String>,
+        config_dir: impl Into<String>,
+        eval_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            request_type: "read_eval_history",
+            config_dir: config_dir.into(),
+            eval_id: eval_id.into(),
         }
     }
 }
@@ -124,12 +216,96 @@ pub struct EvalCaseResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct EvalRunHistory {
+    pub persisted: bool,
+    #[serde(default)]
+    pub config_dir: Option<String>,
+    #[serde(default)]
+    pub eval_id: Option<String>,
+    #[serde(default)]
+    pub metadata: Option<EvalHistoryMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct EvalRunResult {
     pub mode: EvalMode,
     pub total: u32,
     pub passed: u32,
     pub failed: u32,
     pub results: Vec<EvalCaseResult>,
+    #[serde(default)]
+    pub history: Option<EvalRunHistory>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvalHistoryListItem {
+    pub eval_id: String,
+    pub created_at: i64,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub total: u32,
+    pub passed: u32,
+    pub failed: u32,
+    pub metadata: EvalHistoryMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvalHistoryListResult {
+    pub items: Vec<EvalHistoryListItem>,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvalHistoryCaseDetail {
+    #[serde(default)]
+    pub case_id: Option<String>,
+    #[serde(default)]
+    pub candidate_id: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    pub test_idx: u32,
+    pub prompt_idx: u32,
+    pub success: bool,
+    pub score: f64,
+    #[serde(default)]
+    pub response: Option<Value>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub latency_ms: Option<f64>,
+    #[serde(default)]
+    pub cost: Option<f64>,
+    #[serde(default)]
+    pub failure_reason: Option<Value>,
+    #[serde(default)]
+    pub grading_result: Option<Value>,
+    #[serde(default)]
+    pub metadata: Option<Value>,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub provider_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvalHistoryEntry {
+    #[serde(flatten)]
+    pub header: EvalHistoryListItem,
+    #[serde(default)]
+    pub config: Option<Value>,
+    pub cases: Vec<EvalHistoryCaseDetail>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvalHistoryReadResult {
+    pub entry: EvalHistoryEntry,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -148,13 +324,21 @@ pub enum SidecarEvent {
         id: String,
         result: EvalRunResult,
     },
+    HistoryListResult {
+        id: String,
+        result: EvalHistoryListResult,
+    },
+    HistoryReadResult {
+        id: String,
+        result: EvalHistoryReadResult,
+    },
     Error {
         id: String,
         message: String,
     },
 }
 
-pub fn serialize_request(request: &RunEvalRequest) -> Result<String, String> {
+pub fn serialize_request<T: Serialize>(request: &T) -> Result<String, String> {
     serde_json::to_string(request)
         .map(|json| format!("{json}\n"))
         .map_err(|error| error.to_string())

@@ -3,12 +3,13 @@ import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import {
   applyDescriptionCandidate,
   buildRefineImprovementBrief,
-  deleteEvalPromptSet,
-  listEvalPromptSets,
+  deleteScenario,
   listEvalRuns,
+  listScenarios,
+  loadScenario,
   readEvalRun,
   runEvalWorkbench,
-  saveEvalPromptSet,
+  saveScenario,
   suggestDescriptionCandidates,
 } from "@/lib/eval-workbench";
 
@@ -18,42 +19,52 @@ describe("Eval Workbench Tauri wrappers", () => {
     mockInvoke.mockResolvedValue(undefined);
   });
 
-  it("lists eval prompt sets with typed mode filters", async () => {
-    await listEvalPromptSets("skills", "forecast-skill", "performance");
+  it("lists git-backed scenarios through the typed workbench contract", async () => {
+    await listScenarios("skills", "forecast-skill");
 
-    expect(mockInvoke).toHaveBeenCalledWith("list_eval_prompt_sets", {
+    expect(mockInvoke).toHaveBeenCalledWith("list_scenarios", {
       pluginSlug: "skills",
       skillName: "forecast-skill",
-      mode: "performance",
     });
   });
 
-  it("saves prompt sets through the typed workbench contract", async () => {
-    await saveEvalPromptSet({
+  it("loads a single scenario through the typed workbench contract", async () => {
+    await loadScenario("skills", "forecast-skill", "Regression");
+
+    expect(mockInvoke).toHaveBeenCalledWith("load_scenario", {
       pluginSlug: "skills",
       skillName: "forecast-skill",
-      mode: "performance",
+      scenarioName: "Regression",
+    });
+  });
+
+  it("saves scenarios through the typed workbench contract", async () => {
+    await saveScenario("skills", "forecast-skill", {
       name: "Regression",
+      tags: ["performance"],
       cases: [
         {
+          id: "case-1",
           prompt: "Forecast next quarter revenue",
-          expected: "Includes assumptions",
+          expectedOutcome: "Includes assumptions",
           shouldTrigger: null,
           assertions: [],
         },
       ],
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith("save_eval_prompt_set", {
-      promptSet: {
-        pluginSlug: "skills",
-        skillName: "forecast-skill",
-        mode: "performance",
+    expect(mockInvoke).toHaveBeenCalledWith("save_scenario", {
+      pluginSlug: "skills",
+      skillName: "forecast-skill",
+      originalName: null,
+      scenario: {
         name: "Regression",
+        tags: ["performance"],
         cases: [
           {
+            id: "case-1",
             prompt: "Forecast next quarter revenue",
-            expected: "Includes assumptions",
+            expectedOutcome: "Includes assumptions",
             shouldTrigger: null,
             assertions: [],
           },
@@ -62,34 +73,42 @@ describe("Eval Workbench Tauri wrappers", () => {
     });
   });
 
-  it("runs eval workbench requests with explicit candidate ids", async () => {
+  it("runs eval workbench requests with scenario names and explicit candidate ids", async () => {
     await runEvalWorkbench({
       runId: "run-1",
-      promptSetId: "prompt-set-1",
+      pluginSlug: "skills",
+      skillName: "forecast-skill",
+      scenarioName: "Regression",
+      mode: "performance",
       candidateIds: ["current-skill"],
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("run_eval_workbench", {
       request: {
         runId: "run-1",
-        promptSetId: "prompt-set-1",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
+        scenarioName: "Regression",
+        mode: "performance",
         candidateIds: ["current-skill"],
       },
     });
   });
 
-  it("supports candidate generation, apply, history, and refine brief commands", async () => {
+  it("supports candidate generation, apply, history, and scenario deletion commands", async () => {
     await Promise.all([
       listEvalRuns("skills", "forecast-skill", "trigger", 20),
       readEvalRun("run-1"),
       suggestDescriptionCandidates({
-        promptSetId: "prompt-set-1",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
+        scenarioName: "Routing checks",
         baselineDescription: "Route invoice reconciliation requests",
         candidateCount: 3,
       }),
       applyDescriptionCandidate("skills", "forecast-skill", "candidate-1"),
       buildRefineImprovementBrief("run-1"),
-      deleteEvalPromptSet("prompt-set-1"),
+      deleteScenario("skills", "forecast-skill", "Regression"),
     ]);
 
     expect(mockInvoke).toHaveBeenCalledWith("list_eval_runs", {
@@ -101,7 +120,9 @@ describe("Eval Workbench Tauri wrappers", () => {
     expect(mockInvoke).toHaveBeenCalledWith("read_eval_run", { runId: "run-1" });
     expect(mockInvoke).toHaveBeenCalledWith("suggest_description_candidates", {
       request: {
-        promptSetId: "prompt-set-1",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
+        scenarioName: "Routing checks",
         baselineDescription: "Route invoice reconciliation requests",
         candidateCount: 3,
       },
@@ -114,8 +135,10 @@ describe("Eval Workbench Tauri wrappers", () => {
     expect(mockInvoke).toHaveBeenCalledWith("build_refine_improvement_brief", {
       runId: "run-1",
     });
-    expect(mockInvoke).toHaveBeenCalledWith("delete_eval_prompt_set", {
-      promptSetId: "prompt-set-1",
+    expect(mockInvoke).toHaveBeenCalledWith("delete_scenario", {
+      pluginSlug: "skills",
+      skillName: "forecast-skill",
+      scenarioName: "Regression",
     });
   });
 });
