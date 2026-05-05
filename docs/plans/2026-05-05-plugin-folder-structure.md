@@ -36,6 +36,78 @@
 
 ---
 
+## Implementation Status
+
+- Branch status: implemented in `feature/vu-1160-openhands-runtime-contract-cleanup` through commit `5f0f029f`
+- Working tree status: clean at the time this note was updated
+- Code status: the branch already removes `sdk_ready` references, removes `runtimeProvider` from the targeted OpenHands fixtures, and stops frontend startup/form code from inventing an Anthropic provider when `model_settings` is unset
+- Validation status: this plan still describes the intended validation steps, but the code changes themselves are already present on the branch
+
+## Remaining Work
+
+- Reconcile scope naming: this branch and plan are for runtime contract cleanup, but the current Linear `VU-1160` issue text describes the plugin folder structure/path restructure work
+- Preserve the plugin-folder-structure plan separately: the plugin path plan currently living on the `VU-1145` worktree is related to the current Linear `VU-1160` text and should not be treated as part of this runtime-cleanup branch
+- Decide issue alignment: either update Linear `VU-1160` so it matches this runtime-cleanup branch, or move the plugin path restructure work onto the correct issue/branch pairing
+- Closeout verification after merge: verify the merged branch on the integration branch/worktree with the validation commands in this document before treating the runtime-cleanup work as fully closed
+
+## Work Still To Do
+
+### Task 0: Scope and closeout alignment
+
+**Files:**
+
+- Modify: `docs/plans/2026-05-05-plugin-folder-structure.md`
+- Check: Linear `VU-1160`
+- Check: the plugin-path plan currently parked on the `VU-1145` worktree
+
+- [ ] **Step 1: Treat the code tasks below as implemented on this branch**
+
+Use the branch history as the source of truth for runtime-cleanup implementation:
+
+```bash
+git log --oneline 20782372^..HEAD
+```
+
+Expected: the runtime-cleanup commits for unset provider handling, `runtime_ready`, fixture cleanup, and autosave coverage are present.
+
+- [ ] **Step 2: Verify the branch still has no stale runtime-contract leftovers**
+
+```bash
+rg -n "sdk_ready|runtimeProvider" app
+```
+
+Expected: no matches.
+
+- [ ] **Step 3: Verify the plugin-folder-structure plan is tracked as separate work**
+
+Check the parked plan on the `VU-1145` worktree and keep it separate from this branch:
+
+```bash
+sed -n '1,80p' /Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-clean-break-agent-runtime/docs/plans/2026-05-05-plugin-folder-structure.local-pre-refresh.md
+```
+
+Expected: the plan describes `{plugin}/skills/{name}` path restructuring rather than runtime cleanup.
+
+- [ ] **Step 4: Align Linear before further implementation on this issue number**
+
+Do one of these before treating `VU-1160` as the canonical home of future work:
+
+1. Update Linear `VU-1160` title/body/ACs so they describe runtime cleanup.
+2. Keep Linear `VU-1160` as the plugin path issue and move this runtime cleanup branch/plan under the correct issue number.
+
+Expected: one issue number maps to one work scope.
+
+- [ ] **Step 5: Re-run final validation on the merged target branch**
+
+```bash
+cd app && npx tsc --noEmit
+cd app && npm run test:unit
+cd app && npm run test:integration
+cargo test --manifest-path app/src-tauri/Cargo.toml contracts::agent_events
+```
+
+Expected: all pass on the branch that now carries the merged runtime-cleanup commits.
+
 ## File Structure
 
 | File | Change |
@@ -112,6 +184,8 @@ Expected: 3 failures with path mismatch.
 ```bash
 cd app && cargo test --manifest-path src-tauri/Cargo.toml skill_paths::tests::test_skill_dir 2>&1 | grep -E "FAILED|ok"
 ```
+
+Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
 
