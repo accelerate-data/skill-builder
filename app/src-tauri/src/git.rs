@@ -299,6 +299,45 @@ pub fn create_skill_version_tag(
     Ok(tag_name)
 }
 
+/// Delete all version tags for a skill.
+///
+/// Called during step-3 reset so the generation step can create the 1.0.0 tag
+/// again without hitting "tag already exists". Returns the number of tags removed.
+pub fn delete_skill_version_tags(
+    path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<u32, String> {
+    if !path.join(".git").exists() {
+        return Ok(0);
+    }
+    let repo = Repository::open(path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
+    let tag_names: Vec<String> = repo
+        .tag_names(Some(&glob))
+        .map_err(|e| format!("Failed to list tags for '{}': {}", skill_name, e))?
+        .iter()
+        .flatten()
+        .map(str::to_string)
+        .collect();
+
+    let mut deleted = 0u32;
+    for tag_name in &tag_names {
+        match repo.find_reference(&format!("refs/tags/{}", tag_name)) {
+            Ok(mut reference) => match reference.delete() {
+                Ok(()) => {
+                    log::info!("[git] deleted tag '{}'", tag_name);
+                    deleted += 1;
+                }
+                Err(e) => log::warn!("[git] failed to delete tag '{}': {}", tag_name, e),
+            },
+            Err(e) => log::warn!("[git] tag ref not found for '{}': {}", tag_name, e),
+        }
+    }
+    Ok(deleted)
+}
+
 /// Rename all version tags for `skill_name` from one plugin namespace to another.
 /// Pass `old_plugin_slug = None` to migrate legacy `{skill_name}/vX.Y.Z` format tags.
 /// Returns the number of tags migrated.
@@ -1470,6 +1509,59 @@ mod tests {
 
         assert!(skill_has_any_tag(dir.path(), plugin, "skill-a").unwrap());
         assert!(!skill_has_any_tag(dir.path(), plugin, "skill-b").unwrap());
+    }
+
+    // --- delete_skill_version_tags ---
+
+    #[test]
+    fn test_delete_skill_version_tags_removes_all_skill_tags() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        let skill_dir = dir.path().join(plugin).join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
+        commit_all(dir.path(), "my-skill: generated skill").unwrap();
+        create_skill_version_tag(dir.path(), plugin, "my-skill", "1.0.0").unwrap();
+        assert!(skill_has_any_tag(dir.path(), plugin, "my-skill").unwrap());
+
+        let deleted = delete_skill_version_tags(dir.path(), plugin, "my-skill").unwrap();
+
+        assert_eq!(deleted, 1);
+        assert!(!skill_has_any_tag(dir.path(), plugin, "my-skill").unwrap());
+    }
+
+    #[test]
+    fn test_delete_skill_version_tags_does_not_affect_other_skills() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        let a_dir = dir.path().join(plugin).join("skill-a");
+        let b_dir = dir.path().join(plugin).join("skill-b");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::create_dir_all(&b_dir).unwrap();
+        std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
+        std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
+        commit_all(dir.path(), "seed both").unwrap();
+        create_skill_version_tag(dir.path(), plugin, "skill-a", "1.0.0").unwrap();
+        create_skill_version_tag(dir.path(), plugin, "skill-b", "1.0.0").unwrap();
+
+        delete_skill_version_tags(dir.path(), plugin, "skill-a").unwrap();
+
+        assert!(!skill_has_any_tag(dir.path(), plugin, "skill-a").unwrap());
+        assert!(skill_has_any_tag(dir.path(), plugin, "skill-b").unwrap());
+    }
+
+    #[test]
+    fn test_delete_skill_version_tags_is_idempotent_when_no_tags() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        let deleted = delete_skill_version_tags(dir.path(), plugin, "my-skill").unwrap();
+        assert_eq!(deleted, 0);
     }
 
     // --- get_history version field ---

@@ -145,6 +145,19 @@ pub fn clean_step_output(
             // Remove legacy workspace eval folders without treating any file name there
             // as part of the current step 3 contract.
             remove_dir_logged(LABEL, &skill_dir.join("evals"));
+            // Remove git version tags so re-running step 3 can create 1.0.0 again.
+            if let Err(e) = crate::git::delete_skill_version_tags(
+                Path::new(skills_path),
+                plugin_slug,
+                skill_name,
+            ) {
+                log::warn!(
+                    "[{}] failed to delete git version tags for '{}': {}",
+                    LABEL,
+                    skill_name,
+                    e
+                );
+            }
         }
         _ => {
             // Steps 1, 2: context files in workspace
@@ -593,6 +606,29 @@ mod tests {
         assert!(!output_dir.join("references").exists());
         assert!(!output_dir.join("my-skill.skill").exists());
         assert!(!skill_dir.join("evals").exists());
+    }
+
+    #[test]
+    fn test_clean_step3_deletes_git_version_tags() {
+        // Verifies that resetting step 3 removes the 1.0.0 git tag so the next
+        // run of step 3 can create it again without a collision.
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+
+        // Set up a git repo at skills_path, write SKILL.md and commit it.
+        crate::git::ensure_repo(skills_tmp.path()).unwrap();
+        let output_dir = skills_tmp.path().join(SLUG).join("my-skill");
+        std::fs::create_dir_all(&output_dir).unwrap();
+        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
+        crate::git::commit_all(skills_tmp.path(), "my-skill: generated skill").unwrap();
+        crate::git::create_skill_version_tag(skills_tmp.path(), SLUG, "my-skill", "1.0.0").unwrap();
+        assert!(crate::git::skill_has_any_tag(skills_tmp.path(), SLUG, "my-skill").unwrap());
+
+        clean_step_output(workspace, "my-skill", SLUG, 3, skills_path);
+
+        assert!(!crate::git::skill_has_any_tag(skills_tmp.path(), SLUG, "my-skill").unwrap());
     }
 
     #[test]
