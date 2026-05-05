@@ -5,6 +5,24 @@ use std::path::Path;
 const WORKSPACE_PARENT: &str = ".vibedata";
 const WORKSPACE_SUBDIR: &str = "workspace";
 
+/// Iterate over immediate subdirectories of `dir`, skipping hidden (dotfile)
+/// entries. Returns an empty iterator if `dir` cannot be read.
+fn non_hidden_subdirs(dir: &Path) -> impl Iterator<Item = std::path::PathBuf> {
+    fs::read_dir(dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_dir()
+                && path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|s| !s.starts_with('.'))
+        })
+}
+
 /// Resolve the workspace path from the shared app-local data directory.
 fn resolve_workspace_path(data_dir: &Path) -> Result<String, String> {
     let workspace = data_dir.join(WORKSPACE_SUBDIR);
@@ -309,36 +327,8 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
         skills_path.display()
     );
 
-    let plugin_dirs = match std::fs::read_dir(skills_path) {
-        Ok(d) => d,
-        Err(e) => {
-            log::warn!("[migrate_to_per_skill_repos] failed to read skills path: {}", e);
-            return;
-        }
-    };
-
-    for plugin_entry in plugin_dirs.flatten() {
-        let plugin_dir = plugin_entry.path();
-        if !plugin_dir.is_dir()
-            || plugin_dir
-                .file_name()
-                .is_none_or(|n| n.to_str().is_none_or(|s| s.starts_with('.')))
-        {
-            continue;
-        }
-        let skill_dirs = match std::fs::read_dir(&plugin_dir) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        for skill_entry in skill_dirs.flatten() {
-            let skill_dir = skill_entry.path();
-            if !skill_dir.is_dir()
-                || skill_dir
-                    .file_name()
-                    .is_none_or(|n| n.to_str().is_none_or(|s| s.starts_with('.')))
-            {
-                continue;
-            }
+    for plugin_dir in non_hidden_subdirs(skills_path) {
+        for skill_dir in non_hidden_subdirs(&plugin_dir) {
             if skill_dir.join(".git").exists() {
                 log::debug!(
                     "[migrate_to_per_skill_repos] {} already has .git, skipping",
@@ -951,5 +941,28 @@ mod migration_tests {
         super::migrate_to_per_skill_repos(skills_path);
 
         assert!(!skills_path.join(".git").exists());
+    }
+
+    #[test]
+    fn test_migrate_to_per_skill_repos_skips_already_migrated_skill_dir() {
+        // A skill_dir that already has .git/ must not be re-initialized or disturbed.
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path();
+        // Shared root .git exists (triggers migration)
+        crate::git::ensure_repo(skills_path).unwrap();
+        let skill_dir = skills_path.join("skills").join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        // Pre-create a per-skill repo with one commit
+        crate::git::ensure_repo(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Pre-existing").unwrap();
+        let original_sha = crate::git::commit_all(&skill_dir, "pre-existing").unwrap().unwrap();
+
+        super::migrate_to_per_skill_repos(skills_path);
+
+        // Per-skill repo must still have exactly the same HEAD commit (not reinit'd)
+        let repo = git2::Repository::open(&skill_dir).unwrap();
+        let head_sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
+        assert_eq!(head_sha, original_sha, "existing per-skill repo must not be disturbed by migration");
+        assert!(!skills_path.join(".git").exists(), "shared .git must still be removed");
     }
 }

@@ -1866,8 +1866,10 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     )
     .unwrap();
 
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills.path(), "skills", "tagged-skill");
     assert!(
-        crate::git::skill_version_tag_exists(skills.path(), "skills", "tagged-skill", "1.0.0")
+        crate::git::skill_version_tag_exists(&skill_dir, "skills", "tagged-skill", "1.0.0")
             .unwrap()
     );
 }
@@ -1935,13 +1937,14 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
     let published_dir =
         crate::skill_paths::resolve_skill_dir(skills.path(), plugin_slug, skill_name);
     std::fs::create_dir_all(&published_dir).unwrap();
+    crate::git::ensure_repo(&published_dir).unwrap();
     std::fs::write(
         published_dir.join("SKILL.md"),
         "---\nname: tagged-skill\nmetadata:\n  version: 1.0.0\n---\n# Existing\n",
     )
     .unwrap();
-    crate::git::commit_all(skills.path(), "tagged-skill: existing").unwrap();
-    crate::git::create_skill_version_tag(skills.path(), plugin_slug, skill_name, "1.0.0").unwrap();
+    crate::git::commit_all(&published_dir, "existing").unwrap();
+    crate::git::create_skill_version_tag(&published_dir, plugin_slug, skill_name, "1.0.0").unwrap();
 
     let workspace_skill_root = workspace.path().join("skills").join(skill_name);
     let generated_dir = workspace_skill_root.join("skill");

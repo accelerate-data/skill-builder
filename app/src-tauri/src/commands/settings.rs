@@ -444,13 +444,10 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
 fn handle_skills_path_change(old: Option<&str>, new: Option<&str>) -> Result<(), String> {
     match (old, new) {
         (None, Some(new_path)) => {
-            // First set: create directory + init git repo
+            // First set: create the directory; per-skill repos are initialized when skills are created.
             let path = std::path::Path::new(new_path);
             fs::create_dir_all(path)
                 .map_err(|e| format!("Failed to create skills directory {}: {}", new_path, e))?;
-            if let Err(e) = crate::git::ensure_repo(path) {
-                log::warn!("Failed to init git repo at {}: {}", new_path, e);
-            }
         }
         (Some(old_path), Some(new_path)) if old_path != new_path => {
             // Changed: move contents from old → new
@@ -458,13 +455,10 @@ fn handle_skills_path_change(old: Option<&str>, new: Option<&str>) -> Result<(),
             let new = std::path::Path::new(new_path);
 
             if !old.exists() {
-                // Old doesn't exist, just create new + init
+                // Old doesn't exist, just create new; per-skill repos are initialized when skills are created.
                 fs::create_dir_all(new).map_err(|e| {
                     format!("Failed to create skills directory {}: {}", new_path, e)
                 })?;
-                if let Err(e) = crate::git::ensure_repo(new) {
-                    log::warn!("Failed to init git repo at {}: {}", new_path, e);
-                }
                 return Ok(());
             }
 
@@ -493,15 +487,8 @@ fn handle_skills_path_change(old: Option<&str>, new: Option<&str>) -> Result<(),
                 )
             })?;
 
-            // Ensure git repo exists at new location and record the migration
-            if let Err(e) = crate::git::ensure_repo(new) {
-                log::warn!("Failed to ensure git repo at {}: {}", new_path, e);
-            } else {
-                let msg = format!("Moved skills from {} to {}", old_path, new_path);
-                if let Err(e) = crate::git::commit_all(new, &msg) {
-                    log::warn!("Failed to record skills_path migration: {}", e);
-                }
-            }
+            // Per-skill repos move atomically with the directory via rename; no root-level init needed.
+            log::info!("[handle_skills_path_change] moved skills from {} to {}", old_path, new_path);
         }
         _ => {} // Same path or both None — no-op
     }
@@ -665,22 +652,18 @@ mod tests {
         let conn = crate::db::create_test_db_for_tests();
         let dir = tempfile::tempdir().unwrap();
         let skills_path = dir.path().join("skills");
-        let skill_dir = skills_path.join("legacy-skill");
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        let skill_dir = skills_path.join(plugin).join("legacy-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
-        crate::git::ensure_repo(&skills_path).unwrap();
+        // Per-skill repo at skill_dir level.
+        crate::git::ensure_repo(&skill_dir).unwrap();
         std::fs::write(
             skill_dir.join("SKILL.md"),
             "---\nname: legacy-skill\ndescription: Legacy\nversion: 1.0.0\n---\n# Body\n",
         )
         .unwrap();
-        crate::git::commit_all(&skills_path, "legacy-skill: seed").unwrap();
-        crate::git::create_skill_version_tag(
-            &skills_path,
-            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-            "legacy-skill",
-            "1.0.0",
-        )
-        .unwrap();
+        crate::git::commit_all(&skill_dir, "seed").unwrap();
+        crate::git::create_skill_version_tag(&skill_dir, plugin, "legacy-skill", "1.0.0").unwrap();
 
         let mut settings = crate::types::AppSettings::default();
         settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
@@ -822,7 +805,7 @@ mod tests {
     // ===== handle_skills_path_change tests =====
 
     #[test]
-    fn test_skills_path_first_set_creates_dir_and_git() {
+    fn test_skills_path_first_set_creates_dir() {
         let dir = tempfile::tempdir().unwrap();
         let new_path = dir.path().join("skills-output");
         let new_str = new_path.to_str().unwrap();
@@ -830,7 +813,8 @@ mod tests {
         handle_skills_path_change(None, Some(new_str)).unwrap();
 
         assert!(new_path.exists());
-        assert!(new_path.join(".git").exists());
+        // Per-skill repos: no root-level .git/; repos are created per skill at create time.
+        assert!(!new_path.join(".git").exists());
     }
 
     #[test]
@@ -932,7 +916,7 @@ mod tests {
             .unwrap();
 
         assert!(new_path.exists());
-        assert!(new_path.join(".git").exists());
+        assert!(!new_path.join(".git").exists());
     }
 
     #[test]

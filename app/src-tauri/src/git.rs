@@ -549,13 +549,7 @@ pub fn get_history(
 
     // Detect per-skill repo: SKILL.md exists at the repo root in working directory
     // (or HEAD tree). If so, ALL commits in the repo are relevant to this skill.
-    let is_per_skill_repo = repo_path.join("SKILL.md").exists()
-        || repo
-            .head()
-            .ok()
-            .and_then(|h| h.peel_to_tree().ok())
-            .map(|tree| tree.get_name("SKILL.md").is_some())
-            .unwrap_or(false);
+    let is_per_skill_repo = is_per_skill_repo(&repo, repo_path);
 
     // Repo-relative path prefix for filtering commits by skill directory.
     // Empty string means all commits are relevant (per-skill repo).
@@ -637,43 +631,13 @@ pub fn restore_version(
         crate::skill_paths::resolve_skill_dir(repo_path, plugin_slug, skill_name)
     };
 
-    // Candidate read prefixes from the historical tree, tried in priority order:
-    // 0. Per-skill repo layout      ("")                        — files at tree root
-    // 1. Plugin layout              ({plugin}/{name}/)          — skip if default plugin
-    // 2. Old marketplace layout     ({plugin}/skills/{name}/)   — skip if default plugin (historical)
-    // 3. Default plugin layout      (skills/{name}/)
-    // 4. Legacy flat layout         ({name}/)
-    let mut read_prefixes: Vec<String> = Vec::new();
-    read_prefixes.push(String::new()); // per-skill repo: files at tree root
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        read_prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
-        read_prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
-    }
-    read_prefixes.push(format!("skills/{}/", skill_name));
-    read_prefixes.push(format!("{}/", skill_name));
-
-    // Collect all blob entries from the historical tree.
-    let mut all_entries: Vec<(String, Vec<u8>)> = Vec::new();
-    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
-        if entry.kind() != Some(git2::ObjectType::Blob) {
-            return git2::TreeWalkResult::Ok;
-        }
-        let full_path = if dir.is_empty() {
-            entry.name().unwrap_or("").to_string()
-        } else {
-            format!("{}{}", dir, entry.name().unwrap_or(""))
-        };
-        if let Ok(blob) = repo.find_blob(entry.id()) {
-            all_entries.push((full_path, blob.content().to_vec()));
-        }
-        git2::TreeWalkResult::Ok
-    })
-    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+    let all_entries = collect_tree_blobs(&repo, &tree)?;
+    let read_prefixes = candidate_skill_prefixes(plugin_slug, skill_name);
 
     // Find the first prefix that has matching files, then derive relative paths.
     let mut files_to_restore: Vec<(String, Vec<u8>)> = Vec::new();
     for prefix in &read_prefixes {
-        let matched: Vec<_> = if prefix.is_empty() {
+        let matched: Vec<(String, Vec<u8>)> = if prefix.is_empty() {
             // Per-skill repo: SKILL.md must exist at root to confirm this layout.
             // Exclude dotfiles (e.g. .gitignore) when restoring from root.
             if !all_entries.iter().any(|(p, _)| p == "SKILL.md") {
@@ -886,37 +850,9 @@ pub fn extract_skill_at_tag(
         .tree()
         .map_err(|e| format!("Failed to get tree for tag '{}': {}", tag_name, e))?;
 
-    // Build fallback prefix list with "" first (per-skill repo: files at root)
-    let prefixes: Vec<String> = {
-        let mut v = vec![String::new()]; // per-skill repo: files at root
-        if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-            v.push(format!("{}/{}/", plugin_slug, skill_name));
-            v.push(format!("{}/skills/{}/", plugin_slug, skill_name));
-        }
-        v.push(format!("skills/{}/", skill_name));
-        v.push(format!("{}/", skill_name));
-        v
-    };
+    let prefixes = candidate_skill_prefixes(plugin_slug, skill_name);
+    let all_entries = collect_tree_blobs(&repo, &tree)?;
 
-    // Collect all blobs once
-    let mut all_entries: Vec<(String, Vec<u8>)> = Vec::new();
-    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
-        if entry.kind() != Some(git2::ObjectType::Blob) {
-            return git2::TreeWalkResult::Ok;
-        }
-        let full_path = if dir.is_empty() {
-            entry.name().unwrap_or("").to_string()
-        } else {
-            format!("{}{}", dir, entry.name().unwrap_or(""))
-        };
-        if let Ok(blob) = repo.find_blob(entry.id()) {
-            all_entries.push((full_path, blob.content().to_vec()));
-        }
-        git2::TreeWalkResult::Ok
-    })
-    .map_err(|e| format!("Failed to walk tree: {}", e))?;
-
-    // Find prefix that has SKILL.md
     let prefix = prefixes
         .iter()
         .find(|p| {
@@ -979,34 +915,8 @@ pub fn get_skill_files_at_sha(
         .tree()
         .map_err(|e| format!("Failed to get tree for commit '{}': {}", sha, e))?;
 
-    // Candidate prefixes tried in priority order.
-    // "" first: per-skill repo where SKILL.md lives at tree root.
-    let mut prefixes: Vec<String> = Vec::new();
-    prefixes.push(String::new()); // per-skill repo: files at root
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
-        prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
-    }
-    prefixes.push(format!("skills/{}/", skill_name));
-    prefixes.push(format!("{}/", skill_name));
-
-    // Collect all blob entries once.
-    let mut all_entries: Vec<(String, Vec<u8>)> = Vec::new();
-    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
-        if entry.kind() != Some(git2::ObjectType::Blob) {
-            return git2::TreeWalkResult::Ok;
-        }
-        let full_path = if dir.is_empty() {
-            entry.name().unwrap_or("").to_string()
-        } else {
-            format!("{}{}", dir, entry.name().unwrap_or(""))
-        };
-        if let Ok(blob) = repo.find_blob(entry.id()) {
-            all_entries.push((full_path, blob.content().to_vec()));
-        }
-        git2::TreeWalkResult::Ok
-    })
-    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+    let prefixes = candidate_skill_prefixes(plugin_slug, skill_name);
+    let all_entries = collect_tree_blobs(&repo, &tree)?;
 
     // Find the first prefix that has SKILL.md.
     // For the empty prefix (per-skill repo), SKILL.md must exist at the root.
@@ -1134,6 +1044,61 @@ pub fn resolve_benchmark_baseline(
 }
 
 // --- Helpers ---
+
+/// Candidate path prefixes used to locate a skill's files inside a git tree.
+///
+/// Tried in priority order:
+/// 1. `""`                       — per-skill repo (files at tree root)
+/// 2. `{plugin}/{name}/`         — current plugin layout (skipped for default plugin)
+/// 3. `{plugin}/skills/{name}/`  — historical marketplace layout (skipped for default plugin)
+/// 4. `skills/{name}/`           — default plugin layout
+/// 5. `{name}/`                  — legacy flat layout
+fn candidate_skill_prefixes(plugin_slug: &str, skill_name: &str) -> Vec<String> {
+    let mut prefixes = vec![String::new()];
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
+        prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
+    }
+    prefixes.push(format!("skills/{}/", skill_name));
+    prefixes.push(format!("{}/", skill_name));
+    prefixes
+}
+
+/// True if the repo at `repo_path` is a per-skill repo (SKILL.md at the root,
+/// either in the working directory or in HEAD's tree).
+fn is_per_skill_repo(repo: &Repository, repo_path: &Path) -> bool {
+    if repo_path.join("SKILL.md").exists() {
+        return true;
+    }
+    repo.head()
+        .ok()
+        .and_then(|h| h.peel_to_tree().ok())
+        .is_some_and(|tree| tree.get_name("SKILL.md").is_some())
+}
+
+/// Collect every blob entry in `tree` as `(full_path, content)` pairs.
+fn collect_tree_blobs(
+    repo: &Repository,
+    tree: &git2::Tree,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        if entry.kind() != Some(git2::ObjectType::Blob) {
+            return git2::TreeWalkResult::Ok;
+        }
+        let full_path = if dir.is_empty() {
+            entry.name().unwrap_or("").to_string()
+        } else {
+            format!("{}{}", dir, entry.name().unwrap_or(""))
+        };
+        if let Ok(blob) = repo.find_blob(entry.id()) {
+            entries.push((full_path, blob.content().to_vec()));
+        }
+        git2::TreeWalkResult::Ok
+    })
+    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+    Ok(entries)
+}
 
 fn default_signature(repo: &Repository) -> Result<Signature<'static>, String> {
     // Try repo config first, fall back to a generic signature
@@ -1913,5 +1878,30 @@ mod per_skill_repo_tests {
 
         let history = get_history(skill_dir, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 100).unwrap();
         assert!(history.len() >= 2, "expected at least 2 commits, got {}", history.len());
+    }
+
+    #[test]
+    fn test_extract_skill_at_tag_errors_when_no_skill_md_in_tree() {
+        // A tag whose tree contains no SKILL.md must return an explicit error,
+        // not silently write an empty destination.
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path();
+        ensure_repo(skill_dir).unwrap();
+        // Commit only a non-SKILL file so the tag tree has no SKILL.md.
+        std::fs::write(skill_dir.join("other.md"), "# Not a skill").unwrap();
+        commit_all(skill_dir, "no skill md").unwrap();
+        create_skill_version_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0").unwrap();
+
+        let dest = dir.path().parent().unwrap().join("dest");
+        let result = extract_skill_at_tag(
+            skill_dir,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            "v1.0.0",
+            &dest,
+        );
+        assert!(result.is_err(), "expected error when tag tree has no SKILL.md");
+        let err = result.unwrap_err();
+        assert!(err.contains("No SKILL.md found"), "unexpected error: {err}");
     }
 }

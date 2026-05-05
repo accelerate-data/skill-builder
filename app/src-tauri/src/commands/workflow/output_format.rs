@@ -815,8 +815,15 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
         ));
     }
 
-    let commit_message = format!("{}: generated skill", skill_name);
-    match crate::git::commit_all(skills_dir, &commit_message).map_err(|e| {
+    if let Err(e) = crate::git::ensure_repo(&published_dir) {
+        log::warn!(
+            "[publish_commit_and_tag_generated_skill] failed to ensure repo for '{}': {}",
+            skill_name,
+            e
+        );
+    }
+
+    match crate::git::commit_all(&published_dir, "generated skill").map_err(|e| {
         format!(
             "Generated skill publish commit failed for '{}': {}",
             skill_name, e
@@ -834,7 +841,7 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
     }
 
     let tag_name =
-        crate::git::create_skill_version_tag(skills_dir, plugin_slug, skill_name, &version)
+        crate::git::create_skill_version_tag(&published_dir, plugin_slug, skill_name, &version)
             .map_err(|e| {
                 format!(
                     "Generated skill version tag failed for '{}': {}",
@@ -911,6 +918,11 @@ pub fn materialize_workflow_step_output(
             drop(conn);
 
             let skills_dir = Path::new(&skills_path);
+            let skill_dir = crate::skill_paths::resolve_skill_dir(
+                skills_dir,
+                &plugin_slug,
+                &skill_name,
+            );
             publish_commit_and_tag_generated_skill(
                 &skill_root,
                 skills_dir,
@@ -918,7 +930,7 @@ pub fn materialize_workflow_step_output(
                 &skill_name,
             )?;
 
-            match git2::Repository::open(skills_dir) {
+            match git2::Repository::open(&skill_dir) {
                 Ok(repo) => {
                     if let Some(sha) = repo
                         .head()
