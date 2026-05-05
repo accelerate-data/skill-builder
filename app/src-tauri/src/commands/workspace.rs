@@ -291,6 +291,94 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
     }
 }
 
+/// Migrate from a shared root git repo to per-skill git repositories.
+///
+/// If `{skills_path}/.git/` exists (legacy shared repo), this function:
+/// 1. Enumerates all `{skills_path}/{plugin_slug}/{skill_name}/` directories.
+/// 2. Inits a per-skill repo for each that doesn't already have one.
+/// 3. Commits current files as `"initial commit"` in each new per-skill repo.
+/// 4. Removes `{skills_path}/.git/`.
+///
+/// Non-fatal: logs warnings on failure, never crashes.
+pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
+    if !skills_path.join(".git").exists() {
+        return;
+    }
+    log::info!(
+        "[migrate_to_per_skill_repos] shared repo detected at {}; migrating to per-skill repos",
+        skills_path.display()
+    );
+
+    let plugin_dirs = match std::fs::read_dir(skills_path) {
+        Ok(d) => d,
+        Err(e) => {
+            log::warn!("[migrate_to_per_skill_repos] failed to read skills path: {}", e);
+            return;
+        }
+    };
+
+    for plugin_entry in plugin_dirs.flatten() {
+        let plugin_dir = plugin_entry.path();
+        if !plugin_dir.is_dir()
+            || plugin_dir
+                .file_name()
+                .map_or(true, |n| n.to_str().map_or(true, |s| s.starts_with('.')))
+        {
+            continue;
+        }
+        let skill_dirs = match std::fs::read_dir(&plugin_dir) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        for skill_entry in skill_dirs.flatten() {
+            let skill_dir = skill_entry.path();
+            if !skill_dir.is_dir()
+                || skill_dir
+                    .file_name()
+                    .map_or(true, |n| n.to_str().map_or(true, |s| s.starts_with('.')))
+            {
+                continue;
+            }
+            if skill_dir.join(".git").exists() {
+                log::debug!(
+                    "[migrate_to_per_skill_repos] {} already has .git, skipping",
+                    skill_dir.display()
+                );
+                continue;
+            }
+            if let Err(e) = crate::git::ensure_repo(&skill_dir) {
+                log::warn!(
+                    "[migrate_to_per_skill_repos] failed to init repo at {}: {}",
+                    skill_dir.display(),
+                    e
+                );
+                continue;
+            }
+            match crate::git::commit_all(&skill_dir, "initial commit") {
+                Ok(_) => log::info!(
+                    "[migrate_to_per_skill_repos] initialized repo at {}",
+                    skill_dir.display()
+                ),
+                Err(e) => log::warn!(
+                    "[migrate_to_per_skill_repos] commit failed at {}: {}",
+                    skill_dir.display(),
+                    e
+                ),
+            }
+        }
+    }
+
+    let shared_git = skills_path.join(".git");
+    if let Err(e) = std::fs::remove_dir_all(&shared_git) {
+        log::warn!(
+            "[migrate_to_per_skill_repos] failed to remove shared .git: {}",
+            e
+        );
+    } else {
+        log::info!("[migrate_to_per_skill_repos] removed shared root .git/");
+    }
+}
+
 /// Initialize the workspace directory on app startup.
 /// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
 /// removes legacy Claude-era workspace artifacts, and deploys bundled agents
@@ -356,24 +444,15 @@ pub fn init_workspace(
     // Remove stale benchmark snapshots left by interrupted runs
     cleanup_stale_snapshots(&workspace_path);
 
-    // One-time git upgrade: if skills_path has content but no .git, init + snapshot
+    // One-time migrations for the skills path
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         if let Ok(settings) = crate::db::read_settings(&conn) {
             if let Some(ref sp) = settings.skills_path {
-                let sp_path = Path::new(sp);
-                if sp_path.exists() && !sp_path.join(".git").exists() {
-                    log::info!("One-time git upgrade: initializing repo at {}", sp);
-                    if let Err(e) = crate::git::ensure_repo(sp_path) {
-                        log::warn!("Failed to init git repo at {}: {}", sp, e);
-                    } else if let Err(e) =
-                        crate::git::commit_all(sp_path, "initial snapshot of existing skills")
-                    {
-                        log::warn!("Failed to create initial snapshot at {}: {}", sp, e);
-                    }
-                }
-                // Migrate skills folder to marketplace plugin layout
+                // Marketplace layout migration must run before per-skill repo migration.
                 migrate_to_marketplace_layout(sp);
+                // Per-skill repo migration: if shared root .git exists, move to per-skill repos.
+                migrate_to_per_skill_repos(Path::new(sp));
             }
         }
     }
@@ -822,5 +901,55 @@ mod tests {
         // Skill stays in place — already at canonical path
         assert!(skill.join("SKILL.md").is_file());
         assert!(root.join("analytics").is_dir());
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use tempfile::tempdir;
+
+    fn setup_shared_repo(skills_path: &std::path::Path) {
+        crate::git::ensure_repo(skills_path).unwrap();
+        let skill_dir = skills_path.join("skills").join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# My skill").unwrap();
+        crate::git::commit_all(skills_path, "my-skill: initial").unwrap();
+    }
+
+    #[test]
+    fn test_migrate_to_per_skill_repos_removes_shared_git() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path();
+        setup_shared_repo(skills_path);
+
+        assert!(skills_path.join(".git").exists(), "pre: shared .git must exist");
+
+        super::migrate_to_per_skill_repos(skills_path);
+
+        assert!(!skills_path.join(".git").exists(), "shared .git must be removed after migration");
+    }
+
+    #[test]
+    fn test_migrate_to_per_skill_repos_inits_per_skill_git() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path();
+        setup_shared_repo(skills_path);
+
+        super::migrate_to_per_skill_repos(skills_path);
+
+        let skill_dir = skills_path.join("skills").join("my-skill");
+        assert!(skill_dir.join(".git").exists(), "per-skill .git must exist after migration");
+    }
+
+    #[test]
+    fn test_migrate_to_per_skill_repos_is_noop_without_shared_git() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path();
+        std::fs::create_dir_all(skills_path.join("skills").join("my-skill")).unwrap();
+
+        // No .git at root — should be a no-op, no panic
+        super::migrate_to_per_skill_repos(skills_path);
+
+        assert!(!skills_path.join(".git").exists());
     }
 }
