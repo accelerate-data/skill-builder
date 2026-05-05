@@ -190,6 +190,23 @@ fn read_all_scenarios(eval_dir: &Path) -> Result<Vec<Scenario>, String> {
         .map(|items| items.into_iter().map(|(_, scenario)| scenario).collect())
 }
 
+fn find_matching_scenarios(
+    eval_dir: &Path,
+    scenario_name: &str,
+) -> Result<Vec<(PathBuf, Scenario)>, String> {
+    let mut matches = Vec::new();
+    for path in scenario_file_entries(eval_dir)? {
+        let scenario = match read_scenario_file(&path) {
+            Ok(scenario) => scenario,
+            Err(_) => continue,
+        };
+        if scenario.name == scenario_name {
+            matches.push((path, scenario));
+        }
+    }
+    Ok(matches)
+}
+
 pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<ScenarioSummary>, String> {
     read_all_scenarios(eval_dir).map(|items| {
         items
@@ -201,9 +218,10 @@ pub fn list_scenarios(eval_dir: &Path) -> Result<Vec<ScenarioSummary>, String> {
 
 pub fn load_scenario(eval_dir: &Path, scenario_name: &str) -> Result<Option<Scenario>, String> {
     validate_scenario_name(scenario_name)?;
-    Ok(read_all_scenarios_with_paths(eval_dir)?
+    Ok(find_matching_scenarios(eval_dir, scenario_name)?
         .into_iter()
-        .find_map(|(_, scenario)| (scenario.name == scenario_name).then_some(scenario)))
+        .map(|(_, scenario)| scenario)
+        .next())
 }
 
 pub fn delete_other_scenario_files(
@@ -212,15 +230,12 @@ pub fn delete_other_scenario_files(
     keep_path: &Path,
 ) -> Result<(), String> {
     validate_scenario_name(scenario_name)?;
-    for path in scenario_file_entries(eval_dir)? {
+    for (path, _) in find_matching_scenarios(eval_dir, scenario_name)? {
         if path == keep_path {
             continue;
         }
-        let scenario = read_scenario_file(&path)?;
-        if scenario.name == scenario_name {
-            fs::remove_file(&path)
-                .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
-        }
+        fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
     }
     Ok(())
 }
@@ -228,13 +243,10 @@ pub fn delete_other_scenario_files(
 pub fn delete_scenario_file(eval_dir: &Path, scenario_name: &str) -> Result<(), String> {
     validate_scenario_name(scenario_name)?;
     let mut deleted = false;
-    for path in scenario_file_entries(eval_dir)? {
-        let scenario = read_scenario_file(&path)?;
-        if scenario.name == scenario_name {
-            fs::remove_file(&path)
-                .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
-            deleted = true;
-        }
+    for (path, _) in find_matching_scenarios(eval_dir, scenario_name)? {
+        fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+        deleted = true;
     }
     if !deleted {
         for path in [

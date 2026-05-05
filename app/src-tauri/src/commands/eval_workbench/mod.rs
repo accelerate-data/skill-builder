@@ -3078,4 +3078,74 @@ mod tests {
         assert_eq!(loaded.name, "Regression");
         assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
     }
+
+    #[test]
+    fn load_scenario_command_ignores_broken_sibling_yaml_for_valid_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        scenarios::write_scenario_file(
+            &eval_dir.join("valid-target.yaml"),
+            &scenario_from_dto(dto.clone()).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(eval_dir.join("broken-sibling.yaml"), "name: [").unwrap();
+
+        let loaded = load_scenario(
+            "skills".into(),
+            "forecast".into(),
+            "Regression".into(),
+            db_state(&db),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(loaded.name, "Regression");
+        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+    }
+
+    #[test]
+    fn save_scenario_command_succeeds_with_broken_sibling_yaml_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        std::fs::write(eval_dir.join("broken-sibling.yaml"), "name: [").unwrap();
+
+        let saved = save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            dto.clone(),
+            db_state(&db),
+        )
+        .unwrap();
+
+        assert_eq!(saved.name, "Regression");
+        assert!(scenarios::scenario_file_path(&eval_dir, &dto.name).exists());
+    }
+
+    #[test]
+    fn delete_scenario_command_succeeds_with_broken_sibling_yaml_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        let target_path = scenarios::scenario_file_path(&eval_dir, &dto.name);
+        scenarios::write_scenario_file(&target_path, &scenario_from_dto(dto).unwrap()).unwrap();
+        std::fs::write(eval_dir.join("broken-sibling.yaml"), "name: [").unwrap();
+
+        delete_scenario(
+            "skills".into(),
+            "forecast".into(),
+            "Regression".into(),
+            db_state(&db),
+        )
+        .unwrap();
+
+        assert!(!target_path.exists());
+    }
 }
