@@ -397,22 +397,32 @@ pub fn reset_workflow_step(
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     log::debug!("[reset_workflow_step] skills_path={}", skills_path);
 
-    // Auto-commit: checkpoint before artifacts are deleted
-    let msg = format!(
-        "{}: checkpoint before reset to {}",
-        skill_name,
-        workflow_step_log_name(from_step_id as i32)
-    );
-    if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
-        log::warn!("Git auto-commit failed ({}): {}", msg, e);
-    }
-
     let plugin_slug = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_master_any_plugin(&conn, &skill_name)?
             .map(|m| m.plugin_slug)
             .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
     };
+
+    // Auto-commit: checkpoint before artifacts are deleted, at the per-skill repo dir
+    let skill_dir = crate::skill_paths::resolve_skill_dir(
+        std::path::Path::new(&skills_path),
+        &plugin_slug,
+        &skill_name,
+    );
+    let msg = format!(
+        "{}: checkpoint before reset to {}",
+        skill_name,
+        workflow_step_log_name(from_step_id as i32)
+    );
+    if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
+        log::warn!(
+            "[reset_workflow_step] git commit failed at skill_dir {}: {}",
+            skill_dir.display(),
+            e
+        );
+    }
+
     crate::cleanup::delete_step_output_files(
         &workspace_path,
         &skill_name,
@@ -486,16 +496,6 @@ pub fn navigate_back_to_step(
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     log::debug!("[navigate_back_to_step] skills_path={}", skills_path);
 
-    // Auto-commit: checkpoint before artifacts are deleted
-    let msg = format!(
-        "{}: checkpoint before navigate back to {}",
-        skill_name,
-        workflow_step_log_name(target_step_id as i32)
-    );
-    if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
-        log::warn!("Git auto-commit failed ({}): {}", msg, e);
-    }
-
     // Delete output files for steps from the target onwards.
     // Step 0 is a special case: navigating back to it means a full rerun, so its own
     // artifacts (clarifications.json, answer-evaluation.json) must also be cleared.
@@ -510,6 +510,25 @@ pub fn navigate_back_to_step(
             .map(|m| m.plugin_slug)
             .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
     };
+
+    // Auto-commit: checkpoint before artifacts are deleted, at the per-skill repo dir
+    let skill_dir = crate::skill_paths::resolve_skill_dir(
+        std::path::Path::new(&skills_path),
+        &plugin_slug,
+        &skill_name,
+    );
+    let msg = format!(
+        "{}: checkpoint before navigate back to {}",
+        skill_name,
+        workflow_step_log_name(target_step_id as i32)
+    );
+    if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
+        log::warn!(
+            "[navigate_back_to_step] git commit failed at skill_dir {}: {}",
+            skill_dir.display(),
+            e
+        );
+    }
     crate::cleanup::delete_step_output_files(
         &workspace_path,
         &skill_name,
@@ -988,5 +1007,34 @@ mod benchmark_tests {
 
         let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
         assert!(result.is_none());
+    }
+}
+
+#[cfg(test)]
+mod per_skill_git_tests {
+    #[test]
+    fn test_reset_workflow_step_commits_at_skill_dir() {
+        // This test verifies the expected per-skill repo setup:
+        // no .git at skills root, per-skill .git at skill_dir.
+        let dir = tempfile::tempdir().unwrap();
+        let skills_path = dir.path();
+        let plugin_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(skills_path, plugin_slug, "test-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        crate::git::ensure_repo(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# step 3 output").unwrap();
+        crate::git::commit_all(&skill_dir, "step 3 complete").unwrap();
+
+        // Precondition: root must NOT have .git
+        assert!(
+            !skills_path.join(".git").exists(),
+            "skills root must NOT have .git in per-skill repos"
+        );
+        // Skill dir MUST have .git
+        assert!(
+            skill_dir.join(".git").exists(),
+            "skill_dir MUST have .git"
+        );
     }
 }
