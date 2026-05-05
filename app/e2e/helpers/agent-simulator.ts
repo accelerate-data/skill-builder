@@ -33,6 +33,27 @@ interface AgentExitPayload {
   success: boolean;
 }
 
+async function emitInitProgressSequence(
+  page: Page,
+  agentId: string,
+  wait: (ms: number) => Promise<void>,
+  delayMs: number,
+): Promise<void> {
+  await emitTauriEvent(page, "agent-init-progress", {
+    agent_id: agentId,
+    stage: "init_start",
+    timestamp: Date.now(),
+  } satisfies AgentInitProgressPayload);
+  await wait(delayMs);
+
+  await emitTauriEvent(page, "agent-init-progress", {
+    agent_id: agentId,
+    stage: "runtime_ready",
+    timestamp: Date.now(),
+  } satisfies AgentInitProgressPayload);
+  await wait(delayMs);
+}
+
 // ---------------------------------------------------------------------------
 // Low-level event emitter
 // ---------------------------------------------------------------------------
@@ -124,21 +145,7 @@ export async function simulateAgentRun(
 
   const wait = (ms: number) => page.waitForTimeout(ms);
 
-  // 1. Emit init_start stage
-  await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
-    stage: "init_start",
-    timestamp: Date.now(),
-  } satisfies AgentInitProgressPayload);
-  await wait(delays);
-
-  // 2. Emit runtime_ready stage
-  await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
-    stage: "runtime_ready",
-    timestamp: Date.now(),
-  } satisfies AgentInitProgressPayload);
-  await wait(delays);
+  await emitInitProgressSequence(page, agentId, wait, delays);
 
   // 3. Output display items for each message
   for (let i = 0; i < messages.length; i++) {
@@ -244,21 +251,7 @@ export async function simulateAgentRunWithDisplayItems(
 
   const wait = (ms: number) => page.waitForTimeout(ms);
 
-  // 1. Emit init_start stage
-  await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
-    stage: "init_start",
-    timestamp: Date.now(),
-  } satisfies AgentInitProgressPayload);
-  await wait(delays);
-
-  // 2. Emit runtime_ready stage
-  await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
-    stage: "runtime_ready",
-    timestamp: Date.now(),
-  } satisfies AgentInitProgressPayload);
-  await wait(delays);
+  await emitInitProgressSequence(page, agentId, wait, delays);
 
   // Display items
   for (const item of items) {
@@ -302,21 +295,7 @@ export async function simulateAgentError(
   const delays = 50;
   const wait = (ms: number) => page.waitForTimeout(ms);
 
-  // 1. Emit init_start stage
-  await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
-    stage: "init_start",
-    timestamp: Date.now(),
-  } satisfies AgentInitProgressPayload);
-  await wait(delays);
-
-  // 2. Emit runtime_ready stage
-  await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
-    stage: "runtime_ready",
-    timestamp: Date.now(),
-  } satisfies AgentInitProgressPayload);
-  await wait(delays);
+  await emitInitProgressSequence(page, agentId, wait, delays);
 
   // Exit with failure
   await emitTauriEvent(page, "agent-exit", {
