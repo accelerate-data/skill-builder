@@ -41,7 +41,10 @@ interface WorkspaceEvalsProps {
   scenario: ScenarioDto | null;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
-  onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
+  onSaveScenario: (
+    scenario: ScenarioDto,
+    options?: { originalName?: string | null },
+  ) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
   onNavigateToRefine?: () => void;
   onRunningChange?: (running: boolean) => void;
@@ -189,7 +192,7 @@ export function WorkspaceEvals({
     try {
       const generated = await generateScenarios(pluginSlug, skillName);
       for (const nextScenario of generated) {
-        await onSaveScenario(nextScenario);
+        await onSaveScenario(nextScenario, { originalName: null });
       }
     } catch (generationError) {
       setActionError(getErrorMessage(generationError));
@@ -388,7 +391,7 @@ export function WorkspaceEvals({
         }}
         onSuggestAssertions={(caseIndex) => void handleSuggestAssertions(caseIndex)}
         suggestingAssertionsCaseIndex={suggestingAssertionsCaseIndex}
-        saveDisabled={saveScenarioPending}
+        saveDisabled={saveScenarioPending || scenarioLoading}
       />
 
       <RunHistory

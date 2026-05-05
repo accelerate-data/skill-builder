@@ -82,10 +82,16 @@ export function WorkspaceEvalWorkbench({
           name: (skill as ImportedSkill).skill_name,
         } as unknown as SkillSummary);
 
-  async function handleSaveScenario(scenario: ScenarioDto) {
+  async function handleSaveScenario(
+    scenario: ScenarioDto,
+    options?: { originalName?: string | null },
+  ) {
     const savedScenario = await saveScenarioMutation.mutateAsync({
       scenario,
-      originalName: selectedScenarioName,
+      originalName:
+        options?.originalName !== undefined
+          ? options.originalName
+          : selectedScenarioName,
     });
     setSelectedScenarioName(savedScenario.name);
     return savedScenario;
@@ -202,7 +208,7 @@ export function WorkspaceEvalWorkbench({
         className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
       >
         <WorkspaceEvals
-          key={`performance-${skillName}`}
+          key={`performance-${skillName}-${selectedScenarioName ?? "new"}`}
           skill={skill}
           workspacePath={workspacePath}
           scenario={selectedScenario}
@@ -220,7 +226,7 @@ export function WorkspaceEvalWorkbench({
         className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
       >
         <WorkspaceDescription
-          key={`trigger-${triggerSkill.name}`}
+          key={`trigger-${triggerSkill.name}-${selectedScenarioName ?? "new"}`}
           skill={triggerSkill}
           workspacePath={workspacePath ?? ""}
           scenario={selectedScenario}

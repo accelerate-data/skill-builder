@@ -128,6 +128,35 @@ pub fn scenario_file_path(eval_dir: &Path, scenario_name: &str) -> PathBuf {
     eval_dir.join(scenario_file_name(scenario_name))
 }
 
+fn read_scenario_name_from_path(path: &Path) -> Result<Option<String>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    read_scenario_file(path).map(|scenario| Some(scenario.name))
+}
+
+pub fn ensure_scenario_target_available(
+    eval_dir: &Path,
+    scenario_name: &str,
+    original_name: Option<&str>,
+) -> Result<(), String> {
+    let target = scenario_file_path(eval_dir, scenario_name);
+    let Some(existing_name) = read_scenario_name_from_path(&target)? else {
+        return Ok(());
+    };
+
+    let original_name = original_name.map(str::trim);
+    if existing_name == scenario_name || Some(existing_name.as_str()) == original_name {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Scenario name '{}' conflicts with existing scenario '{}'",
+        scenario_name, existing_name
+    ))
+}
+
 pub fn read_scenario_file(path: &Path) -> Result<Scenario, String> {
     let content = fs::read_to_string(path)
         .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
@@ -204,6 +233,17 @@ pub fn rename_scenario_file(
     }
 
     let target = scenario_file_path(eval_dir, next_name);
+    if source == target {
+        return Ok(());
+    }
+    if target.exists() {
+        let existing_name = read_scenario_name_from_path(&target)?
+            .unwrap_or_else(|| next_name.to_string());
+        return Err(format!(
+            "Scenario name '{}' conflicts with existing scenario '{}'",
+            next_name, existing_name
+        ));
+    }
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("Failed to prepare {}: {error}", parent.display()))?;
@@ -279,5 +319,44 @@ mod tests {
         let error = validate_scenario(&scenario).unwrap_err();
 
         assert!(error.contains("must not be combined"));
+    }
+
+    #[test]
+    fn rejects_slug_collision_with_existing_scenario() {
+        let tmp = tempdir().unwrap();
+        let mut existing = sample_scenario();
+        existing.name = "Revenue Regression".into();
+        write_scenario_file(
+            &scenario_file_path(tmp.path(), &existing.name),
+            &existing,
+        )
+        .unwrap();
+
+        let error = ensure_scenario_target_available(
+            tmp.path(),
+            "Revenue-Regression",
+            None,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("conflicts with existing scenario"));
+    }
+
+    #[test]
+    fn keeps_same_file_when_rename_slug_is_unchanged() {
+        let tmp = tempdir().unwrap();
+        let mut scenario = sample_scenario();
+        scenario.name = "Revenue Regression".into();
+        let path = scenario_file_path(tmp.path(), &scenario.name);
+        write_scenario_file(&path, &scenario).unwrap();
+
+        rename_scenario_file(
+            tmp.path(),
+            "Revenue Regression",
+            "Revenue-Regression",
+        )
+        .unwrap();
+
+        assert!(path.exists());
     }
 }

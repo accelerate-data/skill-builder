@@ -1613,18 +1613,21 @@ pub fn load_scenario(
     skill_name: String,
     scenario_name: String,
     db: tauri::State<'_, Db>,
-) -> Result<ScenarioDto, String> {
+) -> Result<Option<ScenarioDto>, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
     scenarios::validate_scenario_name(&scenario_name)?;
     let skills_path = resolve_skills_path(&db)?;
-    read_scenario(
+    match read_scenario(
         Path::new(&skills_path),
         &plugin_slug,
         &skill_name,
         &scenario_name,
-    )
-    .map(scenario_to_dto)
+    ) {
+        Ok(scenario) => Ok(Some(scenario_to_dto(scenario))),
+        Err(error) if is_missing_scenario_error(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 #[tauri::command]
@@ -1641,6 +1644,11 @@ pub fn save_scenario(
     let skills_path = resolve_skills_path(&db)?;
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    scenarios::ensure_scenario_target_available(
+        &eval_dir,
+        &scenario.name,
+        original_name.as_deref(),
+    )?;
     if let Some(original_name) = original_name.as_deref() {
         scenarios::rename_scenario_file(&eval_dir, original_name, &scenario.name)?;
     }
@@ -1908,6 +1916,15 @@ fn summary_from_counts(passed: u32, failed: u32, total: u32) -> Value {
         "total": total,
         "passRate": if total == 0 { 0.0 } else { passed as f64 / total as f64 }
     })
+}
+
+fn is_missing_scenario_error(error: &str) -> bool {
+    error.contains("Failed to read") && error.contains("No such file")
+}
+
+fn is_missing_promptfoo_history_error(error: &str) -> bool {
+    error.contains("Promptfoo history database not found")
+        || error.contains("Promptfoo eval run not found")
 }
 
 fn history_entry_to_api_run(entry: EvalHistoryEntry) -> ApiEvalRun {
@@ -2311,11 +2328,16 @@ pub async fn read_eval_run(
     data_dir: tauri::State<'_, crate::DataDir>,
 ) -> Result<Option<ApiEvalRun>, String> {
     validate_id("Run id", &run_id)?;
-    let response = read_promptfoo_eval_history(
+    let response = match read_promptfoo_eval_history(
         &app,
         &ReadEvalHistoryRequest::new("read-eval-run", promptfoo_config_dir(&data_dir), run_id),
     )
-    .await?;
+    .await
+    {
+        Ok(response) => response,
+        Err(error) if is_missing_promptfoo_history_error(&error) => return Ok(None),
+        Err(error) => return Err(error),
+    };
     Ok(Some(history_entry_to_api_run(response.entry)))
 }
 
@@ -3026,5 +3048,24 @@ mod tests {
         .unwrap();
 
         assert_eq!(candidate.id, "candidate-a");
+    }
+
+    #[test]
+    fn detects_missing_scenario_errors() {
+        assert!(is_missing_scenario_error(
+            "Failed to read /tmp/scenario.yaml: No such file or directory (os error 2)"
+        ));
+        assert!(!is_missing_scenario_error("Failed to parse scenario"));
+    }
+
+    #[test]
+    fn detects_missing_promptfoo_history_errors() {
+        assert!(is_missing_promptfoo_history_error(
+            "Promptfoo history database not found at /tmp/promptfoo.db"
+        ));
+        assert!(is_missing_promptfoo_history_error(
+            "Promptfoo eval run not found: abc123"
+        ));
+        assert!(!is_missing_promptfoo_history_error("other sidecar failure"));
     }
 }

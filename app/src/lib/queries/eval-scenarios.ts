@@ -35,7 +35,6 @@ export function useScenario(
     ),
     queryFn: () => loadScenario(pluginSlug, skillName!, scenarioName!),
     enabled: Boolean(skillName && scenarioName),
-    placeholderData: (previousData) => previousData,
   });
 }
 

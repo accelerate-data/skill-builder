@@ -46,7 +46,10 @@ interface WorkspaceDescriptionProps {
   scenario: ScenarioDto | null;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
-  onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
+  onSaveScenario: (
+    scenario: ScenarioDto,
+    options?: { originalName?: string | null },
+  ) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
   onRunningChange?: (running: boolean) => void;
   onApply?: (newDescription: string, newVersion: string) => void;
@@ -452,7 +455,7 @@ export function WorkspaceDescription({
           setCandidates([]);
           setActionError(null);
         }}
-        saveDisabled={saveScenarioPending}
+        saveDisabled={saveScenarioPending || scenarioLoading}
       />
 
       <section className="rounded-lg border bg-card p-4">
