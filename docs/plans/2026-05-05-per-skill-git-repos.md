@@ -8,6 +8,8 @@
 
 **Tech Stack:** Rust / git2 crate / Tauri / SQLite. No frontend changes. All tests use `tempfile::tempdir()` + `cargo test`.
 
+**Branch context:** This work lives on branch `feature/vu-1159-migrate-to-per-skill-git-repositories`, which was branched from `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`. All commits go on the `vu-1159` branch. When all tasks are complete, open a PR targeting `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime` (not `main`). The worktree for this branch is at `~/src/worktrees/feature/vu-1159-migrate-to-per-skill-git-repositories`. Every bash command must `cd` into that worktree path — subagents do not inherit the parent cwd.
+
 ---
 
 ## File Structure
