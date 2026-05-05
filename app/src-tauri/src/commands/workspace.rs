@@ -322,7 +322,7 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
         if !plugin_dir.is_dir()
             || plugin_dir
                 .file_name()
-                .map_or(true, |n| n.to_str().map_or(true, |s| s.starts_with('.')))
+                .is_none_or(|n| n.to_str().is_none_or(|s| s.starts_with('.')))
         {
             continue;
         }
@@ -335,7 +335,7 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
             if !skill_dir.is_dir()
                 || skill_dir
                     .file_name()
-                    .map_or(true, |n| n.to_str().map_or(true, |s| s.starts_with('.')))
+                    .is_none_or(|n| n.to_str().is_none_or(|s| s.starts_with('.')))
             {
                 continue;
             }
