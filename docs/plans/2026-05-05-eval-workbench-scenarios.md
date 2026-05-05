@@ -28,7 +28,7 @@ at commit `15042444`.
 - [x] Task 4 completed in code: shared scenario pool, mode tags, and active UI rename landed.
 - [x] Task 5 completed after doc alignment: scenario generation ships through the app-owned OpenHands one-shot path, and the plan/design now describe that runtime boundary directly.
 - [x] Task 6 completed after doc alignment: assertion suggestion shipped and the design index was updated.
-- [ ] Independent review gate complete: review agents were started for backend and frontend audit, but this plan should not be marked fully complete until those reviews return and are resolved.
+- [x] Independent review gate complete: backend and frontend review findings were addressed in follow-up hardening changes and the targeted validation suite was rerun successfully.
 
 ### Acceptance criteria audit
 
@@ -46,7 +46,7 @@ those requirements directly.
 - [x] Assertion suggestion is available per case.
 - [x] Design/index docs are aligned with the shipped behavior, including app-owned Promptfoo history.
 - [x] Scenario generation is documented as an app-owned OpenHands one-shot flow rather than a repo-owned eval harness asset.
-- [ ] Independent quality-gate review is closed with reviewer findings addressed.
+- [x] Independent quality-gate review is closed with reviewer findings addressed.
 
 ### Validation evidence
 
