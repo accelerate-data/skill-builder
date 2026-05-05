@@ -11,7 +11,7 @@ functional-specs: [custom-plugin-management]
 
 The Eval Workbench currently stores "prompt sets" exclusively in SQLite. Prompt sets are per-mode (performance OR trigger), so the same user request must be entered twice to test both aspects of a skill. There is no LLM assistance for authoring test cases or assertions.
 
-This design replaces prompt sets with **scenarios**: named, git-backed YAML files that live in the user's plugin directory alongside their skills. A scenario can be tagged for performance, trigger, or both modes. LLM generation helps the user bootstrap realistic test cases from their skill content.
+This design replaces prompt sets with **scenarios**: named, git-backed YAML files that live in the user's plugin directory alongside their skills. A scenario can be tagged for performance, trigger, or both modes. LLM generation helps users bootstrap realistic test cases from their skill content, while run history is stored in an app-owned Promptfoo state directory rather than in app SQLite.
 
 ## Design Scope
 
@@ -24,14 +24,14 @@ This design replaces prompt sets with **scenarios**: named, git-backed YAML file
 - `eval_dir` path template in `plugin-paths.json`.
 - Rust helpers for resolving and reading/writing scenario files.
 - Tauri commands for scenario CRUD backed by the filesystem.
-- LLM scenario generation: agent reads the skill folder and produces draft scenarios.
+- LLM scenario generation through the app-owned OpenHands one-shot path.
 - LLM assertion generation: given a case prompt and expected outcome, produces promptfoo assertion expressions.
-- Run history stays in SQLite (ephemeral, not git-tracked).
+- Run history stays machine-local in the app-owned Promptfoo state under `<data_dir>/promptfoo`.
 
 **Does not cover**
 
 - The `tests/evals/` internal harness (unrelated — tests the app's own bundled agents).
-- Promptfoo sidecar bundling changes.
+- Repo-local `tests/evals` Promptfoo state or harness behavior.
 - The Trigger description-optimization sub-flow (unchanged).
 - Multi-plugin scenario sharing or cross-skill references.
 
@@ -47,7 +47,7 @@ Requires `plugin-path-restructure` to have landed. The `eval_dir` template is ad
 
 On disk:
 
-```
+```text
 {skills_dir}/
   {plugin_slug}/
     skills/
@@ -92,7 +92,7 @@ cases:
 
 ### Before (SQLite-primary)
 
-```
+```text
 eval_prompt_sets(id, plugin_slug, skill_name, mode, name, created_at, updated_at)
 eval_prompt_cases(id, prompt_set_id, prompt, expected, should_trigger, assertions, sort_order)
 eval_runs(id, prompt_set_id, mode, status, summary, ...)
@@ -103,14 +103,14 @@ eval_run_results(id, run_id, case_id, ...)
 
 ### After (File-primary)
 
-Scenarios live in YAML files. SQLite retains only run history:
+Scenarios live in YAML files. Execution history is read from the app-owned Promptfoo database:
 
-```
-eval_runs(id, skill_name, plugin_slug, scenario_name, mode, status, summary, started_at, finished_at)
-eval_run_results(id, run_id, case_id, pass, score, output, assertions_detail)
+```text
+<data_dir>/promptfoo/promptfoo.db
+  evals / results / metadata
 ```
 
-Scenario files are the source of truth. The app reads them from disk on demand. No SQLite migration needed for existing prompt sets — they are treated as legacy and remain readable but new scenarios write to disk.
+Scenario files are the source of truth. The app reads them from disk on demand and uses Promptfoo metadata to recover local run history. Prompt set tables remain only as legacy compatibility code paths and are not the active source for new scenario runs.
 
 ## UI Changes
 
@@ -127,6 +127,7 @@ Scenario files are the source of truth. The app reads them from disk on demand. 
 ### Shared scenario pool
 
 Both Performance and Trigger tabs draw from the same scenario list for the current skill. The tab filters by tag:
+
 - Performance tab: shows scenarios tagged `performance` or `both`
 - Trigger tab: shows scenarios tagged `trigger` or `both`
 
@@ -140,7 +141,7 @@ When creating a new scenario, the user picks which modes it applies to. A scenar
 
 ### Scenario generation
 
-Triggered by a "Generate scenarios" button in the Scenario section. Launches a one-shot agent that:
+Triggered by a "Generate scenarios" button in the Scenario section. Launches an app-owned OpenHands one-shot run that:
 
 1. Receives the skill folder path: `{skills_dir}/{plugin_slug}/skills/{skill_name}/`
 2. Reads `SKILL.md`, clarifications, and decisions from disk/DB
@@ -150,7 +151,7 @@ Triggered by a "Generate scenarios" button in the Scenario section. Launches a o
    - Negative / should-not-trigger cases (tagged `trigger`, `should_trigger: false`)
 4. Returns structured output; the app writes one YAML file per scenario
 
-The agent prompt is a new asset under `agent-sources/workspace/`. It passes the skill directory as context and instructs the agent to read the skill content before generating.
+The generation prompt is constructed by the app and passed through the existing OpenHands one-shot runtime. No separate repo-owned eval harness or shared Promptfoo config is involved.
 
 ### Assertion generation
 
@@ -168,5 +169,5 @@ A per-case "Auto-fill outcome" action. Runs the skill against the case prompt (o
 | One scenario file per named scenario. | Fine-grained git history and conflict resolution. Avoids merging one large file when two scenarios are edited independently. |
 | Tags replace mode-split prompt sets. | The same user request is meaningful in both modes. Duplicating it is friction and causes drift. |
 | `promptfooconfig.yaml` is generated, not hand-edited. | The scenario YAML format is the user-facing contract. Promptfoo config details (providers, injected vars) are app concerns. |
-| Run history stays in SQLite. | Run results are ephemeral observations, not durable test definitions. No benefit to committing them to git. |
-| LLM generation reads skill files directly. | The agent already knows how to read SKILL.md and related context. Passing the folder path gives it everything it needs without new IPC. |
+| Run history lives in app-owned Promptfoo state. | Scenarios should travel with git, but execution history is machine-local app infrastructure and should not be reconciled with authored files or the repo eval harness. |
+| LLM generation runs through the app-owned OpenHands one-shot path. | This reuses the shipped runtime boundary instead of introducing a second repo-owned prompt asset or coupling to `tests/evals`. |

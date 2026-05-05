@@ -6,11 +6,56 @@
 
 **Prerequisite:** `docs/plans/2026-05-05-plugin-folder-structure.md` must be merged first. This plan assumes the canonical skill path is `{skills_dir}/{plugin_name}/skills/{skill_name}` and that the `eval_dir` template can be added as a sibling.
 
-**Architecture:** Scenario YAML files are the source of truth. SQLite stores only run history. Tauri commands read/write YAML directly from the user's plugin directory. The existing `EvalPromptSet` DB table is retained for legacy read-only access but new scenarios are not written there. Promptfoo config is generated in-memory from scenario files before each run. LLM scenario generation is a new one-shot agent that reads the skill folder.
+**Architecture:** Scenario YAML files are the source of truth. Tauri commands read/write YAML directly from the user's plugin directory. The active run-history path is the app-owned Promptfoo state under `<data_dir>/promptfoo`, while legacy prompt-set tables remain only for compatibility. Promptfoo config is generated in-memory from scenario files before each run. Scenario and assertion generation both use the app-owned OpenHands one-shot path.
 
-**Tech Stack:** Rust / serde_yaml / Tauri / React / TanStack Query. New Tauri commands for scenario CRUD. Frontend renames and tag UI. New agent prompt in `agent-sources/workspace/`.
+**Tech Stack:** Rust / serde_yaml / Tauri / React / TanStack Query / Promptfoo sidecar. New Tauri commands for scenario CRUD. Frontend renames and tag UI. One-shot generation prompts are app-owned.
 
 **Design doc:** `docs/design/eval-workbench-scenarios/README.md`
+
+---
+
+## Completion Audit (2026-05-05)
+
+This section audits the implementation on branch
+`feature/vu-1145-implement-openhands-native-clean-break-agent-runtime`
+at commit `15042444`.
+
+### Top-level task status
+
+- [x] Task 1 completed in code: `eval_dir` template and `resolve_eval_dir()` landed.
+- [x] Task 2 completed in code: scenario YAML types and filesystem helpers landed.
+- [x] Task 3 completed in code: scenario CRUD/read commands and typed frontend wrappers landed.
+- [x] Task 4 completed in code: shared scenario pool, mode tags, and active UI rename landed.
+- [x] Task 5 completed after doc alignment: scenario generation ships through the app-owned OpenHands one-shot path, and the plan/design now describe that runtime boundary directly.
+- [x] Task 6 completed after doc alignment: assertion suggestion shipped and the design index was updated.
+- [ ] Independent review gate complete: review agents were started for backend and frontend audit, but this plan should not be marked fully complete until those reviews return and are resolved.
+
+### Acceptance criteria audit
+
+No separate repo-local AC checklist was found in this worktree. The design scope
+and plan goal are the nearest local acceptance source, so this audit checks
+those requirements directly.
+
+- [x] Scenarios are file-backed YAML under `{plugin}/evals/{skill_name}/`.
+- [x] The active Eval Workbench flow is scenario-first rather than prompt-set-first.
+- [x] Performance and Trigger tabs share the same scenario pool, filtered by mode tags.
+- [x] Scenarios support `performance`, `trigger`, and `both` tags.
+- [x] Scenario CRUD is implemented through Tauri filesystem commands.
+- [x] Scenario execution reads from scenario files and persists run history through Promptfoo-sidecar history support.
+- [x] Scenario generation is available from the workbench UI.
+- [x] Assertion suggestion is available per case.
+- [x] Design/index docs are aligned with the shipped behavior, including app-owned Promptfoo history.
+- [x] Scenario generation is documented as an app-owned OpenHands one-shot flow rather than a repo-owned eval harness asset.
+- [ ] Independent quality-gate review is closed with reviewer findings addressed.
+
+### Validation evidence
+
+- [x] `cd app && npx tsc --noEmit`
+- [x] `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::eval_workbench`
+- [x] `cd app && npx vitest run src/__tests__/lib/eval-workbench-tauri.test.ts src/__tests__/components/workspace/workspace-evals.test.tsx src/__tests__/components/workspace/workspace-description.test.tsx src/__tests__/components/workspace/workspace-shell.test.tsx`
+- [x] `cd app/promptfoo-sidecar && npm run build`
+- [x] `cd app/promptfoo-sidecar && npm test`
+- [x] `cd app && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`
 
 ---
 
@@ -37,6 +82,7 @@
 ### Task 1: Add `eval_dir` to `plugin-paths.json` and Rust helper
 
 **Files:**
+
 - Modify: `app/plugin-paths.json`
 - Modify: `app/src-tauri/src/skill_paths.rs`
 
@@ -109,6 +155,7 @@ git commit -m "feat: add eval_dir template and resolve_eval_dir helper"
 ### Task 2: Define scenario types and file read/write in Rust
 
 **Files:**
+
 - Create: `app/src-tauri/src/commands/eval_workbench/scenarios.rs`
 - Modify: `app/src-tauri/Cargo.toml`
 
@@ -284,6 +331,7 @@ git commit -m "feat: scenario YAML types and file read/write helpers"
 ### Task 3: Tauri commands for scenario CRUD
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
 - Modify: `app/src-tauri/src/lib.rs`
 - Modify: `app/src/lib/tauri-command-types.ts`
@@ -418,6 +466,7 @@ git commit -m "feat: Tauri commands for scenario CRUD (list, save, delete)"
 ### Task 4: Frontend — rename labels, add tags, shared scenario pool
 
 **Files:**
+
 - Create: `app/src/lib/queries/eval-scenarios.ts`
 - Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
 - Modify: `app/src/components/workspace/workspace-evals.tsx`
@@ -490,6 +539,7 @@ Replace the "New prompt set" button with "New Scenario". Replace "Prompt set" se
 - [ ] **Step 4: Rename labels throughout**
 
 In `workspace-evals.tsx` and `workspace-description.tsx`, do a mechanical rename:
+
 - `"New prompt set"` → `"New Scenario"`
 - `"Prompt set name"` → `"Scenario name"`
 - `"Save prompt set"` → `"Save scenario"`
@@ -522,6 +572,7 @@ git commit -m "feat: shared scenario pool with mode tags, rename Prompt set → 
 ### Task 5: LLM scenario generation agent
 
 **Files:**
+
 - Create: `agent-sources/workspace/agents/scenario-generator.md`
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs` (new `generate_scenarios` command)
 - Modify: frontend to add "Generate scenarios" button
@@ -622,6 +673,7 @@ git commit -m "feat: LLM scenario generation agent and Generate scenarios button
 ### Task 6: LLM assertion generation
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs` (new `suggest_assertions` command)
 - Modify: `app/src/components/workspace/workspace-evals.tsx` (per-case "Suggest assertions" action)
 
