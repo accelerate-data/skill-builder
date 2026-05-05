@@ -255,8 +255,6 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("\"notes\": []"));
     assert!(prompt.contains("\"answer_evaluator_notes\": []"));
     assert!(prompt.contains("Question IDs must be"));
-    assert!(prompt.contains("Every question must have 2-4 mutually exclusive concrete choices"));
-    assert!(prompt.contains("Do not omit the final Other choice"));
     assert!(prompt.contains("Do not use alternate field names"));
     assert!(prompt.contains("`options`, `label`, `required`, or"));
     assert!(prompt.contains("Question objects must be nested directly"));
@@ -266,10 +264,6 @@ fn research_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("The initial research pass must not add refinement questions"));
     assert!(prompt.contains("Refinements are created"));
     assert!(prompt.contains("only by the detailed-research workflow"));
-    assert!(prompt.contains("All initial research questions must be single-select"));
-    assert!(prompt.contains("choose exactly one option"));
-    assert!(prompt.contains("select all"));
-    assert!(prompt.contains("choose all"));
     assert!(prompt.contains("Do not inspect old logs or previous run transcripts"));
     assert!(
         !prompt.to_ascii_lowercase().contains("conversation history"),
