@@ -286,8 +286,8 @@ fn read_scenario(
     scenario_name: &str,
 ) -> Result<scenarios::Scenario, String> {
     let eval_dir = crate::skill_paths::resolve_eval_dir(skills_path, plugin_slug, skill_name);
-    let path = scenarios::scenario_file_path(&eval_dir, scenario_name);
-    scenarios::read_scenario_file(&path)
+    scenarios::load_scenario(&eval_dir, scenario_name)?
+        .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))
 }
 
 fn validate_id(label: &str, value: &str) -> Result<(), String> {
@@ -2807,5 +2807,81 @@ mod tests {
         .unwrap();
 
         assert!(response.is_none());
+    }
+
+    #[test]
+    fn save_scenario_command_persists_file_and_returns_detail() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+
+        let response = save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            dto.clone(),
+            db_state(&db),
+        )
+        .unwrap();
+
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let path = scenarios::scenario_file_path(&eval_dir, &dto.name);
+        assert!(path.exists());
+        assert_eq!(response.name, dto.name);
+        assert_eq!(response.tags, dto.tags);
+        assert_eq!(response.cases.len(), 1);
+        assert_eq!(response.cases[0].prompt, "Forecast next quarter revenue");
+    }
+
+    #[test]
+    fn delete_scenario_command_removes_saved_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let path = scenarios::scenario_file_path(&eval_dir, &dto.name);
+        let scenario = scenario_from_dto(dto.clone()).unwrap();
+        scenarios::write_scenario_file(&path, &scenario).unwrap();
+
+        delete_scenario(
+            "skills".into(),
+            "forecast".into(),
+            "Regression".into(),
+            db_state(&db),
+        )
+        .unwrap();
+
+        assert!(!path.exists());
+        let loaded = load_scenario(
+            "skills".into(),
+            "forecast".into(),
+            "Regression".into(),
+            db_state(&db),
+        )
+        .unwrap();
+        assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn read_scenario_supports_yml_extension_for_run_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dto = sample_scenario_dto("Regression");
+        let scenario = scenario_from_dto(dto).unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        let path = eval_dir.join("regression.yml");
+        scenarios::write_scenario_file(&path, &scenario).unwrap();
+
+        let loaded = read_scenario(tmp.path(), "skills", "forecast", "Regression").unwrap();
+
+        assert_eq!(loaded.name, "Regression");
+        assert_eq!(loaded.cases.len(), 1);
+        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+    }
+
+    #[test]
+    fn load_scenario_command_is_registered_in_tauri_builder_source() {
+        let lib_rs = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+
+        assert!(lib_rs.contains("commands::eval_workbench::load_scenario,"));
     }
 }
