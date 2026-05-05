@@ -736,6 +736,58 @@ pub fn read_decisions(
     Ok(Some(record))
 }
 
+/// A single editable decision payload from the frontend.
+#[derive(Debug, serde::Deserialize)]
+pub struct DecisionItemEdit {
+    pub decision_id: String,
+    pub decision: String,
+    pub implication: String,
+    pub status: String,
+}
+
+/// Update only the user-editable fields (decision, implication, status) for the
+/// supplied items, then recompute the parent row's aggregated metadata.
+pub fn update_decision_items_edit(
+    conn: &mut Connection,
+    skill_id: &str,
+    items: &[DecisionItemEdit],
+) -> Result<(), rusqlite::Error> {
+    let tx = conn.transaction()?;
+    for item in items {
+        tx.execute(
+            "UPDATE decision_items
+             SET decision = ?1, implication = ?2, status = ?3
+             WHERE skill_id = ?4 AND decision_id = ?5",
+            rusqlite::params![
+                item.decision,
+                item.implication,
+                item.status,
+                skill_id,
+                item.decision_id,
+            ],
+        )?;
+    }
+    // Recompute parent aggregates from current item statuses.
+    tx.execute(
+        "UPDATE decisions SET
+            conflicts_resolved = (
+                SELECT COUNT(*) FROM decision_items
+                WHERE skill_id = ?1 AND status = 'conflict-resolved'
+            ),
+            contradictory_inputs_state = CASE
+                WHEN (SELECT COUNT(*) FROM decision_items
+                      WHERE skill_id = ?1 AND status = 'needs-review') > 0 THEN 'active'
+                WHEN (SELECT COUNT(*) FROM decision_items
+                      WHERE skill_id = ?1 AND status = 'revised') > 0 THEN 'revised'
+                ELSE contradictory_inputs_state
+            END,
+            updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+         WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    tx.commit()
+}
+
 /// Delete decisions and all child items for a skill. Idempotent.
 pub fn delete_decisions(conn: &Connection, skill_id: &str) -> Result<(), rusqlite::Error> {
     conn.execute(

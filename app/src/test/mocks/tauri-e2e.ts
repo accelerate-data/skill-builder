@@ -105,6 +105,7 @@ const mockResponses: Record<string, unknown> = {
   get_all_tags: [],
   get_clarifications: null,
   get_decisions: null,
+  save_decisions_edit: undefined,
   read_file: "",
   check_workspace_path: true,
   check_marketplace_updates: { library: [], workspace: [], registry_name: null, registry_names: [] },
