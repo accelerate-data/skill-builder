@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { auditRepoMap } from "./verify-repo-map.mjs";
 
-const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const scriptPath = fileURLToPath(new URL("./verify-repo-map.mjs", import.meta.url));
 
 function copyRepoMapFixture() {
