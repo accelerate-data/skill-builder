@@ -924,7 +924,10 @@ pub fn extract_skill_at_tag(
             all_entries.iter().any(|(path, _)| *path == skill_md)
         })
         .cloned()
-        .unwrap_or_default();
+        .ok_or_else(|| format!(
+            "No SKILL.md found in tag '{}' for skill '{}' (plugin '{}')",
+            tag_name, skill_name, plugin_slug
+        ))?;
 
     if dest_dir.exists() {
         std::fs::remove_dir_all(dest_dir)
@@ -981,8 +984,8 @@ pub fn get_skill_files_at_sha(
     let mut prefixes: Vec<String> = Vec::new();
     prefixes.push(String::new()); // per-skill repo: files at root
     if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
         prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
+        prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
     }
     prefixes.push(format!("skills/{}/", skill_name));
     prefixes.push(format!("{}/", skill_name));
@@ -1867,6 +1870,7 @@ mod per_skill_repo_tests {
 
         let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
         assert_eq!(content, "# V1", "restore must write to repo root, not a subdirectory");
+        assert!(skill_dir.join(".git").exists(), ".git/ must survive restore");
     }
 
     #[test]
