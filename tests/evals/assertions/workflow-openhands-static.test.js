@@ -20,7 +20,6 @@ test('active workflow prompt surfaces stay OpenHands-native', () => {
     'agent-sources/prompts/detailed-research.txt',
     'agent-sources/prompts/confirm_decisions.txt',
     'agent-sources/prompts/skill-generation.txt',
-    'agent-sources/prompts/workflow-step.txt',
     'agent-sources/prompts/answer-evaluator.txt',
     'app/src-tauri/src/commands/workflow/prompt.rs',
     'app/src-tauri/src/commands/workflow/runtime.rs',

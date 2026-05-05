@@ -28,11 +28,11 @@ const vu1140Commands = [
   "get_skill_files_at_sha",
   "run_answer_evaluator",
   "materialize_answer_evaluation_output",
-  "get_clarifications_content",
-  "save_clarifications_content",
-  "get_decisions_content",
-  "save_decisions_content",
-  "get_context_file_content",
+  "get_clarifications",
+  "update_clarification_answer",
+  "update_clarification_verdicts",
+  "get_decisions",
+  "save_decisions_edit",
   "log_gate_decision",
 ];
 
@@ -50,10 +50,9 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "save_settings",
     "update_user_settings",
     "update_github_identity",
-    "test_api_key",
+    "test_model_connection",
     "get_data_dir",
     "get_default_skills_path",
-    "list_models",
     "set_log_level",
     "check_startup_deps",
     "reconcile_startup",
@@ -62,7 +61,6 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "github_poll_for_token",
     "github_get_user",
     "github_logout",
-    "start_agent",
     "run_workflow_step",
     "materialize_workflow_step_output",
     "reset_workflow_step",
@@ -76,7 +74,6 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "write_file",
     "list_skill_files",
     "get_workspace_path",
-    "cleanup_skill_sidecar",
     "graceful_shutdown",
     "allow_app_exit",
     "create_workflow_session",
@@ -84,11 +81,6 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "resolve_orphan",
     "resolve_discovery",
     "cancel_workflow_step",
-    "get_clarifications_content",
-    "save_clarifications_content",
-    "get_decisions_content",
-    "save_decisions_content",
-    "get_context_file_content",
   ];
 
   for (const command of migratedCommands) {
@@ -98,13 +90,13 @@ test("typed Tauri command contract is the only non-test command policy", () => {
 
   assert.match(typeSource, /export type TauriCommandInvocation =/);
   assert.match(typecheckSource, /@ts-expect-error command names must be declared/);
-  assert.match(typecheckSource, /@ts-expect-error argument names must match/);
+  assert.match(typecheckSource, /@ts-expect-error .*argument names must match/);
   assert.match(typecheckSource, /@ts-expect-error command result is AppSettings/);
   assert.match(typecheckSource, /@ts-expect-error widened command names must not decouple command and args/);
   assert.match(typecheckSource, /@ts-expect-error run_workflow_step requires workflowSessionId/);
   assert.match(typecheckSource, /@ts-expect-error get_workspace_path uses the typed no-args convention/);
   assert.match(typecheckSource, /@ts-expect-error resolve_discovery only accepts known discovery actions/);
-  assert.match(typecheckSource, /@ts-expect-error get_context_file_content requires a context fileName/);
+  assert.match(typecheckSource, /@ts-expect-error get_decisions requires a skillId string/);
 });
 
 test("direct invokeUnsafe imports stay out of application code", () => {
@@ -121,27 +113,33 @@ test("direct invokeUnsafe imports stay out of application code", () => {
 });
 
 test("VU-1140 scoped commands stay on the typed invokeCommand path", () => {
-  const tauriSource = read("app/src/lib/tauri.ts");
   const typeSource = read("app/src/lib/tauri-command-types.ts");
+  const typedUsageSource = [
+    read("app/src/lib/tauri.ts"),
+    read("app/src/lib/queries/clarifications.ts"),
+    read("app/src/lib/queries/decisions.ts"),
+    read("app/src/hooks/use-workflow-autosave.ts"),
+    read("app/src/hooks/use-workflow-gate.ts"),
+  ].join("\n");
 
   const missingMapEntries = [];
-  const missingTypedWrappers = [];
+  const missingTypedUsage = [];
   const unsafeWrappers = [];
 
   for (const command of vu1140Commands) {
     if (!new RegExp(`${command}:`).test(typeSource)) {
       missingMapEntries.push(command);
     }
-    if (!tauriSource.includes(`invokeCommand("${command}"`)) {
-      missingTypedWrappers.push(command);
+    if (!typedUsageSource.includes(`invokeCommand("${command}"`)) {
+      missingTypedUsage.push(command);
     }
-    if (new RegExp(`invokeUnsafe(?:<[^>]+>)?\\("${command}"`).test(tauriSource)) {
+    if (new RegExp(`invokeUnsafe(?:<[^>]+>)?\\("${command}"`).test(typedUsageSource)) {
       unsafeWrappers.push(command);
     }
   }
 
   assert.deepEqual(missingMapEntries, []);
-  assert.deepEqual(missingTypedWrappers, []);
+  assert.deepEqual(missingTypedUsage, []);
   assert.deepEqual(unsafeWrappers, []);
 });
 

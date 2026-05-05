@@ -74,6 +74,9 @@ void invokeCommand("run_workflow_step", {
 // @ts-expect-error get_workspace_path uses the typed no-args convention
 void invokeCommand("get_workspace_path", { apply: true });
 
+// @ts-expect-error get_decisions requires a skillId string
+void invokeCommand("get_decisions", {});
+
 // @ts-expect-error resolve_discovery action and pluginSlug must match the contract
 void invokeCommand("resolve_discovery", {
   skillName: "demo",
