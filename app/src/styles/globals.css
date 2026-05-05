@@ -120,6 +120,8 @@
   --chat-thinking-border: oklch(0.600 0.100 265);
   --chat-subagent-bg: oklch(0.960 0.015 210);
   --chat-subagent-border: oklch(0.600 0.100 210);
+  --chat-skill-bg: oklch(0.965 0.018 290);
+  --chat-skill-border: oklch(0.620 0.120 290);
 }
 
 .dark {
@@ -181,6 +183,8 @@
   --chat-thinking-border: oklch(0.600 0.100 265);
   --chat-subagent-bg: oklch(0.250 0.030 210 / 0.35);
   --chat-subagent-border: oklch(0.600 0.100 210);
+  --chat-skill-bg: oklch(0.240 0.040 290 / 0.35);
+  --chat-skill-border: oklch(0.630 0.130 290);
 }
 
 @keyframes message-fade-in {
