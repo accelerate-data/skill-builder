@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import {
   getWorkflowState,
   getDisabledSteps,
   saveWorkflowState,
   readFile,
+  verifyStepOutput,
 } from "@/lib/tauri";
 import { invalidateSkillDataAfterWorkflow } from "@/lib/queries/agent-stream-cache";
 import { joinPath } from "@/lib/path-utils";
@@ -122,21 +124,36 @@ export function useWorkflowPersistence({
     setErrorHasArtifacts(false);
   }, [currentStep]);
 
-  // Error-state artifact check: detect whether a failed step left partial output
+  // Error-state artifact check: detect whether a failed step left partial output.
+  // Steps 0-2 are DB-backed (clarifications/decisions); step 3+ are file-backed (SKILL.md).
+  // Distinguish by whether the first outputFile starts with "skill/" (file) or "context/" (DB).
   useEffect(() => {
     const stepStatus = steps[currentStep]?.status;
 
     if (stepStatus === "error" && skillName) {
       const firstOutput = stepConfig?.outputFiles?.[0];
-      if (firstOutput && skillsPath) {
-        const skillsRelative = firstOutput.startsWith("skill/")
-          ? firstOutput.slice("skill/".length)
-          : firstOutput;
-        readFile(joinPath(skillsPath, skillName, skillsRelative))
-          .then((content) => setErrorHasArtifacts(!!content))
-          .catch(() => setErrorHasArtifacts(false));
-      } else {
+      if (!firstOutput) {
         setErrorHasArtifacts(false);
+        return;
+      }
+
+      if (firstOutput.startsWith("skill/")) {
+        if (skillsPath) {
+          readFile(joinPath(skillsPath, skillName, firstOutput.slice("skill/".length)))
+            .then((content) => setErrorHasArtifacts(!!content))
+            .catch(() => setErrorHasArtifacts(false));
+        } else {
+          setErrorHasArtifacts(false);
+        }
+      } else {
+        const workspacePath = useSettingsStore.getState().workspacePath;
+        if (workspacePath) {
+          verifyStepOutput(workspacePath, skillName, currentStep)
+            .then((has) => setErrorHasArtifacts(has))
+            .catch(() => setErrorHasArtifacts(false));
+        } else {
+          setErrorHasArtifacts(false);
+        }
       }
     } else {
       setErrorHasArtifacts(false);
