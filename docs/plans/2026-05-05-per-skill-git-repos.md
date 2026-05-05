@@ -1,6 +1,6 @@
 # Per-Skill Git Repositories Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Migrate the Skill Builder Rust backend from a single shared git repo at `skills_path/` to one git repo per skill at `resolve_skill_dir(skills_path, plugin_slug, skill_name)/.git/`, eliminating version-tag collisions on step reset.
 
@@ -36,10 +36,11 @@
 ### Task 1: Simplify tag format in plugin-paths.json
 
 **Files:**
+
 - Modify: `app/plugin-paths.json`
 - Test: `app/src-tauri/src/skill_paths.rs` (existing tests will catch regressions)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `app/src-tauri/src/skill_paths.rs` tests:
 
@@ -66,7 +67,7 @@ mod tag_format_tests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd app/src-tauri && cargo test tag_format_tests -- --nocapture
@@ -74,7 +75,7 @@ cd app/src-tauri && cargo test tag_format_tests -- --nocapture
 
 Expected: FAIL — tag prefix is `my-plugin/my-skill/v`, not `v`
 
-- [ ] **Step 3: Update plugin-paths.json**
+- [x] **Step 3: Update plugin-paths.json**
 
 Change `app/plugin-paths.json` lines 5–6:
 
@@ -83,7 +84,7 @@ Change `app/plugin-paths.json` lines 5–6:
 "tag_glob":   "v*",
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 cd app/src-tauri && cargo test tag_format_tests -- --nocapture
@@ -91,7 +92,7 @@ cd app/src-tauri && cargo test tag_format_tests -- --nocapture
 
 Expected: PASS
 
-- [ ] **Step 5: Run full git test suite to catch any format regressions**
+- [x] **Step 5: Run full git test suite to catch any format regressions**
 
 ```bash
 cd app/src-tauri && cargo test git:: -- --nocapture 2>&1 | tail -30
@@ -99,7 +100,7 @@ cd app/src-tauri && cargo test git:: -- --nocapture 2>&1 | tail -30
 
 Fix any test that asserts old-format tag names (e.g. `"skills/my-skill/v1.0.0"` → `"v1.0.0"`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd app && git add src-tauri/src/skill_paths.rs ../plugin-paths.json
@@ -113,9 +114,10 @@ git commit -m "feat: simplify git tag format to v{version} for per-skill repos"
 The key insight: with per-skill repos, `repo_path` passed to all git functions IS the skill directory. The `restore_version`, `extract_skill_at_tag`, and `get_skill_files_at_sha` functions currently derive the `write_dir` or read prefix from `resolve_skill_dir(repo_path, ...)`. After per-skill repos, callers pass `skill_dir` directly, so the write dir should be `repo_path` itself, and the tree prefix is `""` (files live at the repo root).
 
 **Files:**
+
 - Modify: `app/src-tauri/src/git.rs`
 
-- [ ] **Step 1: Write failing tests for per-skill repo layout**
+- [x] **Step 1: Write failing tests for per-skill repo layout**
 
 Add to the `#[cfg(test)]` block in `app/src-tauri/src/git.rs`:
 
@@ -189,7 +191,7 @@ mod per_skill_repo_tests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd app/src-tauri && cargo test per_skill_repo_tests -- --nocapture 2>&1 | tail -30
@@ -197,11 +199,12 @@ cd app/src-tauri && cargo test per_skill_repo_tests -- --nocapture 2>&1 | tail -
 
 Expected: FAIL — `restore_version` writes to `skills/{skill_name}/` subdirectory, not the repo root
 
-- [ ] **Step 3: Fix `restore_version` to write to repo root**
+- [x] **Step 3: Fix `restore_version` to write to repo root**
 
 In `app/src-tauri/src/git.rs`, find the `restore_version` function. Make two changes:
 
 **Change 1** — Write dir is the repo root, not a sub-path:
+
 ```rust
 // BEFORE (line ~612):
 let write_dir = crate::skill_paths::resolve_skill_dir(repo_path, plugin_slug, skill_name);
@@ -211,6 +214,7 @@ let write_dir = repo_path.to_path_buf();
 ```
 
 **Change 2** — Add `""` (empty) as the first prefix so per-skill commits (files at repo root) are found:
+
 ```rust
 // BEFORE (line ~619):
 let mut read_prefixes: Vec<String> = Vec::new();
@@ -232,7 +236,7 @@ read_prefixes.push(format!("skills/{}/", skill_name));
 read_prefixes.push(format!("{}/", skill_name));
 ```
 
-- [ ] **Step 4: Fix `extract_skill_at_tag` to support per-skill repos**
+- [x] **Step 4: Fix `extract_skill_at_tag` to support per-skill repos**
 
 Find `extract_skill_at_tag` in `git.rs`. Change the prefix logic to try per-skill root first:
 
@@ -313,7 +317,7 @@ for (full_path, content) in &all_entries {
 }
 ```
 
-- [ ] **Step 5: Fix `get_skill_files_at_sha` to add per-skill prefix**
+- [x] **Step 5: Fix `get_skill_files_at_sha` to add per-skill prefix**
 
 Find `get_skill_files_at_sha`. Add `""` as the first prefix:
 
@@ -357,7 +361,7 @@ let mut files: Vec<(String, String)> = matched
     .collect();
 ```
 
-- [ ] **Step 6: Run new tests**
+- [x] **Step 6: Run new tests**
 
 ```bash
 cd app/src-tauri && cargo test per_skill_repo_tests -- --nocapture
@@ -365,7 +369,7 @@ cd app/src-tauri && cargo test per_skill_repo_tests -- --nocapture
 
 Expected: PASS
 
-- [ ] **Step 7: Run full git test suite**
+- [x] **Step 7: Run full git test suite**
 
 ```bash
 cd app/src-tauri && cargo test git:: -- --nocapture 2>&1 | tail -20
@@ -373,7 +377,7 @@ cd app/src-tauri && cargo test git:: -- --nocapture 2>&1 | tail -20
 
 Fix any regressions before continuing.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd app && git add src-tauri/src/git.rs
@@ -385,13 +389,15 @@ git commit -m "feat: update git.rs restore/extract/history to support per-skill 
 ### Task 3: One-time migration in workspace.rs
 
 Replace the existing one-time git upgrade block with logic that:
+
 1. Detects a shared root `.git/` and migrates each skill to its own repo
 2. Removes the shared root `.git/` after migration
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/workspace.rs`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add to the `#[cfg(test)]` block in `workspace.rs` (or create `app/src-tauri/src/commands/workspace_migration_tests.rs` and declare with `#[cfg(test)] mod workspace_migration_tests;`):
 
@@ -447,7 +453,7 @@ mod migration_tests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd app/src-tauri && cargo test migration_tests -- --nocapture 2>&1 | tail -20
@@ -455,7 +461,7 @@ cd app/src-tauri && cargo test migration_tests -- --nocapture 2>&1 | tail -20
 
 Expected: compile error — `migrate_to_per_skill_repos` does not exist yet
 
-- [ ] **Step 3: Add `migrate_to_per_skill_repos` function**
+- [x] **Step 3: Add `migrate_to_per_skill_repos` function**
 
 In `app/src-tauri/src/commands/workspace.rs`, add before `init_workspace`:
 
@@ -524,7 +530,7 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
 }
 ```
 
-- [ ] **Step 4: Replace the one-time git upgrade block in `init_workspace`**
+- [x] **Step 4: Replace the one-time git upgrade block in `init_workspace`**
 
 Find the block at lines ~359–379 in `workspace.rs`:
 
@@ -569,7 +575,7 @@ Replace with:
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test migration_tests -- --nocapture
@@ -577,13 +583,13 @@ cd app/src-tauri && cargo test migration_tests -- --nocapture
 
 Expected: PASS
 
-- [ ] **Step 6: Run full workspace test suite**
+- [x] **Step 6: Run full workspace test suite**
 
 ```bash
 cd app/src-tauri && cargo test commands::workspace -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/workspace.rs
@@ -597,9 +603,10 @@ git commit -m "feat: add per-skill repo migration on startup, replace shared-roo
 Every new skill must get its own git repo the moment it is created. `post_create_skill_filesystem_inner` needs the `plugin_slug` to resolve `skill_dir`, and must call `ensure_repo(skill_dir)`.
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/skill/crud.rs`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Find the test module in `crud.rs` and add:
 
@@ -621,7 +628,7 @@ fn test_create_skill_initializes_per_skill_git_repo() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd app/src-tauri && cargo test test_create_skill_initializes_per_skill_git_repo -- --nocapture
@@ -629,7 +636,7 @@ cd app/src-tauri && cargo test test_create_skill_initializes_per_skill_git_repo 
 
 Expected: compile error — `post_create_skill_filesystem_inner` does not accept `plugin_slug` parameter
 
-- [ ] **Step 3: Add `plugin_slug` parameter and `ensure_repo` call**
+- [x] **Step 3: Add `plugin_slug` parameter and `ensure_repo` call**
 
 In `crud.rs`, find `post_create_skill_filesystem_inner`:
 
@@ -665,7 +672,7 @@ if let Some(sp) = skills_path {
 
 Remove the old `commit_all(Path::new(sp), &msg)` line that commits at the root.
 
-- [ ] **Step 4: Find all callers of `post_create_skill_filesystem_inner` and add plugin_slug**
+- [x] **Step 4: Find all callers of `post_create_skill_filesystem_inner` and add plugin_slug**
 
 ```bash
 cd app/src-tauri && grep -n "post_create_skill_filesystem_inner" src/commands/skill/crud.rs
@@ -673,17 +680,17 @@ cd app/src-tauri && grep -n "post_create_skill_filesystem_inner" src/commands/sk
 
 Update each caller to pass `plugin_slug` (it's available as `crate::skill_paths::DEFAULT_PLUGIN_SLUG` for the default plugin, or from the DB result for custom plugins).
 
-- [ ] **Step 5: Update `post_delete_skill_filesystem_inner` path similarly**
+- [x] **Step 5: Update `post_delete_skill_filesystem_inner` path similarly**
 
 Find `post_delete_skill_filesystem_inner`. Add `plugin_slug` param and change `commit_all(Path::new(sp), &msg)` to `commit_all(&skill_dir, &msg)` where `skill_dir = resolve_skill_dir(Path::new(sp), plugin_slug, name)`.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::skill -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/skill/crud.rs
@@ -697,9 +704,10 @@ git commit -m "feat: ensure_repo per skill at creation, commit at skill_dir leve
 `reset_workflow_step` and `navigate_back_to_step` call `commit_all(skills_path)` at the root BEFORE resolving `plugin_slug` / `skill_name`. Swap the ordering: resolve skill_dir first, commit at skill_dir.
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 In evaluation.rs tests, add:
 
@@ -726,7 +734,7 @@ fn test_reset_workflow_step_commits_at_skill_dir() {
 
 This test validates the setup expectation (no root git). The real fix is: `reset_workflow_step` must NOT call `commit_all(skills_path)` — the call must use `skill_dir`.
 
-- [ ] **Step 2: Locate and fix `reset_workflow_step`**
+- [x] **Step 2: Locate and fix `reset_workflow_step`**
 
 Find `reset_workflow_step` in `evaluation.rs`. Locate the `commit_all(skills_path, ...)` or `commit_all(Path::new(&skills_path), ...)` call. Move this call to AFTER `plugin_slug` and `skill_name` are resolved, and change path to `skill_dir`:
 
@@ -747,17 +755,17 @@ if let Err(e) = crate::git::commit_all(&skill_dir, &format!("reset step {}", ste
 }
 ```
 
-- [ ] **Step 3: Fix `navigate_back_to_step` similarly**
+- [x] **Step 3: Fix `navigate_back_to_step` similarly**
 
 Apply the same pattern — resolve skill_dir first, then commit at `skill_dir`.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::workflow -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/workflow/evaluation.rs
@@ -769,9 +777,10 @@ git commit -m "feat: commit at skill_dir in reset_workflow_step and navigate_bac
 ### Task 6: `refine/output.rs` — commit and tag paths → skill_dir
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/refine/output.rs`
 
-- [ ] **Step 1: Fix `restore_protected_frontmatter`**
+- [x] **Step 1: Fix `restore_protected_frontmatter`**
 
 Find `commit_all(Path::new(skills_path), ...)` in `restore_protected_frontmatter`. Change to:
 
@@ -784,7 +793,7 @@ if let Err(e) = crate::git::commit_all(&skill_dir, "restore protected frontmatte
 }
 ```
 
-- [ ] **Step 2: Fix `finalize_refine_run_inner_for_plugin`**
+- [x] **Step 2: Fix `finalize_refine_run_inner_for_plugin`**
 
 Find lines ~462–494 with `commit_all(skills_root, ...)`, `create_skill_version_tag(skills_root, ...)`, and `git2::Repository::open(Path::new(skills_path))`. Update all three:
 
@@ -807,13 +816,13 @@ let repo = git2::Repository::open(&skill_dir)
     .map_err(|e| format!("Failed to open repo: {}", e))?;
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::refine -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/refine/output.rs
@@ -825,9 +834,10 @@ git commit -m "feat: commit and tag at skill_dir in refine output"
 ### Task 7: `commands/git.rs` — history and restore path → skill_dir
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/git.rs`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `commands/git.rs` tests:
 
@@ -874,7 +884,7 @@ fn test_restore_skill_version_per_skill_repo() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd app/src-tauri && cargo test test_get_skill_history_uses_per_skill_repo test_restore_skill_version_per_skill_repo -- --nocapture
@@ -882,7 +892,7 @@ cd app/src-tauri && cargo test test_get_skill_history_uses_per_skill_repo test_r
 
 Expected: FAIL — current code opens `.git` at skills_root (which doesn't exist), or restores to wrong dir
 
-- [ ] **Step 3: Fix `get_skill_history` in `commands/git.rs`**
+- [x] **Step 3: Fix `get_skill_history` in `commands/git.rs`**
 
 ```rust
 // BEFORE:
@@ -904,7 +914,7 @@ if !skill_dir.join(".git").exists() {
 crate::git::get_history(&skill_dir, &skill_name, &plugin_slug, limit.unwrap_or(100))
 ```
 
-- [ ] **Step 4: Fix `restore_skill_version` in `commands/git.rs`**
+- [x] **Step 4: Fix `restore_skill_version` in `commands/git.rs`**
 
 ```rust
 // BEFORE:
@@ -934,7 +944,7 @@ crate::git::create_skill_version_tag(&skill_dir, &plugin_slug, &skill_name, &new
     .map_err(|e| format!("Restore committed but version tag failed (v{}): {}", new_version, e))?;
 ```
 
-- [ ] **Step 5: Fix `get_skill_files_at_sha` in `commands/git.rs`**
+- [x] **Step 5: Fix `get_skill_files_at_sha` in `commands/git.rs`**
 
 ```rust
 // BEFORE:
@@ -951,7 +961,7 @@ let pairs = crate::git::get_skill_files_at_sha(&skill_dir, &skill_name, &plugin_
     .map_err(|e| { log::error!(...); e })?;
 ```
 
-- [ ] **Step 6: Update the `init_skill_repo_plugin` test helper**
+- [x] **Step 6: Update the `init_skill_repo_plugin` test helper**
 
 The existing test helper creates a SHARED repo and must be updated. For per-skill tests, each skill needs its own repo:
 
@@ -974,13 +984,13 @@ fn init_skill_repo_plugin(
 
 Update all test usages of this helper. Ensure tests that call `get_history` or `restore_version` pass `skill_dir` not `skills_path`.
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::git -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/git.rs
@@ -994,9 +1004,10 @@ git commit -m "feat: commands/git.rs resolves skill_dir for all git operations"
 `import_skill_from_file_inner` currently uses `skills_repo = Path::new(skills_path)` for all git operations. After this task, git ops run at `skill_dir`. Also: `ensure_repo(skill_dir)` is called before committing (instead of relying on a pre-existing shared repo).
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/imported_skills/upload.rs`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 In the `tests` block of `upload.rs`, add:
 
@@ -1031,7 +1042,7 @@ fn import_skill_from_file_creates_per_skill_git_repo() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd app/src-tauri && cargo test import_skill_from_file_creates_per_skill_git_repo -- --nocapture
@@ -1039,7 +1050,7 @@ cd app/src-tauri && cargo test import_skill_from_file_creates_per_skill_git_repo
 
 Expected: FAIL — either `ensure_repo(skills_repo)` creates `.git` at root, or tag ops fail without root `.git`
 
-- [ ] **Step 3: Fix `import_skill_from_file_inner`**
+- [x] **Step 3: Fix `import_skill_from_file_inner`**
 
 Find the `import_git_result` closure in `import_skill_from_file_inner`. Replace:
 
@@ -1070,7 +1081,7 @@ let import_git_result = (|| -> Result<(), String> {
 })();
 ```
 
-- [ ] **Step 4: Update existing tests in `upload.rs`**
+- [x] **Step 4: Update existing tests in `upload.rs`**
 
 The tests `import_skill_from_file_adds_default_version_commits_and_tags` and `import_skill_from_file_rejects_existing_version_tag` currently call `crate::git::ensure_repo(&skills_path)`. Remove that call. They should check `skill_dir.join(".git").exists()` instead of `skills_path.join(".git").exists()`.
 
@@ -1089,13 +1100,13 @@ let skill_dir = crate::skill_paths::resolve_skill_dir(
 assert!(crate::git::skill_version_tag_exists(&skill_dir, ...).unwrap());
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::imported_skills::upload -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/imported_skills/upload.rs
@@ -1109,9 +1120,10 @@ git commit -m "feat: upload.rs uses per-skill git repos for import"
 Two functions need fixing: `import_marketplace_entries_to_library` (individual skill imports) and `import_marketplace_plugin_to_library` (full plugin imports).
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/github_import/commands.rs`
 
-- [ ] **Step 1: Fix `import_marketplace_entries_to_library`**
+- [x] **Step 1: Fix `import_marketplace_entries_to_library`**
 
 Find the per-skill git closure in the loop body (lines ~605–639). Replace `skills_root` with `skill_dir`:
 
@@ -1134,7 +1146,7 @@ if let Err(e) = (|| -> Result<(), String> {
 })() { ... }
 ```
 
-- [ ] **Step 2: Fix `import_marketplace_plugin_to_library`**
+- [x] **Step 2: Fix `import_marketplace_plugin_to_library`**
 
 Find the per-skill git closure in the loop body (lines ~953–978). Replace `skills_root` with `skill_dir`:
 
@@ -1156,13 +1168,13 @@ if let Err(e) = (|| -> Result<(), String> {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::github_import -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/github_import/commands.rs
@@ -1178,10 +1190,11 @@ git commit -m "feat: github_import uses per-skill git repos"
 **reconciliation.rs:** The auto-commit of untracked skill folders currently calls `commit_all(output_path, ...)` at the root. After per-skill repos, instead initialize a repo + commit for each discovered skill folder.
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/imported_skills/lifecycle.rs`
 - Modify: `app/src-tauri/src/commands/reconciliation.rs`
 
-- [ ] **Step 1: Fix `lifecycle.rs` — remove root-level `commit_all` in `delete_plugin`**
+- [x] **Step 1: Fix `lifecycle.rs` — remove root-level `commit_all` in `delete_plugin`**
 
 In `delete_plugin`, find the root `commit_all`:
 
@@ -1197,7 +1210,7 @@ if let Err(e) = crate::git::commit_all(skills_root, &msg) {
 log::info!("[delete_plugin] removed plugin dir '{}'; per-skill repos removed with it", plugin_slug);
 ```
 
-- [ ] **Step 2: Fix `lifecycle.rs` — remove root-level `commit_all` in `create_plugin_from_skills`**
+- [x] **Step 2: Fix `lifecycle.rs` — remove root-level `commit_all` in `create_plugin_from_skills`**
 
 In `create_plugin_from_skills`, find:
 
@@ -1213,7 +1226,7 @@ if let Err(e) = crate::git::commit_all(skills_root, &msg) {
 log::info!("[create_plugin_from_skills] created plugin scaffold for '{}' (no root git commit needed)", plugin_slug);
 ```
 
-- [ ] **Step 3: Fix `reconciliation.rs` — per-skill init for untracked dirs**
+- [x] **Step 3: Fix `reconciliation.rs` — per-skill init for untracked dirs**
 
 Find the `get_untracked_dirs` + `commit_all(output_path, ...)` block (lines ~57–83). Replace:
 
@@ -1255,13 +1268,13 @@ if let Ok(entries) = std::fs::read_dir(output_path) {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::imported_skills::lifecycle commands::reconciliation -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/imported_skills/lifecycle.rs src-tauri/src/commands/reconciliation.rs
@@ -1275,9 +1288,10 @@ git commit -m "feat: lifecycle removes root commit; reconciliation inits per-ski
 `backfill_missing_version_tags` calls `skill_has_any_tag(skills_root, ...)`, `commit_all(skills_root, ...)`, and `create_skill_version_tag(skills_root, ...)`. All must move to `skill_dir`.
 
 **Files:**
+
 - Modify: `app/src-tauri/src/commands/settings.rs`
 
-- [ ] **Step 1: Fix `backfill_missing_version_tags`**
+- [x] **Step 1: Fix `backfill_missing_version_tags`**
 
 Find the `if missing_version` block (lines ~179–217). Replace all `skills_root` path arguments:
 
@@ -1319,13 +1333,13 @@ crate::git::commit_all(
 )?;
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::settings -- --nocapture 2>&1 | tail -20
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd app && git add src-tauri/src/commands/settings.rs
@@ -1339,9 +1353,10 @@ git commit -m "feat: settings.rs backfill uses per-skill git repos"
 The tag-deletion call in `clean_step_output(step=3)` was added in a previous session targeting `Path::new(skills_path)`. It must now target `skill_dir`.
 
 **Files:**
+
 - Modify: `app/src-tauri/src/cleanup.rs`
 
-- [ ] **Step 1: Find and fix the delete_skill_version_tags call**
+- [x] **Step 1: Find and fix the delete_skill_version_tags call**
 
 ```bash
 grep -n "delete_skill_version_tags" app/src-tauri/src/cleanup.rs
@@ -1364,7 +1379,7 @@ if let Err(e) = crate::git::delete_skill_version_tags(&skill_dir, plugin_slug, s
 }
 ```
 
-- [ ] **Step 2: Update the `test_clean_step3_deletes_git_version_tags` test**
+- [x] **Step 2: Update the `test_clean_step3_deletes_git_version_tags` test**
 
 The test (added in a prior session) creates a repo at `skills_tmp` root. Update it to use per-skill layout:
 
@@ -1393,7 +1408,7 @@ fn test_clean_step3_deletes_git_version_tags() {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test cleanup:: -- --nocapture 2>&1 | tail -20
@@ -1401,7 +1416,7 @@ cd app/src-tauri && cargo test cleanup:: -- --nocapture 2>&1 | tail -20
 
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd app && git add src-tauri/src/cleanup.rs
@@ -1412,34 +1427,35 @@ git commit -m "fix: cleanup.rs delete_skill_version_tags targets skill_dir not s
 
 ### Task 13: Full test suite + final polish
 
-- [ ] **Step 1: Run full Rust test suite**
+- [x] **Step 1: Run full Rust test suite**
 
 ```bash
 cd app/src-tauri && cargo test -- --nocapture 2>&1 | grep -E "^(test |FAILED|error)" | tail -50
 ```
 
 Fix any remaining failures. Common patterns:
+
 - Any test calling `ensure_repo(skills_root)` instead of `ensure_repo(skill_dir)`
 - Any tag assertion expecting old format like `"skills/my-skill/v1.0.0"` → update to `"v1.0.0"`
 - Any `commit_all(skills_root, ...)` in tests → update to per-skill path
 
-- [ ] **Step 2: Run agent structural tests**
+- [x] **Step 2: Run agent structural tests**
 
 ```bash
 cd app && npm run test:agents:structural
 ```
 
-- [ ] **Step 3: Run unit tests**
+- [x] **Step 3: Run unit tests**
 
 ```bash
 cd app && npm run test:unit
 ```
 
-- [ ] **Step 4: Verify `repo-map.json` is still accurate**
+- [x] **Step 4: Verify `repo-map.json` is still accurate**
 
 Check that `rust_commands` flat-file list and sub-module entries are correct after these changes. No new files were added to `commands/`, so no update needed unless a new `.rs` file was created.
 
-- [ ] **Step 5: Final commit**
+- [x] **Step 5: Final commit**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -1447,7 +1463,7 @@ cd app && git add -p  # review any unstaged changes
 git commit -m "fix: per-skill git repos — final cleanup and test fixes"
 ```
 
-- [ ] **Step 6: Push**
+- [x] **Step 6: Push**
 
 ```bash
 git push
