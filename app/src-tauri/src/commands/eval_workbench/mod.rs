@@ -290,6 +290,29 @@ fn read_scenario(
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))
 }
 
+fn load_or_create_prompt_set_for_scenario(
+    conn: &mut rusqlite::Connection,
+    skills_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+    scenario_name: &str,
+    mode: EvalWorkbenchMode,
+) -> Result<EvalPromptSet, String> {
+    let scenario = read_scenario(skills_path, plugin_slug, skill_name, scenario_name)?;
+    if !scenario.tags.iter().any(|tag| tag.matches_mode(mode)) {
+        return Err("Scenario is not available for the selected mode".to_string());
+    }
+
+    let prompt_set_id = scenario_prompt_set_id(plugin_slug, skill_name, scenario_name, mode);
+    if let Some(prompt_set) = db_read_eval_prompt_set(conn, &prompt_set_id)? {
+        return Ok(prompt_set);
+    }
+
+    save_prompt_set_mirror_for_scenario(conn, &scenario, plugin_slug, skill_name, mode)?;
+    db_read_eval_prompt_set(conn, &prompt_set_id)?
+        .ok_or_else(|| "Prompt set not found".to_string())
+}
+
 fn validate_id(label: &str, value: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Err(format!("{label} cannot be empty"));
@@ -1912,6 +1935,14 @@ pub fn save_scenario(
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
     scenarios::write_scenario_file(&path, &scenario)?;
+    let yml_path = eval_dir.join(format!(
+        "{}.yml",
+        scenarios::slugify_scenario_name(&scenario.name)
+    ));
+    if yml_path != path && yml_path.exists() {
+        std::fs::remove_file(&yml_path)
+            .map_err(|e| format!("Failed to delete {}: {}", yml_path.display(), e))?;
+    }
 
     let mut conn = db.0.lock().map_err(|e| e.to_string())?;
     save_prompt_set_mirror_for_scenario(
@@ -2099,28 +2130,15 @@ pub async fn run_eval_workbench_legacy(
 
     let preparation = || -> Result<_, String> {
         let skills_path = resolve_skills_path(&db)?;
-        let scenario = read_scenario(
+        let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+        let prompt_set = load_or_create_prompt_set_for_scenario(
+            &mut conn,
             Path::new(&skills_path),
             &request.plugin_slug,
             &request.skill_name,
             &request.scenario_name,
-        )?;
-        let prompt_set_id = scenario_prompt_set_id(
-            &request.plugin_slug,
-            &request.skill_name,
-            &request.scenario_name,
             request.mode,
-        );
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let prompt_set = db_read_eval_prompt_set(&conn, &prompt_set_id)?
-            .ok_or_else(|| "Prompt set not found".to_string())?;
-        if !scenario
-            .tags
-            .iter()
-            .any(|tag| tag.matches_mode(request.mode))
-        {
-            return Err("Scenario is not available for the selected mode".to_string());
-        }
+        )?;
         let sidecar_candidates =
             load_sidecar_candidates(&conn, &prompt_set, &request.candidate_ids)?;
         let persisted_candidates = if prompt_set.mode == EvalWorkbenchMode::Trigger {
@@ -2287,16 +2305,17 @@ pub async fn suggest_description_candidates_legacy(
         return Err("Baseline description cannot be empty".to_string());
     }
 
-    let prompt_set_id = scenario_prompt_set_id(
-        &request.plugin_slug,
-        &request.skill_name,
-        &request.scenario_name,
-        EvalWorkbenchMode::Trigger,
-    );
     let prompt_set = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db_read_eval_prompt_set(&conn, &prompt_set_id)?
-            .ok_or_else(|| "Prompt set not found".to_string())?
+        let skills_path = resolve_skills_path(&db)?;
+        let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+        load_or_create_prompt_set_for_scenario(
+            &mut conn,
+            Path::new(&skills_path),
+            &request.plugin_slug,
+            &request.skill_name,
+            &request.scenario_name,
+            EvalWorkbenchMode::Trigger,
+        )?
     };
     if prompt_set.mode != EvalWorkbenchMode::Trigger {
         return Err("Description candidates require a trigger prompt set".to_string());
@@ -2499,6 +2518,20 @@ mod tests {
                     assertion_type: "contains".to_string(),
                     value: "assumptions".to_string(),
                 }],
+            }],
+        }
+    }
+
+    fn sample_trigger_scenario_dto(name: &str) -> ScenarioDto {
+        ScenarioDto {
+            name: name.to_string(),
+            tags: vec!["trigger".to_string()],
+            cases: vec![ScenarioCaseDto {
+                id: "case-1".to_string(),
+                prompt: "Route invoice reconciliation".to_string(),
+                expected_outcome: None,
+                should_trigger: Some(true),
+                assertions: vec![],
             }],
         }
     }
@@ -2883,5 +2916,90 @@ mod tests {
         let lib_rs = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
 
         assert!(lib_rs.contains("commands::eval_workbench::load_scenario,"));
+    }
+
+    #[test]
+    fn load_or_create_prompt_set_for_scenario_allows_file_only_run_preparation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let scenario = scenario_from_dto(dto).unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
+        scenarios::write_scenario_file(&path, &scenario).unwrap();
+        let mut conn = db.0.lock().unwrap();
+
+        let prompt_set = load_or_create_prompt_set_for_scenario(
+            &mut conn,
+            tmp.path(),
+            "skills",
+            "forecast",
+            "Regression",
+            EvalWorkbenchMode::Performance,
+        )
+        .unwrap();
+
+        assert_eq!(prompt_set.name, "Regression");
+        assert_eq!(prompt_set.mode, EvalWorkbenchMode::Performance);
+        assert_eq!(prompt_set.cases.len(), 1);
+        assert_eq!(
+            prompt_set.cases[0].expected.as_deref(),
+            Some("Includes assumptions")
+        );
+    }
+
+    #[test]
+    fn load_or_create_prompt_set_for_scenario_allows_file_only_trigger_candidate_generation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_trigger_scenario_dto("Routing checks");
+        let scenario = scenario_from_dto(dto).unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
+        scenarios::write_scenario_file(&path, &scenario).unwrap();
+        let mut conn = db.0.lock().unwrap();
+
+        let prompt_set = load_or_create_prompt_set_for_scenario(
+            &mut conn,
+            tmp.path(),
+            "skills",
+            "forecast",
+            "Routing checks",
+            EvalWorkbenchMode::Trigger,
+        )
+        .unwrap();
+
+        assert_eq!(prompt_set.name, "Routing checks");
+        assert_eq!(prompt_set.mode, EvalWorkbenchMode::Trigger);
+        assert_eq!(prompt_set.cases.len(), 1);
+        assert_eq!(prompt_set.cases[0].should_trigger, Some(true));
+    }
+
+    #[test]
+    fn save_scenario_command_replaces_existing_yml_without_duplicate_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+        let dto = sample_scenario_dto("Regression");
+        let scenario = scenario_from_dto(dto.clone()).unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        let yml_path = eval_dir.join("regression.yml");
+        scenarios::write_scenario_file(&yml_path, &scenario).unwrap();
+
+        save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            dto.clone(),
+            db_state(&db),
+        )
+        .unwrap();
+
+        let yaml_path = scenarios::scenario_file_path(&eval_dir, &dto.name);
+        let visible = list_scenarios("skills".into(), "forecast".into(), db_state(&db)).unwrap();
+
+        assert!(yaml_path.exists());
+        assert!(!yml_path.exists());
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].name, "Regression");
     }
 }
