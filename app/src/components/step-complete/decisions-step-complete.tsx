@@ -6,6 +6,8 @@ import { useDecisions, useSaveDecisionsEdit } from "@/lib/queries/decisions";
 import { StepActionBar } from "./step-action-bar";
 import type { StepCompleteBaseProps } from "./step-complete-types";
 import type { DecisionsDto, DecisionsOutput, DecisionStatus, ContradictoryInputs } from "@/generated/contracts";
+import { getDisabledSteps } from "@/lib/tauri";
+import { useWorkflowStore } from "@/stores/workflow-store";
 
 function decisionsDtoToString(dto: DecisionsDto): string {
   const contradictoryInputs: ContradictoryInputs | undefined =
@@ -45,6 +47,7 @@ export function DecisionsStepComplete(props: Props) {
 
   const { data: decisionsDto, isLoading, isError } = useDecisions(skillName ?? null);
   const saveEdit = useSaveDecisionsEdit(skillName ?? null);
+  const setDisabledSteps = useWorkflowStore((s) => s.setDisabledSteps);
 
   if (isLoading) {
     return (
@@ -90,7 +93,15 @@ export function DecisionsStepComplete(props: Props) {
           allowEdit={!reviewMode}
           onDecisionsChange={(serialized) => {
             const decisions = parseDecisions(serialized);
-            saveEdit.mutate(decisions);
+            saveEdit.mutate(decisions, {
+              onSuccess: () => {
+                if (skillName) {
+                  getDisabledSteps(skillName)
+                    .then((disabled) => setDisabledSteps(disabled))
+                    .catch(() => { /* non-fatal */ });
+                }
+              },
+            });
           }}
         />
       </div>
