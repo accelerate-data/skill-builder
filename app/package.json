@@ -41,7 +41,7 @@
     "@tanstack/react-query": "^5.100.9",
     "@tanstack/react-router": "^1.169.1",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-log": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2",
     "@tiptap/extension-mention": "^3.22.5",
