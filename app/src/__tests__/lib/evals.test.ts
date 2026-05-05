@@ -296,15 +296,15 @@ description: Transforms raw data into SCD type 2 snapshots for historical tracki
 // --- workspaceSkillDir ---
 
 describe("workspaceSkillDir", () => {
-  it("uses flat layout for default plugin slug", () => {
-    expect(workspaceSkillDir("/workspace", "skills", "my-skill")).toBe(
-      "/workspace/skills/my-skill",
+  it("uses canonical layout for default plugin slug", () => {
+    expect(workspaceSkillDir("/workspace", "default", "my-skill")).toBe(
+      "/workspace/default/skills/my-skill",
     );
   });
 
-  it("uses plugin-prefixed layout for non-default plugin", () => {
+  it("uses canonical layout for non-default plugin", () => {
     expect(workspaceSkillDir("/workspace", "my-plugin", "my-skill")).toBe(
-      "/workspace/my-plugin/my-skill",
+      "/workspace/my-plugin/skills/my-skill",
     );
   });
 });

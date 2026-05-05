@@ -1,6 +1,6 @@
 use super::migrations::*;
 use super::*;
-use crate::types::{AppSettings, ImportedSkill, ModelSettings};
+use crate::types::{AppSettings, ImportedSkill};
 
 fn create_test_db() -> Connection {
     create_test_db_for_tests()
@@ -185,7 +185,7 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
 
     let default_plugin_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM plugins WHERE slug = 'skills'",
+            "SELECT COUNT(*) FROM plugins WHERE slug = 'default'",
             [],
             |row| row.get(0),
         )
@@ -194,7 +194,7 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
 
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
     let skill = get_skill_master(&conn, "test-skill").unwrap().unwrap();
-    assert_eq!(skill.plugin_slug, "skills");
+    assert_eq!(skill.plugin_slug, crate::skill_paths::DEFAULT_PLUGIN_SLUG);
 }
 
 #[test]
@@ -487,7 +487,11 @@ fn test_redo_workflow_moves_non_default_plugin_skill_to_default_plugin() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(slug, "skills", "skill must move to default plugin on redo");
+    assert_eq!(
+        slug,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        "skill must move to default plugin on redo"
+    );
 }
 
 #[test]
@@ -2990,8 +2994,8 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
-        plugin_slug: Some("skills".to_string()),
-        plugin_display_name: Some("Skills".to_string()),
+        plugin_slug: Some(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill1).unwrap();
@@ -3013,8 +3017,8 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
-        plugin_slug: Some("skills".to_string()),
-        plugin_display_name: Some("Skills".to_string()),
+        plugin_slug: Some(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill2).unwrap();
@@ -3036,8 +3040,8 @@ fn test_list_active_skills() {
         disable_model_invocation: None,
         purpose: None,
         marketplace_source_url: None,
-        plugin_slug: Some("skills".to_string()),
-        plugin_display_name: Some("Skills".to_string()),
+        plugin_slug: Some(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill3).unwrap();
@@ -3072,8 +3076,8 @@ fn test_delete_imported_skill_by_name() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("skills".to_string()),
-        plugin_display_name: Some("Skills".to_string()),
+        plugin_slug: Some(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
@@ -3632,8 +3636,8 @@ fn test_get_imported_skill_by_id() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("skills".to_string()),
-        plugin_display_name: Some("Skills".to_string()),
+        plugin_slug: Some(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
@@ -3668,8 +3672,8 @@ fn test_delete_imported_skill_by_skill_id() {
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
-        plugin_slug: Some("skills".to_string()),
-        plugin_display_name: Some("Skills".to_string()),
+        plugin_slug: Some(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()),
+        plugin_display_name: Some(crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();

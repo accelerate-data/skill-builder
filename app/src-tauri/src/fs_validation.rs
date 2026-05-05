@@ -1,4 +1,4 @@
-use crate::skill_paths::resolve_skill_dir;
+use crate::skill_paths::resolve_existing_skill_dir;
 use std::path::Path;
 
 /// Returns `Some(3)` if SKILL.md exists in skills_path for this skill, `None` otherwise.
@@ -10,7 +10,7 @@ pub fn detect_furthest_step(
     skills_path: &str,
 ) -> Option<u32> {
     log::debug!("[detect_furthest_step] skill='{}'", skill_name);
-    let output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    let output_dir = resolve_existing_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     if output_dir.join("SKILL.md").exists() {
         Some(3)
     } else {
@@ -20,7 +20,7 @@ pub fn detect_furthest_step(
 
 /// Check if a skill has ANY output files in the skills_path directory.
 pub fn has_skill_output(plugin_slug: &str, skill_name: &str, skills_path: &str) -> bool {
-    let output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    let output_dir = resolve_existing_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     output_dir.join("SKILL.md").exists() || output_dir.join("references").is_dir()
 }
 

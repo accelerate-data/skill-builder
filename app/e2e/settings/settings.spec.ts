@@ -11,7 +11,9 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   test("can type API key and test it", async ({ page }) => {
     await page.getByRole("button", { name: "Models" }).click();
     await expect(page.getByText("Anthropic Model List")).toHaveCount(0);
-    const input = page.getByPlaceholder("sk-ant-...");
+    await page.getByRole("combobox", { name: "Provider" }).click();
+    await page.getByRole("option", { name: "Anthropic" }).click();
+    const input = page.getByPlaceholder("Provider API key");
     await input.fill("sk-ant-test-key");
 
     const testButton = page.getByRole("button", { name: "Test" }).first();
@@ -37,7 +39,9 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     });
 
     await page.getByRole("button", { name: "Models" }).click();
-    const input = page.getByPlaceholder("sk-ant-...");
+    await page.getByRole("combobox", { name: "Provider" }).click();
+    await page.getByRole("option", { name: "Anthropic" }).click();
+    const input = page.getByPlaceholder("Provider API key");
     await input.fill("sk-ant-invalid-key");
 
     const testButton = page.getByRole("button", { name: "Test" }).first();

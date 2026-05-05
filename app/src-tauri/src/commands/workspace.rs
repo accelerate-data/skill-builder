@@ -81,7 +81,9 @@ fn migrate_workspace_layout(workspace_path: &str) {
     // written before context data moved to SQLite, and clean up the dead
     // logs/ dirs created by the removed create_openhands_persistence_dir
     // function (per-run dirs were never written to).
-    // Walk: {workspace}/{plugin}/{skill}/
+    // Walk legacy and canonical workspace layouts:
+    // - legacy plugin layout: {workspace}/{plugin}/{skill}/
+    // - canonical layout:     {workspace}/{plugin}/skills/{skill}/
     let Ok(plugin_entries) = fs::read_dir(base) else {
         return;
     };
@@ -90,36 +92,47 @@ fn migrate_workspace_layout(workspace_path: &str) {
         if !plugin_path.is_dir() {
             continue;
         }
-        let Ok(skill_entries) = fs::read_dir(&plugin_path) else {
-            continue;
-        };
-        for skill_entry in skill_entries.flatten() {
-            let skill_dir = skill_entry.path();
-            if !skill_dir.is_dir() {
+        let mut candidate_roots = vec![plugin_path.clone()];
+        let canonical_skills_dir = plugin_path.join("skills");
+        if canonical_skills_dir.is_dir() {
+            candidate_roots.push(canonical_skills_dir);
+        }
+        for candidate_root in candidate_roots {
+            let Ok(skill_entries) = fs::read_dir(&candidate_root) else {
                 continue;
-            }
-            // Remove stale VU-1157 context files.
-            for name in &[
-                "context/clarifications.json",
-                "context/decisions.json",
-                "context/benchmark-meta.json",
-                "user-context.md",
-                "answer-evaluation.json",
-                "gate-result.json",
-            ] {
-                let _ = fs::remove_file(skill_dir.join(name));
-            }
-            // Remove context/ dir only if now empty.
-            let _ = fs::remove_dir(skill_dir.join("context"));
-            // Remove empty per-run dirs under logs/, then logs/ itself.
-            let logs_dir = skill_dir.join("logs");
-            if logs_dir.is_dir() {
-                if let Ok(run_entries) = fs::read_dir(&logs_dir) {
-                    for run_entry in run_entries.flatten() {
-                        let _ = fs::remove_dir(run_entry.path());
-                    }
+            };
+            for skill_entry in skill_entries.flatten() {
+                let skill_dir = skill_entry.path();
+                if !skill_dir.is_dir() {
+                    continue;
                 }
-                let _ = fs::remove_dir(&logs_dir);
+                // Skip the canonical container dir itself when walking the legacy root.
+                if skill_dir.file_name().and_then(|n| n.to_str()) == Some("skills") {
+                    continue;
+                }
+            // Remove stale VU-1157 context files.
+                for name in &[
+                    "context/clarifications.json",
+                    "context/decisions.json",
+                    "context/benchmark-meta.json",
+                    "user-context.md",
+                    "answer-evaluation.json",
+                    "gate-result.json",
+                ] {
+                    let _ = fs::remove_file(skill_dir.join(name));
+                }
+                // Remove context/ dir only if now empty.
+                let _ = fs::remove_dir(skill_dir.join("context"));
+                // Remove empty per-run dirs under logs/, then logs/ itself.
+                let logs_dir = skill_dir.join("logs");
+                if logs_dir.is_dir() {
+                    if let Ok(run_entries) = fs::read_dir(&logs_dir) {
+                        for run_entry in run_entries.flatten() {
+                            let _ = fs::remove_dir(run_entry.path());
+                        }
+                    }
+                    let _ = fs::remove_dir(&logs_dir);
+                }
             }
         }
     }
@@ -162,12 +175,38 @@ fn cleanup_stale_snapshots(workspace_path: &str) {
             }
         }
         // Plugin layout: {workspace}/{plugin}/{skill}/skill-snapshot/
+        // Canonical layout: {workspace}/{plugin}/skills/{skill}/skill-snapshot/
         let Ok(children) = fs::read_dir(&path) else {
             continue;
         };
         for child in children.flatten() {
             let child_path = child.path();
             if !child_path.is_dir() {
+                continue;
+            }
+            if child_path.file_name().and_then(|n| n.to_str()) == Some("skills") {
+                if let Ok(skill_entries) = fs::read_dir(&child_path) {
+                    for skill_entry in skill_entries.flatten() {
+                        let skill_path = skill_entry.path();
+                        if !skill_path.is_dir() {
+                            continue;
+                        }
+                        let snapshot_dir = skill_path.join("skill-snapshot");
+                        if snapshot_dir.is_dir() {
+                            match fs::remove_dir_all(&snapshot_dir) {
+                                Ok(()) => log::info!(
+                                    "[init_workspace] cleaned up stale snapshot at {}",
+                                    snapshot_dir.display()
+                                ),
+                                Err(e) => log::warn!(
+                                    "[init_workspace] failed to clean up stale snapshot at {}: {}",
+                                    snapshot_dir.display(),
+                                    e
+                                ),
+                            }
+                        }
+                    }
+                }
                 continue;
             }
             let snapshot_dir = child_path.join("skill-snapshot");
@@ -312,7 +351,7 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
 /// Migrate from a shared root git repo to per-skill git repositories.
 ///
 /// If `{skills_path}/.git/` exists (legacy shared repo), this function:
-/// 1. Enumerates all `{skills_path}/{plugin_slug}/{skill_name}/` directories.
+/// 1. Enumerates all skill directories in legacy or canonical plugin layouts.
 /// 2. Inits a per-skill repo for each that doesn't already have one.
 /// 3. Commits current files as `"initial commit"` in each new per-skill repo.
 /// 4. Removes `{skills_path}/.git/`.
@@ -328,7 +367,14 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
     );
 
     for plugin_dir in non_hidden_subdirs(skills_path) {
-        for skill_dir in non_hidden_subdirs(&plugin_dir) {
+        let canonical_skills_dir = plugin_dir.join("skills");
+        let skill_roots = if canonical_skills_dir.is_dir() {
+            vec![canonical_skills_dir]
+        } else {
+            vec![plugin_dir.clone()]
+        };
+        for skill_root in skill_roots {
+            for skill_dir in non_hidden_subdirs(&skill_root) {
             if skill_dir.join(".git").exists() {
                 log::debug!(
                     "[migrate_to_per_skill_repos] {} already has .git, skipping",
@@ -355,6 +401,7 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
                     e
                 ),
             }
+        }
         }
     }
 
@@ -553,7 +600,7 @@ mod tests {
     #[test]
     fn test_cleanup_stale_snapshots_noop_when_no_snapshots() {
         let workspace = tempfile::tempdir().unwrap();
-        let skill_dir = workspace.path().join("my-skill");
+        let skill_dir = workspace.path().join("default").join("skills").join("my-skill");
         fs::create_dir_all(skill_dir.join("references")).unwrap();
 
         cleanup_stale_snapshots(workspace.path().to_str().unwrap());
@@ -571,7 +618,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
-        // Create nested layout: root/analytics/weekly-report/SKILL.md
+        // Create legacy nested layout: root/analytics/weekly-report/SKILL.md
         // This is already the canonical layout — migration should be a no-op.
         let skill = root.join("analytics").join("weekly-report");
         fs::create_dir_all(&skill).unwrap();
@@ -582,15 +629,9 @@ mod tests {
 
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
-        // Skill should still be at the same path
-        assert!(
-            skill.join("SKILL.md").is_file(),
-            "SKILL.md should remain in place"
-        );
-        assert!(
-            skill.join("references").is_dir(),
-            "references/ should remain"
-        );
+        let migrated = root.join("analytics").join("skills").join("weekly-report");
+        assert!(migrated.join("SKILL.md").is_file(), "SKILL.md should be canonicalized");
+        assert!(migrated.join("references").is_dir(), "references/ should remain");
         assert!(root.join("analytics").is_dir(), "plugin dir should exist");
     }
 
@@ -608,8 +649,8 @@ mod tests {
 
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
-        // Skill should be at plugin path under default plugin (skills)
-        let new_skill = root.join("skills").join("my-skill");
+        // Skill should be at plugin path under default plugin
+        let new_skill = root.join("default").join("skills").join("my-skill");
         assert!(new_skill.join("SKILL.md").is_file());
     }
 
@@ -618,8 +659,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
-        // Create canonical layout directly: root/analytics/report/SKILL.md
-        let skill = root.join("analytics").join("report");
+        // Create canonical layout directly: root/analytics/skills/report/SKILL.md
+        let skill = root.join("analytics").join("skills").join("report");
         fs::create_dir_all(&skill).unwrap();
         fs::write(skill.join("SKILL.md"), "# report").unwrap();
 
@@ -659,7 +700,7 @@ mod tests {
         fs::create_dir_all(&flat).unwrap();
         fs::write(flat.join("SKILL.md"), "# flat").unwrap();
 
-        // Old nested: root/analytics/report/SKILL.md
+        // Legacy nested: root/analytics/report/SKILL.md
         let nested = root.join("analytics").join("report");
         fs::create_dir_all(&nested).unwrap();
         fs::write(nested.join("SKILL.md"), "# nested").unwrap();
@@ -667,17 +708,19 @@ mod tests {
         let _ = crate::git::ensure_repo(root);
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
-        // Flat skill should be under default plugin (directly, no inner skills/ nesting)
+        // Flat skill should be under default plugin canonical layout
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
         assert!(root
             .join(default_slug)
+            .join("skills")
             .join("my-skill")
             .join("SKILL.md")
             .is_file());
 
-        // Nested skill should stay under its plugin (already at canonical path)
+        // Nested skill should be canonicalized under its plugin.
         assert!(root
             .join("analytics")
+            .join("skills")
             .join("report")
             .join("SKILL.md")
             .is_file());
@@ -695,6 +738,7 @@ mod tests {
         let skill_dir = workspace
             .path()
             .join("some-plugin")
+            .join("skills")
             .join("some-skill");
 
         // Write stale VU-1157 context files.
@@ -770,6 +814,7 @@ mod tests {
         let skill_dir = workspace
             .path()
             .join("some-plugin")
+            .join("skills")
             .join("some-skill");
 
         fs::create_dir_all(skill_dir.join("context")).unwrap();
@@ -793,6 +838,7 @@ mod tests {
         let skill_dir = workspace
             .path()
             .join("some-plugin")
+            .join("skills")
             .join("some-skill");
 
         // Simulate dead per-run log dirs.
@@ -813,6 +859,7 @@ mod tests {
         let skill_dir = workspace
             .path()
             .join("some-plugin")
+            .join("skills")
             .join("some-skill");
 
         // A per-run dir with content should survive — remove_dir is non-recursive.
@@ -880,8 +927,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
-        // Nested: root/analytics/report/SKILL.md — already at canonical path
-        let skill = root.join("analytics").join("report");
+        // Nested: root/analytics/skills/report/SKILL.md — already at canonical path
+        let skill = root.join("analytics").join("skills").join("report");
         fs::create_dir_all(&skill).unwrap();
         fs::write(skill.join("SKILL.md"), "# report").unwrap();
 
@@ -900,7 +947,7 @@ mod migration_tests {
 
     fn setup_shared_repo(skills_path: &std::path::Path) {
         crate::git::ensure_repo(skills_path).unwrap();
-        let skill_dir = skills_path.join("skills").join("my-skill");
+        let skill_dir = skills_path.join("default").join("skills").join("my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# My skill").unwrap();
         crate::git::commit_all(skills_path, "my-skill: initial").unwrap();
@@ -927,7 +974,7 @@ mod migration_tests {
 
         super::migrate_to_per_skill_repos(skills_path);
 
-        let skill_dir = skills_path.join("skills").join("my-skill");
+        let skill_dir = skills_path.join("default").join("skills").join("my-skill");
         assert!(skill_dir.join(".git").exists(), "per-skill .git must exist after migration");
     }
 
@@ -935,7 +982,7 @@ mod migration_tests {
     fn test_migrate_to_per_skill_repos_is_noop_without_shared_git() {
         let dir = tempdir().unwrap();
         let skills_path = dir.path();
-        std::fs::create_dir_all(skills_path.join("skills").join("my-skill")).unwrap();
+        std::fs::create_dir_all(skills_path.join("default").join("skills").join("my-skill")).unwrap();
 
         // No .git at root — should be a no-op, no panic
         super::migrate_to_per_skill_repos(skills_path);
@@ -950,7 +997,7 @@ mod migration_tests {
         let skills_path = dir.path();
         // Shared root .git exists (triggers migration)
         crate::git::ensure_repo(skills_path).unwrap();
-        let skill_dir = skills_path.join("skills").join("my-skill");
+        let skill_dir = skills_path.join("default").join("skills").join("my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         // Pre-create a per-skill repo with one commit
         crate::git::ensure_repo(&skill_dir).unwrap();

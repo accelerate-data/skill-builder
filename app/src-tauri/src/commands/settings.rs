@@ -94,10 +94,7 @@ pub(crate) fn run_settings_startup_migrations(conn: &rusqlite::Connection) -> Re
     Ok(())
 }
 
-/// Migrate skill tags to the current `{plugin_slug}/{name}/vX.Y.Z` format.
-/// Handles two legacy formats:
-/// - Bare: `{name}/vX.Y.Z` (pre-plugin era)
-/// - Old marketplace: `{slug}/skills/{name}/vX.Y.Z`
+/// Migrate bare legacy skill tags into the current tag format for each skill.
 ///
 /// Guarded by the `legacy_tags_migrated` flag — runs once, then never again.
 fn migrate_legacy_skill_tags(skills_root: &Path) {
@@ -125,17 +122,6 @@ fn migrate_legacy_skill_tags(skills_root: &Path) {
         )
         .unwrap_or(0);
         total += migrated;
-
-        // Migrate old marketplace {slug}/skills/{name}/vX.Y.Z tags
-        if !skill.is_default_plugin {
-            let migrated = crate::git::migrate_marketplace_skill_tags(
-                skills_root,
-                &skill.plugin_slug,
-                &skill.skill_name,
-            )
-            .unwrap_or(0);
-            total += migrated;
-        }
     }
     if total > 0 {
         log::info!(
@@ -606,7 +592,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let skills_path = dir.path().join("skills");
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_dir = skills_path.join(plugin).join("legacy-skill");
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(&skills_path, plugin, "legacy-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         // Per-skill git repo lives at the skill directory itself.
         crate::git::ensure_repo(&skill_dir).unwrap();

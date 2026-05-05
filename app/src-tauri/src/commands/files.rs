@@ -30,6 +30,23 @@ fn list_skill_files_with_plugin_roots(
 ) -> Result<Vec<SkillFileEntry>, String> {
     super::imported_skills::validate_skill_name(skill_name)?;
 
+    let workspace_root = Path::new(workspace_path);
+    if workspace_root.exists() {
+        let canonical_workspace = fs::canonicalize(workspace_root).map_err(|e| {
+            format!(
+                "Failed to canonicalize workspace '{}': {}",
+                workspace_root.display(),
+                e
+            )
+        })?;
+        if !is_within_allowed_roots(&canonical_workspace, allowed_roots) {
+            return Err(format!(
+                "List rejected: '{}' is outside allowed roots",
+                canonical_workspace.display()
+            ));
+        }
+    }
+
     let skill_dir = resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     // Validate workspace_path is within allowed roots
     if skill_dir.exists() {
@@ -410,8 +427,11 @@ mod tests {
     use tempfile::tempdir;
 
     fn setup_skill_dir(base: &Path) {
-        // workspace_skill_dir resolves to base/{DEFAULT_PLUGIN_SLUG}/my-skill
-        let skill = base.join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+        // workspace_skill_dir resolves to base/{DEFAULT_PLUGIN_SLUG}/skills/my-skill
+        let skill = base
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("skills")
+            .join("my-skill");
         fs::create_dir_all(skill.join("context")).unwrap();
         fs::create_dir_all(skill.join("skill").join("references")).unwrap();
         fs::write(skill.join("skill").join("SKILL.md"), "# My Skill").unwrap();

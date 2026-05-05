@@ -23,7 +23,7 @@
       ]
     },
     {
-      "description": "[positive] business-process research asks business-rule questions not file-format contracts",
+      "description": "[positive] business-process research asks business-rule questions and avoids output-format or test-case asks",
       "vars": {
         "skill_name": "measuring-pipeline-value",
         "skill_slug": "measuring-pipeline-value",
@@ -33,7 +33,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "(() => { const data = JSON.parse(output.trim()); const sections = data.research_output?.sections || []; const questions = sections.flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const businessTerms = ['metric', 'calculation', 'stage', 'hierarchy', 'reconciliation', 'booking', 'forecast'].filter((term) => text.includes(term)).length; const modelingTerms = ['fabric', 'lakehouse', 'dbt', 'model'].filter((term) => text.includes(term)).length; const badFormatContract = /(csv|json|soql|file format|upload|spreadsheet).{0,40}(input|contract|format|required|provide)|what file format/i.test(text); return data.status === 'research_complete' && questions.length > 0 && businessTerms >= 3 && modelingTerms >= 1 && !badFormatContract; })()"
+          "value": "(() => { const data = JSON.parse(output.trim()); const sections = data.research_output?.sections || []; const questions = sections.flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const businessTerms = ['metric', 'calculation', 'stage', 'hierarchy', 'reconciliation', 'booking', 'forecast'].filter((term) => text.includes(term)).length; const modelingTerms = ['fabric', 'lakehouse', 'dbt', 'model'].filter((term) => text.includes(term)).length; const badFormatContract = /(csv|json|soql|file format|upload|spreadsheet).{0,40}(input|contract|format|required|provide)|what file format|output format|artifact contract|naming contract|presentation layout/i.test(text); const badEvalAsks = /test case|test cases|eval case|validation suite|smoke check/i.test(text); return data.status === 'research_complete' && questions.length > 0 && businessTerms >= 3 && modelingTerms >= 1 && !badFormatContract && !badEvalAsks; })()"
         }
       ]
     },
@@ -53,7 +53,7 @@
       ]
     },
     {
-      "description": "[positive] data-engineering research asks modeling reconciliation quality dbt dlt Fabric questions",
+      "description": "[positive] data-engineering research asks modeling reconciliation quality dbt dlt Fabric questions without output-format or test-case asks",
       "vars": {
         "skill_name": "fabric-dbt-standards",
         "skill_slug": "fabric-dbt-standards",
@@ -63,7 +63,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "(() => { const data = JSON.parse(output.trim()); const questions = (data.research_output?.sections || []).flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const terms = ['model', 'reconciliation', 'quality', 'dbt', 'dlt', 'fabric', 'lakehouse', 'deployment'].filter((term) => text.includes(term)).length; return data.status === 'research_complete' && questions.length > 0 && terms >= 6; })()"
+          "value": "(() => { const data = JSON.parse(output.trim()); const questions = (data.research_output?.sections || []).flatMap((s) => s.questions || []); const text = questions.map((q) => `${q.title} ${q.text} ${(q.choices || []).map((c) => c.text).join(' ')}`).join(' ').toLowerCase(); const terms = ['model', 'reconciliation', 'quality', 'dbt', 'dlt', 'fabric', 'lakehouse', 'deployment'].filter((term) => text.includes(term)).length; const badFormatContract = /output format|artifact contract|schema naming|naming contract|presentation layout|what file format/i.test(text); const badEvalAsks = /test case|test cases|eval case|validation suite|smoke check/i.test(text); return data.status === 'research_complete' && questions.length > 0 && terms >= 6 && !badFormatContract && !badEvalAsks; })()"
         }
       ]
     },

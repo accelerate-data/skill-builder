@@ -10,30 +10,6 @@
 
 **Design doc:** `docs/design/plugin-path-restructure/README.md`
 
-## Verified Status
-
-- [x] Canonical skill paths now resolve to `{skills_dir}/{plugin_slug}/skills/{skill_name}`.
-- [x] Default plugin slug/display name now use `default` / `Default`.
-- [x] Skill discovery supports canonical nested layout plus legacy plugin and flat layouts.
-- [x] Git read-prefix priority now prefers `{plugin}/skills/{name}/`, with legacy fallbacks retained.
-- [x] `migrate_marketplace_skill_tags` has been removed from the active code path.
-- [x] Design doc exists and is now indexed from `docs/design/README.md`.
-- [x] Targeted validation for the path restructure is green.
-- [x] Broad repo quality gates are fully green.
-
-## Verified Acceptance Criteria
-
-- [x] `plugin-paths.json` uses `{root}/{plugin_slug}/skills/{skill_name}` and matching workspace/tag templates.
-- [x] `DEFAULT_PLUGIN_SLUG` is `"default"` in `skill_paths.rs`.
-- [x] `enumerate_skill_locations` discovers the new canonical `{plugin}/skills/{name}` layout.
-- [x] `enumerate_skill_locations` still discovers the legacy `{plugin}/{name}` layout.
-- [x] `migrate_marketplace_skill_tags` is removed from live call paths.
-- [x] Git read-prefix order prefers `{plugin}/skills/{name}/` at position 0.
-- [x] Tests cover canonical resolution, legacy discovery, and simultaneous discovery of both layouts.
-- [x] Targeted acceptance-criteria validation is passing.
-
-> Status note: the unchecked boxes below are historical red-phase or commit steps that were not executed in this worktree. The acceptance-criteria slice and broad repo quality gates are now green.
-
 ---
 
 ## File Structure
@@ -53,7 +29,7 @@
 - Modify: `app/plugin-paths.json`
 - Test: `app/src-tauri/src/skill_paths.rs` (existing tests catch regressions)
 
-- [x] **Step 1: Write failing tests**
+- [ ] **Step 1: Write failing tests**
 
 Add to `app/src-tauri/src/skill_paths.rs` tests module:
 
@@ -89,7 +65,7 @@ cd app && cargo test --manifest-path src-tauri/Cargo.toml skill_paths 2>&1 | gre
 
 Expected: 3 failures with path mismatch.
 
-- [x] **Step 3: Update `plugin-paths.json`**
+- [ ] **Step 3: Update `plugin-paths.json`**
 
 ```json
 {
@@ -107,7 +83,7 @@ Expected: 3 failures with path mismatch.
 }
 ```
 
-- [x] **Step 4: Run tests — verify 3 new tests pass**
+- [ ] **Step 4: Run tests — verify 3 new tests pass**
 
 ```bash
 cd app && cargo test --manifest-path src-tauri/Cargo.toml skill_paths::tests::test_skill_dir 2>&1 | grep -E "FAILED|ok"
@@ -128,7 +104,7 @@ git commit -m "feat: add skills/ level to plugin-paths.json path templates"
 
 - Modify: `app/src-tauri/src/skill_paths.rs` (line 5–6)
 
-- [x] **Step 1: Write failing test**
+- [ ] **Step 1: Write failing test**
 
 ```rust
 #[test]
@@ -143,7 +119,7 @@ fn test_default_plugin_slug_is_default() {
 cd app && cargo test --manifest-path src-tauri/Cargo.toml test_default_plugin_slug_is_default 2>&1 | grep -E "FAILED|ok"
 ```
 
-- [x] **Step 3: Update the constants**
+- [ ] **Step 3: Update the constants**
 
 In `app/src-tauri/src/skill_paths.rs`:
 
@@ -152,7 +128,7 @@ pub const DEFAULT_PLUGIN_SLUG: &str = "default";
 pub const DEFAULT_PLUGIN_DISPLAY_NAME: &str = "Default";
 ```
 
-- [x] **Step 4: Run full skill_paths tests and fix any broken assertions**
+- [ ] **Step 4: Run full skill_paths tests and fix any broken assertions**
 
 ```bash
 cd app && cargo test --manifest-path src-tauri/Cargo.toml skill_paths 2>&1 | grep -E "FAILED|ok|error"
@@ -177,7 +153,7 @@ git commit -m "feat: change DEFAULT_PLUGIN_SLUG from 'skills' to 'default'"
 
 The new canonical is a three-level layout: `root/{plugin}/skills/{name}/`. The current function does a two-level scan (`root/{slug}/{name}/`). It needs to recognise `skills/` as the fixed subdirectory and scan one level deeper for it, while retaining discovery of old two-level layouts.
 
-- [x] **Step 1: Write failing tests**
+- [ ] **Step 1: Write failing tests**
 
 ```rust
 #[test]
@@ -234,7 +210,7 @@ fn test_enumerate_discovers_both_layouts_simultaneously() {
 cd app && cargo test --manifest-path src-tauri/Cargo.toml test_enumerate_discovers_new_canonical 2>&1 | grep -E "FAILED|ok"
 ```
 
-- [x] **Step 3: Rewrite `enumerate_skill_locations`**
+- [ ] **Step 3: Rewrite `enumerate_skill_locations`**
 
 Replace the body of the function in `skill_paths.rs`:
 
@@ -338,7 +314,7 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
 }
 ```
 
-- [x] **Step 4: Run all enumerate tests — verify they pass**
+- [ ] **Step 4: Run all enumerate tests — verify they pass**
 
 ```bash
 cd app && cargo test --manifest-path src-tauri/Cargo.toml enumerate 2>&1 | grep -E "FAILED|ok"
@@ -361,7 +337,7 @@ git commit -m "feat: update enumerate_skill_locations for {plugin}/skills/{name}
 
 The current read-prefix order in the version restore path incorrectly labels `{plugin}/skills/{name}/` as "old marketplace layout". After this change it is the canonical format and must be first priority. The `migrate_marketplace_skill_tags` function migrated tags away from the correct canonical — remove it.
 
-- [x] **Step 1: Write failing test**
+- [ ] **Step 1: Write failing test**
 
 Find the test for `migrate_marketplace_skill_tags` in `git.rs` or its test module. The test should no longer pass (function is removed). Add a test for the correct read-prefix priority:
 
@@ -375,7 +351,7 @@ fn test_canonical_read_prefix_is_plugin_skills_name() {
 }
 ```
 
-- [x] **Step 2: In `git.rs`, update the read-prefix array**
+- [ ] **Step 2: In `git.rs`, update the read-prefix array**
 
 Find the comment block around line 612–625 that lists read prefixes. Update to:
 
@@ -390,7 +366,7 @@ read_prefixes.push(format!("{}/{}/", plugin_slug, skill_name));        // legacy
 read_prefixes.push(format!("{}/", skill_name));                        // legacy flat
 ```
 
-- [x] **Step 3: Remove `migrate_marketplace_skill_tags`**
+- [ ] **Step 3: Remove `migrate_marketplace_skill_tags`**
 
 Delete the entire `migrate_marketplace_skill_tags` function and all its call sites. Search for callers:
 
@@ -400,7 +376,7 @@ grep -rn "migrate_marketplace_skill_tags" app/src-tauri/src/ | grep -v "^Binary"
 
 Remove each call site. If it was called on startup (e.g., in `commands/workspace.rs` or `commands/settings.rs`), remove that call.
 
-- [x] **Step 4: Run git-related tests**
+- [ ] **Step 4: Run git-related tests**
 
 ```bash
 cd app && cargo test --manifest-path src-tauri/Cargo.toml git 2>&1 | grep -E "FAILED|ok|error"
@@ -430,7 +406,7 @@ git commit -m "fix: promote {plugin}/skills/{name}/ to canonical git read-prefix
 - Modify: `docs/design/README.md` (add entry for plugin-path-restructure)
 - Modify: `app/plugin-paths.json` (already done in Task 1 — verify examples are correct)
 
-- [x] **Step 1: Add design doc entry**
+- [ ] **Step 1: Add design doc entry**
 
 In `docs/design/README.md`, add a row to the table:
 

@@ -19,17 +19,11 @@ Make sure the clarified record can answer:
 
 - What should this skill enable the assistant to do?
 - When should this skill trigger? Include expected user phrases and contexts.
-- What is the expected output format?
-- Should we set up test cases to verify the skill works? Skills with
-  objectively verifiable outputs, such as file transforms, data extraction,
-  code generation, or fixed workflow steps, usually benefit from test cases.
-  Skills with subjective outputs, such as writing style or art direction, often
-  do not need them. Suggest the appropriate default based on the skill type, but
-  let the user decide.
+- What workflow decisions, defaults, exclusions, and domain constraints are still materially unclear?
 
 ## Interview And Research
 
-Proactively add only the questions or refinements still needed about edge cases, input and output formats, example files, success criteria, and dependencies. Wait to write test prompts until these decisions are clear enough to avoid weak or misleading evals.
+Proactively add only the questions or refinements still needed about edge cases, examples, workflow decisions, success criteria, defaults, and dependencies. Do not turn detailed research into output-format negotiation or eval design.
 
 Check available MCPs when useful for research, such as searching docs, finding
 similar skills, or looking up best practices. Use parallel research via

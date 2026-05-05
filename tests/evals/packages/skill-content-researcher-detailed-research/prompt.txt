@@ -52,5 +52,6 @@ Existing clarifications_json:
 Return JSON only. Preserve `clarifications_json.sections` as an array, keep `section_count` consistent with the sections array, and keep `clarifications_json.metadata.question_count` consistent with the questions represented in the sections.
 The output may add a new section, add a top-level question to the existing section, and add refinements under existing questions. Preserve Q1, Q2, and Q3. Do not rewrite their answers.
 Only add refinement questions when the human response leaves real confusion, a material clarification gap, or missing organization-specific information that cannot be answered from general LLM background knowledge and would affect skill performance.
+Do not add output-format or test-case refinements for this skill family unless the context is explicitly about file handling or evaluation design.
 Every top-level question and every refinement must use canonical question fields: id, title, text, must_answer, choices, and refinements. Section IDs are numeric.
 Required top-level fields: status="detailed_research_complete", refinement_count integer, section_count integer, clarifications_json.version="1", clarifications_json.metadata, clarifications_json.sections array.

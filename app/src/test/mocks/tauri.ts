@@ -3,10 +3,22 @@ import { vi } from "vitest";
 // Mock @tauri-apps/api/core
 // Default: resolve for fire-and-forget commands; return empty lists for common
 // non-critical initialization/listing commands; undefined for other unknown commands.
-const defaultInvokeImpl = (cmd: string) =>
-  (cmd === "list_imported_skills" || cmd === "get_skill_history")
-      ? Promise.resolve([])
-      : undefined;
+const defaultInvokeImpl = (cmd: string) => {
+  if (
+    cmd === "list_imported_skills" ||
+    cmd === "get_skill_history" ||
+    cmd === "list_documents" ||
+    cmd === "list_skills_for_documents"
+  ) {
+    return Promise.resolve([]);
+  }
+
+  if (cmd === "get_clarifications") {
+    return Promise.resolve(null);
+  }
+
+  return undefined;
+};
 export const mockInvoke = vi.fn().mockImplementation(defaultInvokeImpl);
 export const mockListen = vi.fn(() => Promise.resolve(() => {}));
 

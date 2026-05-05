@@ -6,7 +6,8 @@ import { queryKeys } from "./query-keys";
 export function useClarifications(skillId: string | null) {
   return useQuery({
     queryKey: queryKeys.clarifications.bySkill(skillId ?? ""),
-    queryFn: () => invokeCommand("get_clarifications", { skillId: skillId! }),
+    queryFn: async () =>
+      (await invokeCommand("get_clarifications", { skillId: skillId! })) ?? null,
     enabled: !!skillId,
   });
 }

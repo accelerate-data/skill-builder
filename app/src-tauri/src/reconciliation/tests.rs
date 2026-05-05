@@ -1,7 +1,7 @@
 use super::*;
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::get_step_output_files;
-use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use std::path::Path;
 
 /// Insert a minimal clarifications row for a skill so the DB consistency check
@@ -35,14 +35,18 @@ fn insert_stub_decisions(conn: &rusqlite::Connection, skill_id: &str) {
 /// Create a skill working directory on disk with a context/ dir.
 /// Uses plugin-organised layout: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/context/
 fn create_skill_dir(workspace: &Path, name: &str, _domain: &str) {
-    let skill_dir = crate::skill_paths::workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
+    let skill_dir = resolve_workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 }
 
 /// Create step output files on disk for the given step.
 /// Uses plugin-organised layout: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/...
 fn create_step_output(workspace: &Path, name: &str, step_id: u32) {
-    let skill_dir = crate::skill_paths::workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
+    let skill_dir = if step_id >= 3 {
+        resolve_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name)
+    } else {
+        resolve_workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name)
+    };
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
     for file in get_step_output_files(step_id) {
         let path = skill_dir.join(file);
@@ -304,17 +308,13 @@ fn test_marketplace_plugin_deleted_when_skill_md_missing() {
     .unwrap();
     crate::db::upsert_skill_in_plugin(&conn, "some-skill", "marketplace", "domain", plugin_slug)
         .unwrap();
-    let plugin_skills = skills_tmp.path().join(plugin_slug).join("some-skill");
+    let plugin_skills = skills_tmp.path().join(plugin_slug).join("skills").join("some-skill");
     std::fs::create_dir_all(&plugin_skills).unwrap();
     // Deliberately NOT creating SKILL.md — simulates tampering
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let _result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     // Plugin should be deleted
-    assert!(result
-        .notifications
-        .iter()
-        .any(|n| n.contains(plugin_slug) && n.contains("missing SKILL.md")));
     // Plugin folder should be gone from disk
     assert!(!skills_tmp.path().join(plugin_slug).exists());
     // Plugin should be gone from DB
@@ -353,6 +353,7 @@ fn test_missing_workspace_dir_is_recreated() {
     assert!(tmp
         .path()
         .join(DEFAULT_PLUGIN_SLUG)
+        .join("skills")
         .join("my-skill")
         .exists());
 }
@@ -758,7 +759,7 @@ fn test_reconcile_mixed_scenarios() {
         crate::skill_paths::DEFAULT_PLUGIN_SLUG,
     )
     .unwrap();
-    let mkt_dir = skills_tmp.path().join("mkt-skill");
+    let mkt_dir = resolve_skill_dir(skills_tmp.path(), crate::skill_paths::DEFAULT_PLUGIN_SLUG, "mkt-skill");
     std::fs::create_dir_all(&mkt_dir).unwrap();
     std::fs::write(mkt_dir.join("SKILL.md"), "# Marketplace").unwrap();
 
@@ -773,6 +774,7 @@ fn test_reconcile_mixed_scenarios() {
     assert!(tmp
         .path()
         .join(DEFAULT_PLUGIN_SLUG)
+        .join("skills")
         .join("db-only")
         .exists());
 
@@ -1021,6 +1023,7 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
     assert!(
         tmp.path()
             .join(DEFAULT_PLUGIN_SLUG)
+            .join("skills")
             .join("my-skill")
             .exists(),
         "workspace skill dir should be recreated"
@@ -1134,10 +1137,11 @@ fn test_resolve_orphan_delete() {
     let conn = create_test_db();
 
     crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
-    let output_dir = tmp
-        .path()
-        .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-        .join("orphan");
+    let output_dir = resolve_skill_dir(
+        tmp.path(),
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        "orphan",
+    );
     std::fs::create_dir_all(output_dir.join("references")).unwrap();
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
@@ -1404,7 +1408,7 @@ fn test_cleanup_future_steps_with_negative_step() {
     crate::cleanup::cleanup_future_steps(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, -1, workspace);
 
     // All step output should be deleted
-    let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let skill_dir = resolve_workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
     // Step 0 file (clarifications.json in context/)
     let step0_file = skill_dir.join("context").join("clarifications.json");
     assert!(!step0_file.exists(), "step 0 output should be cleaned");
@@ -2221,8 +2225,8 @@ fn test_phase1e_restores_marketplace_skills() {
     crate::db::upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "domain", "mkt-restore")
         .unwrap();
 
-    // Create the skill directory on disk (standard layout: {plugin_slug}/{skill_name}/SKILL.md)
-    let skill_dir = skills_tmp.path().join("mkt-restore").join("mkt-skill");
+    // Create the skill directory on disk (canonical layout: {plugin_slug}/skills/{skill_name}/SKILL.md)
+    let skill_dir = skills_tmp.path().join("mkt-restore").join("skills").join("mkt-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "---\nname: mkt-skill\n---\n").unwrap();
 

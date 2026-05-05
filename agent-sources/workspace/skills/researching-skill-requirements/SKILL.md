@@ -1,6 +1,6 @@
 ---
 name: researching-skill-requirements
-description: Use when deciding what to research and what clarification questions to ask so user intent, trigger conditions, outputs, examples, edge cases, tests, and dependencies can inform creation or refinement of a skill.
+description: Use when deciding what to research and what clarification questions to ask so user intent, trigger conditions, examples, edge cases, dependencies, and guardrails can inform creation or refinement of a skill.
 user_invocable: false
 ---
 
@@ -10,7 +10,7 @@ This skill helps the `skill-creator` agent decide what information is still need
 
 ## Core Job
 
-Produce high-value clarification questions for skill-building. Focus on questions whose answers would materially change the future skill's trigger conditions, instructions, examples, inputs, outputs, tests, dependencies, or guardrails.
+Produce high-value clarification questions for skill-building. Focus on questions whose answers would materially change the future skill's trigger conditions, instructions, examples, inputs, workflow decisions, dependencies, or guardrails.
 
 Do not ask broad interview questions just to fill space. Prefer fewer high-delta questions over a long generic questionnaire.
 
@@ -23,11 +23,24 @@ Make sure the clarification record can answer:
 - What should this skill enable the agent to do?
 - When should this skill trigger, including expected user phrases and contexts?
 - What input files, systems, tools, documents, or examples should it inspect?
-- What output format, artifact contract, schema, naming, or handoff should it produce?
-- What edge cases, exclusions, dependencies, or success criteria matter?
-- Should test cases verify the skill? Skills with objectively verifiable outputs, such as file transforms, data extraction, code generation, or fixed workflow steps, usually benefit from tests. Skills with subjective outputs, such as writing style or art direction, often do not.
+- What workflow decisions, edge cases, exclusions, dependencies, or success criteria matter?
 
-Suggest the appropriate default for tests based on the skill type, but let the user decide.
+## Invariants
+
+1. Do not ask about output formats, artifact contracts, schemas, naming contracts, or presentation layouts for this skill family.
+2. Do not ask the user to design test cases, eval cases, or validation suites. Eval design belongs to the separate evaluation workflow.
+3. Do not ask about CSV, JSON, or user-provided file formats unless the skill's purpose is explicitly source extraction, file ingestion, or file handling.
+4. Do not ask about reporting formats such as dashboards or charts unless the skill's purpose is explicitly about presenting analytical data.
+5. Preserve the user's domain vocabulary in question text instead of replacing it with generic abstractions.
+6. Prefer questions about semantics, rules, transformations, constraints, grain, lineage, reconciliation, and operational behavior over deliverable formatting.
+7. Ask only questions whose answers would materially change the skill's trigger conditions, reusable workflow, decision rules, assumptions, or guardrails.
+
+## Defaults
+
+- Assume these skills are used to build durable data engineering pipelines, not one-off deliverables.
+- Assume data is extracted from systems of record and stored in the lakehouse following the medallion architecture unless the user context explicitly says otherwise.
+- For business-process skills, default toward conceptual source entities, metric semantics, modeling implications, reconciliation expectations, and validation logic rather than extraction mechanics.
+- Treat eval design as downstream work. Research should gather the domain and workflow decisions that later evaluation can validate.
 
 ## Purpose-Specific Lenses
 
@@ -43,13 +56,6 @@ For these lenses, preserve the user's domain vocabulary in question text instead
 - Data engineering standards questions should explicitly cover the relevant modeling, reconciliation, data quality, dbt, dlt, Fabric Lakehouse, and deployment standards when those concepts appear in the user context.
 - Source system customization questions should explicitly cover the relevant source API or export mechanics, CDC, custom fields, custom status or stage values, schema drift, rate limits, extraction behavior, ingestion behavior, and transformations when those concepts appear in the user context.
 
-## Invariants
-
-1. Do not ask about CSV, JSON, or user-provided file formats unless the skill's purpose is explicitly source extraction, file ingestion, or file handling.
-3. Do not ask about reporting formats like Dashboards, Charts unless the skill's purpose is explicitly about presentation of analytical data.
-4. Data will be always extracted from the systems of record and stored in the lakehouse following the medallion architecture.
-5. For business-process skills, ask about conceptual source entities, metric semantics, modeling implications, and validation instead.
-
 ## Scope Guard
 
 Privately assess whether the available context is useful enough for skill-building before adding questions.
@@ -63,7 +69,7 @@ Trigger the scope guard when:
 - Candidate questions would mostly ask for generic best practices that the model or current documentation can already answer.
 - Existing answers are sufficient and no material skill-building gap remains.
 
-Do not trigger the scope guard merely because the context is detailed or names many domain concepts. In initial research, ask questions whenever the available context does not explicitly settle the core intent, trigger conditions, expected outputs, test expectations, edge cases, exclusions, and purpose-specific decisions that would govern the final skill.
+Do not trigger the scope guard merely because the context is detailed or names many domain concepts. In initial research, ask questions whenever the available context does not explicitly settle the core intent, trigger conditions, workflow decisions, edge cases, exclusions, defaults, and purpose-specific decisions that would govern the final skill.
 
 When the scope guard triggers, do not manufacture questions. Follow the current step prompt for the exact output shape, warning fields, and preservation rules.
 
@@ -72,6 +78,7 @@ When the scope guard triggers, do not manufacture questions. Follow the current 
 Distinguish user-owned decisions from researchable facts.
 
 - Ask the user about organization-specific rules, preferences, examples, exceptions, trigger contexts, and expected outputs.
+- Ask the user about organization-specific rules, preferences, examples, exceptions, trigger contexts, workflow decisions, and domain constraints.
 - Research public or tool-specific facts when that reduces burden on the user, such as current vendor behavior, API syntax, known best practices, or similar skill patterns.
 - Do not use public research to replace organization-specific answers.
 - Check available MCPs when they are useful for searching docs, finding similar skills, inspecting examples, or looking up best practices.
@@ -86,13 +93,12 @@ Good candidate questions clarify one of these:
 - Capability: what the skill should enable the agent to do.
 - Triggering: when future agents should load the skill.
 - Inputs: files, systems, documents, tools, schemas, or examples to inspect.
-- Outputs: format, artifact location, schema, naming, or downstream handoff.
 - Process: ordered steps, decision rules, approvals, exceptions, or failure handling.
-- Standards: organization-specific conventions, quality gates, review criteria, testing expectations, or platform constraints.
+- Standards: organization-specific conventions, quality gates, review criteria, or platform constraints.
 - Examples: representative good and bad cases.
-- Validation: tests, evals, smoke checks, or manual review criteria.
+- Validation semantics: reconciliation expectations, correctness checks, or review criteria that affect the skill's logic without turning research into eval design.
 
-Drop questions whose answer would not change the skill's behavior, examples, triggering, or validation.
+Drop questions whose answer would not change the skill's behavior, examples, triggering, assumptions, or validation semantics.
 
 ## Clarifications Model
 

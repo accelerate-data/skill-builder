@@ -372,6 +372,26 @@ fn discover_workspace_skill_dirs(workspace: &Path) -> Result<Vec<PathBuf>, Strin
             continue;
         }
 
+        let canonical_skills_dir = plugin_path.join("skills");
+        if canonical_skills_dir.is_dir() {
+            for skill_entry in std::fs::read_dir(&canonical_skills_dir).map_err(|e| {
+                format!(
+                    "Failed to read workspace plugin skills dir {}: {}",
+                    canonical_skills_dir.display(),
+                    e
+                )
+            })? {
+                let skill_entry = skill_entry
+                    .map_err(|e| format!("Failed to read workspace skill entry: {}", e))?;
+                let skill_path = skill_entry.path();
+                if skill_path.is_dir()
+                    && !skill_entry.file_name().to_string_lossy().starts_with('.')
+                {
+                    dirs.push(skill_path);
+                }
+            }
+        }
+
         for skill_entry in std::fs::read_dir(&plugin_path).map_err(|e| {
             format!(
                 "Failed to read workspace plugin dir {}: {}",
@@ -382,13 +402,16 @@ fn discover_workspace_skill_dirs(workspace: &Path) -> Result<Vec<PathBuf>, Strin
             let skill_entry =
                 skill_entry.map_err(|e| format!("Failed to read workspace skill entry: {}", e))?;
             let skill_path = skill_entry.path();
-            if skill_path.is_dir() && !skill_entry.file_name().to_string_lossy().starts_with('.') {
-                dirs.push(skill_path);
+            let file_name = skill_entry.file_name().to_string_lossy().to_string();
+            if file_name.starts_with('.') || file_name == "skills" || !skill_path.is_dir() {
+                continue;
             }
+            dirs.push(skill_path);
         }
     }
 
     dirs.sort();
+    dirs.dedup();
     Ok(dirs)
 }
 

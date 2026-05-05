@@ -24,6 +24,7 @@ pub fn list_imported_skills(
 #[cfg(test)]
 mod tests {
     use crate::db::create_test_db_for_tests;
+    use crate::skill_paths::{DEFAULT_PLUGIN_DISPLAY_NAME, DEFAULT_PLUGIN_SLUG};
     use crate::types::ImportedSkill;
 
     /// list_imported_skills is a thin wrapper over db::list_imported_skills_filtered.
@@ -52,8 +53,8 @@ mod tests {
             user_invocable: None,
             disable_model_invocation: None,
             marketplace_source_url: None,
-            plugin_slug: Some("skills".to_string()),
-            plugin_display_name: Some("Skills".to_string()),
+            plugin_slug: Some(DEFAULT_PLUGIN_SLUG.to_string()),
+            plugin_display_name: Some(DEFAULT_PLUGIN_DISPLAY_NAME.to_string()),
             is_default_plugin: Some(true),
         };
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();

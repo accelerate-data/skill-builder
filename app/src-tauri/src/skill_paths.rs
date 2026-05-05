@@ -2,8 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const DEFAULT_PLUGIN_SLUG: &str = "skills";
-pub const DEFAULT_PLUGIN_DISPLAY_NAME: &str = "Skills";
+pub const DEFAULT_PLUGIN_SLUG: &str = "default";
+pub const DEFAULT_PLUGIN_DISPLAY_NAME: &str = "Default";
 
 // --- Centralised path templates (from app/plugin-paths.json) ---
 
@@ -112,6 +112,39 @@ pub fn resolve_workspace_skill_dir(
     workspace_skill_dir(workspace, plugin_slug, skill_name)
 }
 
+fn dedupe_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|existing| existing == &path) {
+            deduped.push(path);
+        }
+    }
+    deduped
+}
+
+pub fn workspace_skill_dir_candidates(
+    workspace: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Vec<PathBuf> {
+    dedupe_paths([
+        workspace_skill_dir(workspace, plugin_slug, skill_name),
+        workspace.join(plugin_slug).join(skill_name),
+        workspace.join(skill_name),
+    ])
+}
+
+pub fn resolve_existing_workspace_skill_dir(
+    workspace: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> PathBuf {
+    workspace_skill_dir_candidates(workspace, plugin_slug, skill_name)
+        .into_iter()
+        .find(|path| path.exists())
+        .unwrap_or_else(|| workspace_skill_dir(workspace, plugin_slug, skill_name))
+}
+
 /// OpenHands agent root inside a workflow workspace skill directory.
 pub fn workspace_agents_dir(workspace_skill_dir: &Path) -> PathBuf {
     workspace_skill_dir.join(".agents")
@@ -128,7 +161,7 @@ pub fn workspace_agent_skills_dir(workspace_skill_dir: &Path) -> PathBuf {
 }
 
 /// Returns the canonical plugin-layout skill directory path
-/// (`{root}/{plugin_slug}/{skill_name}`). Does not check existence.
+/// (`{root}/{plugin_slug}/skills/{skill_name}`). Does not check existence.
 pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().skill_dir,
@@ -138,6 +171,21 @@ pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> Pa
             ("skill_name", skill_name),
         ],
     )
+}
+
+pub fn skill_dir_candidates(root: &Path, plugin_slug: &str, skill_name: &str) -> Vec<PathBuf> {
+    dedupe_paths([
+        resolve_skill_dir(root, plugin_slug, skill_name),
+        root.join(plugin_slug).join(skill_name),
+        root.join(skill_name),
+    ])
+}
+
+pub fn resolve_existing_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+    skill_dir_candidates(root, plugin_slug, skill_name)
+        .into_iter()
+        .find(|path| path.exists())
+        .unwrap_or_else(|| resolve_skill_dir(root, plugin_slug, skill_name))
 }
 
 /// Returns the canonical skill directory, creating the parent plugin
@@ -163,8 +211,8 @@ pub fn ensure_nested_skill_dir(
 
 /// Enumerate all skill locations under the root directory.
 ///
-/// Primary scan: `root/{slug}/{name}/` (plugin layout).
-/// Fallback: `root/{name}/` (legacy flat).
+/// Primary scan: `root/{slug}/skills/{name}/` (canonical plugin layout).
+/// Fallbacks: `root/{slug}/{name}/` (legacy nested) and `root/{name}/` (legacy flat).
 /// Deduplicates by (plugin_slug, skill_name).
 pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, String> {
     if !root.exists() {
@@ -174,7 +222,6 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
     let mut discovered = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    // Scan root/{slug}/*/ for skills, root/{name}/ for legacy flat
     for entry in
         fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))?
     {
@@ -190,9 +237,41 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
         }
 
         let is_default = name == DEFAULT_PLUGIN_SLUG;
+        let plugin_display_name = if is_default {
+            DEFAULT_PLUGIN_DISPLAY_NAME.to_string()
+        } else {
+            plugin_display_name(&name)
+        };
 
-        // Scan root/{slug}/*/ — each child directory that is a skill dir
-        let mut found_child_skill = false;
+        let skills_subdir = path.join("skills");
+        let mut found_canonical_skill = false;
+        if skills_subdir.is_dir() {
+            if let Ok(children) = fs::read_dir(&skills_subdir) {
+                for skill_entry in children.flatten() {
+                    let skill_path = skill_entry.path();
+                    if !skill_path.is_dir() {
+                        continue;
+                    }
+                    let skill_name = skill_entry.file_name().to_string_lossy().to_string();
+                    if skill_name.starts_with('.') || !is_skill_dir(&skill_path) {
+                        continue;
+                    }
+                    let key = (name.clone(), skill_name.clone());
+                    if seen.insert(key) {
+                        discovered.push(SkillLocation {
+                            plugin_slug: name.clone(),
+                            plugin_display_name: plugin_display_name.clone(),
+                            is_default_plugin: is_default,
+                            skill_name,
+                            dir: skill_path,
+                        });
+                    }
+                    found_canonical_skill = true;
+                }
+            }
+        }
+
+        // Legacy nested: root/{slug}/{name}/
         if let Ok(children) = fs::read_dir(&path) {
             for skill_entry in children.flatten() {
                 let skill_path = skill_entry.path();
@@ -200,36 +279,31 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
                     continue;
                 }
                 let skill_name = skill_entry.file_name().to_string_lossy().to_string();
-                if skill_name.starts_with('.') || !is_skill_dir(&skill_path) {
+                if skill_name.starts_with('.') || skill_name == "skills" || !is_skill_dir(&skill_path)
+                {
                     continue;
                 }
                 let key = (name.clone(), skill_name.clone());
-                if !seen.contains(&key) {
-                    seen.insert(key);
+                if seen.insert(key) {
                     discovered.push(SkillLocation {
                         plugin_slug: name.clone(),
-                        plugin_display_name: if is_default {
-                            DEFAULT_PLUGIN_DISPLAY_NAME.to_string()
-                        } else {
-                            plugin_display_name(&name)
-                        },
+                        plugin_display_name: plugin_display_name.clone(),
                         is_default_plugin: is_default,
                         skill_name,
                         dir: skill_path,
                     });
                 }
-                found_child_skill = true;
             }
         }
-        if found_child_skill {
+
+        if found_canonical_skill {
             continue;
         }
 
-        // Legacy flat: root/{name}/ with SKILL.md directly inside
+        // Legacy flat: root/{name}/ with SKILL.md directly inside.
         if is_skill_dir(&path) {
             let key = (DEFAULT_PLUGIN_SLUG.to_string(), name.clone());
-            if !seen.contains(&key) {
-                seen.insert(key);
+            if seen.insert(key) {
                 discovered.push(SkillLocation {
                     plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                     plugin_display_name: DEFAULT_PLUGIN_DISPLAY_NAME.to_string(),
@@ -345,19 +419,25 @@ mod tag_format_tests {
     use super::*;
 
     #[test]
-    fn test_skill_tag_prefix_returns_v() {
-        assert_eq!(skill_tag_prefix("my-plugin", "my-skill"), "v");
+    fn skill_tag_prefix_includes_plugin_skills_path() {
+        assert_eq!(
+            skill_tag_prefix("my-plugin", "my-skill"),
+            "my-plugin/skills/my-skill/v"
+        );
     }
 
     #[test]
-    fn test_skill_tag_glob_returns_v_star() {
-        assert_eq!(skill_tag_glob("any-plugin", "any-skill"), "v*");
+    fn skill_tag_glob_includes_plugin_skills_path() {
+        assert_eq!(
+            skill_tag_glob("any-plugin", "any-skill"),
+            "any-plugin/skills/any-skill/*"
+        );
     }
 
     #[test]
     fn test_skill_version_tag_name_returns_v_prefixed() {
         let name = crate::git::skill_version_tag_name("my-plugin", "my-skill", "1.0.0");
-        assert_eq!(name, "v1.0.0");
+        assert_eq!(name, "my-plugin/skills/my-skill/v1.0.0");
     }
 }
 
@@ -366,12 +446,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_skill_dir_uses_slug_name_layout() {
+    fn default_plugin_slug_is_default() {
+        assert_eq!(DEFAULT_PLUGIN_SLUG, "default");
+        assert_eq!(DEFAULT_PLUGIN_DISPLAY_NAME, "Default");
+    }
+
+    #[test]
+    fn resolve_skill_dir_includes_skills_subdir() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         assert_eq!(
             resolve_skill_dir(root, "analytics", "weekly-report"),
-            root.join("analytics").join("weekly-report")
+            root.join("analytics").join("skills").join("weekly-report")
+        );
+    }
+
+    #[test]
+    fn workspace_skill_dir_includes_skills_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_skill = workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report");
+
+        assert_eq!(
+            workspace_skill,
+            tmp.path()
+                .join(DEFAULT_PLUGIN_SLUG)
+                .join("skills")
+                .join("weekly-report")
         );
     }
 
@@ -395,9 +495,9 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_discovers_plugin_layout() {
+    fn enumerate_discovers_new_canonical_plugin_layout() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join("analytics").join("weekly-report");
+        let skill_dir = tmp.path().join("analytics").join("skills").join("weekly-report");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# plugin").unwrap();
 
@@ -409,7 +509,22 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_discovers_plugin_layout_and_legacy_flat() {
+    fn enumerate_discovers_legacy_plugin_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let legacy_plugin_skill = tmp.path().join("analytics").join("weekly-report");
+        fs::create_dir_all(&legacy_plugin_skill).unwrap();
+        fs::write(legacy_plugin_skill.join("SKILL.md"), "# plugin").unwrap();
+
+        let locations = enumerate_skill_locations(tmp.path()).unwrap();
+        assert_eq!(locations.len(), 1);
+        assert_eq!(locations[0].plugin_slug, "analytics");
+        assert_eq!(locations[0].skill_name, "weekly-report");
+        assert_eq!(locations[0].dir, legacy_plugin_skill);
+    }
+
+    #[test]
+    fn enumerate_discovers_new_and_legacy_layouts_simultaneously() {
         let tmp = tempfile::tempdir().unwrap();
 
         // Legacy flat: root/{name}/SKILL.md
@@ -417,17 +532,24 @@ mod tests {
         fs::create_dir_all(&legacy).unwrap();
         fs::write(legacy.join("SKILL.md"), "# legacy").unwrap();
 
-        // Plugin layout: root/{slug}/{name}/SKILL.md
-        let plugin_skill = tmp.path().join("analytics").join("weekly-report");
+        // New canonical plugin layout: root/{slug}/skills/{name}/SKILL.md
+        let plugin_skill = tmp.path().join("analytics").join("skills").join("weekly-report");
         fs::create_dir_all(&plugin_skill).unwrap();
         fs::write(plugin_skill.join("SKILL.md"), "# plugin").unwrap();
 
+        // Old plugin layout: root/{slug}/{name}/SKILL.md
+        let old_plugin_skill = tmp.path().join("reports").join("weekly-summary");
+        fs::create_dir_all(&old_plugin_skill).unwrap();
+        fs::write(old_plugin_skill.join("SKILL.md"), "# old plugin").unwrap();
+
         let locations = enumerate_skill_locations(tmp.path()).unwrap();
-        assert_eq!(locations.len(), 2);
+        assert_eq!(locations.len(), 3);
         assert_eq!(locations[0].plugin_slug, "analytics");
         assert_eq!(locations[0].skill_name, "weekly-report");
         assert_eq!(locations[1].plugin_slug, DEFAULT_PLUGIN_SLUG);
         assert_eq!(locations[1].skill_name, "legacy-skill");
+        assert_eq!(locations[2].plugin_slug, "reports");
+        assert_eq!(locations[2].skill_name, "weekly-summary");
     }
 
     #[test]
@@ -449,8 +571,8 @@ mod tests {
     #[test]
     fn enumerate_discovers_default_plugin_directly() {
         let tmp = tempfile::tempdir().unwrap();
-        // Default plugin: root/skills/my-skill/SKILL.md
-        let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+        // Default plugin: root/default/skills/my-skill/SKILL.md
+        let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("skills").join("my-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# default plugin skill").unwrap();
 

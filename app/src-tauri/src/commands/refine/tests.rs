@@ -6,14 +6,26 @@ use super::output::{
 use super::protocol::*;
 use super::*;
 use crate::commands::imported_skills::validate_skill_name;
+use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
 use tempfile::tempdir;
+
+fn default_skill_dir(root: &std::path::Path, skill_name: &str) -> std::path::PathBuf {
+    resolve_skill_dir(root, DEFAULT_PLUGIN_SLUG, skill_name)
+}
+
+fn default_workspace_skill_dir(
+    root: &std::path::Path,
+    skill_name: &str,
+) -> std::path::PathBuf {
+    resolve_workspace_skill_dir(root, DEFAULT_PLUGIN_SLUG, skill_name)
+}
 
 // ===== get_skill_content_inner tests =====
 
 #[test]
 fn test_get_skill_content_reads_skill_md() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\n\nContent here").unwrap();
 
@@ -26,7 +38,7 @@ fn test_get_skill_content_reads_skill_md() {
 #[test]
 fn test_get_skill_content_includes_references() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     let refs_dir = skill_dir.join("references");
     std::fs::create_dir_all(&refs_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -46,7 +58,7 @@ fn test_get_skill_content_includes_references() {
 #[test]
 fn test_get_skill_content_includes_txt_references() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     let refs_dir = skill_dir.join("references");
     std::fs::create_dir_all(&refs_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -60,7 +72,7 @@ fn test_get_skill_content_includes_txt_references() {
 #[test]
 fn test_get_skill_content_includes_nested_reference_files() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     let nested_dir = skill_dir.join("references").join("patterns");
     std::fs::create_dir_all(&nested_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -82,7 +94,7 @@ fn test_get_skill_content_missing_skill_errors() {
 #[test]
 fn test_get_skill_content_no_references_dir() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
     // No references/ directory
@@ -273,7 +285,7 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
@@ -310,7 +322,7 @@ fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
@@ -332,7 +344,7 @@ fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
 #[test]
 fn test_get_skill_content_excludes_context_artifacts() {
     let dir = tempdir().unwrap();
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
@@ -354,7 +366,7 @@ fn test_finalize_refine_run_ignores_structured_output() {
     let skills_dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = skills_dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(skills_dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
@@ -392,7 +404,7 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
     let skills_dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = skills_dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(skills_dir.path(), "my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
@@ -449,11 +461,12 @@ fn test_refine_prompt_includes_all_three_paths() {
     let ws_fwd = ws.replace('\\', "/");
     let skills_fwd = skills.replace('\\', "/");
     assert!(system_prompt.contains(&format!(
-        "The workspace directory is: {}/skills/my-skill",
-        ws_fwd
+        "The workspace directory is: {}/{}/skills/my-skill",
+        ws_fwd,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG
     )));
     assert!(system_prompt.contains(&format!(
-        "The skill directory is: {}/{}",
+        "The skill directory is: {}/{}/skills/my-skill",
         skills_fwd,
         crate::skill_paths::DEFAULT_PLUGIN_SLUG
     )));
@@ -654,8 +667,8 @@ fn test_followup_prompt_file_targeting() {
     let files = vec!["SKILL.md".to_string(), "references/api.md".to_string()];
     let prompt = build_followup_prompt("update", "/skills", "my-skill", Some(&files));
     assert!(prompt.contains("IMPORTANT: Only edit these files:"));
-    assert!(prompt.contains("/skills/my-skill/SKILL.md"));
-    assert!(prompt.contains("/skills/my-skill/references/api.md"));
+    assert!(prompt.contains("/default/skills/my-skill/SKILL.md"));
+    assert!(prompt.contains("/default/skills/my-skill/references/api.md"));
     assert!(prompt.contains("update"));
 }
 
@@ -757,17 +770,14 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("my-skill");
+    let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     // Create a stale snapshot in the workspace (under default plugin slug)
-    let snapshot_dir = workspace_dir
-        .path()
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("my-skill")
+    let snapshot_dir = default_workspace_skill_dir(workspace_dir.path(), "my-skill")
         .join("skill-snapshot");
     std::fs::create_dir_all(&snapshot_dir).unwrap();
     std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
@@ -797,7 +807,7 @@ fn test_finalize_refine_tags_new_version_after_commit() {
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     // Create skill at plugin-aware path and tag v1.0.0
-    let skill_dir = dir.path().join(plugin).join("tag-skill");
+    let skill_dir = resolve_skill_dir(dir.path(), plugin, "tag-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
@@ -832,7 +842,7 @@ fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     // Create skill without any tags
-    let skill_dir = dir.path().join(plugin).join("notag-skill");
+    let skill_dir = resolve_skill_dir(dir.path(), plugin, "notag-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
@@ -869,7 +879,7 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     // Create skill and tag v1.0.0
-    let skill_dir = dir.path().join(plugin).join("noop-skill");
+    let skill_dir = resolve_skill_dir(dir.path(), plugin, "noop-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
@@ -900,7 +910,7 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
     let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-    let skill_dir = dir.path().join(plugin).join("dirty-skill");
+    let skill_dir = resolve_skill_dir(dir.path(), plugin, "dirty-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
@@ -972,7 +982,7 @@ fn test_finalize_restores_name_changed_by_agent() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("guard-skill");
+    let skill_dir = default_skill_dir(dir.path(), "guard-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
@@ -1028,7 +1038,7 @@ fn test_finalize_restores_description_changed_by_agent() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("desc-skill");
+    let skill_dir = default_skill_dir(dir.path(), "desc-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
@@ -1082,7 +1092,7 @@ fn test_finalize_restores_both_name_and_description_changed_by_agent() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("both-skill");
+    let skill_dir = default_skill_dir(dir.path(), "both-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
@@ -1140,7 +1150,7 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("no-fix-skill");
+    let skill_dir = default_skill_dir(dir.path(), "no-fix-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
@@ -1219,7 +1229,7 @@ fn test_finalize_diff_shows_full_changes_when_fixup_created() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 
-    let skill_dir = dir.path().join("skills").join("diff-skill");
+    let skill_dir = default_skill_dir(dir.path(), "diff-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
@@ -1289,7 +1299,7 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
     let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-    let skill_dir = dir.path().join(plugin).join("tag-fix-skill");
+    let skill_dir = resolve_skill_dir(dir.path(), plugin, "tag-fix-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(

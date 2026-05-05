@@ -212,12 +212,15 @@ pub fn db_documents_for_skill(
 mod tests {
     use super::*;
     use crate::db;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     fn insert_test_skill(conn: &Connection, name: &str) -> i64 {
         let plugin_id: i64 = conn
-            .query_row("SELECT id FROM plugins WHERE slug = 'skills'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT id FROM plugins WHERE slug = ?1",
+                [DEFAULT_PLUGIN_SLUG],
+                |r| r.get(0),
+            )
             .unwrap();
         conn.execute(
             "INSERT INTO skills (name, skill_source, plugin_id) VALUES (?1, 'skill-builder', ?2)",

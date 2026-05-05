@@ -809,16 +809,17 @@ pub fn delete_decisions(conn: &Connection, skill_id: &str) -> Result<(), rusqlit
 mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     fn seed_skill(conn: &Connection, name: &str) {
-        // Insert a skills row in the default 'skills' plugin so other code
+        // Insert a skills row in the default plugin so other code
         // paths that join through `skills` can resolve this skill_id. The
         // workflow-artifact tables themselves use `skill_id TEXT` with no FK
         // (see migration 44 comment), so the skill row is informational here.
         conn.execute(
             "INSERT INTO skills (name, skill_source, plugin_id)
-             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = 'skills'))",
-            rusqlite::params![name],
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+            rusqlite::params![name, DEFAULT_PLUGIN_SLUG],
         )
         .unwrap();
     }

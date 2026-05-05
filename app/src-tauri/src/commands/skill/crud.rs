@@ -1,6 +1,7 @@
 use crate::db::Db;
 use crate::skill_paths::{
-    ensure_nested_skill_dir, resolve_skill_dir, skill_library_key, DEFAULT_PLUGIN_SLUG,
+    ensure_nested_skill_dir, resolve_existing_skill_dir, resolve_existing_workspace_skill_dir,
+    skill_library_key, DEFAULT_PLUGIN_SLUG,
 };
 use crate::types::SkillSummary;
 use std::fs;
@@ -152,8 +153,8 @@ fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) ->
         .into_iter()
         .filter(|s| {
             let plugin_slug = s.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG);
-            let skill_md =
-                resolve_skill_dir(Path::new(skills_path), plugin_slug, &s.name).join("SKILL.md");
+            let skill_md = resolve_existing_skill_dir(Path::new(skills_path), plugin_slug, &s.name)
+                .join("SKILL.md");
             let exists = skill_md.exists();
             if !exists {
                 log::debug!(
@@ -305,7 +306,8 @@ pub(crate) fn create_skill_filesystem_inner(
     name: &str,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
-    super::super::imported_skills::validate_skill_name(name)?;
+    super::super::imported_skills::validate_skill_name(name)
+        .map_err(|_| "Invalid skill path: path traversal not allowed".to_string())?;
     // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
     // New skills are always created in the default plugin.
     let workspace_root = Path::new(workspace_path);
@@ -536,12 +538,10 @@ pub(crate) fn delete_skill_filesystem_inner(
         workspace_path,
         skills_path
     );
+    super::super::imported_skills::validate_skill_name(name)
+        .map_err(|_| "Invalid skill path: path traversal not allowed".to_string())?;
 
-    let base = crate::skill_paths::resolve_workspace_skill_dir(
-        Path::new(workspace_path),
-        plugin_slug,
-        name,
-    );
+    let base = resolve_existing_workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
 
     // Delete workspace working directory if it exists
     if base.exists() {
@@ -562,7 +562,7 @@ pub(crate) fn delete_skill_filesystem_inner(
 
     // Delete skill output directory if skills_path is configured and directory exists
     if let Some(sp) = skills_path {
-        let output_dir = resolve_skill_dir(Path::new(sp), plugin_slug, name);
+        let output_dir = resolve_existing_skill_dir(Path::new(sp), plugin_slug, name);
         if output_dir.exists() {
             let canonical_sp = fs::canonicalize(sp).map_err(|e| e.to_string())?;
             let canonical_out = fs::canonicalize(&output_dir).map_err(|e| e.to_string())?;
@@ -656,7 +656,6 @@ pub(crate) fn delete_skill_db_records_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
     fn test_create_skill_initializes_per_skill_git_repo() {

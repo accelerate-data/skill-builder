@@ -351,7 +351,7 @@ describe("WorkspaceShell", () => {
     );
 
     await screen.findByText("Regression");
-    await user.click(screen.getByRole("button", { name: /run prompt set/i }));
+    await user.click(await screen.findByRole("button", { name: /run prompt set/i }));
     await waitFor(() => expect(mockRunEvalWorkbench).toHaveBeenCalled());
 
     const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(

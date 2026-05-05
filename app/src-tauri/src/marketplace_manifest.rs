@@ -624,7 +624,8 @@ mod tests {
 
     #[test]
     fn default_plugin_layout_no_double_nesting() {
-        // Default plugin skills go in root/skills/{name}/ not root/skills/skills/{name}/
+        // Default plugin skills use the same canonical plugin layout as every
+        // other plugin: root/default/skills/{name}/.
         let tmp = tempfile::tempdir().unwrap();
         let skill_dir = crate::skill_paths::resolve_skill_dir(
             tmp.path(),
@@ -635,11 +636,15 @@ mod tests {
             skill_dir,
             tmp.path()
                 .join(crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+                .join("skills")
                 .join("my-skill"),
-            "default plugin should not have skills/ intermediate directory"
+            "default plugin should resolve through the canonical skills/ subdir"
         );
-        // Non-default plugin uses {slug}/{name}/ layout
+        // Non-default plugins use the same canonical {slug}/skills/{name}/ layout.
         let other_dir = crate::skill_paths::resolve_skill_dir(tmp.path(), "analytics", "report");
-        assert_eq!(other_dir, tmp.path().join("analytics").join("report"));
+        assert_eq!(
+            other_dir,
+            tmp.path().join("analytics").join("skills").join("report")
+        );
     }
 }

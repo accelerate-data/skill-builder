@@ -1,5 +1,7 @@
 use crate::db::Db;
-use crate::skill_paths::{ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{
+    ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG,
+};
 use crate::types::ReconciliationResult;
 use std::fs;
 use std::path::Path;
@@ -33,7 +35,7 @@ pub fn reconcile_startup(
     );
 
     // Migrate flat workspace dirs to plugin-organised layout.
-    // e.g. workspace/britney-spears/ → workspace/skills/britney-spears/
+    // e.g. workspace/britney-spears/ → workspace/default/skills/britney-spears/
     migrate_workspace_to_plugin_layout(Path::new(&workspace_path), &conn);
 
     // Always run full reconciliation — Phase 1 (plugin recon) is idempotent
@@ -52,31 +54,32 @@ pub fn reconcile_startup(
     let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
 
     if apply {
-        // Per-skill repos: walk {plugin_slug}/{skill_name}/ dirs, init+commit any without .git/
+        // Per-skill repos: walk discovered skill dirs, init+commit any without .git/
         let output_path = Path::new(&skills_path);
         if output_path.exists() {
-            if let Ok(entries) = std::fs::read_dir(output_path) {
-                for entry in entries.flatten() {
-                    let plugin_dir = entry.path();
-                    if !plugin_dir.is_dir() { continue; }
-                    if let Ok(skill_entries) = std::fs::read_dir(&plugin_dir) {
-                        for skill_entry in skill_entries.flatten() {
-                            let skill_dir = skill_entry.path();
-                            if !skill_dir.is_dir() { continue; }
-                            if skill_dir.join(".git").exists() { continue; } // already has a repo
-                            if !skill_dir.join("SKILL.md").exists() { continue; } // not a skill dir
-                            if let Err(e) = crate::git::ensure_repo(&skill_dir) {
-                                log::warn!("[reconcile_startup] failed to init repo at {}: {}", skill_dir.display(), e);
-                                continue;
-                            }
-                            let name = skill_dir.file_name().unwrap_or_default().to_string_lossy();
-                            let msg = format!("auto-commit new skill: {}", name);
-                            match crate::git::commit_all(&skill_dir, &msg) {
-                                Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
-                                Ok(None) => {}
-                                Err(e) => log::warn!("[reconcile_startup] commit failed for {}: {}", name, e),
-                            }
-                        }
+            if let Ok(locations) = crate::skill_paths::enumerate_skill_locations(output_path) {
+                for location in locations {
+                    let skill_dir = location.dir;
+                    if skill_dir.join(".git").exists() {
+                        continue;
+                    }
+                    if let Err(e) = crate::git::ensure_repo(&skill_dir) {
+                        log::warn!(
+                            "[reconcile_startup] failed to init repo at {}: {}",
+                            skill_dir.display(),
+                            e
+                        );
+                        continue;
+                    }
+                    let msg = format!("auto-commit new skill: {}", location.skill_name);
+                    match crate::git::commit_all(&skill_dir, &msg) {
+                        Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
+                        Ok(None) => {}
+                        Err(e) => log::warn!(
+                            "[reconcile_startup] commit failed for {}: {}",
+                            location.skill_name,
+                            e
+                        ),
                     }
                 }
             }
@@ -147,7 +150,8 @@ pub fn resolve_orphan(
 /// Migrate flat workspace dirs to the plugin-organised layout.
 ///
 /// Workspace dirs were previously flat: `workspace/{skill_name}/`.
-/// The new canonical layout is plugin-organised: `workspace/{plugin_slug}/{skill_name}/`.
+/// The new canonical layout is plugin-organised:
+/// `workspace/{plugin_slug}/skills/{skill_name}/`.
 ///
 /// This function reads all skills from the DB and moves any existing flat dirs
 /// to the correct plugin-organised location. It is idempotent: already-migrated
@@ -166,7 +170,8 @@ fn migrate_workspace_to_plugin_layout(workspace_path: &Path, conn: &rusqlite::Co
         if !flat_dir.exists() {
             continue;
         }
-        let plugin_dir = workspace_path.join(&skill.plugin_slug).join(&skill.name);
+        let plugin_dir =
+            resolve_workspace_skill_dir(workspace_path, &skill.plugin_slug, &skill.name);
         if plugin_dir.exists() {
             log::debug!(
                 "[migrate_workspace] '{}': already at plugin-organised path, skipping",
@@ -410,7 +415,7 @@ mod tests {
         let workspace = tmp.path();
         let conn = crate::commands::test_utils::create_test_db();
 
-        // Create a skill in the DB (default plugin "skills")
+        // Create a skill in the DB (default plugin "default")
         crate::db::upsert_skill(&conn, "britney-spears", "skill-builder", "domain").unwrap();
 
         // Create a flat workspace dir for the skill
@@ -421,7 +426,7 @@ mod tests {
         migrate_workspace_to_plugin_layout(workspace, &conn);
 
         // Should have been moved to the plugin-organised location
-        let new_path = workspace.join("skills").join("britney-spears");
+        let new_path = workspace.join("default").join("skills").join("britney-spears");
         assert!(
             new_path.exists(),
             "plugin-organised dir should exist after migration"
@@ -446,7 +451,7 @@ mod tests {
         crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
 
         // Pre-existing plugin-organised dir (already migrated)
-        let plugin_path = workspace.join("skills").join("my-skill");
+        let plugin_path = workspace.join("default").join("skills").join("my-skill");
         fs::create_dir_all(&plugin_path).unwrap();
         fs::write(plugin_path.join("existing.md"), "existing").unwrap();
 

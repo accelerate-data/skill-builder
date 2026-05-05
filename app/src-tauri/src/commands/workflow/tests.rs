@@ -1,9 +1,7 @@
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use super::deploy::{
-    copy_directory_recursive, invalidate_workspace_cache,
-};
+use super::deploy::copy_directory_recursive;
 use super::evaluation::get_step_output_files;
 use super::guards::{
     make_agent_id, workflow_step_runtime_label,
@@ -66,8 +64,8 @@ fn db_with_seeded_skill(name: &str) -> crate::db::Db {
     let conn = crate::db::create_test_db_for_tests();
     conn.execute(
         "INSERT INTO skills (name, skill_source, plugin_id) \
-         VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = 'skills'))",
-        rusqlite::params![name],
+         VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+        rusqlite::params![name, DEFAULT_PLUGIN_SLUG],
     )
     .unwrap();
     crate::db::Db(std::sync::Mutex::new(conn))
@@ -324,7 +322,7 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
         "workspace_root_dir must stay the initialized workspace root"
     );
     assert_eq!(
-        config.workspace_skill_dir, "/tmp/workspace/skills/lead-conversion",
+        config.workspace_skill_dir, "/tmp/workspace/default/skills/lead-conversion",
         "workspace run dir must be the skill-scoped workspace"
     );
     assert!(
@@ -357,13 +355,12 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     assert!(prompt.contains("What should this skill enable the assistant to do?"));
     assert!(prompt.contains("When should this skill trigger?"));
     assert!(!prompt.contains("What should this skill enable Claude to do?"));
-    assert!(prompt.contains("What is the expected output format?"));
-    assert!(prompt.contains("Should we set up test cases to verify the skill works?"));
-    assert!(prompt.contains("objectively verifiable outputs"));
-    assert!(prompt.contains("Suggest the appropriate default based on the skill type"));
+    assert!(prompt.contains(
+        "What workflow decisions, defaults, exclusions, and domain constraints are still materially unclear?"
+    ));
     assert!(prompt.contains("## Interview And Research"));
-    assert!(prompt.contains("edge cases, input and output formats"));
-    assert!(prompt.contains("Wait to write test prompts"));
+    assert!(prompt.contains("edge cases, examples, workflow decisions, success criteria"));
+    assert!(prompt.contains("Do not turn detailed research into output-format negotiation or eval design."));
     assert!(prompt.contains("Check available MCPs"));
     assert!(prompt.contains("Use parallel research via"));
     assert!(prompt.contains("otherwise research inline"));
@@ -440,7 +437,7 @@ fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.run_source.as_deref(), Some("workflow"));
     assert_eq!(config.workspace_root_dir, "/tmp/workspace");
     assert_eq!(
-        config.workspace_skill_dir, "/tmp/workspace/skills/pipeline-value",
+        config.workspace_skill_dir, "/tmp/workspace/default/skills/pipeline-value",
         "workspace run dir must be the skill-scoped workspace"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(1));
@@ -760,7 +757,7 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.run_source.as_deref(), Some("workflow"));
     assert_eq!(config.workspace_root_dir, "/tmp/workspace");
     assert_eq!(
-        config.workspace_skill_dir, "/tmp/workspace/skills/lead-conversion",
+        config.workspace_skill_dir, "/tmp/workspace/default/skills/lead-conversion",
         "workspace run dir must be the skill-scoped workspace"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(2));
@@ -787,8 +784,8 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
 
     assert!(prompt.contains("workflow.skill_generation"));
     assert!(prompt.contains("We are writing the skill named `pipeline-value`."));
-    assert!(prompt.contains("Workspace directory: `/tmp/workspace/skills/pipeline-value`"));
-    assert!(prompt.contains("Skill output directory: `/tmp/skills/skills/pipeline-value`"));
+    assert!(prompt.contains("Workspace directory: `/tmp/workspace/default/skills/pipeline-value`"));
+    assert!(prompt.contains("Skill output directory: `/tmp/skills/default/skills/pipeline-value`"));
     assert!(!prompt.contains("evals/evals.json"));
     assert!(!prompt.contains("pending-eval.json"));
     assert!(!prompt.contains("write-evals"));
@@ -856,7 +853,7 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.workspace_root_dir, "/tmp/workspace");
     assert_eq!(
         config.workspace_skill_dir,
-        "/tmp/workspace/skills/pipeline-value"
+        "/tmp/workspace/default/skills/pipeline-value"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(3));
     assert!(
@@ -2151,14 +2148,16 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
 
     assert!(prompt.contains("We are writing the skill my-skill."));
     assert!(
-        prompt.contains("Workspace directory: /home/user/.vibedata/skill-builder/skills/my-skill")
+        prompt.contains(
+            "Workspace directory: /home/user/.vibedata/skill-builder/default/skills/my-skill"
+        )
     );
-    assert!(prompt.contains("Skill output directory: /home/user/my-skills/skills/my-skill"));
+    assert!(prompt.contains("Skill output directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains(
-        "User context file: /home/user/.vibedata/skill-builder/skills/my-skill/user-context.md"
+        "User context file: /home/user/.vibedata/skill-builder/default/skills/my-skill/user-context.md"
     ));
     assert!(prompt
-        .contains("Context directory: /home/user/.vibedata/skill-builder/skills/my-skill/context"));
+        .contains("Context directory: /home/user/.vibedata/skill-builder/default/skills/my-skill/context"));
     assert!(prompt.contains("Do not create directories with mkdir"));
 }
 

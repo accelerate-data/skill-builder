@@ -248,22 +248,17 @@ pub fn skill_version_tag_exists(
     version: &str,
 ) -> Result<bool, String> {
     let repo = ensure_repo(path)?;
-    let tag_name = skill_version_tag_name(plugin_slug, skill_name, version);
-    let exists = repo
-        .find_reference(&format!("refs/tags/{}", tag_name))
-        .is_ok();
-    Ok(exists)
+    Ok(candidate_tag_names(plugin_slug, skill_name, version)
+        .iter()
+        .any(|tag_name| {
+            repo.find_reference(&format!("refs/tags/{}", tag_name))
+                .is_ok()
+        }))
 }
 
 pub fn skill_has_any_tag(path: &Path, plugin_slug: &str, skill_name: &str) -> Result<bool, String> {
     let repo = ensure_repo(path)?;
-    let tags = repo
-        .tag_names(Some(&crate::skill_paths::skill_tag_glob(
-            plugin_slug,
-            skill_name,
-        )))
-        .map_err(|e| format!("Failed to list tags: {}", e))?;
-    Ok(tags.iter().flatten().next().is_some())
+    Ok(!list_skill_tag_names(&repo, plugin_slug, skill_name)?.is_empty())
 }
 
 pub fn create_skill_version_tag(
@@ -274,9 +269,12 @@ pub fn create_skill_version_tag(
 ) -> Result<String, String> {
     let repo = ensure_repo(path)?;
     let tag_name = skill_version_tag_name(plugin_slug, skill_name, version);
-    if repo
-        .find_reference(&format!("refs/tags/{}", tag_name))
-        .is_ok()
+    if candidate_tag_names(plugin_slug, skill_name, version)
+        .iter()
+        .any(|candidate| {
+            repo.find_reference(&format!("refs/tags/{}", candidate))
+                .is_ok()
+        })
     {
         return Err(format!("Tag '{}' already exists", tag_name));
     }
@@ -313,14 +311,7 @@ pub fn delete_skill_version_tags(
     }
     let repo = Repository::open(path)
         .map_err(|e| format!("Failed to open repo: {}", e))?;
-    let glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
-    let tag_names: Vec<String> = repo
-        .tag_names(Some(&glob))
-        .map_err(|e| format!("Failed to list tags for '{}': {}", skill_name, e))?
-        .iter()
-        .flatten()
-        .map(str::to_string)
-        .collect();
+    let tag_names = list_skill_tag_names(&repo, plugin_slug, skill_name)?;
 
     let mut deleted = 0u32;
     for tag_name in &tag_names {
@@ -407,67 +398,6 @@ pub fn migrate_skill_tags(
     Ok(count)
 }
 
-/// Migrate tags from old marketplace format `{slug}/skills/{name}/vX.Y.Z`
-/// to the current format `{slug}/{name}/vX.Y.Z`.
-pub fn migrate_marketplace_skill_tags(
-    repo_path: &Path,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Result<u32, String> {
-    if !repo_path.join(".git").exists() {
-        return Ok(0);
-    }
-    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
-
-    let old_glob = format!("{}/skills/{}/*", plugin_slug, skill_name);
-    let old_prefix = format!("{}/skills/{}/v", plugin_slug, skill_name);
-
-    let tag_names: Vec<String> = repo
-        .tag_names(Some(&old_glob))
-        .map_err(|e| format!("Failed to list tags: {}", e))?
-        .iter()
-        .flatten()
-        .map(|s| s.to_string())
-        .collect();
-
-    let mut count = 0u32;
-    for tag_name in &tag_names {
-        let version = match tag_name.strip_prefix(&old_prefix) {
-            Some(v) if v.matches('.').count() == 2 => v.to_string(),
-            _ => continue,
-        };
-        let obj = match repo.revparse_single(&format!("refs/tags/{}", tag_name)) {
-            Ok(o) => o,
-            Err(_) => continue,
-        };
-        let commit_obj = match obj.peel(git2::ObjectType::Commit) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let new_tag = skill_version_tag_name(plugin_slug, skill_name, &version);
-        let _ = repo.tag_lightweight(&new_tag, &commit_obj, false);
-        if let Ok(mut reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
-            let _ = reference.delete();
-        }
-        log::debug!(
-            "[git] migrated marketplace tag '{}' → '{}'",
-            tag_name,
-            new_tag
-        );
-        count += 1;
-    }
-
-    if count > 0 {
-        log::info!(
-            "[git] migrate_marketplace_skill_tags: '{}' plugin='{}': {} tags migrated",
-            skill_name,
-            plugin_slug,
-            count
-        );
-    }
-    Ok(count)
-}
-
 /// Return names of top-level directories that exist on disk but are not in the HEAD tree.
 /// Skips dotfile/hidden directories.
 pub fn get_untracked_dirs(path: &Path) -> Result<Vec<String>, String> {
@@ -522,18 +452,17 @@ pub fn get_history(
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     // Build tag→commit lookup for this skill's version tags.
-    let tag_prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
-    let tag_glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
     let mut tag_map = std::collections::HashMap::new();
-    if let Ok(tags) = repo.tag_names(Some(&tag_glob)) {
-        for tag_name in tags.iter().flatten() {
-            if let Some(version) = tag_name.strip_prefix(&tag_prefix) {
+    if let Ok(tags) = list_skill_tag_names(&repo, plugin_slug, skill_name) {
+        let tag_prefixes = candidate_tag_prefixes(plugin_slug, skill_name);
+        for tag_name in tags {
+            if let Some(version) = extract_version_from_tag_name(&tag_name, &tag_prefixes) {
                 if let Ok(obj) = repo.revparse_single(&format!("refs/tags/{}", tag_name)) {
                     let commit_oid = obj
                         .peel(git2::ObjectType::Commit)
                         .map(|c| c.id())
                         .unwrap_or_else(|_| obj.id());
-                    tag_map.insert(commit_oid, version.to_string());
+                    tag_map.insert(commit_oid, version);
                 }
             }
         }
@@ -551,14 +480,6 @@ pub fn get_history(
     // (or HEAD tree). If so, ALL commits in the repo are relevant to this skill.
     let is_per_skill_repo = is_per_skill_repo(&repo, repo_path);
 
-    // Repo-relative path prefix for filtering commits by skill directory.
-    // Empty string means all commits are relevant (per-skill repo).
-    let prefix = if is_per_skill_repo {
-        String::new()
-    } else {
-        format!("{}/{}", plugin_slug, skill_name)
-    };
-
     let mut commits = Vec::new();
 
     for oid_result in revwalk {
@@ -570,11 +491,15 @@ pub fn get_history(
             .find_commit(oid)
             .map_err(|e| format!("Failed to find commit {}: {}", oid, e))?;
 
-        // For per-skill repos, include every commit. Otherwise filter by path prefix.
-        let touches_current = if prefix.is_empty() {
+        // For per-skill repos, include every commit. Otherwise accept commits that
+        // touch either the new canonical layout or one of the legacy fallbacks.
+        let touches_current = if is_per_skill_repo {
             true
         } else {
-            commit_touches_path(&repo, &commit, &prefix)?
+            candidate_skill_prefixes(plugin_slug, skill_name)
+                .iter()
+                .filter(|prefix| !prefix.is_empty())
+                .any(|prefix| commit_touches_path(&repo, &commit, prefix).unwrap_or(false))
         };
         let is_tagged = tag_map.contains_key(&oid);
         if touches_current || is_tagged {
@@ -752,23 +677,17 @@ pub fn latest_skill_semver(
     );
     let repo = Repository::open(path)
         .map_err(|e| format!("Failed to open repo at {}: {}", path.display(), e))?;
-    let prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
-    let glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
+    let prefixes = candidate_tag_prefixes(plugin_slug, skill_name);
     let mut best: (u32, u32, u32) = (0, 0, 0);
 
-    repo.tag_names(Some(&glob))
-        .map_err(|e| format!("Failed to list tags: {}", e))?
-        .iter()
-        .flatten()
-        .for_each(|tag_name| {
-            if let Some(suffix) = tag_name.strip_prefix(&prefix) {
-                let parsed = parse_semver(suffix);
-                // Only accept valid X.Y.Z (all three parts present)
-                if suffix.matches('.').count() == 2 && parsed > best {
-                    best = parsed;
-                }
+    for tag_name in list_skill_tag_names(&repo, plugin_slug, skill_name)? {
+        if let Some(suffix) = extract_version_from_tag_name(&tag_name, &prefixes) {
+            let parsed = parse_semver(&suffix);
+            if suffix.matches('.').count() == 2 && parsed > best {
+                best = parsed;
             }
-        });
+        }
+    }
 
     let result = format!("{}.{}.{}", best.0, best.1, best.2);
     log::debug!(
@@ -795,17 +714,16 @@ pub fn bump_patch(version: &str) -> String {
 /// Returns `None` if fewer than 2 valid tags exist.
 pub fn prior_skill_tag(path: &Path, plugin_slug: &str, skill_name: &str) -> Option<String> {
     let repo = Repository::open(path).ok()?;
-    let prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
-    let glob = crate::skill_paths::skill_tag_glob(plugin_slug, skill_name);
+    let prefixes = candidate_tag_prefixes(plugin_slug, skill_name);
     let mut versions: Vec<(u32, u32, u32, String)> = Vec::new();
 
-    if let Ok(tags) = repo.tag_names(Some(&glob)) {
-        for tag_name in tags.iter().flatten() {
-            if let Some(suffix) = tag_name.strip_prefix(&prefix) {
+    if let Ok(tags) = list_skill_tag_names(&repo, plugin_slug, skill_name) {
+        for tag_name in tags {
+            if let Some(suffix) = extract_version_from_tag_name(&tag_name, &prefixes) {
                 if suffix.matches('.').count() == 2 {
-                    let parsed = parse_semver(suffix);
+                    let parsed = parse_semver(&suffix);
                     if parsed != (0, 0, 0) {
-                        versions.push((parsed.0, parsed.1, parsed.2, tag_name.to_string()));
+                        versions.push((parsed.0, parsed.1, parsed.2, tag_name));
                     }
                 }
             }
@@ -838,8 +756,10 @@ pub fn extract_skill_at_tag(
     );
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
+    let resolved_tag_name = resolve_tag_name(&repo, plugin_slug, skill_name, tag_name)
+        .ok_or_else(|| format!("Tag '{}' not found", tag_name))?;
     let reference = repo
-        .find_reference(&format!("refs/tags/{}", tag_name))
+        .find_reference(&format!("refs/tags/{}", resolved_tag_name))
         .map_err(|e| format!("Tag '{}' not found: {}", tag_name, e))?;
     let commit = reference
         .peel(git2::ObjectType::Commit)
@@ -1048,20 +968,110 @@ pub fn resolve_benchmark_baseline(
 /// Candidate path prefixes used to locate a skill's files inside a git tree.
 ///
 /// Tried in priority order:
-/// 1. `""`                       — per-skill repo (files at tree root)
-/// 2. `{plugin}/{name}/`         — current plugin layout (skipped for default plugin)
-/// 3. `{plugin}/skills/{name}/`  — historical marketplace layout (skipped for default plugin)
-/// 4. `skills/{name}/`           — default plugin layout
-/// 5. `{name}/`                  — legacy flat layout
+/// 1. `{plugin}/skills/{name}/`  — canonical plugin layout
+/// 2. `{plugin}/{name}/`         — legacy plugin layout
+/// 3. `skills/{name}/`           — legacy default-plugin alias
+/// 4. `{name}/`                  — legacy flat layout
+/// 5. `""`                       — per-skill repo (files at tree root)
 fn candidate_skill_prefixes(plugin_slug: &str, skill_name: &str) -> Vec<String> {
-    let mut prefixes = vec![String::new()];
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
-        prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
+    let mut prefixes = vec![
+        format!("{}/skills/{}/", plugin_slug, skill_name),
+        format!("{}/{}/", plugin_slug, skill_name),
+    ];
+    if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        prefixes.push(format!("skills/{}/", skill_name));
     }
-    prefixes.push(format!("skills/{}/", skill_name));
     prefixes.push(format!("{}/", skill_name));
-    prefixes
+    prefixes.push(String::new());
+    dedupe_strings(prefixes)
+}
+
+fn candidate_tag_prefixes(plugin_slug: &str, skill_name: &str) -> Vec<String> {
+    let mut prefixes = vec![crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name)];
+    prefixes.push(format!("{}/{}/v", plugin_slug, skill_name));
+    if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        prefixes.push(format!("skills/{}/v", skill_name));
+    }
+    prefixes.push("v".to_string());
+    dedupe_strings(prefixes)
+}
+
+fn candidate_tag_names(plugin_slug: &str, skill_name: &str, version: &str) -> Vec<String> {
+    let normalized = version.trim_start_matches('v');
+    candidate_tag_prefixes(plugin_slug, skill_name)
+        .into_iter()
+        .map(|prefix| format!("{prefix}{normalized}"))
+        .collect()
+}
+
+fn list_skill_tag_names(
+    repo: &Repository,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for glob in candidate_tag_prefixes(plugin_slug, skill_name)
+        .into_iter()
+        .map(|prefix| format!("{prefix}*"))
+    {
+        let tags = repo
+            .tag_names(Some(&glob))
+            .map_err(|e| format!("Failed to list tags: {}", e))?;
+        for tag_name in tags.iter().flatten() {
+            let tag_name = tag_name.to_string();
+            if seen.insert(tag_name.clone()) {
+                names.push(tag_name);
+            }
+        }
+    }
+
+    Ok(names)
+}
+
+fn extract_version_from_tag_name(tag_name: &str, prefixes: &[String]) -> Option<String> {
+    prefixes.iter().find_map(|prefix| {
+        tag_name
+            .strip_prefix(prefix)
+            .filter(|suffix| suffix.matches('.').count() == 2)
+            .map(ToString::to_string)
+    })
+}
+
+fn resolve_tag_name(
+    repo: &Repository,
+    plugin_slug: &str,
+    skill_name: &str,
+    requested_tag_name: &str,
+) -> Option<String> {
+    if repo
+        .find_reference(&format!("refs/tags/{}", requested_tag_name))
+        .is_ok()
+    {
+        return Some(requested_tag_name.to_string());
+    }
+
+    let version = requested_tag_name
+        .rsplit('/')
+        .next()
+        .unwrap_or(requested_tag_name)
+        .trim_start_matches('v');
+
+    candidate_tag_names(plugin_slug, skill_name, version)
+        .into_iter()
+        .find(|tag_name| {
+            repo.find_reference(&format!("refs/tags/{}", tag_name))
+                .is_ok()
+        })
+}
+
+fn dedupe_strings(values: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    values
+        .into_iter()
+        .filter(|value| seen.insert(value.clone()))
+        .collect()
 }
 
 /// True if the repo at `repo_path` is a per-skill repo (SKILL.md at the root,
@@ -1457,15 +1467,21 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "v1.0.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.0.0"),
+        );
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "v1.1.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.1.0"),
+        );
 
         let version = latest_skill_semver(dir.path(), plugin, "my-skill").unwrap();
         assert_eq!(version, "1.1.0");
@@ -1477,7 +1493,7 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
@@ -1496,8 +1512,8 @@ mod tests {
         let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir_a.path().join(plugin).join("skill-a");
-        let b_dir = dir_b.path().join(plugin).join("skill-b");
+        let a_dir = crate::skill_paths::resolve_skill_dir(dir_a.path(), plugin, "skill-a");
+        let b_dir = crate::skill_paths::resolve_skill_dir(dir_b.path(), plugin, "skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
 
@@ -1506,11 +1522,17 @@ mod tests {
 
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
         commit_all(dir_a.path(), "skill-a: initial").unwrap();
-        create_tag(dir_a.path(), "v1.0.0");
+        create_tag(
+            dir_a.path(),
+            &skill_version_tag_name(plugin, "skill-a", "1.0.0"),
+        );
 
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
         commit_all(dir_b.path(), "skill-b: initial").unwrap();
-        create_tag(dir_b.path(), "v1.0.0");
+        create_tag(
+            dir_b.path(),
+            &skill_version_tag_name(plugin, "skill-b", "1.0.0"),
+        );
 
         assert_eq!(
             latest_skill_semver(dir_a.path(), plugin, "skill-a").unwrap(),
@@ -1523,7 +1545,10 @@ mod tests {
 
         std::fs::write(a_dir.join("SKILL.md"), "# A v2").unwrap();
         commit_all(dir_a.path(), "skill-a v2").unwrap();
-        create_tag(dir_a.path(), "v2.0.0");
+        create_tag(
+            dir_a.path(),
+            &skill_version_tag_name(plugin, "skill-a", "2.0.0"),
+        );
 
         assert_eq!(
             latest_skill_semver(dir_a.path(), plugin, "skill-a").unwrap(),
@@ -1542,14 +1567,17 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
 
         let tag_name = create_skill_version_tag(dir.path(), plugin, "my-skill", "1.0.0").unwrap();
 
-        assert_eq!(tag_name, "v1.0.0");
+        assert_eq!(
+            tag_name,
+            skill_version_tag_name(plugin, "my-skill", "1.0.0")
+        );
         assert!(skill_version_tag_exists(dir.path(), plugin, "my-skill", "1.0.0").unwrap());
     }
 
@@ -1559,7 +1587,7 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
@@ -1577,8 +1605,8 @@ mod tests {
         let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir_a.path().join(plugin).join("skill-a");
-        let b_dir = dir_b.path().join(plugin).join("skill-b");
+        let a_dir = crate::skill_paths::resolve_skill_dir(dir_a.path(), plugin, "skill-a");
+        let b_dir = crate::skill_paths::resolve_skill_dir(dir_b.path(), plugin, "skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
 
@@ -1603,7 +1631,7 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "my-skill: generated skill").unwrap();
@@ -1624,8 +1652,8 @@ mod tests {
         let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir_a.path().join(plugin).join("skill-a");
-        let b_dir = dir_b.path().join(plugin).join("skill-b");
+        let a_dir = crate::skill_paths::resolve_skill_dir(dir_a.path(), plugin, "skill-a");
+        let b_dir = crate::skill_paths::resolve_skill_dir(dir_b.path(), plugin, "skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
 
@@ -1663,12 +1691,15 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "my-skill: created").unwrap();
-        create_tag(dir.path(), "v1.0.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.0.0"),
+        );
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "my-skill: updated").unwrap();
@@ -1676,7 +1707,10 @@ mod tests {
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
         commit_all(dir.path(), "my-skill: refined").unwrap();
-        create_tag(dir.path(), "v1.1.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.1.0"),
+        );
 
         let history = get_history(dir.path(), "my-skill", plugin, 50).unwrap();
         assert_eq!(history.len(), 3);
@@ -1708,23 +1742,35 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "v1.0.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.0.0"),
+        );
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "v1.1.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.1.0"),
+        );
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
         commit_all(dir.path(), "v3").unwrap();
-        create_tag(dir.path(), "v2.0.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "2.0.0"),
+        );
 
         let prior = prior_skill_tag(dir.path(), plugin, "my-skill");
-        assert_eq!(prior.as_deref(), Some("v1.1.0"));
+        assert_eq!(
+            prior.as_deref(),
+            Some(skill_version_tag_name(plugin, "my-skill", "1.1.0").as_str())
+        );
     }
 
     #[test]
@@ -1733,11 +1779,14 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "v1.0.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.0.0"),
+        );
 
         assert!(prior_skill_tag(dir.path(), plugin, "my-skill").is_none());
     }
@@ -1751,6 +1800,38 @@ mod tests {
         assert!(prior_skill_tag(dir.path(), plugin, "my-skill").is_none());
     }
 
+    #[test]
+    fn test_candidate_skill_prefixes_prefer_plugin_skills_layout() {
+        let prefixes = candidate_skill_prefixes("superpowers", "my-skill");
+
+        assert_eq!(
+            prefixes,
+            vec![
+                "superpowers/skills/my-skill/".to_string(),
+                "superpowers/my-skill/".to_string(),
+                "my-skill/".to_string(),
+                "".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_candidate_skill_prefixes_include_default_plugin_aliases() {
+        let prefixes =
+            candidate_skill_prefixes(crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill");
+
+        assert_eq!(
+            prefixes,
+            vec![
+                "default/skills/my-skill/".to_string(),
+                "default/my-skill/".to_string(),
+                "skills/my-skill/".to_string(),
+                "my-skill/".to_string(),
+                "".to_string(),
+            ]
+        );
+    }
+
     // --- extract_skill_at_tag ---
 
     #[test]
@@ -1759,17 +1840,23 @@ mod tests {
         ensure_repo(dir.path()).unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_dir = dir.path().join(plugin).join("my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(dir.path(), plugin, "my-skill");
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# V1 content").unwrap();
         std::fs::write(skill_dir.join("references").join("guide.md"), "guide v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "v1.0.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "1.0.0"),
+        );
 
         // Modify files for v2
         std::fs::write(skill_dir.join("SKILL.md"), "# V2 content").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "v2.0.0");
+        create_tag(
+            dir.path(),
+            &skill_version_tag_name(plugin, "my-skill", "2.0.0"),
+        );
 
         // Extract v1 to a separate directory
         let dest = dir.path().join("snapshot");
@@ -1777,7 +1864,7 @@ mod tests {
             dir.path(),
             plugin,
             "my-skill",
-            "v1.0.0",
+            &skill_version_tag_name(plugin, "my-skill", "1.0.0"),
             &dest,
         )
         .unwrap();
@@ -1808,6 +1895,38 @@ mod tests {
             &dest,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_skill_files_at_sha_prefers_plugin_skills_layout() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        let canonical_dir = dir.path().join("superpowers").join("skills").join("my-skill");
+        std::fs::create_dir_all(canonical_dir.join("references")).unwrap();
+        std::fs::write(canonical_dir.join("SKILL.md"), "# Canonical").unwrap();
+        std::fs::write(
+            canonical_dir.join("references").join("guide.md"),
+            "canonical guide",
+        )
+        .unwrap();
+
+        let legacy_dir = dir.path().join("superpowers").join("my-skill");
+        std::fs::create_dir_all(legacy_dir.join("references")).unwrap();
+        std::fs::write(legacy_dir.join("SKILL.md"), "# Legacy").unwrap();
+        std::fs::write(legacy_dir.join("references").join("guide.md"), "legacy guide").unwrap();
+
+        let sha = commit_all(dir.path(), "seed both layouts").unwrap().unwrap();
+
+        let files = get_skill_files_at_sha(dir.path(), "my-skill", "superpowers", &sha).unwrap();
+        let skill_md = files.iter().find(|(path, _)| path == "SKILL.md").unwrap();
+        let guide = files
+            .iter()
+            .find(|(path, _)| path == "references/guide.md")
+            .unwrap();
+
+        assert_eq!(skill_md.1, "# Canonical");
+        assert_eq!(guide.1, "canonical guide");
     }
 }
 
@@ -1848,7 +1967,14 @@ mod per_skill_repo_tests {
         create_skill_version_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0").unwrap();
 
         let dest = dir.path().parent().unwrap().join("dest");
-        extract_skill_at_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "v1.0.0", &dest).unwrap();
+        extract_skill_at_tag(
+            skill_dir,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            &skill_version_tag_name(crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0"),
+            &dest,
+        )
+        .unwrap();
 
         assert_eq!(
             std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
@@ -1897,7 +2023,7 @@ mod per_skill_repo_tests {
             skill_dir,
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             "my-skill",
-            "v1.0.0",
+            &skill_version_tag_name(crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0"),
             &dest,
         );
         assert!(result.is_err(), "expected error when tag tree has no SKILL.md");

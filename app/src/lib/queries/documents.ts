@@ -41,7 +41,7 @@ interface UpdateDocumentInput {
 export function useDocumentsQuery() {
   return useQuery({
     queryKey: queryKeys.documents.list,
-    queryFn: listDocuments,
+    queryFn: async () => (await listDocuments()) ?? [],
     placeholderData: [],
   });
 }
@@ -49,7 +49,7 @@ export function useDocumentsQuery() {
 export function useDocumentSkillOptionsQuery() {
   return useQuery({
     queryKey: queryKeys.documents.skills,
-    queryFn: listSkillsForDocuments,
+    queryFn: async () => (await listSkillsForDocuments()) ?? [],
     placeholderData: [],
   });
 }

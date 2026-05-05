@@ -120,11 +120,11 @@ mod tests {
         let conn = create_test_db_for_tests();
 
         // Write settings with a skills path set.
-        let mut initial = make_settings(Some("/ws"), None);
+        let initial = make_settings(Some("/ws"), None);
         write_settings(&conn, &initial).unwrap();
 
         // Overwrite with settings that set a skills path.
-        let mut update = make_settings(Some("/ws"), Some("/skills"));
+        let update = make_settings(Some("/ws"), Some("/skills"));
         write_settings(&conn, &update).unwrap();
 
         let read_back = read_settings(&conn).unwrap();

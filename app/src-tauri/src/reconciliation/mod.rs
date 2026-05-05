@@ -273,18 +273,38 @@ pub fn reconcile_on_startup(
             if plugin.is_default || plugin.source_type != "marketplace" {
                 continue;
             }
-            let plugin_skills_dir = skills_dir.join(&plugin.slug);
-            if !plugin_skills_dir.is_dir() {
+            let plugin_root_dir = skills_dir.join(&plugin.slug);
+            if !plugin_root_dir.is_dir() {
                 continue;
             }
-            let has_missing_skill_md = std::fs::read_dir(&plugin_skills_dir)
+            let skills_subdir = plugin_root_dir.join("skills");
+            let missing_in_canonical = if skills_subdir.is_dir() {
+                std::fs::read_dir(&skills_subdir)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .any(|entry| {
+                        let path = entry.path();
+                        path.is_dir()
+                            && !entry.file_name().to_string_lossy().starts_with('.')
+                            && !path.join("SKILL.md").is_file()
+                    })
+            } else {
+                false
+            };
+            let missing_in_legacy = std::fs::read_dir(&plugin_root_dir)
                 .into_iter()
                 .flatten()
                 .flatten()
                 .any(|entry| {
                     let path = entry.path();
-                    path.is_dir() && !path.join("SKILL.md").is_file()
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    path.is_dir()
+                        && !name.starts_with('.')
+                        && name != "skills"
+                        && !path.join("SKILL.md").is_file()
                 });
+            let has_missing_skill_md = missing_in_canonical || missing_in_legacy;
             if has_missing_skill_md {
                 log::info!(
                     "[reconcile] marketplace plugin '{}': skill with missing SKILL.md detected, deleting plugin",
@@ -378,15 +398,8 @@ pub fn reconcile_on_startup(
         // to avoid a false positive — skills_path/skills/ is the default
         // plugin directory itself, not a skill named "skills".
         let skill_dir_exists = |plugin_slug: &str, name: &str| -> bool {
-            let new_path = crate::skill_paths::resolve_skill_dir(skills_dir_1e, plugin_slug, name);
-            let legacy_exists = name != DEFAULT_PLUGIN_SLUG && skills_dir_1e.join(name).exists();
-            // Marketplace plugins store skills under {plugin_slug}/skills/{skill_name}/
-            let marketplace_nested = skills_dir_1e
-                .join(plugin_slug)
-                .join("skills")
-                .join(name)
-                .exists();
-            new_path.exists() || legacy_exists || marketplace_nested
+            crate::skill_paths::resolve_existing_skill_dir(skills_dir_1e, plugin_slug, name)
+                .exists()
         };
 
         // Pass A: restore incorrectly soft-deleted skills that have a dir
@@ -664,7 +677,7 @@ pub fn resolve_orphan(
                 .map(|m| m.plugin_slug)
                 .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
             crate::db::delete_workflow_run(conn, skill_name, &plugin_slug)?;
-            let output_dir = crate::skill_paths::resolve_skill_dir(
+            let output_dir = crate::skill_paths::resolve_existing_skill_dir(
                 Path::new(skills_path),
                 &plugin_slug,
                 skill_name,

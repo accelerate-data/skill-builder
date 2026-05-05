@@ -1,8 +1,7 @@
+use crate::skill_paths::{DEFAULT_PLUGIN_DISPLAY_NAME, DEFAULT_PLUGIN_SLUG};
 use crate::types::SkillMasterRow;
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
-
-const DEFAULT_PLUGIN_SLUG: &str = "skills";
 
 /// Map a row from the standard skills+plugins join into a SkillMasterRow.
 /// Column order must match the SELECT used in list_all_skills, get_skill_master_*:
@@ -100,7 +99,7 @@ pub fn ensure_default_plugin(conn: &Connection) -> Result<i64, String> {
     ensure_plugin(
         conn,
         DEFAULT_PLUGIN_SLUG,
-        "Skills",
+        DEFAULT_PLUGIN_DISPLAY_NAME,
         "synthetic",
         None,
         None,
@@ -699,6 +698,25 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
+
+    #[test]
+    fn ensure_default_plugin_uses_shared_default_plugin_constants() {
+        let conn = create_test_db_for_tests();
+
+        ensure_default_plugin(&conn).expect("ensure_default_plugin");
+
+        let plugins = list_plugins(&conn).expect("list_plugins should succeed");
+        let default_plugin = plugins
+            .iter()
+            .find(|plugin| plugin.is_default)
+            .expect("default plugin exists");
+
+        assert_eq!(default_plugin.slug, crate::skill_paths::DEFAULT_PLUGIN_SLUG);
+        assert_eq!(
+            default_plugin.display_name,
+            crate::skill_paths::DEFAULT_PLUGIN_DISPLAY_NAME
+        );
+    }
 
     #[test]
     fn upgrade_locked_column_exists_and_defaults_to_false() {

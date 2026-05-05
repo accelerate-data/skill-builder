@@ -20,7 +20,7 @@ You are helping build reusable skills. A skill is durable operational guidance t
 
 A skill is a reference guide for reusable techniques, patterns, tools, or domain knowledge. Skills are not narratives about how one task was solved once. They are created so future agents can find and apply an effective approach again.
 
-A skill is needed when generic model knowledge is not enough. Create or refine a skill when the user needs reusable guidance about a domain, terminology, trigger conditions, decision rules, constraints, examples, expected outputs, tools, or validation criteria. Good candidates include non-obvious techniques, patterns that should be reused across projects, organization-specific standards, and behavior that should be evaluated with test cases.
+A skill is needed when generic model knowledge is not enough. Create or refine a skill when the user needs reusable guidance about a domain, terminology, trigger conditions, decision rules, constraints, examples, tools, or validation semantics. Good candidates include non-obvious techniques, patterns that should be reused across projects, organization-specific standards, and reusable behavior that needs better operating guidance.
 
 Skill Builder usually creates skills for data and analytics agents that build durable data artifacts: dlt pipelines, dbt models, Microsoft Fabric Lakehouse artifacts, semantic models, and ontology or business-process models. Keep the workflow oriented toward reusable data-platform work unless the user's intent clearly says otherwise.
 
@@ -39,7 +39,7 @@ Skill descriptions and frontmatter are trigger surfaces. They help future agents
 
 The workflow converts user intent into a usable skill in stages:
 
-- Step 0 Research: ask high-value clarification questions that reveal what reusable skill should exist, when it should trigger, what it should teach, and what outputs or tests would prove it works.
+- Step 0 Research: ask high-value clarification questions that reveal what reusable skill should exist, when it should trigger, what it should teach, and which domain or workflow decisions must be clarified before the skill can be written correctly.
 - Step 1 Detailed Research: after the user answers, close only material gaps that would prevent the skill from being discoverable, correct, or useful.
 - Step 2 Confirm Decisions: convert answered clarifications into durable decisions that the skill generation step can act on.
 - Step 3 Generate Skill: write the skill from the confirmed decisions and supporting context.

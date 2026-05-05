@@ -207,3 +207,36 @@ test('step 3 skill generation has no legacy writer or validator runtime dependen
     );
   }
 });
+
+test('researching-skill-requirements separates invariants defaults and lenses for data-engineering skills', () => {
+  const skill = readRepo('agent-sources/workspace/skills/researching-skill-requirements/SKILL.md');
+
+  for (const token of [
+    '## Invariants',
+    '## Defaults',
+    '## Purpose-Specific Lenses',
+  ]) {
+    assert.ok(skill.includes(token), `research skill must include ${token}`);
+  }
+
+  assert.match(
+    skill,
+    /Do not ask[^.\n]*output format|Do not ask[^.\n]*artifact contract|Do not ask[^.\n]*schema|Do not ask[^.\n]*naming contract/i,
+  );
+  assert.match(
+    skill,
+    /Do not ask[^.\n]*test cases|Do not ask[^.\n]*design test cases|Do not ask[^.\n]*validation suites/i,
+  );
+
+  for (const token of [
+    'What output format, artifact contract, schema, naming, or handoff should it produce?',
+    'Should test cases verify the skill?',
+    'Suggest the appropriate default for tests based on the skill type, but let the user decide.',
+  ]) {
+    assert.equal(
+      skill.includes(token),
+      false,
+      `research skill must not preserve stale output/test prompting: ${token}`,
+    );
+  }
+});

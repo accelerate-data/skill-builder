@@ -57,7 +57,9 @@ pub(crate) fn purge_stale_bundled_skills(
 
     // Scan the canonical workspace plugin directory for bundled skills that
     // no longer exist in the current bundle.
-    let skills_base = Path::new(workspace_path).join(DEFAULT_PLUGIN_SLUG);
+    let skills_base = Path::new(workspace_path)
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("skills");
     if skills_base.is_dir() {
         if let Ok(entries) = fs::read_dir(&skills_base) {
             for entry in entries.flatten() {
@@ -104,7 +106,7 @@ pub(crate) fn purge_stale_bundled_skills(
 
 /// Seed bundled skills from the app's bundled-skills directory into the workspace.
 /// For each subdirectory containing SKILL.md:
-/// 1. Copies the directory to `{workspace}/{default_plugin_slug}/{name}/` (always overwrite)
+/// 1. Copies the directory to `{workspace}/{default_plugin_slug}/skills/{name}/` (always overwrite)
 ///
 /// This is a filesystem-only operation — no DB writes.
 pub(crate) fn seed_bundled_skills(
