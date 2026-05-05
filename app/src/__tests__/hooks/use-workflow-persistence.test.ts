@@ -8,6 +8,7 @@ vi.mock("@/lib/tauri", () => ({
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
   readFile: vi.fn(() => Promise.reject("not found")),
+  verifyStepOutput: vi.fn(() => Promise.resolve(false)),
 }));
 
 // Mock stores
@@ -53,7 +54,16 @@ vi.mock("@/stores/agent-store", () => ({
   ),
 }));
 
-import { getWorkflowState, saveWorkflowState, readFile } from "@/lib/tauri";
+vi.mock("@/stores/settings-store", () => ({
+  useSettingsStore: Object.assign(
+    vi.fn(() => ({ workspacePath: "/workspace" })),
+    {
+      getState: vi.fn(() => ({ workspacePath: "/workspace" })),
+    }
+  ),
+}));
+
+import { getWorkflowState, saveWorkflowState, readFile, verifyStepOutput } from "@/lib/tauri";
 
 describe("useWorkflowPersistence", () => {
   const defaultOptions = {
@@ -138,6 +148,45 @@ describe("useWorkflowPersistence", () => {
     await waitFor(() => {
       expect(result.current.errorHasArtifacts).toBe(true);
     });
+  });
+
+  it("detects error artifacts for DB-backed steps via verifyStepOutput", async () => {
+    // Regression: steps 0-2 write to SQLite not disk; readFile always fails for context/ paths.
+    // Must explicitly reject readFile here to prevent implementation leaking from prior tests.
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(verifyStepOutput).mockResolvedValue(true);
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
+
+    const { result } = renderHook(() =>
+      useWorkflowPersistence({
+        ...defaultOptions,
+        stepConfig: { outputFiles: ["context/clarifications.json"] },
+        steps: [{ id: 0, status: "error" }],
+        hydrated: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.errorHasArtifacts).toBe(true);
+    });
+  });
+
+  it("returns errorHasArtifacts=false for DB-backed steps when no DB artifacts exist", async () => {
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(verifyStepOutput).mockResolvedValue(false);
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
+
+    const { result } = renderHook(() =>
+      useWorkflowPersistence({
+        ...defaultOptions,
+        stepConfig: { outputFiles: ["context/clarifications.json"] },
+        steps: [{ id: 0, status: "error" }],
+        hydrated: true,
+      })
+    );
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(result.current.errorHasArtifacts).toBe(false);
   });
 
   it("does not call saveWorkflowState before hydrated", async () => {
