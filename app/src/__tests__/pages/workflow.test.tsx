@@ -607,17 +607,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
   });
 
   it("loads clarifications from skillsPath when step 0 is completed", async () => {
-    // skillsPath has the file — should use it
-    const jsonData = makeClarificationsJson();
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      return Promise.reject("not found");
-    });
-
-    // Step 0 completed — use review mode to prevent the reposition effect
-    // from auto-advancing to the next pending step.
+    // Step 0 completed — clarifications are now loaded from DB via invokeCommand("get_clarifications")
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default from initWorkflow) — keeps currentStep stable
@@ -630,27 +620,19 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Should render the step-complete view (which loads clarifications)
+    // Should render the step-complete view
     expect(screen.getByTestId("step-complete")).toBeTruthy();
 
-    // readFile should have been called with the skillsPath location
-    // (clarificationsEditable is false in review mode, but file is still loaded
-    // by WorkflowStepComplete for display)
-    expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.json"
+    // Clarifications are loaded from DB — invokeCommand("get_clarifications") is called
+    // (step 0 has clarificationsEditable=true and status=completed → useClarifications hook fires)
+    expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
+      "get_clarifications",
+      expect.objectContaining({ skillId: "test-skill" }),
     );
   });
 
   it("loads clarifications from skillsPath when step 1 is completed", async () => {
     // Step 1 (detailed research) also has clarificationsEditable
-    const jsonData = makeClarificationsJson();
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      return Promise.reject("not found");
-    });
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default) — prevents auto-advance
@@ -666,8 +648,10 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
 
     expect(screen.getByTestId("step-complete")).toBeTruthy();
 
-    expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.json"
+    // Clarifications loaded from DB for step 1 as well
+    expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
+      "get_clarifications",
+      expect.objectContaining({ skillId: "test-skill" }),
     );
   });
 });
@@ -699,6 +683,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     vi.mocked(getWorkflowState).mockClear();
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
+    vi.mocked(invokeCommand).mockClear();
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
     vi.mocked(materializeWorkflowStepOutput).mockClear();
     vi.mocked(materializeAnswerEvaluationOutput).mockClear();
@@ -1216,15 +1201,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("gate evaluator triggers on step 0 Continue", async () => {
-    // Set up step 0 completed with clarifications loaded
-    const jsonData = makeClarificationsJson();
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      return Promise.reject("not found");
-    });
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default) — prevents reposition effect from auto-advancing
@@ -1239,12 +1215,10 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     expect(screen.getByTestId("step-complete")).toBeTruthy();
 
-    // The gate evaluator (runAnswerEvaluator) should be invoked
-    // when the user clicks Continue on step 0's completion screen.
-    // Since we mock WorkflowStepComplete, we test that the evaluator
-    // is wired correctly by checking it's invocable when clarifications are loaded.
-    expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.json"
+    // Clarifications are now loaded from DB via invokeCommand("get_clarifications")
+    expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
+      "get_clarifications",
+      expect.objectContaining({ skillId: "test-skill" }),
     );
   });
 
@@ -1295,7 +1269,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("writes vague/contradictory evaluator feedback into clarifications notes", async () => {
-    const jsonData = makeClarificationsJson();
     const evaluation = {
       verdict: "mixed",
       answered_count: 2,
@@ -1311,9 +1284,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     };
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
       if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
@@ -1346,21 +1316,19 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().completeRun("gate-agent-1", true);
     });
 
+    // Gate persists per-question verdicts to DB via invokeCommand("update_clarification_verdicts")
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
     });
 
-    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
+      ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    expect(writeCalls.length).toBeGreaterThan(0);
-    const serialized = writeCalls[writeCalls.length - 1][1];
-    const parsed = JSON.parse(serialized);
-    expect(Array.isArray(parsed.answer_evaluator_notes)).toBe(true);
-    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
-    expect(parsed.answer_evaluator_notes.some((n: { title: string; body: string }) =>
-      n.title === "Contradictory answer: Q2" && n.body.includes("One vague and one contradictory answer.")
-    )).toBe(true);
+    const updates = (verdictCall?.[1] as { updates: Array<{ question_id: string; verdict: string; reason: string | null }> })?.updates;
+    expect(updates).toBeDefined();
+    expect(updates.some((u) => u.question_id === "Q1" && u.verdict === "vague")).toBe(true);
+    expect(updates.some((u) => u.question_id === "Q2" && u.verdict === "contradictory")).toBe(true);
   });
 
   it("materializes OpenHands gate result_text when no legacy result item exists", async () => {
@@ -1488,7 +1456,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("writes evaluator feedback notes after Detailed Research continue (step 1 gate)", async () => {
-    const jsonData = makeClarificationsJson();
     const evaluation = {
       verdict: "mixed",
       answered_count: 3,
@@ -1503,9 +1470,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     };
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
       if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
@@ -1539,20 +1503,19 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
     });
 
-    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
+      ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    expect(writeCalls.length).toBeGreaterThan(0);
-    const serialized = writeCalls[writeCalls.length - 1][1];
-    const parsed = JSON.parse(serialized);
-    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q3")).toBe(true);
+    const updates = (verdictCall?.[1] as { updates: Array<{ question_id: string; verdict: string }> })?.updates;
+    expect(updates).toBeDefined();
+    expect(updates.some((u) => u.question_id === "Q3" && u.verdict === "vague")).toBe(true);
   });
 
   it("writes notes for not_answered and needs_refinement verdicts", async () => {
-    const jsonData = makeClarificationsJson();
     const evaluation = {
       verdict: "mixed",
       answered_count: 1,
@@ -1568,9 +1531,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     };
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
       if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
@@ -1603,23 +1563,22 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
     });
 
-    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
+      ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    expect(writeCalls.length).toBeGreaterThan(0);
-    const serialized = writeCalls[writeCalls.length - 1][1];
-    const parsed = JSON.parse(serialized);
-    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Not answered: Q1")).toBe(true);
-    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Needs refinement: Q2")).toBe(true);
+    const updates = (verdictCall?.[1] as { updates: Array<{ question_id: string; verdict: string }> })?.updates;
+    expect(updates).toBeDefined();
+    expect(updates.some((u) => u.question_id === "Q1" && u.verdict === "not_answered")).toBe(true);
+    expect(updates.some((u) => u.question_id === "Q2" && u.verdict === "needs_refinement")).toBe(true);
   });
 
   it("gate auto-updates clarifications with feedback notes after revise decision", async () => {
-    // With gate_decision="revise", the gate stays on step 0 and refreshes clarifications
-    // twice (once to write notes, once to reload for UI) — no user button click required.
-    const jsonData = makeClarificationsJson();
+    // With gate_decision="revise", the gate stays on step 0 and persists per-question
+    // verdicts via invokeCommand("update_clarification_verdicts") — no file writes.
     const evaluation = {
       verdict: "mixed",
       answered_count: 1,
@@ -1635,9 +1594,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     };
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
       if (path === "/test/workspace/skills/test-skill/answer-evaluation.json") {
         return Promise.resolve(JSON.stringify(evaluation));
       }
@@ -1667,17 +1623,18 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().completeRun("gate-agent-3", true);
     });
 
-    // revise decision: stays on step 0, saves notes via saveClarificationsContent → writeFile
+    // revise decision: stays on step 0, persists per-question verdicts via invokeCommand
     await waitFor(() => {
-      const writeCalls = vi.mocked(writeFile).mock.calls.filter(
-        ([path]) => path === "/test/skills/test-skill/context/clarifications.json",
-      );
-      expect(writeCalls.length).toBeGreaterThan(0);
-      const serialized = writeCalls[writeCalls.length - 1][1];
-      const parsed = JSON.parse(serialized);
-      const notes = parsed.answer_evaluator_notes as Array<{ title: string }>;
-      expect(notes.some((n) => n.title === "Vague answer: Q1")).toBe(true);
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
     });
+
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
+      ([cmd]) => cmd === "update_clarification_verdicts",
+    );
+    const updates = (verdictCall?.[1] as { updates: Array<{ question_id: string; verdict: string }> })?.updates;
+    expect(updates).toBeDefined();
+    expect(updates.some((u) => u.question_id === "Q1" && u.verdict === "vague")).toBe(true);
 
     // revise: step stays completed at 0, does NOT advance
     expect(useWorkflowStore.getState().currentStep).toBe(0);
@@ -1794,6 +1751,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     vi.mocked(runWorkflowStep).mockClear();
     vi.mocked(resetWorkflowStep).mockClear();
     vi.mocked(endWorkflowSession).mockClear();
+    vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
 
     // Tests in this block set reviewMode=false (Update mode). Signal autoStart so the
     // persistence hook's early-return preserves Update mode instead of resetting to Review.
@@ -1822,15 +1780,16 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "error");
     useWorkflowStore.getState().setRunning(false);
 
-    // readFile rejects — no partial artifacts on disk
-    vi.mocked(readFile).mockRejectedValue("not found");
+    // verifyStepOutput returns false — no partial artifacts → no confirmation dialog
+    vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
     render(<WorkflowPage />);
 
-    // Wait for the error UI to render with the "Reset Step" button
+    // Wait for artifact detection to settle so the button renders without a dialog
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Reset Step/ })).toBeTruthy();
+      expect(vi.mocked(verifyStepOutput)).toHaveBeenCalled();
     });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
     // Click the "Reset Step" button (no artifacts → no confirmation dialog)
     await act(async () => {
@@ -1854,14 +1813,14 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "error");
     useWorkflowStore.getState().setRunning(false);
 
-    // getContextFileContent returns content for step 0's first output file (context/clarifications.json)
-    vi.mocked(getContextFileContent).mockResolvedValue("partial content");
+    // verifyStepOutput returns true — partial artifacts exist → confirmation dialog will show
+    // (default from beforeEach is already true, no override needed)
 
     render(<WorkflowPage />);
 
-    // Wait for artifact detection to complete (getContextFileContent resolves asynchronously)
+    // Wait for artifact detection to complete (verifyStepOutput resolves asynchronously)
     await waitFor(() => {
-      expect(vi.mocked(getContextFileContent)).toHaveBeenCalled();
+      expect(vi.mocked(verifyStepOutput)).toHaveBeenCalled();
     });
     // Flush promise so errorHasArtifacts state updates
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -2112,49 +2071,48 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
     vi.useRealTimers();
   });
 
-  it("autosave fires saveClarificationsContent after 1500ms on completed clarificationsEditable step", async () => {
-    vi.useFakeTimers();
-
+  it("autosave saves clarification answer immediately on completed clarificationsEditable step", async () => {
     const clarJson = makeClarificationsJson();
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(clarJson));
-      }
-      return Promise.reject("not found");
-    });
-    vi.mocked(writeFile).mockResolvedValue(undefined);
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    // Step 0 completed — clarificationsEditable is true for step 0
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(0);
 
     render(<WorkflowPage />);
 
-    // Allow the clarifications load effect to settle
     await act(async () => { await Promise.resolve(); });
 
-    // WorkflowStepComplete is mocked — get onClarificationsChange from the last render props.
-    // ClarificationsEditor lives inside WorkflowStepComplete so mockClarificationsOnChange
-    // is never wired here; use the prop directly instead.
     const calls = vi.mocked(WorkflowStepComplete).mock.calls;
     const stepCompleteProps = calls[calls.length - 1]?.[0];
     const onClarificationsChange = stepCompleteProps?.onClarificationsChange;
     expect(onClarificationsChange).toBeDefined();
 
-    act(() => { onClarificationsChange?.({ ...clarJson, sections: [] }); });
+    // Simulate Q1 receiving an answer choice
+    const clarJsonWithAnswer = {
+      ...clarJson,
+      sections: [{
+        ...clarJson.sections[0],
+        questions: [
+          { ...clarJson.sections[0].questions[0], answer_choice: "A" },
+          clarJson.sections[0].questions[1],
+        ],
+      }],
+    };
 
-    // Before 1500ms — no save yet
-    await act(async () => { vi.advanceTimersByTime(1000); });
+    vi.mocked(invokeCommand).mockClear();
+    act(() => { onClarificationsChange?.(clarJsonWithAnswer); });
+
+    // Save is immediate — no 1500ms wait
+    await waitFor(() => {
+      expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
+        "update_clarification_answer",
+        expect.objectContaining({ skillId: "test-skill", questionId: "Q1", answerChoice: "A" }),
+      );
+    });
+
+    // writeFile is NOT called — all saves go through invokeCommand
     expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
-
-    // After 1500ms — autosave fires
-    await act(async () => { vi.advanceTimersByTime(500); });
-    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.json",
-      expect.any(String),
-    );
   });
 
   it("autosave does NOT fire on pending agent steps", async () => {
@@ -2305,6 +2263,7 @@ describe("step reset behavior regressions", () => {
     vi.mocked(resetWorkflowStep).mockClear();
     vi.mocked(endWorkflowSession).mockClear();
     vi.mocked(previewStepReset).mockClear();
+    vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
 
     // Tests in this block set reviewMode=false (Update mode). Signal autoStart so the
     // persistence hook's early-return preserves Update mode instead of resetting to Review.
@@ -2457,8 +2416,7 @@ describe("step reset behavior regressions", () => {
 
     // Ensure no partial artifacts so the Reset button calls performStepReset directly
     // (not showing a confirmation dialog).
-    vi.mocked(readFile).mockRejectedValue("not found");
-    vi.mocked(getContextFileContent).mockResolvedValue(null);
+    vi.mocked(verifyStepOutput).mockResolvedValue(false);
     vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
 
     render(<WorkflowPage />);
@@ -2656,6 +2614,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     vi.mocked(materializeAnswerEvaluationOutput).mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
     vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
 
     // Reset WorkflowStepComplete to default implementation so per-test overrides don't bleed through
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
@@ -3056,6 +3015,8 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       },
     });
 
+    vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
+
     mockToast.success.mockClear();
     mockToast.error.mockClear();
     mockToast.info.mockClear();
@@ -3156,6 +3117,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     vi.mocked(materializeWorkflowStepOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(materializeAnswerEvaluationOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
+    vi.mocked(invokeCommand).mockClear();
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 

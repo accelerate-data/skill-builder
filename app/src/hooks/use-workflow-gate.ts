@@ -154,7 +154,9 @@ export function useWorkflowGate({
         // Persist per-question verdicts to the DB and invalidate the query cache
         // so the clarifications editor reflects the evaluator feedback.
         try {
-          const updates = (evaluation.per_question ?? []).map((q) => ({
+          const updates = (evaluation.per_question ?? [])
+          .filter((q) => q.verdict && q.verdict !== "clear")
+          .map((q) => ({
             question_id: q.question_id,
             verdict: q.verdict ?? null,
             reason: q.reason ?? null,

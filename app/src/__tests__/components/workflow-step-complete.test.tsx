@@ -11,8 +11,10 @@ vi.mock("@/lib/queries/clarifications", () => ({
 
 // Mock useDecisions — DecisionsStepComplete uses TanStack Query
 const mockUseDecisions = vi.hoisted(() => vi.fn());
+const mockUseSaveDecisionsEdit = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/queries/decisions", () => ({
   useDecisions: mockUseDecisions,
+  useSaveDecisionsEdit: mockUseSaveDecisionsEdit,
 }));
 
 // Minimal ClarificationsDto used by clarificationsEditable tests
@@ -136,6 +138,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUseClarifications.mockReturnValue({ data: null, isLoading: false, isError: false });
   mockUseDecisions.mockReturnValue({ data: null, isLoading: false, isError: false });
+  mockUseSaveDecisionsEdit.mockReturnValue({ mutate: vi.fn() });
   mockReadFile.mockResolvedValue(null);
   mockGetContextFileContent.mockResolvedValue(null);
   mockSaveDecisionsContent.mockResolvedValue(undefined);
