@@ -98,11 +98,7 @@ export function useWorkflowPersistence({
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
           .map((s) => s.step_id);
-        if (completedIds.length > 0) {
-          loadWorkflowState(completedIds, state.run.current_step);
-        } else {
-          setHydrated(true);
-        }
+        loadWorkflowState(completedIds, state.run.current_step);
       })
       .catch(() => {
         if (!cancelled) setHydrated(true);
