@@ -344,6 +344,7 @@ pub fn run() {
             commands::workflow::clarifications::update_clarification_answer,
             commands::workflow::clarifications::update_clarification_verdicts,
             commands::workflow::decisions::get_decisions,
+            commands::workflow::decisions::save_decisions_edit,
             commands::workflow::runtime::run_answer_evaluator,
             commands::workflow::output_format::materialize_answer_evaluation_output,
             commands::workflow::runtime::log_gate_decision,

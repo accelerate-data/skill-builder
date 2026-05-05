@@ -1,8 +1,8 @@
 import { Loader2, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
+import { DecisionsSummaryCard, parseDecisions } from "@/components/decisions-summary-card";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
-import { useDecisions } from "@/lib/queries/decisions";
+import { useDecisions, useSaveDecisionsEdit } from "@/lib/queries/decisions";
 import { StepActionBar } from "./step-action-bar";
 import type { StepCompleteBaseProps } from "./step-complete-types";
 import type { DecisionsDto, DecisionsOutput, DecisionStatus, ContradictoryInputs } from "@/generated/contracts";
@@ -44,6 +44,7 @@ export function DecisionsStepComplete(props: Props) {
   } = props;
 
   const { data: decisionsDto, isLoading, isError } = useDecisions(skillName ?? null);
+  const saveEdit = useSaveDecisionsEdit(skillName ?? null);
 
   if (isLoading) {
     return (
@@ -86,8 +87,11 @@ export function DecisionsStepComplete(props: Props) {
         <DecisionsSummaryCard
           decisionsContent={decisionsContent}
           duration={reviewMode ? dbDuration : duration}
-          allowEdit={false}
-          onDecisionsChange={() => {}}
+          allowEdit={!reviewMode}
+          onDecisionsChange={(serialized) => {
+            const decisions = parseDecisions(serialized);
+            saveEdit.mutate(decisions);
+          }}
         />
       </div>
       <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />

@@ -394,6 +394,18 @@ export interface TauriCommandMap {
     result: void;
   };
   get_decisions: { args: { skillId: string }; result: DecisionsDto | null };
+  save_decisions_edit: {
+    args: {
+      skillId: string;
+      items: Array<{
+        decision_id: string;
+        decision: string;
+        implication: string;
+        status: string;
+      }>;
+    };
+    result: void;
+  };
   log_gate_decision: {
     args: { skillName: string; verdict: string; decision: string };
     result: void;
