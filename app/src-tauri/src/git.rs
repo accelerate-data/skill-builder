@@ -547,9 +547,17 @@ pub fn get_history(
         .map_err(|e| format!("Failed to push HEAD: {}", e))?;
     revwalk.set_sorting(git2::Sort::TIME).ok();
 
-    // Repo-relative path prefix — derived from the tag prefix (strip trailing "v")
-    let tag_prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
-    let prefix = tag_prefix.trim_end_matches('v').to_string();
+    // Detect per-skill repo: SKILL.md exists at the repo root in working directory
+    // (or HEAD tree). If so, ALL commits in the repo are relevant to this skill.
+    let is_per_skill_repo = is_per_skill_repo(&repo, repo_path);
+
+    // Repo-relative path prefix for filtering commits by skill directory.
+    // Empty string means all commits are relevant (per-skill repo).
+    let prefix = if is_per_skill_repo {
+        String::new()
+    } else {
+        format!("{}/{}", plugin_slug, skill_name)
+    };
 
     let mut commits = Vec::new();
 
@@ -562,7 +570,12 @@ pub fn get_history(
             .find_commit(oid)
             .map_err(|e| format!("Failed to find commit {}: {}", oid, e))?;
 
-        let touches_current = commit_touches_path(&repo, &commit, &prefix)?;
+        // For per-skill repos, include every commit. Otherwise filter by path prefix.
+        let touches_current = if prefix.is_empty() {
+            true
+        } else {
+            commit_touches_path(&repo, &commit, &prefix)?
+        };
         let is_tagged = tag_map.contains_key(&oid);
         if touches_current || is_tagged {
             let timestamp = chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
@@ -608,48 +621,40 @@ pub fn restore_version(
         .tree()
         .map_err(|e| format!("Failed to get tree for {}: {}", sha, e))?;
 
-    // Write destination: plugin-aware current layout.
-    let write_dir = crate::skill_paths::resolve_skill_dir(repo_path, plugin_slug, skill_name);
+    // Detect per-skill repo: SKILL.md at tree root means repo IS the skill directory.
+    // In that case write to repo_path directly; otherwise use the plugin-aware layout.
+    let has_skill_md_at_root = tree.get_name("SKILL.md").is_some()
+        || repo_path.join("SKILL.md").exists();
+    let write_dir = if has_skill_md_at_root {
+        repo_path.to_path_buf()
+    } else {
+        crate::skill_paths::resolve_skill_dir(repo_path, plugin_slug, skill_name)
+    };
 
-    // Candidate read prefixes from the historical tree, tried in priority order:
-    // 1. Plugin layout              ({plugin}/{name}/)          — skip if default plugin
-    // 2. Old marketplace layout     ({plugin}/skills/{name}/)   — skip if default plugin (historical)
-    // 3. Default plugin layout      (skills/{name}/)
-    // 4. Legacy flat layout         ({name}/)
-    let mut read_prefixes: Vec<String> = Vec::new();
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        read_prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
-        read_prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
-    }
-    read_prefixes.push(format!("skills/{}/", skill_name));
-    read_prefixes.push(format!("{}/", skill_name));
-
-    // Collect all blob entries from the historical tree.
-    let mut all_entries: Vec<(String, Vec<u8>)> = Vec::new();
-    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
-        if entry.kind() != Some(git2::ObjectType::Blob) {
-            return git2::TreeWalkResult::Ok;
-        }
-        let full_path = if dir.is_empty() {
-            entry.name().unwrap_or("").to_string()
-        } else {
-            format!("{}{}", dir, entry.name().unwrap_or(""))
-        };
-        if let Ok(blob) = repo.find_blob(entry.id()) {
-            all_entries.push((full_path, blob.content().to_vec()));
-        }
-        git2::TreeWalkResult::Ok
-    })
-    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+    let all_entries = collect_tree_blobs(&repo, &tree)?;
+    let read_prefixes = candidate_skill_prefixes(plugin_slug, skill_name);
 
     // Find the first prefix that has matching files, then derive relative paths.
     let mut files_to_restore: Vec<(String, Vec<u8>)> = Vec::new();
     for prefix in &read_prefixes {
-        let matched: Vec<_> = all_entries
-            .iter()
-            .filter(|(path, _)| path.starts_with(prefix.as_str()))
-            .map(|(path, content)| (path[prefix.len()..].to_string(), content.clone()))
-            .collect();
+        let matched: Vec<(String, Vec<u8>)> = if prefix.is_empty() {
+            // Per-skill repo: SKILL.md must exist at root to confirm this layout.
+            // Exclude dotfiles (e.g. .gitignore) when restoring from root.
+            if !all_entries.iter().any(|(p, _)| p == "SKILL.md") {
+                continue;
+            }
+            all_entries
+                .iter()
+                .filter(|(path, _)| !path.starts_with('.'))
+                .map(|(path, content)| (path.clone(), content.clone()))
+                .collect()
+        } else {
+            all_entries
+                .iter()
+                .filter(|(path, _)| path.starts_with(prefix.as_str()))
+                .map(|(path, content)| (path[prefix.len()..].to_string(), content.clone()))
+                .collect()
+        };
         if !matched.is_empty() {
             log::debug!(
                 "[git] restore: found {} files under prefix '{}'",
@@ -662,8 +667,32 @@ pub fn restore_version(
     }
 
     // Clear current skill directory and write restored files.
+    // When write_dir == repo root (per-skill repo), only remove non-dotfile entries
+    // so that .git and .gitignore are preserved.
     if write_dir.exists() {
-        remove_dir_contents(&write_dir)?;
+        let is_repo_root = write_dir.join(".git").exists();
+        if is_repo_root {
+            for entry in std::fs::read_dir(&write_dir)
+                .map_err(|e| format!("Failed to read write dir: {}", e))?
+            {
+                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with('.') {
+                    continue; // preserve .git, .gitignore, etc.
+                }
+                let path = entry.path();
+                if path.is_dir() {
+                    std::fs::remove_dir_all(&path)
+                        .map_err(|e| format!("Failed to remove dir {}: {}", path.display(), e))?;
+                } else {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| format!("Failed to remove file {}: {}", path.display(), e))?;
+                }
+            }
+        } else {
+            remove_dir_contents(&write_dir)?;
+        }
     }
     std::fs::create_dir_all(&write_dir).map_err(|e| {
         format!(
@@ -821,44 +850,36 @@ pub fn extract_skill_at_tag(
         .tree()
         .map_err(|e| format!("Failed to get tree for tag '{}': {}", tag_name, e))?;
 
-    let prefix = if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        format!("skills/{}/", skill_name)
-    } else {
-        format!("{}/skills/{}/", plugin_slug, skill_name)
-    };
+    let prefixes = candidate_skill_prefixes(plugin_slug, skill_name);
+    let all_entries = collect_tree_blobs(&repo, &tree)?;
 
-    // Remove stale destination
+    let prefix = prefixes
+        .iter()
+        .find(|p| {
+            let skill_md = format!("{}SKILL.md", p);
+            all_entries.iter().any(|(path, _)| *path == skill_md)
+        })
+        .cloned()
+        .ok_or_else(|| format!(
+            "No SKILL.md found in tag '{}' for skill '{}' (plugin '{}')",
+            tag_name, skill_name, plugin_slug
+        ))?;
+
     if dest_dir.exists() {
         std::fs::remove_dir_all(dest_dir)
             .map_err(|e| format!("Failed to clean dest dir: {}", e))?;
     }
 
-    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
-        let full_path = if dir.is_empty() {
-            entry.name().unwrap_or("").to_string()
-        } else {
-            format!("{}{}", dir, entry.name().unwrap_or(""))
-        };
-
-        if !full_path.starts_with(&prefix) {
-            return git2::TreeWalkResult::Ok;
+    for (full_path, content) in &all_entries {
+        if !full_path.starts_with(&prefix) { continue; }
+        let relative = &full_path[prefix.len()..];
+        if relative.starts_with('.') { continue; } // skip dotfiles
+        let file_path = dest_dir.join(relative);
+        if let Some(parent) = file_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
         }
-
-        if let Some(git2::ObjectType::Blob) = entry.kind() {
-            if let Ok(blob) = repo.find_blob(entry.id()) {
-                // Strip the skill_name/ prefix for the destination path
-                let relative = &full_path[prefix.len()..];
-                let file_path = dest_dir.join(relative);
-                if let Some(parent) = file_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(&file_path, blob.content());
-            }
-        }
-
-        git2::TreeWalkResult::Ok
-    })
-    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+        let _ = std::fs::write(&file_path, content);
+    }
 
     log::info!(
         "[git] Extracted '{}' at tag '{}' to {}",
@@ -894,42 +915,33 @@ pub fn get_skill_files_at_sha(
         .tree()
         .map_err(|e| format!("Failed to get tree for commit '{}': {}", sha, e))?;
 
-    // Candidate prefixes tried in priority order (same as restore_version).
-    let mut prefixes: Vec<String> = Vec::new();
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
-        prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
-    }
-    prefixes.push(format!("skills/{}/", skill_name));
-    prefixes.push(format!("{}/", skill_name));
+    let prefixes = candidate_skill_prefixes(plugin_slug, skill_name);
+    let all_entries = collect_tree_blobs(&repo, &tree)?;
 
-    // Collect all blob entries once.
-    let mut all_entries: Vec<(String, Vec<u8>)> = Vec::new();
-    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
-        if entry.kind() != Some(git2::ObjectType::Blob) {
-            return git2::TreeWalkResult::Ok;
-        }
-        let full_path = if dir.is_empty() {
-            entry.name().unwrap_or("").to_string()
-        } else {
-            format!("{}{}", dir, entry.name().unwrap_or(""))
-        };
-        if let Ok(blob) = repo.find_blob(entry.id()) {
-            all_entries.push((full_path, blob.content().to_vec()));
-        }
-        git2::TreeWalkResult::Ok
-    })
-    .map_err(|e| format!("Failed to walk tree: {}", e))?;
-
-    // Find the first prefix that has matching files.
+    // Find the first prefix that has SKILL.md.
+    // For the empty prefix (per-skill repo), SKILL.md must exist at the root.
     let mut prefix_used = String::new();
     let mut matched: Vec<(String, Vec<u8>)> = Vec::new();
     for prefix in &prefixes {
-        let m: Vec<_> = all_entries
-            .iter()
-            .filter(|(path, _)| path.starts_with(prefix.as_str()))
-            .map(|(path, content)| (path.clone(), content.clone()))
-            .collect();
+        let skill_md = format!("{}SKILL.md", prefix);
+        let has_skill_md = all_entries.iter().any(|(path, _)| path == &skill_md);
+        if !has_skill_md {
+            continue;
+        }
+        let m: Vec<_> = if prefix.is_empty() {
+            // Per-skill repo: return all non-dotfile entries from root
+            all_entries
+                .iter()
+                .filter(|(path, _)| !path.starts_with('.'))
+                .map(|(path, content)| (path.clone(), content.clone()))
+                .collect()
+        } else {
+            all_entries
+                .iter()
+                .filter(|(path, _)| path.starts_with(prefix.as_str()))
+                .map(|(path, content)| (path.clone(), content.clone()))
+                .collect()
+        };
         if !m.is_empty() {
             prefix_used = prefix.clone();
             matched = m;
@@ -945,6 +957,7 @@ pub fn get_skill_files_at_sha(
         .filter(|(path, _)| *path == skill_md_path || path.starts_with(&refs_prefix))
         .filter_map(|(path, content)| {
             let relative = path[prefix_used.len()..].to_string();
+            if relative.starts_with('.') { return None; } // skip dotfiles
             std::str::from_utf8(&content)
                 .ok()
                 .map(|s| (relative, s.to_string()))
@@ -1031,6 +1044,61 @@ pub fn resolve_benchmark_baseline(
 }
 
 // --- Helpers ---
+
+/// Candidate path prefixes used to locate a skill's files inside a git tree.
+///
+/// Tried in priority order:
+/// 1. `""`                       — per-skill repo (files at tree root)
+/// 2. `{plugin}/{name}/`         — current plugin layout (skipped for default plugin)
+/// 3. `{plugin}/skills/{name}/`  — historical marketplace layout (skipped for default plugin)
+/// 4. `skills/{name}/`           — default plugin layout
+/// 5. `{name}/`                  — legacy flat layout
+fn candidate_skill_prefixes(plugin_slug: &str, skill_name: &str) -> Vec<String> {
+    let mut prefixes = vec![String::new()];
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        prefixes.push(format!("{}/{}/", plugin_slug, skill_name));
+        prefixes.push(format!("{}/skills/{}/", plugin_slug, skill_name));
+    }
+    prefixes.push(format!("skills/{}/", skill_name));
+    prefixes.push(format!("{}/", skill_name));
+    prefixes
+}
+
+/// True if the repo at `repo_path` is a per-skill repo (SKILL.md at the root,
+/// either in the working directory or in HEAD's tree).
+fn is_per_skill_repo(repo: &Repository, repo_path: &Path) -> bool {
+    if repo_path.join("SKILL.md").exists() {
+        return true;
+    }
+    repo.head()
+        .ok()
+        .and_then(|h| h.peel_to_tree().ok())
+        .is_some_and(|tree| tree.get_name("SKILL.md").is_some())
+}
+
+/// Collect every blob entry in `tree` as `(full_path, content)` pairs.
+fn collect_tree_blobs(
+    repo: &Repository,
+    tree: &git2::Tree,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        if entry.kind() != Some(git2::ObjectType::Blob) {
+            return git2::TreeWalkResult::Ok;
+        }
+        let full_path = if dir.is_empty() {
+            entry.name().unwrap_or("").to_string()
+        } else {
+            format!("{}{}", dir, entry.name().unwrap_or(""))
+        };
+        if let Ok(blob) = repo.find_blob(entry.id()) {
+            entries.push((full_path, blob.content().to_vec()));
+        }
+        git2::TreeWalkResult::Ok
+    })
+    .map_err(|e| format!("Failed to walk tree: {}", e))?;
+    Ok(entries)
+}
 
 fn default_signature(repo: &Repository) -> Result<Signature<'static>, String> {
     // Try repo config first, fall back to a generic signature
@@ -1393,11 +1461,11 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.1.0");
+        create_tag(dir.path(), "v1.1.0");
 
         let version = latest_skill_semver(dir.path(), plugin, "my-skill").unwrap();
         assert_eq!(version, "1.1.0");
@@ -1413,7 +1481,7 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1");
+        create_tag(dir.path(), "v1");
 
         let version = latest_skill_semver(dir.path(), plugin, "my-skill").unwrap();
         assert_eq!(version, "0.0.0");
@@ -1421,40 +1489,49 @@ mod tests {
 
     #[test]
     fn test_tags_are_skill_scoped() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
+        // In per-skill repos, each skill has its own repo and tag isolation is
+        // achieved at the repo level. Verify that each skill repo tracks its own
+        // semver independently.
+        let dir_a = tempdir().unwrap();
+        let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir.path().join(plugin).join("skill-a");
-        let b_dir = dir.path().join(plugin).join("skill-b");
+        let a_dir = dir_a.path().join(plugin).join("skill-a");
+        let b_dir = dir_b.path().join(plugin).join("skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
 
+        ensure_repo(dir_a.path()).unwrap();
+        ensure_repo(dir_b.path()).unwrap();
+
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
+        commit_all(dir_a.path(), "skill-a: initial").unwrap();
+        create_tag(dir_a.path(), "v1.0.0");
+
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
-        commit_all(dir.path(), "both skills").unwrap();
-        create_tag(dir.path(), "skills/skill-a/v1.0.0");
-        create_tag(dir.path(), "skills/skill-b/v1.0.0");
+        commit_all(dir_b.path(), "skill-b: initial").unwrap();
+        create_tag(dir_b.path(), "v1.0.0");
 
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(),
+            latest_skill_semver(dir_a.path(), plugin, "skill-a").unwrap(),
             "1.0.0"
         );
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(),
+            latest_skill_semver(dir_b.path(), plugin, "skill-b").unwrap(),
             "1.0.0"
         );
 
         std::fs::write(a_dir.join("SKILL.md"), "# A v2").unwrap();
-        commit_all(dir.path(), "skill-a v2").unwrap();
-        create_tag(dir.path(), "skills/skill-a/v2.0.0");
+        commit_all(dir_a.path(), "skill-a v2").unwrap();
+        create_tag(dir_a.path(), "v2.0.0");
 
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(),
+            latest_skill_semver(dir_a.path(), plugin, "skill-a").unwrap(),
             "2.0.0"
         );
+        // skill-b's repo is unchanged — still at v1.0.0.
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(),
+            latest_skill_semver(dir_b.path(), plugin, "skill-b").unwrap(),
             "1.0.0"
         );
     }
@@ -1472,7 +1549,7 @@ mod tests {
 
         let tag_name = create_skill_version_tag(dir.path(), plugin, "my-skill", "1.0.0").unwrap();
 
-        assert_eq!(tag_name, "skills/my-skill/v1.0.0");
+        assert_eq!(tag_name, "v1.0.0");
         assert!(skill_version_tag_exists(dir.path(), plugin, "my-skill", "1.0.0").unwrap());
     }
 
@@ -1494,21 +1571,28 @@ mod tests {
 
     #[test]
     fn test_skill_has_any_tag_is_skill_scoped() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
+        // In per-skill repos, each skill has its own repo. Tagging one skill's repo
+        // must not affect another skill's repo.
+        let dir_a = tempdir().unwrap();
+        let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir.path().join(plugin).join("skill-a");
-        let b_dir = dir.path().join(plugin).join("skill-b");
+        let a_dir = dir_a.path().join(plugin).join("skill-a");
+        let b_dir = dir_b.path().join(plugin).join("skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
+
+        ensure_repo(dir_a.path()).unwrap();
+        ensure_repo(dir_b.path()).unwrap();
+
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
-        commit_all(dir.path(), "seed").unwrap();
-        create_skill_version_tag(dir.path(), plugin, "skill-a", "1.0.0").unwrap();
+        commit_all(dir_a.path(), "skill-a: seed").unwrap();
+        commit_all(dir_b.path(), "skill-b: seed").unwrap();
+        create_skill_version_tag(dir_a.path(), plugin, "skill-a", "1.0.0").unwrap();
 
-        assert!(skill_has_any_tag(dir.path(), plugin, "skill-a").unwrap());
-        assert!(!skill_has_any_tag(dir.path(), plugin, "skill-b").unwrap());
+        assert!(skill_has_any_tag(dir_a.path(), plugin, "skill-a").unwrap());
+        assert!(!skill_has_any_tag(dir_b.path(), plugin, "skill-b").unwrap());
     }
 
     // --- delete_skill_version_tags ---
@@ -1534,24 +1618,31 @@ mod tests {
 
     #[test]
     fn test_delete_skill_version_tags_does_not_affect_other_skills() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
+        // In per-skill repos, each skill has its own repo. Deleting tags for one
+        // skill must not remove tags in another skill's repo.
+        let dir_a = tempdir().unwrap();
+        let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir.path().join(plugin).join("skill-a");
-        let b_dir = dir.path().join(plugin).join("skill-b");
+        let a_dir = dir_a.path().join(plugin).join("skill-a");
+        let b_dir = dir_b.path().join(plugin).join("skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
+
+        ensure_repo(dir_a.path()).unwrap();
+        ensure_repo(dir_b.path()).unwrap();
+
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
-        commit_all(dir.path(), "seed both").unwrap();
-        create_skill_version_tag(dir.path(), plugin, "skill-a", "1.0.0").unwrap();
-        create_skill_version_tag(dir.path(), plugin, "skill-b", "1.0.0").unwrap();
+        commit_all(dir_a.path(), "skill-a: seed").unwrap();
+        commit_all(dir_b.path(), "skill-b: seed").unwrap();
+        create_skill_version_tag(dir_a.path(), plugin, "skill-a", "1.0.0").unwrap();
+        create_skill_version_tag(dir_b.path(), plugin, "skill-b", "1.0.0").unwrap();
 
-        delete_skill_version_tags(dir.path(), plugin, "skill-a").unwrap();
+        delete_skill_version_tags(dir_a.path(), plugin, "skill-a").unwrap();
 
-        assert!(!skill_has_any_tag(dir.path(), plugin, "skill-a").unwrap());
-        assert!(skill_has_any_tag(dir.path(), plugin, "skill-b").unwrap());
+        assert!(!skill_has_any_tag(dir_a.path(), plugin, "skill-a").unwrap());
+        assert!(skill_has_any_tag(dir_b.path(), plugin, "skill-b").unwrap());
     }
 
     #[test]
@@ -1577,7 +1668,7 @@ mod tests {
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "my-skill: created").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "my-skill: updated").unwrap();
@@ -1585,7 +1676,7 @@ mod tests {
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
         commit_all(dir.path(), "my-skill: refined").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.1.0");
+        create_tag(dir.path(), "v1.1.0");
 
         let history = get_history(dir.path(), "my-skill", plugin, 50).unwrap();
         assert_eq!(history.len(), 3);
@@ -1622,18 +1713,18 @@ mod tests {
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.1.0");
+        create_tag(dir.path(), "v1.1.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
         commit_all(dir.path(), "v3").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v2.0.0");
+        create_tag(dir.path(), "v2.0.0");
 
         let prior = prior_skill_tag(dir.path(), plugin, "my-skill");
-        assert_eq!(prior.as_deref(), Some("skills/my-skill/v1.1.0"));
+        assert_eq!(prior.as_deref(), Some("v1.1.0"));
     }
 
     #[test]
@@ -1646,7 +1737,7 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         assert!(prior_skill_tag(dir.path(), plugin, "my-skill").is_none());
     }
@@ -1673,12 +1764,12 @@ mod tests {
         std::fs::write(skill_dir.join("SKILL.md"), "# V1 content").unwrap();
         std::fs::write(skill_dir.join("references").join("guide.md"), "guide v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         // Modify files for v2
         std::fs::write(skill_dir.join("SKILL.md"), "# V2 content").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v2.0.0");
+        create_tag(dir.path(), "v2.0.0");
 
         // Extract v1 to a separate directory
         let dest = dir.path().join("snapshot");
@@ -1686,7 +1777,7 @@ mod tests {
             dir.path(),
             plugin,
             "my-skill",
-            "skills/my-skill/v1.0.0",
+            "v1.0.0",
             &dest,
         )
         .unwrap();
@@ -1713,9 +1804,104 @@ mod tests {
             dir.path(),
             plugin,
             "my-skill",
-            "skills/my-skill/v99.0.0",
+            "v99.0.0",
             &dest,
         );
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod per_skill_repo_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn init_per_skill_repo(skill_dir: &std::path::Path, content: &str) -> String {
+        ensure_repo(skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+        commit_all(skill_dir, "generated skill").unwrap().unwrap()
+    }
+
+    #[test]
+    fn test_restore_version_writes_to_repo_root_for_per_skill_repo() {
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path();
+        let sha_v1 = init_per_skill_repo(skill_dir, "# V1");
+
+        std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
+        commit_all(skill_dir, "updated").unwrap();
+
+        restore_version(skill_dir, &sha_v1, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+
+        let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+        assert_eq!(content, "# V1", "restore must write to repo root, not a subdirectory");
+        assert!(skill_dir.join(".git").exists(), ".git/ must survive restore");
+    }
+
+    #[test]
+    fn test_extract_skill_at_tag_works_for_per_skill_repo() {
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path();
+        ensure_repo(skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Tagged version").unwrap();
+        commit_all(skill_dir, "generated skill").unwrap();
+        create_skill_version_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0").unwrap();
+
+        let dest = dir.path().parent().unwrap().join("dest");
+        extract_skill_at_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "v1.0.0", &dest).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "# Tagged version"
+        );
+    }
+
+    #[test]
+    fn test_get_skill_files_at_sha_works_for_per_skill_repo() {
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path();
+        let sha = init_per_skill_repo(skill_dir, "# My skill content");
+
+        let files = get_skill_files_at_sha(skill_dir, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &sha).unwrap();
+        assert!(files.iter().any(|(p, _)| p == "SKILL.md"), "SKILL.md must be in result");
+        let skill_md = files.iter().find(|(p, _)| p == "SKILL.md").unwrap();
+        assert!(skill_md.1.contains("My skill content"));
+    }
+
+    #[test]
+    fn test_get_history_returns_all_commits_for_per_skill_repo() {
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path();
+        init_per_skill_repo(skill_dir, "# V1");
+        std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
+        commit_all(skill_dir, "updated").unwrap();
+
+        let history = get_history(skill_dir, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 100).unwrap();
+        assert!(history.len() >= 2, "expected at least 2 commits, got {}", history.len());
+    }
+
+    #[test]
+    fn test_extract_skill_at_tag_errors_when_no_skill_md_in_tree() {
+        // A tag whose tree contains no SKILL.md must return an explicit error,
+        // not silently write an empty destination.
+        let dir = tempdir().unwrap();
+        let skill_dir = dir.path();
+        ensure_repo(skill_dir).unwrap();
+        // Commit only a non-SKILL file so the tag tree has no SKILL.md.
+        std::fs::write(skill_dir.join("other.md"), "# Not a skill").unwrap();
+        commit_all(skill_dir, "no skill md").unwrap();
+        create_skill_version_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0").unwrap();
+
+        let dest = dir.path().parent().unwrap().join("dest");
+        let result = extract_skill_at_tag(
+            skill_dir,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            "v1.0.0",
+            &dest,
+        );
+        assert!(result.is_err(), "expected error when tag tree has no SKILL.md");
+        let err = result.unwrap_err();
+        assert!(err.contains("No SKILL.md found"), "unexpected error: {err}");
     }
 }

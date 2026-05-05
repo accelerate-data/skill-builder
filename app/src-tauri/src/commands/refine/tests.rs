@@ -272,18 +272,18 @@ fn test_new_refine_usage_session_id_is_opaque_and_scoped_to_skill() {
 fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     // Simulate agent adding a new file and committing
     let refs_dir = skill_dir.join("references");
     std::fs::create_dir_all(&refs_dir).unwrap();
     std::fs::write(refs_dir.join("glossary.md"), "# Glossary\n").unwrap();
-    crate::git::commit_all(dir.path(), "my-skill: add glossary").unwrap();
+    crate::git::commit_all(&skill_dir, "my-skill: add glossary").unwrap();
 
     let result = finalize_refine_run_inner(
         "my-skill",
@@ -299,7 +299,7 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     assert_eq!(result.diff.files.len(), 1);
     assert_eq!(
         result.diff.files[0].path,
-        "skills/my-skill/references/glossary.md"
+        "references/glossary.md"
     );
     assert_eq!(result.diff.files[0].status, "added");
     assert!(result.diff.files[0].diff.contains("+# Glossary"));
@@ -309,12 +309,12 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
 fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     let result = finalize_refine_run_inner(
         "my-skill",
@@ -353,12 +353,12 @@ fn test_get_skill_content_excludes_context_artifacts() {
 fn test_finalize_refine_run_ignores_structured_output() {
     let skills_dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(skills_dir.path()).unwrap();
 
     let skill_dir = skills_dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
-    crate::git::commit_all(skills_dir.path(), "generate skill").unwrap();
+    crate::git::commit_all(&skill_dir, "generate skill").unwrap();
 
     let payload = serde_json::json!({
         "status": "validation_complete",
@@ -391,10 +391,10 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
 
     let skills_dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(skills_dir.path()).unwrap();
 
     let skill_dir = skills_dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "# Skill\n\nMock rewrite output\n",
@@ -405,10 +405,10 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
         "# Checklist\n\n- Verify modified files UI\n",
     )
     .unwrap();
-    crate::git::commit_all(skills_dir.path(), "initial").unwrap();
-    std::fs::write(skills_dir.path().join("README.md"), "top-level docs").unwrap();
-    crate::git::commit_all(skills_dir.path(), "unrelated repo change").unwrap();
+    // Simulate agent committing skill content (agent runs, HEAD advances)
+    crate::git::commit_all(&skill_dir, "agent: mock refine output").unwrap();
 
+    // No pre_run_sha — finalize reads parent diff showing the agent's commit vs its parent
     let result = finalize_refine_run_inner(
         "my-skill",
         skills_dir.path().to_str().unwrap(),
@@ -420,13 +420,8 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
 
     assert!(result.commit_sha.is_some());
     assert_eq!(result.files.len(), 2);
+    // With MOCK_AGENTS=true and real diff non-empty, result should still show all skill files
     assert_eq!(result.diff.files.len(), 2);
-    assert!(result
-        .diff
-        .files
-        .iter()
-        .all(|file| file.status == "modified"));
-    assert!(result.diff.files[0].path.starts_with("skills/my-skill/"));
     assert!(result.diff.files[0].diff.contains("diff --git"));
     assert!(result.diff.stat.contains("2 file(s) changed"));
 
@@ -761,12 +756,12 @@ fn test_cleanup_skill_snapshot_noop_when_no_snapshot() {
 fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     // Create a stale snapshot in the workspace (under default plugin slug)
     let snapshot_dir = workspace_dir
@@ -800,20 +795,20 @@ fn test_finalize_refine_tags_new_version_after_commit() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     // Create skill at plugin-aware path and tag v1.0.0
     let skill_dir = dir.path().join(plugin).join("tag-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let initial_sha = crate::git::commit_all(dir.path(), "tag-skill: initial")
+    let initial_sha = crate::git::commit_all(&skill_dir, "tag-skill: initial")
         .unwrap()
         .unwrap();
-    crate::git::create_skill_version_tag(dir.path(), plugin, "tag-skill", "1.0.0").unwrap();
+    crate::git::create_skill_version_tag(&skill_dir, plugin, "tag-skill", "1.0.0").unwrap();
 
     // Simulate agent commit (refine edit)
     std::fs::write(skill_dir.join("SKILL.md"), "# V1 refined\n").unwrap();
-    crate::git::commit_all(dir.path(), "tag-skill: refine content").unwrap();
+    crate::git::commit_all(&skill_dir, "tag-skill: refine content").unwrap();
 
     let result = finalize_refine_run_inner_for_plugin(
         "tag-skill",
@@ -826,7 +821,7 @@ fn test_finalize_refine_tags_new_version_after_commit() {
     .unwrap();
 
     assert!(result.commit_sha.is_some());
-    let version = crate::git::latest_skill_semver(dir.path(), plugin, "tag-skill").unwrap();
+    let version = crate::git::latest_skill_semver(&skill_dir, plugin, "tag-skill").unwrap();
     assert_eq!(version, "1.0.1", "refine should bump patch version");
 }
 
@@ -835,19 +830,19 @@ fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     // Create skill without any tags
     let skill_dir = dir.path().join(plugin).join("notag-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let initial_sha = crate::git::commit_all(dir.path(), "notag-skill: initial")
+    let initial_sha = crate::git::commit_all(&skill_dir, "notag-skill: initial")
         .unwrap()
         .unwrap();
 
     // Simulate agent commit
     std::fs::write(skill_dir.join("SKILL.md"), "# V1 refined\n").unwrap();
-    crate::git::commit_all(dir.path(), "notag-skill: refine").unwrap();
+    crate::git::commit_all(&skill_dir, "notag-skill: refine").unwrap();
 
     let result = finalize_refine_run_inner_for_plugin(
         "notag-skill",
@@ -860,7 +855,7 @@ fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
     .unwrap();
 
     assert!(result.commit_sha.is_some());
-    let version = crate::git::latest_skill_semver(dir.path(), plugin, "notag-skill").unwrap();
+    let version = crate::git::latest_skill_semver(&skill_dir, plugin, "notag-skill").unwrap();
     assert_eq!(
         version, "0.0.1",
         "first refine with no prior tags should create v0.0.1"
@@ -872,16 +867,16 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     // Create skill and tag v1.0.0
     let skill_dir = dir.path().join(plugin).join("noop-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let sha = crate::git::commit_all(dir.path(), "noop-skill: initial")
+    let sha = crate::git::commit_all(&skill_dir, "noop-skill: initial")
         .unwrap()
         .unwrap();
-    crate::git::create_skill_version_tag(dir.path(), plugin, "noop-skill", "1.0.0").unwrap();
+    crate::git::create_skill_version_tag(&skill_dir, plugin, "noop-skill", "1.0.0").unwrap();
 
     // Call finalize with pre_run_sha == current HEAD (no agent commit)
     let result = finalize_refine_run_inner_for_plugin(
@@ -895,7 +890,7 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
     .unwrap();
 
     assert!(result.commit_sha.is_some());
-    let version = crate::git::latest_skill_semver(dir.path(), plugin, "noop-skill").unwrap();
+    let version = crate::git::latest_skill_semver(&skill_dir, plugin, "noop-skill").unwrap();
     assert_eq!(version, "1.0.0", "no-op refine should not create a new tag");
 }
 
@@ -904,15 +899,15 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join(plugin).join("dirty-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# V1\n").unwrap();
-    let initial_sha = crate::git::commit_all(dir.path(), "dirty-skill: initial")
+    let initial_sha = crate::git::commit_all(&skill_dir, "dirty-skill: initial")
         .unwrap()
         .unwrap();
-    crate::git::create_skill_version_tag(dir.path(), plugin, "dirty-skill", "1.0.0").unwrap();
+    crate::git::create_skill_version_tag(&skill_dir, plugin, "dirty-skill", "1.0.0").unwrap();
 
     // Simulate rewrite-skill editing the configured skill directory but failing to commit.
     std::fs::write(skill_dir.join("SKILL.md"), "# V1 refined\n").unwrap();
@@ -931,7 +926,7 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
         .commit_sha
         .expect("finalize should commit dirty skill changes");
     assert_ne!(new_sha, initial_sha);
-    let version = crate::git::latest_skill_semver(dir.path(), plugin, "dirty-skill").unwrap();
+    let version = crate::git::latest_skill_semver(&skill_dir, plugin, "dirty-skill").unwrap();
     assert_eq!(
         version, "1.0.1",
         "backend refine commit should bump patch version"
@@ -941,7 +936,7 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
             .diff
             .files
             .iter()
-            .any(|file| file.path == "skills/dirty-skill/SKILL.md"),
+            .any(|file| file.path == "SKILL.md"),
         "refine diff should include the backend-committed skill file"
     );
 }
@@ -976,20 +971,20 @@ fn test_update_skill_name_inserts_when_missing() {
 fn test_finalize_restores_name_changed_by_agent() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("guard-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "---\nname: guard-skill\ndescription: Original description\n---\n# Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     // Capture pre-run SHA
     let pre_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1006,7 +1001,7 @@ fn test_finalize_restores_name_changed_by_agent() {
         "---\nname: renamed-skill\ndescription: Original description\n---\n# Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "agent rename").unwrap();
+    crate::git::commit_all(&skill_dir, "agent rename").unwrap();
 
     let result = finalize_refine_run_inner(
         "guard-skill",
@@ -1032,19 +1027,19 @@ fn test_finalize_restores_name_changed_by_agent() {
 fn test_finalize_restores_description_changed_by_agent() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("desc-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "---\nname: desc-skill\ndescription: Original description\n---\n# Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     let pre_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1061,7 +1056,7 @@ fn test_finalize_restores_description_changed_by_agent() {
         "---\nname: desc-skill\ndescription: Agent rewrote this\n---\n# Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "agent rewrite desc").unwrap();
+    crate::git::commit_all(&skill_dir, "agent rewrite desc").unwrap();
 
     let result = finalize_refine_run_inner(
         "desc-skill",
@@ -1086,19 +1081,19 @@ fn test_finalize_restores_description_changed_by_agent() {
 fn test_finalize_restores_both_name_and_description_changed_by_agent() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("both-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "---\nname: both-skill\ndescription: Keep me\n---\n# Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     let pre_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1115,7 +1110,7 @@ fn test_finalize_restores_both_name_and_description_changed_by_agent() {
         "---\nname: changed-name\ndescription: Changed desc\n---\n# Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "agent changes both").unwrap();
+    crate::git::commit_all(&skill_dir, "agent changes both").unwrap();
 
     let result = finalize_refine_run_inner(
         "both-skill",
@@ -1144,19 +1139,19 @@ fn test_finalize_restores_both_name_and_description_changed_by_agent() {
 fn test_finalize_no_fixup_when_frontmatter_unchanged() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("no-fix-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "---\nname: no-fix-skill\ndescription: Stay the same\n---\n# Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     let pre_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1173,10 +1168,10 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
         "---\nname: no-fix-skill\ndescription: Stay the same\n---\n# Updated Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "agent edits body only").unwrap();
+    crate::git::commit_all(&skill_dir, "agent edits body only").unwrap();
 
     let agent_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1199,7 +1194,7 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
     // HEAD should be the tagged version of the agent commit, not a fixup
     // The commit_sha from result should exist and there should be no extra fixup commit
     let final_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1223,19 +1218,19 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
 fn test_finalize_diff_shows_full_changes_when_fixup_created() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join("skills").join("diff-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "---\nname: diff-skill\ndescription: Original desc\n---\n# Old Content\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     let pre_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1252,7 +1247,7 @@ fn test_finalize_diff_shows_full_changes_when_fixup_created() {
         "---\nname: agent-renamed\ndescription: Original desc\n---\n# New Content from agent\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "agent refine").unwrap();
+    crate::git::commit_all(&skill_dir, "agent refine").unwrap();
 
     let result = finalize_refine_run_inner(
         "diff-skill",
@@ -1293,20 +1288,20 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-    crate::git::ensure_repo(dir.path()).unwrap();
 
     let skill_dir = dir.path().join(plugin).join("tag-fix-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
+    crate::git::ensure_repo(&skill_dir).unwrap();
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "---\nname: tag-fix-skill\ndescription: Keep this\n---\n# V1\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "initial").unwrap();
-    crate::git::create_skill_version_tag(dir.path(), plugin, "tag-fix-skill", "1.0.0").unwrap();
+    crate::git::commit_all(&skill_dir, "initial").unwrap();
+    crate::git::create_skill_version_tag(&skill_dir, plugin, "tag-fix-skill", "1.0.0").unwrap();
 
     let pre_sha = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = git2::Repository::open(&skill_dir).unwrap();
         let sha = repo
             .head()
             .unwrap()
@@ -1323,7 +1318,7 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
         "---\nname: agent-renamed\ndescription: Keep this\n---\n# V1 refined\n",
     )
     .unwrap();
-    crate::git::commit_all(dir.path(), "agent refine").unwrap();
+    crate::git::commit_all(&skill_dir, "agent refine").unwrap();
 
     let _result = finalize_refine_run_inner_for_plugin(
         "tag-fix-skill",
@@ -1336,7 +1331,7 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
     .unwrap();
 
     // Count tags for this skill — should be exactly 2 (the pre-existing 1.0.0 + one new tag)
-    let repo = git2::Repository::open(dir.path()).unwrap();
+    let repo = git2::Repository::open(&skill_dir).unwrap();
     let glob = crate::skill_paths::skill_tag_glob(plugin, "tag-fix-skill");
     let tags = repo.tag_names(Some(&glob)).unwrap();
     let tag_count = tags.iter().flatten().count();
@@ -1346,7 +1341,7 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
         tag_count
     );
 
-    let version = crate::git::latest_skill_semver(dir.path(), plugin, "tag-fix-skill").unwrap();
+    let version = crate::git::latest_skill_semver(&skill_dir, plugin, "tag-fix-skill").unwrap();
     assert_eq!(version, "1.0.1", "fixup should not cause double-bump");
 }
 

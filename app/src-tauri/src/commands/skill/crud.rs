@@ -254,7 +254,7 @@ pub fn create_skill(
         )?;
     }
 
-    post_create_skill_filesystem_inner(&name, skills_path.as_deref());
+    post_create_skill_filesystem_inner(&name, skills_path.as_deref(), DEFAULT_PLUGIN_SLUG);
     Ok(())
 }
 
@@ -296,7 +296,7 @@ pub(crate) fn create_skill_inner(
             disable_model_invocation,
         )?;
     }
-    post_create_skill_filesystem_inner(name, skills_path);
+    post_create_skill_filesystem_inner(name, skills_path, DEFAULT_PLUGIN_SLUG);
     Ok(())
 }
 
@@ -437,7 +437,7 @@ pub(crate) fn create_skill_db_records_inner(
     Ok(())
 }
 
-fn post_create_skill_filesystem_inner(name: &str, skills_path: Option<&str>) {
+fn post_create_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plugin_slug: &str) {
     // INTENTIONAL: DB committed first; git commit may fail.
     // Reconciler corrects disk/DB divergence on next startup.
     if let Some(sp) = skills_path {
@@ -445,9 +445,23 @@ fn post_create_skill_filesystem_inner(name: &str, skills_path: Option<&str>) {
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
             log::warn!("Manifest regeneration failed after create: {}", e);
         }
+        // Initialize per-skill git repo and commit at the skill dir level
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
+        if let Err(e) = crate::git::ensure_repo(&skill_dir) {
+            log::warn!(
+                "[post_create_skill_filesystem_inner] failed to init git repo for '{}': {}",
+                name,
+                e
+            );
+        }
         let msg = format!("{}: created", name);
-        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
+            log::warn!(
+                "[post_create_skill_filesystem_inner] git commit failed ({}): {:?}",
+                msg,
+                e
+            );
         }
     }
 }
@@ -483,7 +497,7 @@ pub fn delete_skill(
     }
 
     delete_skill_filesystem_inner(&workspace_path, &name, &plugin_slug, skills_path.as_deref())?;
-    post_delete_skill_filesystem_inner(&name, skills_path.as_deref());
+    post_delete_skill_filesystem_inner(&name, skills_path.as_deref(), &plugin_slug);
     {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
@@ -503,7 +517,7 @@ pub(crate) fn delete_skill_inner(
     skills_path: Option<&str>,
 ) -> Result<(), String> {
     delete_skill_filesystem_inner(workspace_path, name, plugin_slug, skills_path)?;
-    post_delete_skill_filesystem_inner(name, skills_path);
+    post_delete_skill_filesystem_inner(name, skills_path, plugin_slug);
     if let Some(conn) = conn {
         delete_skill_db_records_inner(conn, name, plugin_slug)?;
     }
@@ -575,16 +589,19 @@ pub(crate) fn delete_skill_filesystem_inner(
     Ok(())
 }
 
-fn post_delete_skill_filesystem_inner(name: &str, skills_path: Option<&str>) {
-    // Auto-commit: record the deletion in git
+fn post_delete_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plugin_slug: &str) {
     if let Some(sp) = skills_path {
-        // Regenerate marketplace manifests
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
             log::warn!("Manifest regeneration failed after delete: {}", e);
         }
+        // Per-skill repo is gone with the directory — nothing to commit.
+        let skill_dir = crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
+        if !skill_dir.exists() {
+            return;
+        }
         let msg = format!("{}: deleted", name);
-        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
+            log::warn!("[post_delete_skill_filesystem_inner] git commit failed ({}): {:?}", msg, e);
         }
     }
 }
@@ -640,6 +657,22 @@ pub(crate) fn delete_skill_db_records_inner(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn test_create_skill_initializes_per_skill_git_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills_path = dir.path().to_str().unwrap();
+        let plugin_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        post_create_skill_filesystem_inner("brand-new-skill", Some(skills_path), plugin_slug);
+
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
+            dir.path(),
+            plugin_slug,
+            "brand-new-skill",
+        );
+        assert!(skill_dir.join(".git").exists(), "per-skill .git must exist after create");
+    }
 
     #[test]
     fn create_skill_filesystem_inner_does_not_create_context_subdir() {

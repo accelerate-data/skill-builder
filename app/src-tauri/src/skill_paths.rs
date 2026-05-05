@@ -341,6 +341,27 @@ fn is_skill_dir(path: &Path) -> bool {
 }
 
 #[cfg(test)]
+mod tag_format_tests {
+    use super::*;
+
+    #[test]
+    fn test_skill_tag_prefix_returns_v() {
+        assert_eq!(skill_tag_prefix("my-plugin", "my-skill"), "v");
+    }
+
+    #[test]
+    fn test_skill_tag_glob_returns_v_star() {
+        assert_eq!(skill_tag_glob("any-plugin", "any-skill"), "v*");
+    }
+
+    #[test]
+    fn test_skill_version_tag_name_returns_v_prefixed() {
+        let name = crate::git::skill_version_tag_name("my-plugin", "my-skill", "1.0.0");
+        assert_eq!(name, "v1.0.0");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

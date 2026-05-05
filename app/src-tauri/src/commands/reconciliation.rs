@@ -52,33 +52,33 @@ pub fn reconcile_startup(
     let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
 
     if apply {
-        // Auto-commit new skill folders added while offline.
-        // This is non-fatal: log warnings but don't block startup.
+        // Per-skill repos: walk {plugin_slug}/{skill_name}/ dirs, init+commit any without .git/
         let output_path = Path::new(&skills_path);
         if output_path.exists() {
-            match crate::git::get_untracked_dirs(output_path) {
-                Ok(untracked) if !untracked.is_empty() => {
-                    let msg = format!("auto-commit new skill folders: {}", untracked.join(", "));
-                    match crate::git::commit_all(output_path, &msg) {
-                        Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
-                        Ok(None) => {
-                            log::debug!(
-                                "[reconcile_startup] No changes after staging untracked folders"
-                            )
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[reconcile_startup] Failed to commit untracked folders: {}",
-                                e
-                            )
+            if let Ok(entries) = std::fs::read_dir(output_path) {
+                for entry in entries.flatten() {
+                    let plugin_dir = entry.path();
+                    if !plugin_dir.is_dir() { continue; }
+                    if let Ok(skill_entries) = std::fs::read_dir(&plugin_dir) {
+                        for skill_entry in skill_entries.flatten() {
+                            let skill_dir = skill_entry.path();
+                            if !skill_dir.is_dir() { continue; }
+                            if skill_dir.join(".git").exists() { continue; } // already has a repo
+                            if !skill_dir.join("SKILL.md").exists() { continue; } // not a skill dir
+                            if let Err(e) = crate::git::ensure_repo(&skill_dir) {
+                                log::warn!("[reconcile_startup] failed to init repo at {}: {}", skill_dir.display(), e);
+                                continue;
+                            }
+                            let name = skill_dir.file_name().unwrap_or_default().to_string_lossy();
+                            let msg = format!("auto-commit new skill: {}", name);
+                            match crate::git::commit_all(&skill_dir, &msg) {
+                                Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
+                                Ok(None) => {}
+                                Err(e) => log::warn!("[reconcile_startup] commit failed for {}: {}", name, e),
+                            }
                         }
                     }
                 }
-                Err(e) => log::warn!(
-                    "[reconcile_startup] Failed to detect untracked folders: {}",
-                    e
-                ),
-                _ => {}
             }
         }
 

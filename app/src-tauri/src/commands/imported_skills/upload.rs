@@ -150,7 +150,8 @@ fn import_skill_from_file_inner(
         zip::ZipArchive::new(zip_file2).map_err(|_| "not a valid skill package".to_string())?;
     extract_archive(&mut archive2, &prefix, &dest_dir)?;
 
-    let skills_repo = Path::new(skills_path);
+    let skill_dir_for_git =
+        crate::skill_paths::resolve_skill_dir(Path::new(skills_path), default_slug, name);
     let normalized_frontmatter = match super::frontmatter::ensure_skill_frontmatter_metadata(
         &dest_dir.join("SKILL.md"),
         version,
@@ -165,15 +166,27 @@ fn import_skill_from_file_inner(
     let final_version = normalized_frontmatter.version.clone();
 
     let import_git_result = (|| -> Result<(), String> {
-        if crate::git::skill_version_tag_exists(skills_repo, default_slug, name, &final_version)? {
+        crate::git::ensure_repo(&skill_dir_for_git)
+            .map_err(|e| format!("Failed to init git repo: {}", e))?;
+        if crate::git::skill_version_tag_exists(
+            &skill_dir_for_git,
+            default_slug,
+            name,
+            &final_version,
+        )? {
             return Err(format!(
                 "Tag '{}' already exists",
                 crate::git::skill_version_tag_name(default_slug, name, &final_version)
             ));
         }
 
-        crate::git::commit_all(skills_repo, &format!("{}: import from upload", name))?;
-        crate::git::create_skill_version_tag(skills_repo, default_slug, name, &final_version)?;
+        crate::git::commit_all(&skill_dir_for_git, &format!("{}: import from upload", name))?;
+        crate::git::create_skill_version_tag(
+            &skill_dir_for_git,
+            default_slug,
+            name,
+            &final_version,
+        )?;
         Ok(())
     })();
     if let Err(e) = import_git_result {
@@ -250,7 +263,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let skills_path = dir.path().join("skills");
         std::fs::create_dir_all(&skills_path).unwrap();
-        crate::git::ensure_repo(&skills_path).unwrap();
+        // No ensure_repo at the root — per-skill repos only
 
         let zip_path = dir.path().join("skill.zip");
         write_skill_zip(
@@ -274,8 +287,13 @@ mod tests {
         );
 
         assert!(result.is_ok(), "expected import to succeed: {:?}", result);
-        assert!(crate::git::skill_version_tag_exists(
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
             &skills_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "imported-skill",
+        );
+        assert!(crate::git::skill_version_tag_exists(
+            &skill_dir,
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             "imported-skill",
             "1.0.0"
@@ -293,16 +311,9 @@ mod tests {
             .as_deref(),
             Some("1.0.0")
         );
-        assert!(std::fs::read_to_string(
-            crate::skill_paths::resolve_skill_dir(
-                &skills_path,
-                crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-                "imported-skill"
-            )
-            .join("SKILL.md")
-        )
-        .unwrap()
-        .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\""));
+        assert!(std::fs::read_to_string(skill_dir.join("SKILL.md"))
+            .unwrap()
+            .contains("metadata:\n  version: \"1.0.0\"\n  author: \"hb@acceleratedata.ai\""));
     }
 
     #[test]
@@ -311,24 +322,30 @@ mod tests {
         let dir = tempdir().unwrap();
         let skills_path = dir.path().join("skills");
         std::fs::create_dir_all(&skills_path).unwrap();
-        crate::git::ensure_repo(&skills_path).unwrap();
-
-        let skill_dir = skills_path.join("imported-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
+        // Seed a per-skill repo with the tag already present
+        let seeded_skill_dir = crate::skill_paths::resolve_skill_dir(
+            &skills_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "imported-skill",
+        );
+        std::fs::create_dir_all(&seeded_skill_dir).unwrap();
         std::fs::write(
-            skill_dir.join("SKILL.md"),
+            seeded_skill_dir.join("SKILL.md"),
             "---\nname: imported-skill\ndescription: Existing\nversion: 1.0.0\n---\n# Body\n",
         )
         .unwrap();
-        crate::git::commit_all(&skills_path, "imported-skill: seed").unwrap();
+        crate::git::ensure_repo(&seeded_skill_dir).unwrap();
+        crate::git::commit_all(&seeded_skill_dir, "imported-skill: seed").unwrap();
         crate::git::create_skill_version_tag(
-            &skills_path,
+            &seeded_skill_dir,
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             "imported-skill",
             "1.0.0",
         )
         .unwrap();
-        std::fs::remove_dir_all(&skill_dir).unwrap();
+        // Remove only the SKILL.md so the .git dir (with the tag) is preserved,
+        // but the skill is no longer "installed" — simulating a prior import that was cleaned.
+        std::fs::remove_file(seeded_skill_dir.join("SKILL.md")).unwrap();
 
         let zip_path = dir.path().join("skill.zip");
         write_skill_zip(
@@ -363,12 +380,57 @@ mod tests {
     }
 
     #[test]
+    fn import_skill_from_file_creates_per_skill_git_repo() {
+        let conn = crate::db::create_test_db_for_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let skills_path = dir.path().join("skills");
+        std::fs::create_dir_all(&skills_path).unwrap();
+        // Note: NO ensure_repo at skills root — per-skill repos only
+
+        let zip_path = dir.path().join("skill.zip");
+        write_skill_zip(
+            &zip_path,
+            "---\nname: per-skill-import\ndescription: Test\n---\n# Body\n",
+        );
+
+        let result = import_skill_from_file_inner(
+            &conn,
+            zip_path.to_str().unwrap(),
+            "per-skill-import",
+            "Test",
+            None,
+            None,
+            None,
+            None,
+            None,
+            skills_path.to_str().unwrap(),
+            "",
+            None,
+        );
+        assert!(result.is_ok(), "{:?}", result);
+
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
+            &skills_path,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "per-skill-import",
+        );
+        assert!(
+            skill_dir.join(".git").exists(),
+            "per-skill .git must exist after import"
+        );
+        assert!(
+            !skills_path.join(".git").exists(),
+            "root .git must NOT exist"
+        );
+    }
+
+    #[test]
     fn import_skill_from_file_rejects_when_skill_exists_in_default_plugin() {
         let conn = crate::db::create_test_db_for_tests();
         let dir = tempdir().unwrap();
         let skills_path = dir.path().join("skills");
         std::fs::create_dir_all(&skills_path).unwrap();
-        crate::git::ensure_repo(&skills_path).unwrap();
+        // No ensure_repo at root — per-skill repos only
 
         // Pre-create a skill in the default plugin
         crate::db::ensure_default_plugin(&conn).unwrap();
