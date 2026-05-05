@@ -43,6 +43,14 @@ describe("useSettingsForm", () => {
     expect(result.current.logLevel).toBe("debug");
   });
 
+  it("keeps provider, model, and api_key null when store model settings are unset", () => {
+    const { result } = renderHook(() => useSettingsForm());
+
+    expect(result.current.modelSettings.provider).toBeNull();
+    expect(result.current.modelSettings.model).toBeNull();
+    expect(result.current.modelSettings.api_key).toBeNull();
+  });
+
   it("autoSave calls updateUserSettings and updates store", async () => {
     const { result } = renderHook(() => useSettingsForm());
 

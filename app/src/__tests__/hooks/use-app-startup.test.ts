@@ -49,9 +49,10 @@ describe("settingsToStorePatch", () => {
     );
   });
 
-  it("returns null api_key and model when model_settings is not configured", () => {
+  it("returns null provider, api_key, and model when model_settings is not configured", () => {
     const patch = settingsToStorePatch(makeSettings({ model_settings: null }));
 
+    expect(patch.modelSettings.provider).toBeNull();
     expect(patch.modelSettings.api_key).toBeNull();
     expect(patch.modelSettings.model).toBeNull();
   });
