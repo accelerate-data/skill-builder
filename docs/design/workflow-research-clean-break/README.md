@@ -40,7 +40,8 @@ clarification questions or recommends narrowing the requested skill scope.
 |---|---|
 | Emit only final clarifications JSON | There is no longer a subagent handoff or consolidation consumer for intermediate JSON. |
 | Remove dimensions and lens metadata from the contract | The app should not depend on internal research reasoning that may change with prompting. |
-| Use all four lenses internally | Business process, data engineering standards, source customization, and platform standards are complementary checks, not mutually exclusive routing choices. |
+| Use three active lenses internally | Business process, data engineering standards, and source system semantics are complementary checks, not mutually exclusive routing choices. |
+| Treat harness-owned platform concerns as out of scope | Workspace naming, lakehouse naming, security, deployment topology, monitoring, identity, endpoint behavior, and environment promotion are set by the harness and should not drive research questions. |
 | Score topics before asking questions | Broad or weak topics produce low-value skills; the agent should narrow or reject them early. |
 | Score candidate clarification topics | The final output should include only questions with organization-specific knowledge delta. |
 | Delete obsolete workspace references | Leaving dimension and consolidation docs discoverable risks the agent reusing the old flow. |
@@ -57,8 +58,7 @@ The agent performs the following internal steps and emits only the final result.
 3. Return a scope recommendation if the topic is not useful, not data-relevant,
    or too broad for a skill to cover.
 4. Check each internal lens for relevance:
-   business process, data engineering standards, source system customizations,
-   and platform standards.
+   business process, data engineering standards, and source system semantics.
 5. Generate candidate clarification topics from every relevant lens.
 6. Score each candidate by whether it captures knowledge that is organization
    specific, commonly misunderstood, absent from baseline LLM knowledge, or
@@ -87,8 +87,7 @@ source-specific semantics. The agent should narrow it before researching.
 |---|---|
 | Business process | Business events, grain, lifecycle, metrics, rules, exceptions, segmentation, periods |
 | Data engineering standards | Modeling standards, layers, quality gates, load patterns, historization, naming, tests |
-| Source system customizations | Custom objects, custom fields, overridden semantics, lifecycle state, extraction, reconciliation |
-| Platform standards | Azure, Fabric, orchestration, deployment, environments, configuration, operational failures |
+| Source system semantics | Custom objects, custom fields, overridden semantics, business rules, lifecycle state, source-to-lakehouse mapping, and extraction mechanics only when DB-based or legacy behavior materially affects transformations |
 
 Each lens starts with the question: "Is this lens relevant for this topic?"
 Irrelevant lenses do not produce candidate topics. Multiple relevant lenses may

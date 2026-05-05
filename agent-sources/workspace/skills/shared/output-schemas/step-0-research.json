@@ -1,318 +1,215 @@
 {
-  "additionalProperties": false,
-  "properties": {
-    "question_count": {
-      "format": "int64",
-      "type": "integer"
+  "status": "research_complete",
+  "question_count": 5,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "question_count": 5,
+      "section_count": 2,
+      "refinement_count": 0,
+      "must_answer_count": 5,
+      "priority_questions": ["Q1", "Q2", "Q3", "Q4", "Q5"],
+      "scope_recommendation": false,
+      "scope_reason": null,
+      "warning": null,
+      "error": null
     },
-    "research_output": {
-      "additionalProperties": false,
-      "description": "Root type for a clarifications file.",
-      "properties": {
-        "answer_evaluator_notes": {
-          "items": {
-            "additionalProperties": false,
-            "description": "A note (research note or evaluator feedback).",
-            "properties": {
-              "body": {
-                "type": "string"
+    "sections": [
+      {
+        "id": 1,
+        "title": "Opportunity Stage Semantics",
+        "questions": [
+          {
+            "id": "Q1",
+            "title": "Stage definitions",
+            "text": "What are your organization's opportunity stage names and their business semantics? For example: does 'Closed Won' mean a contract is signed, payment is received, or revenue is recognized? Does 'Negotiation' imply a verbal agreement or just a pricing discussion?",
+            "must_answer": true,
+            "choices": [
+              {
+                "id": "C1",
+                "text": "Standard Salesforce stages with default meanings (Prospecting, Qualification, Proposal, Negotiation, Closed Won/Lost)",
+                "is_other": false
               },
-              "title": {
-                "type": "string"
+              {
+                "id": "C2",
+                "text": "Custom stage names that diverge from standard Salesforce defaults",
+                "is_other": false
               },
-              "type": {
-                "type": "string"
+              {
+                "id": "C3",
+                "text": "Standard stages but with organization-specific semantic definitions that differ from default Salesforce behavior",
+                "is_other": false
+              },
+              {
+                "id": "C4",
+                "text": "All of the above",
+                "is_other": false
+              },
+              {
+                "id": "C5",
+                "text": "Other (please specify)",
+                "is_other": true
               }
-            },
-            "required": [
-              "type",
-              "title",
-              "body"
             ],
-            "type": "object"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "metadata": {
-          "additionalProperties": false,
-          "default": {
-            "must_answer_count": 0,
-            "priority_questions": [],
-            "question_count": 0,
-            "refinement_count": 0,
-            "section_count": 0,
-            "title": ""
-          },
-          "description": "Metadata block with counts, priority questions, and optional scope info.",
-          "properties": {
-            "duplicates_removed": {
-              "format": "int64",
-              "type": [
-                "integer",
-                "null"
-              ]
-            },
-            "error": {
-              "anyOf": [
-                {
-                  "additionalProperties": false,
-                  "description": "Error attached to metadata.",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "must_answer_count": {
-              "default": 0,
-              "format": "int64",
-              "type": "integer"
-            },
-            "priority_questions": {
-              "default": [],
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "question_count": {
-              "default": 0,
-              "format": "int64",
-              "type": "integer"
-            },
-            "refinement_count": {
-              "default": 0,
-              "format": "int64",
-              "type": "integer"
-            },
-            "scope_next_action": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "scope_reason": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "scope_recommendation": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "section_count": {
-              "default": 0,
-              "format": "int64",
-              "type": "integer"
-            },
-            "title": {
-              "default": "",
-              "type": "string"
-            },
-            "warning": {
-              "anyOf": [
-                {
-                  "additionalProperties": false,
-                  "description": "Warning attached to metadata.",
-                  "properties": {
-                    "code": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "type": "object"
-        },
-        "notes": {
-          "default": [],
-          "items": {
-            "additionalProperties": false,
-            "description": "A note (research note or evaluator feedback).",
-            "properties": {
-              "body": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "type",
-              "title",
-              "body"
-            ],
-            "type": "object"
-          },
-          "type": "array"
-        },
-        "sections": {
-          "default": [],
-          "items": {
-            "additionalProperties": false,
-            "description": "A section grouping related questions.",
-            "properties": {
-              "description": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "questions": {
-                "default": [],
-                "items": {
-                  "additionalProperties": false,
-                  "description": "A question with choices and optional answer fields. Recursive via `refinements`.",
-                  "properties": {
-                    "answer_choice": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "answer_text": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "choices": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "description": "A multiple-choice option.",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "is_other": {
-                            "type": "boolean"
-                          },
-                          "text": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "text",
-                          "is_other"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "consolidated_from": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "must_answer": {
-                      "type": "boolean"
-                    },
-                    "recommendation": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "refinements": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "text": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "title",
-                    "text",
-                    "must_answer"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "title": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "title"
-            ],
-            "type": "object"
-          },
-          "type": "array"
-        },
-        "version": {
-          "default": "",
-          "type": "string"
-        }
+            "refinements": []
+          }
+        ]
       },
-      "type": "object"
-    },
-    "status": {
-      "type": "string"
-    }
-  },
-  "required": [
-    "status",
-    "question_count",
-    "research_output"
-  ],
-  "title": "ResearchStepOutput",
-  "type": "object"
+      {
+        "id": 2,
+        "title": "Pipeline Value Calculation",
+        "questions": [
+          {
+            "id": "Q2",
+            "title": "Weighted amount logic",
+            "text": "How should pipeline value be weighted or adjusted? For example: should amounts be multiplied by close probability, assigned fixed stage-based weights, use a hybrid model, or some other transformation?",
+            "must_answer": true,
+            "choices": [
+              {
+                "id": "C1",
+                "text": "Probability-weighted: amount × probability percentage",
+                "is_other": false
+              },
+              {
+                "id": "C2",
+                "text": "Fixed stage weights: each stage has a predefined percentage (e.g., Negotiation = 80%, Proposal = 50%)",
+                "is_other": false
+              },
+              {
+                "id": "C3",
+                "text": "Hybrid: probability-weighted for early stages, fixed weights for late stages",
+                "is_other": false
+              },
+              {
+                "id": "C4",
+                "text": "Raw amount: unadjusted pipeline value",
+                "is_other": false
+              },
+              {
+                "id": "C5",
+                "text": "Other (please specify)",
+                "is_other": true
+              }
+            ],
+            "refinements": []
+          },
+          {
+            "id": "Q3",
+            "title": "Booking definition",
+            "text": "What defines a 'booking'? When does an opportunity count as a booking versus a pipeline deal? (e.g., Closed Won only, signed NDA, verbal commitment, finance recognition, or something else?)",
+            "must_answer": true,
+            "choices": [
+              {
+                "id": "C1",
+                "text": "Closed Won in Salesforce equals a booking",
+                "is_other": false
+              },
+              {
+                "id": "C2",
+                "text": "Booking occurs when finance recognizes revenue (may differ from Closed Won timing)",
+                "is_other": false
+              },
+              {
+                "id": "C3",
+                "text": "Booking requires a signed contract or order form (Closed Won + documentation)",
+                "is_other": false
+              },
+              {
+                "id": "C4",
+                "text": "Booking is a verbal or written commitment before contract execution",
+                "is_other": false
+              },
+              {
+                "id": "C5",
+                "text": "Other (please specify)",
+                "is_other": true
+              }
+            ],
+            "refinements": []
+          },
+          {
+            "id": "Q4",
+            "title": "Forecast categories",
+            "text": "What forecast categories does your organization use, and how do they relate to opportunity stages? (e.g., Commit, Best Case, Pipeline, Omitted — and do they map directly to stages or are they separate fields?)",
+            "must_answer": true,
+            "choices": [
+              {
+                "id": "C1",
+                "text": "Standard Salesforce forecast categories mapped directly to stages (Commit = Closed Won, Best Case = late-stage, Pipeline = early/mid-stage)",
+                "is_other": false
+              },
+              {
+                "id": "C2",
+                "text": "Custom forecast categories that override or supplement standard Salesforce defaults",
+                "is_other": false
+              },
+              {
+                "id": "C3",
+                "text": "Forecast categories are not used; pipeline is reported by stage only",
+                "is_other": false
+              },
+              {
+                "id": "C4",
+                "text": "All of the above",
+                "is_other": false
+              },
+              {
+                "id": "C5",
+                "text": "Other (please specify)",
+                "is_other": true
+              }
+            ],
+            "refinements": []
+          },
+          {
+            "id": "Q5",
+            "title": "Sales reporting hierarchy",
+            "text": "What is the grain of your sales reporting hierarchy? (e.g., rep-level, team-level, region-level, or something else?) Who rolls up to whom for pipeline and booking reporting?",
+            "must_answer": true,
+            "choices": [
+              {
+                "id": "C1",
+                "text": "Rep-level only: each rep's opportunities roll directly to management",
+                "is_other": false
+              },
+              {
+                "id": "C2",
+                "text": "Team-level: reps grouped into teams with shared quota and reporting",
+                "is_other": false
+              },
+              {
+                "id": "C3",
+                "text": "Region or business unit-level: multi-level hierarchy (rep → team → region → division)",
+                "is_other": false
+              },
+              {
+                "id": "C4",
+                "text": "All of the above",
+                "is_other": false
+              },
+              {
+                "id": "C5",
+                "text": "Other (please specify)",
+                "is_other": true
+              }
+            ],
+            "refinements": []
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "type": "flag",
+        "title": "Salesforce as source",
+        "body": "The user context mentions Salesforce exports as current source data but explicitly states this is not an extraction or file-ingestion skill. Questions should focus on business semantics, not export mechanics or API behavior."
+      },
+      {
+        "type": "flag",
+        "title": "Reconciliation scope",
+        "body": "Q3 (booking definition) is critical for reconciliation to finance bookings. The booking definition drives whether pipeline-to-bookings reconciliation is a simple stage filter or a more complex multi-system comparison."
+      }
+    ],
+    "answer_evaluator_notes": []
+  }
 }

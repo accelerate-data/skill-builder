@@ -83,15 +83,21 @@ Purpose-aware decision normalization:
   the operating input contract for a business-process skill.
 - For a data-engineering purpose, convert general preferences into concrete
   standards for data modeling, reconciliation, data quality, dbt or dlt usage,
-  Fabric Lakehouse layout, operations, deployment, naming, testing, ownership,
-  and observability.
-- For a source-customization purpose, preserve extraction, API, export, CDC,
-  pagination, rate-limit, authentication, schema drift, and ingestion mechanics
-  when they materially affect ingestion or transformation behavior.
-- For a platform purpose, preserve Fabric or Azure environment constraints,
-  endpoint behavior, authentication, authorization, security boundaries,
-  deployment topology, orchestration, monitoring, networking, and compatibility
-  requirements.
+  Fabric Lakehouse layout, naming conventions, testing expectations,
+  ownership, and observability. Do not turn harness-owned concerns such as
+  model organization, workspace naming, or lakehouse naming into user-owned
+  decisions.
+- For a source-system-semantics purpose, preserve source business rules,
+  flexfields, custom fields, custom objects, custom statuses or stages,
+  workflows, semantic mappings, and downstream transformation implications.
+  Preserve extraction, API, export, CDC, delete handling, pagination,
+  rate-limit, authentication, schema drift, and ingestion mechanics only when
+  the source is DB-based or legacy, or when the user context explicitly says
+  those mechanics materially affect ingestion or transformation behavior.
+- Do not preserve harness-owned concerns such as workspace naming, lakehouse
+  naming, security boundaries, deployment topology, monitoring, managed
+  identity or access model, endpoint behavior, environment promotion, or model
+  organization as user-editable skill decisions.
 
 Mandatory user-editable decisions:
 - Always include a decision for: What should this skill enable Claude to do?

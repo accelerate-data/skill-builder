@@ -5,17 +5,18 @@ export interface ModelInfo {
 
 export const PURPOSES = ["platform", "domain", "source", "data-engineering"] as const;
 export type Purpose = typeof PURPOSES[number];
+export const CREATE_PURPOSES = ["domain", "source", "data-engineering"] as const;
 
 export const PURPOSE_LABELS: Record<Purpose, string> = {
   domain: "Business process knowledge",
-  source: "Source system customizations",
+  source: "Source system semantics",
   "data-engineering": "Organization specific data engineering standards",
   platform: "Organization specific Azure or Fabric standards",
 };
 
 export const PURPOSE_SHORT_LABELS: Record<Purpose, string> = {
   domain: "Business Process",
-  source: "Source Systems",
+  source: "Source Semantics",
   "data-engineering": "Data Engineering",
   platform: "Azure / Fabric",
 };

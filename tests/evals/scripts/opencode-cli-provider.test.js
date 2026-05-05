@@ -3,6 +3,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const OpenCodeCliProvider = require('./framework/opencode-cli-provider');
+const { normalizeProviderOutput } = require('./framework/opencode-cli-provider');
 
 test('OpenCodeCliProvider invokes opencode run with the configured eval agent', async () => {
   const previousStateHome = process.env.XDG_STATE_HOME;
@@ -185,4 +186,19 @@ test('OpenCodeCliProvider validates required runtime config and retry count', as
   assert.deepEqual(await invalidRetries.callApi('prompt'), {
     error: 'OpenCode CLI provider requires empty_output_retries to be a non-negative integer',
   });
+});
+
+test('normalizeProviderOutput extracts final text from json event streams', () => {
+  const output = [
+    '{"type":"step_start","part":{"type":"step-start"}}',
+    '{"type":"text","part":{"type":"text","text":"\\n\\n{\\"status\\":\\"ok\\"}"}}',
+    '{"type":"step_finish","part":{"type":"step-finish"}}',
+  ].join('\n');
+
+  assert.equal(normalizeProviderOutput(output, 'json'), '\n\n{"status":"ok"}');
+});
+
+test('normalizeProviderOutput preserves non-json formats unchanged', () => {
+  const output = 'plain text output';
+  assert.equal(normalizeProviderOutput(output, 'default'), output);
 });

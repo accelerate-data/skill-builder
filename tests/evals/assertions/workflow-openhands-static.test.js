@@ -68,9 +68,7 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
   }
 
   const packageEvidence = [
-    readEval('packages/skill-content-researcher-research/prompt.txt'),
     readEval('packages/skill-content-researcher-research/promptfooconfig.json'),
-    readEval('packages/skill-content-researcher-detailed-research/prompt.txt'),
     readEval('packages/skill-content-researcher-detailed-research/promptfooconfig.json'),
     readEval('packages/skill-content-researcher-confirm-decisions/prompt.txt'),
     readEval('packages/skill-content-researcher-confirm-decisions/promptfooconfig.json'),
@@ -81,6 +79,30 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
     readEval('packages/workspace-workflow-step-prompt/prompt.txt'),
     readEval('packages/workspace-workflow-step-prompt/promptfooconfig.json'),
   ].join('\n');
+
+  const researchPromptLink = path.join(
+    EVAL_ROOT,
+    'packages/skill-content-researcher-research/prompt.txt',
+  );
+  const detailedPromptLink = path.join(
+    EVAL_ROOT,
+    'packages/skill-content-researcher-detailed-research/prompt.txt',
+  );
+  assert.ok(fs.existsSync(researchPromptLink), 'step 0 research eval prompt link must exist');
+  assert.ok(
+    fs.existsSync(detailedPromptLink),
+    'step 1 detailed research eval prompt link must exist',
+  );
+  assert.ok(fs.lstatSync(researchPromptLink).isSymbolicLink());
+  assert.ok(fs.lstatSync(detailedPromptLink).isSymbolicLink());
+  assert.equal(
+    fs.realpathSync(researchPromptLink),
+    path.join(REPO_ROOT, 'agent-sources/prompts/research.txt'),
+  );
+  assert.equal(
+    fs.realpathSync(detailedPromptLink),
+    path.join(REPO_ROOT, 'agent-sources/prompts/detailed-research.txt'),
+  );
 
   for (const token of [
     'skill-creator',
@@ -94,8 +116,6 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
     'fresh-context-verifier',
     'version_bump',
     '1.0.0',
-    'agent-sources/prompts/research.txt',
-    'agent-sources/prompts/detailed-research.txt',
     'agent-sources/prompts/confirm_decisions.txt',
   ]) {
     assert.ok(
@@ -138,8 +158,7 @@ test('step 2 decision prompt normalizes exploratory answers by purpose', () => {
     'Step 2 as the normalization boundary',
     'business-process purpose',
     'data-engineering purpose',
-    'source-customization purpose',
-    'platform purpose',
+    'source-system-semantics purpose',
     'Fabric Lakehouse',
     'dbt model grain',
     'business measures',
@@ -159,11 +178,11 @@ test('step 2 decision prompt normalizes exploratory answers by purpose', () => {
   for (const token of [
     '[positive] business-process pipeline export clarifications normalize to lakehouse/dbt decisions',
     '[negative] business-process decisions must not preserve Salesforce CSV JSON SOQL as operating contract',
-    '[positive] source-customization decisions preserve extraction mechanics when material',
+    '[positive] source-system-semantics decisions preserve extraction mechanics when material',
     'Salesforce CSV exports',
     'Fabric Lakehouse',
     'dbt',
-    'source-customization',
+    'source-system-semantics',
     'SOQL',
     'CDC',
   ]) {
@@ -220,12 +239,19 @@ test('researching-skill-requirements separates invariants defaults and lenses fo
 
   assert.match(
     skill,
-    /Do not ask[^.\n]*output format|Do not ask[^.\n]*artifact contract|Do not ask[^.\n]*schema|Do not ask[^.\n]*naming contract/i,
+    /Do not ask[^.\n]*output format|Do not ask[^.\n]*artifact contract|Do not ask[^.\n]*schema|Do not ask[^.\n]*naming contract|Do not ask[^.\n]*naming convention/i,
   );
   assert.match(
     skill,
     /Do not ask[^.\n]*test cases|Do not ask[^.\n]*design test cases|Do not ask[^.\n]*validation suites/i,
   );
+  assert.match(
+    skill,
+    /workspace naming|lakehouse naming|security boundaries|deployment topology|monitoring|managed identity|endpoint behavior|environment promotion|model organization/i,
+  );
+  assert.match(skill, /medallion architecture/i);
+  assert.match(skill, /business-process skills, default toward conceptual source entities/i);
+  assert.match(skill, /source-system-semantics skills, default toward business rules/i);
 
   for (const token of [
     'What output format, artifact contract, schema, naming, or handoff should it produce?',

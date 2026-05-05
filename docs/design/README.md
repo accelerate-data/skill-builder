@@ -10,6 +10,7 @@
 | [openhands-sdk-runner/](openhands-sdk-runner/README.md) | **Historical.** OpenHands SDK stdin/stdout runner contract superseded by Agent Server. Retain for context on agent/skill/prompt design intent. |
 | [workflow-research-clean-break/](workflow-research-clean-break/README.md) | Workflow research clean break: one inline research flow, internal scope and candidate scoring, and final clarifications-only output |
 | [workflow-detailed-research-clean-break/](workflow-detailed-research-clean-break/README.md) | Workflow detailed research clean break: app-owned step 1 prompt, `skill-creator` routing, and additive sections/questions/refinements |
+| [skill-purpose-taxonomy/](skill-purpose-taxonomy/README.md) | Skill purpose taxonomy: three live create-skill purposes, harness-owned exclusions, and source-system-semantics boundaries |
 | [creating-skills-generator-verifier/](creating-skills-generator-verifier/README.md) | Creating skills generator-verifier: runtime `creating-skills` guidance under `agent-sources/workspace/skills`, app-owned workflow context loading, and fresh-context validation |
 | [backend-design/](backend-design/README.md) | Tauri/Rust backend: DB schema, API surface, key data flows, agent sidecar integration — see [database.md](backend-design/database.md) for full schema |
 | [cheap-ci-design/](cheap-ci-design/README.md) | Release, help docs, and cheap CI design: release resource staging, docs freshness, and scoped PR validation |
