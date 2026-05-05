@@ -151,6 +151,9 @@ describe("agent files", () => {
     expect(content).toMatch(/verifier-subagent-prompt\.md/);
     expect(content).toMatch(/run exactly one\s+re-verification pass/i);
     expect(content).toMatch(/Return the raw JSON object requested by the caller/i);
+    // Verifier must be spawned as a subagent via task_tool_set so it runs in a
+    // fresh context, not inline in the generator's context.
+    expect(content).toMatch(/task_tool_set/);
   });
 
   it("creating-skills does not include legacy lifecycle mechanics", () => {

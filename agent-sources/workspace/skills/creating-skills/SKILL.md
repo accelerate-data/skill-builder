@@ -52,12 +52,16 @@ Do not create eval cases, eval suggestions, or trigger-prompt drafts during skil
 
 ## Fresh-Context Verification
 
-After generating files, run a fresh-context verifier pass using `references/verifier-subagent-prompt.md`. Give the verifier only:
+After generating files, use `task_tool_set` to spawn a subagent for the verifier pass. Spawning via `task_tool_set` gives the verifier a fresh context — free from the generator's accumulated conversation history — so it can catch issues the generator has reasoned past. Do not run the verifier inline in the same agent context.
+
+Build the subagent prompt from `references/verifier-subagent-prompt.md`. Include only:
 
 - the caller's synthesized generation brief
 - the generated `SKILL.md`
 - generated references that should be reviewed
 - the verifier instructions from `references/verifier-subagent-prompt.md`
+
+Do not pass the full workflow conversation history into the subagent prompt.
 
 Do not invoke a separate validator skill. Verification is owned by this skill and runs through the reference prompt so the generator-verifier loop stays inside the skill-writing flow.
 
