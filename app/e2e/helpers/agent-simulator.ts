@@ -10,6 +10,7 @@
  * is not supported.
  */
 import type { Page } from "@playwright/test";
+import type { InitProgressStage } from "../../src/generated/contracts";
 
 // ---------------------------------------------------------------------------
 // Types — mirror the payload shapes from use-agent-stream.ts
@@ -17,7 +18,7 @@ import type { Page } from "@playwright/test";
 
 interface AgentInitProgressPayload {
   agent_id: string;
-  stage: string;
+  stage: InitProgressStage;
   timestamp: number;
 }
 
