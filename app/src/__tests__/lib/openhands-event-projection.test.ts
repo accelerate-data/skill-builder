@@ -121,6 +121,7 @@ describe("projectConversationEvent", () => {
     const result = projectConversationEvent(event, {});
     const item = result.add[0];
     expect(item.type).toBe("skill");
+    expect(item.skillName).toBe("research");
     expect(item.toolSummary).toBe("Using skill: research");
     expect(item.subagentDescription).toBe("Researching pricing");
     expect(item.subagentStatus).toBe("running");

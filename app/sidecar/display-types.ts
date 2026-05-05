@@ -61,6 +61,9 @@ export interface DisplayItem {
   /** Pre-computed summary (e.g. "Reading foo.ts"). */
   toolSummary?: string;
 
+  // --- skill (invoke_skill tool calls) ---
+  skillName?: string;
+
   // --- subagent (Agent tool calls with nested execution) ---
   subagentDescription?: string;
   subagentType?: string;
@@ -105,4 +108,4 @@ export interface DisplayItemEnvelope {
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 5;
+export const DISPLAY_TYPES_VERSION = 6;

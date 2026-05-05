@@ -202,6 +202,8 @@ interface ActionLabel {
   toolSummary: string;
   /** Optional subagent description when type is subagent or skill */
   subagentDescription?: string;
+  /** The invoked skill name when type is skill */
+  skillName?: string;
   /** If true, do not project this event (e.g. FinishTool). */
   skip?: boolean;
 }
@@ -298,6 +300,7 @@ function labelForActionEvent(
     return {
       type: "skill",
       toolName: "invoke_skill",
+      skillName: name,
       toolSummary: `Using skill: ${name}`,
       subagentDescription: summary,
     };
@@ -379,6 +382,7 @@ function projectActionEvent(
       type: "skill",
       timestamp: event.timestamp,
       toolName: label.toolName,
+      skillName: label.skillName,
       toolSummary: label.toolSummary,
       toolUseId: toolCallId,
       toolInput,
