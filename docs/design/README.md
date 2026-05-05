@@ -3,6 +3,7 @@
 | Directory | What it covers |
 |---|---|
 | [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
+| [product-architecture/](product-architecture/README.md) | Product-level architecture entrypoint: UI, Rust backend, OpenHands runtime, persistent state, and doc routing |
 | [agent-runtime-boundary/](agent-runtime-boundary/README.md) | **Superseded.** Agent runtime boundary: one-shot runs, streaming sessions, runtime adapters, and OpenHands migration shape. Active design: `openhands-agent-server-runtime/`. |
 | [openhands-agent-server-runtime/](openhands-agent-server-runtime/README.md) | OpenHands Agent Server runtime: Rust-managed local server process, REST/WebSocket calls, workspace ownership, event normalization, and clean-break deletion plan |
 | [openhands-native-migration/](openhands-native-migration/README.md) | Umbrella OpenHands migration design: agent topology, prompt ownership, `.agents/**` workspace layout, tool mapping, and what is removed |
