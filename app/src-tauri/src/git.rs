@@ -547,9 +547,8 @@ pub fn get_history(
         .map_err(|e| format!("Failed to push HEAD: {}", e))?;
     revwalk.set_sorting(git2::Sort::TIME).ok();
 
-    // Repo-relative path prefix — derived from the tag prefix (strip trailing "v")
-    let tag_prefix = crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name);
-    let prefix = tag_prefix.trim_end_matches('v').to_string();
+    // Repo-relative path prefix for filtering commits by skill directory.
+    let prefix = format!("{}/{}", plugin_slug, skill_name);
 
     let mut commits = Vec::new();
 
@@ -1393,11 +1392,11 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.1.0");
+        create_tag(dir.path(), "v1.1.0");
 
         let version = latest_skill_semver(dir.path(), plugin, "my-skill").unwrap();
         assert_eq!(version, "1.1.0");
@@ -1413,7 +1412,7 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1");
+        create_tag(dir.path(), "v1");
 
         let version = latest_skill_semver(dir.path(), plugin, "my-skill").unwrap();
         assert_eq!(version, "0.0.0");
@@ -1421,40 +1420,49 @@ mod tests {
 
     #[test]
     fn test_tags_are_skill_scoped() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
+        // In per-skill repos, each skill has its own repo and tag isolation is
+        // achieved at the repo level. Verify that each skill repo tracks its own
+        // semver independently.
+        let dir_a = tempdir().unwrap();
+        let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir.path().join(plugin).join("skill-a");
-        let b_dir = dir.path().join(plugin).join("skill-b");
+        let a_dir = dir_a.path().join(plugin).join("skill-a");
+        let b_dir = dir_b.path().join(plugin).join("skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
 
+        ensure_repo(dir_a.path()).unwrap();
+        ensure_repo(dir_b.path()).unwrap();
+
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
+        commit_all(dir_a.path(), "skill-a: initial").unwrap();
+        create_tag(dir_a.path(), "v1.0.0");
+
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
-        commit_all(dir.path(), "both skills").unwrap();
-        create_tag(dir.path(), "skills/skill-a/v1.0.0");
-        create_tag(dir.path(), "skills/skill-b/v1.0.0");
+        commit_all(dir_b.path(), "skill-b: initial").unwrap();
+        create_tag(dir_b.path(), "v1.0.0");
 
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(),
+            latest_skill_semver(dir_a.path(), plugin, "skill-a").unwrap(),
             "1.0.0"
         );
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(),
+            latest_skill_semver(dir_b.path(), plugin, "skill-b").unwrap(),
             "1.0.0"
         );
 
         std::fs::write(a_dir.join("SKILL.md"), "# A v2").unwrap();
-        commit_all(dir.path(), "skill-a v2").unwrap();
-        create_tag(dir.path(), "skills/skill-a/v2.0.0");
+        commit_all(dir_a.path(), "skill-a v2").unwrap();
+        create_tag(dir_a.path(), "v2.0.0");
 
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-a").unwrap(),
+            latest_skill_semver(dir_a.path(), plugin, "skill-a").unwrap(),
             "2.0.0"
         );
+        // skill-b's repo is unchanged — still at v1.0.0.
         assert_eq!(
-            latest_skill_semver(dir.path(), plugin, "skill-b").unwrap(),
+            latest_skill_semver(dir_b.path(), plugin, "skill-b").unwrap(),
             "1.0.0"
         );
     }
@@ -1472,7 +1480,7 @@ mod tests {
 
         let tag_name = create_skill_version_tag(dir.path(), plugin, "my-skill", "1.0.0").unwrap();
 
-        assert_eq!(tag_name, "skills/my-skill/v1.0.0");
+        assert_eq!(tag_name, "v1.0.0");
         assert!(skill_version_tag_exists(dir.path(), plugin, "my-skill", "1.0.0").unwrap());
     }
 
@@ -1494,21 +1502,28 @@ mod tests {
 
     #[test]
     fn test_skill_has_any_tag_is_skill_scoped() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
+        // In per-skill repos, each skill has its own repo. Tagging one skill's repo
+        // must not affect another skill's repo.
+        let dir_a = tempdir().unwrap();
+        let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir.path().join(plugin).join("skill-a");
-        let b_dir = dir.path().join(plugin).join("skill-b");
+        let a_dir = dir_a.path().join(plugin).join("skill-a");
+        let b_dir = dir_b.path().join(plugin).join("skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
+
+        ensure_repo(dir_a.path()).unwrap();
+        ensure_repo(dir_b.path()).unwrap();
+
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
-        commit_all(dir.path(), "seed").unwrap();
-        create_skill_version_tag(dir.path(), plugin, "skill-a", "1.0.0").unwrap();
+        commit_all(dir_a.path(), "skill-a: seed").unwrap();
+        commit_all(dir_b.path(), "skill-b: seed").unwrap();
+        create_skill_version_tag(dir_a.path(), plugin, "skill-a", "1.0.0").unwrap();
 
-        assert!(skill_has_any_tag(dir.path(), plugin, "skill-a").unwrap());
-        assert!(!skill_has_any_tag(dir.path(), plugin, "skill-b").unwrap());
+        assert!(skill_has_any_tag(dir_a.path(), plugin, "skill-a").unwrap());
+        assert!(!skill_has_any_tag(dir_b.path(), plugin, "skill-b").unwrap());
     }
 
     // --- delete_skill_version_tags ---
@@ -1534,24 +1549,31 @@ mod tests {
 
     #[test]
     fn test_delete_skill_version_tags_does_not_affect_other_skills() {
-        let dir = tempdir().unwrap();
-        ensure_repo(dir.path()).unwrap();
+        // In per-skill repos, each skill has its own repo. Deleting tags for one
+        // skill must not remove tags in another skill's repo.
+        let dir_a = tempdir().unwrap();
+        let dir_b = tempdir().unwrap();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let a_dir = dir.path().join(plugin).join("skill-a");
-        let b_dir = dir.path().join(plugin).join("skill-b");
+        let a_dir = dir_a.path().join(plugin).join("skill-a");
+        let b_dir = dir_b.path().join(plugin).join("skill-b");
         std::fs::create_dir_all(&a_dir).unwrap();
         std::fs::create_dir_all(&b_dir).unwrap();
+
+        ensure_repo(dir_a.path()).unwrap();
+        ensure_repo(dir_b.path()).unwrap();
+
         std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
         std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
-        commit_all(dir.path(), "seed both").unwrap();
-        create_skill_version_tag(dir.path(), plugin, "skill-a", "1.0.0").unwrap();
-        create_skill_version_tag(dir.path(), plugin, "skill-b", "1.0.0").unwrap();
+        commit_all(dir_a.path(), "skill-a: seed").unwrap();
+        commit_all(dir_b.path(), "skill-b: seed").unwrap();
+        create_skill_version_tag(dir_a.path(), plugin, "skill-a", "1.0.0").unwrap();
+        create_skill_version_tag(dir_b.path(), plugin, "skill-b", "1.0.0").unwrap();
 
-        delete_skill_version_tags(dir.path(), plugin, "skill-a").unwrap();
+        delete_skill_version_tags(dir_a.path(), plugin, "skill-a").unwrap();
 
-        assert!(!skill_has_any_tag(dir.path(), plugin, "skill-a").unwrap());
-        assert!(skill_has_any_tag(dir.path(), plugin, "skill-b").unwrap());
+        assert!(!skill_has_any_tag(dir_a.path(), plugin, "skill-a").unwrap());
+        assert!(skill_has_any_tag(dir_b.path(), plugin, "skill-b").unwrap());
     }
 
     #[test]
@@ -1577,7 +1599,7 @@ mod tests {
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "my-skill: created").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "my-skill: updated").unwrap();
@@ -1585,7 +1607,7 @@ mod tests {
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
         commit_all(dir.path(), "my-skill: refined").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.1.0");
+        create_tag(dir.path(), "v1.1.0");
 
         let history = get_history(dir.path(), "my-skill", plugin, 50).unwrap();
         assert_eq!(history.len(), 3);
@@ -1622,18 +1644,18 @@ mod tests {
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v2").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.1.0");
+        create_tag(dir.path(), "v1.1.0");
 
         std::fs::write(skill_dir.join("SKILL.md"), "# v3").unwrap();
         commit_all(dir.path(), "v3").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v2.0.0");
+        create_tag(dir.path(), "v2.0.0");
 
         let prior = prior_skill_tag(dir.path(), plugin, "my-skill");
-        assert_eq!(prior.as_deref(), Some("skills/my-skill/v1.1.0"));
+        assert_eq!(prior.as_deref(), Some("v1.1.0"));
     }
 
     #[test]
@@ -1646,7 +1668,7 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         assert!(prior_skill_tag(dir.path(), plugin, "my-skill").is_none());
     }
@@ -1673,12 +1695,12 @@ mod tests {
         std::fs::write(skill_dir.join("SKILL.md"), "# V1 content").unwrap();
         std::fs::write(skill_dir.join("references").join("guide.md"), "guide v1").unwrap();
         commit_all(dir.path(), "v1").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v1.0.0");
+        create_tag(dir.path(), "v1.0.0");
 
         // Modify files for v2
         std::fs::write(skill_dir.join("SKILL.md"), "# V2 content").unwrap();
         commit_all(dir.path(), "v2").unwrap();
-        create_tag(dir.path(), "skills/my-skill/v2.0.0");
+        create_tag(dir.path(), "v2.0.0");
 
         // Extract v1 to a separate directory
         let dest = dir.path().join("snapshot");
@@ -1686,7 +1708,7 @@ mod tests {
             dir.path(),
             plugin,
             "my-skill",
-            "skills/my-skill/v1.0.0",
+            "v1.0.0",
             &dest,
         )
         .unwrap();
@@ -1713,7 +1735,7 @@ mod tests {
             dir.path(),
             plugin,
             "my-skill",
-            "skills/my-skill/v99.0.0",
+            "v99.0.0",
             &dest,
         );
         assert!(result.is_err());
