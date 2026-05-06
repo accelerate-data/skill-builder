@@ -133,6 +133,8 @@ const mockResponses: Record<string, unknown> = {
     session_id: "e2e-refine-session-001",
     skill_name: "test-skill",
     created_at: new Date().toISOString(),
+    available_agents: ["skill-creator"],
+    restored_messages: [],
   },
   send_refine_message: "refine-test-skill-e2e-001",
   cancel_refine_turn: undefined,

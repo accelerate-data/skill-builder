@@ -37,6 +37,8 @@ pub struct RefineSessionInfo {
     pub created_at: String,
     /// Agent names discovered from the allowed refine plugins.
     pub available_agents: Vec<String>,
+    /// Restored user/agent messages from the persisted skill conversation.
+    pub restored_messages: Vec<ConversationMessage>,
 }
 
 impl std::fmt::Debug for RefineSessionInfo {
@@ -52,7 +54,7 @@ impl std::fmt::Debug for RefineSessionInfo {
 /// A single message in a refine conversation history.
 /// Typed struct ensures Tauri IPC rejects malformed payloads at the boundary
 /// rather than silently forwarding broken JSON to the sidecar.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConversationMessage {
     pub role: String,
     pub content: String,

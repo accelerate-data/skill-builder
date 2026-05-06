@@ -635,6 +635,7 @@ pub(crate) fn delete_skill_db_records_inner(
                 name
             );
         } else {
+            crate::db::clear_skill_conversation_id(conn, plugin_slug, name)?;
             crate::db::delete_imported_skill_by_name(conn, name, plugin_slug)?;
             crate::db::delete_skill_in_plugin(conn, name, plugin_slug)?;
             log::info!(

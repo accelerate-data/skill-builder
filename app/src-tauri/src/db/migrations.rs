@@ -49,6 +49,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (44, run_eval_workbench_migration),
     (45, run_workflow_artifact_tables_migration),
     (46, run_eval_workbench_scenario_identity_migration),
+    (47, run_skill_conversations_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -307,6 +308,21 @@ pub(super) fn run_eval_workbench_scenario_identity_migration(
             Err(error)
         }
     }
+}
+
+pub(super) fn run_skill_conversations_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS skill_conversations (
+            plugin_slug TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            PRIMARY KEY (plugin_slug, skill_name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_skill_conversations_skill
+            ON skill_conversations(skill_name, plugin_slug);",
+    )
 }
 
 pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), rusqlite::Error> {

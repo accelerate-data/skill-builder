@@ -46,7 +46,7 @@ pub fn get_skill_content_for_refine(
         );
         e
     })?;
-    let skill_root = resolve_skill_output_dir(&db, &skill_name, &skills_path).map_err(|e| {
+    let skill_root = resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path).map_err(|e| {
         log::error!(
             "[get_skill_content_for_refine] Failed to resolve skill output dir: {}",
             e

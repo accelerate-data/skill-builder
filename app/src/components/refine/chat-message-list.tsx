@@ -137,6 +137,21 @@ export function ChatMessageList({
             );
           }
 
+          if (msg.role === "agent" && msg.agentText) {
+            return (
+              <div key={msg.id} className="flex w-full justify-start">
+                <div
+                  className="max-w-[85%] rounded-2xl border border-border/60 bg-background px-4 py-2.5"
+                  style={{ borderBottomLeftRadius: "4px" }}
+                >
+                  <div className="break-words whitespace-pre-wrap text-sm leading-6 text-foreground">
+                    {msg.agentText}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           if (msg.role === "agent" && msg.agentId) {
             // Check if a question follows this agent turn — if so, split display
             // items so content after the question appears below it.

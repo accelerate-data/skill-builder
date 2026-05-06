@@ -799,6 +799,9 @@ fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
         .unwrap();
     assert_eq!(skill_count, 1);
 
+    crate::db::save_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "mkt-skill", "conv-mkt")
+        .unwrap();
+
     // Delete via delete_skill_inner
     delete_skill_inner(
         workspace,
@@ -830,6 +833,11 @@ fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
         )
         .unwrap();
     assert_eq!(imported_after, 0, "imported_skills row should be deleted");
+    assert_eq!(
+        crate::db::get_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "mkt-skill").unwrap(),
+        None,
+        "persisted skill conversation should be cleared"
+    );
 }
 
 #[test]
@@ -1326,6 +1334,8 @@ fn test_rename_skill_basic() {
     )
     .unwrap();
     crate::db::save_workflow_step(&conn, "old-name", 0, "completed").unwrap();
+    crate::db::save_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "old-name", "conv-old")
+        .unwrap();
 
     // Rename
     rename_skill_inner(
@@ -1369,6 +1379,14 @@ fn test_rename_skill_basic() {
     assert_eq!(steps.len(), 1);
     let old_steps = crate::db::get_workflow_steps(&conn, "old-name").unwrap();
     assert!(old_steps.is_empty());
+    assert_eq!(
+        crate::db::get_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "old-name").unwrap(),
+        None
+    );
+    assert_eq!(
+        crate::db::get_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "new-name").unwrap(),
+        Some("conv-old".to_string())
+    );
 }
 
 #[test]

@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { SkillFile } from "@/stores/refine-store";
+import type { RefineMessage, SkillFile } from "@/stores/refine-store";
 import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
@@ -69,6 +69,20 @@ async function loadSkillFiles(
     console.error("[workspace-refine] Failed to load skill files:", err);
     return null;
   }
+}
+
+function mapRestoredMessages(
+  restoredMessages: Array<{ role: string; content: string }> | null | undefined,
+): RefineMessage[] {
+  return (restoredMessages ?? [])
+    .filter((message) => message.content.trim().length > 0)
+    .map((message) => ({
+      id: crypto.randomUUID(),
+      role: message.role === "user" ? "user" : "agent",
+      userText: message.role === "user" ? message.content : undefined,
+      agentText: message.role === "user" ? undefined : message.content,
+      timestamp: Date.now(),
+    }));
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -218,10 +232,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             workspacePath,
             s.plugin_slug,
           );
-          useRefineStore.getState().setSessionId(session.session_id);
-          useRefineStore
-            .getState()
-            .setAvailableAgents(session.available_agents ?? []);
+          const nextStore = useRefineStore.getState();
+          nextStore.setSessionId(session.session_id);
+          nextStore.setAvailableAgents(session.available_agents ?? []);
+          nextStore.setMessages(mapRestoredMessages(session.restored_messages));
         } catch (err) {
           console.error(
             "[workspace-refine] Failed to start refine session:",

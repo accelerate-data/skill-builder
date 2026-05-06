@@ -222,6 +222,7 @@ fn test_session_create_and_lookup() {
             session_id.clone(),
             RefineSession {
                 skill_name: "my-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-session-1".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
@@ -246,6 +247,7 @@ fn test_session_conflict_detection() {
             "session-1".to_string(),
             RefineSession {
                 skill_name: "my-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-session-1".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
@@ -275,6 +277,49 @@ fn test_new_refine_usage_session_id_is_opaque_and_scoped_to_skill() {
 
     assert!(usage_session_id.starts_with("synthetic:refine:my-skill:"));
     assert_ne!(usage_session_id, new_refine_usage_session_id("my-skill"));
+}
+
+#[test]
+fn test_extract_conversation_messages_keeps_user_and_agent_message_events_only() {
+    let events = vec![
+        serde_json::json!({
+            "event_class": "SystemPromptEvent",
+            "message": "ignored"
+        }),
+        serde_json::json!({
+            "event_class": "MessageEvent",
+            "source": "user",
+            "message": "Tighten the summary"
+        }),
+        serde_json::json!({
+            "event_class": "MessageEvent",
+            "source": "agent",
+            "message": "Updated the summary section."
+        }),
+        serde_json::json!({
+            "kind": "MessageEvent",
+            "source": "assistant",
+            "text": "Also adjusted the glossary."
+        }),
+    ];
+
+    assert_eq!(
+        extract_conversation_messages(&events),
+        vec![
+            ConversationMessage {
+                role: "user".to_string(),
+                content: "Tighten the summary".to_string(),
+            },
+            ConversationMessage {
+                role: "agent".to_string(),
+                content: "Updated the summary section.".to_string(),
+            },
+            ConversationMessage {
+                role: "agent".to_string(),
+                content: "Also adjusted the glossary.".to_string(),
+            },
+        ]
+    );
 }
 
 #[test]
@@ -524,6 +569,7 @@ fn test_close_session_removes_entry() {
             session_id.clone(),
             RefineSession {
                 skill_name: "my-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-session-close".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
@@ -1351,6 +1397,7 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
 fn test_refine_session_holds_conversation_and_agent_ids() {
     let session = RefineSession {
         skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
         conversation_id: Some("conv-123".to_string()),
         current_agent_id: Some("agent-456".to_string()),

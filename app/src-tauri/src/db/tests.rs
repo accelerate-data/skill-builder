@@ -4238,3 +4238,40 @@ fn test_acquire_lock_works_for_marketplace_skill() {
 
     release_skill_lock(&conn, "mkt-lockable", "inst-1").unwrap();
 }
+
+#[test]
+fn test_skill_conversation_round_trip_by_plugin_and_skill() {
+    let conn = create_test_db();
+
+    save_skill_conversation_id(&conn, "default", "analyzing-bookings", "conv-123").unwrap();
+    assert_eq!(
+        get_skill_conversation_id(&conn, "default", "analyzing-bookings").unwrap(),
+        Some("conv-123".to_string())
+    );
+
+    save_skill_conversation_id(&conn, "skills", "analyzing-bookings", "conv-999").unwrap();
+    assert_eq!(
+        get_skill_conversation_id(&conn, "skills", "analyzing-bookings").unwrap(),
+        Some("conv-999".to_string())
+    );
+    assert_eq!(
+        get_skill_conversation_id(&conn, "default", "analyzing-bookings").unwrap(),
+        Some("conv-123".to_string())
+    );
+
+    save_skill_conversation_id(&conn, "default", "analyzing-bookings", "conv-456").unwrap();
+    assert_eq!(
+        get_skill_conversation_id(&conn, "default", "analyzing-bookings").unwrap(),
+        Some("conv-456".to_string())
+    );
+
+    clear_skill_conversation_id(&conn, "default", "analyzing-bookings").unwrap();
+    assert_eq!(
+        get_skill_conversation_id(&conn, "default", "analyzing-bookings").unwrap(),
+        None
+    );
+    assert_eq!(
+        get_skill_conversation_id(&conn, "skills", "analyzing-bookings").unwrap(),
+        Some("conv-999".to_string())
+    );
+}

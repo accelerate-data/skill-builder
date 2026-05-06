@@ -38,22 +38,9 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
 }
 
 /// Resolve the absolute path the OpenHands SDK should persist conversation
-/// state and per-event JSON to. Used at Agent Server spawn time as the
-/// `OH_CONVERSATIONS_PATH` env var. The SDK indexes inside this path by
-/// `conversation_id_hex`, so all conversations across all skills share one
-/// root.
-///
-/// Returns `None` only if `dirs::data_dir()` fails (effectively never on
-/// macOS/Linux/Windows). On `None`, the SDK falls back to its compiled
-/// default `workspace/conversations` relative to the server's CWD (a
-/// tempdir in our case) and the audit trail is lost on shutdown — the
-/// caller logs a warning.
-pub(crate) fn compute_conversations_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|root| {
-        root.join("com.vibedata.skill-builder")
-            .join("workspace")
-            .join("conversations")
-    })
+/// state and per-event JSON to for a specific skill workspace.
+pub(crate) fn compute_conversations_path(workspace_skill_dir: &Path) -> PathBuf {
+    workspace_skill_dir.join("conversations")
 }
 
 fn apply_session_env(
@@ -73,6 +60,7 @@ fn apply_session_env(
 pub struct OpenHandsAgentServerHandle {
     pub port: u16,
     pub session_api_key: String,
+    pub conversations_path: String,
 }
 
 impl OpenHandsAgentServerHandle {
@@ -171,8 +159,14 @@ fn agent_server_registry() -> &'static OpenHandsAgentServerRegistry {
     REGISTRY.get_or_init(|| tokio::sync::Mutex::new(None))
 }
 
-pub async fn ensure_agent_server(timeout: Duration) -> Result<OpenHandsAgentServerHandle, String> {
+pub async fn ensure_agent_server(
+    timeout: Duration,
+    workspace_skill_dir: &Path,
+) -> Result<OpenHandsAgentServerHandle, String> {
     let mut registry = agent_server_registry().lock().await;
+    let conversations_path = compute_conversations_path(workspace_skill_dir)
+        .to_string_lossy()
+        .into_owned();
     if let Some(server) = registry.as_mut() {
         let process_running = server.process.is_running();
         let health_result = if process_running {
@@ -183,8 +177,17 @@ pub async fn ensure_agent_server(timeout: Duration) -> Result<OpenHandsAgentServ
         } else {
             Err("cached process is not running".to_string())
         };
-        if should_reuse_cached_server(process_running, health_result.clone()) {
+        if server.handle.conversations_path == conversations_path
+            && should_reuse_cached_server(process_running, health_result.clone())
+        {
             return Ok(server.handle.clone());
+        }
+        if server.handle.conversations_path != conversations_path {
+            log::info!(
+                "[openhands-agent-server] restarting cached server because conversations root changed: {} -> {}",
+                server.handle.conversations_path,
+                conversations_path
+            );
         }
         if let Err(error) = &health_result {
             log::warn!(
@@ -195,10 +198,11 @@ pub async fn ensure_agent_server(timeout: Duration) -> Result<OpenHandsAgentServ
         *registry = None;
     }
 
-    let process = OpenHandsAgentServerProcess::start(timeout).await?;
+    let process = OpenHandsAgentServerProcess::start(timeout, workspace_skill_dir).await?;
     let handle = OpenHandsAgentServerHandle {
         port: process.port,
         session_api_key: process.session_api_key.clone(),
+        conversations_path,
     };
     *registry = Some(ManagedOpenHandsAgentServer {
         handle: handle.clone(),
@@ -216,10 +220,10 @@ pub async fn shutdown_agent_server() -> Result<(), String> {
 }
 
 impl OpenHandsAgentServerProcess {
-    pub async fn start(timeout: Duration) -> Result<Self, String> {
+    pub async fn start(timeout: Duration, workspace_skill_dir: &Path) -> Result<Self, String> {
         let mut last_error = None;
         for attempt in 1..=5 {
-            match Self::start_once(timeout).await {
+            match Self::start_once(timeout, workspace_skill_dir).await {
                 Ok(process) => return Ok(process),
                 Err(error) => {
                     log::warn!(
@@ -233,7 +237,7 @@ impl OpenHandsAgentServerProcess {
         Err(last_error.unwrap_or_else(|| "Failed to start OpenHands Agent Server".to_string()))
     }
 
-    async fn start_once(timeout: Duration) -> Result<Self, String> {
+    async fn start_once(timeout: Duration, workspace_skill_dir: &Path) -> Result<Self, String> {
         let port = select_random_local_port()?;
         let session_api_key = uuid::Uuid::new_v4().to_string();
         let command = OpenHandsServerCommand::new(port);
@@ -243,30 +247,18 @@ impl OpenHandsAgentServerProcess {
             .map_err(|e| format!("Failed to create OpenHands Agent Server runtime dir: {e}"))?;
         let mut tokio_command = command.tokio_command();
         tokio_command.current_dir(runtime_dir.path());
-        let conversations_path = compute_conversations_path();
-        let conversations_path_str = conversations_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().into_owned());
+        let conversations_path_str = compute_conversations_path(workspace_skill_dir)
+            .to_string_lossy()
+            .into_owned();
         apply_session_env(
             &mut tokio_command,
             &session_api_key,
-            conversations_path_str.as_deref(),
+            Some(&conversations_path_str),
         );
-        match conversations_path_str.as_deref() {
-            Some(path_str) => {
-                log::info!(
-                    "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
-                    path_str
-                );
-            }
-            None => {
-                log::warn!(
-                    "[openhands-agent-server] dirs::data_dir() returned None — \
-                     falling back to SDK default conversations path. Audit trail \
-                     will land in the spawn tempdir and be lost on shutdown."
-                );
-            }
-        }
+        log::info!(
+            "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
+            conversations_path_str
+        );
         let stderr_secrets = vec![session_api_key.clone()];
         let mut child = tokio_command
             .spawn()
@@ -454,12 +446,14 @@ mod tests {
     }
 
     #[test]
-    fn compute_conversations_path_resolves_under_data_dir() {
-        let path = compute_conversations_path().expect("dirs::data_dir must succeed in tests");
+    fn compute_conversations_path_resolves_under_workspace_skill_dir() {
+        let path = compute_conversations_path(Path::new(
+            "/tmp/workspace/default/skills/analyzing-bookings",
+        ));
         let s = path.to_string_lossy().replace('\\', "/");
         assert!(
-            s.ends_with("com.vibedata.skill-builder/workspace/conversations"),
-            "expected path to end with the canonical bundle/workspace/conversations suffix; got {s}",
+            s.ends_with("default/skills/analyzing-bookings/conversations"),
+            "expected path to end with the skill-scoped conversations suffix; got {s}",
         );
     }
 

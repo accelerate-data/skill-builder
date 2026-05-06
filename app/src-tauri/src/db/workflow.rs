@@ -223,6 +223,8 @@ pub fn delete_workflow_run(
     )
     .map_err(|e| e.to_string())?;
 
+    super::clear_skill_conversation_id(conn, plugin_slug, skill_name)?;
+
     // Also delete from skills master table
     delete_skill_in_plugin(conn, skill_name, plugin_slug)?;
     Ok(())
