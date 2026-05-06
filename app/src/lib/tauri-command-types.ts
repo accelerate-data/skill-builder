@@ -44,7 +44,6 @@ import type {
   RunEvalWorkbenchRequest,
   ScenarioListItem,
   ScenarioDto,
-  SuggestAssertionsRequest,
   SuggestDescriptionCandidatesRequest,
 } from "@/lib/eval-workbench";
 import type {
@@ -499,10 +498,6 @@ export interface TauriCommandMap {
   suggest_description_candidates: {
     args: { request: SuggestDescriptionCandidatesRequest };
     result: DescriptionCandidate[];
-  };
-  suggest_assertions: {
-    args: { request: SuggestAssertionsRequest };
-    result: { type: string; value: string }[];
   };
   apply_description_candidate: {
     args: { pluginSlug: string; skillName: string; candidateId: string };

@@ -161,15 +161,6 @@ void invokeCommand("suggest_description_candidates", {
   },
 });
 
-void invokeCommand("suggest_assertions", {
-  request: {
-    pluginSlug: "skills",
-    skillName: "demo",
-    prompt: "Forecast revenue for next quarter",
-    expectedOutcome: "Includes assumptions and a concise recommendation",
-  },
-});
-
 // @ts-expect-error workbench run request requires runId and candidateIds
 void invokeCommand("run_eval_workbench", {
   request: {

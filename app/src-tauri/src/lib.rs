@@ -406,7 +406,6 @@ pub fn run() {
             commands::eval_workbench::save_scenario,
             commands::eval_workbench::delete_scenario,
             commands::eval_workbench::generate_scenarios,
-            commands::eval_workbench::suggest_assertions,
             commands::eval_workbench::run_eval_workbench,
             commands::eval_workbench::cancel_eval_workbench_run,
             commands::eval_workbench::list_eval_runs,

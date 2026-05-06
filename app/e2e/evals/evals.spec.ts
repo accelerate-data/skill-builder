@@ -8,17 +8,12 @@ import {
 } from "../helpers/invoke-tracking.js";
 
 const PERFORMANCE_SCENARIO = {
+  id: "case-1",
   name: "Regression",
   tags: ["performance"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Forecast next quarter revenue for the west region pipeline.",
-      expectedOutcome: "Calls out assumptions, missing data, and confidence.",
-      shouldTrigger: null,
-      assertions: [],
-    },
-  ],
+  prompt: "Forecast next quarter revenue for the west region pipeline.",
+  shouldTrigger: null,
+  assertions: [],
 };
 
 const PERFORMANCE_RUN_SUMMARY = {

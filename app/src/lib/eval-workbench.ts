@@ -8,18 +8,13 @@ export interface ScenarioAssertion {
   value: string;
 }
 
-export interface ScenarioCase {
-  id: string;
-  prompt: string;
-  expectedOutcome: string | null;
-  shouldTrigger: boolean | null;
-  assertions: ScenarioAssertion[];
-}
-
 export interface Scenario {
+  id: string;
   name: string;
   tags: ScenarioTag[];
-  cases: ScenarioCase[];
+  prompt: string;
+  shouldTrigger: boolean | null;
+  assertions: ScenarioAssertion[];
 }
 
 export interface ScenarioSummary {
@@ -29,7 +24,6 @@ export interface ScenarioSummary {
 
 export type ScenarioDto = Scenario;
 export type ScenarioListItem = ScenarioSummary;
-export type SaveScenarioCase = ScenarioCase;
 export type SaveScenario = Scenario;
 
 export function scenarioNameSlug(name: string): string {
@@ -95,13 +89,6 @@ export interface SuggestDescriptionCandidatesRequest {
   scenarioName: string;
   baselineDescription: string;
   candidateCount?: number | null;
-}
-
-export interface SuggestAssertionsRequest {
-  pluginSlug: string;
-  skillName: string;
-  prompt: string;
-  expectedOutcome: string;
 }
 
 export interface ApplyDescriptionCandidateResponse {
@@ -190,9 +177,6 @@ export const suggestDescriptionCandidates = (
   request: SuggestDescriptionCandidatesRequest,
 ) => invokeCommand("suggest_description_candidates", { request });
 
-export const suggestAssertions = (request: SuggestAssertionsRequest) =>
-  invokeCommand("suggest_assertions", { request });
-
 export const applyDescriptionCandidate = (
   pluginSlug: string,
   skillName: string,
@@ -211,18 +195,6 @@ export const DEFAULT_DESCRIPTION_CANDIDATE_COUNT = 3;
 export const CURRENT_SKILL_CANDIDATE_ID = "current-skill";
 export const PERFORMANCE_CANDIDATE_IDS = ["current-skill"];
 
-export function createEmptyScenarioCase(
-  mode: EvalWorkbenchMode,
-): SaveScenarioCase {
-  return {
-    id: `case-${crypto.randomUUID().slice(0, 8)}`,
-    prompt: "",
-    expectedOutcome: mode === "performance" ? "" : null,
-    shouldTrigger: mode === "trigger" ? true : null,
-    assertions: [],
-  };
-}
-
 export function createDraftScenario(
   mode: EvalWorkbenchMode,
   _pluginSlug = "",
@@ -230,9 +202,12 @@ export function createDraftScenario(
   name = "",
 ): SaveScenario {
   return {
+    id: `case-${crypto.randomUUID().slice(0, 8)}`,
     name,
     tags: [mode],
-    cases: [createEmptyScenarioCase(mode)],
+    prompt: "",
+    shouldTrigger: mode === "trigger" ? true : null,
+    assertions: [],
   };
 }
 
@@ -245,33 +220,24 @@ export function scenarioSupportsMode(
 
 export function scenarioToDraft(scenario: Scenario): SaveScenario {
   return {
+    id: scenario.id,
     name: scenario.name,
     tags: [...scenario.tags],
-    cases: scenario.cases.map((caseItem) => ({
-      id: caseItem.id,
-      prompt: caseItem.prompt,
-      expectedOutcome: caseItem.expectedOutcome,
-      shouldTrigger: caseItem.shouldTrigger,
-      assertions: Array.isArray(caseItem.assertions) ? caseItem.assertions : [],
-    })),
+    prompt: scenario.prompt,
+    shouldTrigger: scenario.shouldTrigger,
+    assertions: Array.isArray(scenario.assertions) ? scenario.assertions : [],
   };
 }
 
 export function normalizeScenario(draft: SaveScenario): SaveScenario {
   return {
-    ...draft,
+    id: draft.id || `case-${crypto.randomUUID().slice(0, 8)}`,
     name: draft.name.trim(),
     tags: Array.from(new Set(draft.tags)),
-    cases: draft.cases.map((caseItem) => ({
-      id: caseItem.id || `case-${crypto.randomUUID().slice(0, 8)}`,
-      prompt: caseItem.prompt.trim(),
-      expectedOutcome: caseItem.expectedOutcome?.trim() ?? null,
-      shouldTrigger:
-        typeof caseItem.shouldTrigger === "boolean"
-          ? caseItem.shouldTrigger
-          : null,
-      assertions: Array.isArray(caseItem.assertions) ? caseItem.assertions : [],
-    })),
+    prompt: draft.prompt.trim(),
+    shouldTrigger:
+      typeof draft.shouldTrigger === "boolean" ? draft.shouldTrigger : null,
+    assertions: Array.isArray(draft.assertions) ? draft.assertions : [],
   };
 }
 
@@ -285,26 +251,17 @@ export function validateScenario(
   if (draft.tags.length === 0) {
     return "Select at least one scenario mode.";
   }
-  if (draft.cases.length === 0) {
-    return "At least one scenario case is required.";
+  if (!draft.prompt.trim()) {
+    return "Scenario prompt is required.";
   }
-  for (const caseItem of draft.cases) {
-    if (!caseItem.prompt.trim()) {
-      return "Each scenario case needs a prompt.";
-    }
-    if (!Array.isArray(caseItem.assertions)) {
-      return "Assertions must be an array.";
-    }
-    if (scenarioSupportsMode(draft, "performance")) {
-      if (!(caseItem.expectedOutcome ?? "").trim() && caseItem.assertions.length === 0) {
-        return "Performance cases need an expected outcome or at least one assertion.";
-      }
-    }
-    if (scenarioSupportsMode(draft, "trigger")) {
-      if (typeof caseItem.shouldTrigger !== "boolean") {
-        return "Trigger cases must mark whether they should trigger.";
-      }
-    }
+  if (!Array.isArray(draft.assertions)) {
+    return "Assertions must be an array.";
+  }
+  if (scenarioSupportsMode(draft, "performance") && draft.assertions.length === 0) {
+    return "Performance scenarios need at least one assertion.";
+  }
+  if (scenarioSupportsMode(draft, "trigger") && typeof draft.shouldTrigger !== "boolean") {
+    return "Trigger scenarios must mark whether they should trigger.";
   }
   if (mode && !scenarioSupportsMode(draft, mode)) {
     return `This scenario is not tagged for ${mode} mode.`;
@@ -351,7 +308,7 @@ function createBaselineDescriptionCandidate(
 
 function summarizeTriggerResults(
   run: EvalRun | null,
-  promptCases: ScenarioCase[],
+  promptCases: Scenario[],
 ): Map<string, TriggerComparisonMetrics> {
   if (!run) {
     return new Map();
@@ -472,7 +429,7 @@ export function buildTriggerComparisonEntries(
   baselineDescription: string,
   candidates: DescriptionCandidate[],
   run: EvalRun | null,
-  promptCases: ScenarioCase[],
+  promptCases: Scenario[],
 ): TriggerComparisonEntry[] {
   const hasComparisonCandidates =
     candidates.length > 0 ||
@@ -505,7 +462,7 @@ export function getRecommendedCandidate(
   baselineDescription: string,
   candidates: DescriptionCandidate[],
   run: EvalRun | null,
-  promptCases: ScenarioCase[],
+  promptCases: Scenario[],
 ): DescriptionCandidate | null {
   if (!run || run.results.length === 0) {
     return null;

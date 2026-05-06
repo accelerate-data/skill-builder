@@ -10,7 +10,6 @@ const mockRunEvalWorkbench = vi.fn();
 const mockCancelEvalWorkbenchRun = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
 const mockGenerateScenarios = vi.fn();
-const mockListScenarios = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
 let progressListener:
@@ -41,7 +40,6 @@ vi.mock("@/lib/eval-workbench", async () => {
   return {
     ...actual,
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
-    listScenarios: (...args: unknown[]) => mockListScenarios(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
     cancelEvalWorkbenchRun: (...args: unknown[]) =>
@@ -49,7 +47,6 @@ vi.mock("@/lib/eval-workbench", async () => {
     generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
-    generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
   };
 });
 
@@ -79,31 +76,21 @@ const skill: SkillSummary = {
 };
 
 const performanceScenario = {
+  id: "case-1",
   name: "Regression",
   tags: ["performance"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Forecast next quarter revenue",
-      expectedOutcome: "Includes assumptions",
-      shouldTrigger: null,
-      assertions: [],
-    },
-  ],
+  prompt: "Forecast next quarter revenue",
+  shouldTrigger: null,
+  assertions: [],
 };
 
 const alternatePerformanceScenario = {
+  id: "case-2",
   name: "Smoke",
   tags: ["performance"] as const,
-  cases: [
-    {
-      id: "case-2",
-      prompt: "Summarize pipeline risk",
-      expectedOutcome: "Lists top blockers",
-      shouldTrigger: null,
-      assertions: [],
-    },
-  ],
+  prompt: "Summarize pipeline risk",
+  shouldTrigger: null,
+  assertions: [],
 };
 
 const runSummary = {
@@ -162,7 +149,6 @@ describe("WorkspaceEvals", () => {
       return Promise.resolve(() => {});
     });
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
-    mockListScenarios.mockReset().mockResolvedValue([]);
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
     mockCancelEvalWorkbenchRun.mockReset().mockResolvedValue(undefined);
@@ -171,7 +157,6 @@ describe("WorkspaceEvals", () => {
       runId: "run-1",
       brief: "Improve assumptions handling",
     });
-    mockGenerateScenarios.mockReset().mockResolvedValue([]);
     setPendingInitialMessage.mockReset();
   });
 
@@ -217,19 +202,34 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText("No runs yet.")).toBeInTheDocument();
   });
 
+  it("uses scenario-level actions in the empty state", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={null}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByLabelText(/scenario name/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /generate scenarios/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^suggest$/i })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /run scenario/i })).toBeDisabled();
+  });
+
   it("saves a new performance scenario through the shared workbench surface", async () => {
     const user = userEvent.setup();
     const onSaveScenario = vi.fn().mockResolvedValue({
+      id: "case-2",
       name: "Smoke",
       tags: ["performance"],
-      cases: [
-        {
-          prompt: "Summarize pipeline risk",
-          expectedOutcome: "Lists top blockers",
-          shouldTrigger: null,
-          assertions: [],
-        },
-      ],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      assertions: [{ type: "contains", value: "blockers" }],
     });
     const onStartNewScenario = vi.fn();
 
@@ -252,22 +252,22 @@ describe("WorkspaceEvals", () => {
     await user.type(screen.getByLabelText(/scenario name/i), "Smoke");
     await user.clear(screen.getByLabelText(/user prompt/i));
     await user.type(screen.getByLabelText(/user prompt/i), "Summarize pipeline risk");
-    await user.clear(screen.getByLabelText(/expected outcome/i));
-    await user.type(screen.getByLabelText(/expected outcome/i), "Lists top blockers");
+    await user.click(screen.getByRole("button", { name: /add assertion/i }));
+    const assertionInputs = screen.getAllByPlaceholderText(
+      /expected phrase or expression|contains/i,
+    );
+    await user.type(assertionInputs[0]!, "contains");
+    await user.type(assertionInputs[1]!, "blockers");
     await user.click(screen.getByRole("button", { name: /^save scenario$/i }));
 
     await waitFor(() =>
       expect(onSaveScenario).toHaveBeenCalledWith({
+        id: expect.any(String),
         name: "Smoke",
         tags: ["performance"],
-        cases: [
-          expect.objectContaining({
-            prompt: "Summarize pipeline risk",
-            expectedOutcome: "Lists top blockers",
-            shouldTrigger: null,
-            assertions: [],
-          }),
-        ],
+        prompt: "Summarize pipeline risk",
+        shouldTrigger: null,
+        assertions: [{ type: "contains", value: "blockers" }],
       }),
     );
   });
@@ -455,21 +455,16 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText(/select a run to inspect its results/i)).toBeInTheDocument();
   });
 
-  it("saves generated scenarios without reusing the selected scenario as previousScenarioName", async () => {
+  it("fills the current draft from the top-level suggest action", async () => {
     const user = userEvent.setup();
-    const onSaveScenario = vi.fn().mockResolvedValue(performanceScenario);
     mockGenerateScenarios.mockResolvedValue([
       {
+        id: "generated-case",
         name: "Generated smoke",
         tags: ["performance"],
-        cases: [
-          {
-            prompt: "Summarize pipeline risk",
-            expectedOutcome: "Lists top blockers",
-            shouldTrigger: null,
-            assertions: [],
-          },
-        ],
+        prompt: "Summarize pipeline risk",
+        shouldTrigger: null,
+        assertions: [{ type: "contains", value: "blockers" }],
       },
     ]);
 
@@ -479,42 +474,28 @@ describe("WorkspaceEvals", () => {
         workspacePath="/workspace"
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
-        onSaveScenario={onSaveScenario}
+        onSaveScenario={vi.fn()}
       />,
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /generate scenarios/i }));
+    await user.click(screen.getAllByRole("button", { name: /^suggest$/i })[0]!);
 
-    await waitFor(() =>
-      expect(onSaveScenario).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Generated smoke" }),
-        { previousScenarioName: null },
-      ),
-    );
+    expect(await screen.findByDisplayValue("Summarize pipeline risk")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("contains")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("blockers")).toBeInTheDocument();
   });
 
-  it("rejects generated scenarios that conflict with existing scenario names before saving", async () => {
+  it("keeps trigger-mode generation separate from performance suggestion", async () => {
     const user = userEvent.setup();
-    const onSaveScenario = vi.fn();
-    mockListScenarios.mockResolvedValue([
-      {
-        name: "happy-path",
-        tags: ["performance"],
-      },
-    ]);
     mockGenerateScenarios.mockResolvedValue([
       {
+        id: "case-1",
         name: "Happy Path",
         tags: ["performance"],
-        cases: [
-          {
-            prompt: "Forecast next quarter revenue",
-            expectedOutcome: "Includes assumptions",
-            shouldTrigger: null,
-            assertions: [],
-          },
-        ],
+        prompt: "Forecast next quarter revenue",
+        shouldTrigger: null,
+        assertions: [{ type: "contains", value: "assumptions" }],
       },
     ]);
 
@@ -524,17 +505,19 @@ describe("WorkspaceEvals", () => {
         workspacePath="/workspace"
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
-        onSaveScenario={onSaveScenario}
+        onSaveScenario={vi.fn()}
       />,
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /generate scenarios/i }));
+    await user.click(screen.getAllByRole("button", { name: /^suggest$/i })[0]!);
 
-    expect(onSaveScenario).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText(/generated scenarios already exist: happy path/i),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockGenerateScenarios).toHaveBeenCalledWith(
+        "skills",
+        "forecast-skill",
+      ),
+    );
   });
 
   it("publishes real running state while a scenario run is active", async () => {

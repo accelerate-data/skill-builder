@@ -98,7 +98,7 @@ export function WorkspaceDescription({
   }, [scenario]);
 
   const baselineDescription = skill.description ?? "";
-  const activeScenarioCases = scenario?.cases ?? [];
+  const activeScenarioCases = scenario ? [scenario] : [];
   const recommendedCandidate = useMemo(
     () =>
       getRecommendedCandidate(

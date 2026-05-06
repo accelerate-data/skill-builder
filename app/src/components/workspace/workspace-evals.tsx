@@ -9,14 +9,11 @@ import {
   createDraftScenario,
   generateScenarios,
   getErrorMessage,
-  listScenarios,
-  PERFORMANCE_CANDIDATE_IDS,
   runEvalWorkbench,
   normalizeScenario,
-  scenarioNameSlug,
   scenarioToDraft,
-  suggestAssertions,
   validateScenario,
+  PERFORMANCE_CANDIDATE_IDS,
 } from "@/lib/eval-workbench";
 import { setEvalsRunning } from "@/lib/eval-running-state";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
@@ -55,9 +52,7 @@ export function WorkspaceEvals({
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
 
-  const [generating, setGenerating] = useState(false);
-  const [suggestingAssertionsCaseIndex, setSuggestingAssertionsCaseIndex] =
-    useState<number | null>(null);
+  const [suggestingScenario, setSuggestingScenario] = useState(false);
   const [running, setRunning] = useState(false);
   const [sendingToRefine, setSendingToRefine] = useState(false);
   const [draft, setDraft] = useState<SaveScenario>(() =>
@@ -129,87 +124,31 @@ export function WorkspaceEvals({
     }
   }
 
-  async function handleGenerateScenarios() {
-    setGenerating(true);
+  async function handleSuggestScenario() {
+    setSuggestingScenario(true);
     setActionError(null);
     try {
       const generated = await generateScenarios(pluginSlug, skillName);
-      const duplicateNames = generated.reduce<string[]>((duplicates, nextScenario, index) => {
-        const nextSlug = scenarioNameSlug(nextScenario.name);
-        const seenEarlier = generated
-          .slice(0, index)
-          .some((candidate) => scenarioNameSlug(candidate.name) === nextSlug);
-        if (seenEarlier) {
-          duplicates.push(nextScenario.name);
-        }
-        return duplicates;
-      }, []);
-      if (duplicateNames.length > 0) {
-        throw new Error(
-          `Generated scenarios must use unique names: ${duplicateNames.join(", ")}`,
-        );
+      const suggested = generated[0];
+
+      if (!suggested) {
+        throw new Error("Suggestion did not return a scenario.");
       }
 
-      const existingScenarios = await listScenarios(pluginSlug, skillName);
-      const existingSlugs = new Set(
-        existingScenarios.map((existingScenario) =>
-          scenarioNameSlug(existingScenario.name),
-        ),
-      );
-      const conflictingNames = generated
-        .filter((nextScenario) =>
-          existingSlugs.has(scenarioNameSlug(nextScenario.name)),
-        )
-        .map((nextScenario) => nextScenario.name);
-      if (conflictingNames.length > 0) {
-        throw new Error(
-          `Generated scenarios already exist: ${conflictingNames.join(", ")}`,
-        );
-      }
-
-      for (const nextScenario of generated) {
-        await onSaveScenario(nextScenario, { previousScenarioName: null });
-      }
-    } catch (generationError) {
-      setActionError(getErrorMessage(generationError));
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function handleSuggestAssertions(caseIndex: number) {
-    const caseItem = draft.cases[caseIndex];
-    if (!caseItem) {
-      return;
-    }
-    if (!caseItem.prompt.trim()) {
-      setActionError("Add a user prompt before suggesting assertions.");
-      return;
-    }
-    if (!(caseItem.expectedOutcome ?? "").trim()) {
-      setActionError("Add an expected outcome before suggesting assertions.");
-      return;
-    }
-
-    setSuggestingAssertionsCaseIndex(caseIndex);
-    setActionError(null);
-    try {
-      const assertions = await suggestAssertions({
-        pluginSlug,
-        skillName,
-        prompt: caseItem.prompt,
-        expectedOutcome: caseItem.expectedOutcome ?? "",
-      });
       setDraft((current) => ({
         ...current,
-        cases: current.cases.map((currentCase, index) =>
-          index === caseIndex ? { ...currentCase, assertions } : currentCase,
-        ),
+        name: current.name.trim() || suggested.name,
+        tags: current.tags.includes("trigger") ? ["both"] : ["performance"],
+        prompt: suggested.prompt,
+        shouldTrigger: current.tags.includes("trigger")
+          ? (suggested.shouldTrigger ?? true)
+          : null,
+        assertions: suggested.assertions,
       }));
     } catch (suggestionError) {
       setActionError(getErrorMessage(suggestionError));
     } finally {
-      setSuggestingAssertionsCaseIndex(null);
+      setSuggestingScenario(false);
     }
   }
 
@@ -311,16 +250,16 @@ export function WorkspaceEvals({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => void handleGenerateScenarios()}
-              disabled={scenarioLoading || generating}
+              onClick={() => void handleSuggestScenario()}
+              disabled={scenarioLoading || suggestingScenario}
             >
               <Sparkles className="mr-1 size-3.5" />
-              {generating ? "Generating…" : "Generate scenarios"}
+              {suggestingScenario ? "Suggesting…" : "Suggest"}
             </Button>
             <Button
               size="sm"
               onClick={() => void handleRunScenario()}
-              disabled={scenarioLoading || running}
+              disabled={scenarioLoading || running || !scenario}
             >
               <Play className="mr-1 size-3.5" />
               Run scenario
@@ -357,8 +296,6 @@ export function WorkspaceEvals({
           setDraft(createDraftScenario("performance"));
           setActionError(null);
         }}
-        onSuggestAssertions={(caseIndex) => void handleSuggestAssertions(caseIndex)}
-        suggestingAssertionsCaseIndex={suggestingAssertionsCaseIndex}
         saveDisabled={scenarioLoading || saveScenarioPending}
       />
 

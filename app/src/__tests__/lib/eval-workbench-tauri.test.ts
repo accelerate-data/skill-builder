@@ -43,16 +43,12 @@ describe("Eval Workbench Tauri wrappers", () => {
       "skills",
       "forecast-skill",
       {
+        id: "case-1",
         name: "Regression",
         tags: ["performance"],
-        cases: [
-          {
-            prompt: "Forecast next quarter revenue",
-            expectedOutcome: "Includes assumptions",
-            shouldTrigger: null,
-            assertions: [],
-          },
-        ],
+        prompt: "Forecast next quarter revenue",
+        shouldTrigger: null,
+        assertions: [],
       },
       "Old regression",
     );
@@ -61,16 +57,12 @@ describe("Eval Workbench Tauri wrappers", () => {
       pluginSlug: "skills",
       skillName: "forecast-skill",
       scenario: {
+        id: "case-1",
         name: "Regression",
         tags: ["performance"],
-        cases: [
-          {
-            prompt: "Forecast next quarter revenue",
-            expectedOutcome: "Includes assumptions",
-            shouldTrigger: null,
-            assertions: [],
-          },
-        ],
+        prompt: "Forecast next quarter revenue",
+        shouldTrigger: null,
+        assertions: [],
       },
       previousScenarioName: "Old regression",
     });

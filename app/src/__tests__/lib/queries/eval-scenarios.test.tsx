@@ -35,9 +35,12 @@ describe("eval scenario queries", () => {
     );
 
     mockSaveScenario.mockResolvedValue({
+      id: "case-1",
       name: "Smoke",
       tags: ["performance"],
-      cases: [],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      assertions: [],
     });
 
     function Wrapper({ children }: { children: ReactNode }) {
@@ -52,7 +55,14 @@ describe("eval scenario queries", () => {
     );
 
     await result.current.mutateAsync({
-      scenario: { name: "Smoke", tags: ["performance"], cases: [] },
+      scenario: {
+        id: "case-1",
+        name: "Smoke",
+        tags: ["performance"],
+        prompt: "Summarize pipeline risk",
+        shouldTrigger: null,
+        assertions: [],
+      },
       previousScenarioName: "Regression",
     });
 

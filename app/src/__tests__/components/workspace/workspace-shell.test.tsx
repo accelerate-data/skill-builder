@@ -145,17 +145,12 @@ vi.mock("@/components/refine/resizable-split-pane", () => ({
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 
 const performanceScenario = {
+  id: "case-1",
   name: "Regression",
   tags: ["performance"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Forecast next quarter revenue",
-      expectedOutcome: "Includes assumptions",
-      shouldTrigger: null,
-      assertions: [],
-    },
-  ],
+  prompt: "Forecast next quarter revenue",
+  shouldTrigger: null,
+  assertions: [],
 };
 
 const performanceScenarioSummary = {
@@ -164,17 +159,12 @@ const performanceScenarioSummary = {
 };
 
 const triggerScenario = {
+  id: "case-1",
   name: "Routing checks",
   tags: ["trigger"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Reconcile open customer invoices",
-      expectedOutcome: null,
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Reconcile open customer invoices",
+  shouldTrigger: true,
+  assertions: [],
 };
 
 const triggerScenarioSummary = {
@@ -183,17 +173,12 @@ const triggerScenarioSummary = {
 };
 
 const sharedScenario = {
+  id: "case-shared-1",
   name: "Core workflow coverage",
   tags: ["both"] as const,
-  cases: [
-    {
-      id: "case-shared-1",
-      prompt: "Reconcile open customer invoices",
-      expectedOutcome: "Confirms invoice reconciliation steps",
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Reconcile open customer invoices",
+  shouldTrigger: true,
+  assertions: [{ type: "contains", value: "invoice reconciliation" }],
 };
 
 const sharedScenarioSummary = {
@@ -487,7 +472,7 @@ describe("WorkspaceShell", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
-    expect(await screen.findByDisplayValue("Confirms invoice reconciliation steps")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("invoice reconciliation")).toBeInTheDocument();
     expect(mockUseScenario).toHaveBeenLastCalledWith(
       "sales-pipeline",
       "skills",
@@ -495,7 +480,7 @@ describe("WorkspaceShell", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: "Trigger" }));
-    expect(await screen.findByDisplayValue("Confirms invoice reconciliation steps")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("invoice reconciliation")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Core workflow coverage" })).toHaveAttribute(
       "data-variant",
       "secondary",
@@ -510,17 +495,12 @@ describe("WorkspaceShell", () => {
   it("saves a newly created scenario without sending a previous scenario name", async () => {
     const user = userEvent.setup();
     const mutateAsync = vi.fn().mockResolvedValue({
+      id: "case-1",
       name: "Smoke",
       tags: ["performance"],
-      cases: [
-        {
-          id: "case-1",
-          prompt: "Summarize pipeline risk",
-          expectedOutcome: "Lists top blockers",
-          shouldTrigger: null,
-          assertions: [],
-        },
-      ],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      assertions: [{ type: "contains", value: "blockers" }],
     });
     mockUseSaveScenario.mockReset().mockReturnValue({
       mutateAsync,
@@ -537,23 +517,23 @@ describe("WorkspaceShell", () => {
     await user.type(screen.getByLabelText(/scenario name/i), "Smoke");
     await user.clear(screen.getByLabelText(/user prompt/i));
     await user.type(screen.getByLabelText(/user prompt/i), "Summarize pipeline risk");
-    await user.clear(screen.getByLabelText(/expected outcome/i));
-    await user.type(screen.getByLabelText(/expected outcome/i), "Lists top blockers");
+    await user.click(screen.getByRole("button", { name: /add assertion/i }));
+    const assertionInputs = screen.getAllByPlaceholderText(
+      /expected phrase or expression|contains/i,
+    );
+    await user.type(assertionInputs[0]!, "contains");
+    await user.type(assertionInputs[1]!, "blockers");
     await user.click(screen.getByRole("button", { name: /^save scenario$/i }));
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
         scenario: {
+          id: expect.any(String),
           name: "Smoke",
           tags: ["performance"],
-          cases: [
-            expect.objectContaining({
-              prompt: "Summarize pipeline risk",
-              expectedOutcome: "Lists top blockers",
-              shouldTrigger: null,
-              assertions: [],
-            }),
-          ],
+          prompt: "Summarize pipeline risk",
+          shouldTrigger: null,
+          assertions: [{ type: "contains", value: "blockers" }],
         },
         previousScenarioName: null,
       }),
@@ -596,7 +576,7 @@ describe("WorkspaceShell", () => {
     await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
 
     expect(await screen.findByText("Loading scenario…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /generate scenarios/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^suggest$/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /run scenario/i })).toBeDisabled();
 
     await user.click(screen.getByRole("tab", { name: "Trigger" }));

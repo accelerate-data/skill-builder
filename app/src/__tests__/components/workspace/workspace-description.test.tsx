@@ -80,45 +80,30 @@ const skill: SkillSummary = {
 };
 
 const triggerScenario = {
+  id: "case-1",
   name: "Routing checks",
   tags: ["trigger"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Reconcile open customer invoices",
-      expectedOutcome: null,
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Reconcile open customer invoices",
+  shouldTrigger: true,
+  assertions: [],
 };
 
 const bothScenario = {
+  id: "case-1",
   name: "Core workflow coverage",
   tags: ["both"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Reconcile open customer invoices",
-      expectedOutcome: "Confirms invoice reconciliation steps",
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Reconcile open customer invoices",
+  shouldTrigger: true,
+  assertions: [{ type: "contains", value: "invoice reconciliation" }],
 };
 
 const alternateTriggerScenario = {
+  id: "case-2",
   name: "Edge routing",
   tags: ["trigger"] as const,
-  cases: [
-    {
-      id: "case-2",
-      prompt: "Match unapplied cash receipts",
-      expectedOutcome: null,
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Match unapplied cash receipts",
+  shouldTrigger: true,
+  assertions: [],
 };
 
 const runSummary = {
@@ -368,7 +353,13 @@ describe("WorkspaceDescription", () => {
       />,
     );
 
-    expect(await screen.findByLabelText(/expected outcome/i)).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "Performance" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Trigger" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByDisplayValue("contains")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("invoice reconciliation")).toBeInTheDocument();
     expect(screen.getByText(/should trigger/i)).toBeInTheDocument();
   });
 
@@ -484,19 +475,7 @@ describe("WorkspaceDescription", () => {
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
-        scenario={{
-          ...triggerScenario,
-          cases: [
-            ...triggerScenario.cases,
-            {
-              id: "case-2",
-              prompt: "Clean up old billing notes",
-              expectedOutcome: null,
-              shouldTrigger: false,
-              assertions: [],
-            },
-          ],
-        }}
+        scenario={triggerScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
       />,

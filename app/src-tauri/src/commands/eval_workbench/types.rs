@@ -19,20 +19,13 @@ pub struct ScenarioAssertionDto {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScenarioCaseDto {
-    pub id: String,
-    pub prompt: String,
-    pub expected_outcome: Option<String>,
-    pub should_trigger: Option<bool>,
-    pub assertions: Vec<ScenarioAssertionDto>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ScenarioDto {
+    pub id: String,
     pub name: String,
     pub tags: Vec<String>,
-    pub cases: Vec<ScenarioCaseDto>,
+    pub prompt: String,
+    pub should_trigger: Option<bool>,
+    pub assertions: Vec<ScenarioAssertionDto>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

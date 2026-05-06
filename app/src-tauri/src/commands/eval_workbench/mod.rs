@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 pub use types::{
     ApplyDescriptionCandidateResponse, RefineImprovementBrief, RunEvalWorkbenchRequest,
-    ScenarioAssertionDto, ScenarioCaseDto, ScenarioDto, ScenarioSummaryDto,
+    ScenarioAssertionDto, ScenarioDto, ScenarioSummaryDto,
     SuggestAssertionsRequest, SuggestDescriptionCandidatesRequest,
 };
 
@@ -164,30 +164,20 @@ fn scenario_tag_strings(tags: &[scenarios::ScenarioTag]) -> Vec<String> {
 
 fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
     let tags = parse_scenario_tags(&dto.tags)?;
-    let cases = dto
-        .cases
-        .into_iter()
-        .map(|case| {
-            Ok(scenarios::ScenarioCase {
-                id: case.id,
-                prompt: case.prompt,
-                expected_outcome: case.expected_outcome,
-                should_trigger: case.should_trigger,
-                assertions: case
-                    .assertions
-                    .into_iter()
-                    .map(|assertion| scenarios::ScenarioAssertion {
-                        assertion_type: assertion.assertion_type,
-                        value: assertion.value,
-                    })
-                    .collect(),
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
     let scenario = scenarios::Scenario {
+        id: dto.id,
         name: dto.name,
         tags,
-        cases,
+        prompt: dto.prompt,
+        should_trigger: dto.should_trigger,
+        assertions: dto
+            .assertions
+            .into_iter()
+            .map(|assertion| scenarios::ScenarioAssertion {
+                assertion_type: assertion.assertion_type,
+                value: assertion.value,
+            })
+            .collect(),
     };
     scenarios::validate_scenario(&scenario)?;
     Ok(scenario)
@@ -195,24 +185,17 @@ fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
 
 fn scenario_to_dto(scenario: scenarios::Scenario) -> ScenarioDto {
     ScenarioDto {
+        id: scenario.id,
         name: scenario.name,
         tags: scenario_tag_strings(&scenario.tags),
-        cases: scenario
-            .cases
+        prompt: scenario.prompt,
+        should_trigger: scenario.should_trigger,
+        assertions: scenario
+            .assertions
             .into_iter()
-            .map(|case| ScenarioCaseDto {
-                id: case.id,
-                prompt: case.prompt,
-                expected_outcome: case.expected_outcome,
-                should_trigger: case.should_trigger,
-                assertions: case
-                    .assertions
-                    .into_iter()
-                    .map(|assertion| ScenarioAssertionDto {
-                        assertion_type: assertion.assertion_type,
-                        value: assertion.value,
-                    })
-                    .collect(),
+            .map(|assertion| ScenarioAssertionDto {
+                assertion_type: assertion.assertion_type,
+                value: assertion.value,
             })
             .collect(),
     }
@@ -225,9 +208,10 @@ fn scenario_summary_to_dto(summary: scenarios::ScenarioSummary) -> ScenarioSumma
     }
 }
 
-fn scenario_case_assertions_json(case: &scenarios::ScenarioCase) -> Value {
+fn scenario_assertions_json(scenario: &scenarios::Scenario) -> Value {
     Value::Array(
-        case.assertions
+        scenario
+            .assertions
             .iter()
             .map(|assertion| {
                 serde_json::json!({
@@ -371,6 +355,7 @@ fn load_scenario_runtime(
     if !scenario.tags.iter().any(|tag| tag.matches_mode(mode)) {
         return Err("Scenario is not available for the selected mode".to_string());
     }
+    let assertions = scenario_assertions_json(&scenario);
 
     Ok(EvalPromptSet {
         id: scenario_runtime_id(plugin_slug, skill_name, scenario_name, mode),
@@ -378,30 +363,18 @@ fn load_scenario_runtime(
         skill_name: skill_name.to_string(),
         mode,
         name: scenario.name,
-        cases: scenario
-            .cases
-            .into_iter()
-            .enumerate()
-            .map(|(index, case)| {
-                let assertions = scenario_case_assertions_json(&case);
-                crate::db::EvalPromptCase {
-                    id: case.id,
-                    prompt: case.prompt,
-                    expected: if mode == EvalWorkbenchMode::Performance {
-                        case.expected_outcome
-                    } else {
-                        None
-                    },
-                    should_trigger: if mode == EvalWorkbenchMode::Trigger {
-                        case.should_trigger
-                    } else {
-                        None
-                    },
-                    assertions,
-                    sort_order: index as i64,
-                }
-            })
-            .collect(),
+        cases: vec![crate::db::EvalPromptCase {
+            id: scenario.id,
+            prompt: scenario.prompt,
+            expected: None,
+            should_trigger: if mode == EvalWorkbenchMode::Trigger {
+                scenario.should_trigger
+            } else {
+                None
+            },
+            assertions,
+            sort_order: 0,
+        }],
         created_at: String::new(),
         updated_at: String::new(),
     })
@@ -798,6 +771,7 @@ fn generated_scenarios_output_format() -> Value {
                         "type": "object",
                         "additionalProperties": false,
                         "properties": {
+                            "id": { "type": "string" },
                             "name": { "type": "string" },
                             "tags": {
                                 "type": "array",
@@ -806,34 +780,22 @@ fn generated_scenarios_output_format() -> Value {
                                     "enum": ["performance", "trigger", "both"]
                                 }
                             },
-                            "cases": {
+                            "prompt": { "type": "string" },
+                            "shouldTrigger": { "type": ["boolean", "null"] },
+                            "assertions": {
                                 "type": "array",
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": false,
                                     "properties": {
-                                        "id": { "type": "string" },
-                                        "prompt": { "type": "string" },
-                                        "expectedOutcome": { "type": ["string", "null"] },
-                                        "shouldTrigger": { "type": ["boolean", "null"] },
-                                        "assertions": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object",
-                                                "additionalProperties": false,
-                                                "properties": {
-                                                    "type": { "type": "string" },
-                                                    "value": { "type": "string" }
-                                                },
-                                                "required": ["type", "value"]
-                                            }
-                                        }
+                                        "type": { "type": "string" },
+                                        "value": { "type": "string" }
                                     },
-                                    "required": ["id", "prompt", "assertions"]
+                                    "required": ["type", "value"]
                                 }
                             }
                         },
-                        "required": ["name", "tags", "cases"]
+                        "required": ["id", "name", "tags", "prompt", "assertions"]
                     }
                 }
             },
@@ -842,6 +804,7 @@ fn generated_scenarios_output_format() -> Value {
     })
 }
 
+#[allow(dead_code)]
 fn suggested_assertions_output_format() -> Value {
     serde_json::json!({
         "type": "json_schema",
@@ -929,21 +892,19 @@ fn build_generated_scenarios_prompt(
         "Generate 3 to 5 eval scenarios for the skill `{skill_name}`.\n\
 Return JSON with a top-level `scenarios` array.\n\
 Each scenario must have:\n\
+- `id` in kebab-case\n\
 - `name`\n\
 - `tags`: one or more of `performance`, `trigger`, `both`\n\
-- `cases`: 2 to 4 realistic user prompts\n\
-Each case must have:\n\
-- `id` in kebab-case\n\
-- `prompt`\n\
-- `expectedOutcome` for performance or both scenarios\n\
+- `prompt`: one realistic user prompt\n\
 - `shouldTrigger` for trigger or both scenarios\n\
-- `assertions`: 0 to 3 assertions using only equals, contains, or javascript\n\
-Include at least one negative trigger case with shouldTrigger=false.\n\
+- `assertions`: 1 to 3 assertions using only equals, contains, or javascript\n\
+Performance is always evaluated, so every scenario must include assertions.\n\
 Use the skill context below and do not mention eval internals.\n\n\
 {skill_context}",
     )
 }
 
+#[allow(dead_code)]
 fn build_suggested_assertions_prompt(prompt: &str, expected_outcome: &str) -> String {
     format!(
         "Suggest 1 to 3 automated assertions for this eval case.\n\
@@ -1196,6 +1157,7 @@ fn parse_generated_scenarios_response(
         .collect()
 }
 
+#[allow(dead_code)]
 fn parse_suggested_assertions_response(
     state: &serde_json::Value,
 ) -> Result<Vec<ScenarioAssertionDto>, String> {
@@ -1966,6 +1928,7 @@ pub async fn generate_scenarios(
 }
 
 #[tauri::command]
+#[allow(dead_code)]
 pub async fn suggest_assertions(
     app: tauri::AppHandle,
     request: SuggestAssertionsRequest,
@@ -2497,32 +2460,26 @@ mod tests {
 
     fn sample_scenario_dto(name: &str) -> ScenarioDto {
         ScenarioDto {
+            id: "case-1".to_string(),
             name: name.to_string(),
             tags: vec!["performance".to_string()],
-            cases: vec![ScenarioCaseDto {
-                id: "case-1".to_string(),
-                prompt: "Forecast next quarter revenue".to_string(),
-                expected_outcome: Some("Includes assumptions".to_string()),
-                should_trigger: None,
-                assertions: vec![ScenarioAssertionDto {
-                    assertion_type: "contains".to_string(),
-                    value: "assumptions".to_string(),
-                }],
+            prompt: "Forecast next quarter revenue".to_string(),
+            should_trigger: None,
+            assertions: vec![ScenarioAssertionDto {
+                assertion_type: "contains".to_string(),
+                value: "assumptions".to_string(),
             }],
         }
     }
 
     fn sample_trigger_scenario_dto(name: &str) -> ScenarioDto {
         ScenarioDto {
+            id: "case-1".to_string(),
             name: name.to_string(),
             tags: vec!["trigger".to_string()],
-            cases: vec![ScenarioCaseDto {
-                id: "case-1".to_string(),
-                prompt: "Route invoice reconciliation".to_string(),
-                expected_outcome: None,
-                should_trigger: Some(true),
-                assertions: vec![],
-            }],
+            prompt: "Route invoice reconciliation".to_string(),
+            should_trigger: Some(true),
+            assertions: vec![],
         }
     }
 
@@ -3381,17 +3338,12 @@ mod tests {
 
         assert_eq!(response.name, dto.name);
         assert_eq!(response.tags, dto.tags);
-        assert_eq!(response.cases.len(), 1);
-        assert_eq!(response.cases[0].id, "case-1");
-        assert_eq!(response.cases[0].prompt, "Forecast next quarter revenue");
-        assert_eq!(
-            response.cases[0].expected_outcome.as_deref(),
-            Some("Includes assumptions")
-        );
-        assert_eq!(response.cases[0].should_trigger, None);
-        assert_eq!(response.cases[0].assertions.len(), 1);
-        assert_eq!(response.cases[0].assertions[0].assertion_type, "contains");
-        assert_eq!(response.cases[0].assertions[0].value, "assumptions");
+        assert_eq!(response.id, "case-1");
+        assert_eq!(response.prompt, "Forecast next quarter revenue");
+        assert_eq!(response.should_trigger, None);
+        assert_eq!(response.assertions.len(), 1);
+        assert_eq!(response.assertions[0].assertion_type, "contains");
+        assert_eq!(response.assertions[0].value, "assumptions");
     }
 
     #[test]
@@ -3429,8 +3381,7 @@ mod tests {
         assert!(path.exists());
         assert_eq!(response.name, dto.name);
         assert_eq!(response.tags, dto.tags);
-        assert_eq!(response.cases.len(), 1);
-        assert_eq!(response.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(response.prompt, "Forecast next quarter revenue");
         let conn = db.0.lock().unwrap();
         assert_eq!(
             mirrored_scenario_prompt_set_count(
@@ -3532,8 +3483,7 @@ mod tests {
         let loaded = read_scenario(tmp.path(), "skills", "forecast", "Regression").unwrap();
 
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases.len(), 1);
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]
@@ -3567,10 +3517,7 @@ mod tests {
         assert_eq!(prompt_set.name, "Regression");
         assert_eq!(prompt_set.mode, EvalWorkbenchMode::Performance);
         assert_eq!(prompt_set.cases.len(), 1);
-        assert_eq!(
-            prompt_set.cases[0].expected.as_deref(),
-            Some("Includes assumptions")
-        );
+        assert_eq!(prompt_set.cases[0].expected, None);
         assert!(db_read_eval_prompt_set(
             &conn,
             &scenario_runtime_id(
@@ -3590,8 +3537,7 @@ mod tests {
         let db = create_scenario_db(tmp.path());
         let original = sample_scenario_dto("Regression");
         let mut updated = sample_scenario_dto("Regression");
-        updated.cases[0].prompt = "Forecast updated revenue".to_string();
-        updated.cases[0].expected_outcome = Some("Uses latest assumptions".to_string());
+        updated.prompt = "Forecast updated revenue".to_string();
         let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
         let path = scenarios::scenario_file_path(&eval_dir, &original.name);
         scenarios::write_scenario_file(&path, &scenario_from_dto(original).unwrap()).unwrap();
@@ -3624,10 +3570,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(prompt_set.cases[0].prompt, "Forecast updated revenue");
-        assert_eq!(
-            prompt_set.cases[0].expected.as_deref(),
-            Some("Uses latest assumptions")
-        );
+        assert_eq!(prompt_set.cases[0].expected, None);
         assert!(db_read_eval_prompt_set(
             &conn,
             &scenario_runtime_id(
@@ -3841,7 +3784,7 @@ mod tests {
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].name, "Regression");
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]
@@ -3856,7 +3799,7 @@ mod tests {
         let loaded = read_scenario(tmp.path(), "skills", "forecast", "Regression").unwrap();
 
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]
@@ -3883,7 +3826,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]

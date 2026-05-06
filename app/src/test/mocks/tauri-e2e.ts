@@ -20,15 +20,10 @@ const defaultPerformanceScenarioSummary = {
 
 const defaultPerformanceScenario = {
   ...defaultPerformanceScenarioSummary,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Forecast next quarter revenue for the west region pipeline.",
-      expectedOutcome: "Calls out assumptions, missing data, and confidence.",
-      shouldTrigger: null as null,
-      assertions: [],
-    },
-  ],
+  id: "case-1",
+  prompt: "Forecast next quarter revenue for the west region pipeline.",
+  shouldTrigger: null as null,
+  assertions: [],
 };
 
 const defaultPerformanceRunSummary = {
