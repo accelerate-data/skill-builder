@@ -69,6 +69,16 @@ async fn create_conversation_for_request(
     extract_conversation_id(&conversation)
 }
 
+fn conversation_matches_request(
+    conversation: &serde_json::Value,
+    request: &OpenHandsOneShotRequest,
+) -> bool {
+    let persisted_suffix = conversation
+        .pointer("/agent/agent_context/system_message_suffix")
+        .and_then(|value| value.as_str());
+    persisted_suffix == request.system_message_suffix.as_deref()
+}
+
 enum OpenHandsOneShotEvent {
     TerminalState(Result<serde_json::Value, String>),
     Lifecycle(Result<(), String>),
@@ -347,11 +357,22 @@ async fn dispatch_openhands_turn_with_request(
     super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
 
     let resume_existing = match conversation_id.as_deref() {
-        Some(existing) => client
+        Some(existing) => match client
             .get_conversation(existing)
             .await
             .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
-            .is_some(),
+        {
+            Some(conversation) if conversation_matches_request(&conversation, &request) => true,
+            Some(_) => {
+                log::info!(
+                    "[openhands-agent-server] saved conversation {} under {} no longer matches the current agent config; creating a new conversation",
+                    existing,
+                    request.workspace_skill_dir
+                );
+                false
+            }
+            None => false,
+        },
         None => false,
     };
     let is_first_turn = !resume_existing;
@@ -1167,13 +1188,49 @@ mod tests {
 
     #[test]
     fn existing_conversation_is_only_reused_when_server_can_still_load_it() {
-        let reuse = |existing_conversation_id: Option<&str>, conversation_found: bool| {
-            existing_conversation_id.is_some() && conversation_found
+        let conversation = serde_json::json!({
+            "agent": {
+                "agent_context": {
+                    "system_message_suffix": "# Skill Creator Agent"
+                }
+            }
+        });
+        let request = OpenHandsOneShotRequest {
+            prompt: "workflow".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: None,
+            },
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            allowed_tools: vec![],
+            max_turns: 50,
+            user_message_suffix: None,
+            system_message_suffix: Some("# Skill Creator Agent".to_string()),
+            task_kind: Some("workflow.skill_generation".to_string()),
+            plugin_slug: "default".to_string(),
+            skill_name: Some("my-skill".to_string()),
+            step_id: Some(3),
+            run_source: Some("workflow".to_string()),
+            workflow_session_id: Some("workflow-session".to_string()),
+            usage_session_id: None,
         };
 
-        assert!(reuse(Some("conv-1"), true));
-        assert!(!reuse(Some("conv-1"), false));
-        assert!(!reuse(None, false));
+        assert!(conversation_matches_request(&conversation, &request));
+        let mut stale = conversation.clone();
+        stale["agent"]["agent_context"]["system_message_suffix"] = serde_json::Value::Null;
+        assert!(!conversation_matches_request(&stale, &request));
     }
 
     #[test]

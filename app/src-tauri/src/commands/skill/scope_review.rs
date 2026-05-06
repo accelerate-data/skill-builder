@@ -133,7 +133,6 @@ pub(crate) fn build_scope_review_sidecar_config(
         agent_name: "skill-creator".to_string(),
         task_kind: Some("scope_review".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        system_message_suffix: None,
         allowed_tools: vec!["file_editor".to_string()],
         max_turns: 4,
         output_format: Some(scope_review_output_format()),
@@ -393,6 +392,11 @@ mod tests {
         assert_eq!(
             json["userMessageSuffix"],
             "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
+        );
+        let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+        assert_eq!(
+            json["systemMessageSuffix"],
+            serde_json::Value::String(expected_suffix)
         );
         assert_eq!(json["llm"]["model"], "anthropic/claude-sonnet-4-5");
         assert!(json.get("model").is_none());

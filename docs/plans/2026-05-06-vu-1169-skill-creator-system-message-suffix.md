@@ -84,11 +84,18 @@ Vitest / cargo tests.
   `AgentContext.system_message_suffix` lives on the main serialized `agent`
   object, and `CreateConversationRequest` accepts that `agent` object as part
   of `POST /api/conversations`.
-- Local implementation commit:
+- Local implementation commits:
   - `c5d1bb22` `VU-1169: wire skill-creator system message suffix`
+  - `0c9a9072` `fix: show skill creator suffix in runtime setup`
 - Captured the red-test failure before implementation:
   `build_refine_openhands_config` missing, `skill_creator_system_message_suffix`
   missing, and `system_message_suffix` absent from the sidecar/request structs.
+- Reviewer-driven follow-up hardened the persistent conversation reuse path so
+  previously saved skill conversations are recreated when their stored
+  `system_message_suffix` no longer matches the current request payload.
+- Reviewer-driven follow-up also added regression coverage for
+  `scope_review`, `skill_suggestions`, the eval workbench `skill-creator`
+  builders, and the negative case for non-`skill-creator` agents.
 - Green verification run:
   - `cargo test --manifest-path app/src-tauri/Cargo.toml test_skill_creator_system_message_suffix_strips_frontmatter -- --nocapture`
   - `cargo test --manifest-path app/src-tauri/Cargo.toml conversation_payload_contains_local_workspace_for_skill_directory -- --nocapture`
@@ -99,4 +106,6 @@ Vitest / cargo tests.
   - `cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill -- --nocapture`
   - `cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server -- --nocapture`
   - `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
+  - `cd app && npm run test:unit`
+  - `cd app && npx tsc --noEmit`
   - `git diff --check`

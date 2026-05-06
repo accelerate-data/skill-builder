@@ -152,7 +152,6 @@ pub struct OpenHandsOneShotConfigParams {
     pub agent_name: String,
     pub task_kind: Option<String>,
     pub user_message_suffix: Option<String>,
-    pub system_message_suffix: Option<String>,
     pub allowed_tools: Vec<String>,
     pub max_turns: u32,
     pub output_format: Option<serde_json::Value>,
@@ -168,9 +167,8 @@ pub struct OpenHandsOneShotConfigParams {
 /// selected LLM must already have been resolved by the backend runtime context
 /// API before this helper is called.
 pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> SidecarConfig {
-    let system_message_suffix = params.system_message_suffix.or_else(|| {
-        (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix)
-    });
+    let system_message_suffix =
+        (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix);
     SidecarConfig {
         mode: Some("one-shot".to_string()),
         prompt: params.prompt,
@@ -467,5 +465,41 @@ mod tests {
             !suffix.starts_with("---"),
             "frontmatter delimiter must not reach the system message suffix"
         );
+    }
+
+    #[test]
+    fn test_non_skill_creator_openhands_config_does_not_inject_system_message_suffix() {
+        let config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+            prompt: "Analyze".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_run_dir: "/tmp/workspace".to_string(),
+            agent_name: "answer-evaluator".to_string(),
+            task_kind: Some("workflow.answer_evaluator".to_string()),
+            user_message_suffix: None,
+            allowed_tools: vec![],
+            max_turns: 8,
+            output_format: None,
+            skill_name: None,
+            step_id: None,
+            run_source: None,
+            plugin_slug: "default".to_string(),
+        });
+
+        assert!(config.system_message_suffix.is_none());
     }
 }

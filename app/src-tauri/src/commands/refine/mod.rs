@@ -157,7 +157,6 @@ fn build_refine_openhands_config(
         agent_name: "skill-creator".to_string(),
         task_kind: Some("refine".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        system_message_suffix: None,
         allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
         max_turns: REFINE_MAX_TURNS_PER_TURN,
         output_format: None,
