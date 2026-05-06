@@ -455,7 +455,7 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText(/select a run to inspect its results/i)).toBeInTheDocument();
   });
 
-  it("fills the current draft from the top-level suggest action", async () => {
+  it("fills the current draft from the scenario-level suggest action only", async () => {
     const user = userEvent.setup();
     mockGenerateScenarios.mockResolvedValue([
       {
@@ -479,11 +479,39 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getAllByRole("button", { name: /^suggest$/i })[0]!);
+    expect(screen.getAllByRole("button", { name: /^suggest$/i })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
     expect(await screen.findByDisplayValue("Summarize pipeline risk")).toBeInTheDocument();
     expect(screen.getByDisplayValue("contains")).toBeInTheDocument();
     expect(screen.getByDisplayValue("blockers")).toBeInTheDocument();
+  });
+
+  it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
+    const user = userEvent.setup();
+    mockGenerateScenarios.mockRejectedValue(
+      new Error(
+        "OpenHands eval structured result was not valid JSON: expected value at line 2 column 1",
+      ),
+    );
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
+
+    expect(
+      await screen.findByText(/scenario suggestion failed/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/invalid json/i)).toBeInTheDocument();
   });
 
   it("keeps trigger-mode generation separate from performance suggestion", async () => {

@@ -10,6 +10,7 @@ import {
   scenarioSupportsMode,
 } from "@/lib/eval-workbench";
 import {
+  useDeleteScenario,
   useSaveScenario,
   useScenario,
   useScenarios,
@@ -52,6 +53,7 @@ export function WorkspaceEvalWorkbench({
 
   const scenariosQuery = useScenarios(skillName, pluginSlug);
   const saveScenarioMutation = useSaveScenario(skillName, pluginSlug);
+  const deleteScenarioMutation = useDeleteScenario(skillName, pluginSlug);
   const scenarios = scenariosQuery.data ?? [];
   const visibleScenarios = scenarios.filter((scenario) =>
     scenarioSupportsMode(scenario, activeMode),
@@ -107,6 +109,14 @@ export function WorkspaceEvalWorkbench({
     setCreatingNewScenario(false);
     setSelectedScenarioName(savedScenario.name);
     return savedScenario;
+  }
+
+  async function handleDeleteScenario(scenarioName: string) {
+    await deleteScenarioMutation.mutateAsync({ scenarioName });
+    setCreatingNewScenario(false);
+    const nextSelectedScenario =
+      visibleScenarios.find((scenario) => scenario.name !== scenarioName) ?? null;
+    setSelectedScenarioName(nextSelectedScenario?.name ?? null);
   }
 
   function handleStartNewScenario() {
@@ -231,7 +241,9 @@ export function WorkspaceEvalWorkbench({
           scenarioLoading={selectedScenarioQuery.isLoading}
           onStartNewScenario={handleStartNewScenario}
           onSaveScenario={handleSaveScenario}
+          onDeleteScenario={handleDeleteScenario}
           saveScenarioPending={saveScenarioMutation.isPending}
+          deleteScenarioPending={deleteScenarioMutation.isPending}
           onNavigateToRefine={onNavigateToRefine}
           onRunningChange={setPerformanceRunning}
         />

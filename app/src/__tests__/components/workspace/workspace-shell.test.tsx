@@ -81,6 +81,7 @@ vi.mock("@/lib/tauri", () => ({
 const mockUseScenarios = vi.fn();
 const mockUseScenario = vi.fn();
 const mockUseSaveScenario = vi.fn();
+const mockUseDeleteScenario = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
@@ -92,6 +93,7 @@ vi.mock("@/lib/queries/eval-scenarios", () => ({
   useScenarios: (...args: unknown[]) => mockUseScenarios(...args),
   useScenario: (...args: unknown[]) => mockUseScenario(...args),
   useSaveScenario: (...args: unknown[]) => mockUseSaveScenario(...args),
+  useDeleteScenario: (...args: unknown[]) => mockUseDeleteScenario(...args),
 }));
 
 vi.mock("@/lib/eval-workbench", async () => {
@@ -255,6 +257,10 @@ describe("WorkspaceShell", () => {
     );
     mockUseSaveScenario.mockReset().mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
+      isPending: false,
+    });
+    mockUseDeleteScenario.mockReset().mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
     });
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
@@ -583,6 +589,60 @@ describe("WorkspaceShell", () => {
 
     expect(screen.getByRole("button", { name: /generate candidates/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /run comparison/i })).toBeDisabled();
+  });
+
+  it("deletes a saved scenario and falls back to a remaining selection", async () => {
+    const user = userEvent.setup();
+    let scenarioSummaries = [performanceScenarioSummary, sharedScenarioSummary];
+    const deleteScenarioMutation = vi.fn().mockImplementation(async () => {
+      scenarioSummaries = [sharedScenarioSummary];
+    });
+
+    mockUseScenarios.mockReset().mockImplementation(() => ({
+      data: scenarioSummaries,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    }));
+    mockUseScenario.mockReset().mockImplementation(
+      (_skillName: string | null, _pluginSlug: string, scenarioName: string | null) => ({
+        data:
+          scenarioName === performanceScenario.name
+            ? performanceScenario
+            : scenarioName === sharedScenario.name
+              ? sharedScenario
+              : null,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      }),
+    );
+    mockUseDeleteScenario.mockReset().mockReturnValue({
+      mutateAsync: deleteScenarioMutation,
+      isPending: false,
+    });
+
+    render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+    );
+
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /delete scenario/i }));
+
+    await waitFor(() =>
+      expect(deleteScenarioMutation).toHaveBeenCalledWith({
+        scenarioName: "Regression",
+      }),
+    );
+    expect(await screen.findByDisplayValue("Reconcile open customer invoices")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Regression" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Core workflow coverage" })).toHaveAttribute(
+      "data-variant",
+      "secondary",
+    );
   });
 
   it("falls back to the first visible scenario when the selected one does not support the next tab", async () => {

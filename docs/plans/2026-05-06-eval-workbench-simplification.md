@@ -12,6 +12,8 @@
 
 **Supersedes:** `docs/plans/2026-05-05-eval-workbench-scenarios.md` for the active authored-model work.
 
+**Follow-up scope for this branch:** finish the scenario-level authoring flow by exposing scenario deletion in the UI, moving `Suggest` into the scenario editor, and hardening scenario suggestion so invalid structured LLM output does not fail as an opaque JSON parse error.
+
 ---
 
 ## File Structure
@@ -68,6 +70,8 @@
 - [ ] Remove the separate `Expected outcome` editor field.
 - [ ] Disable `Run scenario` when there is no saved selected scenario.
 - [ ] Preserve the existing dirty-draft protection so run still requires the saved scenario to match the current draft.
+- [ ] Add a scenario-level delete affordance for saved scenarios and keep selection state consistent after delete.
+- [ ] Move the performance-mode `Suggest` action into the scenario editor so the flow is `Add scenario -> Suggest -> edit -> save/run`.
 
 ## Task 3: Keep trigger-mode generation explicit
 
@@ -94,6 +98,8 @@
 - [ ] Ensure suggestion updates only the active draft and does not create or save multiple scenarios behind the scenes.
 - [ ] Decide whether suggestion overwrites existing prompt/assertion content or fills only blanks, then implement that rule consistently.
 - [ ] Remove dead frontend and backend paths that only supported bulk scenario generation.
+- [ ] Replace the current invalid-JSON failure with a clearer scenario-suggestion error path that includes enough response context to debug malformed structured output.
+- [ ] If scenario suggestion still uses the broader generation backend, tighten the response parser so it rejects malformed structured output deterministically and maps that failure to a user-facing error message.
 
 ## Task 5: Update run preparation and validation
 
@@ -124,6 +130,9 @@
 - [ ] Add coverage that `Run scenario` is disabled when no saved scenario exists.
 - [ ] Add coverage that performance mode no longer exposes bulk generation or per-case suggestion.
 - [ ] Add coverage that scenario-level `Suggest` updates the current draft only.
+- [ ] Add coverage that performance mode exposes `Suggest` from the scenario editor, not the workbench header.
+- [ ] Add coverage that deleting a saved scenario updates the list and selected scenario state correctly.
+- [ ] Add coverage for malformed scenario-suggestion responses so the surfaced error is actionable.
 - [ ] Add coverage that trigger mode uses `Generate candidates`.
 - [ ] Keep existing run-history and selected-scenario regression coverage green after the model change.
 

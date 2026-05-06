@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, Play, Sparkles, Square } from "lucide-react";
+import { AlertTriangle, ArrowRight, Play, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { SaveScenario, ScenarioDto } from "@/lib/eval-workbench";
@@ -33,7 +33,9 @@ interface WorkspaceEvalsProps {
     scenario: ScenarioDto,
     options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
+  onDeleteScenario?: (scenarioName: string) => Promise<void>;
   saveScenarioPending?: boolean;
+  deleteScenarioPending?: boolean;
   onNavigateToRefine?: () => void;
   onRunningChange?: (running: boolean) => void;
 }
@@ -45,7 +47,9 @@ export function WorkspaceEvals({
   scenarioLoading = false,
   onStartNewScenario,
   onSaveScenario,
+  onDeleteScenario,
   saveScenarioPending = false,
+  deleteScenarioPending = false,
   onNavigateToRefine,
   onRunningChange,
 }: WorkspaceEvalsProps) {
@@ -146,9 +150,28 @@ export function WorkspaceEvals({
         assertions: suggested.assertions,
       }));
     } catch (suggestionError) {
-      setActionError(getErrorMessage(suggestionError));
+      const message = getErrorMessage(suggestionError);
+      if (/structured result was not valid json/i.test(message)) {
+        setActionError(`Scenario suggestion failed: invalid JSON in structured result. ${message}`);
+      } else {
+        setActionError(`Scenario suggestion failed: ${message}`);
+      }
     } finally {
       setSuggestingScenario(false);
+    }
+  }
+
+  async function handleDeleteScenario() {
+    if (!scenario || !onDeleteScenario) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await onDeleteScenario(scenario.name);
+      setDraft(createDraftScenario("performance"));
+    } catch (deleteError) {
+      setActionError(getErrorMessage(deleteError));
     }
   }
 
@@ -249,15 +272,6 @@ export function WorkspaceEvals({
           <div className="flex gap-2">
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => void handleSuggestScenario()}
-              disabled={scenarioLoading || suggestingScenario}
-            >
-              <Sparkles className="mr-1 size-3.5" />
-              {suggestingScenario ? "Suggesting…" : "Suggest"}
-            </Button>
-            <Button
-              size="sm"
               onClick={() => void handleRunScenario()}
               disabled={scenarioLoading || running || !scenario}
             >
@@ -296,7 +310,12 @@ export function WorkspaceEvals({
           setDraft(createDraftScenario("performance"));
           setActionError(null);
         }}
+        onSuggest={() => void handleSuggestScenario()}
+        onDelete={() => void handleDeleteScenario()}
+        suggestDisabled={scenarioLoading || suggestingScenario}
         saveDisabled={scenarioLoading || saveScenarioPending}
+        deleteDisabled={scenarioLoading || deleteScenarioPending || !scenario}
+        showDelete={Boolean(scenario)}
       />
 
       <RunHistory

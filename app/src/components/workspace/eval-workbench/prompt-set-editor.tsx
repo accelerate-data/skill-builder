@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,12 @@ interface PromptSetEditorProps {
   onChange: (draft: SaveScenario) => void;
   onSave: () => void;
   onNew: () => void;
+  onSuggest?: () => void;
+  onDelete?: () => void;
+  suggestDisabled?: boolean;
   saveDisabled?: boolean;
+  deleteDisabled?: boolean;
+  showDelete?: boolean;
 }
 
 function nextTags(
@@ -45,7 +50,12 @@ export function PromptSetEditor({
   onChange,
   onSave,
   onNew,
+  onSuggest,
+  onDelete,
+  suggestDisabled = false,
   saveDisabled = false,
+  deleteDisabled = false,
+  showDelete = false,
 }: PromptSetEditorProps) {
   function updateAssertions(nextAssertions: ScenarioAssertion[]) {
     onChange({ ...draft, assertions: nextAssertions });
@@ -66,9 +76,31 @@ export function PromptSetEditor({
             Git-backed eval cases for this skill.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={onNew}>
-          New scenario
-        </Button>
+        <div className="flex gap-2">
+          {showDelete ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onDelete}
+              disabled={deleteDisabled}
+            >
+              <Trash2 className="mr-1 size-3.5" />
+              Delete scenario
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onSuggest}
+            disabled={suggestDisabled}
+          >
+            <Sparkles className="mr-1 size-3.5" />
+            Suggest
+          </Button>
+          <Button size="sm" variant="outline" onClick={onNew}>
+            New scenario
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 space-y-4">
