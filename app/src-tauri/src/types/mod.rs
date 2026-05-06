@@ -146,6 +146,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));

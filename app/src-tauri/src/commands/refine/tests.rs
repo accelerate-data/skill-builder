@@ -1394,6 +1394,39 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
 // ===== OpenHands refine tests =====
 
 #[test]
+fn test_refine_openhands_config_uses_skill_creator_system_message_suffix() {
+    let config = build_refine_openhands_config(
+        "my-skill",
+        DEFAULT_PLUGIN_SLUG,
+        "Refine the skill",
+        "/tmp/workspace",
+        crate::types::WorkflowLlmConfig {
+            model: "anthropic/claude-sonnet-4-5".to_string(),
+            api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+            base_url: None,
+            api_version: None,
+            temperature: None,
+            max_output_tokens: None,
+            timeout_seconds: None,
+            num_retries: None,
+            reasoning_effort: None,
+            extra_headers: None,
+            input_cost_per_token: None,
+            output_cost_per_token: None,
+            usage_id: Some("workflow".to_string()),
+        },
+    );
+
+    let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+    assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+    assert_eq!(config.task_kind.as_deref(), Some("refine"));
+    assert_eq!(
+        config.system_message_suffix.as_deref(),
+        Some(expected_suffix.as_str())
+    );
+}
+
+#[test]
 fn test_refine_session_holds_conversation_and_agent_ids() {
     let session = RefineSession {
         skill_name: "my-skill".to_string(),

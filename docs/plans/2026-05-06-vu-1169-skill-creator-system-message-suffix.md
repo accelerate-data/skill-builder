@@ -40,11 +40,11 @@ Vitest / cargo tests.
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Add a failing Rust test that the serialized main agent includes `agent_context.system_message_suffix`**
-- [ ] **Step 2: Add a failing Rust test that frontmatter is stripped and only the markdown body is sent**
-- [ ] **Step 3: Add a failing test that workflow and refine config builders both carry the suffix input**
-- [ ] **Step 4: Run the targeted red tests and confirm the failure is the missing suffix field**
-- [ ] **Step 5: Commit the red tests**
+- [x] **Step 1: Add a failing Rust test that the serialized main agent includes `agent_context.system_message_suffix`**
+- [x] **Step 2: Add a failing Rust test that frontmatter is stripped and only the markdown body is sent**
+- [x] **Step 3: Add a failing test that workflow and refine config builders both carry the suffix input**
+- [x] **Step 4: Run the targeted red tests and confirm the failure is the missing suffix field**
+- [x] **Step 5: Capture the red-test evidence**
 
 ---
 
@@ -58,10 +58,10 @@ Vitest / cargo tests.
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 - Modify: other skill-bound command files that create `SidecarConfig`
 
-- [ ] **Step 1: Add a helper that reads `skill-creator.md` and strips YAML frontmatter**
-- [ ] **Step 2: Thread `system_message_suffix` through the app-owned config/request structs**
-- [ ] **Step 3: Populate the suffix for every skill-bound Agent Server call site that uses the main `skill-creator` agent**
-- [ ] **Step 4: Re-run the targeted tests and make them green**
+- [x] **Step 1: Add a helper that reads `skill-creator.md` and strips YAML frontmatter**
+- [x] **Step 2: Thread `system_message_suffix` through the app-owned config/request structs**
+- [x] **Step 3: Populate the suffix for every skill-bound Agent Server call site that uses the main `skill-creator` agent**
+- [x] **Step 4: Re-run the targeted tests and make them green**
 - [ ] **Step 5: Commit the suffix wiring**
 
 ---
@@ -73,7 +73,28 @@ Vitest / cargo tests.
 - Modify: `docs/design/openhands-native-migration/README.md` only if implementation details materially differ from the design
 - Modify: any nearby request-shape tests in `app/src-tauri/src/agents/openhands_server/`
 
-- [ ] **Step 1: Add or update a golden request-shape test that captures `system_message_suffix` next to `user_message_suffix`**
-- [ ] **Step 2: Verify no older path still claims the suffix is omitted**
-- [ ] **Step 3: Run the targeted Rust tests and any affected unit suites**
+- [x] **Step 1: Add or update a golden request-shape test that captures `system_message_suffix` next to `user_message_suffix`**
+- [x] **Step 2: Verify no older path still claims the suffix is omitted**
+- [x] **Step 3: Run the targeted Rust tests and any affected unit suites**
 - [ ] **Step 4: Update the plan checklist and add verification notes to `VU-1169`**
+
+## Verification Notes
+
+- Verified the OpenHands TypeScript client contract directly from the upstream source:
+  `AgentContext.system_message_suffix` lives on the main serialized `agent`
+  object, and `CreateConversationRequest` accepts that `agent` object as part
+  of `POST /api/conversations`.
+- Captured the red-test failure before implementation:
+  `build_refine_openhands_config` missing, `skill_creator_system_message_suffix`
+  missing, and `system_message_suffix` absent from the sidecar/request structs.
+- Green verification run:
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml test_skill_creator_system_message_suffix_strips_frontmatter -- --nocapture`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml conversation_payload_contains_local_workspace_for_skill_directory -- --nocapture`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml skill_generation_sidecar_config_uses_skill_creator_openhands_contract -- --nocapture`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml test_refine_openhands_config_uses_skill_creator_system_message_suffix -- --nocapture`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine -- --nocapture`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow -- --nocapture`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill -- --nocapture`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server -- --nocapture`
+  - `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
+  - `git diff --check`

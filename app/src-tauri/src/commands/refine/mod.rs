@@ -134,6 +134,40 @@ async fn load_saved_refine_messages(
     Ok(extract_conversation_messages(&events))
 }
 
+fn build_refine_openhands_config(
+    skill_name: &str,
+    plugin_slug: &str,
+    prompt: &str,
+    workspace_path: &str,
+    llm: crate::types::WorkflowLlmConfig,
+) -> crate::agents::sidecar::SidecarConfig {
+    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
+        Path::new(workspace_path),
+        plugin_slug,
+        skill_name,
+    )
+    .to_string_lossy()
+    .replace('\\', "/");
+
+    build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        prompt: prompt.to_string(),
+        llm,
+        workspace_root_dir: workspace_path.replace('\\', "/"),
+        workspace_run_dir: workspace_skill_dir,
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some("refine".to_string()),
+        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        system_message_suffix: None,
+        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+        max_turns: REFINE_MAX_TURNS_PER_TURN,
+        output_format: None,
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(-10),
+        run_source: Some("refine".to_string()),
+        plugin_slug: plugin_slug.to_string(),
+    })
+}
+
 // ─── Session management ──────────────────────────────────────────────────────
 
 /// In-memory state for a single refine session.
@@ -386,30 +420,13 @@ pub async fn send_refine_message(
         )
     };
 
-    let workspace_skill_dir_str = crate::skill_paths::workspace_skill_dir(
-        Path::new(&runtime_ctx.workspace_path),
-        &plugin_slug,
+    let config = build_refine_openhands_config(
         &skill_name,
-    )
-    .to_string_lossy()
-    .replace('\\', "/");
-
-    let config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
-        prompt,
-        llm: runtime_ctx.llm.clone(),
-        workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
-        workspace_run_dir: workspace_skill_dir_str.clone(),
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("refine".to_string()),
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-        max_turns: REFINE_MAX_TURNS_PER_TURN,
-        output_format: None,
-        skill_name: Some(skill_name.clone()),
-        step_id: Some(-10),
-        run_source: Some("refine".to_string()),
-        plugin_slug: plugin_slug.clone(),
-    });
+        &plugin_slug,
+        &prompt,
+        &runtime_ctx.workspace_path,
+        runtime_ctx.llm.clone(),
+    );
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,

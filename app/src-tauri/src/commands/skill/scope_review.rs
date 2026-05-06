@@ -133,6 +133,7 @@ pub(crate) fn build_scope_review_sidecar_config(
         agent_name: "skill-creator".to_string(),
         task_kind: Some("scope_review".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        system_message_suffix: None,
         allowed_tools: vec!["file_editor".to_string()],
         max_turns: 4,
         output_format: Some(scope_review_output_format()),

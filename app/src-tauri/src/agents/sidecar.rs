@@ -2,6 +2,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::SecretString;
 
+const SKILL_CREATOR_AGENT_MARKDOWN: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/agents/skill-creator.md"
+));
+
+pub(crate) fn skill_creator_system_message_suffix() -> String {
+    strip_optional_yaml_frontmatter(SKILL_CREATOR_AGENT_MARKDOWN)
+        .trim()
+        .to_string()
+}
+
+fn strip_optional_yaml_frontmatter(raw: &str) -> String {
+    let normalized = raw.replace("\r\n", "\n");
+    let Some(rest) = normalized.strip_prefix("---\n") else {
+        return normalized;
+    };
+    let Some(idx) = rest.find("\n---\n") else {
+        return normalized;
+    };
+    rest[idx + "\n---\n".len()..].to_string()
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,6 +102,12 @@ pub struct SidecarConfig {
     /// Optional suffix appended by the runtime to every user message.
     #[serde(rename = "userMessageSuffix", skip_serializing_if = "Option::is_none")]
     pub user_message_suffix: Option<String>,
+    /// Optional suffix appended to the default OpenHands system prompt.
+    #[serde(
+        rename = "systemMessageSuffix",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub system_message_suffix: Option<String>,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -108,6 +136,10 @@ impl std::fmt::Debug for SidecarConfig {
                 "user_message_suffix",
                 &self.user_message_suffix.as_ref().map(|_| "[configured]"),
             )
+            .field(
+                "system_message_suffix",
+                &self.system_message_suffix.as_ref().map(|_| "[configured]"),
+            )
             .finish()
     }
 }
@@ -120,6 +152,7 @@ pub struct OpenHandsOneShotConfigParams {
     pub agent_name: String,
     pub task_kind: Option<String>,
     pub user_message_suffix: Option<String>,
+    pub system_message_suffix: Option<String>,
     pub allowed_tools: Vec<String>,
     pub max_turns: u32,
     pub output_format: Option<serde_json::Value>,
@@ -135,6 +168,9 @@ pub struct OpenHandsOneShotConfigParams {
 /// selected LLM must already have been resolved by the backend runtime context
 /// API before this helper is called.
 pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> SidecarConfig {
+    let system_message_suffix = params.system_message_suffix.or_else(|| {
+        (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix)
+    });
     SidecarConfig {
         mode: Some("one-shot".to_string()),
         prompt: params.prompt,
@@ -165,6 +201,7 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         persistence_dir: None,
         task_kind: params.task_kind,
         user_message_suffix: params.user_message_suffix,
+        system_message_suffix,
     }
 }
 
@@ -204,6 +241,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -259,6 +297,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -302,6 +341,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -348,6 +388,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -405,6 +446,7 @@ mod tests {
             user_message_suffix: Some(
                 "Follow the current user message exactly. Do not infer a different task than the one stated in the message.".to_string(),
             ),
+            system_message_suffix: Some("# Skill Creator Agent".to_string()),
         };
 
         let json = serde_json::to_value(&config).unwrap();
@@ -412,6 +454,18 @@ mod tests {
         assert_eq!(
             json["userMessageSuffix"],
             "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
+        );
+        assert_eq!(json["systemMessageSuffix"], "# Skill Creator Agent");
+    }
+
+    #[test]
+    fn test_skill_creator_system_message_suffix_strips_frontmatter() {
+        let suffix = skill_creator_system_message_suffix();
+        assert!(suffix.starts_with("# Skill Creator Agent"));
+        assert!(!suffix.contains("\n---\n"));
+        assert!(
+            !suffix.starts_with("---"),
+            "frontmatter delimiter must not reach the system message suffix"
         );
     }
 }
