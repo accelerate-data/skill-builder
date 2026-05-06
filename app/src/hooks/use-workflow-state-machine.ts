@@ -462,6 +462,7 @@ export function useWorkflowStateMachine({
     currentStep,
     purpose,
     advanceToNextStep,
+    cancelPendingAutoStart: () => setPendingAutoStartStep(null),
   });
 
   // --- Auto-start effects ---
@@ -581,22 +582,32 @@ export function useWorkflowStateMachine({
 
     if (activeRunStatus === "completed" || activeRunStatus === "error") {
       const completedGateAgentId = activeAgentId;
+      const gateStep = gate.gateStepRef.current;
       gate.gateAgentIdRef.current = null;
       setActiveAgent(null);
 
       if (activeRunStatus === "error") {
         clearRuns();
-        console.warn("[workflow] Gate evaluation failed — proceeding normally");
+        console.warn("[workflow] Gate evaluation failed");
+        const stepToRestore =
+          gateStep ?? useWorkflowStore.getState().currentStep;
+        setPendingAutoStartStep(null);
+        setCurrentStep(stepToRestore);
         setGateLoading(false);
-        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-        advanceToNextStep();
+        updateStepStatus(stepToRestore, "completed");
+        gate.gateStepRef.current = null;
+        toast.error("Answer evaluation failed. Review the workflow logs and retry.", {
+          duration: Infinity,
+        });
         return;
       }
 
       const structuredOutput =
         extractStructuredResultPayload(completedGateAgentId);
       clearRuns();
-      gate.finishGateEvaluation(structuredOutput);
+      gate.finishGateEvaluation(structuredOutput).finally(() => {
+        gate.gateStepRef.current = null;
+      });
     }
   }, [
     activeRunStatus,

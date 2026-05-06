@@ -10,6 +10,7 @@ import { test, expect } from "@playwright/test";
 import {
   emitTauriEvent,
   simulateAgentRun,
+  simulateAgentError,
 } from "../helpers/agent-simulator";
 import {
   WORKFLOW_OVERRIDES,
@@ -22,6 +23,7 @@ import {
 } from "../helpers/test-paths";
 
 const GATE_AGENT_ID = "gate-agent-001";
+const WORKSPACE_PLUGIN_SLUG = "skills";
 
 const RESEARCH_PLAN_CONTENT = `# Research Plan
 
@@ -29,7 +31,13 @@ const RESEARCH_PLAN_CONTENT = `# Research Plan
 - Scope this skill around domain workflows.
 `;
 
-const WORKSPACE_EVAL_PATH = path.join(E2E_WORKSPACE_PATH, "test-skill", "answer-evaluation.json");
+const WORKSPACE_EVAL_PATH = path.join(
+  E2E_WORKSPACE_PATH,
+  WORKSPACE_PLUGIN_SLUG,
+  "skills",
+  "test-skill",
+  "answer-evaluation.json",
+);
 const SKILLS_RESEARCH_PLAN_PATH = skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md");
 
 // --- Override presets ---
@@ -65,12 +73,11 @@ const GATE2_OVERRIDES: Record<string, unknown> = {
 };
 
 /** Swap read_file to return the evaluation JSON so finishGateEvaluation can parse it. */
-async function setReadFileToEvaluation(
-  page: import("@playwright/test").Page,
+function buildEvaluation(
   verdict: "sufficient" | "mixed" | "insufficient",
-) {
-  const evaluations: Record<string, unknown> = {
-    sufficient: JSON.stringify({
+): Record<string, unknown> {
+  const evaluations: Record<string, Record<string, unknown>> = {
+    sufficient: {
       verdict: "sufficient",
       answered_count: 9,
       empty_count: 0,
@@ -88,8 +95,8 @@ async function setReadFileToEvaluation(
         { question_id: "Q8", verdict: "clear" },
         { question_id: "Q9", verdict: "clear" },
       ],
-    }),
-    mixed: JSON.stringify({
+    },
+    mixed: {
       verdict: "mixed",
       answered_count: 4,
       empty_count: 3,
@@ -107,8 +114,8 @@ async function setReadFileToEvaluation(
         { question_id: "Q8", verdict: "not_answered" },
         { question_id: "Q9", verdict: "not_answered" },
       ],
-    }),
-    insufficient: JSON.stringify({
+    },
+    insufficient: {
       verdict: "insufficient",
       answered_count: 1,
       empty_count: 7,
@@ -126,9 +133,16 @@ async function setReadFileToEvaluation(
         { question_id: "Q8", verdict: "vague" },
         { question_id: "Q9", verdict: "not_answered" },
       ],
-    }),
+    },
   };
 
+  return evaluations[verdict];
+}
+
+async function setReadFileEvaluation(
+  page: import("@playwright/test").Page,
+  evaluation: Record<string, unknown>,
+) {
   await page.evaluate(({ evalPath, json }) => {
     const overrides = (window as unknown as Record<string, unknown>)
       .__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
@@ -139,7 +153,7 @@ async function setReadFileToEvaluation(
         : { "*": String(current ?? "") };
     next[evalPath] = json;
     overrides.read_file = next;
-  }, { evalPath: WORKSPACE_EVAL_PATH, json: evaluations[verdict] });
+  }, { evalPath: WORKSPACE_EVAL_PATH, json: JSON.stringify(evaluation) });
 }
 
 /** Click Complete Step on the review page, triggering the gate evaluation. */
@@ -157,13 +171,37 @@ async function simulateGateCompletion(
 ) {
   // Swap read_file to evaluation JSON before the agent exits,
   // since finishGateEvaluation reads the file immediately after.
-  await setReadFileToEvaluation(page, verdict);
+  await setReadFileEvaluation(page, buildEvaluation(verdict));
 
   await simulateAgentRun(page, {
     agentId: GATE_AGENT_ID,
     messages: ["Evaluating answers..."],
     result: "Evaluation complete.",
     delays: 50,
+  });
+}
+
+async function simulateCustomGateCompletion(
+  page: import("@playwright/test").Page,
+  evaluation: Record<string, unknown>,
+) {
+  await setReadFileEvaluation(page, evaluation);
+
+  await simulateAgentRun(page, {
+    agentId: GATE_AGENT_ID,
+    messages: ["Evaluating answers..."],
+    result: "Evaluation complete.",
+    delays: 50,
+  });
+}
+
+async function waitForGateEvaluationStart(
+  page: import("@playwright/test").Page,
+  stepLabel: string,
+) {
+  await expect(page.getByText(stepLabel)).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("dialog", { name: "Analyzing Responses" })).toBeVisible({
+    timeout: 5_000,
   });
 }
 
@@ -213,26 +251,91 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("gate agent error fails open and advances normally", async ({ page }) => {
+  test("gate 2 revise: stays on detailed research", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__TAURI_TRACK_INVOKES__ = ["read_file"];
+      (window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ = [];
+    });
+    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateCustomGateCompletion(page, {
+      verdict: "insufficient",
+      answered_count: 0,
+      empty_count: 2,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      gate_decision: "revise",
+      reasoning: "Answers are missing.",
+      per_question: [
+        { question_id: "Q1", verdict: "not_answered" },
+        { question_id: "Q2", verdict: "not_answered" },
+      ],
+    });
+
+    const trackedReadFileCalls = await page.evaluate(() => {
+      const tracked = ((window as unknown as Record<string, unknown>)
+        .__TAURI_TRACKED_INVOKES__ ?? []) as Array<{ cmd: string; args?: { filePath?: string } }>;
+      return tracked
+        .filter((entry) => entry.cmd === "read_file")
+        .map((entry) => entry.args?.filePath ?? null);
+    });
+    expect(trackedReadFileCalls).toContain(WORKSPACE_EVAL_PATH);
+
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Step 3: Confirm Decisions")).not.toBeVisible();
+  });
+
+  test("gate 2 contradiction-driven revise: stays on detailed research", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await simulateCustomGateCompletion(page, {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 1,
+      total_count: 2,
+      gate_decision: "revise",
+      reasoning: "One answer contradicts another.",
+      per_question: [
+        { question_id: "Q1", verdict: "clear" },
+        { question_id: "Q2", verdict: "contradictory", reason: "Conflicts with Q1." },
+      ],
+    });
+
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Step 3: Confirm Decisions")).not.toBeVisible();
+  });
+
+  test("gate 1 agent error: stays on research", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
+    await waitForGateEvaluationStart(page, "Step 1: Research");
 
-    // Simulate agent that starts then exits with error
-    await emitTauriEvent(page, "agent-init-progress", {
-      agent_id: GATE_AGENT_ID,
-      stage: "init_start",
-      timestamp: Date.now(),
-    });
+    await simulateAgentError(page, GATE_AGENT_ID);
 
-    await emitTauriEvent(page, "agent-exit", {
-      agent_id: GATE_AGENT_ID,
-      success: false,
-    });
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Step 2: Detailed Research")).not.toBeVisible();
+  });
 
-    // Should fail-open: no dialog, advance to Detailed Research
+  test("gate 2 agent error: stays on detailed research", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    await clickCompleteStep(page);
+    await waitForGateEvaluationStart(page, "Step 2: Detailed Research");
+
+    await simulateAgentError(page, GATE_AGENT_ID);
+
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Step 3: Confirm Decisions")).not.toBeVisible();
   });
 
 });

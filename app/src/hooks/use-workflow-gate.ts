@@ -27,6 +27,8 @@ export interface UseWorkflowGateOptions {
   purpose: string | null;
   /** Called after gate completes to advance the workflow */
   advanceToNextStep: () => void;
+  /** Clears any queued auto-start so gate failures/revise do not advance later */
+  cancelPendingAutoStart: () => void;
 }
 
 export interface UseWorkflowGateReturn {
@@ -34,6 +36,8 @@ export interface UseWorkflowGateReturn {
   handleReviewContinue: () => void;
   /** Ref tracking the active gate evaluator agent ID (null when idle) */
   gateAgentIdRef: React.MutableRefObject<string | null>;
+  /** Ref tracking the workflow step that started the current gate run */
+  gateStepRef: React.MutableRefObject<number | null>;
   /** Process gate agent completion — called by the agent watcher effect */
   finishGateEvaluation: (structuredOutput?: unknown) => Promise<void>;
 }
@@ -56,14 +60,30 @@ export function useWorkflowGate({
   currentStep,
   purpose,
   advanceToNextStep,
+  cancelPendingAutoStart,
 }: UseWorkflowGateOptions): UseWorkflowGateReturn {
   const updateStepStatus = useWorkflowStore((s) => s.updateStepStatus);
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
+  const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const agentStartRun = useAgentStore((s) => s.startRun);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model);
 
   const gateAgentIdRef = useRef<string | null>(null);
+  const gateStepRef = useRef<number | null>(null);
+
+  const stayOnCurrentStep = useCallback(
+    (message: string) => {
+      const stepToRestore =
+        gateStepRef.current ?? useWorkflowStore.getState().currentStep;
+      cancelPendingAutoStart();
+      setCurrentStep(stepToRestore);
+      setGateLoading(false);
+      updateStepStatus(stepToRestore, "completed");
+      toast.error(message, { duration: Infinity });
+    },
+    [cancelPendingAutoStart, setCurrentStep, setGateLoading, updateStepStatus],
+  );
 
   // --- Core gate operations ---
 
@@ -75,17 +95,18 @@ export function useWorkflowGate({
     try {
       model = requireSettingsModel(selectedModel);
     } catch (err) {
-      console.error("[workflow] Gate evaluation skipped:", err);
-      toast.warning("Answer evaluation skipped — proceeding to next step", {
-        duration: Infinity,
-      });
-      updateStepStatus(currentStep, "completed");
-      advanceToNextStep();
+      console.error("[workflow] Gate evaluation blocked:", err);
+      stayOnCurrentStep(
+        err instanceof Error
+          ? `Answer evaluation could not start: ${err.message}`
+          : `Answer evaluation could not start: ${String(err)}`,
+      );
       return;
     }
 
     try {
       setGateLoading(true);
+      gateStepRef.current = currentStep;
       const agentId = await runAnswerEvaluator(skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
@@ -93,61 +114,59 @@ export function useWorkflowGate({
       setActiveAgent(agentId);
     } catch (err) {
       console.error("[workflow] Gate evaluation failed to start:", err);
-      setGateLoading(false);
-      toast.warning("Answer evaluation skipped — proceeding to next step", {
-        duration: Infinity,
-      });
-      updateStepStatus(currentStep, "completed");
-      advanceToNextStep();
+      stayOnCurrentStep(
+        err instanceof Error
+          ? `Answer evaluation failed to start: ${err.message}`
+          : `Answer evaluation failed to start: ${String(err)}`,
+      );
     }
   }, [
     workspacePath,
     skillName,
     selectedModel,
-    currentStep,
     setGateLoading,
     agentStartRun,
     setActiveAgent,
-    updateStepStatus,
-    advanceToNextStep,
+    stayOnCurrentStep,
   ]);
 
   const finishGateEvaluation = useCallback(
     async (structuredOutput?: unknown) => {
-      const proceedNormally = () => {
-        setGateLoading(false);
-        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-        advanceToNextStep();
-      };
-
       if (!workspacePath) {
-        proceedNormally();
+        stayOnCurrentStep(
+          "Answer evaluation failed because the workspace is unavailable. Retry when the workspace is ready.",
+        );
         return;
       }
 
       console.debug("[workflow] Gate structured output:", structuredOutput);
 
       try {
+        let evaluation: AnswerEvaluation;
+
         if (structuredOutput != null) {
           await materializeAnswerEvaluationOutput(
             skillName,
             workspacePath,
             structuredOutput as import("@/lib/types").AnswerEvaluationOutput,
           );
+          evaluation = structuredOutput as AnswerEvaluation;
+        } else {
+          const evalPath = joinPath(
+            workspaceSkillDir(workspacePath, pluginSlug, skillName),
+            "answer-evaluation.json",
+          );
+          const raw = await readFile(evalPath);
+          evaluation = JSON.parse(raw) as AnswerEvaluation;
         }
-
-        const evalPath = joinPath(
-          workspaceSkillDir(workspacePath, pluginSlug, skillName),
-          "answer-evaluation.json",
-        );
-        const raw = await readFile(evalPath);
-        const evaluation: AnswerEvaluation = JSON.parse(raw);
 
         if (
           !["sufficient", "mixed", "insufficient"].includes(evaluation.verdict)
         ) {
           console.warn("[workflow] Invalid gate verdict:", evaluation.verdict);
-          proceedNormally();
+          stayOnCurrentStep(
+            "Answer evaluation returned an invalid verdict. Review the workflow logs and retry.",
+          );
           return;
         }
 
@@ -210,14 +229,15 @@ export function useWorkflowGate({
         setGateLoading(false);
 
         if (gateDecision === "revise") {
+          const stepToRestore =
+            gateStepRef.current ?? useWorkflowStore.getState().currentStep;
           // Contradictions found or answers insufficient — stay on step 0 so the user can revise.
+          cancelPendingAutoStart();
+          setCurrentStep(stepToRestore);
           toast.info(
             "Please review the feedback and revise your answers before continuing",
           );
-          updateStepStatus(
-            useWorkflowStore.getState().currentStep,
-            "completed",
-          );
+          updateStepStatus(stepToRestore, "completed");
           // The query cache was already invalidated above; the clarifications editor
           // will re-fetch from the DB automatically via useClarifications.
         } else {
@@ -230,19 +250,23 @@ export function useWorkflowGate({
         }
       } catch (err) {
         console.warn(
-          "[workflow] Gate evaluation materialization failed — proceeding normally:",
+          "[workflow] Gate evaluation materialization failed:",
           err,
         );
-        proceedNormally();
+        stayOnCurrentStep(
+          "Answer evaluation output could not be read. Review the workflow logs and retry.",
+        );
       }
     },
     [
       workspacePath,
       skillName,
-      purpose,
-      setGateLoading,
-      updateStepStatus,
       advanceToNextStep,
+      cancelPendingAutoStart,
+      purpose,
+      setCurrentStep,
+      setGateLoading,
+      stayOnCurrentStep,
     ],
   );
 
@@ -268,6 +292,7 @@ export function useWorkflowGate({
     runGateOrAdvance,
     handleReviewContinue,
     gateAgentIdRef,
+    gateStepRef,
     finishGateEvaluation,
   };
 }
