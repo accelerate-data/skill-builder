@@ -109,6 +109,25 @@ fn remove_legacy_default_plugin_root(root: &Path) -> Result<bool, String> {
         return Ok(false);
     }
 
+    for entry in std::fs::read_dir(&legacy_root).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if matches!(name.as_str(), "skills" | ".claude-plugin") {
+            continue;
+        }
+        if std::fs::read_dir(&path)
+            .map_err(|e| e.to_string())?
+            .next()
+            .is_none()
+        {
+            std::fs::remove_dir(&path).map_err(|e| e.to_string())?;
+        }
+    }
+
     let nested_skills = legacy_root.join("skills");
     let nested_empty = !nested_skills.exists()
         || std::fs::read_dir(&nested_skills)

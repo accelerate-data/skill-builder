@@ -2139,6 +2139,37 @@ fn test_startup_normalization_moves_legacy_skills_and_workspace_dirs_to_default_
     assert!(!legacy_output.exists(), "legacy output dir should be migrated");
 }
 
+#[test]
+fn test_startup_normalization_prunes_empty_legacy_default_plugin_dirs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace_root = tmp.path().join("workspace");
+    let skills_root = tmp.path().join("skills");
+    std::fs::create_dir_all(&workspace_root).unwrap();
+    std::fs::create_dir_all(&skills_root).unwrap();
+
+    let workspace = workspace_root.to_str().unwrap();
+    let skills_path = skills_root.to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
+
+    let legacy_plugin_root = skills_root.join("skills");
+    std::fs::create_dir_all(legacy_plugin_root.join("hr-analytics")).unwrap();
+    std::fs::create_dir_all(legacy_plugin_root.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        legacy_plugin_root.join(".claude-plugin").join("plugin.json"),
+        "{}\n",
+    )
+    .unwrap();
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    assert!(
+        !legacy_plugin_root.exists(),
+        "legacy default-plugin wrapper should be removed even when it only contains empty stray dirs"
+    );
+}
+
 // ── Phase 1f: Dedup tests ───────────────────────────────────────────────────
 
 /// Simulates the state after a failed move + Phase 1c discovery:
