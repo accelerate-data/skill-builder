@@ -57,56 +57,6 @@ describe("promptfoo sidecar protocol", () => {
     });
   });
 
-  it("parses a valid list_eval_history request", () => {
-    const request = parseSidecarRequest(
-      JSON.stringify({
-        id: "list-1",
-        type: "list_eval_history",
-        filter: {
-          configDir: "/tmp/promptfoo-sidecar-tests",
-          pluginSlug: "skill-creator",
-          skillName: "creating-skills",
-          scenarioName: "Smoke",
-          mode: "trigger",
-          limit: 10,
-          offset: 0,
-        },
-      }),
-    );
-
-    expect(request).toEqual({
-      id: "list-1",
-      type: "list_eval_history",
-      filter: {
-        configDir: "/tmp/promptfoo-sidecar-tests",
-        pluginSlug: "skill-creator",
-        skillName: "creating-skills",
-        scenarioName: "Smoke",
-        mode: "trigger",
-        limit: 10,
-        offset: 0,
-      },
-    });
-  });
-
-  it("parses a valid read_eval_history request", () => {
-    const request = parseSidecarRequest(
-      JSON.stringify({
-        id: "read-1",
-        type: "read_eval_history",
-        configDir: "/tmp/promptfoo-sidecar-tests",
-        evalId: "eval-123",
-      }),
-    );
-
-    expect(request).toEqual({
-      id: "read-1",
-      type: "read_eval_history",
-      configDir: "/tmp/promptfoo-sidecar-tests",
-      evalId: "eval-123",
-    });
-  });
-
   it("rejects unsupported request types", () => {
     expect(() =>
       parseSidecarRequest(

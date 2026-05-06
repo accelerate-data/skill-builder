@@ -94,10 +94,7 @@ where
         let detail = if stderr.is_empty() {
             format!("Promptfoo sidecar exited with status {}", output.status)
         } else {
-            format!(
-                "Promptfoo sidecar exited with status {}: {stderr}",
-                output.status
-            )
+            format!("Promptfoo sidecar exited with status {}: {stderr}", output.status)
         };
         return Err(detail);
     }
@@ -172,70 +169,6 @@ pub(crate) fn extract_run_from_stdout(
         SidecarResultPayload::Run { run } => Some(*run),
         _ => None,
     })
-}
-
-pub(crate) fn extract_history_list_result_from_stdout(
-    stdout: &str,
-    request_id: &str,
-) -> Result<EvalHistoryListResult, String> {
-    let mut latest_result = None;
-
-    for raw_line in stdout.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        match parse_sidecar_event(line)? {
-            SidecarEvent::Progress { .. }
-            | SidecarEvent::Result { .. }
-            | SidecarEvent::HistoryReadResult { .. } => {}
-            SidecarEvent::HistoryListResult { id, result } => {
-                if id == request_id {
-                    latest_result = Some(result);
-                }
-            }
-            SidecarEvent::Error { id, message } => {
-                if id == request_id || id == "unknown" {
-                    return Err(message);
-                }
-            }
-        }
-    }
-
-    latest_result.ok_or_else(|| "Promptfoo sidecar did not return a history list event".to_string())
-}
-
-pub(crate) fn extract_history_read_result_from_stdout(
-    stdout: &str,
-    request_id: &str,
-) -> Result<EvalHistoryReadResult, String> {
-    let mut latest_result = None;
-
-    for raw_line in stdout.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        match parse_sidecar_event(line)? {
-            SidecarEvent::Progress { .. }
-            | SidecarEvent::Result { .. }
-            | SidecarEvent::HistoryListResult { .. } => {}
-            SidecarEvent::HistoryReadResult { id, result } => {
-                if id == request_id {
-                    latest_result = Some(result);
-                }
-            }
-            SidecarEvent::Error { id, message } => {
-                if id == request_id || id == "unknown" {
-                    return Err(message);
-                }
-            }
-        }
-    }
-
-    latest_result.ok_or_else(|| "Promptfoo sidecar did not return a history read event".to_string())
 }
 
 fn normalize_path(path: &Path) -> Result<String, PromptfooSidecarPathError> {

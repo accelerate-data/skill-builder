@@ -8,8 +8,6 @@ import { describe, expect, it } from "vitest";
 import { serializeSidecarRequest } from "../protocol.js";
 import { runJsonlSidecar } from "../runner.js";
 
-let historyConfigDir = "";
-
 async function runSidecarForInput(inputText: string) {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -27,11 +25,12 @@ async function runSidecarForInput(inputText: string) {
     .join("")
     .trim()
     .split("\n")
-    .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line));
 }
 
-async function runSidecarForRequest(request: SidecarRequest) {
+async function runSidecarForRequest(
+  request: Parameters<typeof serializeSidecarRequest>[0],
+) {
   return runSidecarForInput(serializeSidecarRequest(request));
 }
 
@@ -107,133 +106,6 @@ async function buildRunEvalRequest(
 }
 
 describe("promptfoo sidecar runner", () => {
-  beforeAll(async () => {
-    historyConfigDir = await mkdtemp(
-      join(tmpdir(), "skill-builder-promptfoo-sidecar-"),
-    );
-  });
-
-  it("persists app-owned history and can list plus read it back", async () => {
-    const runEvents = await runSidecarForRequest(
-      buildRunEvalRequest({
-        id: "run-history",
-        mode: "trigger",
-        skillName: "forecast-revenue",
-        scenarioName: "Trigger smoke",
-        history: {
-          configDir: historyConfigDir,
-          persist: true,
-        },
-        cases: [
-          {
-            id: "case-1",
-            prompt: "Forecast revenue for next quarter",
-            shouldTrigger: true,
-            assertions: [],
-          },
-        ],
-        executions: [
-          {
-            caseId: "case-1",
-            candidateId: "baseline",
-            output: { invokedTargetSkill: true, responseText: "Triggered" },
-          },
-        ],
-      }),
-    );
-
-    const resultEvent = runEvents.find((event) => event.type === "result");
-    expect(resultEvent?.result).toMatchObject({
-      mode: "trigger",
-      total: 1,
-      passed: 1,
-      failed: 0,
-      history: {
-        persisted: true,
-        configDir: historyConfigDir,
-        evalId: expect.any(String),
-        metadata: {
-          source: "eval_workbench",
-          pluginSlug: "skills",
-          skillName: "forecast-revenue",
-          scenarioName: "Trigger smoke",
-          mode: "trigger",
-        },
-      },
-    });
-
-    const evalId = resultEvent?.result.history?.evalId;
-    expect(typeof evalId).toBe("string");
-
-    const listEvents = await runSidecarForRequest({
-      id: "list-history",
-      type: "list_eval_history",
-      filter: {
-        configDir: historyConfigDir,
-        pluginSlug: "skills",
-        skillName: "forecast-revenue",
-        scenarioName: "Trigger smoke",
-        mode: "trigger",
-        limit: 10,
-        offset: 0,
-      },
-    });
-
-    expect(listEvents).toContainEqual(
-      expect.objectContaining({
-        id: "list-history",
-        type: "history_list_result",
-        result: expect.objectContaining({
-          items: expect.arrayContaining([
-            expect.objectContaining({
-              evalId,
-              metadata: expect.objectContaining({
-                pluginSlug: "skills",
-                skillName: "forecast-revenue",
-                scenarioName: "Trigger smoke",
-                mode: "trigger",
-              }),
-              total: 1,
-              passed: 1,
-              failed: 0,
-            }),
-          ]),
-        }),
-      }),
-    );
-
-    const readEvents = await runSidecarForRequest({
-      id: "read-history",
-      type: "read_eval_history",
-      configDir: historyConfigDir,
-      evalId: String(evalId),
-    });
-
-    expect(readEvents).toContainEqual(
-      expect.objectContaining({
-        id: "read-history",
-        type: "history_read_result",
-        result: expect.objectContaining({
-          entry: expect.objectContaining({
-            evalId,
-            metadata: expect.objectContaining({
-              scenarioName: "Trigger smoke",
-              mode: "trigger",
-            }),
-            cases: [
-              expect.objectContaining({
-                caseId: "case-1",
-                candidateId: "baseline",
-                success: true,
-                providerId: "baseline",
-              }),
-            ],
-          }),
-        }),
-      }),
-    );
-  });
-
   it("evaluates trigger cases and emits progress plus result events", async () => {
     const events = await runSidecarForRequest(await buildRunEvalRequest({
       id: "run-trigger",
@@ -247,8 +119,7 @@ describe("promptfoo sidecar runner", () => {
         {
           id: "baseline",
           label: "Baseline",
-          description:
-            "Trigger for revenue forecasting and sales planning requests.",
+          description: "Trigger for revenue forecasting and sales planning requests.",
         },
       ],
       cases: [
@@ -288,9 +159,6 @@ describe("promptfoo sidecar runner", () => {
       total: 2,
       passed: 2,
       failed: 0,
-      history: {
-        persisted: false,
-      },
     });
   });
 

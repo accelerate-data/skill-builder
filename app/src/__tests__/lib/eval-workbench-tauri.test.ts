@@ -65,7 +65,6 @@ describe("Eval Workbench Tauri wrappers", () => {
         tags: ["performance"],
         cases: [
           {
-            id: "case-1",
             prompt: "Forecast next quarter revenue",
             expectedOutcome: "Includes assumptions",
             shouldTrigger: null,

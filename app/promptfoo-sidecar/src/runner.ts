@@ -4,12 +4,6 @@ import { stdin, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 import { listCompletedRuns, readCompletedRun } from "./history.js";
 import {
-  buildEvalHistoryMetadata,
-  buildPromptfooHistoryTags,
-  listEvalHistory,
-  readEvalHistory,
-} from "./history-store.js";
-import {
   parseSidecarRequest,
   serializeSidecarEvent,
   type ListHistoryRequest,
@@ -67,39 +61,11 @@ function parseRequest(
   }
 }
 
-async function handleRequest(
-  request: SidecarRequest,
-  output: NodeJS.WritableStream,
-): Promise<void> {
-  switch (request.type) {
-    case "run_eval":
-      await handleRunEvalRequest(request, output);
-      return;
-    case "list_eval_history":
-      writeEvent(output, {
-        id: request.id,
-        type: "history_list_result",
-        result: listEvalHistory(request.filter),
-      });
-      return;
-    case "read_eval_history":
-      writeEvent(output, {
-        id: request.id,
-        type: "history_read_result",
-        result: { entry: readEvalHistory(request) },
-      });
-      return;
-  }
-}
-
 async function handleRunEvalRequest(
   request: RunEvalRequest,
   output: NodeJS.WritableStream,
 ): Promise<void> {
   const total = request.executions.length;
-  const evaluate = await loadEvaluate(request.history?.configDir);
-  const metadata = buildEvalHistoryMetadata(request);
-  const persistHistory = request.history?.persist !== false;
 
   for (let index = 0; index < request.executions.length; index += 1) {
     const execution = request.executions[index];
@@ -153,85 +119,6 @@ async function handleReadHistoryRequest(
     type: "result",
     run: readCompletedRun(request.promptfooConfigDir, request.runId),
   });
-}
-
-async function loadEvaluate(configDir?: string): Promise<EvaluateFn> {
-  if (configDir) {
-    await initializePromptfooConfigDir(configDir);
-  }
-
-  if (!promptfooEvaluate) {
-    const promptfoo = await import("promptfoo");
-    promptfooEvaluate = promptfoo.evaluate;
-  }
-
-  return promptfooEvaluate;
-}
-
-async function initializePromptfooConfigDir(configDir: string): Promise<void> {
-  if (
-    activePromptfooConfigDir !== null &&
-    activePromptfooConfigDir !== configDir
-  ) {
-    throw new Error(
-      `Promptfoo config dir is fixed for the life of this sidecar process: ${activePromptfooConfigDir}`,
-    );
-  }
-
-  await mkdir(configDir, { recursive: true });
-  process.env.PROMPTFOO_CONFIG_DIR = configDir;
-  activePromptfooConfigDir = configDir;
-}
-
-function buildRunDescription(request: RunEvalRequest): string {
-  return `Eval Workbench ${request.mode} run for ${request.pluginSlug}/${request.skillName} scenario ${request.scenarioName}`;
-}
-
-function buildRunResult(
-  request: RunEvalRequest,
-  result: {
-    id?: string;
-    persisted?: boolean;
-    results?: unknown[];
-  },
-) {
-  const normalized = normalizePromptfooResults(
-    request.mode,
-    (result.results ?? []) as PromptfooLikeResult[],
-  );
-  if (
-    normalized.total > 0 ||
-    !result.persisted ||
-    !request.history?.configDir ||
-    !result.id
-  ) {
-    return normalized;
-  }
-
-  const entry = readEvalHistory({
-    id: request.id,
-    type: "read_eval_history",
-    configDir: request.history.configDir,
-    evalId: result.id,
-  });
-
-  return {
-    mode: request.mode,
-    total: entry.total,
-    passed: entry.passed,
-    failed: entry.failed,
-    results: entry.cases.map((testCase) => ({
-      caseId: testCase.caseId ?? `test-${testCase.testIdx}`,
-      candidateId: testCase.candidateId ?? `prompt-${testCase.promptIdx}`,
-      passed: testCase.success,
-      score: testCase.score,
-      output: testCase.response ?? null,
-      reason:
-        testCase.failureReason === undefined
-          ? undefined
-          : String(testCase.failureReason),
-    })),
-  };
 }
 
 function writeEvent(output: NodeJS.WritableStream, event: SidecarEvent): void {
