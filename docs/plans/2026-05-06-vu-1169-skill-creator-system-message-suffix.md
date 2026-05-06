@@ -62,7 +62,7 @@ Vitest / cargo tests.
 - [x] **Step 2: Thread `system_message_suffix` through the app-owned config/request structs**
 - [x] **Step 3: Populate the suffix for every skill-bound Agent Server call site that uses the main `skill-creator` agent**
 - [x] **Step 4: Re-run the targeted tests and make them green**
-- [ ] **Step 5: Commit the suffix wiring**
+- [x] **Step 5: Commit the suffix wiring**
 
 ---
 
@@ -76,7 +76,7 @@ Vitest / cargo tests.
 - [x] **Step 1: Add or update a golden request-shape test that captures `system_message_suffix` next to `user_message_suffix`**
 - [x] **Step 2: Verify no older path still claims the suffix is omitted**
 - [x] **Step 3: Run the targeted Rust tests and any affected unit suites**
-- [ ] **Step 4: Update the plan checklist and add verification notes to `VU-1169`**
+- [x] **Step 4: Update the plan checklist and add verification notes to `VU-1169`**
 
 ## Verification Notes
 
@@ -84,6 +84,8 @@ Vitest / cargo tests.
   `AgentContext.system_message_suffix` lives on the main serialized `agent`
   object, and `CreateConversationRequest` accepts that `agent` object as part
   of `POST /api/conversations`.
+- Local implementation commit:
+  - `c5d1bb22` `VU-1169: wire skill-creator system message suffix`
 - Captured the red-test failure before implementation:
   `build_refine_openhands_config` missing, `skill_creator_system_message_suffix`
   missing, and `system_message_suffix` absent from the sidecar/request structs.
