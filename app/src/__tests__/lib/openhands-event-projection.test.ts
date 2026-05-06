@@ -272,12 +272,15 @@ describe("projectConversationEvent", () => {
   it("projects SystemPromptEvent as a Runtime setup collapsed item", () => {
     const event = makeEvent("SystemPromptEvent", {
       system_prompt: { text: "You are a helpful agent." },
+      dynamic_context: { text: "# Skill Creator Agent\n\nUse workspace files as the source of truth." },
     });
     const result = projectConversationEvent(event, {});
     const item = result.add[0];
     expect(item.toolName).toBe("system_prompt");
     expect(item.toolSummary).toBe("Runtime setup");
-    expect(item.toolResult?.content).toBe("You are a helpful agent.");
+    expect(item.toolResult?.content).toBe(
+      "You are a helpful agent.\n\n# Skill Creator Agent\n\nUse workspace files as the source of truth.",
+    );
   });
 
   it("projects CondensationSummaryEvent as a Context condensed item", () => {
