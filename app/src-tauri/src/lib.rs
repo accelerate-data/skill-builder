@@ -229,10 +229,6 @@ pub fn run() {
                 app.set_menu(menu)?;
             }
 
-            // Truncate the log file now that the Tauri path resolver is available.
-            // Uses app_log_dir() so the path always matches the log plugin's target.
-            logging::truncate_log_file(app.handle());
-
             let data_dir = app
                 .path()
                 .app_local_data_dir()
