@@ -54,7 +54,7 @@ export interface DisplayItem {
   // --- tool_call (linked: call → result) ---
   toolName?: string;
   toolInput?: Record<string, unknown>;
-  toolUseId?: string;
+  toolCallId?: string;
   toolResult?: ToolResult;
   toolStatus?: ToolStatus;
   toolDurationMs?: number;
@@ -67,7 +67,7 @@ export interface DisplayItem {
   // --- subagent (Agent tool calls with nested execution) ---
   subagentDescription?: string;
   subagentType?: string;
-  parentToolUseId?: string;
+  parentToolCallId?: string;
   subagentItems?: DisplayItem[];
   subagentMetrics?: SubagentMetrics;
   subagentStatus?: SubagentStatus;
@@ -108,4 +108,4 @@ export interface DisplayItemEnvelope {
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 6;
+export const DISPLAY_TYPES_VERSION = 7;

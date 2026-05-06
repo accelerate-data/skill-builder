@@ -17,13 +17,17 @@ skill-scoped workspace, and prompt the main conversation to invoke
 `skill-verifier` by name during the generator-verifier loop. Parent
 conversation events only stream the `task`/`TaskObservation` boundary; nested
 subagent tool activity is persisted under
-`{parent_conversation}/subagents/<conversation_id>/events/`, so the UI must
-load and project those child events into `subagentItems` explicitly. Because
-conversations are persistent per skill and OpenHands only rereads workspace
-file agents when a conversation is rebuilt, changes to skill or agent
-definitions require an app restart to take effect on an existing conversation.
-Generated skill frontmatter should no longer include `metadata.version`, and
-the step 3 output contract should stop requiring `version_bump`.
+`{parent_conversation}/subagents/<conversation_id>/events/`, so the backend
+must replay those child events through the same `conversation_event` pipe used
+for the parent conversation. Normalized events should expose `toolCallId` and
+`parentToolCallId`, letting the frontend attach child items under the matching
+parent subagent row without introducing a separate event type or file-scanning
+UI path. Because conversations are persistent per skill and OpenHands only
+rereads workspace file agents when a conversation is rebuilt, changes to skill
+or agent definitions require an app restart to take effect on an existing
+conversation. Generated skill frontmatter should no longer include
+`metadata.version`, and the step 3 output contract should stop requiring
+`version_bump`.
 
 **Tech Stack:** Rust / Tauri / OpenHands Agent Server / workspace agent files /
 Vitest / cargo tests.
@@ -45,7 +49,8 @@ Vitest / cargo tests.
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Step 3 prompt/runtime wiring if explicit verifier mention is needed |
 | `app/src-tauri/src/commands/workflow/output_format.rs` | Remove generated-skill metadata.version / version_bump validation |
 | `app/src/lib/openhands-event-projection.ts` | Project task-tool subagents and attach nested child events |
-| `app/src/lib/openhands-conversation-events.ts` | Add helpers needed to map/load child subagent conversations |
+| `app/src/lib/openhands-conversation-events.ts` | Normalize `toolCallId` / `parentToolCallId` for parent and child events |
+| `app/src/stores/agent-store.ts` | Route child conversation events into `subagentItems` on the parent subagent row |
 | `app/src/components/agent-items/subagent-item.tsx` | Render nested verifier tool activity consistently |
 | `app/agent-tests/**` | Structural coverage for new verifier agent file |
 | `tests/evals/**` or a repo-local smoke harness | Minimal end-to-end smoke coverage for verifier delegation |
@@ -121,29 +126,32 @@ Vitest / cargo tests.
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`
 - Modify: any generated contract/schema files touched by the shape change
 
-- [ ] **Step 1: Remove `metadata.version` generation instructions from the step 3 prompt and `creating-skills` skill guidance**
-- [ ] **Step 2: Remove `version_bump` from the generated-skill output contract and backend validation**
-- [ ] **Step 3: Update materialization/publish validation so generated skills no longer fail on missing or non-`1.0.0` metadata.version**
-- [ ] **Step 4: Add or update tests that prove a generated skill without `metadata.version` is accepted**
-- [ ] **Step 5: Re-run the targeted Rust tests for step 3 output parsing/materialization**
+- [x] **Step 1: Remove `metadata.version` generation instructions from the step 3 prompt and `creating-skills` skill guidance**
+- [x] **Step 2: Remove `version_bump` from the generated-skill output contract and backend validation**
+- [x] **Step 3: Update materialization/publish validation so generated skills no longer fail on missing or non-`1.0.0` metadata.version**
+- [x] **Step 4: Add or update tests that prove a generated skill without `metadata.version` is accepted**
+- [x] **Step 5: Re-run the targeted Rust tests for step 3 output parsing/materialization**
 
 ### Task 6: Surface nested subagent tool calls inside the subagent row
 
 **Files:**
 
-- Modify: `app/src-tauri/src/agents/openhands_server/**` if backend payload/state needs to expose child conversation IDs
+- Modify: `app/src-tauri/src/agents/openhands_server/**`
 - Modify: `app/src/lib/openhands-event-projection.ts`
 - Modify: `app/src/lib/openhands-conversation-events.ts`
+- Modify: `app/src/stores/agent-store.ts`
 - Modify: `app/src/components/agent-items/subagent-item.tsx`
+- Modify: `app/src/__tests__/lib/openhands-conversation-events.test.ts`
 - Modify: `app/src/__tests__/lib/openhands-event-projection.test.ts`
 - Modify: `app/src/__tests__/components/agent-items/subagent-item.test.tsx`
 
-- [ ] **Step 1: Confirm the parent-to-child mapping strategy for persisted task-tool subagents using the existing `subagents/` directory layout**
-- [ ] **Step 2: Load child subagent event streams and map them onto the parent task/subagent item**
-- [ ] **Step 3: Project nested child tool events into `subagentItems` so verifier tool calls render inside the parent subagent row, not as sibling timeline rows**
-- [ ] **Step 4: Preserve the current parent task row as the subagent summary while adding nested child activity and conclusion text inside it**
-- [ ] **Step 5: Add focused tests for projection/rendering of nested subagent tool activity**
-- [ ] **Step 6: Run a real OpenHands-backed smoke or manual persisted-conversation check proving verifier child events are visible**
+- [x] **Step 1: Normalize parent and child conversation events with `toolCallId` and `parentToolCallId` so the same `conversation_event` path can carry nested subagent activity**
+- [x] **Step 2: Confirm the parent-to-child mapping strategy for persisted task-tool subagents using the existing `subagents/` directory layout and match child conversations to parent task launches deterministically**
+- [x] **Step 3: Replay child subagent event streams from the backend as normal `conversation_event` messages carrying `parentToolCallId`**
+- [x] **Step 4: Project nested child tool events into `subagentItems` so verifier tool calls render inside the parent subagent row, not as sibling timeline rows**
+- [x] **Step 5: Preserve the current parent task row as the subagent summary while adding nested child activity and conclusion text inside it**
+- [x] **Step 6: Add focused tests for normalization, projection, and rendering of nested subagent tool activity**
+- [x] **Step 7: Run a real OpenHands-backed smoke or manual persisted-conversation check proving verifier child events are visible**
 
 ## Verification Notes
 

@@ -254,22 +254,6 @@ fn validate_generated_skill_output(
             expected_status, parsed.status
         ));
     }
-    if expected_status == "generated" && parsed.version_bump.as_deref() != Some("1.0.0") {
-        return Err(
-            "invalid generate-skill output: version_bump must be '1.0.0' for generated skills"
-                .to_string(),
-        );
-    }
-    if expected_status != "generated"
-        && parsed
-            .version_bump
-            .as_deref()
-            .unwrap_or("")
-            .trim()
-            .is_empty()
-    {
-        return Err("invalid generate-skill output: missing version_bump".to_string());
-    }
     match parsed.call_trace.as_ref() {
         Some(trace) if !trace.is_empty() && trace.iter().all(|entry| !entry.trim().is_empty()) => {}
         _ => {
@@ -791,27 +775,8 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
             e
         )
     })?;
-    let frontmatter = crate::commands::imported_skills::parse_frontmatter_full(&published_content);
-    if !frontmatter.has_metadata_version {
-        return Err(format!(
-            "Generated skill '{}' is missing metadata.version in '{}'",
-            skill_name,
-            published_skill_md.display()
-        ));
-    }
-    let version = frontmatter.version.ok_or_else(|| {
-        format!(
-            "Generated skill '{}' is missing metadata.version in '{}'",
-            skill_name,
-            published_skill_md.display()
-        )
-    })?;
-    if version != "1.0.0" {
-        return Err(format!(
-            "Generated skill '{}' must use metadata.version 1.0.0 but found '{}'",
-            skill_name, version
-        ));
-    }
+    let _frontmatter = crate::commands::imported_skills::parse_frontmatter_full(&published_content);
+    let version = "1.0.0".to_string();
 
     if let Err(e) = crate::git::ensure_repo(&published_dir) {
         log::warn!(

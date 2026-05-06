@@ -17,6 +17,9 @@ use self::events::normalize_server_event;
 use self::process::ensure_agent_server;
 use crate::agents::sidecar::SidecarConfig;
 use crate::db::Db;
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
 
 pub struct OpenHandsOneShotRunParams {
     pub agent_id_prefix: String,
@@ -133,6 +136,205 @@ struct OpenHandsConversationTask {
     /// misses those frames. When true the task drains the REST event log
     /// before reading WS so the chat shows them.
     backfill_existing_events: bool,
+}
+
+#[derive(Clone)]
+struct PendingSubagentLaunch {
+    tool_call_id: String,
+    prompt: String,
+}
+
+struct PersistedSubagentConversation {
+    conversation_id: String,
+    first_prompt: String,
+    events: Vec<serde_json::Value>,
+}
+
+fn maybe_record_subagent_launch(
+    raw: &serde_json::Value,
+    launches: &mut HashMap<String, PendingSubagentLaunch>,
+) {
+    let kind = raw
+        .get("kind")
+        .or_else(|| raw.get("event_class"))
+        .or_else(|| raw.get("eventClass"))
+        .or_else(|| raw.get("type"))
+        .and_then(|value| value.as_str());
+    if kind != Some("ActionEvent") {
+        return;
+    }
+    let tool_name = raw
+        .get("tool_name")
+        .or_else(|| raw.get("toolName"))
+        .and_then(|value| value.as_str());
+    if !matches!(tool_name, Some("task" | "task_tool_set")) {
+        return;
+    }
+    let tool_call_id = raw
+        .get("tool_call_id")
+        .or_else(|| raw.get("toolCallId"))
+        .or_else(|| raw.pointer("/tool_call/id"))
+        .and_then(|value| value.as_str());
+    let prompt = raw.pointer("/action/prompt").and_then(|value| value.as_str());
+    if let (Some(tool_call_id), Some(prompt)) = (tool_call_id, prompt) {
+        launches.insert(
+            tool_call_id.to_string(),
+            PendingSubagentLaunch {
+                tool_call_id: tool_call_id.to_string(),
+                prompt: prompt.to_string(),
+            },
+        );
+    }
+}
+
+fn persisted_subagents_root(task: &OpenHandsConversationTask) -> PathBuf {
+    Path::new(&task.summary_context.workspace_path)
+        .join("conversations")
+        .join(&task.conversation_id)
+        .join("subagents")
+}
+
+fn list_persisted_subagent_conversations(
+    task: &OpenHandsConversationTask,
+) -> Result<Vec<PersistedSubagentConversation>, String> {
+    let root = persisted_subagents_root(task);
+    if !root.exists() {
+        return Ok(vec![]);
+    }
+    let mut conversations = Vec::new();
+    let entries = fs::read_dir(&root)
+        .map_err(|e| format!("Failed to read subagent directory {}: {e}", root.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read subagent entry: {e}"))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let conversation_id = entry.file_name().to_string_lossy().to_string();
+        let events_dir = path.join("events");
+        if !events_dir.exists() {
+            continue;
+        }
+        let mut event_paths = fs::read_dir(&events_dir)
+            .map_err(|e| format!("Failed to read child events {}: {e}", events_dir.display()))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|name| name.starts_with("event-") && name.ends_with(".json"))
+            })
+            .collect::<Vec<_>>();
+        event_paths.sort();
+        let mut events = Vec::new();
+        let mut first_prompt = None;
+        for event_path in event_paths {
+            let raw = fs::read_to_string(&event_path)
+                .map_err(|e| format!("Failed to read child event {}: {e}", event_path.display()))?;
+            let parsed: serde_json::Value = serde_json::from_str(&raw)
+                .map_err(|e| format!("Failed to parse child event {}: {e}", event_path.display()))?;
+            if first_prompt.is_none() {
+                first_prompt = extract_user_message_text(&parsed);
+            }
+            events.push(parsed);
+        }
+        if let Some(first_prompt) = first_prompt {
+            conversations.push(PersistedSubagentConversation {
+                conversation_id,
+                first_prompt,
+                events,
+            });
+        }
+    }
+    Ok(conversations)
+}
+
+fn extract_user_message_text(raw: &serde_json::Value) -> Option<String> {
+    let kind = raw
+        .get("kind")
+        .or_else(|| raw.get("event_class"))
+        .or_else(|| raw.get("eventClass"))
+        .or_else(|| raw.get("type"))
+        .and_then(|value| value.as_str());
+    if kind != Some("MessageEvent") || raw.get("source").and_then(|value| value.as_str()) != Some("user") {
+        return None;
+    }
+    raw.pointer("/llm_message/content")
+        .and_then(|value| value.as_array())
+        .and_then(|content| {
+            content.iter().find_map(|item| {
+                item.get("text")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            })
+        })
+        .or_else(|| {
+            raw.pointer("/llm_message/content/0/text")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
+}
+
+fn emit_child_subagent_events_for_observation(
+    task: &OpenHandsConversationTask,
+    raw: &serde_json::Value,
+    launches: &HashMap<String, PendingSubagentLaunch>,
+    emitted_child_conversations: &mut HashSet<String>,
+) {
+    let kind = raw
+        .get("kind")
+        .or_else(|| raw.get("event_class"))
+        .or_else(|| raw.get("eventClass"))
+        .or_else(|| raw.get("type"))
+        .and_then(|value| value.as_str());
+    if kind != Some("ObservationEvent") {
+        return;
+    }
+    let tool_name = raw
+        .get("tool_name")
+        .or_else(|| raw.get("toolName"))
+        .and_then(|value| value.as_str());
+    if !matches!(tool_name, Some("task" | "task_tool_set")) {
+        return;
+    }
+    let tool_call_id = raw
+        .get("tool_call_id")
+        .or_else(|| raw.get("toolCallId"))
+        .and_then(|value| value.as_str());
+    let Some(tool_call_id) = tool_call_id else {
+        return;
+    };
+    let Some(launch) = launches.get(tool_call_id) else {
+        return;
+    };
+    let Ok(children) = list_persisted_subagent_conversations(task) else {
+        return;
+    };
+    let Some(child) = children.into_iter().find(|child| {
+        !emitted_child_conversations.contains(&child.conversation_id)
+            && child.first_prompt == launch.prompt
+    }) else {
+        return;
+    };
+    emitted_child_conversations.insert(child.conversation_id.clone());
+    for child_event in child.events {
+        let mut linked_child = child_event;
+        if let Some(record) = linked_child.as_object_mut() {
+            record.insert(
+                "parent_tool_call_id".to_string(),
+                serde_json::Value::String(launch.tool_call_id.clone()),
+            );
+        }
+        let normalized =
+            normalize_server_event(&task.agent_id, &child.conversation_id, &linked_child);
+        if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event") {
+            super::events::handle_sidecar_message(
+                &task.app,
+                &task.agent_id,
+                &normalized.to_string(),
+            );
+        }
+    }
 }
 
 pub async fn dispatch_openhands_one_shot(
@@ -496,6 +698,8 @@ async fn run_conversation_task_inner(
     // rows. Multi-turn refine turns N+1 already saw prior turns and use the
     // live WS only — backfilling there would replay the whole history.
     let mut seen_event_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut pending_subagent_launches: HashMap<String, PendingSubagentLaunch> = HashMap::new();
+    let mut emitted_child_conversations: HashSet<String> = HashSet::new();
     let mut terminal_state: Option<serde_json::Value> = None;
     let mut socket_error: Option<String> = None;
     if task.backfill_existing_events {
@@ -507,6 +711,7 @@ async fn run_conversation_task_inner(
                             continue;
                         }
                     }
+                    maybe_record_subagent_launch(&raw, &mut pending_subagent_launches);
                     let normalized =
                         normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
                     if normalized.get("type").and_then(|value| value.as_str())
@@ -519,6 +724,12 @@ async fn run_conversation_task_inner(
                         &task.app,
                         &task.agent_id,
                         &normalized.to_string(),
+                    );
+                    emit_child_subagent_events_for_observation(
+                        task,
+                        &raw,
+                        &pending_subagent_launches,
+                        &mut emitted_child_conversations,
                     );
                 }
             }
@@ -591,6 +802,7 @@ async fn run_conversation_task_inner(
                         continue;
                     }
                 }
+                maybe_record_subagent_launch(&raw, &mut pending_subagent_launches);
                 let normalized = normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
                 let is_terminal = normalized
                     .get("type")
@@ -601,6 +813,12 @@ async fn run_conversation_task_inner(
                     break;
                 } else {
                     super::events::handle_sidecar_message(&task.app, &task.agent_id, &normalized.to_string());
+                    emit_child_subagent_events_for_observation(
+                        task,
+                        &raw,
+                        &pending_subagent_launches,
+                        &mut emitted_child_conversations,
+                    );
                 }
             }
         }

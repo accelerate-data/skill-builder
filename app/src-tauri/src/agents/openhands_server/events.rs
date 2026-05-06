@@ -12,6 +12,11 @@ pub fn normalize_server_event(
         "runtime": "openhands",
         "agent_id": agent_id,
         "conversation_id": conversation_id,
+        "tool_call_id": extract_tool_call_id(raw),
+        "parent_tool_call_id": raw
+            .get("parent_tool_call_id")
+            .or_else(|| raw.get("parentToolCallId"))
+            .cloned(),
         "event_class": raw
             .get("event_class")
             .or_else(|| raw.get("eventClass"))
@@ -21,6 +26,17 @@ pub fn normalize_server_event(
         "event": raw,
         "timestamp": chrono::Utc::now().timestamp_millis(),
     })
+}
+
+fn extract_tool_call_id(raw: &serde_json::Value) -> Option<serde_json::Value> {
+    raw.get("tool_call_id")
+        .or_else(|| raw.get("toolCallId"))
+        .or_else(|| raw.pointer("/tool_call/id"))
+        .or_else(|| raw.pointer("/action/tool_call_id"))
+        .or_else(|| raw.pointer("/action/toolCallId"))
+        .or_else(|| raw.pointer("/observation/tool_call_id"))
+        .or_else(|| raw.pointer("/observation/toolCallId"))
+        .cloned()
 }
 
 fn normalize_terminal_state(
@@ -165,6 +181,23 @@ mod tests {
         let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
 
         assert_eq!(normalized["event_class"], "ActionEvent");
+    }
+
+    #[test]
+    fn normalizes_top_level_tool_call_ids_for_parent_and_child_events() {
+        let raw = serde_json::json!({
+            "kind": "ActionEvent",
+            "source": "agent",
+            "tool_name": "file_editor",
+            "tool_call": {
+                "id": "call_child"
+            }
+        });
+
+        let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
+
+        assert_eq!(normalized["tool_call_id"], "call_child");
+        assert!(normalized["parent_tool_call_id"].is_null());
     }
 
     #[test]

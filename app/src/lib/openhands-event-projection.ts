@@ -407,7 +407,7 @@ function projectActionEvent(
       toolName: label.toolName,
       toolSummary: label.toolSummary,
       toolStatus: "pending",
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
       subagentDescription: label.subagentDescription,
       subagentType,
@@ -421,7 +421,7 @@ function projectActionEvent(
       toolName: label.toolName,
       skillName: label.skillName,
       toolSummary: label.toolSummary,
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
       subagentDescription: label.subagentDescription,
       subagentStatus: "running",
@@ -441,7 +441,7 @@ function projectActionEvent(
       toolName: label.toolName,
       toolSummary: label.toolSummary,
       toolStatus: "pending",
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
     };
   } else {
@@ -452,7 +452,7 @@ function projectActionEvent(
       toolName: label.toolName,
       toolSummary: label.toolSummary,
       toolStatus: "pending",
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
     };
   }

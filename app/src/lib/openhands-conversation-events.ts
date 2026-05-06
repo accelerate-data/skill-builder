@@ -13,6 +13,8 @@ export interface OpenHandsConversationEvent {
   eventClass: string;
   event: Record<string, unknown>;
   timestamp: number;
+  toolCallId?: string;
+  parentToolCallId?: string;
 }
 
 export interface OpenHandsConversationState {
@@ -71,6 +73,12 @@ export function normalizeConversationEventMessage(
     eventClass,
     event,
     timestamp: getNumber(message, "timestamp") ?? Date.now(),
+    toolCallId:
+      getString(message, "tool_call_id", "toolCallId") ??
+      extractToolCallId(event),
+    parentToolCallId:
+      getString(message, "parent_tool_call_id", "parentToolCallId") ??
+      getString(event, "parent_tool_call_id", "parentToolCallId"),
   };
 }
 
@@ -155,12 +163,33 @@ export function getToolName(
 export function getToolCallId(
   event: OpenHandsConversationEvent,
 ): string | undefined {
-  const action = asRecord(event.event.action);
-  const observation = asRecord(event.event.observation);
-  const toolCall = findToolCall(event.event, action);
+  if (typeof event.toolCallId === "string" && event.toolCallId.trim().length > 0) {
+    return event.toolCallId;
+  }
+  return extractToolCallId(event.event);
+}
+
+export function getParentToolCallId(
+  event: OpenHandsConversationEvent,
+): string | undefined {
+  if (
+    typeof event.parentToolCallId === "string" &&
+    event.parentToolCallId.trim().length > 0
+  ) {
+    return event.parentToolCallId;
+  }
+  return getString(event.event, "parent_tool_call_id", "parentToolCallId");
+}
+
+function extractToolCallId(
+  value: Record<string, unknown>,
+): string | undefined {
+  const action = asRecord(value.action);
+  const observation = asRecord(value.observation);
+  const toolCall = findToolCall(value, action);
 
   return (
-    getString(event.event, "tool_call_id", "toolCallId") ??
+    getString(value, "tool_call_id", "toolCallId") ??
     getString(action, "tool_call_id", "toolCallId") ??
     getString(observation, "tool_call_id", "toolCallId") ??
     getString(toolCall, "id", "tool_call_id", "toolCallId")

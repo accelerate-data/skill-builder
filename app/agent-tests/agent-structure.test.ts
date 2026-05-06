@@ -391,7 +391,8 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     expect(content).toMatch(/creating-skills/);
     expect(content).toMatch(/skill-verifier/);
     expect(content).toMatch(/status.*generated/);
-    expect(content).toMatch(/version_bump.*1\.0\.0/);
+    expect(content).not.toMatch(/version_bump/);
+    expect(content).not.toMatch(/metadata:\s*\n\s*version:/);
     expect(content).toMatch(/fresh[- ]context (?:verification|verifier)/i);
     expect(content).toMatch(/call_trace/);
     expect(agentContent).not.toMatch(/^\s+-\s+skill-validator\s*$/m);

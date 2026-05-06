@@ -71,7 +71,7 @@ describe("projectConversationEvent", () => {
     expect(item.toolName).toBe("file_editor");
     expect(item.toolSummary).toBe("Read file: foo.md");
     expect(item.toolStatus).toBe("pending");
-    expect(item.toolUseId).toBe("call-1");
+    expect(item.toolCallId).toBe("call-1");
     expect(result.pendingDelta.set?.[0]?.key).toBe("call-1");
     expect(result.pendingDelta.set?.[0]?.value.displayItemId).toBe(item.id);
   });

@@ -58,8 +58,8 @@ pub struct DecisionsOutput {
 /// Structured output produced by the `generate-skill` agent (workflow step 3,
 /// writing phase) or the `benchmark-skill` agent (benchmark phase).
 ///
-/// generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, version_bump?, call_trace }`
-/// rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, version_bump?, call_trace }`
+/// generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, call_trace }`
+/// rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, call_trace }`
 /// benchmark-skill:  `{ status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }`
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
@@ -72,8 +72,6 @@ pub struct GenerateSkillOutput {
     pub skipped: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_summary: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version_bump: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call_trace: Option<Vec<String>>,
 }
@@ -272,7 +270,6 @@ mod tests {
         let json = serde_json::json!({
             "status": "generated",
             "commit_summary": "Added new skill",
-            "version_bump": "1.0.0",
             "call_trace": ["read-user-context", "write-skill"]
         });
 
@@ -280,7 +277,6 @@ mod tests {
             serde_json::from_value(json).expect("deserialize GenerateSkillOutput");
         assert_eq!(parsed.status, "generated");
         assert_eq!(parsed.commit_summary.as_deref(), Some("Added new skill"));
-        assert_eq!(parsed.version_bump.as_deref(), Some("1.0.0"));
         assert_eq!(
             parsed.call_trace,
             Some(vec![

@@ -20,7 +20,10 @@ import type {
   OpenHandsConversationEvent,
   OpenHandsConversationState,
 } from "@/lib/openhands-conversation-events";
-import { isTerminalConversationStatus } from "@/lib/openhands-conversation-events";
+import {
+  getParentToolCallId,
+  isTerminalConversationStatus,
+} from "@/lib/openhands-conversation-events";
 import {
   projectConversationEvent,
   type PendingActionEntry,
@@ -32,6 +35,59 @@ import {
 import { formatProviderModelId } from "@/lib/models";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
+
+function patchDisplayItemById(
+  items: DisplayItem[],
+  targetId: string,
+  patch: Partial<DisplayItem>,
+): DisplayItem[] {
+  let changed = false;
+  const nextItems = items.map((item) => {
+    if (item.id === targetId) {
+      changed = true;
+      return { ...item, ...patch };
+    }
+    if (item.subagentItems && item.subagentItems.length > 0) {
+      const nextChildren = patchDisplayItemById(item.subagentItems, targetId, patch);
+      if (nextChildren !== item.subagentItems) {
+        changed = true;
+        return { ...item, subagentItems: nextChildren };
+      }
+    }
+    return item;
+  });
+  return changed ? nextItems : items;
+}
+
+function appendChildItemToParentToolCall(
+  items: DisplayItem[],
+  parentToolCallId: string,
+  child: DisplayItem,
+): DisplayItem[] {
+  let changed = false;
+  const nextItems = items.map((item) => {
+    if (item.toolCallId === parentToolCallId && item.type === "subagent") {
+      changed = true;
+      return {
+        ...item,
+        subagentItems: [...(item.subagentItems ?? []), child],
+      };
+    }
+    if (item.subagentItems && item.subagentItems.length > 0) {
+      const nextChildren = appendChildItemToParentToolCall(
+        item.subagentItems,
+        parentToolCallId,
+        child,
+      );
+      if (nextChildren !== item.subagentItems) {
+        changed = true;
+        return { ...item, subagentItems: nextChildren };
+      }
+    }
+    return item;
+  });
+  return changed ? nextItems : items;
+}
 
 // ---------------------------------------------------------------------------
 // Pending agent event buffer (for typed events arriving before run registration)
@@ -437,6 +493,7 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   addConversationEvent: (agentId, event) =>
     set((state) => {
+      const parentToolCallId = getParentToolCallId(event);
       const run = state.runs[agentId];
       if (!run) {
         console.debug(
@@ -481,16 +538,34 @@ export const useAgentStore = create<AgentState>((set) => ({
       // Apply updates: shallow-merge each patch onto the matching DisplayItem by id.
       let nextDisplayItems: DisplayItem[] = run.displayItems;
       if (projection.update.length > 0) {
-        const patchById = new Map(
-          projection.update.map((u) => [u.id, u.patch] as const),
-        );
-        nextDisplayItems = nextDisplayItems.map((item) => {
-          const patch = patchById.get(item.id);
-          return patch ? { ...item, ...patch } : item;
-        });
+        for (const update of projection.update) {
+          nextDisplayItems = patchDisplayItemById(
+            nextDisplayItems,
+            update.id,
+            update.patch,
+          );
+        }
       }
       if (projection.add.length > 0) {
-        nextDisplayItems = [...nextDisplayItems, ...projection.add];
+        if (parentToolCallId) {
+          for (const item of projection.add) {
+            const nestedItem = {
+              ...item,
+              parentToolCallId,
+            };
+            const maybeNested = appendChildItemToParentToolCall(
+              nextDisplayItems,
+              parentToolCallId,
+              nestedItem,
+            );
+            nextDisplayItems =
+              maybeNested === nextDisplayItems
+                ? [...nextDisplayItems, nestedItem]
+                : maybeNested;
+          }
+        } else {
+          nextDisplayItems = [...nextDisplayItems, ...projection.add];
+        }
       }
 
       // Apply pending-actions delta (set first, then delete — matches projection contract).

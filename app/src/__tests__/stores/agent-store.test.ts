@@ -12,6 +12,7 @@ import {
   getPhantomTimerCount,
 } from "@/stores/agent-store";
 import type { DisplayItem } from "@/lib/display-types";
+import type { OpenHandsConversationEvent } from "@/lib/openhands-conversation-events";
 
 function makeDisplayItem(
   overrides: Partial<DisplayItem> & { type: DisplayItem["type"] },
@@ -21,6 +22,24 @@ function makeDisplayItem(
     timestamp: Date.now(),
     ...overrides,
   } as DisplayItem;
+}
+
+function makeConversationEvent(
+  eventClass: string,
+  body: Record<string, unknown>,
+  timestamp = Date.now(),
+  overrides: Partial<OpenHandsConversationEvent> = {},
+): OpenHandsConversationEvent {
+  return {
+    type: "conversation_event",
+    runtime: "openhands",
+    conversationId: "conv-test",
+    agentId: "agent-test",
+    eventClass,
+    event: body,
+    timestamp,
+    ...overrides,
+  };
 }
 
 describe("useAgentStore", () => {
@@ -289,6 +308,78 @@ describe("useAgentStore", () => {
     expect(state.runs["agent-1"].status).toBe("running");
     expect(state.runs["agent-2"].displayItems).toHaveLength(0);
     expect(state.runs["agent-2"].status).toBe("completed");
+  });
+
+  it("nests child subagent conversation events inside the matching parent subagent row", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const parentAction = makeConversationEvent(
+      "ActionEvent",
+      {
+        source: "agent",
+        action: {
+          subagent_type: "skill-verifier",
+          description: "Verify generated skill package",
+        },
+        tool_name: "task",
+        tool_call_id: "call-parent-1",
+        summary: "Verify generated skill package",
+      },
+      1_000,
+    );
+
+    useAgentStore.getState().addConversationEvent("agent-1", parentAction);
+
+    const childAction = makeConversationEvent(
+      "ActionEvent",
+      {
+        source: "agent",
+        action: { command: "view", path: "/repo/SKILL.md" },
+        tool_name: "file_editor",
+        tool_call_id: "call-child-1",
+      },
+      1_100,
+      {
+        conversationId: "conv-child-1",
+        parentToolCallId: "call-parent-1",
+      },
+    );
+
+    const childObservation = makeConversationEvent(
+      "ObservationEvent",
+      {
+        source: "environment",
+        tool_call_id: "call-child-1",
+        observation: { content: "Read 288 lines from SKILL.md" },
+        is_error: false,
+      },
+      1_200,
+      {
+        conversationId: "conv-child-1",
+        parentToolCallId: "call-parent-1",
+      },
+    );
+
+    useAgentStore.getState().addConversationEvent("agent-1", childAction);
+    useAgentStore.getState().addConversationEvent("agent-1", childObservation);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(1);
+
+    const subagentItem = run.displayItems[0];
+    expect(subagentItem.type).toBe("subagent");
+    expect(subagentItem.toolCallId).toBe("call-parent-1");
+    expect(subagentItem.subagentItems).toHaveLength(1);
+    expect(subagentItem.subagentItems?.[0]).toMatchObject({
+      type: "tool_call",
+      toolCallId: "call-child-1",
+      toolSummary: "Read file: SKILL.md",
+      toolStatus: "ok",
+      toolResult: {
+        content: "Read 288 lines from SKILL.md",
+        isError: false,
+      },
+    });
   });
 });
 

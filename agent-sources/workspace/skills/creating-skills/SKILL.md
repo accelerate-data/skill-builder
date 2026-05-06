@@ -32,13 +32,6 @@ Write `SKILL.md` first. Keep it operational: future agents should be able to rec
 The generated skill should include:
 
 - concise frontmatter with a trigger-focused `description`
-- nested `metadata.version` in `SKILL.md` frontmatter, for example:
-
-  ```yaml
-  metadata:
-    version: "1.0.0"
-  ```
-
 - a clear statement of when to use the skill and when not to use it
 - the minimum process needed to execute the skill reliably
 - input and output expectations
