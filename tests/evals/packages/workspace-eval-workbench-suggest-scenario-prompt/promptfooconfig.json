@@ -1,0 +1,20 @@
+{
+  "description": "Workspace eval workbench scenario suggestion prompt JSON output.",
+  "metadata": {
+    "eval_tier": "light"
+  },
+  "prompts": [
+    "file://prompt.txt"
+  ],
+  "tests": [
+    {
+      "description": "[smoke] eval workbench suggest-scenario returns exact JSON shape",
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const trimmed = output.trim(); if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false; const data = JSON.parse(trimmed); if (typeof data.prompt !== 'string' || data.prompt.trim().length === 0) return false; if (!Array.isArray(data.assertions) || data.assertions.length < 1 || data.assertions.length > 3) return false; if (!('shouldTrigger' in data) || data.shouldTrigger !== null) return false; const allowed = new Set(['equals', 'contains', 'javascript']); if (!data.assertions.every((item) => item && typeof item === 'object' && !Array.isArray(item) && Object.keys(item).length === 2 && typeof item.type === 'string' && allowed.has(item.type) && typeof item.value === 'string' && item.value.trim().length > 0)) return false; const topKeys = Object.keys(data).sort().join(','); return topKeys === 'assertions,prompt,shouldTrigger'; })()"
+        }
+      ]
+    }
+  ]
+}

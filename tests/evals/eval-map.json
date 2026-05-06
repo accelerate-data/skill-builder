@@ -101,6 +101,11 @@
       "prompt": "packages/workspace-eval-generator-system-prompt/prompt.txt",
       "purpose": "Workspace eval generator system prompt behavior."
     },
+    "workspace-eval-workbench-suggest-scenario-prompt": {
+      "config": "packages/workspace-eval-workbench-suggest-scenario-prompt/promptfooconfig.json",
+      "prompt": "packages/workspace-eval-workbench-suggest-scenario-prompt/prompt.txt",
+      "purpose": "Workspace eval workbench suggest-scenario prompt behavior."
+    },
     "workspace-refine-initial-prompt": {
       "config": "packages/workspace-refine-initial-prompt/promptfooconfig.json",
       "prompt": "packages/workspace-refine-initial-prompt/prompt.txt",

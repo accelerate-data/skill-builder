@@ -3231,6 +3231,27 @@ mod tests {
     }
 
     #[test]
+    fn build_suggest_scenario_prompt_requires_exact_json_shape_and_self_check() {
+        let prompt = build_suggest_scenario_prompt(
+            "measuring-pipeline-value",
+            &scenario_from_dto(sample_trigger_scenario_dto("Bookings routing")).unwrap(),
+            &[crate::types::SkillFileContent {
+                path: "SKILL.md".to_string(),
+                content: "Use when the user needs booking and pipeline guidance.".to_string(),
+            }],
+        );
+
+        assert!(prompt.contains("Return exactly one valid JSON object"));
+        assert!(prompt.contains("\"prompt\": \"string\""));
+        assert!(prompt.contains("\"assertions\": ["));
+        assert!(prompt.contains("\"type\": \"equals | contains | javascript\""));
+        assert!(prompt.contains("\"value\": \"string\""));
+        assert!(prompt.contains("\"shouldTrigger\": true"));
+        assert!(prompt.contains("Before returning, check that"));
+        assert!(prompt.contains("every assertion object includes both `type` and `value`"));
+    }
+
+    #[test]
     fn rejects_suggested_assertions_outside_expected_bounds() {
         let state = serde_json::json!({
             "type": "conversation_state",
