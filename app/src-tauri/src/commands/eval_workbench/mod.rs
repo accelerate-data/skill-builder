@@ -210,6 +210,47 @@ fn scenario_expectations_json(scenario: &scenarios::Scenario) -> Value {
     )
 }
 
+fn persist_scenario_file(
+    eval_dir: &Path,
+    scenario: &scenarios::Scenario,
+    previous_scenario_name: Option<&str>,
+) -> Result<(), String> {
+    if let Some(previous_scenario_name) = previous_scenario_name {
+        scenarios::validate_scenario_name(previous_scenario_name)?;
+    }
+    let path = scenarios::scenario_file_path(eval_dir, &scenario.name);
+    let existing_scenario = scenarios::load_scenario(eval_dir, &scenario.name)?;
+    let existing_target_scenario = if path.exists() {
+        scenarios::read_scenario_file(&path).ok()
+    } else {
+        None
+    };
+    let is_rename = previous_scenario_name.is_some_and(|previous| previous != scenario.name);
+    let is_create = previous_scenario_name.is_none();
+    if existing_scenario.is_some() && (is_create || is_rename) {
+        return Err(format!("Scenario '{}' already exists", scenario.name));
+    }
+    let target_path_matches_existing = existing_target_scenario.as_ref().is_some_and(|existing| {
+        existing.name == scenario.name || previous_scenario_name == Some(existing.name.as_str())
+    });
+    if existing_target_scenario.is_some() && !target_path_matches_existing {
+        return Err(format!(
+            "Scenario '{}' conflicts with existing slug '{}'",
+            scenario.name,
+            scenarios::slugify_scenario_name(&scenario.name)
+        ));
+    }
+    scenarios::write_scenario_file(&path, scenario)?;
+    scenarios::delete_other_scenario_files(eval_dir, &scenario.name, &path)?;
+    if let Some(previous_scenario_name) = previous_scenario_name {
+        if previous_scenario_name != scenario.name {
+            scenarios::delete_scenario_file(eval_dir, previous_scenario_name)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn scenario_run_snapshot(prompt_set: &EvalPromptSet) -> Value {
     serde_json::json!({
         "pluginSlug": prompt_set.plugin_slug,
@@ -1991,44 +2032,10 @@ pub fn save_scenario(
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
     let scenario = scenario_from_dto(scenario)?;
-    if let Some(previous_scenario_name) = previous_scenario_name.as_deref() {
-        scenarios::validate_scenario_name(previous_scenario_name)?;
-    }
     let skills_path = resolve_skills_path(&db)?;
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
-    let existing_scenario = scenarios::load_scenario(&eval_dir, &scenario.name)?;
-    let existing_target_scenario = if path.exists() {
-        scenarios::read_scenario_file(&path).ok()
-    } else {
-        None
-    };
-    let is_rename = previous_scenario_name
-        .as_deref()
-        .is_some_and(|previous| previous != scenario.name);
-    let is_create = previous_scenario_name.is_none();
-    if existing_scenario.is_some() && (is_create || is_rename) {
-        return Err(format!("Scenario '{}' already exists", scenario.name));
-    }
-    let target_path_matches_existing = existing_target_scenario.as_ref().is_some_and(|existing| {
-        existing.name == scenario.name
-            || previous_scenario_name.as_deref() == Some(existing.name.as_str())
-    });
-    if existing_target_scenario.is_some() && !target_path_matches_existing {
-        return Err(format!(
-            "Scenario '{}' conflicts with existing slug '{}'",
-            scenario.name,
-            scenarios::slugify_scenario_name(&scenario.name)
-        ));
-    }
-    scenarios::write_scenario_file(&path, &scenario)?;
-    scenarios::delete_other_scenario_files(&eval_dir, &scenario.name, &path)?;
-    if let Some(previous_scenario_name) = previous_scenario_name.as_deref() {
-        if previous_scenario_name != scenario.name {
-            scenarios::delete_scenario_file(&eval_dir, previous_scenario_name)?;
-        }
-    }
+    persist_scenario_file(&eval_dir, &scenario, previous_scenario_name.as_deref())?;
 
     Ok(scenario_to_dto(scenario))
 }
@@ -2100,8 +2107,7 @@ pub async fn suggest_scenario(
 
     let suggested_scenario =
         parse_suggested_scenario_response(&run.conversation_state, &existing_scenario)?;
-    let path = scenarios::scenario_file_path(&eval_dir, &suggested_scenario.name);
-    scenarios::write_scenario_file(&path, &suggested_scenario)?;
+    persist_scenario_file(&eval_dir, &suggested_scenario, Some(&scenario_name))?;
     Ok(scenario_to_dto(suggested_scenario))
 }
 
@@ -3799,6 +3805,38 @@ mod tests {
         )
         .unwrap()
         .is_none());
+    }
+
+    #[test]
+    fn persist_suggested_scenario_renames_without_leaving_placeholder_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let original = scenario_from_dto(sample_scenario_dto("Scenario 1")).unwrap();
+        let original_path = scenarios::scenario_file_path(&eval_dir, &original.name);
+        scenarios::write_scenario_file(&original_path, &original).unwrap();
+
+        let mut suggested = original.clone();
+        suggested.name = "Pipeline coverage by deal type".to_string();
+        suggested.prompt =
+            "How does our current pipeline coverage break down by deal type?".to_string();
+        suggested.expectations = vec![
+            "Reports TCV and MRR coverage separately.".to_string(),
+            "Flags missing deal type classification as a blocker.".to_string(),
+        ];
+
+        persist_scenario_file(&eval_dir, &suggested, Some("Scenario 1")).unwrap();
+
+        assert!(!original_path.exists());
+        let renamed_path = scenarios::scenario_file_path(&eval_dir, &suggested.name);
+        assert!(renamed_path.exists());
+        assert!(scenarios::load_scenario(&eval_dir, "Scenario 1").unwrap().is_none());
+        assert_eq!(
+            scenarios::load_scenario(&eval_dir, "Pipeline coverage by deal type")
+                .unwrap()
+                .unwrap()
+                .prompt,
+            "How does our current pipeline coverage break down by deal type?"
+        );
     }
 
     #[test]
