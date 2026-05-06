@@ -454,6 +454,8 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         "/tmp/skills",
+        "## User Context\n### Skill\n**Name**: sales-analytics",
+        "{\n  \"sections\": []\n}",
     );
 
     assert!(prompt.contains("answer-evaluator workflow gate"));
@@ -461,8 +463,8 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
     assert!(prompt.contains("answer-evaluator skill"));
     assert!(prompt.contains("We are writing the skill sales-analytics."));
     assert!(prompt.contains("/tmp/workspace"));
-    assert!(prompt.contains("/user-context.md"));
-    assert!(prompt.contains("/context"));
+    assert!(prompt.contains("User context:"));
+    assert!(prompt.contains("Clarifications JSON:"));
     assert!(prompt
         .to_ascii_lowercase()
         .contains("return only a raw json object"));
@@ -2078,7 +2080,14 @@ fn test_materialize_step3_rejects_wrong_status() {
 
 #[test]
 fn test_evaluator_prompt_does_not_contain_stale_routing_tokens() {
-    let prompt = super::prompt::build_evaluator_prompt("s", "/ws", DEFAULT_PLUGIN_SLUG, "/sk");
+    let prompt = super::prompt::build_evaluator_prompt(
+        "s",
+        "/ws",
+        DEFAULT_PLUGIN_SLUG,
+        "/sk",
+        "context",
+        "{}",
+    );
     for forbidden in [
         ".claude/plugins",
         "skill-content-researcher:",
@@ -2160,6 +2169,8 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
         workspace_path,
         DEFAULT_PLUGIN_SLUG,
         skills_path,
+        "## User Context\n### Skill\n**Name**: my-skill",
+        "{\n  \"sections\": []\n}",
     );
 
     assert!(prompt.contains("We are writing the skill my-skill."));
@@ -2167,12 +2178,8 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
         "Workspace directory: /home/user/.vibedata/skill-builder/default/skills/my-skill"
     ));
     assert!(prompt.contains("Skill output directory: /home/user/my-skills/default/skills/my-skill"));
-    assert!(prompt.contains(
-        "User context file: /home/user/.vibedata/skill-builder/default/skills/my-skill/user-context.md"
-    ));
-    assert!(prompt.contains(
-        "Context directory: /home/user/.vibedata/skill-builder/default/skills/my-skill/context"
-    ));
+    assert!(prompt.contains("User context:\n## User Context"));
+    assert!(prompt.contains("Clarifications JSON:\n{\n  \"sections\": []\n}"));
     assert!(prompt.contains("Do not create directories with mkdir"));
 }
 
