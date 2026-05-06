@@ -19,10 +19,9 @@ import {
   type SidecarEvent,
 } from "./protocol.js";
 
-type EvaluateFn = typeof import("promptfoo")["evaluate"];
-
-let activePromptfooConfigDir: string | null = null;
-let promptfooEvaluate: EvaluateFn | null = null;
+const PROMPTFOO_EVAL_SUBPROCESS_PATH = fileURLToPath(
+  new URL("./promptfoo-eval-subprocess.js", import.meta.url),
+);
 
 export async function runJsonlSidecar(
   input: NodeJS.ReadableStream = stdin,
@@ -303,7 +302,3 @@ async function runPromptfooEvalInSubprocess(
     child.stdin.end();
   });
 }
-
-const PROMPTFOO_EVAL_SUBPROCESS_PATH = fileURLToPath(
-  new URL("./promptfoo-eval-subprocess.js", import.meta.url),
-);

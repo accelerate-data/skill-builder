@@ -193,7 +193,10 @@ function promptfooDbPath(promptfooConfigDir: string): string {
   return join(promptfooConfigDir, "promptfoo.db");
 }
 
-function listMatchingEvalIds(db: Database.Database, filter: HistoryFilter): string[] {
+function listMatchingEvalIds(
+  db: InstanceType<typeof Database>,
+  filter: HistoryFilter,
+): string[] {
   const rows = db
     .prepare(
       `SELECT DISTINCT

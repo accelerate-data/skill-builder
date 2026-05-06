@@ -1,7 +1,9 @@
+import { spawn } from "node:child_process";
 import { mkdtemp, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { serializeSidecarRequest } from "../protocol.js";
 import { runJsonlSidecar } from "../runner.js";
@@ -31,6 +33,53 @@ async function runSidecarForInput(inputText: string) {
 
 async function runSidecarForRequest(request: SidecarRequest) {
   return runSidecarForInput(serializeSidecarRequest(request));
+}
+
+async function runSidecarCliForRequest(
+  request: Parameters<typeof serializeSidecarRequest>[0],
+) {
+  const tsxCliPath = fileURLToPath(
+    new URL("../../node_modules/tsx/dist/cli.mjs", import.meta.url),
+  );
+  const runnerPath = fileURLToPath(new URL("../runner.ts", import.meta.url));
+
+  return await new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+    const child = spawn(process.execPath, [tsxCliPath, runnerPath], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+
+    child.stdout.on("data", (chunk: string | Buffer) => {
+      stdoutChunks.push(String(chunk));
+    });
+    child.stderr.on("data", (chunk: string | Buffer) => {
+      stderrChunks.push(String(chunk));
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            `runner CLI exited with code ${code ?? -1}: ${stderrChunks.join("").trim()}`,
+          ),
+        );
+        return;
+      }
+
+      resolve(
+        stdoutChunks
+          .join("")
+          .trim()
+          .split("\n")
+          .filter((line) => line.length > 0)
+          .map((line) => JSON.parse(line)),
+      );
+    });
+
+    child.stdin.write(serializeSidecarRequest(request));
+    child.stdin.end();
+  });
 }
 
 async function buildRunEvalRequest(
@@ -605,5 +654,50 @@ describe("promptfoo sidecar runner", () => {
     const resultEvent = listEvents.find((event) => event.type === "result");
     expect(resultEvent?.runs).toHaveLength(1);
     expect(resultEvent?.runs[0]?.id).toBe("run-latest");
+  });
+
+  it("supports the CLI entrypoint for run_eval requests", async () => {
+    const promptfooConfigDir = await mkdtemp(
+      join(tmpdir(), "promptfoo-sidecar-cli-"),
+    );
+
+    const events = await runSidecarCliForRequest(await buildRunEvalRequest({
+      id: "run-cli",
+      type: "run_eval",
+      mode: "trigger",
+      skillName: "forecast revenue",
+      pluginSlug: "skills",
+      scenarioName: "Routing checks",
+      promptfooConfigDir,
+      candidates: [{ id: "baseline", label: "Baseline" }],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Forecast revenue for next quarter",
+          shouldTrigger: true,
+          assertions: [],
+        },
+      ],
+      executions: [
+        {
+          caseId: "case-1",
+          candidateId: "baseline",
+          output: { invokedTargetSkill: true, responseText: "Triggered" },
+        },
+      ],
+    }));
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        id: "run-cli",
+        type: "result",
+        result: expect.objectContaining({
+          mode: "trigger",
+          total: 1,
+          passed: 1,
+          failed: 0,
+        }),
+      }),
+    );
   });
 });
