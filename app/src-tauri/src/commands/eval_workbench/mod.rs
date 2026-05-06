@@ -700,8 +700,19 @@ fn parse_openhands_structured_output(state: &serde_json::Value) -> Result<Value,
         .and_then(|value| value.as_str())
         .ok_or_else(|| "OpenHands eval result did not include structured output".to_string())?;
 
-    serde_json::from_str(text)
+    let cleaned = clean_openhands_structured_result_text(text);
+
+    serde_json::from_str(cleaned)
         .map_err(|error| format!("OpenHands eval structured result was not valid JSON: {error}"))
+}
+
+fn clean_openhands_structured_result_text(text: &str) -> &str {
+    let cleaned = text.trim();
+    let cleaned = cleaned
+        .strip_prefix("```json")
+        .or_else(|| cleaned.strip_prefix("```"))
+        .unwrap_or(cleaned);
+    cleaned.strip_suffix("```").unwrap_or(cleaned).trim()
 }
 
 fn description_candidate_output_format() -> Value {
@@ -2921,6 +2932,29 @@ mod tests {
             error,
             "Scenario generation must return between 3 and 5 scenarios"
         );
+    }
+
+    #[test]
+    fn parses_generated_scenarios_from_fenced_result_text() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": format!(
+                "```json\n{}\n```",
+                serde_json::json!({
+                    "scenarios": [
+                        sample_scenario_dto("Regression"),
+                        sample_scenario_dto("Smoke"),
+                        sample_scenario_dto("Edge case"),
+                    ]
+                })
+            )
+        });
+
+        let scenarios = parse_generated_scenarios_response(&state).unwrap();
+
+        assert_eq!(scenarios.len(), 3);
+        assert_eq!(scenarios[0].name, "Regression");
     }
 
     #[test]
