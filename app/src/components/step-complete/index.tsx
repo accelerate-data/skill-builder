@@ -22,6 +22,7 @@ interface WorkflowStepCompleteProps {
   isLastStep?: boolean;
   reviewMode?: boolean;
   skillName?: string;
+  pluginSlug?: string;
   skillsPath?: string | null;
   clarificationsEditable?: boolean;
   clarificationsData?: ClarificationsFile | null;
@@ -46,6 +47,7 @@ export function WorkflowStepComplete({
   isLastStep = false,
   reviewMode,
   skillName,
+  pluginSlug,
   skillsPath,
   clarificationsEditable,
   clarificationsData,
@@ -72,7 +74,7 @@ export function WorkflowStepComplete({
   }, [skillName, stepId]);
 
   const { fileContents, resolvedFiles, selectedFile, setSelectedFile, loadingFiles } =
-    useStepFiles(skillName, skillsPath, outputFiles);
+    useStepFiles(skillName, pluginSlug, skillsPath, outputFiles);
 
   // --- Loading ---
   if (loadingFiles) {

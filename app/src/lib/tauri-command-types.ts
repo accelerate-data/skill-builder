@@ -240,7 +240,10 @@ export interface TauriCommandMap {
   };
   read_file: { args: { filePath: string }; result: string };
   write_file: { args: { path: string; content: string }; result: void };
-  list_skill_files: { args: { workspacePath: string; skillName: string }; result: SkillFileEntry[] };
+  list_skill_files: {
+    args: { workspacePath: string; skillName: string; pluginSlug: string | null };
+    result: SkillFileEntry[];
+  };
   get_workspace_path: { args: NoArgs; result: string };
   graceful_shutdown: { args: NoArgs; result: void };
   allow_app_exit: { args: NoArgs; result: void };

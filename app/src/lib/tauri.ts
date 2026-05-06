@@ -221,8 +221,16 @@ export const readFile = (filePath: string) =>
 export const writeFile = (path: string, content: string) =>
   invokeCommand("write_file", { path, content });
 
-export const listSkillFiles = (workspacePath: string, skillName: string) =>
-  invokeCommand("list_skill_files", { workspacePath, skillName });
+export const listSkillFiles = (
+  workspacePath: string,
+  skillName: string,
+  pluginSlug?: string | null,
+) =>
+  invokeCommand("list_skill_files", {
+    workspacePath,
+    skillName,
+    pluginSlug: pluginSlug ?? null,
+  });
 
 // --- Lifecycle ---
 

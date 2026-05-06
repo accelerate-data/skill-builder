@@ -10,6 +10,7 @@ import {
  */
 export function useStepFiles(
   skillName: string | undefined,
+  pluginSlug: string | undefined,
   skillsPath: string | null | undefined,
   outputFiles: string[],
 ) {
@@ -43,7 +44,7 @@ export function useStepFiles(
       const absPathMap = new Map<string, string>(); // relative_path → absolute_path
       if (skillsPath) {
         try {
-          const allEntries = await listSkillFiles(skillsPath, skillName);
+          const allEntries = await listSkillFiles(skillsPath, skillName, pluginSlug);
           console.log(`[step-complete] listSkillFiles returned ${allEntries.length} entries for ${skillName}`);
           for (const entry of allEntries) {
             if (!entry.is_directory) {
@@ -102,7 +103,7 @@ export function useStepFiles(
     })();
 
     return () => { cancelled = true; };
-  }, [skillName, skillsPath, outputFiles]);
+  }, [skillName, pluginSlug, skillsPath, outputFiles]);
 
   return { fileContents, resolvedFiles, selectedFile, setSelectedFile, loadingFiles };
 }

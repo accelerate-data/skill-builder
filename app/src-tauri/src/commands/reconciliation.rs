@@ -3,6 +3,7 @@ use crate::skill_paths::{
     ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG,
 };
 use crate::types::ReconciliationResult;
+use crate::DataDir;
 use std::fs;
 use std::path::Path;
 
@@ -10,6 +11,7 @@ use std::path::Path;
 pub fn reconcile_startup(
     _app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
+    data_dir: tauri::State<'_, DataDir>,
     apply: Option<bool>,
 ) -> Result<ReconciliationResult, String> {
     let apply = apply.unwrap_or(false);
@@ -51,7 +53,10 @@ pub fn reconcile_startup(
         _ => {}
     }
 
-    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+    let startup_cleaned = cleanup_app_local_startup_state(&data_dir.0)?;
+    let mut result =
+        crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+    result.auto_cleaned += startup_cleaned;
 
     if apply {
         // Per-skill repos: walk discovered skill dirs, init+commit any without .git/
@@ -111,6 +116,36 @@ pub fn reconcile_startup(
     }
 
     Ok(result)
+}
+
+fn cleanup_app_local_startup_state(data_dir: &Path) -> Result<u32, String> {
+    let mut cleaned = 0u32;
+    let conversations_root = data_dir.join("workspace").join("conversations");
+    if conversations_root.exists() {
+        for entry in fs::read_dir(&conversations_root).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.join("meta.json").exists() {
+                continue;
+            }
+            fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+            cleaned += 1;
+        }
+    }
+
+    let legacy_db = data_dir.join("skill-builder.db");
+    if legacy_db.exists() {
+        let metadata = fs::metadata(&legacy_db).map_err(|e| e.to_string())?;
+        if metadata.is_file() && metadata.len() == 0 {
+            fs::remove_file(&legacy_db).map_err(|e| e.to_string())?;
+            cleaned += 1;
+        }
+    }
+
+    Ok(cleaned)
 }
 
 #[tauri::command]
@@ -494,5 +529,34 @@ mod tests {
 
         // Should be untouched since it's not in the DB
         assert!(flat_path.exists(), "unknown skill dir should not be moved");
+    }
+
+    #[test]
+    fn test_cleanup_app_local_startup_state_prunes_conversation_dirs_missing_meta_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let conversations_root = tmp.path().join("workspace").join("conversations");
+        let orphan = conversations_root.join("orphaned-run");
+        let valid = conversations_root.join("valid-run");
+        fs::create_dir_all(&orphan).unwrap();
+        fs::create_dir_all(&valid).unwrap();
+        fs::write(valid.join("meta.json"), "{}").unwrap();
+
+        let cleaned = cleanup_app_local_startup_state(tmp.path()).unwrap();
+
+        assert_eq!(cleaned, 1);
+        assert!(!orphan.exists());
+        assert!(valid.exists());
+    }
+
+    #[test]
+    fn test_cleanup_app_local_startup_state_prunes_zero_byte_legacy_db_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let legacy_db = tmp.path().join("skill-builder.db");
+        fs::write(&legacy_db, "").unwrap();
+
+        let cleaned = cleanup_app_local_startup_state(tmp.path()).unwrap();
+
+        assert_eq!(cleaned, 1);
+        assert!(!legacy_db.exists());
     }
 }

@@ -17,18 +17,18 @@ pub struct SkillIdName {
 }
 
 /// List all non-deleted skills with plugin metadata for document assignment.
-/// Default plugin ("skills") is returned first; within each plugin skills are sorted by name.
+/// The default plugin is returned first; within each plugin skills are sorted by name.
 #[tauri::command]
 pub fn list_skills_for_documents(db: tauri::State<'_, Db>) -> Result<Vec<SkillIdName>, String> {
     log::info!("list_skills_for_documents");
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT s.id, s.name, p.slug, p.display_name, (p.slug = 'skills') AS is_default
+            "SELECT s.id, s.name, p.slug, p.display_name, p.is_default
              FROM skills s
              JOIN plugins p ON s.plugin_id = p.id
              WHERE COALESCE(s.deleted_at, '') = ''
-             ORDER BY (p.slug != 'skills'), s.name ASC",
+             ORDER BY (p.is_default = 0), p.slug ASC, s.name ASC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt

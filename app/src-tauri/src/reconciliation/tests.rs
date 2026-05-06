@@ -2045,6 +2045,208 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
     assert!(skill_dir.exists(), "workspace dir should be recreated");
 }
 
+#[test]
+fn test_startup_normalization_merges_legacy_skills_default_into_default_plugin() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
+    crate::db::ensure_default_plugin(&conn).unwrap();
+    crate::db::upsert_skill_in_plugin(
+        &conn,
+        "measuring-pipeline-value",
+        "skill-builder",
+        "domain",
+        "skills",
+    )
+    .unwrap();
+    crate::db::upsert_skill_in_plugin(
+        &conn,
+        "measuring-pipeline-value",
+        "skill-builder",
+        "domain",
+        DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
+
+    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    let plugins = crate::db::list_plugins(&conn).unwrap();
+    assert_eq!(plugins.iter().filter(|plugin| plugin.is_default).count(), 1);
+    assert_eq!(
+        plugins.iter().find(|plugin| plugin.is_default).unwrap().slug,
+        DEFAULT_PLUGIN_SLUG
+    );
+
+    let matching: Vec<_> = crate::db::list_all_skills(&conn)
+        .unwrap()
+        .into_iter()
+        .filter(|skill| skill.name == "measuring-pipeline-value")
+        .collect();
+    assert_eq!(matching.len(), 1);
+    assert_eq!(matching[0].plugin_slug, DEFAULT_PLUGIN_SLUG);
+    assert!(result.discovered_skills.is_empty());
+}
+
+#[test]
+fn test_startup_normalization_moves_legacy_skills_and_workspace_dirs_to_default_plugin() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace_root = tmp.path().join("workspace");
+    let skills_root = tmp.path().join("skills");
+    std::fs::create_dir_all(&workspace_root).unwrap();
+    std::fs::create_dir_all(&skills_root).unwrap();
+
+    let workspace = workspace_root.to_str().unwrap();
+    let skills_path = skills_root.to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
+    crate::db::save_workflow_run(&conn, "analyzing-bookings", 3, "completed", "domain").unwrap();
+    insert_stub_clarifications(&conn, "analyzing-bookings");
+    insert_stub_decisions(&conn, "analyzing-bookings");
+
+    let legacy_workspace = workspace_root
+        .join("skills")
+        .join("skills")
+        .join("analyzing-bookings");
+    let legacy_output = skills_root
+        .join("skills")
+        .join("skills")
+        .join("analyzing-bookings");
+    std::fs::create_dir_all(legacy_workspace.join("context")).unwrap();
+    std::fs::create_dir_all(legacy_output.join("references")).unwrap();
+    std::fs::write(legacy_output.join("SKILL.md"), "# migrated\n").unwrap();
+    std::fs::write(legacy_output.join("references").join("notes.md"), "hello\n").unwrap();
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    let canonical_workspace = workspace_root
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("skills")
+        .join("analyzing-bookings");
+    let canonical_output = skills_root
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("skills")
+        .join("analyzing-bookings");
+
+    assert!(canonical_workspace.exists());
+    assert!(canonical_output.join("SKILL.md").exists());
+    assert!(canonical_output.join("references").join("notes.md").exists());
+    assert!(!legacy_workspace.exists(), "legacy workspace dir should be migrated");
+    assert!(!legacy_output.exists(), "legacy output dir should be migrated");
+}
+
+#[test]
+fn test_startup_normalization_prunes_empty_legacy_default_plugin_dirs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace_root = tmp.path().join("workspace");
+    let skills_root = tmp.path().join("skills");
+    std::fs::create_dir_all(&workspace_root).unwrap();
+    std::fs::create_dir_all(&skills_root).unwrap();
+
+    let workspace = workspace_root.to_str().unwrap();
+    let skills_path = skills_root.to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
+
+    let legacy_plugin_root = skills_root.join("skills");
+    std::fs::create_dir_all(legacy_plugin_root.join("hr-analytics")).unwrap();
+    std::fs::create_dir_all(legacy_plugin_root.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        legacy_plugin_root.join(".claude-plugin").join("plugin.json"),
+        "{}\n",
+    )
+    .unwrap();
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    assert!(
+        !legacy_plugin_root.exists(),
+        "legacy default-plugin wrapper should be removed even when it only contains empty stray dirs"
+    );
+}
+
+#[test]
+fn test_startup_normalization_moves_workspace_legacy_dirs_with_agents_only_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace_root = tmp.path().join("workspace");
+    let skills_root = tmp.path().join("skills");
+    std::fs::create_dir_all(&workspace_root).unwrap();
+    std::fs::create_dir_all(&skills_root).unwrap();
+
+    let workspace = workspace_root.to_str().unwrap();
+    let skills_path = skills_root.to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::ensure_plugin(&conn, "sample-plugin", "Sample Plugin", "local", None, None, false)
+        .unwrap();
+    crate::db::upsert_skill(&conn, "hr-analytics", "skill-builder", "domain").unwrap();
+    crate::db::upsert_skill_in_plugin(
+        &conn,
+        "pipeline-analysis",
+        "skill-builder",
+        "domain",
+        "sample-plugin",
+    )
+    .unwrap();
+
+    let default_legacy = workspace_root.join("skills").join("hr-analytics");
+    let nested_legacy = workspace_root
+        .join("skills")
+        .join("skills")
+        .join("hr-analytics");
+    let plugin_legacy = workspace_root.join("sample-plugin").join("pipeline-analysis");
+
+    std::fs::create_dir_all(default_legacy.join(".agents").join("agents")).unwrap();
+    std::fs::write(
+        default_legacy.join(".agents").join("agents").join("agent.md"),
+        "default legacy\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(nested_legacy.join(".agents").join("skills")).unwrap();
+    std::fs::write(
+        nested_legacy.join(".agents").join("skills").join("skill.md"),
+        "nested legacy\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(plugin_legacy.join(".agents").join("agents")).unwrap();
+    std::fs::write(
+        plugin_legacy.join(".agents").join("agents").join("agent.md"),
+        "plugin legacy\n",
+    )
+    .unwrap();
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    let default_canonical = workspace_root
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("skills")
+        .join("hr-analytics");
+    let plugin_canonical = workspace_root
+        .join("sample-plugin")
+        .join("skills")
+        .join("pipeline-analysis");
+
+    assert!(
+        default_canonical.join(".agents").join("agents").join("agent.md").exists(),
+        "default legacy workspace dir should move into canonical location"
+    );
+    assert!(
+        default_canonical.join(".agents").join("skills").join("skill.md").exists(),
+        "nested legacy workspace dir should merge into canonical location"
+    );
+    assert!(
+        plugin_canonical.join(".agents").join("agents").join("agent.md").exists(),
+        "plugin legacy workspace dir should move into canonical location"
+    );
+    assert!(!workspace_root.join("skills").exists());
+    assert!(!workspace_root.join("sample-plugin").join("pipeline-analysis").exists());
+}
+
 // ── Phase 1f: Dedup tests ───────────────────────────────────────────────────
 
 /// Simulates the state after a failed move + Phase 1c discovery:

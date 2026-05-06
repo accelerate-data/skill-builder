@@ -74,11 +74,14 @@ fn list_skill_files_with_plugin_roots(
 pub fn list_skill_files(
     workspace_path: String,
     skill_name: String,
+    plugin_slug: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileEntry>, String> {
     log::info!("[list_skill_files] skill_name={}", skill_name);
     let allowed_roots = get_allowed_roots(&db)?;
-    let plugin_slug = {
+    let plugin_slug = if let Some(plugin_slug) = plugin_slug {
+        plugin_slug
+    } else {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_master(&conn, &skill_name)?
             .map(|skill| skill.plugin_slug)

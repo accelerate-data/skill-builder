@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { resolveDiscovery } from "@/lib/tauri"
 import type { DiscoveredSkill, DiscoveryResolutionAction } from "@/lib/types"
+import pluginPaths from "../../plugin-paths.json"
 
 interface ReconciliationAckDialogProps {
   notifications: string[]
@@ -28,7 +29,7 @@ interface ReconciliationAckDialogProps {
 type ResolutionState = "pending" | "resolving" | "resolved"
 
 function discoveryKey(skill: DiscoveredSkill): string {
-  return `${skill.plugin_slug ?? "skills"}:${skill.name}`
+  return `${skill.plugin_slug ?? pluginPaths.default_plugin_slug}:${skill.name}`
 }
 
 function scenarioDescription(skill: DiscoveredSkill): string {
@@ -72,7 +73,7 @@ export default function ReconciliationAckDialog({
       console.log(
         "[reconciliation-ack] resolving discovery: skill=%s plugin=%s action=%s",
         skill.name,
-        skill.plugin_slug ?? "skills",
+        skill.plugin_slug ?? pluginPaths.default_plugin_slug,
         action,
       )
       setResolutions((prev) => ({ ...prev, [key]: "resolving" }))
@@ -87,7 +88,7 @@ export default function ReconciliationAckDialog({
         console.error(
           "[reconciliation-ack] failed to resolve discovery: skill=%s plugin=%s action=%s error=%o",
           skill.name,
-          skill.plugin_slug ?? "skills",
+          skill.plugin_slug ?? pluginPaths.default_plugin_slug,
           action,
           err,
         )
