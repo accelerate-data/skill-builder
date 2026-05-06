@@ -111,6 +111,10 @@
 - [ ] Make the scenario-level `Suggest` action generate scenario name plus prompt text plus expectation lines for one persisted scenario.
 - [ ] Ensure suggestion persists the active scenario through Rust and reloads the saved scenario instead of mutating only a local draft.
 - [ ] Use a single-scenario response shape, not a top-level `scenarios[]` bulk response.
+- [ ] Require the prompt to return exactly one JSON object with only `name`, `prompt`, and `expectations`.
+- [ ] Remove `shouldTrigger`, `tags`, and any trigger-era fields from the suggestion JSON contract.
+- [ ] Require `expectations` to be an array of plain-language strings, not low-level matcher objects.
+- [ ] Require the model to return JSON only, with no prose or markdown fences.
 - [ ] Remove dead frontend and backend paths that only supported bulk scenario generation.
 - [ ] Externalize the suggest prompt into `agent-sources/prompts/` and stop hardcoding it in Rust.
 - [ ] Build a suggestion context envelope that passes the canonical skill path, workspace skill path when relevant, skill files, clarifications when present, decisions when present, and current scenario state.
