@@ -31,7 +31,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 reqwest = { version = "0.13", features = ["json", "stream", "form"] }
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.29"
 rusqlite = { version = "0.39", features = ["bundled"] }
 notify = "8"
 zip = "8"
