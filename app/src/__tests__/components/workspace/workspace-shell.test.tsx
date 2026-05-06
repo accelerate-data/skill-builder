@@ -507,6 +507,59 @@ describe("WorkspaceShell", () => {
     );
   });
 
+  it("saves a newly created scenario without sending a previous scenario name", async () => {
+    const user = userEvent.setup();
+    const mutateAsync = vi.fn().mockResolvedValue({
+      name: "Smoke",
+      tags: ["performance"],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Summarize pipeline risk",
+          expectedOutcome: "Lists top blockers",
+          shouldTrigger: null,
+          assertions: [],
+        },
+      ],
+    });
+    mockUseSaveScenario.mockReset().mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    });
+
+    render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /new scenario/i }));
+    await user.clear(screen.getByLabelText(/scenario name/i));
+    await user.type(screen.getByLabelText(/scenario name/i), "Smoke");
+    await user.clear(screen.getByLabelText(/user prompt/i));
+    await user.type(screen.getByLabelText(/user prompt/i), "Summarize pipeline risk");
+    await user.clear(screen.getByLabelText(/expected outcome/i));
+    await user.type(screen.getByLabelText(/expected outcome/i), "Lists top blockers");
+    await user.click(screen.getByRole("button", { name: /^save scenario$/i }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        scenario: {
+          name: "Smoke",
+          tags: ["performance"],
+          cases: [
+            expect.objectContaining({
+              prompt: "Summarize pipeline risk",
+              expectedOutcome: "Lists top blockers",
+              shouldTrigger: null,
+              assertions: [],
+            }),
+          ],
+        },
+        previousScenarioName: null,
+      }),
+    );
+  });
+
   it("disables scenario actions while the selected scenario detail is still loading", async () => {
     const user = userEvent.setup();
 

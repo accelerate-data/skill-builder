@@ -2,29 +2,23 @@ import type { Page } from "@playwright/test";
 import { reloadWithOverrides } from "./app-helpers";
 import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "./test-paths";
 
-const TRIGGER_PROMPT_SET = {
-  id: "prompt-set-trigger",
-  pluginSlug: "skills",
-  skillName: "test-skill",
-  mode: "trigger" as const,
+const TRIGGER_SCENARIO = {
   name: "Routing checks",
-  createdAt: "2026-05-04T00:00:00Z",
-  updatedAt: "2026-05-04T00:00:00Z",
+  tags: ["trigger"] as const,
   cases: [
     {
       id: "case-1",
       prompt: "Reconcile open customer invoices",
-      expected: null,
+      expectedOutcome: null,
       shouldTrigger: true,
       assertions: [],
-      sortOrder: 0,
     },
   ],
 };
 
 const TRIGGER_RUN_SUMMARY = {
   id: "run-trigger-1",
-  promptSetId: "prompt-set-trigger",
+  scenarioName: "Routing checks",
   mode: "trigger" as const,
   status: "completed",
   summary: { passed: 3, total: 4 },
@@ -116,8 +110,9 @@ export const DESCRIPTION_OVERRIDES: Record<string, unknown> = {
       is_default_plugin: true,
     },
   ],
-  list_eval_prompt_sets: [TRIGGER_PROMPT_SET],
-  save_eval_prompt_set: TRIGGER_PROMPT_SET,
+  list_scenarios: [{ name: TRIGGER_SCENARIO.name, tags: TRIGGER_SCENARIO.tags }],
+  load_scenario: TRIGGER_SCENARIO,
+  save_scenario: TRIGGER_SCENARIO,
   list_eval_runs: [TRIGGER_RUN_SUMMARY],
   read_eval_run: TRIGGER_RUN_DETAIL,
   suggest_description_candidates: TRIGGER_CANDIDATES,

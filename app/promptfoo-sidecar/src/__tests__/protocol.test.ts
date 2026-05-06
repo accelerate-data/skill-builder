@@ -10,11 +10,8 @@ describe("promptfoo sidecar protocol", () => {
         mode: "trigger",
         skillName: "creating-skills",
         pluginSlug: "skill-creator",
-        scenarioName: "Smoke",
-        history: {
-          configDir: "/tmp/promptfoo-sidecar-tests",
-          persist: true,
-        },
+        scenarioName: "Routing checks",
+        promptfooConfigDir: "/tmp/promptfoo-sidecar",
         candidates: [
           {
             id: "baseline",
@@ -46,8 +43,10 @@ describe("promptfoo sidecar protocol", () => {
       mode: "trigger",
       skillName: "creating-skills",
       pluginSlug: "skill-creator",
-      scenarioName: "Smoke",
+      scenarioName: "Routing checks",
+      promptfooConfigDir: "/tmp/promptfoo-sidecar",
     });
+    expect(request.type).toBe("run_eval");
     if (request.type !== "run_eval") {
       throw new Error("Expected run_eval request");
     }

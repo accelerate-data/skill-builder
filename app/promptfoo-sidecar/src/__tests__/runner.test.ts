@@ -1,9 +1,9 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { beforeAll, describe, expect, it } from "vitest";
-import { serializeSidecarRequest, type SidecarRequest } from "../protocol.js";
+import { tmpdir } from "node:os";
+import { describe, expect, it } from "vitest";
+import { serializeSidecarRequest } from "../protocol.js";
 import { runJsonlSidecar } from "../runner.js";
 
 let historyConfigDir = "";
@@ -13,7 +13,7 @@ async function runSidecarForInput(inputText: string) {
   const output = new PassThrough();
   const chunks: string[] = [];
 
-  output.on("data", (chunk) => {
+  output.on("data", (chunk: string | Buffer) => {
     chunks.push(String(chunk));
   });
 
@@ -33,42 +33,28 @@ async function runSidecarForRequest(request: SidecarRequest) {
   return runSidecarForInput(serializeSidecarRequest(request));
 }
 
-function buildRunEvalRequest(
-  overrides: Partial<Extract<SidecarRequest, { type: "run_eval" }>> = {},
-): Extract<SidecarRequest, { type: "run_eval" }> {
+async function buildRunEvalRequest(
+  request: Omit<
+    Extract<Parameters<typeof serializeSidecarRequest>[0], { type: "run_eval" }>,
+    "scenarioName" | "promptfooConfigDir"
+  > &
+    Partial<
+      Pick<
+        Extract<Parameters<typeof serializeSidecarRequest>[0], { type: "run_eval" }>,
+        "scenarioName" | "promptfooConfigDir"
+      >
+    >,
+) {
   return {
-    id: "run-default",
-    type: "run_eval",
-    mode: "performance",
-    skillName: "docs-helper",
-    pluginSlug: "skills",
-    scenarioName: "Smoke",
-    history: {
-      configDir: historyConfigDir,
-      persist: false,
-    },
-    candidates: [
-      {
-        id: "baseline",
-        label: "Baseline",
-      },
-    ],
-    cases: [
-      {
-        id: "case-1",
-        prompt: "Explain the deployment guide",
-        assertions: [],
-      },
-    ],
-    executions: [
-      {
-        caseId: "case-1",
-        candidateId: "baseline",
-        output: { responseText: "Deployment guide summary only" },
-      },
-    ],
-    ...overrides,
-  };
+    scenarioName: request.scenarioName ?? "Routing checks",
+    promptfooConfigDir:
+      request.promptfooConfigDir ??
+      (await mkdtemp(join(tmpdir(), "promptfoo-sidecar-run-"))),
+    ...request,
+  } as Extract<
+    Parameters<typeof serializeSidecarRequest>[0],
+    { type: "run_eval" }
+  >;
 }
 
 describe("promptfoo sidecar runner", () => {
@@ -200,18 +186,15 @@ describe("promptfoo sidecar runner", () => {
   });
 
   it("evaluates trigger cases and emits progress plus result events", async () => {
-    const events = await runSidecarForRequest({
+    const events = await runSidecarForRequest(await buildRunEvalRequest({
       id: "run-trigger",
       type: "run_eval",
       mode: "trigger",
-      skillName: "forecast revenue",
-      pluginSlug: "skills",
-      scenarioName: "Trigger coverage",
-      history: {
-        configDir: historyConfigDir,
-        persist: false,
-      },
-      candidates: [
+        skillName: "forecast revenue",
+        pluginSlug: "skills",
+        scenarioName: "Routing checks",
+        promptfooConfigDir: "/tmp/promptfoo-sidecar",
+        candidates: [
         {
           id: "baseline",
           label: "Baseline",
@@ -247,7 +230,7 @@ describe("promptfoo sidecar runner", () => {
           output: { invokedTargetSkill: false, responseText: "Did not trigger" },
         },
       ],
-    });
+    }));
 
     expect(events.filter((event) => event.type === "progress")).toHaveLength(2);
     const resultEvent = events.find((event) => event.type === "result");
@@ -262,23 +245,38 @@ describe("promptfoo sidecar runner", () => {
     });
   });
 
-  it("records failed performance results when assertions fail", async () => {
-    const events = await runSidecarForRequest(
-      buildRunEvalRequest({
-        id: "run-performance",
-        history: {
-          configDir: historyConfigDir,
-          persist: false,
+  it("fails performance cases when expected text is missing", async () => {
+    const events = await runSidecarForRequest(await buildRunEvalRequest({
+      id: "run-performance",
+      type: "run_eval",
+      mode: "performance",
+        skillName: "docs-helper",
+        pluginSlug: "skills",
+        scenarioName: "Regression",
+        promptfooConfigDir: "/tmp/promptfoo-sidecar",
+        candidates: [
+        {
+          id: "current",
+          label: "Current skill",
+          description: "Summarize docs and explain configuration decisions.",
         },
-        cases: [
-          {
-            id: "case-1",
-            prompt: "Explain the deployment guide",
-            assertions: [{ type: "javascript", value: "false" }],
-          },
-        ],
-      }),
-    );
+      ],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Explain the deployment guide",
+          expected: "incident response",
+          assertions: [],
+        },
+      ],
+      executions: [
+        {
+          caseId: "case-1",
+          candidateId: "current",
+          output: { responseText: "Deployment guide summary only" },
+        },
+      ],
+    }));
 
     const resultEvent = events.find((event) => event.type === "result");
     expect(resultEvent?.result).toMatchObject({
@@ -291,26 +289,25 @@ describe("promptfoo sidecar runner", () => {
   });
 
   it("records a failed result when execution output is missing", async () => {
-    const events = await runSidecarForRequest(
-      buildRunEvalRequest({
-        id: "run-missing-output",
-        mode: "trigger",
-        scenarioName: "Missing output",
-        history: {
-          configDir: historyConfigDir,
-          persist: false,
+    const events = await runSidecarForRequest(await buildRunEvalRequest({
+      id: "run-missing-output",
+      type: "run_eval",
+      mode: "trigger",
+        skillName: "forecast revenue",
+        pluginSlug: "skills",
+        scenarioName: "Routing checks",
+        promptfooConfigDir: "/tmp/promptfoo-sidecar",
+        candidates: [{ id: "baseline", label: "Baseline" }],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Forecast revenue for next quarter",
+          shouldTrigger: true,
+          assertions: [],
         },
-        cases: [
-          {
-            id: "case-1",
-            prompt: "Forecast revenue for next quarter",
-            shouldTrigger: true,
-            assertions: [],
-          },
-        ],
-        executions: [],
-      }),
-    );
+      ],
+      executions: [],
+    }));
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -340,5 +337,273 @@ describe("promptfoo sidecar runner", () => {
         type: "error",
       }),
     );
+  });
+
+  it("writes persisted state to the requested promptfoo directory and reads completed history back", async () => {
+    const promptfooConfigDir = await mkdtemp(
+      join(tmpdir(), "promptfoo-sidecar-history-"),
+    );
+    const runEvalEvents = await runSidecarForInput(
+      `${JSON.stringify({
+        id: "run-history",
+        type: "run_eval",
+        mode: "trigger",
+        skillName: "forecast revenue",
+        pluginSlug: "skills",
+        scenarioName: "Routing checks",
+        promptfooConfigDir,
+        candidates: [{ id: "baseline", label: "Baseline" }],
+        cases: [
+          {
+            id: "case-1",
+            prompt: "Forecast revenue for next quarter",
+            shouldTrigger: true,
+            assertions: [],
+          },
+        ],
+        executions: [
+          {
+            caseId: "case-1",
+            candidateId: "baseline",
+            output: { invokedTargetSkill: true, responseText: "Triggered" },
+          },
+        ],
+      })}\n`,
+    );
+
+    expect(runEvalEvents).toContainEqual(
+      expect.objectContaining({
+        id: "run-history",
+        type: "result",
+      }),
+    );
+    expect(await readdir(promptfooConfigDir)).toEqual(
+      expect.arrayContaining(["promptfoo.db", "evalLastWritten"]),
+    );
+
+    const listEvents = await runSidecarForInput(
+      `${JSON.stringify({
+        id: "list-history",
+        type: "list_history",
+        promptfooConfigDir,
+        pluginSlug: "skills",
+        skillName: "forecast revenue",
+        scenarioName: "Routing checks",
+        mode: "trigger",
+        limit: 10,
+      })}\n`,
+    );
+    expect(listEvents).toContainEqual(
+      expect.objectContaining({
+        id: "list-history",
+        type: "result",
+        runs: [
+          expect.objectContaining({
+            id: "run-history",
+            scenarioName: "Routing checks",
+            mode: "trigger",
+            status: "completed",
+            scenarioSnapshot: expect.objectContaining({
+              scenarioName: "Routing checks",
+              mode: "trigger",
+            }),
+          }),
+        ],
+      }),
+    );
+
+    const readEvents = await runSidecarForInput(
+      `${JSON.stringify({
+        id: "read-history",
+        type: "read_history",
+        promptfooConfigDir,
+        runId: "run-history",
+      })}\n`,
+    );
+    expect(readEvents).toContainEqual(
+      expect.objectContaining({
+        id: "read-history",
+        type: "result",
+        run: expect.objectContaining({
+          id: "run-history",
+          scenarioName: "Routing checks",
+          mode: "trigger",
+          status: "completed",
+          scenarioSnapshot: expect.objectContaining({
+            scenarioName: "Routing checks",
+          }),
+          results: [
+            expect.objectContaining({
+              caseId: "case-1",
+              candidateId: "baseline",
+              passed: true,
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("filters persisted history by scenario identity", async () => {
+    const promptfooConfigDir = await mkdtemp(
+      join(tmpdir(), "promptfoo-sidecar-filter-"),
+    );
+
+    await runSidecarForRequest(await buildRunEvalRequest({
+      id: "run-routing",
+      type: "run_eval",
+      mode: "trigger",
+      skillName: "forecast revenue",
+      pluginSlug: "skills",
+      scenarioName: "Routing checks",
+      promptfooConfigDir,
+      candidates: [{ id: "baseline", label: "Baseline" }],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Forecast revenue for next quarter",
+          shouldTrigger: true,
+          assertions: [],
+        },
+      ],
+      executions: [
+        {
+          caseId: "case-1",
+          candidateId: "baseline",
+          output: { invokedTargetSkill: true, responseText: "Triggered" },
+        },
+      ],
+    }));
+
+    await runSidecarForRequest(await buildRunEvalRequest({
+      id: "run-regression",
+      type: "run_eval",
+      mode: "trigger",
+      skillName: "forecast revenue",
+      pluginSlug: "skills",
+      scenarioName: "Regression",
+      promptfooConfigDir,
+      candidates: [{ id: "baseline", label: "Baseline" }],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Summarize backlog risk",
+          shouldTrigger: false,
+          assertions: [],
+        },
+      ],
+      executions: [
+        {
+          caseId: "case-1",
+          candidateId: "baseline",
+          output: { invokedTargetSkill: false, responseText: "Ignored" },
+        },
+      ],
+    }));
+
+    const listEvents = await runSidecarForInput(
+      `${JSON.stringify({
+        id: "list-history-filtered",
+        type: "list_history",
+        promptfooConfigDir,
+        pluginSlug: "skills",
+        skillName: "forecast revenue",
+        scenarioName: "Routing checks",
+        mode: "trigger",
+        limit: 10,
+      })}\n`,
+    );
+
+    expect(listEvents).toContainEqual(
+      expect.objectContaining({
+        id: "list-history-filtered",
+        type: "result",
+        runs: [
+          expect.objectContaining({
+            id: "run-routing",
+            scenarioName: "Routing checks",
+          }),
+        ],
+      }),
+    );
+
+    const resultEvent = listEvents.find((event) => event.type === "result");
+    expect(resultEvent?.runs).toHaveLength(1);
+    expect(resultEvent?.runs[0]?.id).toBe("run-routing");
+  });
+
+  it("applies history limits before returning grouped runs", async () => {
+    const promptfooConfigDir = await mkdtemp(
+      join(tmpdir(), "promptfoo-sidecar-limit-"),
+    );
+
+    await runSidecarForRequest(await buildRunEvalRequest({
+      id: "run-older",
+      type: "run_eval",
+      mode: "trigger",
+      skillName: "forecast revenue",
+      pluginSlug: "skills",
+      scenarioName: "Routing checks",
+      promptfooConfigDir,
+      candidates: [{ id: "baseline", label: "Baseline" }],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Forecast revenue for next quarter",
+          shouldTrigger: true,
+          assertions: [],
+        },
+      ],
+      executions: [
+        {
+          caseId: "case-1",
+          candidateId: "baseline",
+          output: { invokedTargetSkill: true, responseText: "Triggered" },
+        },
+      ],
+    }));
+
+    await runSidecarForRequest(await buildRunEvalRequest({
+      id: "run-latest",
+      type: "run_eval",
+      mode: "trigger",
+      skillName: "forecast revenue",
+      pluginSlug: "skills",
+      scenarioName: "Routing checks",
+      promptfooConfigDir,
+      candidates: [{ id: "baseline", label: "Baseline" }],
+      cases: [
+        {
+          id: "case-1",
+          prompt: "Forecast revenue for next quarter",
+          shouldTrigger: true,
+          assertions: [],
+        },
+      ],
+      executions: [
+        {
+          caseId: "case-1",
+          candidateId: "baseline",
+          output: { invokedTargetSkill: true, responseText: "Triggered again" },
+        },
+      ],
+    }));
+
+    const listEvents = await runSidecarForInput(
+      `${JSON.stringify({
+        id: "list-history-limited",
+        type: "list_history",
+        promptfooConfigDir,
+        pluginSlug: "skills",
+        skillName: "forecast revenue",
+        scenarioName: "Routing checks",
+        mode: "trigger",
+        limit: 1,
+      })}\n`,
+    );
+
+    const resultEvent = listEvents.find((event) => event.type === "result");
+    expect(resultEvent?.runs).toHaveLength(1);
+    expect(resultEvent?.runs[0]?.id).toBe("run-latest");
   });
 });

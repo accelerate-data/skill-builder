@@ -1,39 +1,30 @@
-import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowRight, Play, Sparkles, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type {
-  EvalRun,
-  EvalWorkbenchProgressEvent,
-  SaveScenario,
-  ScenarioDto,
-} from "@/lib/eval-workbench";
+import type { SaveScenario, ScenarioDto } from "@/lib/eval-workbench";
 import {
   areScenariosEqual,
   buildRefineImprovementBrief,
-  cancelEvalWorkbenchRun,
   createDraftScenario,
   generateScenarios,
   getErrorMessage,
-  listEvalRuns,
+  listScenarios,
   PERFORMANCE_CANDIDATE_IDS,
-  readEvalRun,
   runEvalWorkbench,
   normalizeScenario,
+  scenarioNameSlug,
   scenarioToDraft,
   suggestAssertions,
   validateScenario,
 } from "@/lib/eval-workbench";
-import {
-  setEvalsCancelHandler,
-  setEvalsRunning,
-} from "@/lib/eval-running-state";
+import { setEvalsRunning } from "@/lib/eval-running-state";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { useRefineStore } from "@/stores/refine-store";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 import { ResultTable } from "./eval-workbench/result-table";
 import { RunHistory } from "./eval-workbench/run-history";
+import { useRunHistory } from "./eval-workbench/use-run-history";
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
@@ -41,7 +32,10 @@ interface WorkspaceEvalsProps {
   scenario: ScenarioDto | null;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
-  onSaveScenario: (scenario: ScenarioDto) => Promise<ScenarioDto>;
+  onSaveScenario: (
+    scenario: ScenarioDto,
+    options?: { previousScenarioName?: string | null },
+  ) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
   onNavigateToRefine?: () => void;
   onRunningChange?: (running: boolean) => void;
@@ -61,22 +55,36 @@ export function WorkspaceEvals({
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
 
-  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [suggestingAssertionsCaseIndex, setSuggestingAssertionsCaseIndex] =
     useState<number | null>(null);
   const [running, setRunning] = useState(false);
   const [sendingToRefine, setSendingToRefine] = useState(false);
-  const [runs, setRuns] = useState<EvalRun[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [selectedRun, setSelectedRun] = useState<EvalRun | null>(null);
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<EvalWorkbenchProgressEvent | null>(null);
   const [draft, setDraft] = useState<SaveScenario>(() =>
     createDraftScenario("performance"),
   );
-  const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const {
+    activeRunId,
+    cancelActiveRun,
+    clearActiveRun,
+    error,
+    loading,
+    prependRun,
+    progress,
+    refresh,
+    runs,
+    selectRun,
+    selectedRun,
+    selectedRunId,
+    startActiveRun,
+  } = useRunHistory({
+    pluginSlug,
+    skillName,
+    mode: "performance",
+    workspacePath,
+    scenarioName: scenario?.name ?? null,
+  });
 
   useEffect(() => {
     setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("performance"));
@@ -88,73 +96,18 @@ export function WorkspaceEvals({
     setEvalsRunning(running);
   }, [running, onRunningChange]);
 
-  useEffect(() => {
-    if (!activeRunId) {
-      setEvalsCancelHandler(null);
-      return;
-    }
-
-    setEvalsCancelHandler(async () => {
-      await cancelEvalWorkbenchRun(activeRunId);
-    });
-    return () => {
-      setEvalsCancelHandler(null);
-    };
-  }, [activeRunId]);
-
   useEffect(
     () => () => {
       onRunningChange?.(false);
       setEvalsRunning(false);
-      setEvalsCancelHandler(null);
     },
     [onRunningChange],
   );
 
-  useEffect(() => {
-    const unlisten = listen<EvalWorkbenchProgressEvent>(
-      "eval-workbench-progress",
-      (event) => {
-        const payload = event.payload;
-        if (!activeRunId || payload.runId !== activeRunId) {
-          return;
-        }
-        setProgress(payload);
-      },
-    );
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [activeRunId]);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextRuns = await listEvalRuns(pluginSlug, skillName, "performance", 20);
-      setRuns(nextRuns);
-    } catch (loadError) {
-      setError(getErrorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [pluginSlug, skillName]);
-
-  useEffect(() => {
-    if (!workspacePath) {
-      setLoading(false);
-      return;
-    }
-    void refresh();
-  }, [refresh, workspacePath]);
-
   async function handleSelectRun(runId: string) {
     setActionError(null);
-    setSelectedRunId(runId);
     try {
-      const run = await readEvalRun(runId);
-      setSelectedRun(run);
+      await selectRun(runId);
     } catch (runError) {
       setActionError(getErrorMessage(runError));
     }
@@ -181,8 +134,41 @@ export function WorkspaceEvals({
     setActionError(null);
     try {
       const generated = await generateScenarios(pluginSlug, skillName);
+      const duplicateNames = generated.reduce<string[]>((duplicates, nextScenario, index) => {
+        const nextSlug = scenarioNameSlug(nextScenario.name);
+        const seenEarlier = generated
+          .slice(0, index)
+          .some((candidate) => scenarioNameSlug(candidate.name) === nextSlug);
+        if (seenEarlier) {
+          duplicates.push(nextScenario.name);
+        }
+        return duplicates;
+      }, []);
+      if (duplicateNames.length > 0) {
+        throw new Error(
+          `Generated scenarios must use unique names: ${duplicateNames.join(", ")}`,
+        );
+      }
+
+      const existingScenarios = await listScenarios(pluginSlug, skillName);
+      const existingSlugs = new Set(
+        existingScenarios.map((existingScenario) =>
+          scenarioNameSlug(existingScenario.name),
+        ),
+      );
+      const conflictingNames = generated
+        .filter((nextScenario) =>
+          existingSlugs.has(scenarioNameSlug(nextScenario.name)),
+        )
+        .map((nextScenario) => nextScenario.name);
+      if (conflictingNames.length > 0) {
+        throw new Error(
+          `Generated scenarios already exist: ${conflictingNames.join(", ")}`,
+        );
+      }
+
       for (const nextScenario of generated) {
-        await onSaveScenario(nextScenario);
+        await onSaveScenario(nextScenario, { previousScenarioName: null });
       }
     } catch (generationError) {
       setActionError(getErrorMessage(generationError));
@@ -236,8 +222,7 @@ export function WorkspaceEvals({
     const runId = crypto.randomUUID();
     setRunning(true);
     setActionError(null);
-    setActiveRunId(runId);
-    setProgress(null);
+    startActiveRun(runId);
     try {
       const run = await runEvalWorkbench({
         runId,
@@ -247,26 +232,19 @@ export function WorkspaceEvals({
         mode: "performance",
         candidateIds: PERFORMANCE_CANDIDATE_IDS,
       });
-      setRuns((currentRuns) => [
-        run,
-        ...currentRuns.filter((currentRun) => currentRun.id !== run.id),
-      ]);
+      prependRun(run);
       await handleSelectRun(run.id);
     } catch (runError) {
       setActionError(getErrorMessage(runError));
     } finally {
       setRunning(false);
-      setActiveRunId(null);
-      setProgress(null);
+      clearActiveRun();
     }
   }
 
   async function handleCancelRun() {
-    if (!activeRunId) {
-      return;
-    }
     try {
-      await cancelEvalWorkbenchRun(activeRunId);
+      await cancelActiveRun();
     } catch (cancelError) {
       setActionError(getErrorMessage(cancelError));
     }
@@ -401,7 +379,7 @@ export function WorkspaceEvals({
           <Button
             size="sm"
             variant="outline"
-            disabled={!selectedRun || sendingToRefine}
+            disabled={scenarioLoading || !selectedRun || sendingToRefine}
             onClick={() => void handleSendToRefine()}
           >
             <ArrowRight className="mr-1 size-3.5" />

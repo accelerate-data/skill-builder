@@ -121,15 +121,16 @@ those requirements directly.
 - Modify: `app/src/components/workspace/workspace-evals.tsx`
 - Modify: `app/src/components/workspace/workspace-description.tsx`
 
-- [ ] Fix the current compile break by either removing `scenarioLoading` from call sites or adding it to the relevant component props and loading-state handling.
-- [ ] Implement and register `load_scenario` as a real file-backed Tauri command before deeper cleanup.
-- [ ] Remove scenario mirroring into app SQLite prompt-set tables.
-- [ ] Remove run-time dependence on mirrored `eval_prompt_sets` rows and `prompt_set_id`.
-- [ ] Remove delete / retag behavior that can wipe or hide historical results through app-DB coupling.
-- [ ] Remove stale app-owned prompt-set paths rather than isolating a legacy compatibility layer.
-- [ ] Identify any remaining Prompt Set era assumptions in the command layer and either delete them or rewrite them around file-backed scenarios plus Promptfoo-local history.
-- [ ] Ensure this cleanup does not touch the separate `tests/evals` engineering harness storage model.
-- [ ] Land this cleanup before further feature work or contract tightening.
+- [X] Fix the current compile break by either removing `scenarioLoading` from call sites or adding it to the relevant component props and loading-state handling.
+- [X] Implement and register `load_scenario` as a real file-backed Tauri command before deeper cleanup.
+- [X] Remove scenario mirroring into app SQLite prompt-set tables.
+- [X] Remove run-time dependence on mirrored `eval_prompt_sets` rows and `prompt_set_id`.
+- [X] Remove delete / retag behavior that can wipe or hide historical results through app-DB coupling.
+- [X] Remove the remaining active legacy fallback from `run.prompt_set_id` to `db_read_eval_prompt_set()` in the command layer.
+- [X] Rewrite the remaining active command-layer scenario runtime helpers and stored snapshot contract so they are scenario-centric rather than prompt-set-centric.
+- [X] Eliminate remaining active-path user-facing or agent-facing "prompt set" wording in Eval Workbench command prompts and errors.
+- [X] Ensure this cleanup does not touch the separate `tests/evals` engineering harness storage model.
+- [X] Land this cleanup before further feature work or contract tightening.
 
 ## Task 2: Establish file-based scenario storage
 
@@ -155,7 +156,7 @@ those requirements directly.
   - `delete_scenario_file`
   - `scenario_file_path`
   - validation helpers
-- [ ] Add a summary/detail split:
+- [X] Add a summary/detail split:
   - scenario summaries for `list_scenarios`
   - full scenario payloads for `load_scenario`
 - [X] Add Rust helper tests for:
@@ -176,17 +177,17 @@ those requirements directly.
 - Modify: `app/src/lib/tauri-command-types.typecheck.ts`
 - Create / modify: `app/src/lib/queries/eval-scenarios.ts`
 
-- [ ] Expose file-based commands:
+- [X] Expose file-based commands:
   - `list_scenarios`
   - `load_scenario`
   - `save_scenario`
   - `delete_scenario`
-- [ ] Ensure `save_scenario` writes only YAML to disk.
-- [ ] If rename support is needed, make it a file rename operation, not a second saved identity.
-- [ ] Remove any scenario mirroring into app SQLite tables.
-- [ ] Remove any command requirement that a scenario must first exist in app SQLite before it can run.
-- [ ] Update frontend wrappers and query hooks to use the file-based commands only.
-- [ ] Add command-surface tests for scenario CRUD behavior, including real `load_scenario` registration.
+- [X] Ensure `save_scenario` writes only YAML to disk.
+- [X] If rename support is needed, make it a file rename operation, not a second saved identity.
+- [X] Remove any scenario mirroring into app SQLite tables.
+- [X] Remove any command requirement that a scenario must first exist in app SQLite before it can run.
+- [X] Update frontend wrappers and query hooks to use the file-based commands only.
+- [X] Add command-surface tests for scenario CRUD behavior, including real `load_scenario` registration.
 
 ## Task 4: Run Eval Workbench directly from scenario files
 
@@ -195,13 +196,13 @@ those requirements directly.
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
 - Modify: any helper modules that build Promptfoo input
 
-- [ ] Change run preparation so both Performance and Trigger modes read the selected scenario YAML from disk.
-- [ ] Filter cases by scenario tags and selected mode.
-- [ ] Generate Promptfoo input in memory from the file-backed scenario.
-- [ ] Remove any dependency on mirrored `eval_prompt_sets` rows or `prompt_set_id` lookups for active runs.
-- [ ] Ensure a git-synced scenario can run on a fresh app DB with no resave step.
-- [ ] Key active runtime lookups by `(plugin_slug, skill_name, scenario_name)` rather than prompt-set ids.
-- [ ] Add Rust tests for:
+- [X] Change run preparation so both Performance and Trigger modes read the selected scenario YAML from disk.
+- [X] Filter cases by scenario tags and selected mode.
+- [X] Generate Promptfoo input in memory from the file-backed scenario.
+- [X] Remove any dependency on mirrored `eval_prompt_sets` rows or `prompt_set_id` lookups for active runs.
+- [X] Ensure a git-synced scenario can run on a fresh app DB with no resave step.
+- [X] Key active runtime lookups by `(plugin_slug, skill_name, scenario_name)` rather than prompt-set ids.
+- [X] Add Rust tests for:
   - running a disk-backed scenario with a fresh DB
   - rejecting a scenario for the wrong mode
   - loading the right case set for `performance`, `trigger`, and `both`
@@ -215,16 +216,16 @@ those requirements directly.
 - Modify or remove: app DB-backed eval history code paths
 - Modify: app data-dir path helpers as needed to resolve `<data_dir>/promptfoo`
 
-- [ ] Stop using app SQLite as the authoritative eval run-history store for Eval Workbench.
-- [ ] Read run history from app-side Promptfoo persisted state under `<data_dir>/promptfoo`.
-- [ ] Make the app resilient to empty local Promptfoo history:
+- [X] Stop using app SQLite as the authoritative eval run-history store for Eval Workbench.
+- [X] Read run history from app-side Promptfoo persisted state under `<data_dir>/promptfoo`.
+- [X] Make the app resilient to empty local Promptfoo history:
   - scenarios still load from disk
   - history simply appears empty on that machine
-- [ ] Ensure deleting a scenario from disk removes authored visibility only; it must not trigger app-owned run-history deletion logic.
-- [ ] Update any UI copy that previously implied run history follows the scenario across machines.
-- [ ] Remove or bypass app-owned schema assumptions such as `eval_runs.prompt_set_id` for this flow.
-- [ ] If Promptfoo persisted state alone cannot recover the existing `EvalRun` frontend contract, add only the minimum run-metadata adapter keyed by run id and scenario identity.
-- [ ] Keep this state path separate from repo engineering eval state under `tests/evals`.
+- [X] Ensure deleting a scenario from disk removes authored visibility only; it must not trigger app-owned run-history deletion logic.
+- [X] Update any UI copy that previously implied run history follows the scenario across machines.
+- [X] Remove or bypass app-owned schema assumptions such as `eval_runs.prompt_set_id` for this flow.
+- [X] If Promptfoo persisted state alone cannot recover the existing `EvalRun` frontend contract, add only the minimum run-metadata adapter keyed by run id and scenario identity.
+- [X] Keep this state path separate from repo engineering eval state under `tests/evals`.
 
 ## Task 6: Update the shared workbench UI around scenarios
 
@@ -243,7 +244,7 @@ those requirements directly.
   - `both`
 - [X] Ensure the selected scenario survives tab switches where valid and falls back safely when not valid.
 - [X] Ensure deleting the eval folder from disk results in no scenarios being shown after refresh.
-- [ ] Keep creation/editing UI aligned with the accepted product behavior; if the issue text still says "modal" but the chosen UX is inline, update the issue before completion.
+- [X] Keep creation/editing UI aligned with the accepted product behavior; if the issue text still says "modal" but the chosen UX is inline, update the issue before completion.
 
 ## Task 7: Keep LLM generation file-first
 
@@ -256,11 +257,11 @@ those requirements directly.
 - [X] Keep "Generate scenarios" as a one-shot generation flow that reads the skill folder and returns scenario content.
 - [X] Save generated scenarios as YAML files through the same file-based save path as manual edits.
 - [X] Keep "Suggest assertions" as a per-case generation flow that updates the scenario draft and persists to disk on save.
-- [ ] Enforce any required output bounds in code, not just in prompt text:
+- [X] Enforce any required output bounds in code, not just in prompt text:
   - scenarios: 3 to 5 generated items if that remains the contract
   - assertions: 1 to 3 generated items if that remains the contract
-- [ ] If the accepted product behavior is "generate scenario DTOs and then save to YAML", record that clearly in Linear and the design doc.
-- [ ] Do not route generation flows through prompt-set-era save or ownership helpers.
+- [X] Record explicitly in the design doc and Linear issue that generation returns scenario DTOs which are then saved through the same YAML save path as manual edits.
+- [X] Do not route generation flows through prompt-set-era save or ownership helpers.
 
 ## Task 8: Retarget trigger candidate persistence around scenario identity
 
@@ -270,10 +271,10 @@ those requirements directly.
 - Modify: `app/src-tauri/src/db/eval_workbench.rs`
 - Modify: candidate/history helper code used by `apply_description_candidate` and `build_refine_improvement_brief`
 
-- [ ] Store trigger description candidates as app-local operational metadata keyed by scenario identity, not `prompt_set_id`.
-- [ ] Update candidate generation, comparison, apply, and refine-brief flows to validate `(plugin_slug, skill_name, scenario_name)`.
-- [ ] Ensure this store does not duplicate authored scenario cases, tags, or assertions.
-- [ ] Add tests that prove candidates remain valid across scenario reloads and on a fresh DB.
+- [X] Store trigger description candidates as app-local operational metadata keyed by scenario identity, not `prompt_set_id`.
+- [X] Update candidate generation, comparison, apply, and refine-brief flows to validate `(plugin_slug, skill_name, scenario_name)`.
+- [X] Ensure this store does not duplicate authored scenario cases, tags, or assertions.
+- [X] Add tests that prove candidates remain valid across scenario reloads and on a fresh DB.
 
 ## Task 9: Remove stale app-DB coupling from the implementation contract
 
@@ -283,18 +284,22 @@ those requirements directly.
 - Modify: `docs/design/eval-workbench-scenarios-remediation/README.md` if implementation details sharpen further
 - Modify: Linear issue `VU-1161` if needed
 
-- [ ] Update the design doc to state explicitly:
+- [X] Update the design doc to state explicitly:
   - authored scenarios live on disk
   - Eval Workbench Promptfoo history is app-local under `<data_dir>/promptfoo`
   - the app does not reconcile scenario identity against its own DB
   - trigger candidate ownership is scenario-scoped operational metadata
   - repo eval tooling under `tests/evals` is separate from app functionality
-- [ ] Update acceptance criteria if they still require app-owned `scenario_name` run history instead of Promptfoo-owned history.
-- [ ] Remove any plan or issue language that implies a second app-owned source of truth for eval identity.
+- [X] Update acceptance criteria if they still require app-owned `scenario_name` run history instead of Promptfoo-owned history.
+- [X] Remove any plan or issue language that implies a second app-owned source of truth for eval identity.
+- [X] Add explicit issue-level acceptance criteria for the remaining clean-break contract work:
+  - no active fallback to legacy `prompt_set_id` / `eval_prompt_sets`
+  - scenario-centric run snapshot naming and wording
+  - generation DTOs saved through the shared YAML path
 
 ## Task 10: Verification
 
-- [ ] Run:
+- [X] Run:
 
 ```bash
 cd app && npx tsc --noEmit
@@ -305,7 +310,7 @@ cd app && bash tests/run.sh e2e --tag @evals
 cd app && bash tests/run.sh e2e --tag @description
 ```
 
-- [ ] Add focused tests for the critical regressions:
+- [X] Add focused tests for the critical regressions:
   - the current compile break stays fixed
   - `load_scenario` is implemented and registered for the real command surface
   - fresh DB plus existing YAML scenarios can run without resave
@@ -313,17 +318,94 @@ cd app && bash tests/run.sh e2e --tag @description
   - renaming a scenario behaves as a rename, not a duplicate
   - shared scenario selection behaves correctly across tabs
   - trigger candidates remain scoped to scenario identity without `prompt_set_id`
-- [ ] Run any additional changed-area tests required by `TEST_MAP.md`.
+- [X] Run any additional changed-area tests required by `TEST_MAP.md`.
+- [X] Run and record the broader quality gates for the clean-break branch:
+  - `cd app/promptfoo-sidecar && npm test`
+  - `cd app && npx tsc --noEmit`
+  - `cargo test --manifest-path app/src-tauri/Cargo.toml`
+  - `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
+  - `cd app && npm run test:unit`
+  - `cd app && bash tests/run.sh e2e --tag @evals`
+  - `cd app && bash tests/run.sh e2e --tag @description`
+- [ ] Re-run the `engineering-skills:implementing-linear-issue` independent quality gates after the final cleanup slice:
+  - [X] independent code review
+  - [X] independent simplification review
+  - [X] independent test-coverage review
+  - [X] independent acceptance-criteria review
+
+## Task 11: Close the remaining quality-gate findings
+
+**Files:**
+
+- Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
+- Modify: `app/src/components/workspace/workspace-evals.tsx`
+- Modify: `app/src/components/workspace/workspace-description.tsx`
+- Modify: `app/src/lib/eval-workbench.ts`
+- Modify: `app/src/lib/tauri-command-types.ts`
+- Modify: `app/src/lib/queries/eval-scenarios.ts`
+- Modify: `app/src/__tests__/components/workspace/workspace-shell.test.tsx`
+- Modify: `app/src/__tests__/components/workspace/workspace-evals.test.tsx`
+- Modify: `app/src/__tests__/components/workspace/workspace-description.test.tsx`
+- Modify: `app/src/__tests__/lib/eval-workbench-tauri.test.ts`
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `app/promptfoo-sidecar/src/__tests__/runner.test.ts`
+- Modify: `tests/evals/assertions/tauri-command-contract.test.js`
+- Modify: `docs/plans/2026-05-05-eval-workbench-scenarios.md`
+
+- [X] Fix new-scenario creation so `onNew()` cannot collapse back into rename semantics through auto-selection on save.
+- [X] Add UI/query regression coverage proving a new scenario save does not send `previousScenarioName`, and rename invalidation still removes the old detail cache key.
+- [X] Save generated scenarios through the shared YAML path as explicit creates, so generated batches never reuse the currently selected scenario as `previousScenarioName`.
+- [X] Preflight generated scenario batches for duplicate/conflicting names before any save call, so one bad generated item cannot leave a partial write set behind.
+- [X] Filter Eval Workbench run-history reads by the selected scenario identity when loading performance and trigger comparisons, so cross-scenario runs cannot contaminate candidate or metric views.
+- [X] Reject duplicate scenario names on create or rename, while still allowing same-name updates for the currently selected scenario.
+- [X] Tighten `read_eval_run` so completed runs do not silently fall back to app-DB history when Promptfoo history is missing, while draft candidate runs can still use app-local DB state when required.
+- [X] Rework `build_refine_improvement_brief` so a Promptfoo-backed completed run can still be sent to Refine without requiring a separate DB copy of the run results.
+- [X] Preserve the run-time scenario snapshot through the Promptfoo persisted-history adapter, so completed-run reads and Refine briefs stay stable after a scenario file is renamed or deleted.
+- [X] Add Rust regressions for:
+  - completed run read does not fall back to DB history when Promptfoo history is missing
+  - Refine brief generation can resolve a Promptfoo-backed run plus DB candidate metadata
+- [X] Add Rust/frontend regressions for:
+  - duplicate scenario-name rejection on create and rename
+  - generated scenario saves always passing `previousScenarioName: null`
+  - scenario-filtered `list_eval_runs` calls from both workbench tabs
+  - scenario switches clearing stale selected-run detail before loading the next scenario's filtered history
+- [X] Expand Promptfoo history tests to cover multiple runs and scenario-identity filtering, including different scenario names under the same skill/mode.
+- [X] Update the `tests/evals` Tauri command contract assertion to the scenario-era Eval Workbench command surface.
+- [X] If any Promptfoo-only wording is still too broad after the implementation settles, narrow the plan/checkpoint language to distinguish completed-history reads from app-local draft metadata.
+
+### Latest verification snapshot
+
+- `cd app && npx vitest run src/__tests__/components/workspace/workspace-evals.test.tsx src/__tests__/components/workspace/workspace-description.test.tsx`
+- `cd tests/evals && npm test`
+- `cargo test --manifest-path app/src-tauri/Cargo.toml commands::eval_workbench`
+- `cd app && npx tsc --noEmit`
+- `cd app && npm run test:unit`
+- `cargo test --manifest-path app/src-tauri/Cargo.toml`
+- `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
+- `cd app && bash tests/run.sh e2e --tag @evals`
+- `cd app && bash tests/run.sh e2e --tag @description`
+
+## Task 12: Follow up on non-blocking simplification findings
+
+**Files:**
+
+- Modify: `app/src/components/workspace/workspace-evals.tsx`
+- Modify: `app/src/components/workspace/workspace-description.tsx`
+- Create or modify: shared workbench history hook/query helper under `app/src/lib/queries/` or `app/src/components/workspace/`
+- Modify: `app/promptfoo-sidecar/src/history.ts`
+
+- [X] Consolidate duplicated run-history / selected-run / progress / cancel state between the Performance and Trigger panes behind a shared hook or helper so future history-path fixes land once.
+- [X] Push Promptfoo history limiting closer to the SQL/read boundary so `limit` bounds query and grouping cost instead of slicing only after rebuilding every matching run in memory.
 
 ## Checkpoints
 
-- [ ] Checkpoint 1: hybrid DB/disk coupling is removed.
-- [ ] Checkpoint 2: file-based scenario CRUD is complete and tested.
-- [ ] Checkpoint 3: run preparation no longer depends on app-owned prompt-set mirrors.
-- [ ] Checkpoint 4: Promptfoo history is the only run-history source used by Eval Workbench.
-- [ ] Checkpoint 5: trigger candidates are scoped by scenario identity, not prompt-set identity.
-- [ ] Checkpoint 6: UI flows and mapped E2E coverage pass.
-- [ ] Checkpoint 7: design docs and Linear contract match the implementation.
+- [X] Checkpoint 1: hybrid DB/disk coupling is removed.
+- [X] Checkpoint 2: file-based scenario CRUD is complete and tested.
+- [X] Checkpoint 3: run preparation no longer depends on app-owned prompt-set mirrors.
+- [X] Checkpoint 4: Promptfoo history is the only completed-run history source used by Eval Workbench, with app-local DB state retained only for draft/candidate metadata where still required.
+- [X] Checkpoint 5: trigger candidates are scoped by scenario identity, not prompt-set identity.
+- [X] Checkpoint 6: UI flows and mapped E2E coverage pass.
+- [X] Checkpoint 7: design docs and Linear contract match the implementation.
 
 ## Manual Checks
 

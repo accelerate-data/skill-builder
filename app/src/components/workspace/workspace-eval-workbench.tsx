@@ -27,6 +27,10 @@ interface WorkspaceEvalWorkbenchProps {
   onApplyDescription?: (newDescription: string, newVersion: string) => void;
 }
 
+type SaveScenarioOptions = {
+  previousScenarioName?: string | null;
+};
+
 export function WorkspaceEvalWorkbench({
   skill,
   workspacePath,
@@ -43,6 +47,7 @@ export function WorkspaceEvalWorkbench({
   const [selectedScenarioName, setSelectedScenarioName] = useState<string | null>(
     null,
   );
+  const [creatingNewScenario, setCreatingNewScenario] = useState(false);
   const isRunning = performanceRunning || triggerRunning;
 
   const scenariosQuery = useScenarios(skillName, pluginSlug);
@@ -67,12 +72,15 @@ export function WorkspaceEvalWorkbench({
   }, [isRunning, onRunningChange]);
 
   useEffect(() => {
+    if (creatingNewScenario) {
+      return;
+    }
     const nextSelectedScenario =
       visibleScenarios.find((scenario) => scenario.name === selectedScenarioName) ??
       visibleScenarios[0] ??
       null;
     setSelectedScenarioName(nextSelectedScenario?.name ?? null);
-  }, [selectedScenarioName, visibleScenarios]);
+  }, [creatingNewScenario, selectedScenarioName, visibleScenarios]);
 
   const triggerSkill =
     "name" in skill
@@ -82,13 +90,27 @@ export function WorkspaceEvalWorkbench({
           name: (skill as ImportedSkill).skill_name,
         } as unknown as SkillSummary);
 
-  async function handleSaveScenario(scenario: ScenarioDto) {
-    const savedScenario = await saveScenarioMutation.mutateAsync(scenario);
+  async function handleSaveScenario(
+    scenario: ScenarioDto,
+    options?: SaveScenarioOptions,
+  ) {
+    const previousScenarioName =
+      options && "previousScenarioName" in options
+        ? (options.previousScenarioName ?? null)
+        : creatingNewScenario
+          ? null
+          : (selectedScenario?.name ?? null);
+    const savedScenario = await saveScenarioMutation.mutateAsync({
+      scenario,
+      previousScenarioName,
+    });
+    setCreatingNewScenario(false);
     setSelectedScenarioName(savedScenario.name);
     return savedScenario;
   }
 
   function handleStartNewScenario() {
+    setCreatingNewScenario(true);
     setSelectedScenarioName(null);
   }
 
@@ -158,7 +180,10 @@ export function WorkspaceEvalWorkbench({
                         ? "secondary"
                         : "outline"
                     }
-                    onClick={() => setSelectedScenarioName(scenario.name)}
+                    onClick={() => {
+                      setCreatingNewScenario(false);
+                      setSelectedScenarioName(scenario.name);
+                    }}
                   >
                     {scenario.name}
                   </Button>

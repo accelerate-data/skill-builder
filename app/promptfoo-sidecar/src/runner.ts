@@ -1,6 +1,8 @@
-import { mkdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { stdin, stdout } from "node:process";
+import { fileURLToPath } from "node:url";
+import { listCompletedRuns, readCompletedRun } from "./history.js";
 import {
   buildEvalHistoryMetadata,
   buildPromptfooHistoryTags,
@@ -10,32 +12,12 @@ import {
 import {
   parseSidecarRequest,
   serializeSidecarEvent,
-  type EvalAssertion,
-  type EvalCandidate,
-  type EvalCase,
-  type EvalExecution,
+  type ListHistoryRequest,
+  type ReadHistoryRequest,
   type RunEvalRequest,
   type SidecarRequest,
   type SidecarEvent,
 } from "./protocol.js";
-import {
-  normalizePromptfooResults,
-  type PromptfooLikeResult,
-} from "./result-normalizer.js";
-
-type PromptfooAssertion = {
-  type: "equals" | "contains" | "javascript";
-  value: string;
-};
-
-type PromptfooProvider = {
-  id: () => string;
-  label?: string;
-  callApi: (
-    prompt: string,
-    context?: { vars?: Record<string, unknown> },
-  ) => Promise<{ output: unknown }>;
-};
 
 type EvaluateFn = typeof import("promptfoo")["evaluate"];
 
@@ -115,9 +97,6 @@ async function handleRunEvalRequest(
   request: RunEvalRequest,
   output: NodeJS.WritableStream,
 ): Promise<void> {
-  const executionMap = buildExecutionMap(request.executions);
-  const providers = buildProviders(request.candidates, executionMap);
-  const tests = buildTests(request.cases);
   const total = request.executions.length;
   const evaluate = await loadEvaluate(request.history?.configDir);
   const metadata = buildEvalHistoryMetadata(request);
@@ -135,113 +114,46 @@ async function handleRunEvalRequest(
     });
   }
 
-  const result = await evaluate(
-    {
-      description: buildRunDescription(request),
-      writeLatestResults: persistHistory,
-      tags: persistHistory ? buildPromptfooHistoryTags(metadata) : undefined,
-      metadata:
-        request.descriptionCandidates === undefined
-          ? undefined
-          : { descriptionCandidates: request.descriptionCandidates },
-      prompts: ["{{prompt}}"],
-      providers,
-      tests,
-    },
-    {
-      maxConcurrency: 1,
-    },
-  );
+  await runPromptfooEvalInSubprocess(request);
 
-  const normalizedResult = buildRunResult(request, result);
+  const persistedRun = readCompletedRun(request.promptfooConfigDir, request.id);
+  if (!persistedRun) {
+    throw new Error(`Promptfoo did not persist completed run ${request.id}`);
+  }
 
   writeEvent(output, {
     id: request.id,
     type: "result",
     result: {
-      ...normalizedResult,
-      history: {
-        persisted: Boolean(result.persisted),
-        configDir: request.history?.configDir,
-        evalId: result.persisted ? result.id : undefined,
-        metadata,
-      },
+      mode: request.mode,
+      total: persistedRun.summary.total,
+      passed: persistedRun.summary.passed,
+      failed: persistedRun.summary.failed,
+      results: persistedRun.results,
     },
   });
 }
 
-function buildExecutionMap(executions: EvalExecution[]): Map<string, unknown> {
-  const map = new Map<string, unknown>();
-  for (const execution of executions) {
-    map.set(executionKey(execution.caseId, execution.candidateId), execution.output);
-  }
-  return map;
+async function handleListHistoryRequest(
+  request: ListHistoryRequest,
+  output: NodeJS.WritableStream,
+): Promise<void> {
+  writeEvent(output, {
+    id: request.id,
+    type: "result",
+    runs: listCompletedRuns(request),
+  });
 }
 
-function buildProviders(
-  candidates: EvalCandidate[],
-  executionMap: Map<string, unknown>,
-): PromptfooProvider[] {
-  return candidates.map((candidate) => ({
-    id: () => candidate.id,
-    label: candidate.label,
-    callApi: async (_prompt, context) => {
-      const caseId = String(context?.vars?.caseId ?? "");
-      const output = executionMap.get(executionKey(caseId, candidate.id));
-      if (output === undefined) {
-        throw new Error(
-          `Missing execution output for case=${caseId} candidate=${candidate.id}`,
-        );
-      }
-      return { output };
-    },
-  }));
-}
-
-function buildTests(cases: EvalCase[]) {
-  return cases.map((testCase) => ({
-    vars: {
-      caseId: testCase.id,
-      prompt: testCase.prompt,
-    },
-    assert: buildAssertions(testCase),
-  }));
-}
-
-function buildAssertions(testCase: EvalCase): PromptfooAssertion[] {
-  const assertions = testCase.assertions.map(toPromptfooAssertion);
-
-  if (testCase.expected) {
-    assertions.push({
-      type: "contains",
-      value: testCase.expected,
-    });
-  }
-
-  if (typeof testCase.shouldTrigger === "boolean") {
-    assertions.push({
-      type: "javascript",
-      value: `output?.invokedTargetSkill === ${String(testCase.shouldTrigger)}`,
-    });
-  }
-
-  return assertions;
-}
-
-function toPromptfooAssertion(assertion: EvalAssertion): PromptfooAssertion {
-  const value =
-    typeof assertion.value === "string"
-      ? assertion.value
-      : JSON.stringify(assertion.value);
-
-  return {
-    type: assertion.type,
-    value,
-  };
-}
-
-function executionKey(caseId: string, candidateId: string): string {
-  return `${candidateId}::${caseId}`;
+async function handleReadHistoryRequest(
+  request: ReadHistoryRequest,
+  output: NodeJS.WritableStream,
+): Promise<void> {
+  writeEvent(output, {
+    id: request.id,
+    type: "result",
+    run: readCompletedRun(request.promptfooConfigDir, request.runId),
+  });
 }
 
 async function loadEvaluate(configDir?: string): Promise<EvaluateFn> {
@@ -327,6 +239,71 @@ function writeEvent(output: NodeJS.WritableStream, event: SidecarEvent): void {
   output.write(serializeSidecarEvent(event));
 }
 
+async function handleRequest(
+  request: SidecarRequest,
+  output: NodeJS.WritableStream,
+): Promise<void> {
+  switch (request.type) {
+    case "run_eval":
+      await handleRunEvalRequest(request, output);
+      return;
+    case "list_history":
+      await handleListHistoryRequest(request, output);
+      return;
+    case "read_history":
+      await handleReadHistoryRequest(request, output);
+      return;
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   await runJsonlSidecar();
 }
+
+async function runPromptfooEvalInSubprocess(
+  request: RunEvalRequest,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [PROMPTFOO_EVAL_SUBPROCESS_PATH],
+      {
+        env: {
+          ...process.env,
+          PROMPTFOO_CONFIG_DIR: request.promptfooConfigDir,
+        },
+        stdio: ["pipe", "ignore", "pipe"],
+      },
+    );
+
+    const stderr: Buffer[] = [];
+    child.stderr.on("data", (chunk) => {
+      stderr.push(Buffer.from(chunk));
+    });
+    child.on("error", (error) => {
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      const detail = Buffer.concat(stderr).toString("utf8").trim();
+      reject(
+        new Error(
+          detail.length > 0
+            ? detail
+            : `Promptfoo evaluation subprocess exited with code ${code ?? -1}`,
+        ),
+      );
+    });
+
+    child.stdin.write(JSON.stringify(request));
+    child.stdin.end();
+  });
+}
+
+const PROMPTFOO_EVAL_SUBPROCESS_PATH = fileURLToPath(
+  new URL("./promptfoo-eval-subprocess.js", import.meta.url),
+);

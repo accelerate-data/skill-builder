@@ -1,11 +1,12 @@
 use serde_json::json;
 
 use super::process::{
-    extract_run_result_from_stdout, resolve_runner_from_dist_candidates, PromptfooSidecarPathError,
+    extract_eval_result_from_stdout, extract_run_from_stdout, extract_runs_from_stdout,
+    resolve_runner_from_dist_candidates, PromptfooSidecarPathError,
 };
 use super::protocol::{
     parse_sidecar_event, EvalAssertion, EvalAssertionType, EvalCandidate, EvalCase, EvalExecution,
-    EvalMode, RunEvalRequest, SidecarEvent,
+    EvalMode, RunEvalRequest, SidecarEvent, SidecarResultPayload,
 };
 
 #[test]
@@ -15,9 +16,8 @@ fn run_eval_request_serializes_sidecar_payload() {
         EvalMode::Trigger,
         "warehouse-domain",
         "skills",
-        "smoke",
-        None,
-        vec![],
+        "Routing checks",
+        "/tmp/promptfoo",
         vec![EvalCandidate {
             id: "candidate-1".to_string(),
             label: "Candidate 1".to_string(),
@@ -47,10 +47,9 @@ fn run_eval_request_serializes_sidecar_payload() {
     assert_eq!(payload["mode"], "trigger");
     assert_eq!(payload["skillName"], "warehouse-domain");
     assert_eq!(payload["pluginSlug"], "skills");
-    assert_eq!(
-        payload["candidates"][0]["description"],
-        "Use for warehouse domain classification prompts."
-    );
+    assert_eq!(payload["scenarioName"], "Routing checks");
+    assert_eq!(payload["promptfooConfigDir"], "/tmp/promptfoo");
+    assert_eq!(payload["candidates"][0]["description"], "Use for warehouse domain classification prompts.");
     assert_eq!(payload["cases"][0]["shouldTrigger"], true);
     assert_eq!(payload["cases"][0]["assertions"][0]["type"], "contains");
     assert_eq!(payload["executions"][0]["candidateId"], "candidate-1");
@@ -80,7 +79,7 @@ fn extracts_result_from_sidecar_stdout() {
     let stdout = r#"{"type":"progress","id":"run-1","completed":1,"total":1}
 {"type":"result","id":"run-1","result":{"mode":"trigger","total":1,"passed":1,"failed":0,"results":[{"caseId":"case-1","candidateId":"candidate-1","passed":true,"score":1.0,"output":{"invokedTargetSkill":true}}]}}"#;
 
-    let result = extract_run_result_from_stdout(stdout, "run-1").expect("result event");
+    let result = extract_eval_result_from_stdout(stdout, "run-1").expect("result event");
 
     assert_eq!(result.mode, EvalMode::Trigger);
     assert_eq!(result.total, 1);
@@ -92,9 +91,46 @@ fn extracts_result_from_sidecar_stdout() {
 fn sidecar_error_event_is_returned() {
     let stdout = r#"{"type":"error","id":"run-1","message":"boom"}"#;
 
-    let error = extract_run_result_from_stdout(stdout, "run-1").expect_err("error event");
+    let error = extract_eval_result_from_stdout(stdout, "run-1").expect_err("error event");
 
     assert!(error.contains("boom"));
+}
+
+#[test]
+fn parses_history_runs_result_event() {
+    let stdout = r#"{"type":"result","id":"list-history","runs":[{"id":"run-1","promptfooEvalId":"eval-1","pluginSlug":"skills","skillName":"warehouse-domain","scenarioName":"Routing checks","mode":"trigger","status":"completed","summary":{"total":1,"passed":1,"failed":0,"passRate":1.0},"createdAt":"2026-05-05T00:00:00Z","completedAt":"2026-05-05T00:00:00Z","results":[]}]}"#;
+
+    let runs = extract_runs_from_stdout(stdout, "list-history").expect("runs result");
+
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, "run-1");
+    assert_eq!(runs[0].scenario_name, "Routing checks");
+}
+
+#[test]
+fn parses_single_history_run_result_event() {
+    let stdout = r#"{"type":"result","id":"read-history","run":{"id":"run-1","promptfooEvalId":"eval-1","pluginSlug":"skills","skillName":"warehouse-domain","scenarioName":"Routing checks","mode":"trigger","status":"completed","summary":{"total":1,"passed":1,"failed":0,"passRate":1.0},"createdAt":"2026-05-05T00:00:00Z","completedAt":"2026-05-05T00:00:00Z","results":[{"caseId":"case-1","candidateId":"candidate-1","passed":true,"score":1.0,"output":{"invokedTargetSkill":true}}]}}"#;
+
+    let run = extract_run_from_stdout(stdout, "read-history").expect("run result");
+
+    assert_eq!(run.as_ref().map(|value| value.id.as_str()), Some("run-1"));
+    assert_eq!(run.as_ref().map(|value| value.results.len()), Some(1));
+}
+
+#[test]
+fn sidecar_result_event_deserializes_history_payload() {
+    let event = parse_sidecar_event(
+        r#"{"type":"result","id":"list-history","runs":[{"id":"run-1","promptfooEvalId":"eval-1","pluginSlug":"skills","skillName":"warehouse-domain","scenarioName":"Routing checks","mode":"trigger","status":"completed","summary":{"total":1,"passed":1,"failed":0,"passRate":1.0},"createdAt":"2026-05-05T00:00:00Z","completedAt":"2026-05-05T00:00:00Z","results":[]}]}"#,
+    )
+    .expect("deserialize history result event");
+
+    match event {
+        SidecarEvent::Result { id, payload: SidecarResultPayload::Runs { runs } } => {
+            assert_eq!(id, "list-history");
+            assert_eq!(runs.len(), 1);
+        }
+        other => panic!("unexpected event: {other:?}"),
+    }
 }
 
 #[test]

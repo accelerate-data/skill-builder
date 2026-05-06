@@ -132,6 +132,7 @@ void invokeCommand("save_scenario", {
   pluginSlug: "skills",
   skillName: "demo",
   scenario,
+  previousScenarioName: null,
 });
 
 void invokeCommand("generate_scenarios", {

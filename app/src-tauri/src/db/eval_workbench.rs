@@ -172,6 +172,7 @@ fn bool_to_i64(value: bool) -> i64 {
     }
 }
 
+#[cfg(test)]
 fn row_to_prompt_case(row: &rusqlite::Row<'_>) -> rusqlite::Result<EvalPromptCase> {
     let assertions_json: String = row.get(4)?;
     Ok(EvalPromptCase {
@@ -184,6 +185,7 @@ fn row_to_prompt_case(row: &rusqlite::Row<'_>) -> rusqlite::Result<EvalPromptCas
     })
 }
 
+#[cfg(test)]
 pub fn save_eval_prompt_set(
     conn: &mut Connection,
     input: SaveEvalPromptSet,
@@ -241,6 +243,7 @@ pub fn save_eval_prompt_set(
     read_eval_prompt_set(conn, &prompt_set_id)?.ok_or_else(|| "Prompt set not found".to_string())
 }
 
+#[cfg(test)]
 pub fn list_eval_prompt_sets(
     conn: &Connection,
     plugin_slug: &str,
@@ -282,6 +285,7 @@ pub fn list_eval_prompt_sets(
     Ok(sets)
 }
 
+#[cfg(test)]
 pub fn read_eval_prompt_set(
     conn: &Connection,
     prompt_set_id: &str,
@@ -326,15 +330,6 @@ pub fn read_eval_prompt_set(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(Some(set))
-}
-
-pub fn delete_eval_prompt_set(conn: &Connection, prompt_set_id: &str) -> Result<(), String> {
-    conn.execute(
-        "DELETE FROM eval_prompt_sets WHERE id = ?1",
-        params![prompt_set_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 #[allow(dead_code)]
@@ -405,6 +400,7 @@ pub fn record_eval_run(conn: &mut Connection, input: NewEvalRun) -> Result<EvalR
     read_eval_run(conn, &run_id)?.ok_or_else(|| "Eval run not found".to_string())
 }
 
+#[allow(dead_code)]
 pub fn list_eval_runs(
     conn: &Connection,
     plugin_slug: &str,

@@ -7,29 +7,23 @@ import {
   trackInvokes,
 } from "../helpers/invoke-tracking.js";
 
-const PERFORMANCE_PROMPT_SET = {
-  id: "prompt-set-performance",
-  pluginSlug: "skills",
-  skillName: "test-skill",
-  mode: "performance" as const,
+const PERFORMANCE_SCENARIO = {
   name: "Regression",
-  createdAt: "2026-05-04T00:00:00Z",
-  updatedAt: "2026-05-04T00:00:00Z",
+  tags: ["performance"] as const,
   cases: [
     {
       id: "case-1",
       prompt: "Forecast next quarter revenue for the west region pipeline.",
-      expected: "Calls out assumptions, missing data, and confidence.",
+      expectedOutcome: "Calls out assumptions, missing data, and confidence.",
       shouldTrigger: null,
       assertions: [],
-      sortOrder: 0,
     },
   ],
 };
 
 const PERFORMANCE_RUN_SUMMARY = {
   id: "run-1",
-  promptSetId: "prompt-set-performance",
+  scenarioName: "Regression",
   mode: "performance" as const,
   status: "completed",
   summary: { passed: 1, total: 1 },
@@ -79,11 +73,12 @@ async function navigateToEvalWorkbench(
 }
 
 test.describe("Eval Workbench", { tag: "@evals" }, () => {
-  test("loads performance prompt sets and run history from the workbench surface", async ({
+  test("loads performance scenarios and run history from the workbench surface", async ({
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
-      list_eval_prompt_sets: [PERFORMANCE_PROMPT_SET],
+      list_scenarios: [{ name: PERFORMANCE_SCENARIO.name, tags: PERFORMANCE_SCENARIO.tags }],
+      load_scenario: PERFORMANCE_SCENARIO,
       list_eval_runs: [PERFORMANCE_RUN_SUMMARY],
     });
 
@@ -97,11 +92,12 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
     await expect(page.getByText("run-1")).toBeVisible();
   });
 
-  test("runs a prompt set and sends the failure brief to Refine", async ({
+  test("runs a scenario and sends the failure brief to Refine", async ({
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
-      list_eval_prompt_sets: [PERFORMANCE_PROMPT_SET],
+      list_scenarios: [{ name: PERFORMANCE_SCENARIO.name, tags: PERFORMANCE_SCENARIO.tags }],
+      load_scenario: PERFORMANCE_SCENARIO,
       list_eval_runs: [PERFORMANCE_RUN_SUMMARY],
       read_eval_run: PERFORMANCE_RUN_DETAIL,
       run_eval_workbench: PERFORMANCE_RUN_SUMMARY,
@@ -115,14 +111,14 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
       "build_refine_improvement_brief",
     ]);
 
-    await page.getByRole("button", { name: "Run prompt set" }).click();
+    await page.getByRole("button", { name: "Run scenario" }).click();
 
     await expect(page.getByText("Missed assumptions section")).toBeVisible();
     await expect(await getTrackedInvokeCount(page, "run_eval_workbench")).toBe(1);
     const runCalls = await getTrackedInvokes(page, "run_eval_workbench");
     expect(runCalls[0]?.args).toMatchObject({
       request: {
-        promptSetId: "prompt-set-performance",
+        scenarioName: "Regression",
         candidateIds: ["current-skill"],
       },
     });

@@ -76,37 +76,36 @@ pub struct EvalExecution {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct EvalHistoryConfig {
-    pub config_dir: String,
-    #[serde(default)]
-    pub persist: Option<bool>,
+#[serde(rename_all = "snake_case")]
+pub enum RequestType {
+    RunEval,
+    ListHistory,
+    ReadHistory,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct EvalHistoryMetadata {
-    pub source: String,
-    pub plugin_slug: String,
-    pub skill_name: String,
-    pub scenario_name: String,
-    pub mode: EvalMode,
+fn default_run_eval_request_type() -> RequestType {
+    RequestType::RunEval
+}
+
+fn default_list_history_request_type() -> RequestType {
+    RequestType::ListHistory
+}
+
+fn default_read_history_request_type() -> RequestType {
+    RequestType::ReadHistory
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RunEvalRequest {
     pub id: String,
-    #[serde(rename = "type")]
-    pub request_type: &'static str,
+    #[serde(rename = "type", default = "default_run_eval_request_type")]
+    pub request_type: RequestType,
     pub mode: EvalMode,
     pub skill_name: String,
     pub plugin_slug: String,
     pub scenario_name: String,
-    #[serde(default)]
-    pub history: Option<EvalHistoryConfig>,
-    #[serde(default)]
-    pub description_candidates: Vec<EvalDescriptionCandidate>,
+    pub promptfoo_config_dir: String,
     pub candidates: Vec<EvalCandidate>,
     pub cases: Vec<EvalCase>,
     pub executions: Vec<EvalExecution>,
@@ -120,8 +119,7 @@ impl RunEvalRequest {
         skill_name: impl Into<String>,
         plugin_slug: impl Into<String>,
         scenario_name: impl Into<String>,
-        history: Option<EvalHistoryConfig>,
-        description_candidates: Vec<EvalDescriptionCandidate>,
+        promptfoo_config_dir: impl Into<String>,
         candidates: Vec<EvalCandidate>,
         cases: Vec<EvalCase>,
         executions: Vec<EvalExecution>,
@@ -133,11 +131,73 @@ impl RunEvalRequest {
             skill_name: skill_name.into(),
             plugin_slug: plugin_slug.into(),
             scenario_name: scenario_name.into(),
-            history,
-            description_candidates,
+            promptfoo_config_dir: promptfoo_config_dir.into(),
             candidates,
             cases,
             executions,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListHistoryRequest {
+    pub id: String,
+    #[serde(rename = "type", default = "default_list_history_request_type")]
+    pub request_type: RequestType,
+    pub promptfoo_config_dir: String,
+    pub plugin_slug: String,
+    pub skill_name: String,
+    #[serde(default)]
+    pub scenario_name: Option<String>,
+    pub mode: EvalMode,
+    pub limit: i64,
+}
+
+impl ListHistoryRequest {
+    pub fn new(
+        id: impl Into<String>,
+        promptfoo_config_dir: impl Into<String>,
+        plugin_slug: impl Into<String>,
+        skill_name: impl Into<String>,
+        scenario_name: Option<String>,
+        mode: EvalMode,
+        limit: i64,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            request_type: RequestType::ListHistory,
+            promptfoo_config_dir: promptfoo_config_dir.into(),
+            plugin_slug: plugin_slug.into(),
+            skill_name: skill_name.into(),
+            scenario_name,
+            mode,
+            limit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadHistoryRequest {
+    pub id: String,
+    #[serde(rename = "type", default = "default_read_history_request_type")]
+    pub request_type: RequestType,
+    pub promptfoo_config_dir: String,
+    pub run_id: String,
+}
+
+impl ReadHistoryRequest {
+    pub fn new(
+        id: impl Into<String>,
+        promptfoo_config_dir: impl Into<String>,
+        run_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            request_type: RequestType::ReadHistory,
+            promptfoo_config_dir: promptfoo_config_dir.into(),
+            run_id: run_id.into(),
         }
     }
 }
@@ -309,6 +369,41 @@ pub struct EvalHistoryReadResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedEvalRunSummary {
+    pub total: u32,
+    pub passed: u32,
+    pub failed: u32,
+    pub pass_rate: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedEvalRun {
+    pub id: String,
+    pub promptfoo_eval_id: String,
+    pub plugin_slug: String,
+    pub skill_name: String,
+    pub scenario_name: String,
+    pub mode: EvalMode,
+    pub status: String,
+    pub summary: PersistedEvalRunSummary,
+    #[serde(default)]
+    pub scenario_snapshot: Option<serde_json::Value>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+    pub results: Vec<EvalCaseResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum SidecarResultPayload {
+    Eval { result: EvalRunResult },
+    Runs { runs: Vec<PersistedEvalRun> },
+    Run { run: Box<Option<PersistedEvalRun>> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SidecarEvent {
     Progress {
@@ -322,7 +417,8 @@ pub enum SidecarEvent {
     },
     Result {
         id: String,
-        result: EvalRunResult,
+        #[serde(flatten)]
+        payload: SidecarResultPayload,
     },
     HistoryListResult {
         id: String,
@@ -338,7 +434,10 @@ pub enum SidecarEvent {
     },
 }
 
-pub fn serialize_request<T: Serialize>(request: &T) -> Result<String, String> {
+pub fn serialize_request<T>(request: &T) -> Result<String, String>
+where
+    T: Serialize,
+{
     serde_json::to_string(request)
         .map(|json| format!("{json}\n"))
         .map_err(|error| error.to_string())

@@ -10,6 +10,7 @@ const mockRunEvalWorkbench = vi.fn();
 const mockCancelEvalWorkbenchRun = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
 const mockGenerateScenarios = vi.fn();
+const mockListScenarios = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
 let progressListener:
@@ -40,10 +41,12 @@ vi.mock("@/lib/eval-workbench", async () => {
   return {
     ...actual,
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
+    listScenarios: (...args: unknown[]) => mockListScenarios(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
     cancelEvalWorkbenchRun: (...args: unknown[]) =>
       mockCancelEvalWorkbenchRun(...args),
+    generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
     generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
@@ -89,6 +92,20 @@ const performanceScenario = {
   ],
 };
 
+const alternatePerformanceScenario = {
+  name: "Smoke",
+  tags: ["performance"] as const,
+  cases: [
+    {
+      id: "case-2",
+      prompt: "Summarize pipeline risk",
+      expectedOutcome: "Lists top blockers",
+      shouldTrigger: null,
+      assertions: [],
+    },
+  ],
+};
+
 const runSummary = {
   id: "run-1",
   scenarioName: "Regression",
@@ -117,6 +134,13 @@ const runDetail = {
   ],
 };
 
+const workspaceBRunSummary = {
+  ...runSummary,
+  id: "run-2",
+  createdAt: "2026-05-04T01:00:00Z",
+  completedAt: "2026-05-04T01:05:00Z",
+};
+
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -138,9 +162,11 @@ describe("WorkspaceEvals", () => {
       return Promise.resolve(() => {});
     });
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
+    mockListScenarios.mockReset().mockResolvedValue([]);
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
     mockCancelEvalWorkbenchRun.mockReset().mockResolvedValue(undefined);
+    mockGenerateScenarios.mockReset().mockResolvedValue([]);
     mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
       runId: "run-1",
       brief: "Improve assumptions handling",
@@ -166,6 +192,7 @@ describe("WorkspaceEvals", () => {
         "forecast-skill",
         "performance",
         20,
+        "Regression",
       ),
     );
     expect(
@@ -256,6 +283,242 @@ describe("WorkspaceEvals", () => {
       "Improve assumptions handling",
     );
     expect(onNavigateToRefine).toHaveBeenCalled();
+  });
+
+  it("reloads filtered history and clears the selected run when the scenario changes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /view latest run/i }));
+    await screen.findByText("Missed assumptions section");
+
+    rerender(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={alternatePerformanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(mockListEvalRuns).toHaveBeenLastCalledWith(
+        "skills",
+        "forecast-skill",
+        "performance",
+        20,
+        "Smoke",
+      ),
+    );
+    expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument();
+  });
+
+  it("reloads filtered history and clears the selected run when the workspace changes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace-a"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /view latest run/i }));
+    await screen.findByText("Missed assumptions section");
+
+    rerender(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace-b"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(mockListEvalRuns).toHaveBeenLastCalledWith(
+        "skills",
+        "forecast-skill",
+        "performance",
+        20,
+        "Regression",
+      ),
+    );
+    expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument();
+  });
+
+  it("ignores stale history responses after the workspace changes", async () => {
+    const firstHistory = createDeferred([runSummary]);
+    const secondHistory = createDeferred([workspaceBRunSummary]);
+    mockListEvalRuns.mockReset();
+    mockListEvalRuns
+      .mockImplementationOnce(() => firstHistory.promise)
+      .mockImplementationOnce(() => secondHistory.promise);
+
+    const { rerender } = render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace-a"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    rerender(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace-b"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    secondHistory.resolve([workspaceBRunSummary]);
+    expect(await screen.findByText("run-2")).toBeInTheDocument();
+
+    firstHistory.resolve([runSummary]);
+    await waitFor(() =>
+      expect(screen.queryByText("run-1")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("ignores stale run-detail responses after the workspace changes", async () => {
+    const user = userEvent.setup();
+    const staleDetail = createDeferred(runDetail);
+    mockReadEvalRun.mockReset().mockReturnValue(staleDetail.promise);
+    mockListEvalRuns
+      .mockReset()
+      .mockResolvedValueOnce([runSummary])
+      .mockResolvedValueOnce([workspaceBRunSummary]);
+
+    const { rerender } = render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace-a"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /view latest run/i }));
+
+    rerender(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace-b"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("run-2");
+    staleDetail.resolve(runDetail);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText(/select a run to inspect its results/i)).toBeInTheDocument();
+  });
+
+  it("saves generated scenarios without reusing the selected scenario as previousScenarioName", async () => {
+    const user = userEvent.setup();
+    const onSaveScenario = vi.fn().mockResolvedValue(performanceScenario);
+    mockGenerateScenarios.mockResolvedValue([
+      {
+        name: "Generated smoke",
+        tags: ["performance"],
+        cases: [
+          {
+            prompt: "Summarize pipeline risk",
+            expectedOutcome: "Lists top blockers",
+            shouldTrigger: null,
+            assertions: [],
+          },
+        ],
+      },
+    ]);
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={onSaveScenario}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /generate scenarios/i }));
+
+    await waitFor(() =>
+      expect(onSaveScenario).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Generated smoke" }),
+        { previousScenarioName: null },
+      ),
+    );
+  });
+
+  it("rejects generated scenarios that conflict with existing scenario names before saving", async () => {
+    const user = userEvent.setup();
+    const onSaveScenario = vi.fn();
+    mockListScenarios.mockResolvedValue([
+      {
+        name: "happy-path",
+        tags: ["performance"],
+      },
+    ]);
+    mockGenerateScenarios.mockResolvedValue([
+      {
+        name: "Happy Path",
+        tags: ["performance"],
+        cases: [
+          {
+            prompt: "Forecast next quarter revenue",
+            expectedOutcome: "Includes assumptions",
+            shouldTrigger: null,
+            assertions: [],
+          },
+        ],
+      },
+    ]);
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={onSaveScenario}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /generate scenarios/i }));
+
+    expect(onSaveScenario).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/generated scenarios already exist: happy path/i),
+    ).toBeInTheDocument();
   });
 
   it("publishes real running state while a scenario run is active", async () => {

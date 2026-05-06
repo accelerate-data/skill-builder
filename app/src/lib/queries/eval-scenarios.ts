@@ -17,6 +17,11 @@ export const evalScenarioKeys = {
   ) => ["eval-scenario", skillName, pluginSlug, scenarioName] as const,
 };
 
+type SaveScenarioMutationInput = {
+  scenario: ScenarioDto;
+  previousScenarioName?: string | null;
+};
+
 export function useScenarios(skillName: string | null, pluginSlug: string) {
   return useQuery({
     queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
@@ -34,7 +39,6 @@ export function useScenario(
     queryKey: evalScenarioKeys.detail(skillName ?? "", pluginSlug, scenarioName ?? ""),
     queryFn: () => loadScenario(pluginSlug, skillName!, scenarioName!),
     enabled: Boolean(skillName && scenarioName),
-    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -42,12 +46,24 @@ export function useSaveScenario(skillName: string | null, pluginSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (scenario: ScenarioDto) =>
-      saveScenario(pluginSlug, skillName!, scenario),
-    onSuccess: (savedScenario) => {
+    mutationFn: ({ scenario, previousScenarioName }: SaveScenarioMutationInput) =>
+      saveScenario(pluginSlug, skillName!, scenario, previousScenarioName),
+    onSuccess: (savedScenario, variables) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
       });
+      if (
+        variables.previousScenarioName &&
+        variables.previousScenarioName !== savedScenario.name
+      ) {
+        queryClient.removeQueries({
+          queryKey: evalScenarioKeys.detail(
+            skillName ?? "",
+            pluginSlug,
+            variables.previousScenarioName,
+          ),
+        });
+      }
       queryClient.setQueryData(
         evalScenarioKeys.detail(
           skillName ?? "",

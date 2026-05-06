@@ -32,10 +32,13 @@ export type ScenarioListItem = ScenarioSummary;
 export type SaveScenarioCase = ScenarioCase;
 export type SaveScenario = Scenario;
 
-export type ScenarioDto = Scenario;
-export type ScenarioListItem = ScenarioSummary;
-export type SaveScenarioCase = ScenarioCase;
-export type SaveScenario = Scenario;
+export function scenarioNameSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 export interface EvalRunResult {
   id: string;
@@ -141,7 +144,14 @@ export const saveScenario = (
   pluginSlug: string,
   skillName: string,
   scenario: SaveScenario,
-) => invokeCommand("save_scenario", { pluginSlug, skillName, scenario });
+  previousScenarioName?: string | null,
+) =>
+  invokeCommand("save_scenario", {
+    pluginSlug,
+    skillName,
+    scenario,
+    previousScenarioName: previousScenarioName ?? null,
+  });
 
 export const deleteScenario = (
   pluginSlug: string,
@@ -163,12 +173,14 @@ export const listEvalRuns = (
   skillName: string,
   mode?: EvalWorkbenchMode | null,
   limit?: number | null,
+  scenarioName?: string | null,
 ) =>
   invokeCommand("list_eval_runs", {
     pluginSlug,
     skillName,
     mode: mode ?? null,
     limit: limit ?? null,
+    scenarioName: scenarioName ?? null,
   });
 
 export const readEvalRun = (runId: string) =>

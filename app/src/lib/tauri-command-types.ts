@@ -455,7 +455,12 @@ export interface TauriCommandMap {
     result: ScenarioDto | null;
   };
   save_scenario: {
-    args: { pluginSlug: string; skillName: string; scenario: ScenarioDto };
+    args: {
+      pluginSlug: string;
+      skillName: string;
+      scenario: ScenarioDto;
+      previousScenarioName: string | null;
+    };
     result: ScenarioDto;
   };
   delete_scenario: {
@@ -480,6 +485,7 @@ export interface TauriCommandMap {
       skillName: string;
       mode: EvalWorkbenchMode | null;
       limit: number | null;
+      scenarioName: string | null;
     };
     result: EvalRun[];
   };

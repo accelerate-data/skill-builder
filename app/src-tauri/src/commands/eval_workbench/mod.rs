@@ -4,23 +4,24 @@ pub mod types;
 use crate::agents::openhands_server::{
     cancel_openhands_one_shots_with_prefix, run_openhands_one_shot, OpenHandsOneShotRunParams,
 };
-use crate::agents::promptfoo_sidecar::process::run_eval as run_promptfoo_eval;
+use crate::agents::promptfoo_sidecar::process::{
+    list_history as list_promptfoo_history, read_history as read_promptfoo_history,
+    run_eval as run_promptfoo_eval,
+};
 use crate::agents::promptfoo_sidecar::protocol::{
     EvalAssertion, EvalAssertionType, EvalCandidate as SidecarEvalCandidate, EvalCase,
-    EvalExecution, EvalMode as SidecarEvalMode, RunEvalRequest,
+    EvalExecution, EvalMode as SidecarEvalMode, ListHistoryRequest, PersistedEvalRun,
+    ReadHistoryRequest, RunEvalRequest,
 };
 use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::{
-    delete_eval_prompt_set as db_delete_eval_prompt_set, get_skill_master_in_plugin,
-    list_eval_prompt_sets as db_list_eval_prompt_sets, list_eval_runs as db_list_eval_runs,
-    read_description_candidate, read_eval_prompt_set as db_read_eval_prompt_set,
-    read_eval_run as db_read_eval_run, record_eval_run as db_record_eval_run,
-    save_eval_prompt_set as db_save_prompt_set, set_skill_behaviour_in_plugin, Db, EvalPromptSet,
-    EvalRun, EvalWorkbenchMode, NewDescriptionCandidate, NewEvalRun, NewEvalRunResult,
-    SaveEvalPromptSet,
+    get_skill_master_in_plugin, read_description_candidate, read_eval_run as db_read_eval_run,
+    record_eval_run as db_record_eval_run, set_skill_behaviour_in_plugin, Db,
+    DescriptionCandidate, EvalPromptSet, EvalRun, EvalWorkbenchMode, NewDescriptionCandidate,
+    NewEvalRun, NewEvalRunResult,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -37,7 +38,14 @@ pub use types::{
 const DEFAULT_DESCRIPTION_CANDIDATE_COUNT: u32 = 3;
 const CURRENT_SKILL_CANDIDATE_ID: &str = "current-skill";
 
-fn scenario_prompt_set_id(
+#[cfg(test)]
+use crate::db::{
+    list_eval_prompt_sets as db_list_eval_prompt_sets,
+    read_eval_prompt_set as db_read_eval_prompt_set, save_eval_prompt_set as db_save_prompt_set,
+    SaveEvalPromptSet,
+};
+
+fn scenario_runtime_id(
     plugin_slug: &str,
     skill_name: &str,
     scenario_name: &str,
@@ -87,18 +95,19 @@ fn parse_optional_mode(mode: Option<String>) -> Result<Option<EvalWorkbenchMode>
     mode.as_deref().map(EvalWorkbenchMode::parse).transpose()
 }
 
+#[cfg(test)]
 fn validate_prompt_set_input(input: &SaveEvalPromptSet) -> Result<(), String> {
     validate_plugin_slug(&input.plugin_slug)?;
     validate_skill_name(&input.skill_name)?;
     if input.name.trim().is_empty() {
-        return Err("Prompt set name cannot be empty".to_string());
+        return Err("Scenario name cannot be empty".to_string());
     }
     for case in &input.cases {
         if case.prompt.trim().is_empty() {
-            return Err("Prompt case prompt cannot be empty".to_string());
+            return Err("Scenario case prompt cannot be empty".to_string());
         }
         if input.mode == EvalWorkbenchMode::Performance && case.should_trigger.is_some() {
-            return Err("shouldTrigger is only valid for trigger prompt sets".to_string());
+            return Err("shouldTrigger is only valid for trigger scenarios".to_string());
         }
         if input.mode == EvalWorkbenchMode::Performance
             && case.expected.as_deref().unwrap_or("").trim().is_empty()
@@ -108,15 +117,15 @@ fn validate_prompt_set_input(input: &SaveEvalPromptSet) -> Result<(), String> {
                 .is_some_and(|items| items.is_empty())
         {
             return Err(
-                "Performance prompt cases need an expected outcome or at least one assertion"
+                "Performance scenario cases need an expected outcome or at least one assertion"
                     .to_string(),
             );
         }
         if input.mode == EvalWorkbenchMode::Trigger && case.should_trigger.is_none() {
-            return Err("Trigger prompt cases must include shouldTrigger".to_string());
+            return Err("Trigger scenario cases must include shouldTrigger".to_string());
         }
         if !case.assertions.is_array() {
-            return Err("Prompt case assertions must be an array".to_string());
+            return Err("Scenario case assertions must be an array".to_string());
         }
     }
     Ok(())
@@ -230,7 +239,7 @@ fn scenario_case_assertions_json(case: &scenarios::ScenarioCase) -> Value {
     )
 }
 
-fn scenario_prompt_set_snapshot(prompt_set: &EvalPromptSet) -> Value {
+fn scenario_run_snapshot(prompt_set: &EvalPromptSet) -> Value {
     serde_json::json!({
         "pluginSlug": prompt_set.plugin_slug,
         "skillName": prompt_set.skill_name,
@@ -247,52 +256,49 @@ fn scenario_prompt_set_snapshot(prompt_set: &EvalPromptSet) -> Value {
     })
 }
 
-fn summary_with_prompt_set_snapshot(summary: Value, prompt_set: &EvalPromptSet) -> Value {
+fn summary_with_scenario_snapshot(summary: Value, prompt_set: &EvalPromptSet) -> Value {
     let mut summary_object = match summary {
         Value::Object(object) => object,
         _ => serde_json::Map::new(),
     };
-    summary_object.insert(
-        "scenarioPromptSetSnapshot".to_string(),
-        scenario_prompt_set_snapshot(prompt_set),
-    );
+    summary_object.insert("scenarioSnapshot".to_string(), scenario_run_snapshot(prompt_set));
     Value::Object(summary_object)
 }
 
-fn prompt_set_from_summary_snapshot(snapshot: &Value) -> Result<EvalPromptSet, String> {
+fn scenario_runtime_from_summary_snapshot(snapshot: &Value) -> Result<EvalPromptSet, String> {
     let plugin_slug = snapshot
         .get("pluginSlug")
         .and_then(Value::as_str)
-        .ok_or_else(|| "Scenario prompt-set snapshot missing pluginSlug".to_string())?;
+        .ok_or_else(|| "Scenario snapshot missing pluginSlug".to_string())?;
     let skill_name = snapshot
         .get("skillName")
         .and_then(Value::as_str)
-        .ok_or_else(|| "Scenario prompt-set snapshot missing skillName".to_string())?;
+        .ok_or_else(|| "Scenario snapshot missing skillName".to_string())?;
     let scenario_name = snapshot
         .get("scenarioName")
         .and_then(Value::as_str)
-        .ok_or_else(|| "Scenario prompt-set snapshot missing scenarioName".to_string())?;
+        .ok_or_else(|| "Scenario snapshot missing scenarioName".to_string())?;
     let mode = snapshot
         .get("mode")
         .and_then(Value::as_str)
-        .ok_or_else(|| "Scenario prompt-set snapshot missing mode".to_string())
+        .ok_or_else(|| "Scenario snapshot missing mode".to_string())
         .and_then(EvalWorkbenchMode::parse)?;
     let cases = snapshot
         .get("cases")
         .and_then(Value::as_array)
-        .ok_or_else(|| "Scenario prompt-set snapshot missing cases".to_string())?
+        .ok_or_else(|| "Scenario snapshot missing cases".to_string())?
         .iter()
         .map(|case| {
             Ok(crate::db::EvalPromptCase {
                 id: case
                     .get("id")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| "Scenario prompt-set snapshot case missing id".to_string())?
+                    .ok_or_else(|| "Scenario snapshot case missing id".to_string())?
                     .to_string(),
                 prompt: case
                     .get("prompt")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| "Scenario prompt-set snapshot case missing prompt".to_string())?
+                    .ok_or_else(|| "Scenario snapshot case missing prompt".to_string())?
                     .to_string(),
                 expected: case
                     .get("expected")
@@ -309,7 +315,7 @@ fn prompt_set_from_summary_snapshot(snapshot: &Value) -> Result<EvalPromptSet, S
         .collect::<Result<Vec<_>, String>>()?;
 
     Ok(EvalPromptSet {
-        id: scenario_prompt_set_id(plugin_slug, skill_name, scenario_name, mode),
+        id: scenario_runtime_id(plugin_slug, skill_name, scenario_name, mode),
         plugin_slug: plugin_slug.to_string(),
         skill_name: skill_name.to_string(),
         mode,
@@ -320,23 +326,18 @@ fn prompt_set_from_summary_snapshot(snapshot: &Value) -> Result<EvalPromptSet, S
     })
 }
 
-fn resolve_prompt_set_for_run(
+fn resolve_run_scenario(
     conn: &mut rusqlite::Connection,
-    db: &Db,
+    skills_path: &Path,
     run: &EvalRun,
 ) -> Result<EvalPromptSet, String> {
-    if let Some(prompt_set_id) = run.prompt_set_id.as_deref() {
-        return db_read_eval_prompt_set(conn, prompt_set_id)?
-            .ok_or_else(|| "Eval prompt set not found".to_string());
-    }
-    if let Some(snapshot) = run.summary.get("scenarioPromptSetSnapshot") {
-        return prompt_set_from_summary_snapshot(snapshot);
+    if let Some(snapshot) = run.summary.get("scenarioSnapshot") {
+        return scenario_runtime_from_summary_snapshot(snapshot);
     }
 
-    let skills_path = resolve_skills_path(db)?;
-    load_or_create_prompt_set_for_scenario(
+    load_scenario_runtime(
         conn,
-        Path::new(&skills_path),
+        skills_path,
         &run.plugin_slug,
         &run.skill_name,
         &run.scenario_name,
@@ -355,7 +356,7 @@ fn read_scenario(
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))
 }
 
-fn load_or_create_prompt_set_for_scenario(
+fn load_scenario_runtime(
     _conn: &mut rusqlite::Connection,
     skills_path: &Path,
     plugin_slug: &str,
@@ -369,7 +370,7 @@ fn load_or_create_prompt_set_for_scenario(
     }
 
     Ok(EvalPromptSet {
-        id: scenario_prompt_set_id(plugin_slug, skill_name, scenario_name, mode),
+        id: scenario_runtime_id(plugin_slug, skill_name, scenario_name, mode),
         plugin_slug: plugin_slug.to_string(),
         skill_name: skill_name.to_string(),
         mode,
@@ -475,6 +476,13 @@ fn to_sidecar_mode(mode: EvalWorkbenchMode) -> SidecarEvalMode {
     match mode {
         EvalWorkbenchMode::Performance => SidecarEvalMode::Performance,
         EvalWorkbenchMode::Trigger => SidecarEvalMode::Trigger,
+    }
+}
+
+fn from_sidecar_mode(mode: SidecarEvalMode) -> EvalWorkbenchMode {
+    match mode {
+        SidecarEvalMode::Performance => EvalWorkbenchMode::Performance,
+        SidecarEvalMode::Trigger => EvalWorkbenchMode::Trigger,
     }
 }
 
@@ -885,7 +893,7 @@ fn build_description_candidate_prompt(
     format!(
         "You are improving a skill description for trigger routing.\n\
 Generate exactly one candidate description variant and one short rationale.\n\
-Keep the candidate grounded in the real skill behavior and the trigger boundary implied by the prompt set.\n\
+Keep the candidate grounded in the real skill behavior and the trigger boundary implied by the scenario.\n\
 Do not repeat the baseline wording verbatim. Do not mention evaluation, Promptfoo, or internal implementation.\n\
 \n\
 Skill name: {skill_name}\n\
@@ -1014,7 +1022,7 @@ fn build_eval_diagnosis_prompt(
     format!(
         "Diagnose an Eval Workbench run and produce a concise improvement brief for Refine.\n\
 Mode: {}\n\
-Prompt set: {}\n\
+Scenario: {}\n\
 \n\
 Prompt cases:\n{}\n\
 \n\
@@ -1176,6 +1184,9 @@ fn parse_generated_scenarios_response(
         .get("scenarios")
         .and_then(Value::as_array)
         .ok_or_else(|| "Scenario generation response missing scenarios array".to_string())?;
+    if !(3..=5).contains(&scenarios.len()) {
+        return Err("Scenario generation must return between 3 and 5 scenarios".to_string());
+    }
 
     scenarios
         .iter()
@@ -1192,6 +1203,9 @@ fn parse_suggested_assertions_response(
         .get("assertions")
         .and_then(Value::as_array)
         .ok_or_else(|| "Assertion suggestion response missing assertions array".to_string())?;
+    if !(1..=3).contains(&assertions.len()) {
+        return Err("Assertion suggestion must return between 1 and 3 assertions".to_string());
+    }
 
     assertions
         .iter()
@@ -1359,6 +1373,167 @@ fn build_run_summary(result: &crate::agents::promptfoo_sidecar::protocol::EvalRu
     })
 }
 
+fn promptfoo_config_dir(data_dir: &crate::DataDir) -> PathBuf {
+    data_dir.0.join("promptfoo")
+}
+
+fn persisted_run_to_eval_run(
+    run: PersistedEvalRun,
+    description_candidates: Vec<DescriptionCandidate>,
+) -> EvalRun {
+    let PersistedEvalRun {
+        id,
+        promptfoo_eval_id,
+        plugin_slug,
+        skill_name,
+        scenario_name,
+        mode,
+        status,
+        summary,
+        scenario_snapshot,
+        created_at,
+        completed_at,
+        results,
+    } = run;
+
+    let mut summary_value = serde_json::json!({
+        "total": summary.total,
+        "passed": summary.passed,
+        "failed": summary.failed,
+        "passRate": summary.pass_rate,
+    });
+    if let Some(snapshot) = scenario_snapshot {
+        if let Some(summary_object) = summary_value.as_object_mut() {
+            summary_object.insert("scenarioSnapshot".to_string(), snapshot);
+        }
+    }
+
+    EvalRun {
+        id: id.clone(),
+        prompt_set_id: None,
+        plugin_slug,
+        skill_name,
+        scenario_name,
+        mode: from_sidecar_mode(mode),
+        status,
+        summary: summary_value,
+        created_at,
+        completed_at,
+        results: results
+            .into_iter()
+            .map(|result| crate::db::EvalRunResult {
+                id: format!("{}:{}:{}", promptfoo_eval_id, result.case_id, result.candidate_id),
+                run_id: id.clone(),
+                case_id: result.case_id,
+                candidate_id: result.candidate_id,
+                passed: result.passed,
+                score: result.score,
+                output: result.output,
+                reason: result.reason,
+            })
+            .collect(),
+        description_candidates,
+    }
+}
+
+fn load_description_candidates_for_run(
+    conn: &rusqlite::Connection,
+    run_id: &str,
+) -> Result<Vec<DescriptionCandidate>, String> {
+    Ok(db_read_eval_run(conn, run_id)?
+        .map(|run| run.description_candidates)
+        .unwrap_or_default())
+}
+
+fn materialize_eval_run_for_read(
+    conn: &rusqlite::Connection,
+    run_id: &str,
+    persisted_run: Option<PersistedEvalRun>,
+) -> Result<Option<EvalRun>, String> {
+    match persisted_run {
+        Some(run) => Ok(Some(persisted_run_to_eval_run(
+            run,
+            load_description_candidates_for_run(conn, run_id)?,
+        ))),
+        None => Ok(db_read_eval_run(conn, run_id)?.filter(|run| run.status == "draft")),
+    }
+}
+
+fn load_refine_context(
+    conn: &mut rusqlite::Connection,
+    skills_path: &Path,
+    run_id: &str,
+    persisted_run: Option<PersistedEvalRun>,
+) -> Result<(EvalRun, EvalPromptSet, Vec<crate::types::SkillFileContent>), String> {
+    let run = materialize_eval_run_for_read(conn, run_id, persisted_run)?
+        .ok_or_else(|| "Eval run not found".to_string())?;
+    let prompt_set = resolve_run_scenario(conn, skills_path, &run)?;
+    let skill_files = if run.mode == EvalWorkbenchMode::Performance {
+        get_skill_content_inner_for_plugin(
+            &prompt_set.skill_name,
+            &skills_path.to_string_lossy(),
+            &prompt_set.plugin_slug,
+        )?
+    } else {
+        Vec::new()
+    };
+
+    Ok((run, prompt_set, skill_files))
+}
+
+#[cfg(test)]
+async fn list_eval_runs_with_deps<FList, FListFut>(
+    conn: &rusqlite::Connection,
+    promptfoo_config_dir: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+    mode: EvalWorkbenchMode,
+    limit: i64,
+    list_history: FList,
+) -> Result<Vec<EvalRun>, String>
+where
+    FList: FnOnce(ListHistoryRequest) -> FListFut,
+    FListFut: Future<Output = Result<Vec<PersistedEvalRun>, String>>,
+{
+    let request = ListHistoryRequest::new(
+        format!("list-history-{plugin_slug}-{skill_name}-{}", mode.as_str()),
+        promptfoo_config_dir.to_string(),
+        plugin_slug.to_string(),
+        skill_name.to_string(),
+        None,
+        to_sidecar_mode(mode),
+        limit,
+    );
+    let runs = list_history(request).await?;
+
+    runs.into_iter()
+        .map(|run| {
+            let description_candidates = load_description_candidates_for_run(conn, &run.id)?;
+            Ok(persisted_run_to_eval_run(run, description_candidates))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+async fn read_eval_run_with_deps<FRead, FReadFut>(
+    conn: &rusqlite::Connection,
+    promptfoo_config_dir: &str,
+    run_id: &str,
+    read_history: FRead,
+) -> Result<Option<EvalRun>, String>
+where
+    FRead: FnOnce(ReadHistoryRequest) -> FReadFut,
+    FReadFut: Future<Output = Result<Option<PersistedEvalRun>, String>>,
+{
+    let request = ReadHistoryRequest::new(
+        format!("read-history-{run_id}"),
+        promptfoo_config_dir.to_string(),
+        run_id.to_string(),
+    );
+    let persisted_run = read_history(request).await?;
+    materialize_eval_run_for_read(conn, run_id, persisted_run)
+}
+
 fn clone_persisted_candidates_for_completed_run(
     draft_candidates: &[crate::db::DescriptionCandidate],
 ) -> (
@@ -1431,8 +1606,9 @@ where
     let EvalRunBuildContext {
         runs,
         run_id,
+        promptfoo_config_dir,
         prompt_set,
-        sidecar_candidates,
+        mut sidecar_candidates,
         sidecar_cases,
         persisted_candidates,
     } = context;
@@ -1445,14 +1621,27 @@ where
     ensure_eval_workbench_not_cancelled(&runs, &run_id)?;
     let (persisted_candidates, candidate_id_map) =
         clone_persisted_candidates_for_completed_run(&persisted_candidates);
+    for candidate in &mut sidecar_candidates {
+        if let Some(remapped_id) = candidate_id_map.get(&candidate.id) {
+            candidate.id = remapped_id.clone();
+        }
+    }
+    let executions = executions
+        .into_iter()
+        .map(|mut execution| {
+            if let Some(remapped_id) = candidate_id_map.get(&execution.candidate_id) {
+                execution.candidate_id = remapped_id.clone();
+            }
+            execution
+        })
+        .collect();
     let sidecar_request = RunEvalRequest::new(
         run_id.clone(),
         to_sidecar_mode(prompt_set.mode),
         prompt_set.skill_name.clone(),
         prompt_set.plugin_slug.clone(),
         prompt_set.name.clone(),
-        None,
-        vec![],
+        promptfoo_config_dir,
         sidecar_candidates,
         sidecar_cases,
         executions,
@@ -1468,7 +1657,7 @@ where
         scenario_name: prompt_set.name.clone(),
         mode: prompt_set.mode,
         status: "completed".to_string(),
-        summary: summary_with_prompt_set_snapshot(build_run_summary(&result), &prompt_set),
+        summary: summary_with_scenario_snapshot(build_run_summary(&result), &prompt_set),
         completed_at: Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
         results: result
             .results
@@ -1493,6 +1682,7 @@ where
 struct EvalRunBuildContext {
     runs: EvalWorkbenchRunManager,
     run_id: String,
+    promptfoo_config_dir: String,
     prompt_set: EvalPromptSet,
     sidecar_candidates: Vec<SidecarEvalCandidate>,
     sidecar_cases: Vec<EvalCase>,
@@ -2023,17 +2213,49 @@ pub fn save_scenario(
     plugin_slug: String,
     skill_name: String,
     scenario: ScenarioDto,
+    previous_scenario_name: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
     let scenario = scenario_from_dto(scenario)?;
+    if let Some(previous_scenario_name) = previous_scenario_name.as_deref() {
+        scenarios::validate_scenario_name(previous_scenario_name)?;
+    }
     let skills_path = resolve_skills_path(&db)?;
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
+    let existing_scenario = scenarios::load_scenario(&eval_dir, &scenario.name)?;
+    let existing_target_scenario = if path.exists() {
+        scenarios::read_scenario_file(&path).ok()
+    } else {
+        None
+    };
+    let is_rename =
+        previous_scenario_name.as_deref().is_some_and(|previous| previous != scenario.name);
+    let is_create = previous_scenario_name.is_none();
+    if existing_scenario.is_some() && (is_create || is_rename) {
+        return Err(format!("Scenario '{}' already exists", scenario.name));
+    }
+    let target_path_matches_existing = existing_target_scenario.as_ref().is_some_and(|existing| {
+        existing.name == scenario.name
+            || previous_scenario_name.as_deref() == Some(existing.name.as_str())
+    });
+    if existing_target_scenario.is_some() && !target_path_matches_existing {
+        return Err(format!(
+            "Scenario '{}' conflicts with existing slug '{}'",
+            scenario.name,
+            scenarios::slugify_scenario_name(&scenario.name)
+        ));
+    }
     scenarios::write_scenario_file(&path, &scenario)?;
     scenarios::delete_other_scenario_files(&eval_dir, &scenario.name, &path)?;
+    if let Some(previous_scenario_name) = previous_scenario_name.as_deref() {
+        if previous_scenario_name != scenario.name {
+            scenarios::delete_scenario_file(&eval_dir, previous_scenario_name)?;
+        }
+    }
 
     Ok(scenario_to_dto(scenario))
 }
@@ -2129,44 +2351,11 @@ pub async fn suggest_assertions(
 }
 
 #[tauri::command]
-pub fn list_eval_prompt_sets(
-    plugin_slug: String,
-    skill_name: String,
-    mode: Option<String>,
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<crate::db::EvalPromptSet>, String> {
-    validate_plugin_slug(&plugin_slug)?;
-    validate_skill_name(&skill_name)?;
-    let mode = parse_optional_mode(mode)?;
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db_list_eval_prompt_sets(&conn, &plugin_slug, &skill_name, mode)
-}
-
-#[tauri::command]
-pub fn save_eval_prompt_set_legacy(
-    prompt_set: SaveEvalPromptSet,
-    db: tauri::State<'_, Db>,
-) -> Result<crate::db::EvalPromptSet, String> {
-    validate_prompt_set_input(&prompt_set)?;
-    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-    db_save_prompt_set(&mut conn, prompt_set)
-}
-
-#[tauri::command]
-pub fn delete_eval_prompt_set_legacy(
-    prompt_set_id: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    validate_id("Prompt set id", &prompt_set_id)?;
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db_delete_eval_prompt_set(&conn, &prompt_set_id)
-}
-
-#[tauri::command]
-pub async fn run_eval_workbench_legacy(
+pub async fn run_eval_workbench(
     app: tauri::AppHandle,
     request: RunEvalWorkbenchRequest,
     db: tauri::State<'_, Db>,
+    data_dir: tauri::State<'_, crate::DataDir>,
     runs: tauri::State<'_, EvalWorkbenchRunManager>,
 ) -> Result<EvalRun, String> {
     validate_id("Run id", &request.run_id)?;
@@ -2186,7 +2375,7 @@ pub async fn run_eval_workbench_legacy(
     let preparation = || -> Result<_, String> {
         let skills_path = resolve_skills_path(&db)?;
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-        let prompt_set = load_or_create_prompt_set_for_scenario(
+        let prompt_set = load_scenario_runtime(
             &mut conn,
             Path::new(&skills_path),
             &request.plugin_slug,
@@ -2263,6 +2452,9 @@ pub async fn run_eval_workbench_legacy(
         EvalRunBuildContext {
             runs: run_manager_for_execute.clone(),
             run_id: run_id.clone(),
+            promptfoo_config_dir: promptfoo_config_dir(&data_dir)
+                .to_string_lossy()
+                .to_string(),
             prompt_set,
             sidecar_candidates,
             sidecar_cases,
@@ -2322,28 +2514,62 @@ pub fn cancel_eval_workbench_run(
 }
 
 #[tauri::command]
-pub fn list_eval_runs_legacy(
+#[allow(clippy::too_many_arguments)]
+pub async fn list_eval_runs(
+    app: tauri::AppHandle,
     plugin_slug: String,
     skill_name: String,
     mode: Option<String>,
     limit: Option<i64>,
+    scenario_name: Option<String>,
     db: tauri::State<'_, Db>,
+    data_dir: tauri::State<'_, crate::DataDir>,
 ) -> Result<Vec<EvalRun>, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
-    let mode = parse_optional_mode(mode)?;
+    if let Some(scenario_name) = scenario_name.as_deref() {
+        scenarios::validate_scenario_name(scenario_name)?;
+    }
+    let Some(mode) = parse_optional_mode(mode)? else {
+        return Err("Eval Workbench run history requires a mode".to_string());
+    };
+    let request = ListHistoryRequest::new(
+        format!("list-history-{plugin_slug}-{skill_name}-{}", mode.as_str()),
+        promptfoo_config_dir(&data_dir).to_string_lossy().to_string(),
+        plugin_slug.clone(),
+        skill_name.clone(),
+        scenario_name,
+        to_sidecar_mode(mode),
+        limit.unwrap_or(50),
+    );
+    let runs = list_promptfoo_history(&app, &request).await?;
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db_list_eval_runs(&conn, &plugin_slug, &skill_name, mode, limit.unwrap_or(50))
+
+    runs.into_iter()
+        .map(|run| {
+            let description_candidates = load_description_candidates_for_run(&conn, &run.id)?;
+            Ok(persisted_run_to_eval_run(run, description_candidates))
+        })
+        .collect()
 }
 
 #[tauri::command]
-pub fn read_eval_run_legacy(
+pub async fn read_eval_run(
+    app: tauri::AppHandle,
     run_id: String,
     db: tauri::State<'_, Db>,
+    data_dir: tauri::State<'_, crate::DataDir>,
 ) -> Result<Option<EvalRun>, String> {
     validate_id("Run id", &run_id)?;
+    let request = ReadHistoryRequest::new(
+        format!("read-history-{run_id}"),
+        promptfoo_config_dir(&data_dir).to_string_lossy().to_string(),
+        run_id.clone(),
+    );
+    let persisted_run = read_promptfoo_history(&app, &request).await?;
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db_read_eval_run(&conn, &run_id)
+
+    materialize_eval_run_for_read(&conn, &run_id, persisted_run)
 }
 
 #[tauri::command]
@@ -2364,7 +2590,7 @@ pub async fn suggest_description_candidates_legacy(
     let prompt_set = {
         let skills_path = resolve_skills_path(&db)?;
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-        load_or_create_prompt_set_for_scenario(
+        load_scenario_runtime(
             &mut conn,
             Path::new(&skills_path),
             &request.plugin_slug,
@@ -2374,7 +2600,7 @@ pub async fn suggest_description_candidates_legacy(
         )?
     };
     if prompt_set.mode != EvalWorkbenchMode::Trigger {
-        return Err("Description candidates require a trigger prompt set".to_string());
+        return Err("Description candidates require a trigger scenario".to_string());
     }
 
     let candidate_count = request
@@ -2404,7 +2630,7 @@ pub async fn suggest_description_candidates_legacy(
             scenario_name: prompt_set.name.clone(),
             mode: EvalWorkbenchMode::Trigger,
             status: "draft".to_string(),
-            summary: summary_with_prompt_set_snapshot(
+            summary: summary_with_scenario_snapshot(
                 serde_json::json!({ "candidateCount": candidate_count, "status": "draft" }),
                 &prompt_set,
             ),
@@ -2466,24 +2692,19 @@ pub async fn build_refine_improvement_brief_legacy(
     app: tauri::AppHandle,
     run_id: String,
     db: tauri::State<'_, Db>,
+    data_dir: tauri::State<'_, crate::DataDir>,
 ) -> Result<RefineImprovementBrief, String> {
     validate_id("Run id", &run_id)?;
+    let skills_path = resolve_skills_path(&db)?;
+    let request = ReadHistoryRequest::new(
+        format!("read-history-{run_id}"),
+        promptfoo_config_dir(&data_dir).to_string_lossy().to_string(),
+        run_id.clone(),
+    );
+    let persisted_run = read_promptfoo_history(&app, &request).await?;
     let (run, prompt_set, skill_files) = {
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-        let run =
-            db_read_eval_run(&conn, &run_id)?.ok_or_else(|| "Eval run not found".to_string())?;
-        let prompt_set = resolve_prompt_set_for_run(&mut conn, &db, &run)?;
-        let skill_files = if run.mode == EvalWorkbenchMode::Performance {
-            let skills_path = resolve_skills_path(&db)?;
-            get_skill_content_inner_for_plugin(
-                &prompt_set.skill_name,
-                &skills_path,
-                &prompt_set.plugin_slug,
-            )?
-        } else {
-            Vec::new()
-        };
-        (run, prompt_set, skill_files)
+        load_refine_context(&mut conn, Path::new(&skills_path), &run_id, persisted_run)?
     };
 
     let runtime_ctx = read_initialized_runtime_context(&db)?;
@@ -2536,6 +2757,7 @@ mod tests {
     use crate::db::{
         create_test_db_for_tests, record_eval_run, save_eval_prompt_set, write_settings,
     };
+    use crate::commands::eval_workbench::scenarios::write_scenario_file;
     use crate::skill_paths::resolve_eval_dir;
     use crate::types::AppSettings;
     use std::path::Path;
@@ -2562,6 +2784,47 @@ mod tests {
                 },
                 assertions: serde_json::json!([]),
                 sort_order: None,
+            }],
+        }
+    }
+
+    fn sample_persisted_run(id: &str) -> PersistedEvalRun {
+        PersistedEvalRun {
+            id: id.to_string(),
+            promptfoo_eval_id: format!("promptfoo-{id}"),
+            plugin_slug: "skills".to_string(),
+            skill_name: "forecast".to_string(),
+            scenario_name: "Promptfoo scenario".to_string(),
+            mode: SidecarEvalMode::Trigger,
+            status: "completed".to_string(),
+            summary: crate::agents::promptfoo_sidecar::protocol::PersistedEvalRunSummary {
+                total: 1,
+                passed: 1,
+                failed: 0,
+                pass_rate: 1.0,
+            },
+            scenario_snapshot: Some(serde_json::json!({
+                "pluginSlug": "skills",
+                "skillName": "forecast",
+                "scenarioName": "Promptfoo scenario",
+                "mode": "trigger",
+                "cases": [{
+                    "id": "case-1",
+                    "prompt": "Forecast next quarter revenue",
+                    "shouldTrigger": true,
+                    "assertions": [],
+                    "sortOrder": 0
+                }]
+            })),
+            created_at: "2026-05-05T00:00:00Z".to_string(),
+            completed_at: Some("2026-05-05T00:00:01Z".to_string()),
+            results: vec![crate::agents::promptfoo_sidecar::protocol::EvalCaseResult {
+                case_id: "case-1".to_string(),
+                candidate_id: "candidate-a".to_string(),
+                passed: true,
+                score: 1.0,
+                output: serde_json::json!({ "invokedTargetSkill": true }),
+                reason: None,
             }],
         }
     }
@@ -2721,7 +2984,7 @@ mod tests {
     #[tokio::test]
     async fn build_completed_eval_run_persists_scenario_snapshot_for_file_backed_runs() {
         let prompt_set = EvalPromptSet {
-            id: scenario_prompt_set_id(
+            id: scenario_runtime_id(
                 "skills",
                 "forecast",
                 "Regression",
@@ -2746,6 +3009,7 @@ mod tests {
             EvalRunBuildContext {
                 runs: EvalWorkbenchRunManager::default(),
                 run_id: "run-1".to_string(),
+                promptfoo_config_dir: "/tmp/promptfoo".to_string(),
                 prompt_set,
                 sidecar_candidates: vec![SidecarEvalCandidate {
                     id: CURRENT_SKILL_CANDIDATE_ID.to_string(),
@@ -2793,7 +3057,7 @@ mod tests {
 
         assert_eq!(result.prompt_set_id, None);
         assert_eq!(
-            result.summary.get("scenarioPromptSetSnapshot"),
+            result.summary.get("scenarioSnapshot"),
             Some(&serde_json::json!({
                 "pluginSlug": "skills",
                 "skillName": "forecast",
@@ -2812,11 +3076,11 @@ mod tests {
     }
 
     #[test]
-    fn resolve_prompt_set_for_run_uses_summary_snapshot_after_scenario_file_is_deleted() {
+    fn resolve_run_scenario_uses_summary_snapshot_after_scenario_file_is_deleted() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());
         let prompt_set = EvalPromptSet {
-            id: scenario_prompt_set_id(
+            id: scenario_runtime_id(
                 "skills",
                 "forecast",
                 "Regression",
@@ -2857,7 +3121,7 @@ mod tests {
                     scenario_name: "Regression".to_string(),
                     mode: EvalWorkbenchMode::Performance,
                     status: "completed".to_string(),
-                    summary: summary_with_prompt_set_snapshot(
+                    summary: summary_with_scenario_snapshot(
                         serde_json::json!({ "passRate": 1.0 }),
                         &prompt_set,
                     ),
@@ -2872,7 +3136,7 @@ mod tests {
 
         let mut conn = db.0.lock().unwrap();
         let run = db_read_eval_run(&conn, "run-1").unwrap().unwrap();
-        let resolved = resolve_prompt_set_for_run(&mut conn, &db, &run).unwrap();
+        let resolved = resolve_run_scenario(&mut conn, tmp.path(), &run).unwrap();
 
         assert_eq!(resolved.name, "Regression");
         assert_eq!(resolved.mode, EvalWorkbenchMode::Performance);
@@ -2882,6 +3146,46 @@ mod tests {
             resolved.cases[0].expected.as_deref(),
             Some("Includes assumptions")
         );
+    }
+
+    #[test]
+    fn resolve_run_scenario_does_not_fall_back_to_legacy_prompt_set_rows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+
+        let legacy_prompt_set = {
+            let mut conn = db.0.lock().unwrap();
+            let mut input = valid_prompt_set(EvalWorkbenchMode::Performance);
+            input.name = "Legacy scenario".to_string();
+            save_eval_prompt_set(&mut conn, input).unwrap()
+        };
+
+        {
+            let mut conn = db.0.lock().unwrap();
+            record_eval_run(
+                &mut conn,
+                NewEvalRun {
+                    id: Some("legacy-run".to_string()),
+                    prompt_set_id: Some(legacy_prompt_set.id.clone()),
+                    plugin_slug: legacy_prompt_set.plugin_slug.clone(),
+                    skill_name: legacy_prompt_set.skill_name.clone(),
+                    scenario_name: legacy_prompt_set.name.clone(),
+                    mode: legacy_prompt_set.mode,
+                    status: "completed".to_string(),
+                    summary: serde_json::json!({ "passRate": 1.0 }),
+                    completed_at: None,
+                    results: vec![],
+                    description_candidates: vec![],
+                },
+            )
+            .unwrap();
+        }
+
+        let mut conn = db.0.lock().unwrap();
+        let run = db_read_eval_run(&conn, "legacy-run").unwrap().unwrap();
+        let error = resolve_run_scenario(&mut conn, tmp.path(), &run).unwrap_err();
+
+        assert_eq!(error, "Scenario 'Legacy scenario' not found");
     }
 
     #[test]
@@ -2905,6 +3209,44 @@ mod tests {
         assert_eq!(
             candidate.rationale.as_deref(),
             Some("Narrows the trigger to explicit revenue planning requests.")
+        );
+    }
+
+    #[test]
+    fn rejects_generated_scenarios_outside_expected_bounds() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {
+                "scenarios": [
+                    sample_scenario_dto("Only one")
+                ]
+            }
+        });
+
+        let error = parse_generated_scenarios_response(&state).unwrap_err();
+
+        assert_eq!(
+            error,
+            "Scenario generation must return between 3 and 5 scenarios"
+        );
+    }
+
+    #[test]
+    fn rejects_suggested_assertions_outside_expected_bounds() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {
+                "assertions": []
+            }
+        });
+
+        let error = parse_suggested_assertions_response(&state).unwrap_err();
+
+        assert_eq!(
+            error,
+            "Assertion suggestion must return between 1 and 3 assertions"
         );
     }
 
@@ -3028,6 +3370,246 @@ mod tests {
     }
 
     #[test]
+    fn allows_description_candidate_for_matching_scenario_identity_without_prompt_set_id() {
+        let mut conn = create_test_db_for_tests();
+        record_eval_run(
+            &mut conn,
+            NewEvalRun {
+                id: Some("draft-run".to_string()),
+                prompt_set_id: None,
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "Routing checks".to_string(),
+                mode: EvalWorkbenchMode::Trigger,
+                status: "draft".to_string(),
+                summary: serde_json::json!({}),
+                completed_at: None,
+                results: vec![],
+                description_candidates: vec![NewDescriptionCandidate {
+                    id: Some("candidate-a".to_string()),
+                    label: "Candidate A".to_string(),
+                    description: "Route revenue forecast prompts".to_string(),
+                    rationale: None,
+                    rank: Some(1),
+                }],
+            },
+        )
+        .unwrap();
+
+        let candidate = read_owned_description_candidate(
+            &conn,
+            "candidate-a",
+            "skills",
+            "forecast",
+            Some("Routing checks"),
+            Some(EvalWorkbenchMode::Trigger),
+        )
+        .unwrap();
+
+        assert_eq!(candidate.id, "candidate-a");
+        assert_eq!(candidate.run_id, "draft-run");
+    }
+
+    #[tokio::test]
+    async fn completed_run_read_prefers_promptfoo_history_and_keeps_db_candidates() {
+        let mut conn = create_test_db_for_tests();
+        record_eval_run(
+            &mut conn,
+            NewEvalRun {
+                id: Some("run-1".to_string()),
+                prompt_set_id: None,
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "DB scenario".to_string(),
+                mode: EvalWorkbenchMode::Trigger,
+                status: "completed".to_string(),
+                summary: serde_json::json!({ "passed": 0, "failed": 1, "total": 1 }),
+                completed_at: Some("2026-05-04T00:00:00Z".to_string()),
+                results: vec![NewEvalRunResult {
+                    id: Some("db-result".to_string()),
+                    case_id: "case-1".to_string(),
+                    candidate_id: "candidate-a".to_string(),
+                    passed: false,
+                    score: 0.0,
+                    output: serde_json::json!({ "invokedTargetSkill": false }),
+                    reason: Some("stale db result".to_string()),
+                }],
+                description_candidates: vec![NewDescriptionCandidate {
+                    id: Some("candidate-a".to_string()),
+                    label: "Candidate A".to_string(),
+                    description: "Route revenue forecasting prompts".to_string(),
+                    rationale: Some("Used for refine".to_string()),
+                    rank: Some(1),
+                }],
+            },
+        )
+        .unwrap();
+
+        let run = read_eval_run_with_deps(&conn, "/tmp/promptfoo", "run-1", |_request| async {
+            Ok(Some(sample_persisted_run("run-1")))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(run.scenario_name, "Promptfoo scenario");
+        assert_eq!(run.summary["passed"], 1);
+        assert_eq!(
+            run.summary["scenarioSnapshot"]["scenarioName"],
+            serde_json::json!("Promptfoo scenario")
+        );
+        assert_eq!(run.results.len(), 1);
+        assert_eq!(run.results[0].passed, true);
+        assert_eq!(run.description_candidates.len(), 1);
+        assert_eq!(run.description_candidates[0].id, "candidate-a");
+    }
+
+    #[tokio::test]
+    async fn completed_run_list_uses_promptfoo_history_instead_of_db_rows() {
+        let mut conn = create_test_db_for_tests();
+        record_eval_run(
+            &mut conn,
+            NewEvalRun {
+                id: Some("db-only".to_string()),
+                prompt_set_id: None,
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "DB only".to_string(),
+                mode: EvalWorkbenchMode::Trigger,
+                status: "completed".to_string(),
+                summary: serde_json::json!({ "passed": 0, "failed": 1, "total": 1 }),
+                completed_at: Some("2026-05-04T00:00:00Z".to_string()),
+                results: vec![],
+                description_candidates: vec![],
+            },
+        )
+        .unwrap();
+
+        let runs = list_eval_runs_with_deps(
+            &conn,
+            "/tmp/promptfoo",
+            "skills",
+            "forecast",
+            EvalWorkbenchMode::Trigger,
+            20,
+            |_request| async { Ok(vec![sample_persisted_run("run-1")]) },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].id, "run-1");
+        assert_eq!(runs[0].scenario_name, "Promptfoo scenario");
+    }
+
+    #[tokio::test]
+    async fn completed_run_read_does_not_fall_back_to_db_when_promptfoo_history_is_missing() {
+        let mut conn = create_test_db_for_tests();
+        record_eval_run(
+            &mut conn,
+            NewEvalRun {
+                id: Some("completed-run".to_string()),
+                prompt_set_id: None,
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "Completed scenario".to_string(),
+                mode: EvalWorkbenchMode::Trigger,
+                status: "completed".to_string(),
+                summary: serde_json::json!({ "passed": 0, "failed": 1, "total": 1 }),
+                completed_at: Some("2026-05-04T00:00:00Z".to_string()),
+                results: vec![NewEvalRunResult {
+                    id: Some("db-result".to_string()),
+                    case_id: "case-1".to_string(),
+                    candidate_id: "candidate-a".to_string(),
+                    passed: false,
+                    score: 0.0,
+                    output: serde_json::json!({ "invokedTargetSkill": false }),
+                    reason: Some("stale db result".to_string()),
+                }],
+                description_candidates: vec![],
+            },
+        )
+        .unwrap();
+
+        let run = read_eval_run_with_deps(&conn, "/tmp/promptfoo", "completed-run", |_request| async {
+            Ok(None)
+        })
+        .await
+        .unwrap();
+
+        assert!(run.is_none());
+    }
+
+    #[tokio::test]
+    async fn draft_run_read_falls_back_to_db_when_promptfoo_history_is_missing() {
+        let mut conn = create_test_db_for_tests();
+        record_eval_run(
+            &mut conn,
+            NewEvalRun {
+                id: Some("draft-run".to_string()),
+                prompt_set_id: None,
+                plugin_slug: "skills".to_string(),
+                skill_name: "forecast".to_string(),
+                scenario_name: "Draft scenario".to_string(),
+                mode: EvalWorkbenchMode::Trigger,
+                status: "draft".to_string(),
+                summary: serde_json::json!({}),
+                completed_at: None,
+                results: vec![],
+                description_candidates: vec![NewDescriptionCandidate {
+                    id: Some("candidate-a".to_string()),
+                    label: "Candidate A".to_string(),
+                    description: "Route revenue forecasting prompts".to_string(),
+                    rationale: Some("Used for refine".to_string()),
+                    rank: Some(1),
+                }],
+            },
+        )
+        .unwrap();
+
+        let run =
+            read_eval_run_with_deps(&conn, "/tmp/promptfoo", "draft-run", |_request| async {
+                Ok(None)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(run.id, "draft-run");
+        assert_eq!(run.status, "draft");
+        assert_eq!(run.scenario_name, "Draft scenario");
+        assert_eq!(run.description_candidates.len(), 1);
+    }
+
+    #[test]
+    fn load_refine_context_accepts_promptfoo_backed_run_without_db_run_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        std::fs::create_dir_all(&eval_dir).unwrap();
+        let scenario_path = eval_dir.join("promptfoo-scenario.yaml");
+        write_scenario_file(
+            &scenario_path,
+            &scenario_from_dto(sample_trigger_scenario_dto("Promptfoo scenario")).unwrap(),
+        )
+        .unwrap();
+        std::fs::remove_file(&scenario_path).unwrap();
+
+        let mut conn = create_test_db_for_tests();
+        let (run, prompt_set, skill_files) = load_refine_context(
+            &mut conn,
+            tmp.path(),
+            "run-1",
+            Some(sample_persisted_run("run-1")),
+        )
+        .unwrap();
+
+        assert_eq!(run.id, "run-1");
+        assert_eq!(run.scenario_name, "Promptfoo scenario");
+        assert_eq!(prompt_set.name, "Promptfoo scenario");
+        assert!(skill_files.is_empty());
+    }
+
+    #[test]
     fn list_scenarios_command_returns_summaries_only() {
         let tmp = tempfile::tempdir().unwrap();
         let dto = sample_scenario_dto("Regression");
@@ -3103,6 +3685,7 @@ mod tests {
             "skills".into(),
             "forecast".into(),
             dto.clone(),
+            None,
             db_state(&db),
         )
         .unwrap();
@@ -3149,7 +3732,7 @@ mod tests {
             db_save_prompt_set(
                 &mut conn,
                 SaveEvalPromptSet {
-                    id: Some(scenario_prompt_set_id(
+                    id: Some(scenario_runtime_id(
                         "skills",
                         "forecast",
                         "Regression",
@@ -3227,7 +3810,7 @@ mod tests {
     }
 
     #[test]
-    fn load_or_create_prompt_set_for_scenario_allows_file_only_run_preparation() {
+    fn load_scenario_runtime_allows_file_only_run_preparation() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());
         let dto = sample_scenario_dto("Regression");
@@ -3237,7 +3820,7 @@ mod tests {
         scenarios::write_scenario_file(&path, &scenario).unwrap();
         let mut conn = db.0.lock().unwrap();
 
-        let prompt_set = load_or_create_prompt_set_for_scenario(
+        let prompt_set = load_scenario_runtime(
             &mut conn,
             tmp.path(),
             "skills",
@@ -3257,7 +3840,7 @@ mod tests {
         assert!(
             db_read_eval_prompt_set(
                 &conn,
-                &scenario_prompt_set_id(
+                &scenario_runtime_id(
                     "skills",
                     "forecast",
                     "Regression",
@@ -3270,7 +3853,7 @@ mod tests {
     }
 
     #[test]
-    fn load_or_create_prompt_set_for_scenario_refreshes_stale_mirror_from_disk() {
+    fn load_scenario_runtime_refreshes_stale_mirror_from_disk() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());
         let original = sample_scenario_dto("Regression");
@@ -3283,7 +3866,7 @@ mod tests {
 
         {
             let mut conn = db.0.lock().unwrap();
-            let prompt_set = load_or_create_prompt_set_for_scenario(
+            let prompt_set = load_scenario_runtime(
                 &mut conn,
                 tmp.path(),
                 "skills",
@@ -3298,7 +3881,7 @@ mod tests {
         scenarios::write_scenario_file(&path, &scenario_from_dto(updated).unwrap()).unwrap();
 
         let mut conn = db.0.lock().unwrap();
-        let prompt_set = load_or_create_prompt_set_for_scenario(
+        let prompt_set = load_scenario_runtime(
             &mut conn,
             tmp.path(),
             "skills",
@@ -3316,7 +3899,7 @@ mod tests {
         assert!(
             db_read_eval_prompt_set(
                 &conn,
-                &scenario_prompt_set_id(
+                &scenario_runtime_id(
                     "skills",
                     "forecast",
                     "Regression",
@@ -3329,7 +3912,7 @@ mod tests {
     }
 
     #[test]
-    fn load_or_create_prompt_set_for_scenario_allows_file_only_trigger_candidate_generation() {
+    fn load_scenario_runtime_allows_file_only_trigger_candidate_generation() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());
         let dto = sample_trigger_scenario_dto("Routing checks");
@@ -3339,7 +3922,7 @@ mod tests {
         scenarios::write_scenario_file(&path, &scenario).unwrap();
         let mut conn = db.0.lock().unwrap();
 
-        let prompt_set = load_or_create_prompt_set_for_scenario(
+        let prompt_set = load_scenario_runtime(
             &mut conn,
             tmp.path(),
             "skills",
@@ -3356,7 +3939,7 @@ mod tests {
         assert!(
             db_read_eval_prompt_set(
                 &conn,
-                &scenario_prompt_set_id(
+                &scenario_runtime_id(
                     "skills",
                     "forecast",
                     "Routing checks",
@@ -3383,6 +3966,7 @@ mod tests {
             "skills".into(),
             "forecast".into(),
             dto.clone(),
+            Some("Regression".into()),
             db_state(&db),
         )
         .unwrap();
@@ -3394,6 +3978,116 @@ mod tests {
         assert!(!yml_path.exists());
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].name, "Regression");
+    }
+
+    #[test]
+    fn save_scenario_command_renames_without_leaving_duplicate_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+
+        save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("Regression"),
+            None,
+            db_state(&db),
+        )
+        .unwrap();
+
+        let renamed = save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("Renamed regression"),
+            Some("Regression".into()),
+            db_state(&db),
+        )
+        .unwrap();
+
+        let visible = list_scenarios("skills".into(), "forecast".into(), db_state(&db)).unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+
+        assert_eq!(renamed.name, "Renamed regression");
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].name, "Renamed regression");
+        let filenames = std::fs::read_dir(&eval_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(filenames, vec!["renamed-regression.yaml"]);
+    }
+
+    #[test]
+    fn save_scenario_command_rejects_duplicate_name_on_create_or_rename() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+
+        save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("Regression"),
+            None,
+            db_state(&db),
+        )
+        .unwrap();
+
+        let create_err = save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("Regression"),
+            None,
+            db_state(&db),
+        )
+        .unwrap_err();
+
+        save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("Fresh draft"),
+            None,
+            db_state(&db),
+        )
+        .unwrap();
+
+        let rename_err = save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("Regression"),
+            Some("Fresh draft".into()),
+            db_state(&db),
+        )
+        .unwrap_err();
+
+        assert_eq!(create_err, "Scenario 'Regression' already exists");
+        assert_eq!(rename_err, "Scenario 'Regression' already exists");
+    }
+
+    #[test]
+    fn save_scenario_command_rejects_slug_collisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+
+        save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("Happy Path"),
+            None,
+            db_state(&db),
+        )
+        .unwrap();
+
+        let create_err = save_scenario(
+            "skills".into(),
+            "forecast".into(),
+            sample_scenario_dto("happy-path"),
+            None,
+            db_state(&db),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            create_err,
+            "Scenario 'happy-path' conflicts with existing slug 'happy-path'"
+        );
     }
 
     #[test]
@@ -3498,6 +4192,7 @@ mod tests {
             "skills".into(),
             "forecast".into(),
             dto.clone(),
+            None,
             db_state(&db),
         )
         .unwrap();
