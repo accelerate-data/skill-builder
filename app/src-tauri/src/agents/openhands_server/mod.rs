@@ -459,6 +459,7 @@ async fn run_conversation_task_inner(
     // live WS only — backfilling there would replay the whole history.
     let mut seen_event_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut terminal_state: Option<serde_json::Value> = None;
+    let mut socket_error: Option<String> = None;
     if task.backfill_existing_events {
         match task.client.list_all_events(&task.conversation_id).await {
             Ok(events) => {
@@ -523,9 +524,13 @@ async fn run_conversation_task_inner(
                 let Some(message) = message else {
                     break;
                 };
-                let message = message.map_err(|e| {
-                    format!("OpenHands Agent Server socket read failed: {e}")
-                })?;
+                let message = match message {
+                    Ok(message) => message,
+                    Err(e) => {
+                        socket_error = Some(format!("OpenHands Agent Server socket read failed: {e}"));
+                        break;
+                    }
+                };
                 if !message.is_text() {
                     continue;
                 }
@@ -575,7 +580,7 @@ async fn run_conversation_task_inner(
         }
         Some(state) => state,
         None if cancel_pending => build_cancelled_state(&task.agent_id, &task.conversation_id),
-        None => build_socket_closed_state(&task.agent_id, &task.conversation_id),
+        None => recover_terminal_state_after_socket_failure(task, socket_error.as_deref()).await,
     };
 
     let terminal_error = if terminal_state
@@ -607,7 +612,70 @@ async fn run_conversation_task_inner(
     Ok(())
 }
 
-fn build_socket_closed_state(agent_id: &str, conversation_id: &str) -> serde_json::Value {
+async fn recover_terminal_state_after_socket_failure(
+    task: &OpenHandsConversationTask,
+    socket_error: Option<&str>,
+) -> serde_json::Value {
+    match task.client.list_all_events(&task.conversation_id).await {
+        Ok(events) => {
+            if let Some(state) =
+                recover_terminal_state_from_events(&task.agent_id, &task.conversation_id, &events)
+            {
+                if terminal_state_needs_final_response(&state) {
+                    match fetch_final_response_state(
+                        &task.client,
+                        &task.agent_id,
+                        &task.conversation_id,
+                        Some(state.clone()),
+                    )
+                    .await
+                    {
+                        Ok(final_state) => return final_state,
+                        Err(error) => {
+                            log::warn!(
+                                "[openhands-agent-server:{}] failed to fetch final response after socket failure: {}",
+                                task.agent_id,
+                                error
+                            );
+                        }
+                    }
+                }
+                return state;
+            }
+        }
+        Err(error) => {
+            log::warn!(
+                "[openhands-agent-server:{}] failed to recover persisted events after socket failure: {}",
+                task.agent_id,
+                error
+            );
+        }
+    }
+
+    build_socket_closed_state(
+        &task.agent_id,
+        &task.conversation_id,
+        socket_error.unwrap_or("OpenHands Agent Server socket closed before terminal conversation_state"),
+    )
+}
+
+fn recover_terminal_state_from_events(
+    agent_id: &str,
+    conversation_id: &str,
+    events: &[serde_json::Value],
+) -> Option<serde_json::Value> {
+    events.iter().rev().find_map(|raw| {
+        let normalized = normalize_server_event(agent_id, conversation_id, raw);
+        (normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_state"))
+            .then_some(normalized)
+    })
+}
+
+fn build_socket_closed_state(
+    agent_id: &str,
+    conversation_id: &str,
+    error_detail: &str,
+) -> serde_json::Value {
     serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
@@ -615,7 +683,7 @@ fn build_socket_closed_state(agent_id: &str, conversation_id: &str) -> serde_jso
         "conversation_id": conversation_id,
         "status": "error",
         "timestamp": chrono::Utc::now().timestamp_millis(),
-        "error_detail": "OpenHands Agent Server socket closed before terminal conversation_state",
+        "error_detail": error_detail,
         "result_text": null,
         "structured_output": null,
     })
@@ -930,7 +998,11 @@ mod tests {
 
     #[test]
     fn socket_close_without_terminal_state_is_error_state() {
-        let state = build_socket_closed_state("agent-1", "conversation-1");
+        let state = build_socket_closed_state(
+            "agent-1",
+            "conversation-1",
+            "OpenHands Agent Server socket closed before terminal conversation_state",
+        );
 
         assert_eq!(
             state.get("type").and_then(|v| v.as_str()),
@@ -966,6 +1038,25 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap()
             .contains("cancelled"));
+    }
+
+    #[test]
+    fn persisted_terminal_event_can_be_recovered_after_socket_failure() {
+        let recovered = recover_terminal_state_from_events(
+            "agent-1",
+            "conversation-1",
+            &[serde_json::json!({
+                "event_class": "ConversationStateUpdateEvent",
+                "key": "execution_status",
+                "value": "finished"
+            })],
+        )
+        .expect("expected terminal state from persisted event");
+
+        assert_eq!(recovered["type"], "conversation_state");
+        assert_eq!(recovered["status"], "completed");
+        assert_eq!(recovered["agent_id"], "agent-1");
+        assert_eq!(recovered["conversation_id"], "conversation-1");
     }
 
     #[test]

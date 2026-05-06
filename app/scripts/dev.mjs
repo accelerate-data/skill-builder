@@ -2,7 +2,7 @@
 import { execSync } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { ensurePromptfooSidecarDependencies } from './dev-lib.mjs';
+import { ensureDevPrerequisites } from './dev-lib.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -26,7 +26,7 @@ const config = JSON.stringify({ build: { devUrl: `http://localhost:${port}` } })
 const env = { ...process.env, DEV_PORT: port };
 
 try {
-  ensurePromptfooSidecarDependencies(root);
+  ensureDevPrerequisites(root);
   execSync('npm run codegen', { stdio: 'inherit', cwd: root });
   const quote = process.platform === 'win32' ? `"` : `'`;
   const escapedConfig = process.platform === 'win32' ? config.replace(/"/g, '\\"') : config;
