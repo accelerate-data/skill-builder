@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Simplify Eval Workbench so each skill owns a set of Promptfoo-style scenarios, where each scenario has one prompt and one assertion set, `Performance` is always on, `Trigger` is optional, and generation is scenario-scoped rather than bulk-scoped.
+**Goal:** Simplify Eval Workbench so each skill owns one eval package with multiple scenarios, each scenario has one prompt plus multiple user-readable expectations, each expectation is judged independently, `Performance` is always on, `Trigger` is optional, and generation is scenario-scoped rather than bulk-scoped.
 
-**Persistence contract:** `Add scenario` creates and persists a real scenario record immediately. `Suggest` calls Rust, Rust generates prompt plus assertions for that one scenario, persists the result, and the UI reloads the saved scenario. After a scenario exists, UI edits autosave. There is no explicit `Save scenario` action. `Evaluate` runs the full package, not a single selected scenario.
+**Persistence contract:** `Add scenario` creates and persists a real scenario record immediately. `Suggest` calls Rust, Rust builds a context envelope from all available skill context, generates prompt plus expectations for that one scenario, overwrites the saved scenario content, and the UI reloads it. After a scenario exists, UI edits autosave. There is no explicit `Save scenario` action. `Evaluate` runs the full package, not a single selected scenario.
 
-**Architecture:** Replace the current `scenario -> cases[]` authoring model with a single-scenario contract exposed consistently through frontend types, Tauri commands, YAML storage, and Promptfoo run preparation. Keep the broader runtime boundary intact: git-backed scenario files, Rust-owned command layer, Promptfoo-sidecar execution, and app-local run history.
+**Architecture:** Replace the current `scenario -> cases[]` authoring model and low-level matcher assertions with a single-scenario contract exposed consistently through frontend types, Tauri commands, YAML storage, and Promptfoo run preparation. Author scenarios in business-readable expectations, then compile each expectation into one Promptfoo `llm-rubric` assertion at runtime. Keep the broader runtime boundary intact: git-backed scenario files, Rust-owned command layer, Promptfoo-sidecar execution, and app-local run history.
 
 **Tech Stack:** React, TanStack Query, TypeScript, Tauri, Rust, serde/serde_yaml, Promptfoo sidecar, Vitest, cargo test, Playwright E2E.
 
@@ -22,17 +22,17 @@
 
 | File | Change |
 |---|---|
-| `app/src/lib/eval-workbench.ts` | Replace nested `ScenarioCase` editor model with a single-scenario contract, add single-scenario suggestion, autosave helpers, and update package-level evaluation request types. |
+| `app/src/lib/eval-workbench.ts` | Replace nested `ScenarioCase` editor model and low-level assertions with a single-scenario prompt-plus-expectations contract, add single-scenario suggestion, autosave helpers, and update package-level evaluation request types. |
 | `app/src/lib/tauri-command-types.ts` | Update typed scenario command shapes if payloads change. |
 | `app/src/lib/tauri-command-types.typecheck.ts` | Update compile-time command examples for the new scenario payloads. |
 | `app/src/lib/queries/eval-scenarios.ts` | Keep query hooks aligned with the updated scenario contract. |
-| `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx` | Replace nested case UI with a single-scenario editor. |
+| `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx` | Replace nested case UI and low-level matcher editing with a single-scenario prompt-plus-expectations editor. |
 | `app/src/components/workspace/workspace-evals.tsx` | Remove bulk generation, add persisted scenario-level suggest, remove explicit save, autosave edits, and switch to package-level Evaluate. |
 | `app/src/components/workspace/workspace-description.tsx` | Rename trigger generation to `Generate candidates` and keep trigger-specific scenario editing aligned. |
 | `app/src/components/workspace/workspace-eval-workbench.tsx` | Keep selection and empty-state behavior aligned with the simplified editor. |
-| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Update scenario DTO conversion, prompt loading, single-scenario suggestion, autosave persistence hooks, generation, validation, and package-level run preparation. |
+| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Update scenario DTO conversion, context-envelope prompt loading, single-scenario suggestion, autosave persistence hooks, expectation-to-rubric translation, validation, and package-level run preparation. |
 | `app/src-tauri/src/commands/eval_workbench/scenarios.rs` | Update file-backed scenario types and YAML read/write helpers. |
-| `agent-sources/prompts/**` | Add the externalized single-scenario suggest prompt. |
+| `agent-sources/prompts/**` | Replace the externalized single-scenario suggest prompt with a richer skill-grounded expectations prompt. |
 | `app/src/__tests__/components/workspace/*.test.tsx` | Update editor and button-behavior coverage. |
 | `app/src/__tests__/lib/eval-workbench-tauri.test.ts` | Update wrapper expectations for the revised scenario payloads. |
 | `app/e2e/evals/evals.spec.ts` | Update mocked performance-mode coverage if UI flows change materially. |
@@ -48,12 +48,13 @@
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
 - Modify: `app/src-tauri/src/commands/eval_workbench/scenarios.rs`
 
-- [ ] Replace the active frontend `Scenario` shape so one scenario owns one prompt and one assertion set rather than `cases[]`.
+- [ ] Replace the active frontend `Scenario` shape so one scenario owns one prompt and one expectation set rather than `cases[]`.
 - [ ] Remove `ScenarioCase` as an authored editor concept from the shared frontend types.
-- [ ] Remove `expectedOutcome` from the user-facing scenario contract and keep assertions as the single evaluation surface.
+- [ ] Remove `expectedOutcome` and low-level authored assertion objects from the user-facing scenario contract.
+- [ ] Add `expectations: string[]` as the user-authored evaluation surface.
 - [ ] Keep trigger-specific state on the scenario itself rather than on nested cases.
 - [ ] Update DTO conversion and validation in the Rust command layer to accept and emit the simplified scenario contract.
-- [ ] Update YAML load/save helpers so one file maps directly to one scenario prompt and assertion set.
+- [ ] Update YAML load/save helpers so one file maps directly to one scenario prompt and expectation set.
 - [ ] Decide whether a compatibility migration is needed for existing `cases[]` files and document the exact behavior in code comments if so.
 
 ## Task 2: Simplify the performance editor and persistence flow
@@ -71,11 +72,12 @@
 - [ ] Replace the current top-level `Generate scenarios` action with one scenario-level `Suggest` action.
 - [ ] Remove per-case `Suggest` controls.
 - [ ] Remove the separate `Expected outcome` editor field.
+- [ ] Remove low-level authored matcher editing for `contains`, `equals`, and `javascript`.
 - [ ] Add a scenario-level delete affordance for persisted scenarios and keep selection state consistent after delete.
 - [ ] Move the performance-mode `Suggest` action into the scenario editor so the flow is `Add scenario -> Suggest -> edit -> autosave`.
 - [ ] Remove the explicit `Save scenario` action from the performance editor.
 - [ ] Make `New scenario` create and persist a real scenario immediately instead of only creating a local draft.
-- [ ] Make prompt, trigger, and assertion edits autosave after the scenario exists.
+- [ ] Make prompt, trigger, and expectation edits autosave after the scenario exists.
 - [ ] Show a busy pointer/spinner affordance while `Suggest` is in flight.
 
 ## Task 3: Keep trigger-mode generation explicit
@@ -99,11 +101,14 @@
 - Modify: frontend wrappers in `app/src/lib/eval-workbench.ts` if the request/response shape changes
 
 - [ ] Replace the bulk `generate_scenarios` workflow with a scenario-scoped suggestion workflow.
-- [ ] Make the scenario-level `Suggest` action generate prompt text and assertion objects for one persisted scenario.
+- [ ] Make the scenario-level `Suggest` action generate prompt text and expectation lines for one persisted scenario.
 - [ ] Ensure suggestion persists the active scenario through Rust and reloads the saved scenario instead of mutating only a local draft.
 - [ ] Use a single-scenario response shape, not a top-level `scenarios[]` bulk response.
 - [ ] Remove dead frontend and backend paths that only supported bulk scenario generation.
 - [ ] Externalize the suggest prompt into `agent-sources/prompts/` and stop hardcoding it in Rust.
+- [ ] Build a suggestion context envelope that passes the canonical skill path, workspace skill path when relevant, skill files, clarifications when present, decisions when present, and current scenario state.
+- [ ] Explicitly instruct the LLM to read and understand the skill before generating the scenario prompt and expectations.
+- [ ] Make suggestion overwrite the current scenario prompt and expectations rather than filling blanks.
 - [ ] Replace the current invalid-JSON failure with a clearer scenario-suggestion error path that includes enough response context to debug malformed structured output.
 - [ ] Tighten the parser so malformed structured output is rejected deterministically and mapped to a user-facing suggestion error.
 
@@ -116,10 +121,12 @@
 - Modify: `app/src/lib/eval-workbench.ts`
 
 - [ ] Update run preparation so each saved scenario produces one Promptfoo scenario input from the simplified authored contract.
+- [ ] Compile each authored expectation into one Promptfoo `llm-rubric` assertion at runtime.
 - [ ] Change performance-mode execution from selected-scenario run to package-level evaluation across all saved scenarios.
 - [ ] Keep `Performance` always required.
-- [ ] Require at least one assertion before persisted suggestion completion or package evaluation.
+- [ ] Require at least one expectation before persisted suggestion completion or package evaluation.
 - [ ] Require `shouldTrigger` only when trigger is enabled.
+- [ ] Keep trigger-enabled scenarios as combined routing-plus-performance scenarios, not trigger-only records.
 - [ ] Preserve run history lookup by scenario identity and mode even when one Evaluate action runs the package.
 - [ ] Keep the current app-local Promptfoo history boundary intact.
 
@@ -136,9 +143,10 @@
 - [ ] Replace fixtures that currently depend on nested `cases[]` payloads.
 - [ ] Add coverage that there is no explicit `Save scenario` button.
 - [ ] Add coverage that `New scenario` persists immediately.
-- [ ] Add coverage that prompt/assertion edits autosave after persistence.
+- [ ] Add coverage that prompt/expectation edits autosave after persistence.
 - [ ] Add coverage that performance mode no longer exposes bulk generation or per-case suggestion.
 - [ ] Add coverage that scenario-level `Suggest` persists and reloads exactly one scenario.
+- [ ] Add coverage that the scenario editor renders plain-language expectations rather than low-level matcher controls.
 - [ ] Add coverage that performance mode exposes `Suggest` from the scenario editor, not the workbench header.
 - [ ] Add coverage that deleting a saved scenario updates the list and selected scenario state correctly.
 - [ ] Add coverage for malformed scenario-suggestion responses so the surfaced error is actionable.
@@ -146,6 +154,7 @@
 - [ ] Add coverage that trigger mode uses `Generate candidates`.
 - [ ] Add coverage that the primary performance action is `Evaluate`, not `Run scenario`.
 - [ ] Add coverage that `Evaluate` invokes package-level execution rather than passing a single scenario name.
+- [ ] Add coverage that each expectation becomes its own model-graded runtime assertion.
 - [ ] Keep existing run-history and selected-scenario regression coverage green after the model change.
 
 ## Task 7: Final documentation sync

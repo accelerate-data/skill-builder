@@ -14,7 +14,7 @@ Eval Workbench should follow the Promptfoo mental model directly:
 - each skill owns one Promptfoo package;
 - that package contains a set of scenarios;
 - each scenario is one authored test item;
-- each scenario has one prompt and one set of assertions;
+- each scenario has one prompt and one set of expectations;
 - trigger evaluation is an optional dimension on the same scenario, not a second authored object type.
 
 The current implementation adds an extra nested `case` layer inside each scenario and exposes multiple generation surfaces that do different things. That makes the editor harder to understand and pushes the UI away from the user's expected Promptfoo model.
@@ -47,7 +47,10 @@ This design replaces the current `scenario -> many cases` authoring model with a
 | Remove nested authored `case` objects from the editor model. | The current `scenario -> many cases` shape behaves more like a grouped folder than a Promptfoo scenario and is the main source of UX confusion. |
 | Keep `Performance` always enabled and visible, but disabled in the UI. | Performance evaluation is mandatory for every authored scenario, but the user should still see that it is part of the scenario contract. |
 | Keep `Trigger` as an optional checkbox. | A scenario can be performance-only or performance-plus-trigger without requiring separate authored records. |
+| Author expectations in plain business language. | Users should describe what the answer must explain or calculate, not low-level matcher syntax such as `contains` or `javascript`. |
+| Evaluate one expectation per LLM judge rubric. | Separate model-graded checks give clear pass/fail reporting per business expectation and avoid one opaque scenario-level verdict. |
 | Use one scenario-level `Suggest` action. | Generation should help fill the current scenario draft, not silently create multiple saved scenarios or require per-subsection generation controls. |
+| Build suggestion prompts from a context envelope, not a short excerpt. | The LLM needs the canonical skill path, skill files, clarifications, and decisions so it can understand what the skill actually does before drafting scenarios. |
 | Remove top-level bulk `Generate scenarios` from performance mode. | Bulk creation does not match the expected workflow of `add a scenario -> suggest -> edit -> save -> run`. |
 | Rename trigger-mode generation to `Generate candidates`. | Trigger description candidate generation is not scenario generation and should be labeled explicitly. |
 | Disable run actions when there is no saved selected scenario. | Run should operate on a concrete saved scenario, not on an empty state or an unsaved draft. |
@@ -63,7 +66,7 @@ skill
     -> scenarios[]
       -> name
       -> prompt
-      -> assertions[]
+      -> expectations[]
       -> performance: always true
       -> trigger: optional
       -> shouldTrigger: required only when trigger is enabled
@@ -99,9 +102,9 @@ name: Regression
 performance: true
 trigger: false
 prompt: "Forecast next quarter revenue and call out assumptions."
-assertions:
-  - type: contains
-    value: "assumptions"
+expectations:
+  - "Explains the assumptions behind the forecast."
+  - "Distinguishes open pipeline from booked revenue."
 ```
 
 If trigger is enabled:
@@ -112,12 +115,12 @@ performance: true
 trigger: true
 should_trigger: true
 prompt: "Show me pipeline coverage by stage for next quarter."
-assertions:
-  - type: contains
-    value: "stage"
+expectations:
+  - "Explains pipeline coverage using stage-level logic."
+  - "Calls out whether booked deals should be excluded from open pipeline."
 ```
 
-The exact YAML key naming can be normalized during implementation, but the design requirement is stable: one scenario file maps to one prompt plus one assertion set, with optional trigger metadata.
+The exact YAML key naming can be normalized during implementation, but the design requirement is stable: one scenario file maps to one prompt plus one expectation set, with optional trigger metadata.
 
 ## UI Model
 
@@ -142,19 +145,20 @@ Fields:
 - `Trigger` optional checkbox
 - `Should trigger` checkbox when trigger is enabled
 - `Prompt`
-- `Assertions`
+- `Expectations`
 
 Actions:
 
 - `New scenario`
 - `Suggest`
-- `Save scenario`
-- `Run scenario`
+- `Delete scenario`
+- `Evaluate`
 
 Removed actions:
 
 - top-level `Generate scenarios`
 - per-case `Suggest`
+- low-level assertion-type editing such as `contains` and `javascript`
 - separate `Expected outcome` field in the performance editor
 
 ### Trigger candidate generation
@@ -171,19 +175,48 @@ That keeps scenario authoring distinct from description-candidate comparison.
 
 Inputs:
 
-- skill identity;
-- current scenario name, if present;
+- canonical skill path;
+- workspace skill path when relevant;
+- skill files;
+- clarifications when present;
+- decisions when present;
+- current scenario name;
 - current trigger setting;
-- existing prompt or assertions when the user has already started editing;
-- skill files and relevant app context already used by the Eval Workbench runtime.
+- existing prompt and expectations for overwrite-aware regeneration.
 
 Outputs:
 
 - prompt text for the scenario;
-- assertion objects for that scenario;
+- plain-language expectations for that scenario;
 - optional trigger expectation guidance when trigger mode is enabled.
 
-The action updates only the current draft. It does not create multiple scenarios, does not save automatically, and does not mutate unrelated scenarios.
+The action overwrites the current scenario's prompt and expectations, persists through Rust, and reloads the saved scenario in the UI. It does not create multiple scenarios and does not mutate unrelated scenarios.
+
+## Evaluation Model
+
+Authoring stays in user-readable language, but execution is model-graded.
+
+```text
+Scenario
+  -> prompt
+  -> expectations[]
+     -> expectation 1 -> Promptfoo llm-rubric assertion
+     -> expectation 2 -> Promptfoo llm-rubric assertion
+     -> expectation 3 -> Promptfoo llm-rubric assertion
+```
+
+This means:
+
+- one skill owns one eval package;
+- that package can contain multiple scenarios;
+- each scenario can contain multiple expectations;
+- each expectation is judged independently.
+
+Why this shape:
+
+- users can write business expectations they understand;
+- run results can show exactly which expectation passed or failed;
+- the UI no longer needs to expose low-level matcher syntax.
 
 ## Runtime Boundary
 
@@ -191,7 +224,7 @@ The user-facing authoring model is simplified, but the broader runtime boundary 
 
 - scenario files are the source of truth for authored eval assets;
 - Rust/Tauri owns scenario CRUD, run preparation, and validation;
-- the Promptfoo sidecar owns eval execution orchestration;
+- the Promptfoo sidecar owns eval execution orchestration and translates expectations into one `llm-rubric` per expectation;
 - app-local Promptfoo state owns run history;
 - Refine remains the editing surface after evaluation.
 
@@ -202,10 +235,10 @@ The implementation may use compatibility adapters internally while migrating, bu
 - `Scenario name` is required.
 - `Performance` is always true.
 - `Prompt` is required.
-- At least one assertion is required before save or run.
+- At least one expectation is required before save or run.
 - `Trigger` is optional.
 - If `Trigger` is enabled, `shouldTrigger` is required.
-- `Run scenario` is disabled until the selected scenario is saved and matches the current draft.
+- `Evaluate` is disabled until at least one saved scenario exists.
 
 ## Relationship To Prior Design Docs
 
@@ -221,14 +254,13 @@ Those documents split runtime architecture, scenario storage, and remediation in
 
 | File | Purpose |
 |---|---|
-| `app/src/lib/eval-workbench.ts` | Shared frontend Eval Workbench types and validation helpers; currently still exposes `ScenarioCase` and `expectedOutcome`. |
+| `app/src/lib/eval-workbench.ts` | Shared frontend Eval Workbench types and validation helpers; should expose prompt plus expectations and trigger state only. |
 | `app/src/components/workspace/workspace-evals.tsx` | Performance-mode editor and top-level generation/run controls. |
 | `app/src/components/workspace/workspace-description.tsx` | Trigger-mode editor and description candidate generation flow. |
 | `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx` | Shared scenario editor UI; currently renders nested case editing. |
 | `app/src/components/workspace/workspace-eval-workbench.tsx` | Shared scenario selection and tab wiring. |
-| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Tauri command surface for scenario CRUD, scenario generation, assertions generation, and eval execution. |
+| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Tauri command surface for scenario CRUD, context-envelope suggestion, expectation-to-rubric translation, and eval execution. |
 
 ## Open Questions
 
-1. `[implementation]` Whether the YAML contract should flatten to top-level `prompt` and `assertions` immediately or support a short-lived migration from the current `cases[]` file shape.
-2. `[implementation]` Whether scenario-level `Suggest` should overwrite previously edited fields or only fill blanks.
+1. `[implementation]` Whether the YAML contract should flatten to top-level `prompt` and `expectations` immediately or support a short-lived migration from the current `cases[]` file shape.
