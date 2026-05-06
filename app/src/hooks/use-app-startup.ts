@@ -125,6 +125,24 @@ export function useAppStartup(): UseAppStartupReturn {
     reconcileStartup()
       .then((result) => {
         if (cancelledRef.current) return;
+        if (result.discovered_skills.length === 0 && result.notifications.length > 0) {
+          reconcileStartup(true)
+            .then((applied) => {
+              if (cancelledRef.current) return;
+              queryClient.invalidateQueries({ queryKey: queryKeys.skills.all }).catch((err) =>
+                console.warn("[app-layout] op=refresh_skills_after_auto_recon status=failure err=%s", err),
+              );
+              if (applied.orphans.length > 0) {
+                setOrphans(applied.orphans);
+              }
+              setReconciled(true);
+            })
+            .catch((err) => {
+              console.warn("[app-layout] auto-apply reconciliation failed:", err);
+              setReconciled(true);
+            });
+          return;
+        }
         if (result.notifications.length === 0 && result.discovered_skills.length > 0) {
           reconcileStartup(true)
             .then((applied) => {
@@ -143,7 +161,7 @@ export function useAppStartup(): UseAppStartupReturn {
             });
           return;
         }
-        if (result.notifications.length > 0 || result.discovered_skills.length > 0) {
+        if (result.discovered_skills.length > 0) {
           console.warn(
             "[app-layout] Reconciliation preview produced %d notifications, %d discovered skills",
             result.notifications.length,
