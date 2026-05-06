@@ -26,6 +26,7 @@ interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
   scenario: ScenarioDto | null;
+  hasScenarios?: boolean;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
   onCreateScenario?: (mode: "performance") => Promise<ScenarioDto>;
@@ -46,6 +47,7 @@ export function WorkspaceEvals({
   skill,
   workspacePath,
   scenario,
+  hasScenarios = Boolean(scenario),
   scenarioLoading = false,
   onStartNewScenario,
   onCreateScenario,
@@ -92,7 +94,7 @@ export function WorkspaceEvals({
     skillName,
     mode: "performance",
     workspacePath,
-    scenarioName: scenario ? "Package" : null,
+    scenarioName: hasScenarios ? "Package" : null,
   });
 
   useEffect(() => {
@@ -234,15 +236,17 @@ export function WorkspaceEvals({
   }
 
   async function handleRunScenario() {
-    if (!scenario) {
+    if (!hasScenarios) {
       setActionError("Add at least one scenario before evaluating the package.");
       return;
     }
 
-    const validationError = validateScenarioForEvaluation(draft, "performance");
-    if (validationError) {
-      setActionError(validationError);
-      return;
+    if (scenario) {
+      const validationError = validateScenarioForEvaluation(draft, "performance");
+      if (validationError) {
+        setActionError(validationError);
+        return;
+      }
     }
 
     const runId = crypto.randomUUID();
@@ -381,7 +385,7 @@ export function WorkspaceEvals({
             <Button
               size="sm"
               onClick={() => void handleRunScenario()}
-              disabled={scenarioLoading || running || !scenario || saveScenarioPending}
+              disabled={scenarioLoading || running || !hasScenarios || saveScenarioPending}
             >
               <Play className="mr-1 size-3.5" />
               Evaluate

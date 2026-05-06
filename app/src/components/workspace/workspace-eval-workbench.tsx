@@ -215,6 +215,7 @@ export function WorkspaceEvalWorkbench({
           skill={skill}
           workspacePath={workspacePath}
           scenario={selectedScenario}
+          hasScenarios={scenarios.length > 0}
           scenarioLoading={selectedScenarioQuery.isLoading}
           onStartNewScenario={handleStartNewScenario}
           onCreateScenario={handleCreateScenario}

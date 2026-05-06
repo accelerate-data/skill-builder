@@ -204,6 +204,37 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText(/no evaluations yet/i)).toBeInTheDocument();
   });
 
+  it("enables package evaluation when scenarios exist even if no scenario row is expanded", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={null}
+        hasScenarios
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
+    const evaluateButton = await screen.findByRole("button", { name: /^evaluate$/i });
+    expect(evaluateButton).toBeEnabled();
+
+    await user.click(evaluateButton);
+
+    await waitFor(() =>
+      expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
+        runId: expect.any(String),
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
+        mode: "performance",
+        candidateIds: ["current-skill"],
+      }),
+    );
+  });
+
   it("uses a combined results section in the empty state", async () => {
     render(
       <WorkspaceEvals
