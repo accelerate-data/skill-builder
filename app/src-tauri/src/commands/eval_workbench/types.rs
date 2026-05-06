@@ -14,8 +14,10 @@ pub type SaveEvalPromptSet = crate::db::SaveEvalPromptSet;
 pub struct ScenarioDto {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub tags: Vec<String>,
     pub prompt: String,
+    #[serde(default)]
     pub should_trigger: Option<bool>,
     pub expectations: Vec<String>,
 }
@@ -24,6 +26,7 @@ pub struct ScenarioDto {
 #[serde(rename_all = "camelCase")]
 pub struct ScenarioSummaryDto {
     pub name: String,
+    #[serde(default)]
     pub tags: Vec<String>,
 }
 

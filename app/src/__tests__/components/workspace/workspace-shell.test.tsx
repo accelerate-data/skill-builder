@@ -153,43 +153,23 @@ import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 const performanceScenario = {
   id: "case-1",
   name: "Regression",
-  tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue",
-  shouldTrigger: null,
   expectations: ["Explains the forecast assumptions."],
 };
 
 const performanceScenarioSummary = {
   name: "Regression",
-  tags: ["performance"] as const,
 };
 
-const triggerScenario = {
-  id: "case-1",
-  name: "Routing checks",
-  tags: ["trigger"] as const,
-  prompt: "Reconcile open customer invoices",
-  shouldTrigger: true,
-  expectations: [],
+const alternatePerformanceScenario = {
+  id: "case-2",
+  name: "Smoke",
+  prompt: "Summarize pipeline risk",
+  expectations: ["Summarizes the main pipeline blockers."],
 };
 
-const triggerScenarioSummary = {
-  name: "Routing checks",
-  tags: ["trigger"] as const,
-};
-
-const sharedScenario = {
-  id: "case-shared-1",
-  name: "Core workflow coverage",
-  tags: ["both"] as const,
-  prompt: "Reconcile open customer invoices",
-  shouldTrigger: true,
-  expectations: ["Explains invoice reconciliation routing."],
-};
-
-const sharedScenarioSummary = {
-  name: "Core workflow coverage",
-  tags: ["both"] as const,
+const alternatePerformanceScenarioSummary = {
+  name: "Smoke",
 };
 
 const runSummary = {
@@ -241,7 +221,7 @@ describe("WorkspaceShell", () => {
   beforeEach(() => {
     refineState.isRunning = false;
     mockUseScenarios.mockReset().mockReturnValue({
-      data: [performanceScenarioSummary, triggerScenarioSummary],
+      data: [performanceScenarioSummary],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -251,9 +231,7 @@ describe("WorkspaceShell", () => {
         data:
           skillName && pluginSlug && scenarioName === performanceScenario.name
             ? performanceScenario
-            : skillName && pluginSlug && scenarioName === triggerScenario.name
-              ? triggerScenario
-              : null,
+            : null,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
@@ -311,6 +289,14 @@ describe("WorkspaceShell", () => {
 
     expect(overviewTab).toHaveAttribute("data-state", "active");
     expect(evalWorkbenchTab).not.toBeDisabled();
+  });
+
+  it("keeps eval workbench performance-only with no trigger authoring tab", async () => {
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Trigger" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^trigger$/i)).not.toBeInTheDocument();
   });
 
   it("shows dialog when switching away from Refine while agent is running", async () => {
@@ -403,64 +389,11 @@ describe("WorkspaceShell", () => {
     deferredRun.resolve(runSummary);
   });
 
-  it("shows guard dialog when switching away from Eval Workbench while trigger work is active", async () => {
-    const user = userEvent.setup();
-    const deferredCandidates = createDeferred([
-      {
-        id: "candidate-1",
-        runId: "draft-run",
-        label: "Candidate 1",
-        description: "Use when the user needs invoice reconciliation or payment matching",
-        rationale: "Best routing precision",
-        rank: 1,
-      },
-    ]);
-    mockSuggestDescriptionCandidates
-      .mockReset()
-      .mockReturnValue(deferredCandidates.promise);
-
-    const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="description" />,
-    );
-
-    await screen.findByText("Routing checks");
-    await user.click(screen.getByRole("button", { name: "Routing checks" }));
-    await screen.findByDisplayValue("Routing checks");
-    await user.click(screen.getByRole("button", { name: /generate candidates/i }));
-    await waitFor(() =>
-      expect(mockSuggestDescriptionCandidates).toHaveBeenCalled(),
-    );
-
-    const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(
-      (t) => t.textContent === "Overview",
-    );
-    await user.click(overviewTab!);
-
-    expect(screen.getByText("Process Running")).toBeInTheDocument();
-    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Eval Workbench");
-
-    deferredCandidates.resolve([
-      {
-        id: "candidate-1",
-        runId: "draft-run",
-        label: "Candidate 1",
-        description: "Use when the user needs invoice reconciliation or payment matching",
-        rationale: "Best routing precision",
-        rank: 1,
-      },
-    ]);
-  });
-
-  it("loads scenario detail separately from the shared scenario list and keeps shared scenarios available across tabs", async () => {
+  it("loads scenario detail from the performance-only scenario list", async () => {
     const user = userEvent.setup();
 
     mockUseScenarios.mockReset().mockReturnValue({
-      data: [
-        performanceScenarioSummary,
-        sharedScenarioSummary,
-        triggerScenarioSummary,
-      ],
+      data: [performanceScenarioSummary],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -470,11 +403,7 @@ describe("WorkspaceShell", () => {
         data:
           scenarioName === performanceScenario.name
             ? performanceScenario
-            : scenarioName === sharedScenario.name
-              ? sharedScenario
-              : scenarioName === triggerScenario.name
-                ? triggerScenario
-                : null,
+            : null,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
@@ -493,19 +422,6 @@ describe("WorkspaceShell", () => {
       "skills",
       "Regression",
     );
-
-    await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
-    expect(
-      await screen.findByDisplayValue("Explains invoice reconciliation routing."),
-    ).toBeInTheDocument();
-    expect(mockUseScenario).toHaveBeenLastCalledWith(
-      "sales-pipeline",
-      "skills",
-      "Core workflow coverage",
-    );
-
-    await user.click(screen.getByRole("tab", { name: "Trigger" }));
-    expect(await screen.findByRole("button", { name: "Core workflow coverage" })).toBeInTheDocument();
   });
 
   it("creates a new persisted scenario immediately", async () => {
@@ -513,9 +429,7 @@ describe("WorkspaceShell", () => {
     const mutateAsync = vi.fn().mockResolvedValue({
       id: "case-1",
       name: "Smoke",
-      tags: ["performance"],
       prompt: "",
-      shouldTrigger: null,
       expectations: [],
     });
     mockUseCreateScenario.mockReset().mockReturnValue({
@@ -566,11 +480,7 @@ describe("WorkspaceShell", () => {
     const user = userEvent.setup();
 
     mockUseScenarios.mockReset().mockReturnValue({
-      data: [
-        performanceScenarioSummary,
-        sharedScenarioSummary,
-        triggerScenarioSummary,
-      ],
+      data: [performanceScenarioSummary, alternatePerformanceScenarioSummary],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -578,12 +488,12 @@ describe("WorkspaceShell", () => {
     mockUseScenario.mockReset().mockImplementation(
       (_skillName: string | null, _pluginSlug: string, scenarioName: string | null) => ({
         data:
-          scenarioName === triggerScenario.name
-            ? triggerScenario
+          scenarioName === alternatePerformanceScenario.name
+            ? alternatePerformanceScenario
             : scenarioName
               ? performanceScenario
               : null,
-        isLoading: scenarioName === sharedScenario.name,
+        isLoading: scenarioName === alternatePerformanceScenario.name,
         error: null,
         refetch: vi.fn(),
       }),
@@ -597,23 +507,18 @@ describe("WorkspaceShell", () => {
     await user.click(screen.getByRole("button", { name: "Regression" }));
     expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
+    await user.click(screen.getByRole("button", { name: "Smoke" }));
 
     expect(await screen.findByText("Loading scenario…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^suggest$/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
-
-    await user.click(screen.getByRole("tab", { name: "Trigger" }));
-
-    expect(screen.getByRole("button", { name: /generate candidates/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
   });
 
   it("deletes a saved scenario and falls back to a remaining selection", async () => {
     const user = userEvent.setup();
-    let scenarioSummaries = [performanceScenarioSummary, sharedScenarioSummary];
+    let scenarioSummaries = [performanceScenarioSummary, alternatePerformanceScenarioSummary];
     const deleteScenarioMutation = vi.fn().mockImplementation(async () => {
-      scenarioSummaries = [sharedScenarioSummary];
+      scenarioSummaries = [alternatePerformanceScenarioSummary];
     });
 
     mockUseScenarios.mockReset().mockImplementation(() => ({
@@ -627,8 +532,8 @@ describe("WorkspaceShell", () => {
         data:
           scenarioName === performanceScenario.name
             ? performanceScenario
-            : scenarioName === sharedScenario.name
-              ? sharedScenario
+            : scenarioName === alternatePerformanceScenario.name
+              ? alternatePerformanceScenario
               : null,
         isLoading: false,
         error: null,
@@ -659,48 +564,6 @@ describe("WorkspaceShell", () => {
       screen.queryByRole("button", { name: "Regression" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
-  });
-
-  it("clears the expanded scenario when switching to a tab where it is not visible", async () => {
-    const user = userEvent.setup();
-
-    mockUseScenarios.mockReset().mockReturnValue({
-      data: [performanceScenarioSummary, triggerScenarioSummary],
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    mockUseScenario.mockReset().mockImplementation(
-      (_skillName: string | null, _pluginSlug: string, scenarioName: string | null) => ({
-        data:
-          scenarioName === performanceScenario.name
-            ? performanceScenario
-            : scenarioName === triggerScenario.name
-              ? triggerScenario
-              : null,
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      }),
-    );
-
-    render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
-    );
-
-    expect(await screen.findByText("Regression")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Regression" }));
-    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
-    expect(mockUseScenario).toHaveBeenLastCalledWith(
-      "sales-pipeline",
-      "skills",
-      "Regression",
-    );
-
-    await user.click(screen.getByRole("tab", { name: "Trigger" }));
-
-    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
-    expect(mockUseScenario).toHaveBeenLastCalledWith("sales-pipeline", "skills", null);
   });
 
   it("clears skillFiles cache when skill name changes", async () => {

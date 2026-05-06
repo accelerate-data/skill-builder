@@ -304,7 +304,6 @@ export function WorkspaceEvals({
       {scenario ? (
         <PromptSetEditor
           draft={draft}
-          mode="performance"
           onChange={setDraft}
           onNew={() => void handleCreateScenario()}
           onSuggest={() => void handleSuggestScenario()}

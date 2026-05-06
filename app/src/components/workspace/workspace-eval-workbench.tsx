@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   EvalWorkbenchMode,
   ScenarioDto,
 } from "@/lib/eval-workbench";
-import {
-  getErrorMessage,
-  scenarioSupportsMode,
-} from "@/lib/eval-workbench";
+import { getErrorMessage } from "@/lib/eval-workbench";
 import {
   useCreateScenario,
   useDeleteScenario,
@@ -18,7 +14,6 @@ import {
   useSuggestScenario,
 } from "@/lib/queries/eval-scenarios";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
-import { WorkspaceDescription } from "./workspace-description";
 import { WorkspaceEvals } from "./workspace-evals";
 
 interface WorkspaceEvalWorkbenchProps {
@@ -37,20 +32,18 @@ type SaveScenarioOptions = {
 export function WorkspaceEvalWorkbench({
   skill,
   workspacePath,
-  initialMode = "performance",
+  initialMode: _initialMode = "performance",
   onRunningChange,
   onNavigateToRefine,
-  onApplyDescription,
+  onApplyDescription: _onApplyDescription,
 }: WorkspaceEvalWorkbenchProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
-  const [activeMode, setActiveMode] = useState<EvalWorkbenchMode>(initialMode);
-  const [performanceRunning, setPerformanceRunning] = useState(false);
-  const [triggerRunning, setTriggerRunning] = useState(false);
+  const [running, setRunning] = useState(false);
   const [selectedScenarioName, setSelectedScenarioName] = useState<string | null>(
     null,
   );
-  const isRunning = performanceRunning || triggerRunning;
+  const isRunning = running;
 
   const scenariosQuery = useScenarios(skillName, pluginSlug);
   const createScenarioMutation = useCreateScenario(skillName, pluginSlug);
@@ -58,19 +51,12 @@ export function WorkspaceEvalWorkbench({
   const suggestScenarioMutation = useSuggestScenario(skillName, pluginSlug);
   const deleteScenarioMutation = useDeleteScenario(skillName, pluginSlug);
   const scenarios = scenariosQuery.data ?? [];
-  const visibleScenarios = scenarios.filter((scenario) =>
-    scenarioSupportsMode(scenario, activeMode),
-  );
   const selectedScenarioQuery = useScenario(
     skillName,
     pluginSlug,
     selectedScenarioName,
   );
   const selectedScenario = selectedScenarioQuery.data ?? null;
-
-  useEffect(() => {
-    setActiveMode(initialMode);
-  }, [initialMode]);
 
   useEffect(() => {
     onRunningChange?.(isRunning);
@@ -80,21 +66,13 @@ export function WorkspaceEvalWorkbench({
     if (!selectedScenarioName) {
       return;
     }
-    const nextSelectedScenario = visibleScenarios.find(
+    const nextSelectedScenario = scenarios.find(
       (scenario) => scenario.name === selectedScenarioName,
     );
     if (!nextSelectedScenario) {
       setSelectedScenarioName(null);
     }
-  }, [selectedScenarioName, visibleScenarios]);
-
-  const triggerSkill =
-    "name" in skill
-      ? (skill as SkillSummary)
-      : ({
-          ...(skill as ImportedSkill),
-          name: (skill as ImportedSkill).skill_name,
-        } as unknown as SkillSummary);
+  }, [scenarios, selectedScenarioName]);
 
   async function handleSaveScenario(
     scenario: ScenarioDto,
@@ -134,45 +112,24 @@ export function WorkspaceEvalWorkbench({
   }
 
   return (
-    <Tabs
-      value={activeMode}
-      onValueChange={(value) => {
-        if (isRunning) {
-          return;
-        }
-        setActiveMode(value === "trigger" ? "trigger" : "performance");
-      }}
-      className="flex h-full flex-col gap-4"
-    >
-      <div className="px-6 pt-6">
-        <TabsList variant="line" className="w-full justify-start border-b px-0">
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="trigger">Trigger</TabsTrigger>
-        </TabsList>
-      </div>
-
-      <section className="px-6">
+    <div className="flex h-full flex-col gap-4">
+      <section className="px-6 pt-6">
         <div className="rounded-lg border bg-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Scenarios</h2>
               <p className="text-xs text-muted-foreground">
-                Shared scenario files filtered by the active Eval Workbench tab.
+                Create and edit performance evaluation scenarios for this skill.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {activeMode}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={isRunning || createScenarioMutation.isPending}
-                onClick={() => void handleCreateScenario(activeMode)}
-              >
-                New scenario
-              </Button>
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isRunning || createScenarioMutation.isPending}
+              onClick={() => void handleCreateScenario("performance")}
+            >
+              New scenario
+            </Button>
           </div>
 
           {scenariosQuery.isLoading ? (
@@ -197,9 +154,9 @@ export function WorkspaceEvalWorkbench({
           ) : null}
 
           {!scenariosQuery.isLoading && !scenariosQuery.error ? (
-            visibleScenarios.length > 0 ? (
+            scenarios.length > 0 ? (
               <div className="mt-4 space-y-2">
-                {visibleScenarios.map((scenario) => (
+                {scenarios.map((scenario) => (
                   <Button
                     key={scenario.name}
                     type="button"
@@ -224,7 +181,7 @@ export function WorkspaceEvalWorkbench({
               </div>
             ) : (
               <p className="mt-4 text-sm text-muted-foreground">
-                No {activeMode} scenarios yet. Create one below.
+                No scenarios yet. Create one below.
               </p>
             )
           ) : null}
@@ -252,10 +209,7 @@ export function WorkspaceEvalWorkbench({
         </div>
       </section>
 
-      <TabsContent
-        value="performance"
-        className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         <WorkspaceEvals
           key={`performance-${skillName}`}
           skill={skill}
@@ -273,32 +227,9 @@ export function WorkspaceEvalWorkbench({
           suggestScenarioPending={suggestScenarioMutation.isPending}
           deleteScenarioPending={deleteScenarioMutation.isPending}
           onNavigateToRefine={onNavigateToRefine}
-          onRunningChange={setPerformanceRunning}
+          onRunningChange={setRunning}
         />
-      </TabsContent>
-
-      <TabsContent
-        value="trigger"
-        className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
-      >
-        <WorkspaceDescription
-          key={`trigger-${triggerSkill.name}-${selectedScenarioName ?? "new"}`}
-          skill={triggerSkill}
-          workspacePath={workspacePath ?? ""}
-          scenario={selectedScenario}
-          scenarioLoading={selectedScenarioQuery.isLoading}
-          onStartNewScenario={handleStartNewScenario}
-          onCreateScenario={handleCreateScenario}
-          onSaveScenario={handleSaveScenario}
-          onDeleteScenario={handleDeleteScenario}
-          saveScenarioPending={saveScenarioMutation.isPending}
-          onNavigateToRefine={onNavigateToRefine}
-          onRunningChange={setTriggerRunning}
-          onApply={(description, version) =>
-            onApplyDescription?.(description, version)
-          }
-        />
-      </TabsContent>
-    </Tabs>
+      </div>
+    </div>
   );
 }

@@ -1,18 +1,12 @@
 import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  scenarioSupportsMode,
-  type EvalWorkbenchMode,
-  type SaveScenario,
-} from "@/lib/eval-workbench";
+import { type SaveScenario } from "@/lib/eval-workbench";
 
 interface PromptSetEditorProps {
   draft: SaveScenario;
-  mode: EvalWorkbenchMode;
   onChange: (draft: SaveScenario) => void;
   onNew?: () => void;
   onSuggest?: () => void;
@@ -25,28 +19,8 @@ interface PromptSetEditorProps {
   showNew?: boolean;
 }
 
-function nextTags(
-  draft: SaveScenario,
-  tag: "performance" | "trigger",
-  checked: boolean,
-): SaveScenario["tags"] {
-  const selected = new Set(
-    draft.tags.includes("both") ? ["performance", "trigger"] : draft.tags,
-  );
-  if (checked) {
-    selected.add(tag);
-  } else {
-    selected.delete(tag);
-  }
-  if (selected.has("performance") && selected.has("trigger")) {
-    return ["both"];
-  }
-  return Array.from(selected) as SaveScenario["tags"];
-}
-
 export function PromptSetEditor({
   draft,
-  mode,
   onChange,
   onNew,
   onSuggest,
@@ -61,12 +35,6 @@ export function PromptSetEditor({
   function updateExpectations(nextExpectations: string[]) {
     onChange({ ...draft, expectations: nextExpectations });
   }
-
-  const triggerEnabled = scenarioSupportsMode(draft, "trigger");
-  const performanceChecked =
-    draft.tags.includes("both") || draft.tags.includes("performance");
-  const triggerChecked =
-    draft.tags.includes("both") || draft.tags.includes("trigger");
 
   return (
     <section className="rounded-lg border bg-card p-4">
@@ -111,60 +79,26 @@ export function PromptSetEditor({
 
       <div className="mt-4 space-y-4">
         <div className="space-y-2">
-          <Label htmlFor={`scenario-name-${mode}`}>Scenario name</Label>
+          <Label htmlFor="scenario-name">Scenario name</Label>
           <Input
-            id={`scenario-name-${mode}`}
+            id="scenario-name"
             value={draft.name}
             onChange={(event) => onChange({ ...draft, name: event.target.value })}
-            placeholder={mode === "performance" ? "Regression" : "Routing checks"}
+            placeholder="Regression"
           />
-        </div>
-
-        <div className="space-y-2">
-          <Label>Scenario modes</Label>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={performanceChecked} disabled />
-              <span className="text-muted-foreground">Performance</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={triggerChecked}
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...draft,
-                    tags: nextTags(draft, "trigger", checked === true),
-                  })
-                }
-              />
-              <span>Trigger</span>
-            </label>
-          </div>
         </div>
 
         <div className="rounded-md border bg-background/70 p-3">
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor={`scenario-prompt-${mode}`}>User prompt</Label>
+              <Label htmlFor="scenario-prompt">User prompt</Label>
               <Textarea
-                id={`scenario-prompt-${mode}`}
+                id="scenario-prompt"
                 value={draft.prompt}
                 onChange={(event) => onChange({ ...draft, prompt: event.target.value })}
                 placeholder="Describe the request to evaluate."
               />
             </div>
-
-            {triggerEnabled ? (
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={Boolean(draft.shouldTrigger)}
-                  onCheckedChange={(checked) =>
-                    onChange({ ...draft, shouldTrigger: checked === true })
-                  }
-                />
-                <span>Should trigger</span>
-              </label>
-            ) : null}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">

@@ -10,9 +10,7 @@ import {
 const PERFORMANCE_SCENARIO = {
   id: "case-1",
   name: "Regression",
-  tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue for the west region pipeline.",
-  shouldTrigger: null,
   expectations: ["Explains the forecast assumptions."],
 };
 
@@ -57,14 +55,7 @@ async function navigateToEvalWorkbench(
   const workbenchTab = page.getByRole("tab", { name: "Eval Workbench" });
   await workbenchTab.waitFor({ timeout: 10_000 });
   await workbenchTab.click();
-
-  const performanceTab = page.getByRole("tab", { name: "Performance" });
-  await performanceTab.waitFor({ timeout: 10_000 });
-  await performanceTab.click();
-
-  await page
-    .getByRole("heading", { name: "Eval Workbench" })
-    .waitFor({ timeout: 10_000 });
+  await page.getByRole("heading", { name: "Scenarios" }).waitFor({ timeout: 10_000 });
 }
 
 test.describe("Eval Workbench", { tag: "@evals" }, () => {
@@ -72,26 +63,29 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
-      list_scenarios: [{ name: PERFORMANCE_SCENARIO.name, tags: PERFORMANCE_SCENARIO.tags }],
+      list_scenarios: [{ name: PERFORMANCE_SCENARIO.name }],
       load_scenario: PERFORMANCE_SCENARIO,
       list_eval_runs: [PERFORMANCE_RUN_SUMMARY],
     });
 
-    await expect(page.getByRole("heading", { name: "Eval Workbench" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Scenarios" })).toBeVisible();
     await expect(page.getByText("Regression")).toBeVisible();
+    await page.getByRole("button", { name: "Regression" }).click();
     await expect(
       page.getByText(
         "Forecast next quarter revenue for the west region pipeline.",
       ),
     ).toBeVisible();
-    await expect(page.getByText("run-1")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /run-1.*1\/1 passed/i }),
+    ).toBeVisible();
   });
 
   test("evaluates the package and sends the failure brief to Refine", async ({
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
-      list_scenarios: [{ name: PERFORMANCE_SCENARIO.name, tags: PERFORMANCE_SCENARIO.tags }],
+      list_scenarios: [{ name: PERFORMANCE_SCENARIO.name }],
       load_scenario: PERFORMANCE_SCENARIO,
       list_eval_runs: [PERFORMANCE_RUN_SUMMARY],
       read_eval_run: PERFORMANCE_RUN_DETAIL,
@@ -105,6 +99,7 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
       "run_eval_workbench",
       "build_refine_improvement_brief",
     ]);
+    await page.getByRole("button", { name: "Regression" }).click();
 
     await page.getByRole("button", { name: "Evaluate" }).click();
 

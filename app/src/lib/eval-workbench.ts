@@ -6,15 +6,16 @@ export type ScenarioTag = "performance" | "trigger" | "both";
 export interface Scenario {
   id: string;
   name: string;
-  tags: ScenarioTag[];
   prompt: string;
-  shouldTrigger: boolean | null;
   expectations: string[];
+  tags?: ScenarioTag[];
+  shouldTrigger?: boolean | null;
 }
 
 export interface ScenarioSummary {
   name: string;
-  tags: ScenarioTag[];
+  prompt?: string;
+  tags?: ScenarioTag[];
 }
 
 export type ScenarioDto = Scenario;
@@ -213,7 +214,7 @@ export const CURRENT_SKILL_CANDIDATE_ID = "current-skill";
 export const PERFORMANCE_CANDIDATE_IDS = ["current-skill"];
 
 export function createDraftScenario(
-  mode: EvalWorkbenchMode,
+  mode: EvalWorkbenchMode = "performance",
   _pluginSlug = "",
   _skillName = "",
   name = "",
@@ -221,10 +222,9 @@ export function createDraftScenario(
   return {
     id: `case-${crypto.randomUUID().slice(0, 8)}`,
     name,
-    tags: [mode],
     prompt: "",
-    shouldTrigger: mode === "trigger" ? true : null,
     expectations: [],
+    ...(mode === "trigger" ? { tags: ["trigger"] as ScenarioTag[], shouldTrigger: true } : {}),
   };
 }
 
@@ -232,19 +232,22 @@ export function scenarioSupportsMode(
   scenario: Pick<Scenario, "tags">,
   mode: EvalWorkbenchMode,
 ): boolean {
-  return scenario.tags.includes("both") || scenario.tags.includes(mode);
+  const tags = scenario.tags ?? ["performance"];
+  return tags.includes("both") || tags.includes(mode);
 }
 
 export function scenarioToDraft(scenario: Scenario): SaveScenario {
   return {
     id: scenario.id,
     name: scenario.name,
-    tags: [...scenario.tags],
     prompt: scenario.prompt,
-    shouldTrigger: scenario.shouldTrigger,
     expectations: Array.isArray(scenario.expectations)
       ? scenario.expectations
       : [],
+    ...(scenario.tags ? { tags: [...scenario.tags] } : {}),
+    ...(typeof scenario.shouldTrigger !== "undefined"
+      ? { shouldTrigger: scenario.shouldTrigger }
+      : {}),
   };
 }
 
@@ -252,13 +255,16 @@ export function normalizeScenario(draft: SaveScenario): SaveScenario {
   return {
     id: draft.id || `case-${crypto.randomUUID().slice(0, 8)}`,
     name: draft.name.trim(),
-    tags: Array.from(new Set(draft.tags)),
     prompt: draft.prompt.trim(),
-    shouldTrigger:
-      typeof draft.shouldTrigger === "boolean" ? draft.shouldTrigger : null,
     expectations: Array.isArray(draft.expectations)
       ? draft.expectations.map((expectation) => expectation.trim())
       : [],
+    ...(draft.tags && draft.tags.length > 0
+      ? { tags: Array.from(new Set(draft.tags)) }
+      : {}),
+    ...(typeof draft.shouldTrigger === "boolean"
+      ? { shouldTrigger: draft.shouldTrigger }
+      : {}),
   };
 }
 
@@ -268,9 +274,6 @@ export function validateScenario(
 ): string | null {
   if (!draft.name.trim()) {
     return "Scenario name is required.";
-  }
-  if (draft.tags.length === 0) {
-    return "Select at least one scenario mode.";
   }
   if (!Array.isArray(draft.expectations)) {
     return "Expectations must be an array.";
@@ -295,7 +298,11 @@ export function validateScenarioForEvaluation(
   ) {
     return "Performance scenarios need at least one expectation.";
   }
-  if (scenarioSupportsMode(draft, "trigger") && typeof draft.shouldTrigger !== "boolean") {
+  if (
+    mode === "trigger" &&
+    scenarioSupportsMode(draft, "trigger") &&
+    typeof draft.shouldTrigger !== "boolean"
+  ) {
     return "Trigger scenarios must mark whether they should trigger.";
   }
   if (mode && !scenarioSupportsMode(draft, mode)) {

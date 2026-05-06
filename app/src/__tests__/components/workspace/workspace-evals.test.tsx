@@ -280,7 +280,6 @@ describe("WorkspaceEvals", () => {
         name: "Regression",
         tags: ["performance"],
         prompt: "Forecast next quarter revenue with assumptions",
-        shouldTrigger: null,
         expectations: ["Explains the forecast assumptions."],
       }, { previousScenarioName: "Regression" }),
     );
@@ -312,7 +311,6 @@ describe("WorkspaceEvals", () => {
         name: "Regression",
         tags: ["performance"],
         prompt: "Forecast next quarter revenue",
-        shouldTrigger: null,
         expectations: [],
       }, { previousScenarioName: "Regression" }),
     );

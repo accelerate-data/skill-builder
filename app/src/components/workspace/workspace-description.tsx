@@ -388,7 +388,6 @@ export function WorkspaceDescription({
       {scenario ? (
         <PromptSetEditor
           draft={draft}
-          mode="trigger"
           onChange={setDraft}
           onNew={() => void handleCreateScenario()}
           onDelete={() => void handleDeleteScenario()}

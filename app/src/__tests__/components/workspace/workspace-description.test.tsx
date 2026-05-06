@@ -342,7 +342,7 @@ describe("WorkspaceDescription", () => {
     ).toBeInTheDocument();
   });
 
-  it("exposes both trigger and performance fields for shared scenarios", async () => {
+  it("keeps the shared trigger scenario editor focused on name, prompt, and expectations", async () => {
     render(
       <WorkspaceDescription
         skill={skill}
@@ -353,15 +353,15 @@ describe("WorkspaceDescription", () => {
       />,
     );
 
-    expect(await screen.findByRole("checkbox", { name: "Performance" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Trigger" })).toHaveAttribute(
-      "aria-checked",
-      "true",
+    expect(await screen.findByLabelText(/scenario name/i)).toHaveValue(
+      "Core workflow coverage",
     );
+    expect(screen.queryByRole("checkbox", { name: "Performance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Trigger" })).not.toBeInTheDocument();
     expect(
       screen.getByDisplayValue("Explains invoice reconciliation routing."),
     ).toBeInTheDocument();
-    expect(screen.getByText(/should trigger/i)).toBeInTheDocument();
+    expect(screen.queryByText(/should trigger/i)).not.toBeInTheDocument();
   });
 
   it("reloads filtered history and clears selected run details when the scenario changes", async () => {

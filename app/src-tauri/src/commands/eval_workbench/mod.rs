@@ -165,7 +165,11 @@ fn scenario_tag_strings(tags: &[scenarios::ScenarioTag]) -> Vec<String> {
 }
 
 fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
-    let tags = parse_scenario_tags(&dto.tags)?;
+    let tags = if dto.tags.is_empty() {
+        vec![scenarios::ScenarioTag::Performance]
+    } else {
+        parse_scenario_tags(&dto.tags)?
+    };
     let scenario = scenarios::Scenario {
         id: dto.id,
         name: dto.name,
@@ -877,8 +881,8 @@ fn suggested_scenario_output_format() -> Value {
             "type": "object",
             "additionalProperties": false,
             "properties": {
+                "name": { "type": "string" },
                 "prompt": { "type": "string" },
-                "shouldTrigger": { "type": ["boolean", "null"] },
                 "expectations": {
                     "type": "array",
                     "items": {
@@ -886,7 +890,7 @@ fn suggested_scenario_output_format() -> Value {
                     }
                 }
             },
-            "required": ["prompt", "expectations"]
+            "required": ["name", "prompt", "expectations"]
         }
     })
 }
@@ -970,31 +974,25 @@ fn build_suggest_scenario_prompt(
     decisions_json: &str,
 ) -> String {
     let skill_path = format!("/skills/{skill_name}/SKILL.md");
+    let workspace_skill_path = format!("/workspace/skills/{skill_name}/SKILL.md");
     let skill_context = skill_files
         .iter()
         .take(8)
         .map(|file| format!("## {}\n{}", file.path, file.content))
         .collect::<Vec<_>>()
         .join("\n\n");
-    let mode_labels = scenario_tag_strings(&scenario.tags).join(", ");
-    let trigger_expectation = match scenario.should_trigger {
-        Some(true) => "true",
-        Some(false) => "false",
-        None => "null",
-    };
 
     SUGGEST_SCENARIO_PROMPT_TEMPLATE
         .trim_end_matches('\n')
         .replace("{{skill_name}}", skill_name)
         .replace("{{scenario_name}}", &scenario.name)
-        .replace("{{scenario_modes}}", &mode_labels)
         .replace("{{existing_prompt}}", scenario.prompt.trim())
         .replace(
             "{{existing_expectations}}",
             &scenario_expectations_json(scenario).to_string(),
         )
-        .replace("{{existing_should_trigger}}", trigger_expectation)
         .replace("{{skill_path}}", &skill_path)
+        .replace("{{workspace_skill_path}}", &workspace_skill_path)
         .replace("{{clarifications_json}}", clarifications_json)
         .replace("{{decisions_json}}", decisions_json)
         .replace("{{skill_context}}", &skill_context)
@@ -1264,6 +1262,12 @@ fn parse_suggested_scenario_response(
     existing_scenario: &scenarios::Scenario,
 ) -> Result<scenarios::Scenario, String> {
     let parsed = parse_openhands_structured_output(state)?;
+    let name = parsed
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Scenario suggestion response missing name".to_string())?;
     let prompt = parsed
         .get("prompt")
         .and_then(Value::as_str)
@@ -1290,21 +1294,10 @@ fn parse_suggested_scenario_response(
         .collect::<Result<Vec<_>, String>>()?;
 
     let mut next_scenario = existing_scenario.clone();
+    next_scenario.name = name.to_string();
     next_scenario.prompt = prompt.to_string();
     next_scenario.expectations = parsed_expectations;
-    if scenario_tag_strings(&existing_scenario.tags)
-        .iter()
-        .any(|tag| tag == "trigger" || tag == "both")
-    {
-        next_scenario.should_trigger = Some(
-            parsed
-                .get("shouldTrigger")
-                .and_then(Value::as_bool)
-                .ok_or_else(|| "Scenario suggestion response missing shouldTrigger".to_string())?,
-        );
-    } else {
-        next_scenario.should_trigger = None;
-    }
+    next_scenario.should_trigger = None;
 
     Ok(next_scenario)
 }
@@ -3101,7 +3094,7 @@ mod tests {
     fn build_suggest_scenario_prompt_requires_exact_json_shape_and_self_check() {
         let prompt = build_suggest_scenario_prompt(
             "measuring-pipeline-value",
-            &scenario_from_dto(sample_trigger_scenario_dto("Bookings routing")).unwrap(),
+            &scenario_from_dto(sample_scenario_dto("Bookings routing")).unwrap(),
             &[crate::types::SkillFileContent {
                 path: "SKILL.md".to_string(),
                 content: "Use when the user needs booking and pipeline guidance.".to_string(),
@@ -3111,9 +3104,10 @@ mod tests {
         );
 
         assert!(prompt.contains("Return exactly one valid JSON object"));
+        assert!(prompt.contains("\"name\": \"string\""));
         assert!(prompt.contains("\"prompt\": \"string\""));
         assert!(prompt.contains("\"expectations\": ["));
-        assert!(prompt.contains("\"shouldTrigger\": true"));
+        assert!(!prompt.contains("shouldTrigger"));
         assert!(prompt.contains("Before returning, check that"));
         assert!(prompt.contains("every expectation is a non-empty string"));
     }
@@ -3122,7 +3116,7 @@ mod tests {
     fn build_suggest_scenario_prompt_includes_skill_path_and_workflow_context() {
         let prompt = build_suggest_scenario_prompt(
             "measuring-pipeline-value",
-            &scenario_from_dto(sample_trigger_scenario_dto("Bookings routing")).unwrap(),
+            &scenario_from_dto(sample_scenario_dto("Bookings routing")).unwrap(),
             &[crate::types::SkillFileContent {
                 path: "SKILL.md".to_string(),
                 content: "Use when the user needs booking and pipeline guidance.".to_string(),
@@ -3136,6 +3130,33 @@ mod tests {
         assert!(prompt.contains("Decisions:"));
         assert!(prompt.contains("\"expectations\": ["));
         assert!(prompt.contains("Read the skill and understand what it does"));
+    }
+
+    #[test]
+    fn parse_suggested_scenario_response_uses_name_prompt_and_expectations_only() {
+        let existing = scenario_from_dto(sample_scenario_dto("Scenario 1")).unwrap();
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "structured_output": {
+                "name": "Pipeline coverage by deal type",
+                "prompt": "How does our current pipeline coverage break down by deal type?",
+                "expectations": [
+                    "Reports TCV and MRR coverage separately.",
+                    "Calls out missing deal type classification as a blocker."
+                ]
+            }
+        });
+
+        let suggested = parse_suggested_scenario_response(&state, &existing).unwrap();
+
+        assert_eq!(suggested.name, "Pipeline coverage by deal type");
+        assert_eq!(
+            suggested.prompt,
+            "How does our current pipeline coverage break down by deal type?"
+        );
+        assert_eq!(suggested.expectations.len(), 2);
+        assert_eq!(suggested.should_trigger, None);
     }
 
     #[test]
