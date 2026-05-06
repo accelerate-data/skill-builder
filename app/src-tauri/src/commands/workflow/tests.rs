@@ -815,18 +815,26 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("## Clarifications Record (supporting detail)"));
     assert!(prompt.contains("Do not reduce the"));
     assert!(prompt.contains("handoff to only the summary brief"));
-    assert!(prompt.contains("metadata:"));
-    assert!(prompt.contains("  version: \"1.0.0\""));
+    assert!(
+        !prompt.contains("metadata:\n  version: \"1.0.0\""),
+        "step 3 prompt must not require metadata.version in generated frontmatter"
+    );
     assert!(prompt.contains("decisions.json"));
     assert!(prompt.contains("clarifications.json"));
-    assert!(prompt.contains("fresh-context verification"));
+    assert!(prompt.contains("fresh-context"));
+    assert!(prompt.contains("launch"));
+    assert!(prompt.contains("named `skill-verifier` subagent"));
+    assert!(prompt.contains("via `task_tool_set`"));
     assert!(prompt.contains("run exactly one re-verification"));
     assert!(prompt.contains("Do not invoke a separate validator skill"));
     assert!(prompt.contains("Do not invoke a legacy writer agent"));
     assert!(
         prompt.contains("The app Eval Workbench owns durable prompt cases, assertions, runs, and")
     );
-    assert!(prompt.contains("\"version_bump\": \"1.0.0\""));
+    assert!(
+        !prompt.contains("\"version_bump\":"),
+        "step 3 prompt must not require version_bump in generated output"
+    );
     assert!(prompt.contains("synthesize-generation-brief"));
     assert!(prompt.contains("fresh-context-verifier-review"));
     assert!(prompt.contains("`call_trace` must be an array of string values"));
@@ -1740,7 +1748,6 @@ fn test_materialize_step3_generate_validates_payload() {
         "benchmark_path": null,
         "skipped": false,
         "commit_summary": "Create skill package with SKILL.md and references",
-        "version_bump": "1.0.0",
         "call_trace": [
             "read-user-context",
             "read-decisions",
@@ -1763,7 +1770,6 @@ fn test_materialize_step3_generate_skipped_validates_payload() {
         "benchmark_path": null,
         "skipped": true,
         "commit_summary": "Skipped because verifier found unresolved material findings",
-        "version_bump": "1.0.0",
         "call_trace": [
             "read-user-context",
             "read-decisions",
@@ -1778,45 +1784,11 @@ fn test_materialize_step3_generate_skipped_validates_payload() {
 }
 
 #[test]
-fn test_materialize_step3_generate_rejects_missing_version_bump() {
-    let db = db_with_seeded_skill("my-skill");
-    let payload = serde_json::json!({
-        "status": "generated",
-        "commit_summary": "Create skill package with required files",
-        "call_trace": ["read-user-context", "write-skill"]
-    });
-    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
-    assert!(err.contains("version_bump must be '1.0.0'"));
-}
-
-#[test]
-fn test_materialize_step3_generate_rejects_minor_version_bump() {
-    let db = db_with_seeded_skill("my-skill");
-    let payload = serde_json::json!({
-        "status": "generated",
-        "commit_summary": "Create skill package with required files",
-        "version_bump": "minor",
-        "call_trace": [
-            "read-user-context",
-            "read-decisions",
-            "read-clarifications",
-            "synthesize-generation-brief",
-            "use-creating-skills",
-            "write-skill",
-            "fresh-context-verifier-review"
-        ]
-    });
-    let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
-    assert!(err.contains("version_bump must be '1.0.0'"));
-}
-
-#[test]
 fn test_materialize_step3_generate_rejects_missing_call_trace() {
     let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
         "status": "generated",
-        "commit_summary": "Create skill package with required files",
-        "version_bump": "1.0.0"
+        "commit_summary": "Create skill package with required files"
     });
     let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
     assert!(err.contains("call_trace must be a non-empty string array"));
@@ -1828,7 +1800,6 @@ fn test_materialize_step3_generate_rejects_object_call_trace_entries() {
     let payload = serde_json::json!({
         "status": "generated",
         "commit_summary": "Create skill package with required files",
-        "version_bump": "1.0.0",
         "call_trace": [{"step": "read-user-context"}]
     });
     let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
@@ -1840,7 +1811,6 @@ fn test_materialize_step3_generate_rejects_missing_required_trace_entry() {
     let payload = serde_json::json!({
         "status": "generated",
         "commit_summary": "Create skill package with required files",
-        "version_bump": "1.0.0",
         "call_trace": [
             "read-user-context",
             "read-decisions",
@@ -1864,7 +1834,7 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     std::fs::create_dir_all(&generated_refs).unwrap();
     std::fs::write(
         workspace_skill_root.join("skill").join("SKILL.md"),
-        "---\nname: tagged-skill\nmetadata:\n  version: 1.0.0\n---\n# Tagged Skill\n",
+        "---\nname: tagged-skill\n---\n# Tagged Skill\n",
     )
     .unwrap();
     std::fs::write(generated_refs.join("terms.md"), "# Terms\n").unwrap();
@@ -1885,7 +1855,7 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
 }
 
 #[test]
-fn publish_commit_and_tag_generated_skill_rejects_legacy_top_level_version() {
+fn publish_commit_and_tag_generated_skill_accepts_skill_without_metadata_version() {
     let workspace = tempfile::tempdir().unwrap();
     let skills = tempfile::tempdir().unwrap();
     let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
@@ -1897,22 +1867,17 @@ fn publish_commit_and_tag_generated_skill_rejects_legacy_top_level_version() {
     )
     .unwrap();
 
-    let err = publish_commit_and_tag_generated_skill(
+    publish_commit_and_tag_generated_skill(
         &workspace_skill_root,
         skills.path(),
         "skills",
         "tagged-skill",
     )
-    .unwrap_err();
-
-    assert!(
-        err.contains("missing metadata.version"),
-        "unexpected error: {err}"
-    );
+    .unwrap();
 }
 
 #[test]
-fn publish_commit_and_tag_generated_skill_rejects_non_initial_metadata_version() {
+fn publish_commit_and_tag_generated_skill_accepts_non_initial_metadata_version_in_frontmatter() {
     let workspace = tempfile::tempdir().unwrap();
     let skills = tempfile::tempdir().unwrap();
     let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
@@ -1924,18 +1889,13 @@ fn publish_commit_and_tag_generated_skill_rejects_non_initial_metadata_version()
     )
     .unwrap();
 
-    let err = publish_commit_and_tag_generated_skill(
+    publish_commit_and_tag_generated_skill(
         &workspace_skill_root,
         skills.path(),
         "skills",
         "tagged-skill",
     )
-    .unwrap_err();
-
-    assert!(
-        err.contains("must use metadata.version 1.0.0"),
-        "unexpected error: {err}"
-    );
+    .unwrap();
 }
 
 #[test]
@@ -2403,6 +2363,11 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
         "# Skill Creator Agent",
     )
     .unwrap();
+    std::fs::write(
+        workspace_agents_src.path().join("skill-verifier.md"),
+        "# Skill Verifier Agent",
+    )
+    .unwrap();
     std::fs::write(workspace_agents_src.path().join("README.txt"), "skip me").unwrap();
     std::fs::create_dir_all(
         workspace_skills_src
@@ -2439,6 +2404,9 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
 
     assert!(workspace_skill_dir
         .join(".agents/agents/skill-creator.md")
+        .is_file());
+    assert!(workspace_skill_dir
+        .join(".agents/agents/skill-verifier.md")
         .is_file());
     assert!(!workspace_skill_dir
         .join(".agents/agents/README.txt")

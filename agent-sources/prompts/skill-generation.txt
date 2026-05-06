@@ -54,14 +54,11 @@ package should include:
 - focused reference files when they make the skill easier to use or maintain
 
 The generated `SKILL.md` must include frontmatter with a trigger-focused
-`description` and nested `metadata.version` so the publish step can validate
-and tag the generated package:
+`description`:
 
 ---
 name: "{{skill_name}}"
 description: "Trigger-focused description"
-metadata:
-  version: "1.0.0"
 ---
 
 Draft the skill description carefully as part of generation. It should describe
@@ -69,9 +66,11 @@ when future agents should load the skill, using trigger conditions and exclusion
 boundaries from the confirmed decisions. Do not run a separate description
 candidate generation, ranking, or tuning flow here.
 
-Use the verifier prompt bundled inside the `creating-skills` skill for a
-fresh-context verification pass. Give the verifier only the synthesized
-generation brief, generated files, and verifier instructions.
+Use the verifier prompt bundled inside the `creating-skills` skill to launch
+the named `skill-verifier` subagent via `task_tool_set` for a fresh-context
+verification pass.
+Give the verifier only the synthesized generation brief, generated files, and
+verifier instructions.
 Incorporate material verifier findings, then run exactly one re-verification
 pass. Do not run an unbounded verification loop. If material findings remain
 after the one re-verification pass, return `skipped: true` and explain the
@@ -92,7 +91,6 @@ Return only a raw JSON object with this shape:
   "benchmark_path": null,
   "skipped": false,
   "commit_summary": "one concise sentence describing generated files",
-  "version_bump": "1.0.0",
   "call_trace": [
     "read-user-context",
     "read-decisions",

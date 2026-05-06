@@ -68,6 +68,33 @@ describe("OpenHands conversation event helpers", () => {
       agentId: "agent-fixture",
       timestamp: 1_778_000_001,
     });
+    expect(events[1].toolCallId).toBe("call-single");
+  });
+
+  it("normalizes top-level and raw parent tool call ids", () => {
+    const event = normalized({
+      type: "conversation_event",
+      runtime: "openhands",
+      conversation_id: "conv-child",
+      agent_id: "agent-child",
+      event_class: "ActionEvent",
+      parent_tool_call_id: "call-parent-1",
+      timestamp: 1_778_000_090,
+      event: {
+        source: "agent",
+        tool_call: {
+          id: "call-child-1",
+          type: "function",
+          function: {
+            name: "read_file",
+            arguments: { path: "child.md" },
+          },
+        },
+      },
+    });
+
+    expect(event.toolCallId).toBe("call-child-1");
+    expect(event.parentToolCallId).toBe("call-parent-1");
   });
 
   it("preserves terminal result text and structured output", () => {

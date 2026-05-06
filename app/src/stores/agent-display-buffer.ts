@@ -53,6 +53,7 @@ export function flushDisplayItems(): void {
           status: "running" as const,
           displayItems: items,
           pendingActionsByToolCallId: {},
+          pendingSubagentItemsByParentToolCallId: {},
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: DEFAULT_CONTEXT_WINDOW,

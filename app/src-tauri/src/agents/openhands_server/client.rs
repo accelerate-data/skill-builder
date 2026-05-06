@@ -329,6 +329,7 @@ mod tests {
             json["agent"]["tools"],
             serde_json::json!([
                 {"name": "file_editor", "params": {}},
+                {"name": "task_tool_set", "params": {}},
                 {"name": "terminal", "params": {}}
             ])
         );

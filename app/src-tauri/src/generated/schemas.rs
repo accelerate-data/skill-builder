@@ -113,12 +113,6 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
     },
     "status": {
       "type": "string"
-    },
-    "version_bump": {
-      "type": [
-        "string",
-        "null"
-      ]
     }
   },
   "required": [
@@ -126,8 +120,7 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
     "call_trace",
     "commit_summary",
     "skipped",
-    "status",
-    "version_bump"
+    "status"
   ],
   "title": "GenerateSkillOutput",
   "type": "object"

@@ -114,7 +114,6 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
     'answer-evaluator',
     'creating-skills',
     'fresh-context-verifier',
-    'version_bump',
     '1.0.0',
     'agent-sources/prompts/confirm_decisions.txt',
   ]) {

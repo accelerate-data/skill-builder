@@ -540,6 +540,10 @@ fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHand
             "glob",
             "task_tool_set",
         ];
+    } else if !names.contains(&"task_tool_set") {
+        // Sub-agent delegation is part of the default OpenHands contract for
+        // this app, even when a surface provides an explicit allowlist.
+        names.push("task_tool_set");
     }
     names.sort_unstable();
     names.dedup();

@@ -71,7 +71,7 @@ describe("projectConversationEvent", () => {
     expect(item.toolName).toBe("file_editor");
     expect(item.toolSummary).toBe("Read file: foo.md");
     expect(item.toolStatus).toBe("pending");
-    expect(item.toolUseId).toBe("call-1");
+    expect(item.toolCallId).toBe("call-1");
     expect(result.pendingDelta.set?.[0]?.key).toBe("call-1");
     expect(result.pendingDelta.set?.[0]?.value.displayItemId).toBe(item.id);
   });
@@ -124,6 +124,30 @@ describe("projectConversationEvent", () => {
     expect(item.skillName).toBe("research");
     expect(item.toolSummary).toBe("Using skill: research");
     expect(item.subagentDescription).toBe("Researching pricing");
+    expect(item.subagentStatus).toBe("running");
+  });
+
+  it("projects task_tool_set as a subagent item", () => {
+    const event = makeEvent("ActionEvent", {
+      source: "agent",
+      action: {
+        subagent_type: "skill-verifier",
+        description: "Verify generated HR analytics skill",
+      },
+      tool_name: "task_tool_set",
+      tool_call_id: "call-task-1",
+      summary: "Verify generated HR analytics skill",
+    });
+
+    const result = projectConversationEvent(event, {});
+    const item = result.add[0];
+    expect(item.type).toBe("subagent");
+    expect(item.toolName).toBe("task_tool_set");
+    expect(item.toolSummary).toBe("Launch subagent: skill-verifier");
+    expect(item.subagentType).toBe("skill-verifier");
+    expect(item.subagentDescription).toBe(
+      "Verify generated HR analytics skill",
+    );
     expect(item.subagentStatus).toBe("running");
   });
 

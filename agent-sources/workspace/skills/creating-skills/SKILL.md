@@ -32,13 +32,6 @@ Write `SKILL.md` first. Keep it operational: future agents should be able to rec
 The generated skill should include:
 
 - concise frontmatter with a trigger-focused `description`
-- nested `metadata.version` in `SKILL.md` frontmatter, for example:
-
-  ```yaml
-  metadata:
-    version: "1.0.0"
-  ```
-
 - a clear statement of when to use the skill and when not to use it
 - the minimum process needed to execute the skill reliably
 - input and output expectations
@@ -52,7 +45,7 @@ Do not create eval cases, eval suggestions, or trigger-prompt drafts during skil
 
 ## Fresh-Context Verification
 
-After generating files, use `task_tool_set` to spawn a subagent for the verifier pass. Spawning via `task_tool_set` gives the verifier a fresh context — free from the generator's accumulated conversation history — so it can catch issues the generator has reasoned past. Do not run the verifier inline in the same agent context.
+After generating files, launch the named `skill-verifier` subagent via `task_tool_set` for the verifier pass. Launching it via `task_tool_set` gives the verifier a fresh context — free from the generator's accumulated conversation history — so it can catch issues the generator has reasoned past. Do not run the verifier inline in the same agent context.
 
 Build the subagent prompt from `references/verifier-subagent-prompt.md`. Include only:
 

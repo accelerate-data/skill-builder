@@ -306,6 +306,33 @@ function labelForActionEvent(
     };
   }
 
+  if (toolName === "task_tool_set" || toolName === "task") {
+    const subagentType =
+      (typeof action.subagent_type === "string"
+        ? action.subagent_type
+        : undefined) ??
+      (typeof input.subagent_type === "string"
+        ? input.subagent_type
+        : undefined) ??
+      "subagent";
+    const description =
+      (typeof action.description === "string"
+        ? action.description
+        : undefined) ??
+      (typeof input.description === "string"
+        ? input.description
+        : undefined) ??
+      summary ??
+      `Launch subagent: ${subagentType}`;
+
+    return {
+      type: "subagent",
+      toolName,
+      toolSummary: `Launch subagent: ${subagentType}`,
+      subagentDescription: description,
+    };
+  }
+
   if (toolName === "think") {
     const thought =
       (typeof action.thought === "string" ? action.thought : undefined) ??
@@ -364,6 +391,15 @@ function projectActionEvent(
 
   let item: DisplayItem;
   if (label.type === "subagent") {
+    const action = getActionRecord(event);
+    const input = toolInputAsRecord(event) ?? {};
+    const subagentType =
+      (typeof action.subagent_type === "string"
+        ? action.subagent_type
+        : undefined) ??
+      (typeof input.subagent_type === "string"
+        ? input.subagent_type
+        : undefined);
     item = {
       id,
       type: "subagent",
@@ -371,9 +407,10 @@ function projectActionEvent(
       toolName: label.toolName,
       toolSummary: label.toolSummary,
       toolStatus: "pending",
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
       subagentDescription: label.subagentDescription,
+      subagentType,
       subagentStatus: "running",
     };
   } else if (label.type === "skill") {
@@ -384,7 +421,7 @@ function projectActionEvent(
       toolName: label.toolName,
       skillName: label.skillName,
       toolSummary: label.toolSummary,
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
       subagentDescription: label.subagentDescription,
       subagentStatus: "running",
@@ -404,7 +441,7 @@ function projectActionEvent(
       toolName: label.toolName,
       toolSummary: label.toolSummary,
       toolStatus: "pending",
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
     };
   } else {
@@ -415,7 +452,7 @@ function projectActionEvent(
       toolName: label.toolName,
       toolSummary: label.toolSummary,
       toolStatus: "pending",
-      toolUseId: toolCallId,
+      toolCallId,
       toolInput,
     };
   }
