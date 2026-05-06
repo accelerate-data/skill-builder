@@ -17,22 +17,6 @@ impl EvalMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum EvalAssertionType {
-    Equals,
-    Contains,
-    Javascript,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct EvalAssertion {
-    #[serde(rename = "type")]
-    pub assertion_type: EvalAssertionType,
-    pub value: Value,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvalCase {
@@ -43,7 +27,7 @@ pub struct EvalCase {
     #[serde(default)]
     pub should_trigger: Option<bool>,
     #[serde(default)]
-    pub assertions: Vec<EvalAssertion>,
+    pub expectations: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

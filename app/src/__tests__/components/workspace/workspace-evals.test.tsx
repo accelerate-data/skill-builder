@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
 import { mockListen, resetTauriMocks } from "@/test/mocks/tauri";
+import { useSettingsStore } from "@/stores/settings-store";
 
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
@@ -10,7 +11,6 @@ const mockRunEvalWorkbench = vi.fn();
 const mockCancelEvalWorkbenchRun = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
 const mockGenerateScenarios = vi.fn();
-const mockListScenarios = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
 let progressListener:
@@ -41,7 +41,6 @@ vi.mock("@/lib/eval-workbench", async () => {
   return {
     ...actual,
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
-    listScenarios: (...args: unknown[]) => mockListScenarios(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
     cancelEvalWorkbenchRun: (...args: unknown[]) =>
@@ -49,7 +48,6 @@ vi.mock("@/lib/eval-workbench", async () => {
     generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
-    generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
   };
 });
 
@@ -79,31 +77,21 @@ const skill: SkillSummary = {
 };
 
 const performanceScenario = {
+  id: "case-1",
   name: "Regression",
   tags: ["performance"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Forecast next quarter revenue",
-      expectedOutcome: "Includes assumptions",
-      shouldTrigger: null,
-      assertions: [],
-    },
-  ],
+  prompt: "Forecast next quarter revenue",
+  shouldTrigger: null,
+  expectations: ["Explains the forecast assumptions."],
 };
 
 const alternatePerformanceScenario = {
+  id: "case-2",
   name: "Smoke",
   tags: ["performance"] as const,
-  cases: [
-    {
-      id: "case-2",
-      prompt: "Summarize pipeline risk",
-      expectedOutcome: "Lists top blockers",
-      shouldTrigger: null,
-      assertions: [],
-    },
-  ],
+  prompt: "Summarize pipeline risk",
+  shouldTrigger: null,
+  expectations: ["Summarizes the main pipeline blockers."],
 };
 
 const runSummary = {
@@ -154,6 +142,7 @@ function createDeferred<T>() {
 describe("WorkspaceEvals", () => {
   beforeEach(() => {
     resetTauriMocks();
+    useSettingsStore.getState().reset();
     progressListener = null;
     mockListen.mockImplementation((eventName, callback) => {
       if (eventName === "eval-workbench-progress") {
@@ -162,7 +151,6 @@ describe("WorkspaceEvals", () => {
       return Promise.resolve(() => {});
     });
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
-    mockListScenarios.mockReset().mockResolvedValue([]);
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
     mockCancelEvalWorkbenchRun.mockReset().mockResolvedValue(undefined);
@@ -171,7 +159,6 @@ describe("WorkspaceEvals", () => {
       runId: "run-1",
       brief: "Improve assumptions handling",
     });
-    mockGenerateScenarios.mockReset().mockResolvedValue([]);
     setPendingInitialMessage.mockReset();
   });
 
@@ -192,13 +179,13 @@ describe("WorkspaceEvals", () => {
         "forecast-skill",
         "performance",
         20,
-        "Regression",
+        "Package",
       ),
     );
     expect(
       await screen.findByDisplayValue("Forecast next quarter revenue"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /run scenario/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeInTheDocument();
   });
 
   it("does not request run history before a scenario exists", async () => {
@@ -212,63 +199,153 @@ describe("WorkspaceEvals", () => {
       />,
     );
 
-    expect(await screen.findByLabelText(/scenario name/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
     expect(mockListEvalRuns).not.toHaveBeenCalled();
-    expect(screen.getByText("No runs yet.")).toBeInTheDocument();
+    expect(screen.getByText(/no evaluations yet/i)).toBeInTheDocument();
   });
 
-  it("saves a new performance scenario through the shared workbench surface", async () => {
+  it("enables package evaluation when scenarios exist even if no scenario row is expanded", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={null}
+        hasScenarios
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
+    const evaluateButton = await screen.findByRole("button", { name: /^evaluate$/i });
+    expect(evaluateButton).toBeEnabled();
+
+    await user.click(evaluateButton);
+
+    await waitFor(() =>
+      expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
+        runId: expect.any(String),
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
+        mode: "performance",
+        candidateIds: ["current-skill"],
+      }),
+    );
+  });
+
+  it("uses a combined results section in the empty state", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={null}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Results" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
+    expect(screen.queryByRole("heading", { name: /run history/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /latest run/i })).not.toBeInTheDocument();
+  });
+
+  it("shows plain-language expectations instead of low-level assertion editors", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+    expect(screen.getByText("Expectations")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Explains the forecast assumptions.")).toBeInTheDocument();
+    expect(screen.queryByText("Assertions")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add assertion/i })).not.toBeInTheDocument();
+  });
+
+  it("leaves new scenario creation to the parent Scenarios section", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /new scenario/i })).not.toBeInTheDocument();
+  });
+
+  it("autosaves edits after a persisted scenario exists", async () => {
     const user = userEvent.setup();
     const onSaveScenario = vi.fn().mockResolvedValue({
-      name: "Smoke",
-      tags: ["performance"],
-      cases: [
-        {
-          prompt: "Summarize pipeline risk",
-          expectedOutcome: "Lists top blockers",
-          shouldTrigger: null,
-          assertions: [],
-        },
-      ],
+      ...performanceScenario,
+      prompt: "Forecast next quarter revenue with assumptions",
     });
-    const onStartNewScenario = vi.fn();
 
     render(
       <WorkspaceEvals
         skill={skill}
         workspacePath="/workspace"
         scenario={performanceScenario}
-        onStartNewScenario={onStartNewScenario}
+        onStartNewScenario={vi.fn()}
         onSaveScenario={onSaveScenario}
       />,
     );
 
-    await screen.findByDisplayValue("Forecast next quarter revenue");
-
-    await user.click(screen.getByRole("button", { name: /new scenario/i }));
-    expect(onStartNewScenario).toHaveBeenCalled();
-
-    await user.clear(screen.getByLabelText(/scenario name/i));
-    await user.type(screen.getByLabelText(/scenario name/i), "Smoke");
-    await user.clear(screen.getByLabelText(/user prompt/i));
-    await user.type(screen.getByLabelText(/user prompt/i), "Summarize pipeline risk");
-    await user.clear(screen.getByLabelText(/expected outcome/i));
-    await user.type(screen.getByLabelText(/expected outcome/i), "Lists top blockers");
-    await user.click(screen.getByRole("button", { name: /^save scenario$/i }));
+    const prompt = await screen.findByLabelText(/user prompt/i);
+    await user.clear(prompt);
+    await user.type(prompt, "Forecast next quarter revenue with assumptions");
 
     await waitFor(() =>
       expect(onSaveScenario).toHaveBeenCalledWith({
-        name: "Smoke",
+        id: "case-1",
+        name: "Regression",
         tags: ["performance"],
-        cases: [
-          expect.objectContaining({
-            prompt: "Summarize pipeline risk",
-            expectedOutcome: "Lists top blockers",
-            shouldTrigger: null,
-            assertions: [],
-          }),
-        ],
-      }),
+        prompt: "Forecast next quarter revenue with assumptions",
+        expectations: ["Explains the forecast assumptions."],
+      }, { previousScenarioName: "Regression" }),
+    );
+  });
+
+  it("deletes an expectation from the expanded scenario editor", async () => {
+    const user = userEvent.setup();
+    const onSaveScenario = vi.fn().mockResolvedValue({
+      ...performanceScenario,
+      expectations: [],
+    });
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={onSaveScenario}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue("Explains the forecast assumptions.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /delete expectation 1/i }));
+
+    await waitFor(() =>
+      expect(onSaveScenario).toHaveBeenCalledWith({
+        id: "case-1",
+        name: "Regression",
+        tags: ["performance"],
+        prompt: "Forecast next quarter revenue",
+        expectations: [],
+      }, { previousScenarioName: "Regression" }),
     );
   });
 
@@ -288,7 +365,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText("Missed assumptions section");
     await user.click(screen.getByRole("button", { name: /send to refine/i }));
 
@@ -301,8 +377,7 @@ describe("WorkspaceEvals", () => {
     expect(onNavigateToRefine).toHaveBeenCalled();
   });
 
-  it("reloads filtered history and clears the selected run when the scenario changes", async () => {
-    const user = userEvent.setup();
+  it("keeps package history stable when the selected scenario changes", async () => {
     const { rerender } = render(
       <WorkspaceEvals
         skill={skill}
@@ -314,7 +389,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText("Missed assumptions section");
 
     rerender(
@@ -327,20 +401,11 @@ describe("WorkspaceEvals", () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(mockListEvalRuns).toHaveBeenLastCalledWith(
-        "skills",
-        "forecast-skill",
-        "performance",
-        20,
-        "Smoke",
-      ),
-    );
-    expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument();
+    expect(mockListEvalRuns).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Missed assumptions section")).toBeInTheDocument();
   });
 
   it("reloads filtered history and clears the selected run when the workspace changes", async () => {
-    const user = userEvent.setup();
     const { rerender } = render(
       <WorkspaceEvals
         skill={skill}
@@ -352,7 +417,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText("Missed assumptions section");
 
     rerender(
@@ -371,10 +435,10 @@ describe("WorkspaceEvals", () => {
         "forecast-skill",
         "performance",
         20,
-        "Regression",
+        "Package",
       ),
     );
-    expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument();
+    await screen.findByText("Missed assumptions section");
   });
 
   it("ignores stale history responses after the workspace changes", async () => {
@@ -415,7 +479,6 @@ describe("WorkspaceEvals", () => {
   });
 
   it("ignores stale run-detail responses after the workspace changes", async () => {
-    const user = userEvent.setup();
     const staleDetail = createDeferred(runDetail);
     mockReadEvalRun.mockReset().mockReturnValue(staleDetail.promise);
     mockListEvalRuns
@@ -434,7 +497,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
 
     rerender(
       <WorkspaceEvals
@@ -452,26 +514,19 @@ describe("WorkspaceEvals", () => {
     await waitFor(() =>
       expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument(),
     );
-    expect(screen.getByText(/select a run to inspect its results/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send to refine/i })).toBeInTheDocument();
   });
 
-  it("saves generated scenarios without reusing the selected scenario as previousScenarioName", async () => {
+  it("persists and reloads the selected scenario from the scenario-level suggest action", async () => {
     const user = userEvent.setup();
-    const onSaveScenario = vi.fn().mockResolvedValue(performanceScenario);
-    mockGenerateScenarios.mockResolvedValue([
-      {
-        name: "Generated smoke",
-        tags: ["performance"],
-        cases: [
-          {
-            prompt: "Summarize pipeline risk",
-            expectedOutcome: "Lists top blockers",
-            shouldTrigger: null,
-            assertions: [],
-          },
-        ],
-      },
-    ]);
+    const onSuggestScenario = vi.fn().mockResolvedValue({
+      id: "generated-case",
+      name: "Regression",
+      tags: ["performance"],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      expectations: ["Summarizes the main pipeline blockers."],
+    });
 
     render(
       <WorkspaceEvals
@@ -479,44 +534,41 @@ describe("WorkspaceEvals", () => {
         workspacePath="/workspace"
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
-        onSaveScenario={onSaveScenario}
+        onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
       />,
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /generate scenarios/i }));
+    expect(screen.getAllByRole("button", { name: /^suggest$/i })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
     await waitFor(() =>
-      expect(onSaveScenario).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Generated smoke" }),
-        { previousScenarioName: null },
-      ),
+      expect(onSuggestScenario).toHaveBeenCalled(),
     );
+    expect(await screen.findByDisplayValue("Summarize pipeline risk")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Summarizes the main pipeline blockers."),
+    ).toBeInTheDocument();
   });
 
-  it("rejects generated scenarios that conflict with existing scenario names before saving", async () => {
+  it("shows a workflow-style footer status while scenario suggestion is running", async () => {
+    useSettingsStore.getState().setSettings({
+      modelSettings: {
+        provider: "opencode",
+        model: "opencode-go/minimax-m2.7",
+      },
+    });
     const user = userEvent.setup();
-    const onSaveScenario = vi.fn();
-    mockListScenarios.mockResolvedValue([
-      {
-        name: "happy-path",
-        tags: ["performance"],
-      },
-    ]);
-    mockGenerateScenarios.mockResolvedValue([
-      {
-        name: "Happy Path",
-        tags: ["performance"],
-        cases: [
-          {
-            prompt: "Forecast next quarter revenue",
-            expectedOutcome: "Includes assumptions",
-            shouldTrigger: null,
-            assertions: [],
-          },
-        ],
-      },
-    ]);
+    const deferredSuggestion = createDeferred({
+      id: "generated-case",
+      name: "Risk Summary",
+      tags: ["performance"],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      expectations: ["Summarizes the main pipeline blockers."],
+    });
+    const onSuggestScenario = vi.fn().mockReturnValue(deferredSuggestion.promise);
 
     render(
       <WorkspaceEvals
@@ -524,17 +576,155 @@ describe("WorkspaceEvals", () => {
         workspacePath="/workspace"
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
-        onSaveScenario={onSaveScenario}
+        onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
       />,
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /generate scenarios/i }));
+    expect(screen.getByTestId("eval-suggest-status-bar")).toBeInTheDocument();
+    expect(screen.getByText("ready")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
-    expect(onSaveScenario).not.toHaveBeenCalled();
+    expect(screen.getByText("Reading skill and drafting scenario…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /suggesting/i })).toBeDisabled();
+    expect(screen.getByText("running…")).toBeInTheDocument();
+    expect(screen.getByText("Opencode Go/minimax M2.7")).toBeInTheDocument();
+    expect(screen.getByText(/\d+s/)).toBeInTheDocument();
+
+    deferredSuggestion.resolve({
+      id: "generated-case",
+      name: "Risk Summary",
+      tags: ["performance"],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      expectations: ["Summarizes the main pipeline blockers."],
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Reading skill and drafting scenario…"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("ready")).toBeInTheDocument();
+  });
+
+  it("uses the workflow-style panel layout for the workbench footer", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={null}
+        hasScenarios
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    const shell = await screen.findByTestId("eval-workbench-panel");
+    const content = await screen.findByTestId("eval-workbench-content");
+    const footer = await screen.findByTestId("eval-suggest-status-bar");
+    expect(shell).toHaveClass(
+      "flex",
+      "min-h-0",
+      "flex-1",
+      "flex-col",
+      "overflow-hidden",
+      "rounded-lg",
+      "border",
+      "bg-card",
+    );
+    expect(content).toHaveClass(
+      "min-h-0",
+      "flex-1",
+      "overflow-y-auto",
+      "px-6",
+      "pt-6",
+      "pb-6",
+    );
+    expect(shell.lastElementChild).toBe(footer);
+  });
+
+  it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
+    const user = userEvent.setup();
+    const onSuggestScenario = vi.fn().mockRejectedValue(
+      new Error(
+        "OpenHands eval structured result was not valid JSON: expected value at line 2 column 1",
+      ),
+    );
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
+
     expect(
-      await screen.findByText(/generated scenarios already exist: happy path/i),
-    ).toBeInTheDocument();
+      await screen.findAllByText(/scenario suggestion failed/i),
+    ).toHaveLength(2);
+    expect(screen.getAllByText(/invalid json/i)).toHaveLength(2);
+  });
+
+  it("shows suggestion failures in the scenario footer status area", async () => {
+    const user = userEvent.setup();
+    const onSuggestScenario = vi.fn().mockRejectedValue(
+      new Error("missing field `name`"),
+    );
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
+
+    expect(
+      await screen.findAllByText("Scenario suggestion failed: missing field `name`"),
+    ).toHaveLength(2);
+  });
+
+  it("keeps trigger-mode generation separate from performance suggestion", async () => {
+    const user = userEvent.setup();
+    const onSuggestScenario = vi.fn().mockResolvedValue({
+      id: "case-1",
+      name: "Happy Path",
+      tags: ["performance"],
+      prompt: "Forecast next quarter revenue",
+      shouldTrigger: null,
+      expectations: ["Explains the forecast assumptions."],
+    });
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getAllByRole("button", { name: /^suggest$/i })[0]!);
+
+    await waitFor(() =>
+      expect(onSuggestScenario).toHaveBeenCalled(),
+    );
   });
 
   it("publishes real running state while a scenario run is active", async () => {
@@ -542,6 +732,12 @@ describe("WorkspaceEvals", () => {
     const onRunningChange = vi.fn();
     const deferredRun = createDeferred(runSummary);
     mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
+    useSettingsStore.getState().setSettings({
+      modelSettings: {
+        provider: "opencode",
+        model: "opencode-go/minimax-m2.7",
+      },
+    });
 
     render(
       <WorkspaceEvals
@@ -557,25 +753,28 @@ describe("WorkspaceEvals", () => {
     await screen.findByDisplayValue("Forecast next quarter revenue");
     onRunningChange.mockClear();
 
-    await user.click(screen.getByRole("button", { name: /run scenario/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
         pluginSlug: "skills",
         skillName: "forecast-skill",
-        scenarioName: "Regression",
         mode: "performance",
         candidateIds: ["current-skill"],
       }),
     );
     await waitFor(() => expect(onRunningChange).toHaveBeenCalledWith(true));
+    expect(screen.getByText("running…")).toBeInTheDocument();
+    expect(screen.getByText("Opencode Go/minimax M2.7")).toBeInTheDocument();
+    expect(screen.getByText(/\d+s/)).toBeInTheDocument();
 
     deferredRun.resolve(runSummary);
 
     await waitFor(() =>
       expect(onRunningChange).toHaveBeenLastCalledWith(false),
     );
+    expect(screen.getByText("ready")).toBeInTheDocument();
   });
 
   it("shows progress and cancels the active workbench run", async () => {
@@ -594,14 +793,13 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /run scenario/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
         pluginSlug: "skills",
         skillName: "forecast-skill",
-        scenarioName: "Regression",
         mode: "performance",
         candidateIds: ["current-skill"],
       }),

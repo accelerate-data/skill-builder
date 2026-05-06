@@ -44,7 +44,6 @@ import type {
   RunEvalWorkbenchRequest,
   ScenarioListItem,
   ScenarioDto,
-  SuggestAssertionsRequest,
   SuggestDescriptionCandidatesRequest,
 } from "@/lib/eval-workbench";
 import type {
@@ -457,6 +456,10 @@ export interface TauriCommandMap {
     args: { pluginSlug: string; skillName: string; scenarioName: string };
     result: ScenarioDto | null;
   };
+  create_scenario: {
+    args: { pluginSlug: string; skillName: string; mode: EvalWorkbenchMode };
+    result: ScenarioDto;
+  };
   save_scenario: {
     args: {
       pluginSlug: string;
@@ -473,6 +476,10 @@ export interface TauriCommandMap {
   generate_scenarios: {
     args: { pluginSlug: string; skillName: string };
     result: ScenarioDto[];
+  };
+  suggest_scenario: {
+    args: { pluginSlug: string; skillName: string; scenarioName: string };
+    result: ScenarioDto;
   };
   run_eval_workbench: {
     args: { request: RunEvalWorkbenchRequest };
@@ -499,10 +506,6 @@ export interface TauriCommandMap {
   suggest_description_candidates: {
     args: { request: SuggestDescriptionCandidatesRequest };
     result: DescriptionCandidate[];
-  };
-  suggest_assertions: {
-    args: { request: SuggestAssertionsRequest };
-    result: { type: string; value: string }[];
   };
   apply_description_candidate: {
     args: { pluginSlug: string; skillName: string; candidateId: string };

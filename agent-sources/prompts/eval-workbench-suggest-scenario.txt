@@ -1,0 +1,34 @@
+Suggest one performance eval scenario for the skill `{{skill_name}}`.
+
+Read the skill and understand what it does before drafting the scenario.
+
+Skill path: {{skill_path}}
+Workspace skill path: {{workspace_skill_path}}
+Clarifications: {{clarifications_json}}
+Decisions: {{decisions_json}}
+
+Return exactly one valid JSON object with this shape:
+{
+  "name": "string",
+  "prompt": "string",
+  "expectations": ["string"]
+}
+
+Rules:
+
+- This is for one existing scenario, not a batch.
+- Do not return prose, Markdown, code fences, or comments.
+- Return 1 to 3 expectations.
+- Each expectation must be a plain-language business outcome a user would understand.
+- Keep the suggestion grounded in the real skill behavior and files below.
+- Use the skill, clarifications, and decisions to infer the real calculation, workflow, or business logic the answer should cover.
+- Suggest a concise scenario name that fits the generated prompt and expectations.
+- Do not mention evals, Promptfoo, or implementation details.
+- Before returning, check that the response is valid JSON, matches the shape above exactly, includes `name`, `prompt`, and `expectations`, and every expectation is a non-empty string.
+
+Existing scenario name: {{scenario_name}}
+Existing prompt: {{existing_prompt}}
+Existing expectations: {{existing_expectations}}
+
+Skill context:
+{{skill_context}}

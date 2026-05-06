@@ -1,16 +1,11 @@
 export type EvalMode = "performance" | "trigger";
 
-export type EvalAssertion = {
-  type: "equals" | "contains" | "javascript";
-  value: string;
-};
-
 export type EvalCase = {
   id: string;
   prompt: string;
   expected?: string;
   shouldTrigger?: boolean;
-  assertions: EvalAssertion[];
+  expectations: string[];
 };
 
 export type EvalCandidate = {
@@ -89,7 +84,7 @@ export type PersistedScenarioSnapshotCase = {
   prompt: string;
   expected?: string;
   shouldTrigger?: boolean;
-  assertions: EvalAssertion[];
+  expectations: string[];
   sortOrder: number;
 };
 
@@ -130,12 +125,6 @@ export type PersistedEvalRun = {
 };
 
 const EVAL_MODES = new Set<EvalMode>(["performance", "trigger"]);
-const ASSERTION_TYPES = new Set<EvalAssertion["type"]>([
-  "equals",
-  "contains",
-  "javascript",
-]);
-
 export function parseSidecarRequest(line: string): SidecarRequest {
   let parsed: unknown;
   try {
@@ -267,11 +256,14 @@ function validateCase(value: unknown, index: number): EvalCase {
   const testCase: EvalCase = {
     id: requireString(value.id, `cases[${index}].id`),
     prompt: requireString(value.prompt, `cases[${index}].prompt`),
-    assertions: requireArray(
-      value.assertions,
-      `cases[${index}].assertions`,
-    ).map((assertion, assertionIndex) =>
-      validateAssertion(assertion, index, assertionIndex),
+    expectations: requireArray(
+      value.expectations,
+      `cases[${index}].expectations`,
+    ).map((expectation, expectationIndex) =>
+      requireString(
+        expectation,
+        `cases[${index}].expectations[${expectationIndex}]`,
+      ),
     ),
   };
 
@@ -305,30 +297,6 @@ function validateExecution(value: unknown, index: number): EvalExecution {
     output: value.output,
   };
 }
-
-function validateAssertion(
-  value: unknown,
-  caseIndex: number,
-  assertionIndex: number,
-): EvalAssertion {
-  const field = `cases[${caseIndex}].assertions[${assertionIndex}]`;
-  if (!isRecord(value)) {
-    throw new Error(`${field} must be an object`);
-  }
-
-  if (
-    typeof value.type !== "string" ||
-    !ASSERTION_TYPES.has(value.type as EvalAssertion["type"])
-  ) {
-    throw new Error(`${field}.type must be equals, contains, or javascript`);
-  }
-
-  return {
-    type: value.type as EvalAssertion["type"],
-    value: requireString(value.value, `${field}.value`),
-  };
-}
-
 function requireEvalMode(value: unknown): EvalMode {
   if (typeof value === "string" && EVAL_MODES.has(value as EvalMode)) {
     return value as EvalMode;

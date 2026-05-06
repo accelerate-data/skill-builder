@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createScenario,
   deleteScenario,
   loadScenario,
   listScenarios,
   saveScenario,
+  suggestScenario,
+  type EvalWorkbenchMode,
   type ScenarioDto,
 } from "@/lib/eval-workbench";
 
@@ -20,6 +23,18 @@ export const evalScenarioKeys = {
 type SaveScenarioMutationInput = {
   scenario: ScenarioDto;
   previousScenarioName?: string | null;
+};
+
+type CreateScenarioMutationInput = {
+  mode: EvalWorkbenchMode;
+};
+
+type DeleteScenarioMutationInput = {
+  scenarioName: string;
+};
+
+type SuggestScenarioMutationInput = {
+  scenarioName: string;
 };
 
 export function useScenarios(skillName: string | null, pluginSlug: string) {
@@ -76,13 +91,56 @@ export function useSaveScenario(skillName: string | null, pluginSlug: string) {
   });
 }
 
+export function useCreateScenario(skillName: string | null, pluginSlug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ mode }: CreateScenarioMutationInput) =>
+      createScenario(pluginSlug, skillName!, mode),
+    onSuccess: (createdScenario) => {
+      void queryClient.invalidateQueries({
+        queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
+      });
+      queryClient.setQueryData(
+        evalScenarioKeys.detail(skillName ?? "", pluginSlug, createdScenario.name),
+        createdScenario,
+      );
+    },
+  });
+}
+
+export function useSuggestScenario(skillName: string | null, pluginSlug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ scenarioName }: SuggestScenarioMutationInput) =>
+      suggestScenario(pluginSlug, skillName!, scenarioName),
+    onSuccess: (savedScenario, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
+      });
+      queryClient.removeQueries({
+        queryKey: evalScenarioKeys.detail(
+          skillName ?? "",
+          pluginSlug,
+          variables.scenarioName,
+        ),
+      });
+      queryClient.setQueryData(
+        evalScenarioKeys.detail(skillName ?? "", pluginSlug, savedScenario.name),
+        savedScenario,
+      );
+    },
+  });
+}
+
 export function useDeleteScenario(skillName: string | null, pluginSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (scenarioName: string) =>
+    mutationFn: ({ scenarioName }: DeleteScenarioMutationInput) =>
       deleteScenario(pluginSlug, skillName!, scenarioName),
-    onSuccess: (_result, scenarioName) => {
+    onSuccess: (_result, { scenarioName }) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
       });

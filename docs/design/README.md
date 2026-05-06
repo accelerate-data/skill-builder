@@ -27,8 +27,7 @@
 
 | [agent-unit-test-suite/](agent-unit-test-suite/README.md) | Agent test stack and Promptfoo scenario operations: maintenance, single-scenario runs, and autonomous agent test policy |
 | [shared-eval-harness/](shared-eval-harness/README.md) | Shared Promptfoo/OpenCode eval harness: framework boundary, runtime state model, package contract, and extraction path |
-| [eval-workbench-promptfoo-sidecar/](eval-workbench-promptfoo-sidecar/README.md) | App-owned Eval Workbench and Promptfoo sidecar: the current user-facing eval path for prompt sets, run history, description candidate ranking, and Refine handoff |
-| [eval-workbench-scenarios-remediation/](eval-workbench-scenarios-remediation/README.md) | Gap-remediation design for `VU-1161`: remove prompt-set mirroring, complete the file-native scenario contract, and move active workbench history to app-owned Promptfoo state |
+| [eval-workbench/](eval-workbench/README.md) | Canonical Eval Workbench design: Promptfoo-style scenario model, scenario-scoped suggestion, performance-always-on behavior, optional trigger coverage, and app-local Promptfoo run history |
 | [workflow-artifact-storage/](workflow-artifact-storage/README.md) | Workflow artifact storage boundary: SQLite-owned canonical state for clarifications/decisions/gates, runtime-only workspace files, and shipped skill output separation |
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |
 | [plugin-path-restructure/](plugin-path-restructure/README.md) | Plugin directory restructure: fixed `skills/` subdirectory inside each plugin root, default plugin rename, and legacy path compatibility |

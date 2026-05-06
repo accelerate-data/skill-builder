@@ -15,6 +15,7 @@
     "eval:workspace-workflow-step-prompt": "node bin/ad-evals.js run packages/workspace-workflow-step-prompt/promptfooconfig.json",
     "eval:workspace-refine-initial-prompt": "node bin/ad-evals.js run packages/workspace-refine-initial-prompt/promptfooconfig.json",
     "eval:workspace-eval-generator-system-prompt": "node bin/ad-evals.js run packages/workspace-eval-generator-system-prompt/promptfooconfig.json",
+    "eval:workspace-eval-workbench-suggest-scenario-prompt": "node bin/ad-evals.js run packages/workspace-eval-workbench-suggest-scenario-prompt/promptfooconfig.json",
     "eval:workspace-skill-suggestions-prompt": "node bin/ad-evals.js run packages/workspace-skill-suggestions-prompt/promptfooconfig.json",
     "eval:scope-advisor": "node bin/ad-evals.js run packages/scope-advisor/promptfooconfig.json",
     "eval:agents": "node bin/ad-evals.js run packages/skill-content-researcher-research/promptfooconfig.json && node bin/ad-evals.js run packages/skill-content-researcher-answer-evaluator/promptfooconfig.json && node bin/ad-evals.js run packages/skill-content-researcher-detailed-research/promptfooconfig.json && node bin/ad-evals.js run packages/skill-content-researcher-confirm-decisions/promptfooconfig.json && node bin/ad-evals.js run packages/skill-creator-generate-skill/promptfooconfig.json && node bin/ad-evals.js run packages/skill-creator-rewrite-skill/promptfooconfig.json && node bin/ad-evals.js run packages/skill-creator-grader/promptfooconfig.json",

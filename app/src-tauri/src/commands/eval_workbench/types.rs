@@ -11,34 +11,22 @@ pub type SaveEvalPromptSet = crate::db::SaveEvalPromptSet;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScenarioAssertionDto {
-    #[serde(rename = "type")]
-    pub assertion_type: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScenarioCaseDto {
-    pub id: String,
-    pub prompt: String,
-    pub expected_outcome: Option<String>,
-    pub should_trigger: Option<bool>,
-    pub assertions: Vec<ScenarioAssertionDto>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ScenarioDto {
+    pub id: String,
     pub name: String,
+    #[serde(default)]
     pub tags: Vec<String>,
-    pub cases: Vec<ScenarioCaseDto>,
+    pub prompt: String,
+    #[serde(default)]
+    pub should_trigger: Option<bool>,
+    pub expectations: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScenarioSummaryDto {
     pub name: String,
+    #[serde(default)]
     pub tags: Vec<String>,
 }
 
@@ -48,7 +36,7 @@ pub struct RunEvalWorkbenchRequest {
     pub run_id: String,
     pub plugin_slug: String,
     pub skill_name: String,
-    pub scenario_name: String,
+    pub scenario_name: Option<String>,
     pub mode: EvalWorkbenchMode,
     pub candidate_ids: Vec<String>,
 }
@@ -61,15 +49,6 @@ pub struct SuggestDescriptionCandidatesRequest {
     pub scenario_name: String,
     pub baseline_description: String,
     pub candidate_count: Option<u32>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SuggestAssertionsRequest {
-    pub plugin_slug: String,
-    pub skill_name: String,
-    pub prompt: String,
-    pub expected_outcome: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

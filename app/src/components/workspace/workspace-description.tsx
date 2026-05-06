@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Sparkles, Square } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { DescriptionCandidate, ScenarioDto } from "@/lib/eval-workbench";
 import {
@@ -26,7 +25,6 @@ import { useRefineStore } from "@/stores/refine-store";
 import { CandidateCards } from "./eval-workbench/candidate-cards";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 import { ResultTable } from "./eval-workbench/result-table";
-import { RunHistory } from "./eval-workbench/run-history";
 import { useRunHistory } from "./eval-workbench/use-run-history";
 
 interface WorkspaceDescriptionProps {
@@ -35,10 +33,12 @@ interface WorkspaceDescriptionProps {
   scenario: ScenarioDto | null;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
+  onCreateScenario?: (mode: "trigger") => Promise<ScenarioDto>;
   onSaveScenario: (
     scenario: ScenarioDto,
     options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
+  onDeleteScenario?: (scenarioName: string) => Promise<void>;
   saveScenarioPending?: boolean;
   onRunningChange?: (running: boolean) => void;
   onApply?: (newDescription: string, newVersion: string) => void;
@@ -51,7 +51,9 @@ export function WorkspaceDescription({
   scenario,
   scenarioLoading = false,
   onStartNewScenario,
+  onCreateScenario,
   onSaveScenario,
+  onDeleteScenario,
   saveScenarioPending = false,
   onRunningChange,
   onApply,
@@ -68,6 +70,7 @@ export function WorkspaceDescription({
     null,
   );
   const [actionError, setActionError] = useState<string | null>(null);
+  const lastPersistedSnapshotRef = useRef<string | null>(null);
   const isRunning = generatingCandidates || running;
   const {
     activeRunId,
@@ -93,12 +96,15 @@ export function WorkspaceDescription({
 
   useEffect(() => {
     setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("trigger"));
+    lastPersistedSnapshotRef.current = scenario
+      ? JSON.stringify(normalizeScenario(scenario))
+      : null;
     setCandidates([]);
     setActionError(null);
   }, [scenario]);
 
   const baselineDescription = skill.description ?? "";
-  const activeScenarioCases = scenario?.cases ?? [];
+  const activeScenarioCases = scenario ? [scenario] : [];
   const recommendedCandidate = useMemo(
     () =>
       getRecommendedCandidate(
@@ -143,19 +149,76 @@ export function WorkspaceDescription({
     }
   }
 
-  async function handleSaveScenario() {
+  useEffect(() => {
+    if (!scenario || scenarioLoading || saveScenarioPending || generatingCandidates || running) {
+      return;
+    }
+
     const validationError = validateScenario(draft);
     if (validationError) {
-      setActionError(validationError);
+      return;
+    }
+
+    const normalizedDraft = normalizeScenario(draft);
+    const nextSnapshot = JSON.stringify(normalizedDraft);
+    if (nextSnapshot === lastPersistedSnapshotRef.current) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const saved = await onSaveScenario(normalizedDraft, {
+            previousScenarioName: scenario.name,
+          });
+          lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
+          setDraft(scenarioToDraft(saved));
+        } catch (saveError) {
+          setActionError(getErrorMessage(saveError));
+        }
+      })();
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    draft,
+    generatingCandidates,
+    onSaveScenario,
+    running,
+    saveScenarioPending,
+    scenario,
+    scenarioLoading,
+  ]);
+
+  async function handleCreateScenario() {
+    if (!onCreateScenario) {
+      return;
+    }
+
+    onStartNewScenario();
+    setActionError(null);
+    try {
+      const created = await onCreateScenario("trigger");
+      lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(created));
+      setDraft(scenarioToDraft(created));
+      setCandidates([]);
+    } catch (createError) {
+      setActionError(getErrorMessage(createError));
+    }
+  }
+
+  async function handleDeleteScenario() {
+    if (!scenario || !onDeleteScenario) {
       return;
     }
 
     setActionError(null);
     try {
-      const saved = await onSaveScenario(normalizeScenario(draft));
-      setDraft(scenarioToDraft(saved));
-    } catch (saveError) {
-      setActionError(getErrorMessage(saveError));
+      await onDeleteScenario(scenario.name);
+      setDraft(createDraftScenario("trigger"));
+      setCandidates([]);
+    } catch (deleteError) {
+      setActionError(getErrorMessage(deleteError));
     }
   }
 
@@ -294,57 +357,6 @@ export function WorkspaceDescription({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-lg border bg-card p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-semibold">Eval Workbench</h1>
-              <Badge variant="outline">Trigger</Badge>
-            </div>
-            {scenario ? (
-              <p className="mt-1 text-sm font-medium">{scenario.name}</p>
-            ) : null}
-            <p className="mt-1 text-sm text-muted-foreground">
-              Generate description candidates, compare them, then push the best
-              findings into Refine.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void handleGenerateCandidates()}
-              disabled={scenarioLoading || generatingCandidates}
-            >
-              <Sparkles className="mr-1 size-3.5" />
-              Generate candidates
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void handleRunComparison()}
-              disabled={scenarioLoading || running}
-            >
-              Run comparison
-            </Button>
-            {running && activeRunId ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void handleCancelRun()}
-              >
-                <Square className="mr-1 size-3.5" />
-                Cancel
-              </Button>
-            ) : null}
-          </div>
-        </div>
-        {running && progress ? (
-          <p className="mt-3 text-xs text-muted-foreground">
-            {progress.message} ({progress.completed}/{progress.total})
-          </p>
-        ) : null}
-      </section>
-
       {actionError ? (
         <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -373,19 +385,18 @@ export function WorkspaceDescription({
         </p>
       </section>
 
-      <PromptSetEditor
-        draft={draft}
-        mode="trigger"
-        onChange={setDraft}
-        onSave={() => void handleSaveScenario()}
-        onNew={() => {
-          onStartNewScenario();
-          setDraft(createDraftScenario("trigger"));
-          setCandidates([]);
-          setActionError(null);
-        }}
-        saveDisabled={scenarioLoading || saveScenarioPending}
-      />
+      {scenario ? (
+        <PromptSetEditor
+          draft={draft}
+          onChange={setDraft}
+          onNew={() => void handleCreateScenario()}
+          onDelete={() => void handleDeleteScenario()}
+          deleteDisabled={scenarioLoading || saveScenarioPending || !scenario}
+          showDelete={Boolean(scenario)}
+          showSuggest={false}
+          showNew={false}
+        />
+      ) : null}
 
       <section className="rounded-lg border bg-card p-4">
         <div className="mb-3">
@@ -401,40 +412,111 @@ export function WorkspaceDescription({
         />
       </section>
 
-      <RunHistory
-        runs={runs}
-        selectedRunId={selectedRunId}
-        onSelectRun={(runId) => void handleSelectRun(runId)}
-      />
-
       <section className="rounded-lg border bg-card p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold">Run details</h2>
+            <h2 className="text-sm font-semibold">Results</h2>
             <p className="text-xs text-muted-foreground">
-              Inspect candidate outcomes, then hand the brief to Refine.
+              Evaluate the package, inspect candidate outcomes, then hand the brief to Refine.
             </p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void handleSendToRefine()}
-            disabled={scenarioLoading || !selectedRunId || sendingToRefine}
-          >
-            Send to Refine
-            <ArrowRight className="ml-1 size-3.5" />
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleGenerateCandidates()}
+              disabled={scenarioLoading || generatingCandidates}
+            >
+              <Sparkles className="mr-1 size-3.5" />
+              Generate candidates
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleRunComparison()}
+              disabled={scenarioLoading || running}
+            >
+              Evaluate
+            </Button>
+            {running && activeRunId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleCancelRun()}
+              >
+                <Square className="mr-1 size-3.5" />
+                Cancel
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <ResultTable
-          mode="trigger"
-          run={selectedRun}
-          candidateLabelById={Object.fromEntries(
-            comparisonEntries.map((entry) => [
-              entry.candidate.id,
-              entry.candidate.label,
-            ]),
-          )}
-        />
+
+        {running && progress ? (
+          <p className="mb-4 text-xs text-muted-foreground">
+            {progress.message} ({progress.completed}/{progress.total})
+          </p>
+        ) : null}
+
+        {runs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No evaluations yet. Run Evaluate to score this package.
+          </p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
+            <div className="space-y-2">
+              {runs.map((run) => {
+                const summary = run.summary as { passed?: number; total?: number };
+                return (
+                  <Button
+                    key={run.id}
+                    type="button"
+                    variant={selectedRunId === run.id ? "secondary" : "outline"}
+                    className="flex h-auto w-full items-start justify-between gap-3 p-3 text-left"
+                    onClick={() => void handleSelectRun(run.id)}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{run.id}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {summary.passed ?? 0}/{summary.total ?? 0} passed
+                      </p>
+                    </div>
+                  </Button>
+                );
+              })}
+            </div>
+
+            <div className="rounded-lg border bg-background/60 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    {selectedRun ? `Run ${selectedRun.id}` : "Run details"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Inspect candidate outcomes, then hand the brief to Refine.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleSendToRefine()}
+                  disabled={scenarioLoading || !selectedRunId || sendingToRefine}
+                >
+                  Send to Refine
+                  <ArrowRight className="ml-1 size-3.5" />
+                </Button>
+              </div>
+              <ResultTable
+                mode="trigger"
+                run={selectedRun}
+                candidateLabelById={Object.fromEntries(
+                  comparisonEntries.map((entry) => [
+                    entry.candidate.id,
+                    entry.candidate.label,
+                  ]),
+                )}
+              />
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

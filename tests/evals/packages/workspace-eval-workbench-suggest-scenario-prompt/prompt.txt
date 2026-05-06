@@ -1,0 +1,34 @@
+Suggest the prompt and expectations for one eval scenario for the skill `measuring-pipeline-value`.
+
+Return exactly one valid JSON object with this shape:
+{
+  "prompt": "string",
+  "expectations": ["string"],
+  "shouldTrigger": true
+}
+
+Rules:
+- This is for one existing scenario, not a batch.
+- Do not return prose, Markdown, code fences, or comments.
+- Performance is always evaluated, so expectations are required.
+- Return 1 to 3 expectations.
+- Every expectation must be a non-empty string.
+- If the scenario mode does not include trigger, return `shouldTrigger: null`.
+- Keep the suggestion grounded in the real skill behavior and files below.
+- Do not mention evals, Promptfoo, or implementation details.
+- Before returning, check that the response is valid JSON, matches the shape above exactly, and every expectation is a non-empty string.
+
+Scenario name: Pipeline to bookings reconciliation
+Scenario modes: performance
+Existing prompt:
+Existing shouldTrigger: null
+Existing expectations: []
+
+Skill context:
+## SKILL.md
+Use when analytics engineers need help modeling Salesforce opportunity pipeline value in a Fabric Lakehouse and dbt workspace. Cover weighted amount calculations, opportunity stages, forecast categories, booking logic, reporting hierarchy, and reconciliation from pipeline to finance bookings.
+
+## references/business-rules.md
+- Weighted pipeline should distinguish open pipeline from committed bookings.
+- Finance bookings are recognized only for booked/won opportunities with booking dates.
+- Sales reporting needs stage-level visibility, forecast category rollups, and reconciliation back to booked revenue.

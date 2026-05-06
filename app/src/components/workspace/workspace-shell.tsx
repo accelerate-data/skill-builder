@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -11,20 +10,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
 import { requestEvalsCancel } from "@/lib/eval-running-state";
 import { getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
-import type { SkillSummary as TauriSkillSummary } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
 import { WorkspaceEvalWorkbench } from "./workspace-eval-workbench";
 import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
 import { toEditableSkill } from "@/lib/types";
-import { patchBuilderSkillQueryData, useBuilderSkillsQuery } from "@/lib/queries/skills";
+import { useBuilderSkillsQuery } from "@/lib/queries/skills";
 
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
@@ -46,7 +43,6 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   const [activeTab, setActiveTab] = useState(() => normalizeWorkspaceTab(initialTab));
   const [pendingTab, setPendingTab] = useState<"overview" | "refine" | "evals" | null>(null);
   const workbenchRunningRef = useRef(false);
-  const queryClient = useQueryClient();
 
   useEffect(() => {
     setActiveTab(normalizeWorkspaceTab(initialTab));
@@ -144,41 +140,6 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
     store.setSelectedModifiedFile(tab);
   }, [isBuilderSkill, workspacePath, skill]);
 
-  // Called by WorkspaceDescription after a description is applied to disk.
-  // Patches query data immediately because apply_description writes to disk,
-  // while listSkills can still return the prior DB-backed description.
-  const handleDescriptionApply = useCallback(async (newDescription: string, newVersion: string) => {
-    useSkillStore.getState().setLatestVersion(newVersion);
-    patchBuilderSkillQueryData(queryClient, (cachedSkill) =>
-      cachedSkill.name === (skill as TauriSkillSummary).name && cachedSkill.plugin_slug === (skill as TauriSkillSummary).plugin_slug
-        ? { ...cachedSkill, description: newDescription }
-        : cachedSkill
-    );
-
-    // 2. Reload skill files so the file viewer (and any open panel) shows updated SKILL.md content.
-    if (!isBuilderSkill || !workspacePath) return;
-    try {
-      const contents = await getSkillContentForRefine(
-        (skill as TauriSkillSummary).name,
-        workspacePath,
-        (skill as TauriSkillSummary).plugin_slug,
-      );
-      const files: SkillFile[] = contents
-        .map((c) => ({ filename: c.path, content: c.content }))
-        .sort((a, b) => {
-          if (a.filename === "SKILL.md") return -1;
-          if (b.filename === "SKILL.md") return 1;
-          return a.filename.localeCompare(b.filename);
-        });
-      const refineStore = useRefineStore.getState();
-      refineStore.setSkillFiles(files);
-      if (files.length > 0) refineStore.setActiveFileTab(files[0].filename);
-    } catch {
-      // Non-fatal: file viewer will reload on next open
-      useRefineStore.getState().setSkillFiles([]);
-    }
-  }, [isBuilderSkill, queryClient, workspacePath, skill]);
-
   return (
     <div className="flex h-full flex-col">
       {/* 48px header */}
@@ -231,14 +192,10 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
               key={"name" in skill ? skill.name : skill.skill_name}
               skill={skill}
               workspacePath={workspacePath}
-              initialMode={initialTab === "description" ? "trigger" : "performance"}
               onNavigateToRefine={() => setActiveTab("refine")}
               onRunningChange={(running) => {
                 workbenchRunningRef.current = running;
               }}
-              onApplyDescription={(desc, ver) =>
-                void handleDescriptionApply(desc, ver)
-              }
             />
           </TabsContent>
         </Tabs>

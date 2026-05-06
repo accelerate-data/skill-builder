@@ -1,84 +1,45 @@
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  createEmptyScenarioCase,
-  scenarioSupportsMode,
-  type EvalWorkbenchMode,
-  type SaveScenario,
-  type SaveScenarioCase,
-  type ScenarioAssertion,
-} from "@/lib/eval-workbench";
+import { type SaveScenario } from "@/lib/eval-workbench";
 
 interface PromptSetEditorProps {
   draft: SaveScenario;
-  mode: EvalWorkbenchMode;
   onChange: (draft: SaveScenario) => void;
-  onSave: () => void;
-  onNew: () => void;
-  onSuggestAssertions?: (caseIndex: number) => void;
-  suggestingAssertionsCaseIndex?: number | null;
-  saveDisabled?: boolean;
-}
-
-function nextTags(
-  draft: SaveScenario,
-  tag: "performance" | "trigger",
-  checked: boolean,
-): SaveScenario["tags"] {
-  const selected = new Set(
-    draft.tags.includes("both") ? ["performance", "trigger"] : draft.tags,
-  );
-  if (checked) {
-    selected.add(tag);
-  } else {
-    selected.delete(tag);
-  }
-  if (selected.has("performance") && selected.has("trigger")) {
-    return ["both"];
-  }
-  return Array.from(selected) as SaveScenario["tags"];
+  onNew?: () => void;
+  onSuggest?: () => void;
+  onDelete?: () => void;
+  suggestDisabled?: boolean;
+  deleteDisabled?: boolean;
+  showDelete?: boolean;
+  showSuggest?: boolean;
+  suggestBusy?: boolean;
+  showNew?: boolean;
+  footerStatus?: {
+    tone: "running" | "error";
+    message: string;
+  } | null;
 }
 
 export function PromptSetEditor({
   draft,
-  mode,
   onChange,
-  onSave,
   onNew,
-  onSuggestAssertions,
-  suggestingAssertionsCaseIndex = null,
-  saveDisabled = false,
+  onSuggest,
+  onDelete,
+  suggestDisabled = false,
+  deleteDisabled = false,
+  showDelete = false,
+  showSuggest = true,
+  suggestBusy = false,
+  showNew = true,
+  footerStatus = null,
 }: PromptSetEditorProps) {
-  function updateCase(
-    index: number,
-    updater: (caseItem: SaveScenarioCase) => SaveScenarioCase,
-  ) {
-    const cases = draft.cases.map((caseItem, caseIndex) =>
-      caseIndex === index ? updater(caseItem) : caseItem,
-    );
-    onChange({ ...draft, cases });
+  function updateExpectations(nextExpectations: string[]) {
+    onChange({ ...draft, expectations: nextExpectations });
   }
-
-  function removeCase(index: number) {
-    const nextCases =
-      draft.cases.length === 1
-        ? [createEmptyScenarioCase(mode)]
-        : draft.cases.filter((_, caseIndex) => caseIndex !== index);
-    onChange({ ...draft, cases: nextCases });
-  }
-
-  function updateAssertions(index: number, nextAssertions: ScenarioAssertion[]) {
-    updateCase(index, (current) => ({ ...current, assertions: nextAssertions }));
-  }
-
-  const performanceEnabled = scenarioSupportsMode(draft, "performance");
-  const triggerEnabled = scenarioSupportsMode(draft, "trigger");
-  const performanceChecked = draft.tags.includes("both") || draft.tags.includes("performance");
-  const triggerChecked = draft.tags.includes("both") || draft.tags.includes("trigger");
 
   return (
     <section className="rounded-lg border bg-card p-4">
@@ -89,204 +50,145 @@ export function PromptSetEditor({
             Git-backed eval cases for this skill.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={onNew}>
-          New scenario
-        </Button>
+        <div className="flex gap-2">
+          {showDelete ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onDelete}
+              disabled={deleteDisabled}
+            >
+              <Trash2 className="mr-1 size-3.5" />
+              Delete scenario
+            </Button>
+          ) : null}
+          {showSuggest ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onSuggest}
+              disabled={suggestDisabled}
+              className={suggestBusy ? "cursor-progress" : undefined}
+            >
+              <Sparkles className="mr-1 size-3.5" />
+              {suggestBusy ? "Suggesting…" : "Suggest"}
+            </Button>
+          ) : null}
+          {showNew && onNew ? (
+            <Button size="sm" variant="outline" onClick={onNew}>
+              New scenario
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-4 space-y-4">
         <div className="space-y-2">
-          <Label htmlFor={`scenario-name-${mode}`}>Scenario name</Label>
+          <Label htmlFor="scenario-name">Scenario name</Label>
           <Input
-            id={`scenario-name-${mode}`}
+            id="scenario-name"
             value={draft.name}
-            onChange={(event) =>
-              onChange({ ...draft, name: event.target.value })
-            }
-            placeholder={mode === "performance" ? "Regression" : "Routing checks"}
+            onChange={(event) => onChange({ ...draft, name: event.target.value })}
+            placeholder="Regression"
           />
         </div>
 
-        <div className="space-y-2">
-          <Label>Scenario modes</Label>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={performanceChecked}
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...draft,
-                    tags: nextTags(draft, "performance", checked === true),
-                  })
-                }
+        <div className="rounded-md border bg-background/70 p-3">
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="scenario-prompt">User prompt</Label>
+              <Textarea
+                id="scenario-prompt"
+                value={draft.prompt}
+                onChange={(event) => onChange({ ...draft, prompt: event.target.value })}
+                placeholder="Describe the request to evaluate."
               />
-              <span>Performance</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={triggerChecked}
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...draft,
-                    tags: nextTags(draft, "trigger", checked === true),
-                  })
-                }
-              />
-              <span>Trigger</span>
-            </label>
-          </div>
-        </div>
-
-        {draft.cases.map((caseItem, index) => (
-          <div
-            key={caseItem.id || `draft-case-${index}`}
-            className="rounded-md border bg-background/70 p-3"
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Case {index + 1}
-              </p>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Delete case ${index + 1}`}
-                onClick={() => removeCase(index)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
             </div>
 
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor={`case-prompt-${mode}-${index}`}>User prompt</Label>
-                <Textarea
-                  id={`case-prompt-${mode}-${index}`}
-                  value={caseItem.prompt}
-                  onChange={(event) =>
-                    updateCase(index, (current) => ({
-                      ...current,
-                      prompt: event.target.value,
-                    }))
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Expectations</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    updateExpectations([...draft.expectations, ""])
                   }
-                  placeholder="Describe the request to evaluate."
-                />
+                >
+                  <Plus className="mr-1 size-3.5" />
+                  Add expectation
+                </Button>
               </div>
-
-              {performanceEnabled ? (
+              {draft.expectations.length > 0 ? (
                 <div className="space-y-2">
-                  <Label htmlFor={`case-expected-${mode}-${index}`}>
-                    Expected outcome
-                  </Label>
-                  <Textarea
-                    id={`case-expected-${mode}-${index}`}
-                    value={caseItem.expectedOutcome ?? ""}
-                    onChange={(event) =>
-                      updateCase(index, (current) => ({
-                        ...current,
-                        expectedOutcome: event.target.value,
-                      }))
-                    }
-                    placeholder="Describe the expected response or behavior."
-                  />
-                </div>
-              ) : null}
-
-              {triggerEnabled ? (
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={Boolean(caseItem.shouldTrigger)}
-                    onCheckedChange={(checked) =>
-                      updateCase(index, (current) => ({
-                        ...current,
-                        shouldTrigger: checked === true,
-                      }))
-                    }
-                  />
-                  <span>Should trigger</span>
-                </label>
-              ) : null}
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label>Assertions</Label>
-                  {performanceEnabled && onSuggestAssertions ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onSuggestAssertions(index)}
-                      disabled={suggestingAssertionsCaseIndex === index}
+                  {draft.expectations.map((expectation, expectationIndex) => (
+                    <div
+                      key={`${draft.id}-expectation-${expectationIndex}`}
+                      className="rounded border p-2"
                     >
-                      <Sparkles className="mr-1 size-3.5" />
-                      {suggestingAssertionsCaseIndex === index ? "Suggesting…" : "Suggest"}
-                    </Button>
-                  ) : null}
-                </div>
-                {caseItem.assertions.length > 0 ? (
-                  <div className="space-y-2">
-                    {caseItem.assertions.map((assertion, assertionIndex) => (
-                      <div
-                        key={`${caseItem.id}-assertion-${assertionIndex}`}
-                        className="grid gap-2 rounded border p-2 md:grid-cols-[140px_1fr]"
-                      >
-                        <Input
-                          value={assertion.type}
-                          onChange={(event) => {
-                            const next = [...caseItem.assertions];
-                            next[assertionIndex] = {
-                              ...assertion,
-                              type: event.target.value,
-                            };
-                            updateAssertions(index, next);
-                          }}
-                          placeholder="contains"
-                        />
-                        <Input
-                          value={assertion.value}
-                          onChange={(event) => {
-                            const next = [...caseItem.assertions];
-                            next[assertionIndex] = {
-                              ...assertion,
-                              value: event.target.value,
-                            };
-                            updateAssertions(index, next);
-                          }}
-                          placeholder="Expected phrase or expression"
-                        />
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Expectation {expectationIndex + 1}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            updateExpectations(
+                              draft.expectations.filter(
+                                (_value, index) => index !== expectationIndex,
+                              ),
+                            )
+                          }
+                          aria-label={`Delete expectation ${expectationIndex + 1}`}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    No assertions yet.
-                  </p>
-                )}
-              </div>
+                      <Textarea
+                        value={expectation}
+                        onChange={(event) => {
+                          const next = [...draft.expectations];
+                          next[expectationIndex] = event.target.value;
+                          updateExpectations(next);
+                        }}
+                        placeholder="Describe the business outcome the answer should satisfy."
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No expectations yet. Add one or use Suggest.
+                </p>
+              )}
             </div>
           </div>
-        ))}
-
-        <div className="flex items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              onChange({
-                ...draft,
-                cases: [...draft.cases, createEmptyScenarioCase(mode)],
-              })
-            }
-          >
-            <Plus className="mr-1 size-3.5" />
-            Add case
-          </Button>
-          <Button size="sm" onClick={onSave} disabled={saveDisabled}>
-            Save scenario
-          </Button>
         </div>
+
       </div>
+
+      {footerStatus ? (
+        <div
+          role={footerStatus.tone === "error" ? "alert" : "status"}
+          aria-live="polite"
+          className={
+            footerStatus.tone === "error"
+              ? "mt-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+              : "mt-4 flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+          }
+        >
+          {footerStatus.tone === "error" ? (
+            <AlertTriangle className="size-3.5 shrink-0" />
+          ) : (
+            <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+          )}
+          <span>{footerStatus.message}</span>
+        </div>
+      ) : null}
+
     </section>
   );
 }

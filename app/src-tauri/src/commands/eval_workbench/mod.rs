@@ -9,13 +9,16 @@ use crate::agents::promptfoo_sidecar::process::{
     run_eval as run_promptfoo_eval,
 };
 use crate::agents::promptfoo_sidecar::protocol::{
-    EvalAssertion, EvalAssertionType, EvalCandidate as SidecarEvalCandidate, EvalCase,
-    EvalExecution, EvalMode as SidecarEvalMode, ListHistoryRequest, PersistedEvalRun,
-    ReadHistoryRequest, RunEvalRequest,
+    EvalCandidate as SidecarEvalCandidate, EvalCase, EvalExecution,
+    EvalMode as SidecarEvalMode, ListHistoryRequest, PersistedEvalRun, ReadHistoryRequest,
+    RunEvalRequest,
 };
 use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
+use crate::commands::workflow::prompt::{
+    clarifications_record_to_json_string, decisions_record_to_json_string,
+};
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::{
     get_skill_master_in_plugin, read_description_candidate, read_eval_run as db_read_eval_run,
@@ -31,12 +34,15 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 pub use types::{
     ApplyDescriptionCandidateResponse, RefineImprovementBrief, RunEvalWorkbenchRequest,
-    ScenarioAssertionDto, ScenarioCaseDto, ScenarioDto, ScenarioSummaryDto,
-    SuggestAssertionsRequest, SuggestDescriptionCandidatesRequest,
+    ScenarioDto, ScenarioSummaryDto, SuggestDescriptionCandidatesRequest,
 };
 
 const DEFAULT_DESCRIPTION_CANDIDATE_COUNT: u32 = 3;
 const CURRENT_SKILL_CANDIDATE_ID: &str = "current-skill";
+const SUGGEST_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/eval-workbench-suggest-scenario.txt"
+));
 
 #[cfg(test)]
 use crate::db::{
@@ -110,22 +116,18 @@ fn validate_prompt_set_input(input: &SaveEvalPromptSet) -> Result<(), String> {
             return Err("shouldTrigger is only valid for trigger scenarios".to_string());
         }
         if input.mode == EvalWorkbenchMode::Performance
-            && case.expected.as_deref().unwrap_or("").trim().is_empty()
             && case
                 .assertions
                 .as_array()
                 .is_some_and(|items| items.is_empty())
         {
-            return Err(
-                "Performance scenario cases need an expected outcome or at least one assertion"
-                    .to_string(),
-            );
+            return Err("Performance scenario cases need at least one expectation".to_string());
         }
         if input.mode == EvalWorkbenchMode::Trigger && case.should_trigger.is_none() {
             return Err("Trigger scenario cases must include shouldTrigger".to_string());
         }
         if !case.assertions.is_array() {
-            return Err("Scenario case assertions must be an array".to_string());
+            return Err("Scenario case expectations must be an array".to_string());
         }
     }
     Ok(())
@@ -163,31 +165,18 @@ fn scenario_tag_strings(tags: &[scenarios::ScenarioTag]) -> Vec<String> {
 }
 
 fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
-    let tags = parse_scenario_tags(&dto.tags)?;
-    let cases = dto
-        .cases
-        .into_iter()
-        .map(|case| {
-            Ok(scenarios::ScenarioCase {
-                id: case.id,
-                prompt: case.prompt,
-                expected_outcome: case.expected_outcome,
-                should_trigger: case.should_trigger,
-                assertions: case
-                    .assertions
-                    .into_iter()
-                    .map(|assertion| scenarios::ScenarioAssertion {
-                        assertion_type: assertion.assertion_type,
-                        value: assertion.value,
-                    })
-                    .collect(),
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
+    let tags = if dto.tags.is_empty() {
+        vec![scenarios::ScenarioTag::Performance]
+    } else {
+        parse_scenario_tags(&dto.tags)?
+    };
     let scenario = scenarios::Scenario {
+        id: dto.id,
         name: dto.name,
         tags,
-        cases,
+        prompt: dto.prompt,
+        should_trigger: dto.should_trigger,
+        expectations: dto.expectations,
     };
     scenarios::validate_scenario(&scenario)?;
     Ok(scenario)
@@ -195,26 +184,12 @@ fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
 
 fn scenario_to_dto(scenario: scenarios::Scenario) -> ScenarioDto {
     ScenarioDto {
+        id: scenario.id,
         name: scenario.name,
         tags: scenario_tag_strings(&scenario.tags),
-        cases: scenario
-            .cases
-            .into_iter()
-            .map(|case| ScenarioCaseDto {
-                id: case.id,
-                prompt: case.prompt,
-                expected_outcome: case.expected_outcome,
-                should_trigger: case.should_trigger,
-                assertions: case
-                    .assertions
-                    .into_iter()
-                    .map(|assertion| ScenarioAssertionDto {
-                        assertion_type: assertion.assertion_type,
-                        value: assertion.value,
-                    })
-                    .collect(),
-            })
-            .collect(),
+        prompt: scenario.prompt,
+        should_trigger: scenario.should_trigger,
+        expectations: scenario.expectations,
     }
 }
 
@@ -225,18 +200,55 @@ fn scenario_summary_to_dto(summary: scenarios::ScenarioSummary) -> ScenarioSumma
     }
 }
 
-fn scenario_case_assertions_json(case: &scenarios::ScenarioCase) -> Value {
+fn scenario_expectations_json(scenario: &scenarios::Scenario) -> Value {
     Value::Array(
-        case.assertions
+        scenario
+            .expectations
             .iter()
-            .map(|assertion| {
-                serde_json::json!({
-                    "type": assertion.assertion_type,
-                    "value": assertion.value,
-                })
-            })
+            .map(|expectation| Value::String(expectation.clone()))
             .collect(),
     )
+}
+
+fn persist_scenario_file(
+    eval_dir: &Path,
+    scenario: &scenarios::Scenario,
+    previous_scenario_name: Option<&str>,
+) -> Result<(), String> {
+    if let Some(previous_scenario_name) = previous_scenario_name {
+        scenarios::validate_scenario_name(previous_scenario_name)?;
+    }
+    let path = scenarios::scenario_file_path(eval_dir, &scenario.name);
+    let existing_scenario = scenarios::load_scenario(eval_dir, &scenario.name)?;
+    let existing_target_scenario = if path.exists() {
+        scenarios::read_scenario_file(&path).ok()
+    } else {
+        None
+    };
+    let is_rename = previous_scenario_name.is_some_and(|previous| previous != scenario.name);
+    let is_create = previous_scenario_name.is_none();
+    if existing_scenario.is_some() && (is_create || is_rename) {
+        return Err(format!("Scenario '{}' already exists", scenario.name));
+    }
+    let target_path_matches_existing = existing_target_scenario.as_ref().is_some_and(|existing| {
+        existing.name == scenario.name || previous_scenario_name == Some(existing.name.as_str())
+    });
+    if existing_target_scenario.is_some() && !target_path_matches_existing {
+        return Err(format!(
+            "Scenario '{}' conflicts with existing slug '{}'",
+            scenario.name,
+            scenarios::slugify_scenario_name(&scenario.name)
+        ));
+    }
+    scenarios::write_scenario_file(&path, scenario)?;
+    scenarios::delete_other_scenario_files(eval_dir, &scenario.name, &path)?;
+    if let Some(previous_scenario_name) = previous_scenario_name {
+        if previous_scenario_name != scenario.name {
+            scenarios::delete_scenario_file(eval_dir, previous_scenario_name)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn scenario_run_snapshot(prompt_set: &EvalPromptSet) -> Value {
@@ -250,7 +262,7 @@ fn scenario_run_snapshot(prompt_set: &EvalPromptSet) -> Value {
             "prompt": case.prompt,
             "expected": case.expected,
             "shouldTrigger": case.should_trigger,
-            "assertions": case.assertions,
+            "expectations": case.assertions,
             "sortOrder": case.sort_order,
         })).collect::<Vec<_>>()
     })
@@ -309,7 +321,7 @@ fn scenario_runtime_from_summary_snapshot(snapshot: &Value) -> Result<EvalPrompt
                     .map(str::to_string),
                 should_trigger: case.get("shouldTrigger").and_then(Value::as_bool),
                 assertions: case
-                    .get("assertions")
+                    .get("expectations")
                     .cloned()
                     .unwrap_or_else(|| Value::Array(vec![])),
                 sort_order: case.get("sortOrder").and_then(Value::as_i64).unwrap_or(0),
@@ -359,6 +371,99 @@ fn read_scenario(
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))
 }
 
+fn next_default_scenario_name(
+    eval_dir: &Path,
+    mode: EvalWorkbenchMode,
+) -> Result<String, String> {
+    let existing_names = scenarios::list_scenarios(eval_dir)?
+        .into_iter()
+        .map(|scenario| scenario.name)
+        .collect::<HashSet<_>>();
+    let prefix = match mode {
+        EvalWorkbenchMode::Performance => "Scenario",
+        EvalWorkbenchMode::Trigger => "Trigger scenario",
+    };
+
+    for index in 1..=10_000 {
+        let candidate = format!("{prefix} {index}");
+        if !existing_names.contains(&candidate) {
+            return Ok(candidate);
+        }
+    }
+
+    Err("Unable to generate a unique default scenario name".to_string())
+}
+
+fn load_scenarios_for_mode(
+    skills_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+    mode: EvalWorkbenchMode,
+) -> Result<Vec<scenarios::Scenario>, String> {
+    let eval_dir = crate::skill_paths::resolve_eval_dir(skills_path, plugin_slug, skill_name);
+    let matching = scenarios::list_scenarios(&eval_dir)?
+        .into_iter()
+        .filter(|summary| summary.tags.iter().any(|tag| tag.matches_mode(mode)))
+        .map(|summary| {
+            scenarios::load_scenario(&eval_dir, &summary.name)?
+                .ok_or_else(|| format!("Scenario '{}' not found", summary.name))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    if matching.is_empty() {
+        return Err("Add at least one scenario before evaluating the package.".to_string());
+    }
+
+    Ok(matching)
+}
+
+fn load_package_runtime(
+    skills_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+    mode: EvalWorkbenchMode,
+) -> Result<EvalPromptSet, String> {
+    let scenarios = load_scenarios_for_mode(skills_path, plugin_slug, skill_name, mode)?;
+    let mut cases = Vec::with_capacity(scenarios.len());
+    for scenario in &scenarios {
+        if scenario.prompt.trim().is_empty() {
+            return Err(format!("Scenario '{}' is missing a prompt.", scenario.name));
+        }
+        if scenario.expectations.is_empty() {
+            return Err(format!("Scenario '{}' is missing expectations.", scenario.name));
+        }
+        if mode == EvalWorkbenchMode::Trigger && scenario.should_trigger.is_none() {
+            return Err(format!(
+                "Scenario '{}' must declare whether it should trigger.",
+                scenario.name
+            ));
+        }
+        cases.push(crate::db::EvalPromptCase {
+            id: scenario.id.clone(),
+            prompt: scenario.prompt.clone(),
+            expected: None,
+            should_trigger: if mode == EvalWorkbenchMode::Trigger {
+                scenario.should_trigger
+            } else {
+                None
+            },
+            assertions: scenario_expectations_json(scenario),
+            sort_order: cases.len() as i64,
+        });
+    }
+
+    Ok(EvalPromptSet {
+        id: format!("package:{}:{}:{}", plugin_slug, skill_name, mode.as_str()),
+        plugin_slug: plugin_slug.to_string(),
+        skill_name: skill_name.to_string(),
+        mode,
+        name: "Package".to_string(),
+        cases,
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
+}
+
 fn load_scenario_runtime(
     _conn: &mut rusqlite::Connection,
     skills_path: &Path,
@@ -371,6 +476,7 @@ fn load_scenario_runtime(
     if !scenario.tags.iter().any(|tag| tag.matches_mode(mode)) {
         return Err("Scenario is not available for the selected mode".to_string());
     }
+    let expectations = scenario_expectations_json(&scenario);
 
     Ok(EvalPromptSet {
         id: scenario_runtime_id(plugin_slug, skill_name, scenario_name, mode),
@@ -378,30 +484,18 @@ fn load_scenario_runtime(
         skill_name: skill_name.to_string(),
         mode,
         name: scenario.name,
-        cases: scenario
-            .cases
-            .into_iter()
-            .enumerate()
-            .map(|(index, case)| {
-                let assertions = scenario_case_assertions_json(&case);
-                crate::db::EvalPromptCase {
-                    id: case.id,
-                    prompt: case.prompt,
-                    expected: if mode == EvalWorkbenchMode::Performance {
-                        case.expected_outcome
-                    } else {
-                        None
-                    },
-                    should_trigger: if mode == EvalWorkbenchMode::Trigger {
-                        case.should_trigger
-                    } else {
-                        None
-                    },
-                    assertions,
-                    sort_order: index as i64,
-                }
-            })
-            .collect(),
+        cases: vec![crate::db::EvalPromptCase {
+            id: scenario.id,
+            prompt: scenario.prompt,
+            expected: None,
+            should_trigger: if mode == EvalWorkbenchMode::Trigger {
+                scenario.should_trigger
+            } else {
+                None
+            },
+            assertions: expectations,
+            sort_order: 0,
+        }],
         created_at: String::new(),
         updated_at: String::new(),
     })
@@ -489,34 +583,17 @@ fn from_sidecar_mode(mode: SidecarEvalMode) -> EvalWorkbenchMode {
     }
 }
 
-fn parse_assertions(value: &Value) -> Result<Vec<EvalAssertion>, String> {
+fn parse_expectations(value: &Value) -> Result<Vec<String>, String> {
     let array = value
         .as_array()
-        .ok_or_else(|| "Prompt case assertions must be an array".to_string())?;
+        .ok_or_else(|| "Prompt case expectations must be an array".to_string())?;
 
     array
         .iter()
         .map(|item| {
-            let object = item
-                .as_object()
-                .ok_or_else(|| "Each assertion must be an object".to_string())?;
-            let assertion_type = match object.get("type").and_then(Value::as_str) {
-                Some("equals") => EvalAssertionType::Equals,
-                Some("contains") => EvalAssertionType::Contains,
-                Some("javascript") => EvalAssertionType::Javascript,
-                _ => {
-                    return Err("Assertion type must be equals, contains, or javascript".to_string())
-                }
-            };
-            let raw_value = object
-                .get("value")
-                .cloned()
-                .ok_or_else(|| "Assertion value is required".to_string())?;
-
-            Ok(EvalAssertion {
-                assertion_type,
-                value: raw_value,
-            })
+            item.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "Each expectation must be a string".to_string())
         })
         .collect()
 }
@@ -531,7 +608,7 @@ fn to_sidecar_cases(prompt_set: &EvalPromptSet) -> Result<Vec<EvalCase>, String>
                 prompt: case.prompt.clone(),
                 expected: case.expected.clone(),
                 should_trigger: case.should_trigger,
-                assertions: parse_assertions(&case.assertions)?,
+                expectations: parse_expectations(&case.assertions)?,
             })
         })
         .collect()
@@ -727,8 +804,19 @@ fn parse_openhands_structured_output(state: &serde_json::Value) -> Result<Value,
         .and_then(|value| value.as_str())
         .ok_or_else(|| "OpenHands eval result did not include structured output".to_string())?;
 
-    serde_json::from_str(text)
+    let cleaned = clean_openhands_structured_result_text(text);
+
+    serde_json::from_str(cleaned)
         .map_err(|error| format!("OpenHands eval structured result was not valid JSON: {error}"))
+}
+
+fn clean_openhands_structured_result_text(text: &str) -> &str {
+    let cleaned = text.trim();
+    let cleaned = cleaned
+        .strip_prefix("```json")
+        .or_else(|| cleaned.strip_prefix("```"))
+        .unwrap_or(cleaned);
+    cleaned.strip_suffix("```").unwrap_or(cleaned).trim()
 }
 
 fn description_candidate_output_format() -> Value {
@@ -784,6 +872,7 @@ fn diagnosis_output_format() -> Value {
     })
 }
 
+#[allow(dead_code)]
 fn generated_scenarios_output_format() -> Value {
     serde_json::json!({
         "type": "json_schema",
@@ -798,6 +887,7 @@ fn generated_scenarios_output_format() -> Value {
                         "type": "object",
                         "additionalProperties": false,
                         "properties": {
+                            "id": { "type": "string" },
                             "name": { "type": "string" },
                             "tags": {
                                 "type": "array",
@@ -806,34 +896,16 @@ fn generated_scenarios_output_format() -> Value {
                                     "enum": ["performance", "trigger", "both"]
                                 }
                             },
-                            "cases": {
+                            "prompt": { "type": "string" },
+                            "shouldTrigger": { "type": ["boolean", "null"] },
+                            "expectations": {
                                 "type": "array",
                                 "items": {
-                                    "type": "object",
-                                    "additionalProperties": false,
-                                    "properties": {
-                                        "id": { "type": "string" },
-                                        "prompt": { "type": "string" },
-                                        "expectedOutcome": { "type": ["string", "null"] },
-                                        "shouldTrigger": { "type": ["boolean", "null"] },
-                                        "assertions": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object",
-                                                "additionalProperties": false,
-                                                "properties": {
-                                                    "type": { "type": "string" },
-                                                    "value": { "type": "string" }
-                                                },
-                                                "required": ["type", "value"]
-                                            }
-                                        }
-                                    },
-                                    "required": ["id", "prompt", "assertions"]
+                                    "type": "string"
                                 }
                             }
                         },
-                        "required": ["name", "tags", "cases"]
+                        "required": ["id", "name", "tags", "prompt", "expectations"]
                     }
                 }
             },
@@ -842,31 +914,24 @@ fn generated_scenarios_output_format() -> Value {
     })
 }
 
-fn suggested_assertions_output_format() -> Value {
+fn suggested_scenario_output_format() -> Value {
     serde_json::json!({
         "type": "json_schema",
-        "name": "eval_workbench_suggested_assertions",
+        "name": "eval_workbench_suggested_scenario",
         "schema": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-                "assertions": {
+                "name": { "type": "string" },
+                "prompt": { "type": "string" },
+                "expectations": {
                     "type": "array",
                     "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "type": {
-                                "type": "string",
-                                "enum": ["equals", "contains", "javascript"]
-                            },
-                            "value": { "type": "string" }
-                        },
-                        "required": ["type", "value"]
+                        "type": "string"
                     }
                 }
             },
-            "required": ["assertions"]
+            "required": ["name", "prompt", "expectations"]
         }
     })
 }
@@ -914,6 +979,7 @@ Return JSON with:\n\
     )
 }
 
+#[allow(dead_code)]
 fn build_generated_scenarios_prompt(
     skill_name: &str,
     skill_files: &[crate::types::SkillFileContent],
@@ -929,31 +995,66 @@ fn build_generated_scenarios_prompt(
         "Generate 3 to 5 eval scenarios for the skill `{skill_name}`.\n\
 Return JSON with a top-level `scenarios` array.\n\
 Each scenario must have:\n\
+- `id` in kebab-case\n\
 - `name`\n\
 - `tags`: one or more of `performance`, `trigger`, `both`\n\
-- `cases`: 2 to 4 realistic user prompts\n\
-Each case must have:\n\
-- `id` in kebab-case\n\
-- `prompt`\n\
-- `expectedOutcome` for performance or both scenarios\n\
+- `prompt`: one realistic user prompt\n\
 - `shouldTrigger` for trigger or both scenarios\n\
-- `assertions`: 0 to 3 assertions using only equals, contains, or javascript\n\
-Include at least one negative trigger case with shouldTrigger=false.\n\
+- `expectations`: 1 to 3 plain-language business expectations\n\
+Performance is always evaluated, so every scenario must include expectations.\n\
 Use the skill context below and do not mention eval internals.\n\n\
 {skill_context}",
     )
 }
 
-fn build_suggested_assertions_prompt(prompt: &str, expected_outcome: &str) -> String {
-    format!(
-        "Suggest 1 to 3 automated assertions for this eval case.\n\
-Return JSON with a top-level `assertions` array.\n\
-Each assertion must use one of: equals, contains, javascript.\n\
-Prefer contains for key phrases and javascript for simple structural checks.\n\
-Do not include prose outside the JSON.\n\n\
-User prompt:\n{prompt}\n\n\
-Expected outcome:\n{expected_outcome}\n",
-    )
+fn build_suggest_scenario_prompt(
+    skill_name: &str,
+    scenario: &scenarios::Scenario,
+    skill_files: &[crate::types::SkillFileContent],
+    clarifications_json: &str,
+    decisions_json: &str,
+) -> String {
+    let skill_path = format!("/skills/{skill_name}/SKILL.md");
+    let workspace_skill_path = format!("/workspace/skills/{skill_name}/SKILL.md");
+    let skill_context = skill_files
+        .iter()
+        .take(8)
+        .map(|file| format!("## {}\n{}", file.path, file.content))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    SUGGEST_SCENARIO_PROMPT_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{scenario_name}}", &scenario.name)
+        .replace("{{existing_prompt}}", scenario.prompt.trim())
+        .replace(
+            "{{existing_expectations}}",
+            &scenario_expectations_json(scenario).to_string(),
+        )
+        .replace("{{skill_path}}", &skill_path)
+        .replace("{{workspace_skill_path}}", &workspace_skill_path)
+        .replace("{{clarifications_json}}", clarifications_json)
+        .replace("{{decisions_json}}", decisions_json)
+        .replace("{{skill_context}}", &skill_context)
+}
+
+fn load_suggest_scenario_context(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+) -> (String, String) {
+    let clarifications_json = crate::db::workflow_artifacts::read_clarifications(conn, skill_name)
+        .ok()
+        .flatten()
+        .map(|record| clarifications_record_to_json_string(&record))
+        .unwrap_or_else(|| "Not available.".to_string());
+    let decisions_json = crate::db::workflow_artifacts::read_decisions(conn, skill_name)
+        .ok()
+        .flatten()
+        .map(|record| decisions_record_to_json_string(&record))
+        .unwrap_or_else(|| "Not available.".to_string());
+
+    (clarifications_json, decisions_json)
 }
 
 fn build_eval_diagnosis_prompt(
@@ -1177,6 +1278,7 @@ fn parse_description_candidate_response(
     })
 }
 
+#[allow(dead_code)]
 fn parse_generated_scenarios_response(
     state: &serde_json::Value,
 ) -> Result<Vec<ScenarioDto>, String> {
@@ -1196,23 +1298,49 @@ fn parse_generated_scenarios_response(
         .collect()
 }
 
-fn parse_suggested_assertions_response(
+fn parse_suggested_scenario_response(
     state: &serde_json::Value,
-) -> Result<Vec<ScenarioAssertionDto>, String> {
+    existing_scenario: &scenarios::Scenario,
+) -> Result<scenarios::Scenario, String> {
     let parsed = parse_openhands_structured_output(state)?;
-    let assertions = parsed
-        .get("assertions")
+    let name = parsed
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Scenario suggestion response missing name".to_string())?;
+    let prompt = parsed
+        .get("prompt")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Scenario suggestion response missing prompt".to_string())?;
+    let expectations = parsed
+        .get("expectations")
         .and_then(Value::as_array)
-        .ok_or_else(|| "Assertion suggestion response missing assertions array".to_string())?;
-    if !(1..=3).contains(&assertions.len()) {
-        return Err("Assertion suggestion must return between 1 and 3 assertions".to_string());
+        .ok_or_else(|| "Scenario suggestion response missing expectations array".to_string())?;
+    if expectations.is_empty() {
+        return Err("Scenario suggestion response missing expectations".to_string());
     }
 
-    assertions
+    let parsed_expectations = expectations
         .iter()
-        .cloned()
-        .map(|item| serde_json::from_value::<ScenarioAssertionDto>(item).map_err(|e| e.to_string()))
-        .collect()
+        .map(|item| {
+            item.as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| "Scenario suggestion expectations must be non-empty strings".to_string())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let mut next_scenario = existing_scenario.clone();
+    next_scenario.name = name.to_string();
+    next_scenario.prompt = prompt.to_string();
+    next_scenario.expectations = parsed_expectations;
+    next_scenario.should_trigger = None;
+
+    Ok(next_scenario)
 }
 
 fn build_performance_sidecar_config(
@@ -1861,6 +1989,39 @@ pub fn load_scenario(
 }
 
 #[tauri::command]
+pub fn create_scenario(
+    plugin_slug: String,
+    skill_name: String,
+    mode: EvalWorkbenchMode,
+    db: tauri::State<'_, Db>,
+) -> Result<ScenarioDto, String> {
+    validate_plugin_slug(&plugin_slug)?;
+    validate_skill_name(&skill_name)?;
+    let skills_path = resolve_skills_path(&db)?;
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    let name = next_default_scenario_name(&eval_dir, mode)?;
+    let scenario = scenarios::Scenario {
+        id: format!("case-{}", uuid::Uuid::new_v4().simple()),
+        name,
+        tags: match mode {
+            EvalWorkbenchMode::Performance => vec![scenarios::ScenarioTag::Performance],
+            EvalWorkbenchMode::Trigger => vec![scenarios::ScenarioTag::Trigger],
+        },
+        prompt: String::new(),
+        should_trigger: if mode == EvalWorkbenchMode::Trigger {
+            Some(true)
+        } else {
+            None
+        },
+        expectations: vec![],
+    };
+    let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
+    scenarios::write_scenario_file(&path, &scenario)?;
+    Ok(scenario_to_dto(scenario))
+}
+
+#[tauri::command]
 pub fn save_scenario(
     plugin_slug: String,
     skill_name: String,
@@ -1871,44 +2032,10 @@ pub fn save_scenario(
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
     let scenario = scenario_from_dto(scenario)?;
-    if let Some(previous_scenario_name) = previous_scenario_name.as_deref() {
-        scenarios::validate_scenario_name(previous_scenario_name)?;
-    }
     let skills_path = resolve_skills_path(&db)?;
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
-    let existing_scenario = scenarios::load_scenario(&eval_dir, &scenario.name)?;
-    let existing_target_scenario = if path.exists() {
-        scenarios::read_scenario_file(&path).ok()
-    } else {
-        None
-    };
-    let is_rename = previous_scenario_name
-        .as_deref()
-        .is_some_and(|previous| previous != scenario.name);
-    let is_create = previous_scenario_name.is_none();
-    if existing_scenario.is_some() && (is_create || is_rename) {
-        return Err(format!("Scenario '{}' already exists", scenario.name));
-    }
-    let target_path_matches_existing = existing_target_scenario.as_ref().is_some_and(|existing| {
-        existing.name == scenario.name
-            || previous_scenario_name.as_deref() == Some(existing.name.as_str())
-    });
-    if existing_target_scenario.is_some() && !target_path_matches_existing {
-        return Err(format!(
-            "Scenario '{}' conflicts with existing slug '{}'",
-            scenario.name,
-            scenarios::slugify_scenario_name(&scenario.name)
-        ));
-    }
-    scenarios::write_scenario_file(&path, &scenario)?;
-    scenarios::delete_other_scenario_files(&eval_dir, &scenario.name, &path)?;
-    if let Some(previous_scenario_name) = previous_scenario_name.as_deref() {
-        if previous_scenario_name != scenario.name {
-            scenarios::delete_scenario_file(&eval_dir, previous_scenario_name)?;
-        }
-    }
+    persist_scenario_file(&eval_dir, &scenario, previous_scenario_name.as_deref())?;
 
     Ok(scenario_to_dto(scenario))
 }
@@ -1931,76 +2058,57 @@ pub fn delete_scenario(
 }
 
 #[tauri::command]
-pub async fn generate_scenarios(
+pub async fn suggest_scenario(
     app: tauri::AppHandle,
     plugin_slug: String,
     skill_name: String,
+    scenario_name: String,
     db: tauri::State<'_, Db>,
-) -> Result<Vec<ScenarioDto>, String> {
+) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
+    scenarios::validate_scenario_name(&scenario_name)?;
 
     let skills_path = resolve_skills_path(&db)?;
     let skill_files = get_skill_content_inner_for_plugin(&skill_name, &skills_path, &plugin_slug)?;
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    let existing_scenario = scenarios::load_scenario(&eval_dir, &scenario_name)?
+        .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))?;
+    let (clarifications_json, decisions_json) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        load_suggest_scenario_context(&conn, &skill_name)
+    };
     let runtime_ctx = read_initialized_runtime_context(&db)?;
     ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    let prompt = build_generated_scenarios_prompt(&skill_name, &skill_files);
+    let prompt = build_suggest_scenario_prompt(
+        &skill_name,
+        &existing_scenario,
+        &skill_files,
+        &clarifications_json,
+        &decisions_json,
+    );
     let config = build_generation_sidecar_config(
         &plugin_slug,
         &skill_name,
         &prompt,
-        generated_scenarios_output_format(),
+        suggested_scenario_output_format(),
         &runtime_ctx,
     );
     let run = run_openhands_one_shot(
         &app,
         OpenHandsOneShotRunParams {
-            agent_id_prefix: format!("{}-scenario-gen", skill_name),
+            agent_id_prefix: format!("{}-scenario-suggest", skill_name),
             config,
             timeout: std::time::Duration::from_secs(90),
         },
     )
     .await?;
 
-    parse_generated_scenarios_response(&run.conversation_state)
-}
-
-#[tauri::command]
-pub async fn suggest_assertions(
-    app: tauri::AppHandle,
-    request: SuggestAssertionsRequest,
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<ScenarioAssertionDto>, String> {
-    validate_plugin_slug(&request.plugin_slug)?;
-    validate_skill_name(&request.skill_name)?;
-    if request.prompt.trim().is_empty() {
-        return Err("Prompt cannot be empty".to_string());
-    }
-    if request.expected_outcome.trim().is_empty() {
-        return Err("Expected outcome cannot be empty".to_string());
-    }
-
-    let runtime_ctx = read_initialized_runtime_context(&db)?;
-    ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    let prompt = build_suggested_assertions_prompt(&request.prompt, &request.expected_outcome);
-    let config = build_generation_sidecar_config(
-        &request.plugin_slug,
-        &request.skill_name,
-        &prompt,
-        suggested_assertions_output_format(),
-        &runtime_ctx,
-    );
-    let run = run_openhands_one_shot(
-        &app,
-        OpenHandsOneShotRunParams {
-            agent_id_prefix: format!("{}-assertion-gen", request.skill_name),
-            config,
-            timeout: std::time::Duration::from_secs(60),
-        },
-    )
-    .await?;
-
-    parse_suggested_assertions_response(&run.conversation_state)
+    let suggested_scenario =
+        parse_suggested_scenario_response(&run.conversation_state, &existing_scenario)?;
+    persist_scenario_file(&eval_dir, &suggested_scenario, Some(&scenario_name))?;
+    Ok(scenario_to_dto(suggested_scenario))
 }
 
 #[tauri::command]
@@ -2014,7 +2122,14 @@ pub async fn run_eval_workbench(
     validate_id("Run id", &request.run_id)?;
     validate_plugin_slug(&request.plugin_slug)?;
     validate_skill_name(&request.skill_name)?;
-    if request.scenario_name.trim().is_empty() {
+    if request.mode == EvalWorkbenchMode::Trigger
+        && request
+            .scenario_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
         return Err("Scenario name cannot be empty".to_string());
     }
     {
@@ -2028,14 +2143,25 @@ pub async fn run_eval_workbench(
     let preparation = || -> Result<_, String> {
         let skills_path = resolve_skills_path(&db)?;
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-        let prompt_set = load_scenario_runtime(
-            &mut conn,
-            Path::new(&skills_path),
-            &request.plugin_slug,
-            &request.skill_name,
-            &request.scenario_name,
-            request.mode,
-        )?;
+        let prompt_set = match request.mode {
+            EvalWorkbenchMode::Performance => load_package_runtime(
+                Path::new(&skills_path),
+                &request.plugin_slug,
+                &request.skill_name,
+                request.mode,
+            )?,
+            EvalWorkbenchMode::Trigger => load_scenario_runtime(
+                &mut conn,
+                Path::new(&skills_path),
+                &request.plugin_slug,
+                &request.skill_name,
+                request
+                    .scenario_name
+                    .as_deref()
+                    .ok_or_else(|| "Scenario name cannot be empty".to_string())?,
+                request.mode,
+            )?,
+        };
         let sidecar_candidates =
             load_sidecar_candidates(&conn, &prompt_set, &request.candidate_ids)?;
         let persisted_candidates = if prompt_set.mode == EvalWorkbenchMode::Trigger {
@@ -2438,17 +2564,13 @@ mod tests {
             cases: vec![crate::db::SaveEvalPromptCase {
                 id: None,
                 prompt: "Forecast revenue".to_string(),
-                expected: if mode == EvalWorkbenchMode::Performance {
-                    Some("Include the revenue forecast".to_string())
-                } else {
-                    None
-                },
+                expected: None,
                 should_trigger: if mode == EvalWorkbenchMode::Trigger {
                     Some(true)
                 } else {
                     None
                 },
-                assertions: serde_json::json!([]),
+                assertions: serde_json::json!(["Explains the revenue forecast."]),
                 sort_order: None,
             }],
         }
@@ -2478,7 +2600,7 @@ mod tests {
                     "id": "case-1",
                     "prompt": "Forecast next quarter revenue",
                     "shouldTrigger": true,
-                    "assertions": [],
+                    "expectations": [],
                     "sortOrder": 0
                 }]
             })),
@@ -2497,32 +2619,23 @@ mod tests {
 
     fn sample_scenario_dto(name: &str) -> ScenarioDto {
         ScenarioDto {
+            id: "case-1".to_string(),
             name: name.to_string(),
             tags: vec!["performance".to_string()],
-            cases: vec![ScenarioCaseDto {
-                id: "case-1".to_string(),
-                prompt: "Forecast next quarter revenue".to_string(),
-                expected_outcome: Some("Includes assumptions".to_string()),
-                should_trigger: None,
-                assertions: vec![ScenarioAssertionDto {
-                    assertion_type: "contains".to_string(),
-                    value: "assumptions".to_string(),
-                }],
-            }],
+            prompt: "Forecast next quarter revenue".to_string(),
+            should_trigger: None,
+            expectations: vec!["Explains the forecast assumptions.".to_string()],
         }
     }
 
     fn sample_trigger_scenario_dto(name: &str) -> ScenarioDto {
         ScenarioDto {
+            id: "case-1".to_string(),
             name: name.to_string(),
             tags: vec!["trigger".to_string()],
-            cases: vec![ScenarioCaseDto {
-                id: "case-1".to_string(),
-                prompt: "Route invoice reconciliation".to_string(),
-                expected_outcome: None,
-                should_trigger: Some(true),
-                assertions: vec![],
-            }],
+            prompt: "Route invoice reconciliation".to_string(),
+            should_trigger: Some(true),
+            expectations: vec![],
         }
     }
 
@@ -2648,13 +2761,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_performance_case_without_expectation_or_assertions() {
+    fn rejects_performance_case_without_expectations() {
         let mut input = valid_prompt_set(EvalWorkbenchMode::Performance);
-        input.cases[0].expected = Some(String::new());
+        input.cases[0].assertions = serde_json::json!([]);
 
         let err = validate_prompt_set_input(&input).unwrap_err();
 
-        assert!(err.contains("expected outcome or at least one assertion"));
+        assert!(err.contains("at least one expectation"));
     }
 
     #[test]
@@ -2731,9 +2844,9 @@ mod tests {
             cases: vec![crate::db::EvalPromptCase {
                 id: "case-1".to_string(),
                 prompt: "Forecast next quarter revenue".to_string(),
-                expected: Some("Includes assumptions".to_string()),
+                expected: None,
                 should_trigger: None,
-                assertions: serde_json::json!([{ "type": "contains", "value": "assumptions" }]),
+                assertions: serde_json::json!(["Explains the forecast assumptions."]),
                 sort_order: 0,
             }],
             created_at: String::new(),
@@ -2753,12 +2866,9 @@ mod tests {
                 sidecar_cases: vec![EvalCase {
                     id: "case-1".to_string(),
                     prompt: "Forecast next quarter revenue".to_string(),
-                    expected: Some("Includes assumptions".to_string()),
+                    expected: None,
                     should_trigger: None,
-                    assertions: vec![EvalAssertion {
-                        assertion_type: EvalAssertionType::Contains,
-                        value: serde_json::json!("assumptions"),
-                    }],
+                    expectations: vec!["Explains the forecast assumptions.".to_string()],
                 }],
                 persisted_candidates: vec![],
             },
@@ -2800,9 +2910,9 @@ mod tests {
                 "cases": [{
                     "id": "case-1",
                     "prompt": "Forecast next quarter revenue",
-                    "expected": "Includes assumptions",
+                    "expected": null,
                     "shouldTrigger": null,
-                    "assertions": [{ "type": "contains", "value": "assumptions" }],
+                    "expectations": ["Explains the forecast assumptions."],
                     "sortOrder": 0
                 }]
             }))
@@ -2827,9 +2937,9 @@ mod tests {
             cases: vec![crate::db::EvalPromptCase {
                 id: "case-1".to_string(),
                 prompt: "Forecast next quarter revenue".to_string(),
-                expected: Some("Includes assumptions".to_string()),
+                expected: None,
                 should_trigger: None,
-                assertions: serde_json::json!([{ "type": "contains", "value": "assumptions" }]),
+                assertions: serde_json::json!(["Explains the forecast assumptions."]),
                 sort_order: 0,
             }],
             created_at: String::new(),
@@ -2876,10 +2986,7 @@ mod tests {
         assert_eq!(resolved.mode, EvalWorkbenchMode::Performance);
         assert_eq!(resolved.cases.len(), 1);
         assert_eq!(resolved.cases[0].prompt, "Forecast next quarter revenue");
-        assert_eq!(
-            resolved.cases[0].expected.as_deref(),
-            Some("Includes assumptions")
-        );
+        assert!(resolved.cases[0].expected.is_none());
     }
 
     #[test]
@@ -2967,21 +3074,95 @@ mod tests {
     }
 
     #[test]
-    fn rejects_suggested_assertions_outside_expected_bounds() {
+    fn parses_generated_scenarios_from_fenced_result_text() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": format!(
+                "```json\n{}\n```",
+                serde_json::json!({
+                    "scenarios": [
+                        sample_scenario_dto("Regression"),
+                        sample_scenario_dto("Smoke"),
+                        sample_scenario_dto("Edge case"),
+                    ]
+                })
+            )
+        });
+
+        let scenarios = parse_generated_scenarios_response(&state).unwrap();
+
+        assert_eq!(scenarios.len(), 3);
+        assert_eq!(scenarios[0].name, "Regression");
+    }
+
+    #[test]
+    fn build_suggest_scenario_prompt_requires_exact_json_shape_and_self_check() {
+        let prompt = build_suggest_scenario_prompt(
+            "measuring-pipeline-value",
+            &scenario_from_dto(sample_scenario_dto("Bookings routing")).unwrap(),
+            &[crate::types::SkillFileContent {
+                path: "SKILL.md".to_string(),
+                content: "Use when the user needs booking and pipeline guidance.".to_string(),
+            }],
+            "Not available.",
+            "Not available.",
+        );
+
+        assert!(prompt.contains("Return exactly one valid JSON object"));
+        assert!(prompt.contains("\"name\": \"string\""));
+        assert!(prompt.contains("\"prompt\": \"string\""));
+        assert!(prompt.contains("\"expectations\": ["));
+        assert!(!prompt.contains("shouldTrigger"));
+        assert!(prompt.contains("Before returning, check that"));
+        assert!(prompt.contains("every expectation is a non-empty string"));
+    }
+
+    #[test]
+    fn build_suggest_scenario_prompt_includes_skill_path_and_workflow_context() {
+        let prompt = build_suggest_scenario_prompt(
+            "measuring-pipeline-value",
+            &scenario_from_dto(sample_scenario_dto("Bookings routing")).unwrap(),
+            &[crate::types::SkillFileContent {
+                path: "SKILL.md".to_string(),
+                content: "Use when the user needs booking and pipeline guidance.".to_string(),
+            }],
+            "Not available.",
+            "Not available.",
+        );
+
+        assert!(prompt.contains("Skill path:"));
+        assert!(prompt.contains("Clarifications:"));
+        assert!(prompt.contains("Decisions:"));
+        assert!(prompt.contains("\"expectations\": ["));
+        assert!(prompt.contains("Read the skill and understand what it does"));
+    }
+
+    #[test]
+    fn parse_suggested_scenario_response_uses_name_prompt_and_expectations_only() {
+        let existing = scenario_from_dto(sample_scenario_dto("Scenario 1")).unwrap();
         let state = serde_json::json!({
             "type": "conversation_state",
             "status": "completed",
             "structured_output": {
-                "assertions": []
+                "name": "Pipeline coverage by deal type",
+                "prompt": "How does our current pipeline coverage break down by deal type?",
+                "expectations": [
+                    "Reports TCV and MRR coverage separately.",
+                    "Calls out missing deal type classification as a blocker."
+                ]
             }
         });
 
-        let error = parse_suggested_assertions_response(&state).unwrap_err();
+        let suggested = parse_suggested_scenario_response(&state, &existing).unwrap();
 
+        assert_eq!(suggested.name, "Pipeline coverage by deal type");
         assert_eq!(
-            error,
-            "Assertion suggestion must return between 1 and 3 assertions"
+            suggested.prompt,
+            "How does our current pipeline coverage break down by deal type?"
         );
+        assert_eq!(suggested.expectations.len(), 2);
+        assert_eq!(suggested.should_trigger, None);
     }
 
     #[test]
@@ -3381,17 +3562,11 @@ mod tests {
 
         assert_eq!(response.name, dto.name);
         assert_eq!(response.tags, dto.tags);
-        assert_eq!(response.cases.len(), 1);
-        assert_eq!(response.cases[0].id, "case-1");
-        assert_eq!(response.cases[0].prompt, "Forecast next quarter revenue");
-        assert_eq!(
-            response.cases[0].expected_outcome.as_deref(),
-            Some("Includes assumptions")
-        );
-        assert_eq!(response.cases[0].should_trigger, None);
-        assert_eq!(response.cases[0].assertions.len(), 1);
-        assert_eq!(response.cases[0].assertions[0].assertion_type, "contains");
-        assert_eq!(response.cases[0].assertions[0].value, "assumptions");
+        assert_eq!(response.id, "case-1");
+        assert_eq!(response.prompt, "Forecast next quarter revenue");
+        assert_eq!(response.should_trigger, None);
+        assert_eq!(response.expectations.len(), 1);
+        assert_eq!(response.expectations[0], "Explains the forecast assumptions.");
     }
 
     #[test]
@@ -3429,8 +3604,7 @@ mod tests {
         assert!(path.exists());
         assert_eq!(response.name, dto.name);
         assert_eq!(response.tags, dto.tags);
-        assert_eq!(response.cases.len(), 1);
-        assert_eq!(response.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(response.prompt, "Forecast next quarter revenue");
         let conn = db.0.lock().unwrap();
         assert_eq!(
             mirrored_scenario_prompt_set_count(
@@ -3532,8 +3706,7 @@ mod tests {
         let loaded = read_scenario(tmp.path(), "skills", "forecast", "Regression").unwrap();
 
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases.len(), 1);
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]
@@ -3567,10 +3740,7 @@ mod tests {
         assert_eq!(prompt_set.name, "Regression");
         assert_eq!(prompt_set.mode, EvalWorkbenchMode::Performance);
         assert_eq!(prompt_set.cases.len(), 1);
-        assert_eq!(
-            prompt_set.cases[0].expected.as_deref(),
-            Some("Includes assumptions")
-        );
+        assert_eq!(prompt_set.cases[0].expected, None);
         assert!(db_read_eval_prompt_set(
             &conn,
             &scenario_runtime_id(
@@ -3590,8 +3760,7 @@ mod tests {
         let db = create_scenario_db(tmp.path());
         let original = sample_scenario_dto("Regression");
         let mut updated = sample_scenario_dto("Regression");
-        updated.cases[0].prompt = "Forecast updated revenue".to_string();
-        updated.cases[0].expected_outcome = Some("Uses latest assumptions".to_string());
+        updated.prompt = "Forecast updated revenue".to_string();
         let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
         let path = scenarios::scenario_file_path(&eval_dir, &original.name);
         scenarios::write_scenario_file(&path, &scenario_from_dto(original).unwrap()).unwrap();
@@ -3624,10 +3793,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(prompt_set.cases[0].prompt, "Forecast updated revenue");
-        assert_eq!(
-            prompt_set.cases[0].expected.as_deref(),
-            Some("Uses latest assumptions")
-        );
+        assert_eq!(prompt_set.cases[0].expected, None);
         assert!(db_read_eval_prompt_set(
             &conn,
             &scenario_runtime_id(
@@ -3639,6 +3805,38 @@ mod tests {
         )
         .unwrap()
         .is_none());
+    }
+
+    #[test]
+    fn persist_suggested_scenario_renames_without_leaving_placeholder_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
+        let original = scenario_from_dto(sample_scenario_dto("Scenario 1")).unwrap();
+        let original_path = scenarios::scenario_file_path(&eval_dir, &original.name);
+        scenarios::write_scenario_file(&original_path, &original).unwrap();
+
+        let mut suggested = original.clone();
+        suggested.name = "Pipeline coverage by deal type".to_string();
+        suggested.prompt =
+            "How does our current pipeline coverage break down by deal type?".to_string();
+        suggested.expectations = vec![
+            "Reports TCV and MRR coverage separately.".to_string(),
+            "Flags missing deal type classification as a blocker.".to_string(),
+        ];
+
+        persist_scenario_file(&eval_dir, &suggested, Some("Scenario 1")).unwrap();
+
+        assert!(!original_path.exists());
+        let renamed_path = scenarios::scenario_file_path(&eval_dir, &suggested.name);
+        assert!(renamed_path.exists());
+        assert!(scenarios::load_scenario(&eval_dir, "Scenario 1").unwrap().is_none());
+        assert_eq!(
+            scenarios::load_scenario(&eval_dir, "Pipeline coverage by deal type")
+                .unwrap()
+                .unwrap()
+                .prompt,
+            "How does our current pipeline coverage break down by deal type?"
+        );
     }
 
     #[test]
@@ -3841,7 +4039,7 @@ mod tests {
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].name, "Regression");
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]
@@ -3856,7 +4054,7 @@ mod tests {
         let loaded = read_scenario(tmp.path(), "skills", "forecast", "Regression").unwrap();
 
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]
@@ -3883,7 +4081,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(loaded.name, "Regression");
-        assert_eq!(loaded.cases[0].prompt, "Forecast next quarter revenue");
+        assert_eq!(loaded.prompt, "Forecast next quarter revenue");
     }
 
     #[test]

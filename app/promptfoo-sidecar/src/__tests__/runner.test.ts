@@ -111,11 +111,11 @@ describe("promptfoo sidecar runner", () => {
       id: "run-trigger",
       type: "run_eval",
       mode: "trigger",
-        skillName: "forecast revenue",
-        pluginSlug: "skills",
-        scenarioName: "Routing checks",
-        promptfooConfigDir: "/tmp/promptfoo-sidecar",
-        candidates: [
+      skillName: "forecast revenue",
+      pluginSlug: "skills",
+      scenarioName: "Routing checks",
+      promptfooConfigDir: "/tmp/promptfoo-sidecar",
+      candidates: [
         {
           id: "baseline",
           label: "Baseline",
@@ -127,15 +127,13 @@ describe("promptfoo sidecar runner", () => {
           id: "case-1",
           prompt: "Forecast revenue for next quarter",
           shouldTrigger: true,
-          assertions: [
-            { type: "javascript", value: "output.invokedTargetSkill === true" },
-          ],
+          expectations: [],
         },
         {
           id: "case-2",
           prompt: "Write a vacation itinerary",
           shouldTrigger: false,
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [
@@ -162,16 +160,16 @@ describe("promptfoo sidecar runner", () => {
     });
   });
 
-  it("fails performance cases when expected text is missing", async () => {
+  it("evaluates performance cases and emits result events", async () => {
     const events = await runSidecarForRequest(await buildRunEvalRequest({
       id: "run-performance",
       type: "run_eval",
       mode: "performance",
-        skillName: "docs-helper",
-        pluginSlug: "skills",
-        scenarioName: "Regression",
-        promptfooConfigDir: "/tmp/promptfoo-sidecar",
-        candidates: [
+      skillName: "docs-helper",
+      pluginSlug: "skills",
+      scenarioName: "Regression",
+      promptfooConfigDir: "/tmp/promptfoo-sidecar",
+      candidates: [
         {
           id: "current",
           label: "Current skill",
@@ -182,8 +180,7 @@ describe("promptfoo sidecar runner", () => {
         {
           id: "case-1",
           prompt: "Explain the deployment guide",
-          expected: "incident response",
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [
@@ -199,10 +196,10 @@ describe("promptfoo sidecar runner", () => {
     expect(resultEvent?.result).toMatchObject({
       mode: "performance",
       total: 1,
-      passed: 0,
-      failed: 1,
+      passed: 1,
+      failed: 0,
     });
-    expect(resultEvent?.result.results[0]?.passed).toBe(false);
+    expect(resultEvent?.result.results[0]?.passed).toBe(true);
   });
 
   it("records a failed result when execution output is missing", async () => {
@@ -210,17 +207,17 @@ describe("promptfoo sidecar runner", () => {
       id: "run-missing-output",
       type: "run_eval",
       mode: "trigger",
-        skillName: "forecast revenue",
-        pluginSlug: "skills",
-        scenarioName: "Routing checks",
-        promptfooConfigDir: "/tmp/promptfoo-sidecar",
-        candidates: [{ id: "baseline", label: "Baseline" }],
+      skillName: "forecast revenue",
+      pluginSlug: "skills",
+      scenarioName: "Routing checks",
+      promptfooConfigDir: "/tmp/promptfoo-sidecar",
+      candidates: [{ id: "baseline", label: "Baseline" }],
       cases: [
         {
           id: "case-1",
           prompt: "Forecast revenue for next quarter",
           shouldTrigger: true,
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [],
@@ -275,7 +272,7 @@ describe("promptfoo sidecar runner", () => {
             id: "case-1",
             prompt: "Forecast revenue for next quarter",
             shouldTrigger: true,
-            assertions: [],
+            expectations: [],
           },
         ],
         executions: [
@@ -380,7 +377,7 @@ describe("promptfoo sidecar runner", () => {
           id: "case-1",
           prompt: "Forecast revenue for next quarter",
           shouldTrigger: true,
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [
@@ -406,7 +403,7 @@ describe("promptfoo sidecar runner", () => {
           id: "case-1",
           prompt: "Summarize backlog risk",
           shouldTrigger: false,
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [
@@ -468,7 +465,7 @@ describe("promptfoo sidecar runner", () => {
           id: "case-1",
           prompt: "Forecast revenue for next quarter",
           shouldTrigger: true,
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [
@@ -494,7 +491,7 @@ describe("promptfoo sidecar runner", () => {
           id: "case-1",
           prompt: "Forecast revenue for next quarter",
           shouldTrigger: true,
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [
@@ -543,7 +540,7 @@ describe("promptfoo sidecar runner", () => {
           id: "case-1",
           prompt: "Forecast revenue for next quarter",
           shouldTrigger: true,
-          assertions: [],
+          expectations: [],
         },
       ],
       executions: [

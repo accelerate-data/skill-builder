@@ -80,45 +80,30 @@ const skill: SkillSummary = {
 };
 
 const triggerScenario = {
+  id: "case-1",
   name: "Routing checks",
   tags: ["trigger"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Reconcile open customer invoices",
-      expectedOutcome: null,
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Reconcile open customer invoices",
+  shouldTrigger: true,
+  expectations: [],
 };
 
 const bothScenario = {
+  id: "case-1",
   name: "Core workflow coverage",
   tags: ["both"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Reconcile open customer invoices",
-      expectedOutcome: "Confirms invoice reconciliation steps",
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Reconcile open customer invoices",
+  shouldTrigger: true,
+  expectations: ["Explains invoice reconciliation routing."],
 };
 
 const alternateTriggerScenario = {
+  id: "case-2",
   name: "Edge routing",
   tags: ["trigger"] as const,
-  cases: [
-    {
-      id: "case-2",
-      prompt: "Match unapplied cash receipts",
-      expectedOutcome: null,
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Match unapplied cash receipts",
+  shouldTrigger: true,
+  expectations: [],
 };
 
 const runSummary = {
@@ -357,7 +342,7 @@ describe("WorkspaceDescription", () => {
     ).toBeInTheDocument();
   });
 
-  it("exposes both trigger and performance fields for shared scenarios", async () => {
+  it("keeps the shared trigger scenario editor focused on name, prompt, and expectations", async () => {
     render(
       <WorkspaceDescription
         skill={skill}
@@ -368,12 +353,18 @@ describe("WorkspaceDescription", () => {
       />,
     );
 
-    expect(await screen.findByLabelText(/expected outcome/i)).toBeInTheDocument();
-    expect(screen.getByText(/should trigger/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/scenario name/i)).toHaveValue(
+      "Core workflow coverage",
+    );
+    expect(screen.queryByRole("checkbox", { name: "Performance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Trigger" })).not.toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Explains invoice reconciliation routing."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/should trigger/i)).not.toBeInTheDocument();
   });
 
   it("reloads filtered history and clears selected run details when the scenario changes", async () => {
-    const user = userEvent.setup();
     const { rerender } = render(
       <WorkspaceDescription
         skill={skill}
@@ -385,7 +376,6 @@ describe("WorkspaceDescription", () => {
     );
 
     await screen.findByDisplayValue("Routing checks");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText(/invoice reconciliation or payment matching/i);
 
     rerender(
@@ -461,7 +451,6 @@ describe("WorkspaceDescription", () => {
     );
 
     await screen.findByDisplayValue("Routing checks");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByRole("heading", { name: "Candidate 1" });
     await user.click(screen.getByRole("button", { name: /send to refine/i }));
 
@@ -484,19 +473,7 @@ describe("WorkspaceDescription", () => {
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
-        scenario={{
-          ...triggerScenario,
-          cases: [
-            ...triggerScenario.cases,
-            {
-              id: "case-2",
-              prompt: "Clean up old billing notes",
-              expectedOutcome: null,
-              shouldTrigger: false,
-              assertions: [],
-            },
-          ],
-        }}
+        scenario={triggerScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
       />,
@@ -506,9 +483,8 @@ describe("WorkspaceDescription", () => {
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
 
     expect(screen.getByRole("heading", { name: "Baseline" })).toBeInTheDocument();
-    expect(screen.queryByText("Recommended")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /run comparison/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
@@ -609,7 +585,7 @@ describe("WorkspaceDescription", () => {
     await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
     await screen.findByText(/invoice reconciliation or payment matching/i);
-    await user.click(screen.getByRole("button", { name: /run comparison/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({

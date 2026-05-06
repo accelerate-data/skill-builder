@@ -23,27 +23,14 @@ impl ScenarioTag {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ScenarioAssertion {
-    #[serde(rename = "type")]
-    pub assertion_type: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ScenarioCase {
-    pub id: String,
-    pub prompt: String,
-    pub expected_outcome: Option<String>,
-    pub should_trigger: Option<bool>,
-    #[serde(default)]
-    pub assertions: Vec<ScenarioAssertion>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scenario {
+    pub id: String,
     pub name: String,
     pub tags: Vec<ScenarioTag>,
-    pub cases: Vec<ScenarioCase>,
+    pub prompt: String,
+    pub should_trigger: Option<bool>,
+    #[serde(default)]
+    pub expectations: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,25 +93,12 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     if scenario.tags.contains(&ScenarioTag::Both) && scenario.tags.len() > 1 {
         return Err("Scenario tag 'both' must not be combined with other tags".to_string());
     }
-    if scenario.cases.is_empty() {
-        return Err("Scenario cases cannot be empty".to_string());
+    if scenario.id.trim().is_empty() {
+        return Err("Scenario id cannot be empty".to_string());
     }
-
-    for case in &scenario.cases {
-        if case.id.trim().is_empty() {
-            return Err("Scenario case id cannot be empty".to_string());
-        }
-        if case.id.contains('/') || case.id.contains('\\') || case.id.contains("..") {
-            return Err("Scenario case id contains invalid path characters".to_string());
-        }
-        if case.prompt.trim().is_empty() {
-            return Err(format!(
-                "Scenario case '{}' prompt cannot be empty",
-                case.id
-            ));
-        }
+    if scenario.id.contains('/') || scenario.id.contains('\\') || scenario.id.contains("..") {
+        return Err("Scenario id contains invalid path characters".to_string());
     }
-
     Ok(())
 }
 
@@ -272,18 +246,12 @@ mod tests {
 
     fn sample_scenario() -> Scenario {
         Scenario {
+            id: "case-1".into(),
             name: "Regression".into(),
             tags: vec![ScenarioTag::Both],
-            cases: vec![ScenarioCase {
-                id: "case-1".into(),
-                prompt: "Show me Q3 booking trends".into(),
-                expected_outcome: Some("Regional breakdown with trend direction".into()),
-                should_trigger: Some(true),
-                assertions: vec![ScenarioAssertion {
-                    assertion_type: "contains".into(),
-                    value: "region".into(),
-                }],
-            }],
+            prompt: "Show me Q3 booking trends".into(),
+            should_trigger: Some(true),
+            expectations: vec!["Explains the regional booking trends.".into()],
         }
     }
 
