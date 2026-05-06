@@ -129,12 +129,14 @@ export function useRunHistory({
   }, [mode, pluginSlug, scenarioName, skillName]);
 
   useEffect(() => {
-    if (!workspacePath) {
+    if (!workspacePath || !scenarioName) {
+      setRuns([]);
       setLoading(false);
+      setError(null);
       return;
     }
     void refresh();
-  }, [refresh, workspacePath]);
+  }, [refresh, scenarioName, workspacePath]);
 
   const selectRun = useCallback(async (runId: string) => {
     setSelectedRunId(runId);

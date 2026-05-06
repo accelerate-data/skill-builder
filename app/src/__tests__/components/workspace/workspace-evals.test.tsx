@@ -201,6 +201,22 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByRole("button", { name: /run scenario/i })).toBeInTheDocument();
   });
 
+  it("does not request run history before a scenario exists", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={null}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByLabelText(/scenario name/i)).toBeInTheDocument();
+    expect(mockListEvalRuns).not.toHaveBeenCalled();
+    expect(screen.getByText("No runs yet.")).toBeInTheDocument();
+  });
+
   it("saves a new performance scenario through the shared workbench surface", async () => {
     const user = userEvent.setup();
     const onSaveScenario = vi.fn().mockResolvedValue({
