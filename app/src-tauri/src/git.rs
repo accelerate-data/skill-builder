@@ -309,8 +309,7 @@ pub fn delete_skill_version_tags(
     if !path.join(".git").exists() {
         return Ok(0);
     }
-    let repo = Repository::open(path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let repo = Repository::open(path).map_err(|e| format!("Failed to open repo: {}", e))?;
     let tag_names = list_skill_tag_names(&repo, plugin_slug, skill_name)?;
 
     let mut deleted = 0u32;
@@ -548,8 +547,8 @@ pub fn restore_version(
 
     // Detect per-skill repo: SKILL.md at tree root means repo IS the skill directory.
     // In that case write to repo_path directly; otherwise use the plugin-aware layout.
-    let has_skill_md_at_root = tree.get_name("SKILL.md").is_some()
-        || repo_path.join("SKILL.md").exists();
+    let has_skill_md_at_root =
+        tree.get_name("SKILL.md").is_some() || repo_path.join("SKILL.md").exists();
     let write_dir = if has_skill_md_at_root {
         repo_path.to_path_buf()
     } else {
@@ -780,10 +779,12 @@ pub fn extract_skill_at_tag(
             all_entries.iter().any(|(path, _)| *path == skill_md)
         })
         .cloned()
-        .ok_or_else(|| format!(
-            "No SKILL.md found in tag '{}' for skill '{}' (plugin '{}')",
-            tag_name, skill_name, plugin_slug
-        ))?;
+        .ok_or_else(|| {
+            format!(
+                "No SKILL.md found in tag '{}' for skill '{}' (plugin '{}')",
+                tag_name, skill_name, plugin_slug
+            )
+        })?;
 
     if dest_dir.exists() {
         std::fs::remove_dir_all(dest_dir)
@@ -791,9 +792,13 @@ pub fn extract_skill_at_tag(
     }
 
     for (full_path, content) in &all_entries {
-        if !full_path.starts_with(&prefix) { continue; }
+        if !full_path.starts_with(&prefix) {
+            continue;
+        }
         let relative = &full_path[prefix.len()..];
-        if relative.starts_with('.') { continue; } // skip dotfiles
+        if relative.starts_with('.') {
+            continue;
+        } // skip dotfiles
         let file_path = dest_dir.join(relative);
         if let Some(parent) = file_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -877,7 +882,9 @@ pub fn get_skill_files_at_sha(
         .filter(|(path, _)| *path == skill_md_path || path.starts_with(&refs_prefix))
         .filter_map(|(path, content)| {
             let relative = path[prefix_used.len()..].to_string();
-            if relative.starts_with('.') { return None; } // skip dotfiles
+            if relative.starts_with('.') {
+                return None;
+            } // skip dotfiles
             std::str::from_utf8(&content)
                 .ok()
                 .map(|s| (relative, s.to_string()))
@@ -987,7 +994,10 @@ fn candidate_skill_prefixes(plugin_slug: &str, skill_name: &str) -> Vec<String> 
 }
 
 fn candidate_tag_prefixes(plugin_slug: &str, skill_name: &str) -> Vec<String> {
-    let mut prefixes = vec![crate::skill_paths::skill_tag_prefix(plugin_slug, skill_name)];
+    let mut prefixes = vec![crate::skill_paths::skill_tag_prefix(
+        plugin_slug,
+        skill_name,
+    )];
     prefixes.push(format!("{}/{}/v", plugin_slug, skill_name));
     if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
         prefixes.push(format!("skills/{}/v", skill_name));
@@ -1887,13 +1897,7 @@ mod tests {
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
         let dest = dir.path().join("snapshot");
-        let result = extract_skill_at_tag(
-            dir.path(),
-            plugin,
-            "my-skill",
-            "v99.0.0",
-            &dest,
-        );
+        let result = extract_skill_at_tag(dir.path(), plugin, "my-skill", "v99.0.0", &dest);
         assert!(result.is_err());
     }
 
@@ -1902,7 +1906,11 @@ mod tests {
         let dir = tempdir().unwrap();
         ensure_repo(dir.path()).unwrap();
 
-        let canonical_dir = dir.path().join("superpowers").join("skills").join("my-skill");
+        let canonical_dir = dir
+            .path()
+            .join("superpowers")
+            .join("skills")
+            .join("my-skill");
         std::fs::create_dir_all(canonical_dir.join("references")).unwrap();
         std::fs::write(canonical_dir.join("SKILL.md"), "# Canonical").unwrap();
         std::fs::write(
@@ -1914,9 +1922,15 @@ mod tests {
         let legacy_dir = dir.path().join("superpowers").join("my-skill");
         std::fs::create_dir_all(legacy_dir.join("references")).unwrap();
         std::fs::write(legacy_dir.join("SKILL.md"), "# Legacy").unwrap();
-        std::fs::write(legacy_dir.join("references").join("guide.md"), "legacy guide").unwrap();
+        std::fs::write(
+            legacy_dir.join("references").join("guide.md"),
+            "legacy guide",
+        )
+        .unwrap();
 
-        let sha = commit_all(dir.path(), "seed both layouts").unwrap().unwrap();
+        let sha = commit_all(dir.path(), "seed both layouts")
+            .unwrap()
+            .unwrap();
 
         let files = get_skill_files_at_sha(dir.path(), "my-skill", "superpowers", &sha).unwrap();
         let skill_md = files.iter().find(|(path, _)| path == "SKILL.md").unwrap();
@@ -1950,11 +1964,23 @@ mod per_skill_repo_tests {
         std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
         commit_all(skill_dir, "updated").unwrap();
 
-        restore_version(skill_dir, &sha_v1, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+        restore_version(
+            skill_dir,
+            &sha_v1,
+            "my-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )
+        .unwrap();
 
         let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
-        assert_eq!(content, "# V1", "restore must write to repo root, not a subdirectory");
-        assert!(skill_dir.join(".git").exists(), ".git/ must survive restore");
+        assert_eq!(
+            content, "# V1",
+            "restore must write to repo root, not a subdirectory"
+        );
+        assert!(
+            skill_dir.join(".git").exists(),
+            ".git/ must survive restore"
+        );
     }
 
     #[test]
@@ -1964,7 +1990,13 @@ mod per_skill_repo_tests {
         ensure_repo(skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# Tagged version").unwrap();
         commit_all(skill_dir, "generated skill").unwrap();
-        create_skill_version_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0").unwrap();
+        create_skill_version_tag(
+            skill_dir,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            "1.0.0",
+        )
+        .unwrap();
 
         let dest = dir.path().parent().unwrap().join("dest");
         extract_skill_at_tag(
@@ -1988,8 +2020,17 @@ mod per_skill_repo_tests {
         let skill_dir = dir.path();
         let sha = init_per_skill_repo(skill_dir, "# My skill content");
 
-        let files = get_skill_files_at_sha(skill_dir, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &sha).unwrap();
-        assert!(files.iter().any(|(p, _)| p == "SKILL.md"), "SKILL.md must be in result");
+        let files = get_skill_files_at_sha(
+            skill_dir,
+            "my-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            &sha,
+        )
+        .unwrap();
+        assert!(
+            files.iter().any(|(p, _)| p == "SKILL.md"),
+            "SKILL.md must be in result"
+        );
         let skill_md = files.iter().find(|(p, _)| p == "SKILL.md").unwrap();
         assert!(skill_md.1.contains("My skill content"));
     }
@@ -2002,8 +2043,18 @@ mod per_skill_repo_tests {
         std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
         commit_all(skill_dir, "updated").unwrap();
 
-        let history = get_history(skill_dir, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 100).unwrap();
-        assert!(history.len() >= 2, "expected at least 2 commits, got {}", history.len());
+        let history = get_history(
+            skill_dir,
+            "my-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            100,
+        )
+        .unwrap();
+        assert!(
+            history.len() >= 2,
+            "expected at least 2 commits, got {}",
+            history.len()
+        );
     }
 
     #[test]
@@ -2016,7 +2067,13 @@ mod per_skill_repo_tests {
         // Commit only a non-SKILL file so the tag tree has no SKILL.md.
         std::fs::write(skill_dir.join("other.md"), "# Not a skill").unwrap();
         commit_all(skill_dir, "no skill md").unwrap();
-        create_skill_version_tag(skill_dir, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0").unwrap();
+        create_skill_version_tag(
+            skill_dir,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            "1.0.0",
+        )
+        .unwrap();
 
         let dest = dir.path().parent().unwrap().join("dest");
         let result = extract_skill_at_tag(
@@ -2026,7 +2083,10 @@ mod per_skill_repo_tests {
             &skill_version_tag_name(crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill", "1.0.0"),
             &dest,
         );
-        assert!(result.is_err(), "expected error when tag tree has no SKILL.md");
+        assert!(
+            result.is_err(),
+            "expected error when tag tree has no SKILL.md"
+        );
         let err = result.unwrap_err();
         assert!(err.contains("No SKILL.md found"), "unexpected error: {err}");
     }

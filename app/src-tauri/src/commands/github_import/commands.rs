@@ -964,18 +964,9 @@ pub async fn import_marketplace_plugin_to_library(
                 skill_dir,
                 &format!("{}: import from marketplace", skill_name),
             )?;
-            if !crate::git::skill_version_tag_exists(
-                skill_dir,
-                &plugin_slug,
-                skill_name,
-                version,
-            )? {
-                crate::git::create_skill_version_tag(
-                    skill_dir,
-                    &plugin_slug,
-                    skill_name,
-                    version,
-                )?;
+            if !crate::git::skill_version_tag_exists(skill_dir, &plugin_slug, skill_name, version)?
+            {
+                crate::git::create_skill_version_tag(skill_dir, &plugin_slug, skill_name, version)?;
             }
             Ok(())
         })() {

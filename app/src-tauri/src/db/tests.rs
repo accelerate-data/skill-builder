@@ -263,14 +263,18 @@ fn test_eval_workbench_scenario_identity_migration_recovers_from_stale_eval_runs
     run_eval_workbench_scenario_identity_migration(&conn).unwrap();
 
     let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM eval_runs WHERE id = 'run-1'", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM eval_runs WHERE id = 'run-1'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     let plugin_slug: String = conn
-        .query_row("SELECT plugin_slug FROM eval_runs WHERE id = 'run-1'", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT plugin_slug FROM eval_runs WHERE id = 'run-1'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
 
     assert_eq!(count, 1);

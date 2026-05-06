@@ -3,14 +3,13 @@ use std::path::Path;
 
 use super::deploy::copy_directory_recursive;
 use super::evaluation::get_step_output_files;
-use super::guards::{
-    make_agent_id, workflow_step_runtime_label,
-};
+use super::guards::{make_agent_id, workflow_step_runtime_label};
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
     materialize_answer_evaluation_output_value, materialize_workflow_step_output_value,
     publish_commit_and_tag_generated_skill,
 };
+use super::prompt::format_user_context;
 use super::prompt::{
     build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
 };
@@ -23,7 +22,6 @@ use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     skill_generation_workflow_tools, workflow_output_format_for_step,
 };
-use super::prompt::format_user_context;
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -360,7 +358,8 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
     ));
     assert!(prompt.contains("## Interview And Research"));
     assert!(prompt.contains("edge cases, examples, workflow decisions, success criteria"));
-    assert!(prompt.contains("Do not turn detailed research into output-format negotiation or eval design."));
+    assert!(prompt
+        .contains("Do not turn detailed research into output-format negotiation or eval design."));
     assert!(prompt.contains("Check available MCPs"));
     assert!(prompt.contains("Use parallel research via"));
     assert!(prompt.contains("otherwise research inline"));
@@ -689,8 +688,13 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
 
 #[test]
 fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
-    let prompt =
-        build_step2_prompt("lead-conversion", "/tmp/workspace", DEFAULT_PLUGIN_SLUG, "", "{}");
+    let prompt = build_step2_prompt(
+        "lead-conversion",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        "",
+        "{}",
+    );
 
     assert!(prompt.contains("You are in Step 2: Confirm Decisions"));
     assert!(prompt.contains("Goal: convert clarified user intent"));
@@ -817,7 +821,9 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("run exactly one re-verification"));
     assert!(prompt.contains("Do not invoke a separate validator skill"));
     assert!(prompt.contains("Do not invoke a legacy writer agent"));
-    assert!(prompt.contains("The app Eval Workbench owns durable prompt cases, assertions, runs, and"));
+    assert!(
+        prompt.contains("The app Eval Workbench owns durable prompt cases, assertions, runs, and")
+    );
     assert!(prompt.contains("\"version_bump\": \"1.0.0\""));
     assert!(prompt.contains("synthesize-generation-brief"));
     assert!(prompt.contains("fresh-context-verifier-review"));
@@ -1394,9 +1400,8 @@ fn test_materialize_step0_rejects_missing_required_fields() {
         "status": "research_complete",
         "question_count": 1
     });
-    let err =
-        materialize_workflow_step_output_value(&db, "my-skill", 0, &missing_research_output)
-            .unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 0, &missing_research_output)
+        .unwrap_err();
     assert!(
         err.contains("research_output"),
         "should mention missing field: {err}"
@@ -1494,9 +1499,8 @@ fn test_materialize_step1_rejects_missing_required_fields() {
         "section_count": 1,
         "clarifications_json": valid_clarifications_value()
     });
-    let err =
-        materialize_workflow_step_output_value(&db, "my-skill", 1, &missing_refinement_count)
-            .unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &missing_refinement_count)
+        .unwrap_err();
     assert!(
         err.contains("refinement_count"),
         "should mention missing field: {err}"
@@ -1559,8 +1563,8 @@ fn test_materialize_step1_validation_failure_preserves_existing_db_state() {
             "notes": "not-an-array"
         }
     });
-    let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &invalid_payload)
-        .unwrap_err();
+    let err =
+        materialize_workflow_step_output_value(&db, "my-skill", 1, &invalid_payload).unwrap_err();
     assert!(
         err.contains("invalid detailed research output"),
         "unexpected error: {err}"
@@ -1705,7 +1709,10 @@ fn test_materialize_step2_contradictory_inputs_false_persists_inactive() {
     let record = crate::db::workflow_artifacts::read_decisions(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(record.contradictory_inputs_state.as_deref(), Some("inactive"));
+    assert_eq!(
+        record.contradictory_inputs_state.as_deref(),
+        Some("inactive")
+    );
 }
 
 #[test]
@@ -1863,8 +1870,7 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     )
     .unwrap();
 
-    let skill_dir =
-        crate::skill_paths::resolve_skill_dir(skills.path(), "skills", "tagged-skill");
+    let skill_dir = crate::skill_paths::resolve_skill_dir(skills.path(), "skills", "tagged-skill");
     assert!(
         crate::git::skill_version_tag_exists(&skill_dir, "skills", "tagged-skill", "1.0.0")
             .unwrap()
@@ -1991,8 +1997,13 @@ fn step3_reset_and_rerun_does_not_collide_on_version_tag() {
 
     // Step 3 completes for the first time.
     write_generated("# v1");
-    publish_commit_and_tag_generated_skill(&workspace_skill_root, skills.path(), plugin, skill_name)
-        .expect("first step 3 completion must succeed");
+    publish_commit_and_tag_generated_skill(
+        &workspace_skill_root,
+        skills.path(),
+        plugin,
+        skill_name,
+    )
+    .expect("first step 3 completion must succeed");
     assert!(
         crate::git::skill_version_tag_exists(&skill_dir, plugin, skill_name, "1.0.0").unwrap(),
         "v1.0.0 tag must exist after first completion"
@@ -2008,8 +2019,13 @@ fn step3_reset_and_rerun_does_not_collide_on_version_tag() {
 
     // Step 3 re-runs and produces new output.
     write_generated("# v1 regenerated");
-    publish_commit_and_tag_generated_skill(&workspace_skill_root, skills.path(), plugin, skill_name)
-        .expect("step 3 re-run must not fail with 'tag already exists'");
+    publish_commit_and_tag_generated_skill(
+        &workspace_skill_root,
+        skills.path(),
+        plugin,
+        skill_name,
+    )
+    .expect("step 3 re-run must not fail with 'tag already exists'");
     assert!(
         crate::git::skill_version_tag_exists(&skill_dir, plugin, skill_name, "1.0.0").unwrap(),
         "v1.0.0 tag must exist after re-run"
@@ -2147,17 +2163,16 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     );
 
     assert!(prompt.contains("We are writing the skill my-skill."));
-    assert!(
-        prompt.contains(
-            "Workspace directory: /home/user/.vibedata/skill-builder/default/skills/my-skill"
-        )
-    );
+    assert!(prompt.contains(
+        "Workspace directory: /home/user/.vibedata/skill-builder/default/skills/my-skill"
+    ));
     assert!(prompt.contains("Skill output directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains(
         "User context file: /home/user/.vibedata/skill-builder/default/skills/my-skill/user-context.md"
     ));
-    assert!(prompt
-        .contains("Context directory: /home/user/.vibedata/skill-builder/default/skills/my-skill/context"));
+    assert!(prompt.contains(
+        "Context directory: /home/user/.vibedata/skill-builder/default/skills/my-skill/context"
+    ));
     assert!(prompt.contains("Do not create directories with mkdir"));
 }
 
@@ -2952,7 +2967,11 @@ mod materialization {
             .unwrap();
         assert_eq!(record.refinement_count, 0);
         assert_eq!(record.sections[0].title, "Intent and Trigger");
-        let ids: Vec<&str> = record.questions.iter().map(|q| q.question_id.as_str()).collect();
+        let ids: Vec<&str> = record
+            .questions
+            .iter()
+            .map(|q| q.question_id.as_str())
+            .collect();
         assert!(ids.contains(&"Q1"));
         assert!(ids.contains(&"Q2"));
         assert!(ids.contains(&"Q3"));
@@ -3111,7 +3130,10 @@ mod materialization {
         let record = crate::db::workflow_artifacts::read_decisions(&conn, "rt-ci-false")
             .unwrap()
             .unwrap();
-        assert_eq!(record.contradictory_inputs_state.as_deref(), Some("inactive"));
+        assert_eq!(
+            record.contradictory_inputs_state.as_deref(),
+            Some("inactive")
+        );
     }
 
     #[test]
@@ -3176,7 +3198,10 @@ mod materialization {
         materialize_workflow_step_output_value(&db, "rt-scope-guard", 0, &json).unwrap();
 
         let conn = db.0.lock().unwrap();
-        assert!(guards::check_scope_recommendation_db(&conn, "rt-scope-guard"));
+        assert!(guards::check_scope_recommendation_db(
+            &conn,
+            "rt-scope-guard"
+        ));
     }
 
     #[test]
@@ -3223,7 +3248,8 @@ mod materialization {
         let db = db_with_seeded_skill("guard-test-skill");
         let conn = db.0.lock().unwrap();
         // No decisions seeded — read_decisions should return None
-        let decisions = crate::db::workflow_artifacts::read_decisions(&conn, "guard-test-skill").unwrap();
+        let decisions =
+            crate::db::workflow_artifacts::read_decisions(&conn, "guard-test-skill").unwrap();
         assert!(
             decisions.is_none(),
             "guard-test-skill has no decisions — step 3 guard should block"
@@ -3319,9 +3345,19 @@ mod materialization {
         // priority_questions listed only Q1 and Q4 — all four must be stored to confirm
         // the field was ignored rather than used as a filter.
         assert_eq!(record.question_count, 4);
-        let ids: Vec<&str> = record.questions.iter().map(|q| q.question_id.as_str()).collect();
-        assert!(ids.contains(&"Q2"), "Q2 not in priority_questions but must still be stored");
-        assert!(ids.contains(&"Q3"), "Q3 not in priority_questions but must still be stored");
+        let ids: Vec<&str> = record
+            .questions
+            .iter()
+            .map(|q| q.question_id.as_str())
+            .collect();
+        assert!(
+            ids.contains(&"Q2"),
+            "Q2 not in priority_questions but must still be stored"
+        );
+        assert!(
+            ids.contains(&"Q3"),
+            "Q3 not in priority_questions but must still be stored"
+        );
         // duplicates_removed == 2, but section_count must reflect the fixture (2), not the
         // noise value.
         assert_eq!(record.sections.len(), 2);

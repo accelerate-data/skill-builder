@@ -27,11 +27,8 @@ pub fn get_skill_history(
         limit
     );
     let output_root = resolve_output_root(&db, &workspace_path)?;
-    let skill_dir = crate::skill_paths::resolve_skill_dir(
-        Path::new(&output_root),
-        &plugin_slug,
-        &skill_name,
-    );
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(&output_root), &plugin_slug, &skill_name);
     if !skill_dir.join(".git").exists() {
         return Ok(Vec::new());
     }
@@ -53,11 +50,8 @@ pub fn restore_skill_version(
         sha
     );
     let output_root = resolve_output_root(&db, &workspace_path)?;
-    let skill_dir = crate::skill_paths::resolve_skill_dir(
-        Path::new(&output_root),
-        &plugin_slug,
-        &skill_name,
-    );
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(&output_root), &plugin_slug, &skill_name);
     crate::git::restore_version(&skill_dir, &sha, &skill_name, &plugin_slug)?;
     // Commit the restore as a new version
     let short_sha = if sha.len() >= 8 { &sha[..8] } else { &sha };
@@ -67,9 +61,8 @@ pub fn restore_skill_version(
     // Tag the restore with the next patch version.
     // Even if commit_all returned None (content identical to HEAD), we still
     // bump and tag HEAD so the user always sees a new version number.
-    let current_version =
-        crate::git::latest_skill_semver(&skill_dir, &plugin_slug, &skill_name)
-            .unwrap_or_else(|_| "0.0.0".to_string());
+    let current_version = crate::git::latest_skill_semver(&skill_dir, &plugin_slug, &skill_name)
+        .unwrap_or_else(|_| "0.0.0".to_string());
     let new_version = crate::git::bump_patch(&current_version);
     crate::git::create_skill_version_tag(&skill_dir, &plugin_slug, &skill_name, &new_version)
         .map_err(|e| {
@@ -102,17 +95,13 @@ pub fn get_skill_files_at_sha(
         sha
     );
     let output_root = resolve_output_root(&db, &workspace_path)?;
-    let skill_dir = crate::skill_paths::resolve_skill_dir(
-        Path::new(&output_root),
-        &plugin_slug,
-        &skill_name,
-    );
-    let pairs =
-        crate::git::get_skill_files_at_sha(&skill_dir, &skill_name, &plugin_slug, &sha)
-            .map_err(|e| {
-                log::error!("[get_skill_files_at_sha] git read failed: {}", e);
-                e
-            })?;
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(&output_root), &plugin_slug, &skill_name);
+    let pairs = crate::git::get_skill_files_at_sha(&skill_dir, &skill_name, &plugin_slug, &sha)
+        .map_err(|e| {
+            log::error!("[get_skill_files_at_sha] git read failed: {}", e);
+            e
+        })?;
     Ok(pairs
         .into_iter()
         .map(|(path, content)| SkillFileContent { path, content })
@@ -147,8 +136,7 @@ mod tests {
         skill_name: &str,
         content: &str,
     ) -> String {
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_path, plugin_slug, skill_name);
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin_slug, skill_name);
         std::fs::create_dir_all(&skill_dir).unwrap();
         crate::git::ensure_repo(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
@@ -184,13 +172,11 @@ mod tests {
         init_skill_repo_plugin(skills_path, plugin_slug, "my-skill", "# V1");
 
         // Add a second commit to the per-skill repo.
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_path, plugin_slug, "my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin_slug, "my-skill");
         std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
         crate::git::commit_all(&skill_dir, "my-skill: updated").unwrap();
 
-        let history =
-            crate::git::get_history(&skill_dir, "my-skill", plugin_slug, 100).unwrap();
+        let history = crate::git::get_history(&skill_dir, "my-skill", plugin_slug, 100).unwrap();
         assert!(
             history.len() >= 2,
             "expected at least 2 commits, got {}",
@@ -233,8 +219,7 @@ mod tests {
         )
         .unwrap();
         let other_history =
-            crate::git::get_history(&other_skill_dir, "shared-skill", "other-plugin", 100)
-                .unwrap();
+            crate::git::get_history(&other_skill_dir, "shared-skill", "other-plugin", 100).unwrap();
 
         // Each plugin's history must contain only its own commits.
         assert!(
@@ -256,8 +241,11 @@ mod tests {
         // No git repo initialized — command layer returns empty vec instead of error.
         let db = make_db(None);
         let workspace = dir.path().to_str().unwrap().to_string();
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(std::path::Path::new(&workspace), plugin, "my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
+            std::path::Path::new(&workspace),
+            plugin,
+            "my-skill",
+        );
         // The skill_dir has no .git dir, so get_skill_history should return Ok(vec![]).
         let result = {
             if !skill_dir.join(".git").exists() {
@@ -283,8 +271,7 @@ mod tests {
             init_skill_repo_plugin(skills_path, plugin, "restore-skill", "# Original content");
 
         // Second commit: change the file in the per-skill repo.
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_path, plugin, "restore-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin, "restore-skill");
         std::fs::write(skill_dir.join("SKILL.md"), "# Changed content").unwrap();
         crate::git::commit_all(&skill_dir, "restore-skill: changed").unwrap();
 
@@ -312,8 +299,7 @@ mod tests {
 
         let sha_v1 = init_skill_repo_plugin(skills_path, plugin, "tag-skill", "# V1");
 
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_path, plugin, "tag-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin, "tag-skill");
 
         // Tag the initial commit as v1.0.0.
         crate::git::create_skill_version_tag(&skill_dir, plugin, "tag-skill", "1.0.0").unwrap();
@@ -343,8 +329,7 @@ mod tests {
 
         let sha_v1 = init_skill_repo_plugin(skills_path, plugin, "notag-skill", "# V1");
 
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_path, plugin, "notag-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin, "notag-skill");
 
         // Second commit.
         std::fs::write(skill_dir.join("SKILL.md"), "# V2").unwrap();
@@ -370,8 +355,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let skills_path = dir.path();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_path, plugin, "hist-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin, "hist-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         crate::git::ensure_repo(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# V1").unwrap();
@@ -382,9 +366,12 @@ mod tests {
         // No .git at skills_path root — per-skill repo only.
         assert!(!skills_path.join(".git").exists());
 
-        let history =
-            crate::git::get_history(&skill_dir, "hist-skill", plugin, 100).unwrap();
-        assert!(history.len() >= 2, "expected at least 2 commits, got {}", history.len());
+        let history = crate::git::get_history(&skill_dir, "hist-skill", plugin, 100).unwrap();
+        assert!(
+            history.len() >= 2,
+            "expected at least 2 commits, got {}",
+            history.len()
+        );
     }
 
     #[test]
@@ -392,12 +379,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let skills_path = dir.path();
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_path, plugin, "restore-test");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_path, plugin, "restore-test");
         std::fs::create_dir_all(&skill_dir).unwrap();
         crate::git::ensure_repo(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# V1 content").unwrap();
-        let sha_v1 = crate::git::commit_all(&skill_dir, "initial").unwrap().unwrap();
+        let sha_v1 = crate::git::commit_all(&skill_dir, "initial")
+            .unwrap()
+            .unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# V2 content").unwrap();
         crate::git::commit_all(&skill_dir, "updated").unwrap();
         crate::git::create_skill_version_tag(&skill_dir, plugin, "restore-test", "1.0.0").unwrap();

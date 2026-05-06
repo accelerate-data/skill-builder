@@ -281,5 +281,4 @@ mod tests {
             Some("http://localhost:11434")
         );
     }
-
 }

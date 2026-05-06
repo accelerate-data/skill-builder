@@ -951,8 +951,17 @@ mod tests {
         upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         upsert_skill_in_plugin(&conn, "my-skill", "marketplace", "domain", &target_slug).unwrap();
 
-        set_skill_behaviour(&conn, "my-skill", Some("default description"), None, None, None, None, None)
-            .unwrap();
+        set_skill_behaviour(
+            &conn,
+            "my-skill",
+            Some("default description"),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         set_skill_behaviour_in_plugin(
             &conn,
             "my-skill",
@@ -966,14 +975,21 @@ mod tests {
         )
         .unwrap();
 
-        let default_skill = get_skill_master_in_plugin(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-            .unwrap()
-            .unwrap();
+        let default_skill =
+            get_skill_master_in_plugin(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+                .unwrap()
+                .unwrap();
         let target_skill = get_skill_master_in_plugin(&conn, "my-skill", &target_slug)
             .unwrap()
             .unwrap();
 
-        assert_eq!(default_skill.description.as_deref(), Some("default description"));
-        assert_eq!(target_skill.description.as_deref(), Some("target description"));
+        assert_eq!(
+            default_skill.description.as_deref(),
+            Some("default description")
+        );
+        assert_eq!(
+            target_skill.description.as_deref(),
+            Some("target description")
+        );
     }
 }

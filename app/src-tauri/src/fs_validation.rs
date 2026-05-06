@@ -75,7 +75,11 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-        assert!(has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
+        assert!(has_skill_output(
+            SLUG,
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
     }
 
     #[test]
@@ -84,7 +88,11 @@ mod tests {
         let output_dir = tmp.path().join(SLUG).join("my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
 
-        assert!(has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
+        assert!(has_skill_output(
+            SLUG,
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
     }
 
     #[test]
@@ -92,6 +100,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join(SLUG).join("my-skill")).unwrap();
 
-        assert!(!has_skill_output(SLUG, "my-skill", tmp.path().to_str().unwrap()));
+        assert!(!has_skill_output(
+            SLUG,
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
     }
 }

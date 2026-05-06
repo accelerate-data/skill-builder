@@ -448,9 +448,14 @@ mod tests {
             Some("session-key".to_string()),
         );
 
-        let first = client.build_search_events_request("conv-1", None, 100).unwrap();
+        let first = client
+            .build_search_events_request("conv-1", None, 100)
+            .unwrap();
         assert_eq!(first.method(), reqwest::Method::GET);
-        assert_eq!(first.url().path(), "/api/conversations/conv-1/events/search");
+        assert_eq!(
+            first.url().path(),
+            "/api/conversations/conv-1/events/search"
+        );
         assert_eq!(first.url().query(), Some("limit=100"));
         assert_eq!(
             first

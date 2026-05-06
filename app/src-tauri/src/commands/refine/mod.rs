@@ -122,7 +122,10 @@ pub async fn start_refine_session(
     validate_skill_name(&skill_name)?;
 
     let skills_path = resolve_skills_path(&db).map_err(|e| {
-        log::error!("[start_refine_session] failed to resolve skills path: {}", e);
+        log::error!(
+            "[start_refine_session] failed to resolve skills path: {}",
+            e
+        );
         e
     })?;
 
@@ -134,7 +137,10 @@ pub async fn start_refine_session(
     }
 
     let mut map = sessions.0.lock().map_err(|e| {
-        log::error!("[start_refine_session] failed to acquire session lock: {}", e);
+        log::error!(
+            "[start_refine_session] failed to acquire session lock: {}",
+            e
+        );
         e.to_string()
     })?;
 
@@ -218,7 +224,10 @@ pub async fn send_refine_message(
 
     let (skill_name, conversation_id) = {
         let map = sessions.0.lock().map_err(|e| {
-            log::error!("[send_refine_message] failed to acquire session lock: {}", e);
+            log::error!(
+                "[send_refine_message] failed to acquire session lock: {}",
+                e
+            );
             e.to_string()
         })?;
         let session = map.get(&session_id).ok_or_else(|| {
@@ -252,7 +261,11 @@ pub async fn send_refine_message(
     // per-session so repeated turns are cheap.
     crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
 
-    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &resolved_plugin_slug, &skill_name);
+    ensure_skill_workspace_dir(
+        &runtime_ctx.workspace_path,
+        &resolved_plugin_slug,
+        &skill_name,
+    );
 
     let target_files_slice = target_files.as_deref();
     let prompt = if conversation_id.is_some() {
@@ -330,7 +343,10 @@ pub async fn close_refine_session(
 
     let removed = {
         let mut map = sessions.0.lock().map_err(|e| {
-            log::error!("[close_refine_session] failed to acquire session lock: {}", e);
+            log::error!(
+                "[close_refine_session] failed to acquire session lock: {}",
+                e
+            );
             e.to_string()
         })?;
         map.remove(&session_id)
@@ -403,11 +419,12 @@ pub async fn cancel_refine_turn(
 
 /// Cancel a one-shot agent run by agent_id via the OpenHands native runner.
 #[tauri::command]
-pub async fn cancel_agent_run(
-    skill_name: String,
-    agent_id: String,
-) -> Result<(), String> {
-    log::info!("[cancel_agent_run] skill='{}' agent='{}'", skill_name, agent_id);
+pub async fn cancel_agent_run(skill_name: String, agent_id: String) -> Result<(), String> {
+    log::info!(
+        "[cancel_agent_run] skill='{}' agent='{}'",
+        skill_name,
+        agent_id
+    );
     if !crate::agents::openhands_server::cancel_openhands_one_shot(&agent_id) {
         log::warn!(
             "[cancel_agent_run] No active OpenHands run found for agent='{}'",

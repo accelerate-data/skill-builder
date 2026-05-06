@@ -13,10 +13,7 @@ fn default_skill_dir(root: &std::path::Path, skill_name: &str) -> std::path::Pat
     resolve_skill_dir(root, DEFAULT_PLUGIN_SLUG, skill_name)
 }
 
-fn default_workspace_skill_dir(
-    root: &std::path::Path,
-    skill_name: &str,
-) -> std::path::PathBuf {
+fn default_workspace_skill_dir(root: &std::path::Path, skill_name: &str) -> std::path::PathBuf {
     resolve_workspace_skill_dir(root, DEFAULT_PLUGIN_SLUG, skill_name)
 }
 
@@ -309,10 +306,7 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     assert!(result.commit_sha.is_some());
     assert_eq!(result.files.len(), 2);
     assert_eq!(result.diff.files.len(), 1);
-    assert_eq!(
-        result.diff.files[0].path,
-        "references/glossary.md"
-    );
+    assert_eq!(result.diff.files[0].path, "references/glossary.md");
     assert_eq!(result.diff.files[0].status, "added");
     assert!(result.diff.files[0].diff.contains("+# Glossary"));
 }
@@ -777,8 +771,8 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     // Create a stale snapshot in the workspace (under default plugin slug)
-    let snapshot_dir = default_workspace_skill_dir(workspace_dir.path(), "my-skill")
-        .join("skill-snapshot");
+    let snapshot_dir =
+        default_workspace_skill_dir(workspace_dir.path(), "my-skill").join("skill-snapshot");
     std::fs::create_dir_all(&snapshot_dir).unwrap();
     std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
     assert!(snapshot_dir.exists());
@@ -942,11 +936,7 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
         "backend refine commit should bump patch version"
     );
     assert!(
-        result
-            .diff
-            .files
-            .iter()
-            .any(|file| file.path == "SKILL.md"),
+        result.diff.files.iter().any(|file| file.path == "SKILL.md"),
         "refine diff should include the backend-committed skill file"
     );
 }

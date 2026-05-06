@@ -142,8 +142,7 @@ pub(crate) fn update_skill_description(content: &str, description: &str) -> Resu
     let yaml_block = &after_first[..end_pos];
     let body_part = &after_first[end_pos..];
 
-    let quoted =
-        crate::commands::imported_skills::frontmatter::yaml_quote_scalar(description);
+    let quoted = crate::commands::imported_skills::frontmatter::yaml_quote_scalar(description);
     let new_description_line = format!("description: {}", quoted);
 
     let mut new_yaml: Vec<String> = Vec::new();
@@ -238,8 +237,8 @@ fn restore_protected_frontmatter(
     pre_run_sha: &str,
 ) -> Result<bool, String> {
     let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let repo = git2::Repository::open(&skill_dir)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let repo =
+        git2::Repository::open(&skill_dir).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     let relative_path = "SKILL.md";
     let original_content = match read_file_at_commit(&repo, pre_run_sha, relative_path) {
@@ -272,8 +271,7 @@ fn restore_protected_frontmatter(
 
     if desc_changed {
         if let Some(ref original_desc) = original_fm.description {
-            content =
-                update_skill_description(&content, original_desc)?;
+            content = update_skill_description(&content, original_desc)?;
         }
     }
 
@@ -367,10 +365,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
         _ => false,
     };
     if head_unchanged {
-        match crate::git::commit_all(
-            &skill_root,
-            &format!("{}: refine update", skill_name),
-        ) {
+        match crate::git::commit_all(&skill_root, &format!("{}: refine update", skill_name)) {
             Ok(Some(new_sha)) => {
                 log::info!(
                     "[finalize_refine_run] backend committed refine changes skill={} sha={}",
@@ -429,15 +424,13 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
             ) {
                 Ok(true) => {
                     // Re-read HEAD after fixup commit
-                    git2::Repository::open(&skill_root)
-                        .ok()
-                        .and_then(|repo| {
-                            repo.head()
-                                .ok()?
-                                .peel_to_commit()
-                                .ok()
-                                .map(|c| c.id().to_string())
-                        })
+                    git2::Repository::open(&skill_root).ok().and_then(|repo| {
+                        repo.head()
+                            .ok()?
+                            .peel_to_commit()
+                            .ok()
+                            .map(|c| c.id().to_string())
+                    })
                 }
                 Ok(false) => commit_sha,
                 Err(e) => {
@@ -458,9 +451,8 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
 
     // Tag the new commit with the next patch version.
     {
-        let current_version =
-            crate::git::latest_skill_semver(&skill_root, plugin_slug, skill_name)
-                .unwrap_or_else(|_| "0.0.0".to_string());
+        let current_version = crate::git::latest_skill_semver(&skill_root, plugin_slug, skill_name)
+            .unwrap_or_else(|_| "0.0.0".to_string());
         let new_version = crate::git::bump_patch(&current_version);
         match crate::git::create_skill_version_tag(
             &skill_root,

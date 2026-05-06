@@ -109,7 +109,10 @@ fn test_db_consistency_reset_no_clarifications() {
 
     // Should have been reset to step 0 with a notification
     assert!(
-        result.notifications.iter().any(|n| n.contains("stale-skill") && n.contains("re-run required")),
+        result
+            .notifications
+            .iter()
+            .any(|n| n.contains("stale-skill") && n.contains("re-run required")),
         "expected reset notification, got: {:?}",
         result.notifications
     );
@@ -117,7 +120,10 @@ fn test_db_consistency_reset_no_clarifications() {
     let run = crate::db::get_workflow_run(&conn, "stale-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0, "current_step should have been reset to 0");
+    assert_eq!(
+        run.current_step, 0,
+        "current_step should have been reset to 0"
+    );
     assert_eq!(run.status, "pending", "status should remain pending");
 }
 
@@ -138,7 +144,10 @@ fn test_db_consistency_reset_no_decisions() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert!(
-        result.notifications.iter().any(|n| n.contains("stale-skill") && n.contains("re-run required")),
+        result
+            .notifications
+            .iter()
+            .any(|n| n.contains("stale-skill") && n.contains("re-run required")),
         "expected reset notification, got: {:?}",
         result.notifications
     );
@@ -146,7 +155,10 @@ fn test_db_consistency_reset_no_decisions() {
     let run = crate::db::get_workflow_run(&conn, "stale-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 0, "current_step should have been reset to 0");
+    assert_eq!(
+        run.current_step, 0,
+        "current_step should have been reset to 0"
+    );
     assert_eq!(run.status, "pending", "status should remain pending");
 }
 
@@ -175,8 +187,17 @@ fn test_scenario_2_db_ahead_of_disk() {
 
     assert!(result.orphans.is_empty());
     assert_eq!(result.auto_cleaned, 0);
-    assert_eq!(result.notifications.len(), 1, "expected 1 notification, got: {:?}", result.notifications);
-    assert!(result.notifications[0].contains("reset from step 4 to step 3"), "got: {:?}", result.notifications[0]);
+    assert_eq!(
+        result.notifications.len(),
+        1,
+        "expected 1 notification, got: {:?}",
+        result.notifications
+    );
+    assert!(
+        result.notifications[0].contains("reset from step 4 to step 3"),
+        "got: {:?}",
+        result.notifications[0]
+    );
 
     // Verify DB was reset to step 2 (= "step 3" in 1-indexed display)
     let run = crate::db::get_workflow_run(&conn, "my-skill")
@@ -308,7 +329,11 @@ fn test_marketplace_plugin_deleted_when_skill_md_missing() {
     .unwrap();
     crate::db::upsert_skill_in_plugin(&conn, "some-skill", "marketplace", "domain", plugin_slug)
         .unwrap();
-    let plugin_skills = skills_tmp.path().join(plugin_slug).join("skills").join("some-skill");
+    let plugin_skills = skills_tmp
+        .path()
+        .join(plugin_slug)
+        .join("skills")
+        .join("some-skill");
     std::fs::create_dir_all(&plugin_skills).unwrap();
     // Deliberately NOT creating SKILL.md — simulates tampering
 
@@ -434,7 +459,11 @@ fn test_db_at_step2_no_skill_md_stays_at_step2() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     // No notification — steps 0-2 are DB-authoritative, no SKILL.md expected
-    assert!(result.notifications.is_empty(), "got: {:?}", result.notifications);
+    assert!(
+        result.notifications.is_empty(),
+        "got: {:?}",
+        result.notifications
+    );
 
     let run = crate::db::get_workflow_run(&conn, "lost-skill")
         .unwrap()
@@ -759,7 +788,11 @@ fn test_reconcile_mixed_scenarios() {
         crate::skill_paths::DEFAULT_PLUGIN_SLUG,
     )
     .unwrap();
-    let mkt_dir = resolve_skill_dir(skills_tmp.path(), crate::skill_paths::DEFAULT_PLUGIN_SLUG, "mkt-skill");
+    let mkt_dir = resolve_skill_dir(
+        skills_tmp.path(),
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        "mkt-skill",
+    );
     std::fs::create_dir_all(&mkt_dir).unwrap();
     std::fs::write(mkt_dir.join("SKILL.md"), "# Marketplace").unwrap();
 
@@ -885,7 +918,10 @@ fn test_reconcile_resets_to_step2_when_skill_md_missing() {
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
         .unwrap();
-    assert_eq!(run.current_step, 2, "should reconcile to step 2 (steps 0-2 DB-authoritative)");
+    assert_eq!(
+        run.current_step, 2,
+        "should reconcile to step 2 (steps 0-2 DB-authoritative)"
+    );
     assert!(!result.notifications.is_empty());
     assert!(result.notifications[0].contains("reset from step 4 to step 3"));
 }
@@ -943,7 +979,11 @@ fn test_skill_at_step0_no_skill_md_stays_at_step0() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     // No notification — Scenario 8 just resets step statuses silently
-    assert!(result.notifications.is_empty(), "got: {:?}", result.notifications);
+    assert!(
+        result.notifications.is_empty(),
+        "got: {:?}",
+        result.notifications
+    );
 
     let run = crate::db::get_workflow_run(&conn, "my-skill")
         .unwrap()
@@ -972,7 +1012,9 @@ fn test_completed_step_statuses_preserved_after_reconcile() {
     reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
-    let step0 = steps.iter().find(|s| s.step_id == 0)
+    let step0 = steps
+        .iter()
+        .find(|s| s.step_id == 0)
         .expect("step 0 should exist in workflow_steps");
     assert_eq!(
         step0.status, "completed",
@@ -980,7 +1022,9 @@ fn test_completed_step_statuses_preserved_after_reconcile() {
         step0.status
     );
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+    let run = crate::db::get_workflow_run(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
     assert_eq!(run.current_step, 1, "current_step should remain at 1");
 }
 
@@ -1584,21 +1628,30 @@ fn test_notification_messages_exact_text() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     // Scenario 4 message: "reset from step N to step 3 (SKILL.md not found)"
-    assert!(result
-        .notifications
-        .iter()
-        .any(|n| n == "'ahead-skill' was reset from step 6 to step 3 (SKILL.md not found)"),
-        "notifications: {:?}", result.notifications);
-    assert!(result
-        .notifications
-        .iter()
-        .any(|n| n == "'empty-skill' was reset from step 4 to step 3 (SKILL.md not found)"),
-        "notifications: {:?}", result.notifications);
-    assert!(result
-        .notifications
-        .iter()
-        .any(|n| n == "'found-skill' workflow record recreated at step 1"),
-        "notifications: {:?}", result.notifications);
+    assert!(
+        result
+            .notifications
+            .iter()
+            .any(|n| n == "'ahead-skill' was reset from step 6 to step 3 (SKILL.md not found)"),
+        "notifications: {:?}",
+        result.notifications
+    );
+    assert!(
+        result
+            .notifications
+            .iter()
+            .any(|n| n == "'empty-skill' was reset from step 4 to step 3 (SKILL.md not found)"),
+        "notifications: {:?}",
+        result.notifications
+    );
+    assert!(
+        result
+            .notifications
+            .iter()
+            .any(|n| n == "'found-skill' workflow record recreated at step 1"),
+        "notifications: {:?}",
+        result.notifications
+    );
 }
 
 // =========================================================================
@@ -2226,7 +2279,11 @@ fn test_phase1e_restores_marketplace_skills() {
         .unwrap();
 
     // Create the skill directory on disk (canonical layout: {plugin_slug}/skills/{skill_name}/SKILL.md)
-    let skill_dir = skills_tmp.path().join("mkt-restore").join("skills").join("mkt-skill");
+    let skill_dir = skills_tmp
+        .path()
+        .join("mkt-restore")
+        .join("skills")
+        .join("mkt-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "---\nname: mkt-skill\n---\n").unwrap();
 

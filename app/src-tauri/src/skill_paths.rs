@@ -291,7 +291,9 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
                     continue;
                 }
                 let skill_name = skill_entry.file_name().to_string_lossy().to_string();
-                if skill_name.starts_with('.') || skill_name == "skills" || !is_skill_dir(&skill_path)
+                if skill_name.starts_with('.')
+                    || skill_name == "skills"
+                    || !is_skill_dir(&skill_path)
                 {
                     continue;
                 }
@@ -520,7 +522,11 @@ mod tests {
     #[test]
     fn enumerate_discovers_new_canonical_plugin_layout() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join("analytics").join("skills").join("weekly-report");
+        let skill_dir = tmp
+            .path()
+            .join("analytics")
+            .join("skills")
+            .join("weekly-report");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# plugin").unwrap();
 
@@ -556,7 +562,11 @@ mod tests {
         fs::write(legacy.join("SKILL.md"), "# legacy").unwrap();
 
         // New canonical plugin layout: root/{slug}/skills/{name}/SKILL.md
-        let plugin_skill = tmp.path().join("analytics").join("skills").join("weekly-report");
+        let plugin_skill = tmp
+            .path()
+            .join("analytics")
+            .join("skills")
+            .join("weekly-report");
         fs::create_dir_all(&plugin_skill).unwrap();
         fs::write(plugin_skill.join("SKILL.md"), "# plugin").unwrap();
 
@@ -595,7 +605,11 @@ mod tests {
     fn enumerate_discovers_default_plugin_directly() {
         let tmp = tempfile::tempdir().unwrap();
         // Default plugin: root/default/skills/my-skill/SKILL.md
-        let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("skills").join("my-skill");
+        let skill_dir = tmp
+            .path()
+            .join(DEFAULT_PLUGIN_SLUG)
+            .join("skills")
+            .join("my-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# default plugin skill").unwrap();
 

@@ -229,9 +229,7 @@ pub async fn run_openhands_one_shot(
         Err("OpenHands one-shot lifecycle listener closed unexpectedly".to_string())
     })?;
 
-    Ok(OpenHandsOneShotRun {
-        conversation_state,
-    })
+    Ok(OpenHandsOneShotRun { conversation_state })
 }
 
 pub fn cancel_openhands_one_shot(agent_id: &str) -> bool {
@@ -358,10 +356,9 @@ pub async fn dispatch_openhands_refine_turn(
                 run: false,
             })
             .map_err(|e| format!("Failed to serialize refine event: {e}"))?;
-            client
-                .send_event(&existing, event)
-                .await
-                .map_err(|e| format!("Failed to send refine event to OpenHands conversation: {e}"))?;
+            client.send_event(&existing, event).await.map_err(|e| {
+                format!("Failed to send refine event to OpenHands conversation: {e}")
+            })?;
             existing
         }
         None => {
@@ -460,8 +457,7 @@ async fn run_conversation_task_inner(
     // backfill them via REST so the chat shows system_prompt and task_sent
     // rows. Multi-turn refine turns N+1 already saw prior turns and use the
     // live WS only — backfilling there would replay the whole history.
-    let mut seen_event_ids: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut seen_event_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut terminal_state: Option<serde_json::Value> = None;
     if task.backfill_existing_events {
         match task.client.list_all_events(&task.conversation_id).await {
@@ -474,9 +470,7 @@ async fn run_conversation_task_inner(
                     }
                     let normalized =
                         normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
-                    if normalized
-                        .get("type")
-                        .and_then(|value| value.as_str())
+                    if normalized.get("type").and_then(|value| value.as_str())
                         == Some("conversation_state")
                     {
                         terminal_state = Some(normalized);

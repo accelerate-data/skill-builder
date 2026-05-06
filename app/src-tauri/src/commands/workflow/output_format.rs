@@ -698,10 +698,9 @@ pub(crate) fn materialize_workflow_step_output_value(
 }
 
 fn persist_clarifications(db: &Db, record: &ClarificationsRecord) -> Result<(), String> {
-    let mut conn = db
-        .0
-        .lock()
-        .map_err(|e| format!("Failed to lock DB: {}", e))?;
+    let mut conn =
+        db.0.lock()
+            .map_err(|e| format!("Failed to lock DB: {}", e))?;
     let tx = conn
         .transaction()
         .map_err(|e| format!("Failed to start transaction: {}", e))?;
@@ -713,10 +712,9 @@ fn persist_clarifications(db: &Db, record: &ClarificationsRecord) -> Result<(), 
 }
 
 fn persist_decisions(db: &Db, record: &DecisionsRecord) -> Result<(), String> {
-    let mut conn = db
-        .0
-        .lock()
-        .map_err(|e| format!("Failed to lock DB: {}", e))?;
+    let mut conn =
+        db.0.lock()
+            .map_err(|e| format!("Failed to lock DB: {}", e))?;
     let tx = conn
         .transaction()
         .map_err(|e| format!("Failed to start transaction: {}", e))?;
@@ -918,11 +916,8 @@ pub fn materialize_workflow_step_output(
             drop(conn);
 
             let skills_dir = Path::new(&skills_path);
-            let skill_dir = crate::skill_paths::resolve_skill_dir(
-                skills_dir,
-                &plugin_slug,
-                &skill_name,
-            );
+            let skill_dir =
+                crate::skill_paths::resolve_skill_dir(skills_dir, &plugin_slug, &skill_name);
             publish_commit_and_tag_generated_skill(
                 &skill_root,
                 skills_dir,

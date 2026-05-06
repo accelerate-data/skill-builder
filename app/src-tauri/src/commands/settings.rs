@@ -143,11 +143,8 @@ fn backfill_missing_skill_versions(
 
     for skill in enumerate_skill_locations(skills_root)? {
         let skill_name = skill.skill_name;
-        let skill_dir = crate::skill_paths::resolve_skill_dir(
-            skills_root,
-            &skill.plugin_slug,
-            &skill_name,
-        );
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(skills_root, &skill.plugin_slug, &skill_name);
         let skill_md = skill.dir.join("SKILL.md");
         if !skill_md.exists() {
             continue;
@@ -474,7 +471,11 @@ fn handle_skills_path_change(old: Option<&str>, new: Option<&str>) -> Result<(),
             })?;
 
             // Per-skill repos move atomically with the directory via rename; no root-level init needed.
-            log::info!("[handle_skills_path_change] moved skills from {} to {}", old_path, new_path);
+            log::info!(
+                "[handle_skills_path_change] moved skills from {} to {}",
+                old_path,
+                new_path
+            );
         }
         _ => {} // Same path or both None — no-op
     }
@@ -592,8 +593,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let skills_path = dir.path().join("skills");
         let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(&skills_path, plugin, "legacy-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(&skills_path, plugin, "legacy-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         // Per-skill git repo lives at the skill directory itself.
         crate::git::ensure_repo(&skill_dir).unwrap();
@@ -619,13 +619,10 @@ mod tests {
 
         let updated = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
         assert!(updated.contains("metadata:\n  version: \"1.0.0\""));
-        assert!(crate::git::skill_version_tag_exists(
-            &skill_dir,
-            plugin,
-            "legacy-skill",
-            "1.0.0"
-        )
-        .unwrap());
+        assert!(
+            crate::git::skill_version_tag_exists(&skill_dir, plugin, "legacy-skill", "1.0.0")
+                .unwrap()
+        );
         let skill = crate::db::list_all_skills(&conn)
             .unwrap()
             .into_iter()
