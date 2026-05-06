@@ -132,7 +132,7 @@ void invokeCommand("save_scenario", {
   pluginSlug: "skills",
   skillName: "demo",
   scenario,
-  originalName: null,
+  previousScenarioName: null,
 });
 
 void invokeCommand("generate_scenarios", {
@@ -158,6 +158,15 @@ void invokeCommand("suggest_description_candidates", {
     scenarioName: "Routing checks",
     baselineDescription: "Route invoice reconciliation requests",
     candidateCount: 3,
+  },
+});
+
+void invokeCommand("suggest_assertions", {
+  request: {
+    pluginSlug: "skills",
+    skillName: "demo",
+    prompt: "Forecast revenue for next quarter",
+    expectedOutcome: "Includes assumptions and a concise recommendation",
   },
 });
 

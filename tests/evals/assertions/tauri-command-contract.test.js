@@ -162,9 +162,10 @@ test("published Eval Workbench command surface omits legacy and no-op commands",
   const apiSource = read("docs/design/backend-design/api.md");
 
   for (const command of [
-    "list_eval_prompt_sets",
-    "save_eval_prompt_set",
-    "delete_eval_prompt_set",
+    "list_scenarios",
+    "load_scenario",
+    "save_scenario",
+    "delete_scenario",
     "run_eval_workbench",
     "list_eval_runs",
     "read_eval_run",

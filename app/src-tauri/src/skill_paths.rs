@@ -113,18 +113,6 @@ pub fn resolve_workspace_skill_dir(
     workspace_skill_dir(workspace, plugin_slug, skill_name)
 }
 
-/// Canonical eval directory for a skill (from `plugin-paths.json` → `eval_dir`).
-pub fn resolve_eval_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    resolve_path_template(
-        &paths().eval_dir,
-        &[
-            ("root", &root.to_string_lossy()),
-            ("plugin_slug", plugin_slug),
-            ("skill_name", skill_name),
-        ],
-    )
-}
-
 fn dedupe_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     let mut deduped = Vec::new();
     for path in paths {
@@ -178,6 +166,17 @@ pub fn workspace_agent_skills_dir(workspace_skill_dir: &Path) -> PathBuf {
 pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().skill_dir,
+        &[
+            ("root", &root.to_string_lossy()),
+            ("plugin_slug", plugin_slug),
+            ("skill_name", skill_name),
+        ],
+    )
+}
+
+pub fn resolve_eval_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+    resolve_path_template(
+        &paths().eval_dir,
         &[
             ("root", &root.to_string_lossy()),
             ("plugin_slug", plugin_slug),
@@ -292,9 +291,7 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
                     continue;
                 }
                 let skill_name = skill_entry.file_name().to_string_lossy().to_string();
-                if skill_name.starts_with('.')
-                    || skill_name == "skills"
-                    || !is_skill_dir(&skill_path)
+                if skill_name.starts_with('.') || skill_name == "skills" || !is_skill_dir(&skill_path)
                 {
                     continue;
                 }
@@ -477,16 +474,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_eval_dir_uses_evals_subdir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        assert_eq!(
-            resolve_eval_dir(root, "analytics", "weekly-report"),
-            root.join("analytics").join("evals").join("weekly-report")
-        );
-    }
-
-    #[test]
     fn workspace_skill_dir_includes_skills_subdir() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace_skill = workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report");
@@ -497,6 +484,17 @@ mod tests {
                 .join(DEFAULT_PLUGIN_SLUG)
                 .join("skills")
                 .join("weekly-report")
+        );
+    }
+
+    #[test]
+    fn resolve_eval_dir_includes_evals_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        assert_eq!(
+            resolve_eval_dir(root, "analytics", "weekly-report"),
+            root.join("analytics").join("evals").join("weekly-report")
         );
     }
 
@@ -522,11 +520,7 @@ mod tests {
     #[test]
     fn enumerate_discovers_new_canonical_plugin_layout() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp
-            .path()
-            .join("analytics")
-            .join("skills")
-            .join("weekly-report");
+        let skill_dir = tmp.path().join("analytics").join("skills").join("weekly-report");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# plugin").unwrap();
 
@@ -562,11 +556,7 @@ mod tests {
         fs::write(legacy.join("SKILL.md"), "# legacy").unwrap();
 
         // New canonical plugin layout: root/{slug}/skills/{name}/SKILL.md
-        let plugin_skill = tmp
-            .path()
-            .join("analytics")
-            .join("skills")
-            .join("weekly-report");
+        let plugin_skill = tmp.path().join("analytics").join("skills").join("weekly-report");
         fs::create_dir_all(&plugin_skill).unwrap();
         fs::write(plugin_skill.join("SKILL.md"), "# plugin").unwrap();
 
@@ -605,11 +595,7 @@ mod tests {
     fn enumerate_discovers_default_plugin_directly() {
         let tmp = tempfile::tempdir().unwrap();
         // Default plugin: root/default/skills/my-skill/SKILL.md
-        let skill_dir = tmp
-            .path()
-            .join(DEFAULT_PLUGIN_SLUG)
-            .join("skills")
-            .join("my-skill");
+        let skill_dir = tmp.path().join(DEFAULT_PLUGIN_SLUG).join("skills").join("my-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# default plugin skill").unwrap();
 
@@ -619,5 +605,15 @@ mod tests {
         assert_eq!(locations[0].skill_name, "my-skill");
         assert!(locations[0].is_default_plugin);
         assert_eq!(locations[0].dir, skill_dir);
+    }
+
+    #[test]
+    fn resolves_eval_dir_from_plugin_layout() {
+        let root = Path::new("/users/alice/my-plugins");
+        let dir = resolve_eval_dir(root, "superpowers", "analyzing-bookings");
+        assert_eq!(
+            dir,
+            Path::new("/users/alice/my-plugins/superpowers/evals/analyzing-bookings")
+        );
     }
 }

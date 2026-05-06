@@ -32,6 +32,14 @@ export type ScenarioListItem = ScenarioSummary;
 export type SaveScenarioCase = ScenarioCase;
 export type SaveScenario = Scenario;
 
+export function scenarioNameSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export interface EvalRunResult {
   id: string;
   runId: string;
@@ -136,13 +144,13 @@ export const saveScenario = (
   pluginSlug: string,
   skillName: string,
   scenario: SaveScenario,
-  originalName?: string | null,
+  previousScenarioName?: string | null,
 ) =>
   invokeCommand("save_scenario", {
     pluginSlug,
     skillName,
     scenario,
-    originalName: originalName ?? null,
+    previousScenarioName: previousScenarioName ?? null,
   });
 
 export const deleteScenario = (
@@ -165,12 +173,14 @@ export const listEvalRuns = (
   skillName: string,
   mode?: EvalWorkbenchMode | null,
   limit?: number | null,
+  scenarioName?: string | null,
 ) =>
   invokeCommand("list_eval_runs", {
     pluginSlug,
     skillName,
     mode: mode ?? null,
     limit: limit ?? null,
+    scenarioName: scenarioName ?? null,
   });
 
 export const readEvalRun = (runId: string) =>
@@ -227,13 +237,13 @@ export function createDraftScenario(
 }
 
 export function scenarioSupportsMode(
-  scenario: Pick<ScenarioSummary, "tags">,
+  scenario: Pick<Scenario, "tags">,
   mode: EvalWorkbenchMode,
 ): boolean {
   return scenario.tags.includes("both") || scenario.tags.includes(mode);
 }
 
-export function scenarioToDraft(scenario: ScenarioDto): SaveScenario {
+export function scenarioToDraft(scenario: Scenario): SaveScenario {
   return {
     name: scenario.name,
     tags: [...scenario.tags],
@@ -286,10 +296,7 @@ export function validateScenario(
       return "Assertions must be an array.";
     }
     if (scenarioSupportsMode(draft, "performance")) {
-      if (
-        !(caseItem.expectedOutcome ?? "").trim() &&
-        caseItem.assertions.length === 0
-      ) {
+      if (!(caseItem.expectedOutcome ?? "").trim() && caseItem.assertions.length === 0) {
         return "Performance cases need an expected outcome or at least one assertion.";
       }
     }

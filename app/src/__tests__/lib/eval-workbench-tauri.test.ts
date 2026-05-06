@@ -39,30 +39,14 @@ describe("Eval Workbench Tauri wrappers", () => {
   });
 
   it("saves scenarios through the typed workbench contract", async () => {
-    await saveScenario("skills", "forecast-skill", {
-      name: "Regression",
-      tags: ["performance"],
-      cases: [
-        {
-          id: "case-1",
-          prompt: "Forecast next quarter revenue",
-          expectedOutcome: "Includes assumptions",
-          shouldTrigger: null,
-          assertions: [],
-        },
-      ],
-    });
-
-    expect(mockInvoke).toHaveBeenCalledWith("save_scenario", {
-      pluginSlug: "skills",
-      skillName: "forecast-skill",
-      originalName: null,
-      scenario: {
+    await saveScenario(
+      "skills",
+      "forecast-skill",
+      {
         name: "Regression",
         tags: ["performance"],
         cases: [
           {
-            id: "case-1",
             prompt: "Forecast next quarter revenue",
             expectedOutcome: "Includes assumptions",
             shouldTrigger: null,
@@ -70,6 +54,25 @@ describe("Eval Workbench Tauri wrappers", () => {
           },
         ],
       },
+      "Old regression",
+    );
+
+    expect(mockInvoke).toHaveBeenCalledWith("save_scenario", {
+      pluginSlug: "skills",
+      skillName: "forecast-skill",
+      scenario: {
+        name: "Regression",
+        tags: ["performance"],
+        cases: [
+          {
+            prompt: "Forecast next quarter revenue",
+            expectedOutcome: "Includes assumptions",
+            shouldTrigger: null,
+            assertions: [],
+          },
+        ],
+      },
+      previousScenarioName: "Old regression",
     });
   });
 
@@ -97,7 +100,7 @@ describe("Eval Workbench Tauri wrappers", () => {
 
   it("supports candidate generation, apply, history, and scenario deletion commands", async () => {
     await Promise.all([
-      listEvalRuns("skills", "forecast-skill", "trigger", 20),
+      listEvalRuns("skills", "forecast-skill", "trigger", 20, "Routing checks"),
       readEvalRun("run-1"),
       suggestDescriptionCandidates({
         pluginSlug: "skills",
@@ -116,6 +119,7 @@ describe("Eval Workbench Tauri wrappers", () => {
       skillName: "forecast-skill",
       mode: "trigger",
       limit: 20,
+      scenarioName: "Routing checks",
     });
     expect(mockInvoke).toHaveBeenCalledWith("read_eval_run", { runId: "run-1" });
     expect(mockInvoke).toHaveBeenCalledWith("suggest_description_candidates", {

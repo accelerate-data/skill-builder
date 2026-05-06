@@ -177,13 +177,14 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 
 | Command | Description |
 |---|---|
-| `list_eval_prompt_sets` | List app-owned prompt sets for a skill and mode |
-| `save_eval_prompt_set` | Create or update an app-owned prompt set |
-| `delete_eval_prompt_set` | Delete an app-owned prompt set |
-| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a saved prompt set |
-| `list_eval_runs` | List saved Eval Workbench runs for a skill and mode |
-| `read_eval_run` | Read one saved Eval Workbench run with results and candidates |
-| `suggest_description_candidates` | Generate trigger-description candidates from a trigger prompt set |
+| `list_scenarios` | List scenario summaries for a plugin skill from disk |
+| `load_scenario` | Read one full scenario from disk |
+| `save_scenario` | Create, update, or rename a disk-backed scenario |
+| `delete_scenario` | Delete a disk-backed scenario |
+| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a selected scenario and mode |
+| `list_eval_runs` | List Promptfoo-backed Eval Workbench runs for a skill and mode |
+| `read_eval_run` | Read one Eval Workbench run with results and candidates |
+| `suggest_description_candidates` | Generate trigger-description candidates from a trigger scenario |
 | `apply_description_candidate` | Apply a generated description candidate to SKILL.md frontmatter |
 | `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a saved workbench run |
 

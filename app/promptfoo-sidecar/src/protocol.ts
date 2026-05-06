@@ -19,28 +19,10 @@ export type EvalCandidate = {
   description?: string;
 };
 
-export type EvalDescriptionCandidate = EvalCandidate & {
-  rationale?: string;
-  rank?: number | null;
-};
-
 export type EvalExecution = {
   caseId: string;
   candidateId: string;
   output: unknown;
-};
-
-export type EvalHistoryConfig = {
-  configDir: string;
-  persist?: boolean;
-};
-
-export type EvalHistoryMetadata = {
-  source: "eval_workbench";
-  pluginSlug: string;
-  skillName: string;
-  scenarioName: string;
-  mode: EvalMode;
 };
 
 export type RunEvalRequest = {
@@ -50,38 +32,34 @@ export type RunEvalRequest = {
   skillName: string;
   pluginSlug: string;
   scenarioName: string;
-  history?: EvalHistoryConfig;
-  descriptionCandidates?: EvalDescriptionCandidate[];
+  promptfooConfigDir: string;
   candidates: EvalCandidate[];
   cases: EvalCase[];
   executions: EvalExecution[];
 };
 
-export type ListEvalHistoryRequest = {
+export type ListHistoryRequest = {
   id: string;
-  type: "list_eval_history";
-  filter: {
-    configDir: string;
-    pluginSlug: string;
-    skillName: string;
-    scenarioName?: string;
-    mode?: EvalMode;
-    limit?: number;
-    offset?: number;
-  };
+  type: "list_history";
+  promptfooConfigDir: string;
+  pluginSlug: string;
+  skillName: string;
+  scenarioName?: string;
+  mode: EvalMode;
+  limit: number;
 };
 
-export type ReadEvalHistoryRequest = {
+export type ReadHistoryRequest = {
   id: string;
-  type: "read_eval_history";
-  configDir: string;
-  evalId: string;
+  type: "read_history";
+  promptfooConfigDir: string;
+  runId: string;
 };
 
 export type SidecarRequest =
   | RunEvalRequest
-  | ListEvalHistoryRequest
-  | ReadEvalHistoryRequest;
+  | ListHistoryRequest
+  | ReadHistoryRequest;
 
 export type SidecarEvent =
   | {
@@ -93,8 +71,8 @@ export type SidecarEvent =
       candidateId?: string;
     }
   | { id: string; type: "result"; result: EvalRunResult }
-  | { id: string; type: "history_list_result"; result: EvalHistoryListResult }
-  | { id: string; type: "history_read_result"; result: EvalHistoryReadResult }
+  | { id: string; type: "result"; runs: PersistedEvalRun[] }
+  | { id: string; type: "result"; run: PersistedEvalRun | null }
   | { id: string; type: "error"; message: string };
 
 export type EvalCaseResult = {
@@ -106,62 +84,49 @@ export type EvalCaseResult = {
   reason?: string;
 };
 
+export type PersistedScenarioSnapshotCase = {
+  id: string;
+  prompt: string;
+  expected?: string;
+  shouldTrigger?: boolean;
+  assertions: EvalAssertion[];
+  sortOrder: number;
+};
+
+export type PersistedScenarioSnapshot = {
+  pluginSlug: string;
+  skillName: string;
+  scenarioName: string;
+  mode: EvalMode;
+  cases: PersistedScenarioSnapshotCase[];
+};
+
 export type EvalRunResult = {
   mode: EvalMode;
   total: number;
   passed: number;
   failed: number;
   results: EvalCaseResult[];
-  history?: {
-    persisted: boolean;
-    configDir?: string;
-    evalId?: string;
-    metadata?: EvalHistoryMetadata;
+};
+
+export type PersistedEvalRun = {
+  id: string;
+  promptfooEvalId: string;
+  pluginSlug: string;
+  skillName: string;
+  scenarioName: string;
+  mode: EvalMode;
+  status: "completed";
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    passRate: number;
   };
-};
-
-export type EvalHistoryListItem = {
-  evalId: string;
-  createdAt: number;
-  description?: string;
-  total: number;
-  passed: number;
-  failed: number;
-  metadata: EvalHistoryMetadata;
-};
-
-export type EvalHistoryListResult = {
-  items: EvalHistoryListItem[];
-  limit: number;
-  offset: number;
-};
-
-export type EvalHistoryCaseDetail = {
-  caseId?: string;
-  candidateId?: string;
-  prompt?: string;
-  testIdx: number;
-  promptIdx: number;
-  success: boolean;
-  score: number;
-  response?: unknown;
-  error?: string;
-  latencyMs?: number;
-  cost?: number;
-  failureReason?: string | number;
-  gradingResult?: unknown;
-  metadata?: Record<string, unknown>;
-  providerId?: string;
-  providerLabel?: string;
-};
-
-export type EvalHistoryEntry = EvalHistoryListItem & {
-  config?: Record<string, unknown>;
-  cases: EvalHistoryCaseDetail[];
-};
-
-export type EvalHistoryReadResult = {
-  entry: EvalHistoryEntry;
+  scenarioSnapshot?: PersistedScenarioSnapshot;
+  createdAt: string;
+  completedAt: string | null;
+  results: EvalCaseResult[];
 };
 
 const EVAL_MODES = new Set<EvalMode>(["performance", "trigger"]);
@@ -183,19 +148,18 @@ export function parseSidecarRequest(line: string): SidecarRequest {
     throw new Error("Sidecar request must be a JSON object");
   }
 
-  switch (parsed.type) {
-    case "run_eval":
-      return validateRunEvalRequest(parsed);
-    case "list_eval_history":
-      return validateListEvalHistoryRequest(parsed);
-    case "read_eval_history":
-      return validateReadEvalHistoryRequest(parsed);
-    default: {
-      const requestType =
-        typeof parsed.type === "string" ? parsed.type : "unknown";
-      throw new Error(`Unsupported sidecar request type: ${requestType}`);
-    }
+  if (parsed.type === "run_eval") {
+    return validateRunEvalRequest(parsed);
   }
+  if (parsed.type === "list_history") {
+    return validateListHistoryRequest(parsed);
+  }
+  if (parsed.type === "read_history") {
+    return validateReadHistoryRequest(parsed);
+  }
+
+  const requestType = typeof parsed.type === "string" ? parsed.type : "unknown";
+  throw new Error(`Unsupported sidecar request type: ${requestType}`);
 }
 
 export function serializeSidecarEvent(event: SidecarEvent): string {
@@ -214,6 +178,10 @@ function validateRunEvalRequest(
   const skillName = requireString(value.skillName, "skillName");
   const pluginSlug = requireString(value.pluginSlug, "pluginSlug");
   const scenarioName = requireString(value.scenarioName, "scenarioName");
+  const promptfooConfigDir = requireString(
+    value.promptfooConfigDir,
+    "promptfooConfigDir",
+  );
   const candidates = requireArray(value.candidates, "candidates").map(
     validateCandidate,
   );
@@ -221,19 +189,6 @@ function validateRunEvalRequest(
   const executions = requireArray(value.executions, "executions").map(
     validateExecution,
   );
-  const history =
-    value.history === undefined
-      ? undefined
-      : validateHistoryConfig(value.history, "history");
-  const descriptionCandidates =
-    value.descriptionCandidates === undefined
-      ? undefined
-      : requireArray(
-          value.descriptionCandidates,
-          "descriptionCandidates",
-        ).map((candidate, index) =>
-          validateDescriptionCandidate(candidate, index),
-        );
 
   return {
     id,
@@ -242,32 +197,45 @@ function validateRunEvalRequest(
     skillName,
     pluginSlug,
     scenarioName,
-    history,
-    descriptionCandidates,
+    promptfooConfigDir,
     candidates,
     cases,
     executions,
   };
 }
 
-function validateListEvalHistoryRequest(
+function validateListHistoryRequest(
   value: Record<string, unknown>,
-): ListEvalHistoryRequest {
-  return {
+): ListHistoryRequest {
+  const request: ListHistoryRequest = {
     id: requireString(value.id, "id"),
-    type: "list_eval_history",
-    filter: validateHistoryFilter(value.filter),
+    type: "list_history",
+    promptfooConfigDir: requireString(
+      value.promptfooConfigDir,
+      "promptfooConfigDir",
+    ),
+    pluginSlug: requireString(value.pluginSlug, "pluginSlug"),
+    skillName: requireString(value.skillName, "skillName"),
+    mode: requireEvalMode(value.mode),
+    limit: requirePositiveInteger(value.limit, "limit"),
   };
+  if (value.scenarioName !== undefined) {
+    request.scenarioName = requireString(value.scenarioName, "scenarioName");
+  }
+  return request;
 }
 
-function validateReadEvalHistoryRequest(
+function validateReadHistoryRequest(
   value: Record<string, unknown>,
-): ReadEvalHistoryRequest {
+): ReadHistoryRequest {
   return {
     id: requireString(value.id, "id"),
-    type: "read_eval_history",
-    configDir: requireString(value.configDir, "configDir"),
-    evalId: requireString(value.evalId, "evalId"),
+    type: "read_history",
+    promptfooConfigDir: requireString(
+      value.promptfooConfigDir,
+      "promptfooConfigDir",
+    ),
+    runId: requireString(value.runId, "runId"),
   };
 }
 
@@ -289,31 +257,6 @@ function validateCandidate(value: unknown, index: number): EvalCandidate {
   }
 
   return candidate;
-}
-
-function validateDescriptionCandidate(
-  value: unknown,
-  index: number,
-): EvalDescriptionCandidate {
-  const candidate = validateCandidate(value, index);
-  if (!isRecord(value)) {
-    throw new Error(`descriptionCandidates[${index}] must be an object`);
-  }
-
-  const descriptionCandidate: EvalDescriptionCandidate = { ...candidate };
-  if (value.rationale !== undefined) {
-    descriptionCandidate.rationale = requireString(
-      value.rationale,
-      `descriptionCandidates[${index}].rationale`,
-    );
-  }
-  if (value.rank !== undefined) {
-    descriptionCandidate.rank = requireNullableInteger(
-      value.rank,
-      `descriptionCandidates[${index}].rank`,
-    );
-  }
-  return descriptionCandidate;
 }
 
 function validateCase(value: unknown, index: number): EvalCase {
@@ -386,55 +329,6 @@ function validateAssertion(
   };
 }
 
-function validateHistoryConfig(
-  value: unknown,
-  field: string,
-): EvalHistoryConfig {
-  if (!isRecord(value)) {
-    throw new Error(`${field} must be an object`);
-  }
-
-  const history: EvalHistoryConfig = {
-    configDir: requireString(value.configDir, `${field}.configDir`),
-  };
-
-  if (value.persist !== undefined) {
-    history.persist = requireBoolean(value.persist, `${field}.persist`);
-  }
-
-  return history;
-}
-
-function validateHistoryFilter(value: unknown): ListEvalHistoryRequest["filter"] {
-  if (!isRecord(value)) {
-    throw new Error("filter must be an object");
-  }
-
-  const filter: ListEvalHistoryRequest["filter"] = {
-    configDir: requireString(value.configDir, "filter.configDir"),
-    pluginSlug: requireString(value.pluginSlug, "filter.pluginSlug"),
-    skillName: requireString(value.skillName, "filter.skillName"),
-  };
-
-  if (value.scenarioName !== undefined) {
-    filter.scenarioName = requireString(
-      value.scenarioName,
-      "filter.scenarioName",
-    );
-  }
-  if (value.mode !== undefined) {
-    filter.mode = requireEvalMode(value.mode);
-  }
-  if (value.limit !== undefined) {
-    filter.limit = requirePositiveInteger(value.limit, "filter.limit");
-  }
-  if (value.offset !== undefined) {
-    filter.offset = requireNonNegativeInteger(value.offset, "filter.offset");
-  }
-
-  return filter;
-}
-
 function requireEvalMode(value: unknown): EvalMode {
   if (typeof value === "string" && EVAL_MODES.has(value as EvalMode)) {
     return value as EvalMode;
@@ -473,28 +367,6 @@ function requirePositiveInteger(value: unknown, field: string): number {
   }
 
   throw new Error(`${field} must be a positive integer`);
-}
-
-function requireNonNegativeInteger(value: unknown, field: string): number {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
-    return value;
-  }
-
-  throw new Error(`${field} must be a non-negative integer`);
-}
-
-function requireNullableInteger(
-  value: unknown,
-  field: string,
-): number | null {
-  if (value === null) {
-    return null;
-  }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return value;
-  }
-
-  throw new Error(`${field} must be an integer or null`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -17,7 +17,7 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
       list_eval_runs: [
         {
           id: "run-trigger-1",
-          promptSetId: "prompt-set-trigger",
+          scenarioName: "Routing checks",
           mode: "trigger",
           status: "completed",
           summary: { passed: 5, total: 8 },
@@ -29,7 +29,7 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
       ],
       read_eval_run: {
         id: "run-trigger-1",
-        promptSetId: "prompt-set-trigger",
+        scenarioName: "Routing checks",
         mode: "trigger",
         status: "completed",
         summary: { passed: 5, total: 8 },
@@ -101,7 +101,7 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
       },
       run_eval_workbench: {
         id: "run-trigger-1",
-        promptSetId: "prompt-set-trigger",
+        scenarioName: "Routing checks",
         mode: "trigger",
         status: "completed",
         summary: { passed: 5, total: 8 },
@@ -113,35 +113,27 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
       apply_description_candidate: {
         description: TRIGGER_CANDIDATES[1].description,
       },
-      list_eval_prompt_sets: [
-        {
-          id: "prompt-set-trigger",
-          pluginSlug: "skills",
-          skillName: "test-skill",
-          mode: "trigger",
-          name: "Routing checks",
-          createdAt: "2026-05-04T00:00:00Z",
-          updatedAt: "2026-05-04T00:00:00Z",
-          cases: [
-            {
-              id: "case-1",
-              prompt: "Reconcile open customer invoices",
-              expected: null,
-              shouldTrigger: true,
-              assertions: [],
-              sortOrder: 0,
-            },
-            {
-              id: "case-2",
-              prompt: "Clean up old billing notes",
-              expected: null,
-              shouldTrigger: false,
-              assertions: [],
-              sortOrder: 1,
-            },
-          ],
-        },
-      ],
+      list_scenarios: [{ name: "Routing checks", tags: ["trigger"] }],
+      load_scenario: {
+        name: "Routing checks",
+        tags: ["trigger"],
+        cases: [
+          {
+            id: "case-1",
+            prompt: "Reconcile open customer invoices",
+            expectedOutcome: null,
+            shouldTrigger: true,
+            assertions: [],
+          },
+          {
+            id: "case-2",
+            prompt: "Clean up old billing notes",
+            expectedOutcome: null,
+            shouldTrigger: false,
+            assertions: [],
+          },
+        ],
+      },
     });
     await trackInvokes(page, [
       "suggest_description_candidates",
@@ -164,7 +156,7 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
     );
     expect(candidateCalls[0]?.args).toMatchObject({
       request: {
-        promptSetId: "prompt-set-trigger",
+        scenarioName: "Routing checks",
         baselineDescription: "Use when doing dbt work.",
         candidateCount: 3,
       },
@@ -179,7 +171,7 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
     const runCalls = await getTrackedInvokes(page, "run_eval_workbench");
     expect(runCalls[0]?.args).toMatchObject({
       request: {
-        promptSetId: "prompt-set-trigger",
+        scenarioName: "Routing checks",
         candidateIds: TRIGGER_CANDIDATES.map(({ id }) => id),
       },
     });

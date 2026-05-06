@@ -13,29 +13,27 @@ const E2E_ROOT = "/e2e-test";
 const E2E_SKILLS_PATH = `${E2E_ROOT}/skills`;
 const E2E_DEFAULT_SKILLS_PATH = `${E2E_ROOT}/default-skills`;
 
-const defaultPerformancePromptSet = {
-  id: "prompt-set-performance",
-  pluginSlug: "skills",
-  skillName: "test-skill",
-  mode: "performance" as const,
+const defaultPerformanceScenarioSummary = {
   name: "Regression",
-  createdAt: "2026-05-04T00:00:00Z",
-  updatedAt: "2026-05-04T00:00:00Z",
+  tags: ["performance"] as const,
+};
+
+const defaultPerformanceScenario = {
+  ...defaultPerformanceScenarioSummary,
   cases: [
     {
       id: "case-1",
       prompt: "Forecast next quarter revenue for the west region pipeline.",
-      expected: "Calls out assumptions, missing data, and confidence.",
-      shouldTrigger: null,
+      expectedOutcome: "Calls out assumptions, missing data, and confidence.",
+      shouldTrigger: null as null,
       assertions: [],
-      sortOrder: 0,
     },
   ],
 };
 
 const defaultPerformanceRunSummary = {
   id: "run-1",
-  promptSetId: "prompt-set-performance",
+  scenarioName: "Regression",
   mode: "performance" as const,
   status: "completed",
   summary: { passed: 1, total: 1 },
@@ -274,9 +272,10 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   read_latest_benchmark: null,
   "plugin:log|log": undefined,
   // Eval Workbench
-  list_eval_prompt_sets: [defaultPerformancePromptSet],
-  save_eval_prompt_set: defaultPerformancePromptSet,
-  delete_eval_prompt_set: undefined,
+  list_scenarios: [defaultPerformanceScenarioSummary],
+  load_scenario: defaultPerformanceScenario,
+  save_scenario: defaultPerformanceScenario,
+  delete_scenario: undefined,
   list_eval_runs: [defaultPerformanceRunSummary],
   read_eval_run: defaultPerformanceRunDetail,
   run_eval_workbench: defaultPerformanceRunSummary,

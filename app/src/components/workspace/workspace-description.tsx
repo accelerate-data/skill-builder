@@ -1,44 +1,33 @@
-import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Sparkles, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type {
-  DescriptionCandidate,
-  EvalRun,
-  EvalWorkbenchProgressEvent,
-  ScenarioDto,
-} from "@/lib/eval-workbench";
+import type { DescriptionCandidate, ScenarioDto } from "@/lib/eval-workbench";
 import {
   applyDescriptionCandidate,
   areScenariosEqual,
   buildRefineImprovementBrief,
   buildTriggerCandidateIds,
   buildTriggerComparisonEntries,
-  cancelEvalWorkbenchRun,
   createDraftScenario,
   DEFAULT_DESCRIPTION_CANDIDATE_COUNT,
   getErrorMessage,
   getRecommendedCandidate,
   getRunCandidateIds,
-  listEvalRuns,
   normalizeScenario,
-  readEvalRun,
   runEvalWorkbench,
   scenarioToDraft,
   suggestDescriptionCandidates,
   validateScenario,
 } from "@/lib/eval-workbench";
-import {
-  setEvalsCancelHandler,
-  setEvalsRunning,
-} from "@/lib/eval-running-state";
+import { setEvalsRunning } from "@/lib/eval-running-state";
 import type { SkillSummary } from "@/lib/types";
 import { useRefineStore } from "@/stores/refine-store";
 import { CandidateCards } from "./eval-workbench/candidate-cards";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 import { ResultTable } from "./eval-workbench/result-table";
 import { RunHistory } from "./eval-workbench/run-history";
+import { useRunHistory } from "./eval-workbench/use-run-history";
 
 interface WorkspaceDescriptionProps {
   skill: SkillSummary;
@@ -48,7 +37,7 @@ interface WorkspaceDescriptionProps {
   onStartNewScenario: () => void;
   onSaveScenario: (
     scenario: ScenarioDto,
-    options?: { originalName?: string | null },
+    options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
   saveScenarioPending?: boolean;
   onRunningChange?: (running: boolean) => void;
@@ -68,17 +57,9 @@ export function WorkspaceDescription({
   onApply,
   onNavigateToRefine,
 }: WorkspaceDescriptionProps) {
-  const [loading, setLoading] = useState(true);
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
   const [running, setRunning] = useState(false);
   const [sendingToRefine, setSendingToRefine] = useState(false);
-  const [runs, setRuns] = useState<EvalRun[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [selectedRun, setSelectedRun] = useState<EvalRun | null>(null);
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<EvalWorkbenchProgressEvent | null>(
-    null,
-  );
   const [draft, setDraft] = useState<ScenarioDto>(() =>
     createDraftScenario("trigger"),
   );
@@ -86,23 +67,35 @@ export function WorkspaceDescription({
   const [appliedDescription, setAppliedDescription] = useState<string | null>(
     null,
   );
-  const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const isRunning = generatingCandidates || running;
+  const {
+    activeRunId,
+    cancelActiveRun,
+    clearActiveRun,
+    error,
+    loading,
+    prependRun,
+    progress,
+    refresh,
+    runs,
+    selectRun,
+    selectedRun,
+    selectedRunId,
+    startActiveRun,
+  } = useRunHistory({
+    pluginSlug: skill.plugin_slug,
+    skillName: skill.name,
+    mode: "trigger",
+    workspacePath,
+    scenarioName: scenario?.name ?? null,
+  });
 
   useEffect(() => {
-    if (scenario) {
-      setDraft(scenarioToDraft(scenario));
-      setCandidates([]);
-      setActionError(null);
-      return;
-    }
-    if (!scenarioLoading) {
-      setDraft(createDraftScenario("trigger"));
-      setCandidates([]);
-      setActionError(null);
-    }
-  }, [scenario, scenarioLoading]);
+    setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("trigger"));
+    setCandidates([]);
+    setActionError(null);
+  }, [scenario]);
 
   const baselineDescription = skill.description ?? "";
   const activeScenarioCases = scenario?.cases ?? [];
@@ -132,73 +125,18 @@ export function WorkspaceDescription({
     setEvalsRunning(isRunning);
   }, [isRunning, onRunningChange]);
 
-  useEffect(() => {
-    if (!activeRunId) {
-      setEvalsCancelHandler(null);
-      return;
-    }
-
-    setEvalsCancelHandler(async () => {
-      await cancelEvalWorkbenchRun(activeRunId);
-    });
-    return () => {
-      setEvalsCancelHandler(null);
-    };
-  }, [activeRunId]);
-
   useEffect(
     () => () => {
       onRunningChange?.(false);
       setEvalsRunning(false);
-      setEvalsCancelHandler(null);
     },
     [onRunningChange],
   );
 
-  useEffect(() => {
-    const unlisten = listen<EvalWorkbenchProgressEvent>(
-      "eval-workbench-progress",
-      (event) => {
-        const payload = event.payload;
-        if (!activeRunId || payload.runId !== activeRunId) {
-          return;
-        }
-        setProgress(payload);
-      },
-    );
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [activeRunId]);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextRuns = await listEvalRuns(skill.plugin_slug, skill.name, "trigger", 20);
-      setRuns(nextRuns);
-    } catch (loadError) {
-      setError(getErrorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [skill.name, skill.plugin_slug]);
-
-  useEffect(() => {
-    if (!workspacePath) {
-      setLoading(false);
-      return;
-    }
-    void refresh();
-  }, [refresh, workspacePath]);
-
   async function handleSelectRun(runId: string) {
-    setSelectedRunId(runId);
     setActionError(null);
     try {
-      const run = await readEvalRun(runId);
-      setSelectedRun(run);
+      const run = await selectRun(runId);
       setCandidates(run?.descriptionCandidates ?? []);
     } catch (runError) {
       setActionError(getErrorMessage(runError));
@@ -266,8 +204,7 @@ export function WorkspaceDescription({
     const runId = crypto.randomUUID();
     setRunning(true);
     setActionError(null);
-    setActiveRunId(runId);
-    setProgress(null);
+    startActiveRun(runId);
     try {
       const run = await runEvalWorkbench({
         runId,
@@ -277,27 +214,19 @@ export function WorkspaceDescription({
         mode: "trigger",
         candidateIds,
       });
-      setRuns((currentRuns) => [
-        run,
-        ...currentRuns.filter((currentRun) => currentRun.id !== run.id),
-      ]);
+      prependRun(run);
       await handleSelectRun(run.id);
     } catch (runError) {
       setActionError(getErrorMessage(runError));
     } finally {
       setRunning(false);
-      setActiveRunId(null);
-      setProgress(null);
+      clearActiveRun();
     }
   }
 
   async function handleCancelRun() {
-    if (!activeRunId) {
-      return;
-    }
-
     try {
-      await cancelEvalWorkbenchRun(activeRunId);
+      await cancelActiveRun();
     } catch (cancelError) {
       setActionError(getErrorMessage(cancelError));
     }
@@ -385,7 +314,7 @@ export function WorkspaceDescription({
               size="sm"
               variant="outline"
               onClick={() => void handleGenerateCandidates()}
-              disabled={generatingCandidates}
+              disabled={scenarioLoading || generatingCandidates}
             >
               <Sparkles className="mr-1 size-3.5" />
               Generate candidates
@@ -393,7 +322,7 @@ export function WorkspaceDescription({
             <Button
               size="sm"
               onClick={() => void handleRunComparison()}
-              disabled={running}
+              disabled={scenarioLoading || running}
             >
               Run comparison
             </Button>
@@ -455,7 +384,7 @@ export function WorkspaceDescription({
           setCandidates([]);
           setActionError(null);
         }}
-        saveDisabled={saveScenarioPending || scenarioLoading}
+        saveDisabled={scenarioLoading || saveScenarioPending}
       />
 
       <section className="rounded-lg border bg-card p-4">
@@ -490,7 +419,7 @@ export function WorkspaceDescription({
             size="sm"
             variant="outline"
             onClick={() => void handleSendToRefine()}
-            disabled={!selectedRunId || sendingToRefine}
+            disabled={scenarioLoading || !selectedRunId || sendingToRefine}
           >
             Send to Refine
             <ArrowRight className="ml-1 size-3.5" />

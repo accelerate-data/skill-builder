@@ -48,6 +48,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (43, run_openhands_settings_migration),
     (44, run_eval_workbench_migration),
     (45, run_workflow_artifact_tables_migration),
+    (46, run_eval_workbench_scenario_identity_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -250,6 +251,62 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
         CREATE INDEX IF NOT EXISTS idx_description_candidates_run_rank
             ON description_candidates(run_id, rank);",
     )
+}
+
+pub(super) fn run_eval_workbench_scenario_identity_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = conn.execute_batch(
+        "DROP TABLE IF EXISTS eval_runs_v2;
+
+        CREATE TABLE eval_runs_v2 (
+            id TEXT PRIMARY KEY,
+            prompt_set_id TEXT REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
+            plugin_slug TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            scenario_name TEXT NOT NULL,
+            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            status TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+
+        INSERT INTO eval_runs_v2 (
+            id, prompt_set_id, plugin_slug, skill_name, scenario_name, mode, status, summary_json, created_at, completed_at
+        )
+        SELECT
+            r.id,
+            r.prompt_set_id,
+            COALESCE(ps.plugin_slug, '__legacy__'),
+            COALESCE(ps.skill_name, '__legacy__'),
+            COALESCE(ps.name, r.id),
+            r.mode,
+            r.status,
+            r.summary_json,
+            r.created_at,
+            r.completed_at
+        FROM eval_runs r
+        LEFT JOIN eval_prompt_sets ps ON ps.id = r.prompt_set_id;
+
+        DROP TABLE eval_runs;
+        ALTER TABLE eval_runs_v2 RENAME TO eval_runs;
+
+        DROP INDEX IF EXISTS idx_eval_runs_prompt_set_mode_created;
+        CREATE INDEX IF NOT EXISTS idx_eval_runs_skill_mode_created
+            ON eval_runs(plugin_slug, skill_name, mode, created_at);
+        CREATE INDEX IF NOT EXISTS idx_eval_runs_scenario_mode_created
+            ON eval_runs(plugin_slug, skill_name, scenario_name, mode, created_at);",
+    );
+
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT"),
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
 }
 
 pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), rusqlite::Error> {

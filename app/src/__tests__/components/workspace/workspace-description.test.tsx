@@ -107,6 +107,20 @@ const bothScenario = {
   ],
 };
 
+const alternateTriggerScenario = {
+  name: "Edge routing",
+  tags: ["trigger"] as const,
+  cases: [
+    {
+      id: "case-2",
+      prompt: "Match unapplied cash receipts",
+      expectedOutcome: null,
+      shouldTrigger: true,
+      assertions: [],
+    },
+  ],
+};
+
 const runSummary = {
   id: "run-trigger-1",
   scenarioName: "Routing checks",
@@ -303,6 +317,7 @@ describe("WorkspaceDescription", () => {
         "trigger-skill",
         "trigger",
         20,
+        "Routing checks",
       ),
     );
     expect(await screen.findByDisplayValue("Routing checks")).toBeInTheDocument();
@@ -355,6 +370,46 @@ describe("WorkspaceDescription", () => {
 
     expect(await screen.findByLabelText(/expected outcome/i)).toBeInTheDocument();
     expect(screen.getByText(/should trigger/i)).toBeInTheDocument();
+  });
+
+  it("reloads filtered history and clears selected run details when the scenario changes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <WorkspaceDescription
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={triggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await screen.findByDisplayValue("Routing checks");
+    await user.click(screen.getByRole("button", { name: /view latest run/i }));
+    await screen.findByText(/invoice reconciliation or payment matching/i);
+
+    rerender(
+      <WorkspaceDescription
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={alternateTriggerScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(mockListEvalRuns).toHaveBeenLastCalledWith(
+        "skills",
+        "trigger-skill",
+        "trigger",
+        20,
+        "Edge routing",
+      ),
+    );
+    expect(
+      screen.queryByText(/invoice reconciliation or payment matching/i),
+    ).not.toBeInTheDocument();
   });
 
   it("applies a generated candidate and reports it back to the shell", async () => {
@@ -423,26 +478,25 @@ describe("WorkspaceDescription", () => {
 
   it("runs trigger comparison against the baseline plus candidates and recommends the best eval result", async () => {
     const user = userEvent.setup();
-    const scenarioWithNegativeCase = {
-      ...triggerScenario,
-      cases: [
-        ...triggerScenario.cases,
-        {
-          id: "case-2",
-          prompt: "Clean up old billing notes",
-          expectedOutcome: null,
-          shouldTrigger: false,
-          assertions: [],
-        },
-      ],
-    };
     mockReadEvalRun.mockResolvedValue(runDetailWithBaselineComparison);
 
     render(
       <WorkspaceDescription
         skill={skill}
         workspacePath="/workspace"
-        scenario={scenarioWithNegativeCase}
+        scenario={{
+          ...triggerScenario,
+          cases: [
+            ...triggerScenario.cases,
+            {
+              id: "case-2",
+              prompt: "Clean up old billing notes",
+              expectedOutcome: null,
+              shouldTrigger: false,
+              assertions: [],
+            },
+          ],
+        }}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
       />,

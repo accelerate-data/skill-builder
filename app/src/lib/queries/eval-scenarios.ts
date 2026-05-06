@@ -10,8 +10,16 @@ import {
 export const evalScenarioKeys = {
   list: (skillName: string, pluginSlug: string) =>
     ["eval-scenarios", skillName, pluginSlug] as const,
-  detail: (skillName: string, pluginSlug: string, scenarioName: string) =>
-    ["eval-scenario", skillName, pluginSlug, scenarioName] as const,
+  detail: (
+    skillName: string,
+    pluginSlug: string,
+    scenarioName: string,
+  ) => ["eval-scenario", skillName, pluginSlug, scenarioName] as const,
+};
+
+type SaveScenarioMutationInput = {
+  scenario: ScenarioDto;
+  previousScenarioName?: string | null;
 };
 
 export function useScenarios(skillName: string | null, pluginSlug: string) {
@@ -28,11 +36,7 @@ export function useScenario(
   scenarioName: string | null,
 ) {
   return useQuery({
-    queryKey: evalScenarioKeys.detail(
-      skillName ?? "",
-      pluginSlug,
-      scenarioName ?? "",
-    ),
+    queryKey: evalScenarioKeys.detail(skillName ?? "", pluginSlug, scenarioName ?? ""),
     queryFn: () => loadScenario(pluginSlug, skillName!, scenarioName!),
     enabled: Boolean(skillName && scenarioName),
   });
@@ -42,17 +46,24 @@ export function useSaveScenario(skillName: string | null, pluginSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      scenario,
-      originalName,
-    }: {
-      scenario: ScenarioDto;
-      originalName?: string | null;
-    }) => saveScenario(pluginSlug, skillName!, scenario, originalName),
-    onSuccess: (savedScenario) => {
+    mutationFn: ({ scenario, previousScenarioName }: SaveScenarioMutationInput) =>
+      saveScenario(pluginSlug, skillName!, scenario, previousScenarioName),
+    onSuccess: (savedScenario, variables) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
       });
+      if (
+        variables.previousScenarioName &&
+        variables.previousScenarioName !== savedScenario.name
+      ) {
+        queryClient.removeQueries({
+          queryKey: evalScenarioKeys.detail(
+            skillName ?? "",
+            pluginSlug,
+            variables.previousScenarioName,
+          ),
+        });
+      }
       queryClient.setQueryData(
         evalScenarioKeys.detail(
           skillName ?? "",

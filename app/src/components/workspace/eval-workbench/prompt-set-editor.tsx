@@ -77,10 +77,8 @@ export function PromptSetEditor({
 
   const performanceEnabled = scenarioSupportsMode(draft, "performance");
   const triggerEnabled = scenarioSupportsMode(draft, "trigger");
-  const performanceChecked =
-    draft.tags.includes("both") || draft.tags.includes("performance");
-  const triggerChecked =
-    draft.tags.includes("both") || draft.tags.includes("trigger");
+  const performanceChecked = draft.tags.includes("both") || draft.tags.includes("performance");
+  const triggerChecked = draft.tags.includes("both") || draft.tags.includes("trigger");
 
   return (
     <section className="rounded-lg border bg-card p-4">
