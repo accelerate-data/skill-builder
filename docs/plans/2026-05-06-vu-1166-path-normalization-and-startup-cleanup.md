@@ -56,7 +56,7 @@ That review has already been incorporated into the current `VU-1166` description
 - Modify: `app/src/__tests__/components/app-layout.test.tsx`
 - Modify: `app/src-tauri/src/commands/documents/mod.rs` or add local tests near it
 
-- [ ] **Step 1: Add a failing Rust test for dual-default plugin rows plus duplicate skill ownership**
+- [x] **Step 1: Add a failing Rust test for dual-default plugin rows plus duplicate skill ownership**
 
 ```rust
 #[test]
@@ -93,7 +93,7 @@ fn startup_normalization_merges_legacy_skills_default_into_default_plugin() {
 }
 ```
 
-- [ ] **Step 2: Add a failing Rust test for legacy folder migration in both roots**
+- [x] **Step 2: Add a failing Rust test for legacy folder migration in both roots**
 
 ```rust
 #[test]
@@ -123,7 +123,7 @@ fn startup_normalization_moves_legacy_skills_and_workspace_dirs_to_default_plugi
 }
 ```
 
-- [ ] **Step 3: Add a failing frontend test for step-complete file viewing with explicit plugin slug**
+- [x] **Step 3: Add a failing frontend test for step-complete file viewing with explicit plugin slug**
 
 ```tsx
 it("reads completed step files from the skill's actual plugin slug", async () => {
@@ -155,7 +155,7 @@ it("reads completed step files from the skill's actual plugin slug", async () =>
 });
 ```
 
-- [ ] **Step 4: Add a failing startup test for silent cleanup of migrated legacy app-local state**
+- [x] **Step 4: Add a failing startup test for silent cleanup of migrated legacy app-local state**
 
 ```tsx
 it("auto-applies startup normalization cleanup without opening reconciliation UI", async () => {
@@ -188,7 +188,7 @@ it("auto-applies startup normalization cleanup without opening reconciliation UI
 });
 ```
 
-- [ ] **Step 5: Run the targeted red tests and verify they fail for the expected reason**
+- [x] **Step 5: Run the targeted red tests and verify they fail for the expected reason**
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml reconciliation::tests::startup_normalization_ -- --nocapture
@@ -200,7 +200,7 @@ Expected:
 - Rust tests fail because dual-default and legacy folders are not normalized today
 - Frontend tests fail because `listSkillFiles` does not accept or use explicit plugin slug today
 
-- [ ] **Step 6: Commit the red tests**
+- [x] **Step 6: Commit the red tests**
 
 ```bash
 git add app/src-tauri/src/reconciliation/tests.rs app/src/__tests__/components/workflow-step-complete.test.tsx app/src/__tests__/components/app-layout.test.tsx
@@ -217,7 +217,7 @@ git commit -m "test: capture legacy plugin path normalization regressions"
 - Modify: `app/src-tauri/src/db/skills.rs`
 - Modify: `app/src-tauri/src/db/tests.rs`
 
-- [ ] **Step 1: Add a failing DB repair test for mixed `skills` + `default` synthetic plugins**
+- [x] **Step 1: Add a failing DB repair test for mixed `skills` + `default` synthetic plugins**
 
 ```rust
 #[test]
@@ -250,7 +250,7 @@ fn repair_plugin_ownership_schema_collapses_legacy_skills_default() {
 }
 ```
 
-- [ ] **Step 2: Implement minimal DB normalization helpers**
+- [x] **Step 2: Implement minimal DB normalization helpers**
 
 ```rust
 pub fn ensure_default_plugin(conn: &Connection) -> Result<i64, String> {
@@ -281,7 +281,7 @@ fn normalize_legacy_default_plugins(conn: &Connection) -> Result<(), String> {
 }
 ```
 
-- [ ] **Step 3: Extend migration repair to repoint legacy synthetic default ownership**
+- [x] **Step 3: Extend migration repair to repoint legacy synthetic default ownership**
 
 ```rust
 // In repair_plugin_ownership_schema / helper it calls:
@@ -307,7 +307,7 @@ fn repoint_legacy_skills_default_rows(conn: &Connection) -> Result<(), rusqlite:
 }
 ```
 
-- [ ] **Step 4: Re-run the targeted DB tests and verify they pass**
+- [x] **Step 4: Re-run the targeted DB tests and verify they pass**
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml repair_plugin_ownership_schema
@@ -316,7 +316,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml ensure_default_plugin
 
 Expected: all targeted DB normalization tests pass.
 
-- [ ] **Step 5: Commit the DB normalization slice**
+- [x] **Step 5: Commit the DB normalization slice**
 
 ```bash
 git add app/src-tauri/src/db/migrations.rs app/src-tauri/src/db/skills.rs app/src-tauri/src/db/tests.rs
@@ -333,7 +333,7 @@ git commit -m "fix: normalize legacy default plugin rows"
 - Modify: `app/src-tauri/src/reconciliation/tests.rs`
 - Modify: `app/src-tauri/src/skill_paths.rs` if helper extraction is needed
 
-- [ ] **Step 1: Add failing reconciliation tests for each legacy folder shape**
+- [x] **Step 1: Add failing reconciliation tests for each legacy folder shape**
 
 Add coverage for:
 
@@ -343,7 +343,7 @@ Add coverage for:
 - `root/{plugin}/{skill}` -> `root/{plugin}/skills/{skill}`
 - duplicate source + destination with missing files in destination
 
-- [ ] **Step 2: Implement a normalization pass that runs before normal reconciliation**
+- [x] **Step 2: Implement a normalization pass that runs before normal reconciliation**
 
 ```rust
 fn normalize_skill_roots_before_reconcile(
@@ -368,7 +368,7 @@ enum LegacyLocation {
 }
 ```
 
-- [ ] **Step 3: Implement conservative move semantics**
+- [x] **Step 3: Implement conservative move semantics**
 
 Rules:
 
@@ -385,7 +385,7 @@ fn merge_or_archive_legacy_source(
 ) -> Result<MergeOutcome, String> { /* ... */ }
 ```
 
-- [ ] **Step 4: Run the reconciliation migration tests**
+- [x] **Step 4: Run the reconciliation migration tests**
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml reconciliation::tests::startup_normalization_
@@ -393,7 +393,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml reconciliation::tests::start
 
 Expected: legacy folder layouts are rewritten to canonical destinations without data loss.
 
-- [ ] **Step 5: Commit the filesystem migration slice**
+- [x] **Step 5: Commit the filesystem migration slice**
 
 ```bash
 git add app/src-tauri/src/reconciliation/mod.rs app/src-tauri/src/reconciliation/tests.rs app/src-tauri/src/skill_paths.rs
@@ -415,7 +415,7 @@ git commit -m "fix: migrate legacy skill folders to canonical plugin paths"
 - Modify: `app/src/__tests__/components/workflow-step-complete*.test.tsx`
 - Modify: `app/src/__tests__/components/reconciliation-ack-dialog.test.tsx`
 
-- [ ] **Step 1: Add a failing API-contract test for `listSkillFiles` taking `pluginSlug`**
+- [x] **Step 1: Add a failing API-contract test for `listSkillFiles` taking `pluginSlug`**
 
 ```ts
 it("passes pluginSlug through listSkillFiles", async () => {
@@ -428,7 +428,7 @@ it("passes pluginSlug through listSkillFiles", async () => {
 })
 ```
 
-- [ ] **Step 2: Update the Tauri command and UI plumbing**
+- [x] **Step 2: Update the Tauri command and UI plumbing**
 
 ```rust
 #[tauri::command]
@@ -462,7 +462,7 @@ export const listSkillFiles = (
 })
 ```
 
-- [ ] **Step 3: Replace production `?? "skills"` fallbacks**
+- [x] **Step 3: Replace production `?? "skills"` fallbacks**
 
 Examples to update:
 
@@ -477,7 +477,7 @@ JOIN plugins p ON s.plugin_id = p.id
 ORDER BY (p.is_default = 0), p.slug, s.name;
 ```
 
-- [ ] **Step 4: Run targeted frontend and Rust tests**
+- [x] **Step 4: Run targeted frontend and Rust tests**
 
 ```bash
 cd app && npx vitest run src/__tests__/components/workflow-step-complete.test.tsx src/__tests__/components/reconciliation-ack-dialog.test.tsx
@@ -487,7 +487,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::files
 
 Expected: file viewing and document/default-plugin behavior use explicit canonical plugin ownership.
 
-- [ ] **Step 5: Commit the production call-site cleanup**
+- [x] **Step 5: Commit the production call-site cleanup**
 
 ```bash
 git add app/src-tauri/src/commands/files.rs app/src/lib/tauri.ts app/src/components/step-complete/use-step-files.ts app/src/components/reconciliation-ack-dialog.tsx app/src-tauri/src/commands/documents/mod.rs
@@ -504,7 +504,7 @@ git commit -m "fix: remove legacy skills default slug assumptions"
 - Modify: `app/src-tauri/src/reconciliation/tests.rs`
 - Modify: `app/src/__tests__/components/app-layout.test.tsx`
 
-- [ ] **Step 1: Add failing cleanup tests for stale app-local artifacts**
+- [x] **Step 1: Add failing cleanup tests for stale app-local artifacts**
 
 Cover at least:
 
@@ -520,7 +520,7 @@ fn startup_cleanup_prunes_stale_orphaned_conversation_dirs_without_touching_live
 }
 ```
 
-- [ ] **Step 2: Implement conservative cleanup helpers**
+- [x] **Step 2: Implement conservative cleanup helpers**
 
 ```rust
 fn cleanup_app_local_state(data_dir: &Path, notifications: &mut Vec<String>) -> Result<usize, String> {
@@ -538,7 +538,7 @@ Rules:
 - never delete canonical `SKILL.md`, references, or active workspace skill dirs
 - keep cleanup silent when it is notification-only and user-action-free
 
-- [ ] **Step 3: Verify startup UI behavior still auto-applies silent cleanup**
+- [x] **Step 3: Verify startup UI behavior still auto-applies silent cleanup**
 
 ```bash
 cd app && npx vitest run src/__tests__/components/app-layout.test.tsx
@@ -546,7 +546,7 @@ cd app && npx vitest run src/__tests__/components/app-layout.test.tsx
 
 Expected: cleanup-only reconciliation remains silent and does not prompt the user.
 
-- [ ] **Step 4: Commit the startup cleanup slice**
+- [x] **Step 4: Commit the startup cleanup slice**
 
 ```bash
 git add app/src-tauri/src/reconciliation/mod.rs app/src-tauri/src/reconciliation/tests.rs app/src/__tests__/components/app-layout.test.tsx
@@ -570,7 +570,7 @@ Examples:
 - replace references to `{workspace}/{plugin_slug}/{skill_name}` with `{workspace}/{plugin_slug}/skills/{skill_name}`
 - replace references to default plugin `skills` with `default`
 
-- [ ] **Step 2: Run the required validation suites**
+- [x] **Step 2: Run the required validation suites**
 
 ```bash
 markdownlint docs/plans/2026-05-06-vu-1166-path-normalization-and-startup-cleanup.md docs/design/openhands-agent-server-runtime/README.md
