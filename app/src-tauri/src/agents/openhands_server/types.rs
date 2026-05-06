@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 
 use crate::agents::sidecar::SidecarConfig;
 
@@ -22,7 +21,6 @@ pub struct OpenHandsOneShotRequest {
     pub run_source: Option<String>,
     pub workflow_session_id: Option<String>,
     pub usage_session_id: Option<String>,
-    pub workspace_agents_fingerprint: Option<String>,
 }
 
 impl OpenHandsOneShotRequest {
@@ -48,9 +46,6 @@ impl OpenHandsOneShotRequest {
             run_source: config.run_source.clone(),
             workflow_session_id: config.workflow_session_id.clone(),
             usage_session_id: config.usage_session_id.clone(),
-            workspace_agents_fingerprint: workspace_agents_fingerprint(
-                Path::new(&config.workspace_skill_dir),
-            ),
         })
     }
 }
@@ -84,8 +79,6 @@ pub struct ConversationMetadata {
     pub workflow_session_id: Option<String>,
     #[serde(rename = "workspace", skip_serializing_if = "Option::is_none")]
     pub workspace_root_dir: Option<String>,
-    #[serde(rename = "workspace_agents", skip_serializing_if = "Option::is_none")]
-    pub workspace_agents_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,10 +207,6 @@ impl StartConversationRequest {
                     .as_deref()
                     .map(openhands_tag_value),
                 workspace_root_dir: Some(openhands_tag_value(&request.workspace_root_dir)),
-                workspace_agents_fingerprint: request
-                    .workspace_agents_fingerprint
-                    .as_deref()
-                    .map(openhands_tag_value),
             },
             agent: OpenHandsAgent {
                 kind: "Agent".to_string(),
@@ -258,45 +247,6 @@ impl StartConversationRequest {
             },
         }
     }
-}
-
-fn workspace_agents_fingerprint(workspace_skill_dir: &Path) -> Option<String> {
-    let agents_dir = workspace_skill_dir.join(".agents").join("agents");
-    if !agents_dir.is_dir() {
-        return None;
-    }
-
-    let mut paths: Vec<PathBuf> = walkdir::WalkDir::new(&agents_dir)
-        .sort_by_file_name()
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_file())
-        .map(|entry| entry.into_path())
-        .collect();
-    paths.sort();
-
-    let mut hasher = sha2::Sha256::new();
-    for path in paths {
-        let rel = match path.strip_prefix(workspace_skill_dir) {
-            Ok(rel) => rel,
-            Err(_) => continue,
-        };
-        hasher.update(rel.to_string_lossy().as_bytes());
-        hasher.update(b"\0");
-        let bytes = match std::fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                log::warn!(
-                    "[openhands-agent-server] failed to read workspace agent file {}: {e}",
-                    path.display()
-                );
-                return None;
-            }
-        };
-        hasher.update(&bytes);
-    }
-
-    Some(hex::encode(hasher.finalize()))
 }
 
 fn openhands_tag_value(value: &str) -> String {
@@ -590,6 +540,10 @@ fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHand
             "glob",
             "task_tool_set",
         ];
+    } else if !names.contains(&"task_tool_set") {
+        // Sub-agent delegation is part of the default OpenHands contract for
+        // this app, even when a surface provides an explicit allowlist.
+        names.push("task_tool_set");
     }
     names.sort_unstable();
     names.dedup();

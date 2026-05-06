@@ -492,6 +492,10 @@ mod tests {
             &agents.join("skill-creator.md"),
             "---\nname: skill-creator\n---\nCreate and validate skills.",
         );
+        write_file(
+            &agents.join("skill-verifier.md"),
+            "---\nname: skill-verifier\n---\nVerify generated skills.",
+        );
         agents
     }
 
@@ -520,6 +524,7 @@ mod tests {
         copy_workspace_sources_to_openhands_layout(&agents, &skills, &workspace).unwrap();
 
         assert!(workspace.join(".agents/agents/skill-creator.md").is_file());
+        assert!(workspace.join(".agents/agents/skill-verifier.md").is_file());
         assert!(workspace
             .join(".agents/skills/researching-skill-requirements/SKILL.md")
             .is_file());
@@ -527,6 +532,7 @@ mod tests {
             .join(".agents/skills/creating-skills/SKILL.md")
             .is_file());
         assert!(skill_dir.join(".agents/agents/skill-creator.md").is_file());
+        assert!(skill_dir.join(".agents/agents/skill-verifier.md").is_file());
         assert!(skill_dir
             .join(".agents/skills/researching-skill-requirements/SKILL.md")
             .is_file());

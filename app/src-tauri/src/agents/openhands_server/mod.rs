@@ -76,11 +76,7 @@ fn conversation_matches_request(
     let persisted_suffix = conversation
         .pointer("/agent/agent_context/system_message_suffix")
         .and_then(|value| value.as_str());
-    let persisted_workspace_agents = conversation
-        .pointer("/tags/workspace_agents")
-        .and_then(|value| value.as_str());
     persisted_suffix == request.system_message_suffix.as_deref()
-        && persisted_workspace_agents == request.workspace_agents_fingerprint.as_deref()
 }
 
 enum OpenHandsOneShotEvent {
@@ -369,7 +365,7 @@ async fn dispatch_openhands_turn_with_request(
             Some(conversation) if conversation_matches_request(&conversation, &request) => true,
             Some(_) => {
                 log::info!(
-                    "[openhands-agent-server] saved conversation {} under {} no longer matches the current agent config; creating a new conversation",
+                    "[openhands-agent-server] saved conversation {} under {} no longer matches the current main-agent config; creating a new conversation",
                     existing,
                     request.workspace_skill_dir
                 );
@@ -1229,64 +1225,12 @@ mod tests {
             run_source: Some("workflow".to_string()),
             workflow_session_id: Some("workflow-session".to_string()),
             usage_session_id: None,
-            workspace_agents_fingerprint: None,
         };
 
         assert!(conversation_matches_request(&conversation, &request));
         let mut stale = conversation.clone();
         stale["agent"]["agent_context"]["system_message_suffix"] = serde_json::Value::Null;
         assert!(!conversation_matches_request(&stale, &request));
-    }
-
-    #[test]
-    fn existing_conversation_is_recreated_when_workspace_agent_contract_changes() {
-        let conversation = serde_json::json!({
-            "agent": {
-                "agent_context": {
-                    "system_message_suffix": "# Skill Creator Agent"
-                }
-            },
-            "tags": {
-                "workspace_agents": "old-skill-creator-only"
-            }
-        });
-        let request = OpenHandsOneShotRequest {
-            prompt: "workflow".to_string(),
-            llm: crate::types::WorkflowLlmConfig {
-                model: "anthropic/claude-sonnet-4-5".to_string(),
-                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
-                base_url: None,
-                api_version: None,
-                temperature: None,
-                max_output_tokens: None,
-                timeout_seconds: None,
-                num_retries: None,
-                reasoning_effort: None,
-                extra_headers: None,
-                input_cost_per_token: None,
-                output_cost_per_token: None,
-                usage_id: None,
-            },
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
-            allowed_tools: vec![],
-            max_turns: 50,
-            user_message_suffix: None,
-            system_message_suffix: Some("# Skill Creator Agent".to_string()),
-            task_kind: Some("workflow.skill_generation".to_string()),
-            plugin_slug: "default".to_string(),
-            skill_name: Some("my-skill".to_string()),
-            step_id: Some(3),
-            run_source: Some("workflow".to_string()),
-            workflow_session_id: Some("workflow-session".to_string()),
-            usage_session_id: None,
-            workspace_agents_fingerprint: Some("new-skill-creator-and-verifier".to_string()),
-        };
-
-        assert!(
-            !conversation_matches_request(&conversation, &request),
-            "saved conversation should be recreated when the deployed workspace-agent contract changes"
-        );
     }
 
     #[test]
@@ -1322,7 +1266,6 @@ mod tests {
             run_source: Some("workflow".to_string()),
             workflow_session_id: Some("workflow-session".to_string()),
             usage_session_id: None,
-            workspace_agents_fingerprint: None,
         };
         let refine_request = OpenHandsOneShotRequest {
             prompt: "refine".to_string(),
@@ -1340,7 +1283,6 @@ mod tests {
             run_source: Some("refine".to_string()),
             workflow_session_id: None,
             usage_session_id: Some("refine-session".to_string()),
-            workspace_agents_fingerprint: None,
         };
 
         assert!(is_persistent_skill_request(&workflow_request));

@@ -14,8 +14,9 @@ OpenHands file-agent registration. The runtime therefore needs to deploy a
 dedicated `skill-verifier.md` file into `.agents/agents/`, keep step 3 on the
 skill-scoped workspace, and prompt the main conversation to invoke
 `skill-verifier` by name during the generator-verifier loop. Because
-conversations are persistent per skill, compatibility checks must recreate old
-conversations that predate the verifier-enabled contract.
+conversations are persistent per skill and OpenHands only rereads workspace
+file agents when a conversation is rebuilt, changes to skill or agent
+definitions require an app restart to take effect on an existing conversation.
 
 **Tech Stack:** Rust / Tauri / OpenHands Agent Server / workspace agent files /
 Vitest / cargo tests.
@@ -31,7 +32,7 @@ Vitest / cargo tests.
 | `agent-sources/workspace/agents/skill-verifier.md` | New verifier agent definition |
 | `app/src-tauri/src/commands/workflow/deploy.rs` | Ensure verifier agent deploys with other workspace agent files |
 | `app/src-tauri/src/agents/openhands_server/types.rs` | Preserve skill-scoped workspace contract for server-side file-agent discovery |
-| `app/src-tauri/src/agents/openhands_server/mod.rs` | Treat missing verifier-capable contract as a resume mismatch for persistent conversations |
+| `app/src-tauri/src/agents/openhands_server/mod.rs` | Keep persistent-conversation reuse focused on the main agent config |
 | `app/src-tauri/src/agents/openhands_server/client.rs` | Request-shape tests for skill-scoped workspace and default tool contract |
 | `agent-sources/workspace/skills/creating-skills/SKILL.md` | Update generation guidance to call the verifier by name |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Step 3 prompt/runtime wiring if explicit verifier mention is needed |
@@ -50,13 +51,13 @@ Vitest / cargo tests.
 
 - [x] **Step 1: Add a failing structural test that `agent-sources/workspace/agents/skill-verifier.md` exists and has valid file-agent frontmatter**
 - [x] **Step 2: Add a failing structural or behavioral test that step 3 guidance explicitly invokes `skill-verifier` by name**
-- [x] **Step 3: Add a failing Rust test that persistent conversation compatibility rejects saved conversations that lack verifier-capable workspace agent state**
+- [x] **Step 3: Add a failing Rust test that pins the persistent conversation reuse contract to the supported main-agent config checks**
 - [x] **Step 4: Run the targeted red tests and confirm the failures are about missing verifier/subagent wiring**
 - [x] **Step 5: Commit the red tests**
 
 ---
 
-### Task 2: Add the verifier agent definition and runtime compatibility wiring
+### Task 2: Add the verifier agent definition and runtime wiring
 
 **Files:**
 
@@ -66,7 +67,7 @@ Vitest / cargo tests.
 
 - [x] **Step 1: Create `skill-verifier.md` with clear step 3 validation scope and no workflow-routing frontmatter leakage**
 - [x] **Step 2: Ensure workspace deployment copies `skill-verifier.md` into both workspace root and skill-scoped `.agents/agents/` layouts**
-- [x] **Step 3: Extend persistent-conversation compatibility checks so old conversations without the verifier-enabled contract are recreated once**
+- [x] **Step 3: Keep runtime behavior simple: rely on app restart to reload changed workspace agent files for persistent conversations**
 - [x] **Step 4: Re-run the targeted tests and make them green**
 - [x] **Step 5: Commit the runtime wiring**
 
@@ -90,7 +91,7 @@ Vitest / cargo tests.
 ### Task 4: Final verification
 
 - [x] **Step 1: Run `cd app && npm run test:agents:structural`**
-- [x] **Step 2: Run the targeted Rust `openhands_server` tests for workspace contract and persistent-conversation compatibility**
+- [x] **Step 2: Run the targeted Rust `openhands_server` tests for workspace contract and persistent-conversation reuse**
 - [x] **Step 3: Run `cd app && npm run test:unit` if agent contract types changed in frontend-visible code**
 - [x] **Step 4: Run one smoke test that exercises step 3 verifier delegation end to end on the Agent Server path**
 - [x] **Step 5: Update the plan checkboxes and capture verification notes in `VU-1168`**
@@ -98,7 +99,11 @@ Vitest / cargo tests.
 ## Verification Notes
 
 - `cd app && npm run test:agents:structural`
+- `cd app && npx tsc --noEmit`
+- `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 - `cargo test --manifest-path app/src-tauri/Cargo.toml openhands_server -- --nocapture`
+- `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow -- --nocapture`
 - `cargo test --manifest-path app/src-tauri/Cargo.toml skill_generation_prompt_renders_app_owned_openhands_task_context -- --nocapture`
+- `cd app && bash tests/run.sh e2e --tag @workflow`
 - `cd app && npm run test:openhands:subagent-smoke`
 - `cd app && OPENHANDS_AGENT_SERVER_LIVE_SMOKE=1 npm run test:openhands:subagent-smoke`

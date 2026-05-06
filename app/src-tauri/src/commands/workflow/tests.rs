@@ -2404,6 +2404,11 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
         "# Skill Creator Agent",
     )
     .unwrap();
+    std::fs::write(
+        workspace_agents_src.path().join("skill-verifier.md"),
+        "# Skill Verifier Agent",
+    )
+    .unwrap();
     std::fs::write(workspace_agents_src.path().join("README.txt"), "skip me").unwrap();
     std::fs::create_dir_all(
         workspace_skills_src
@@ -2440,6 +2445,9 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
 
     assert!(workspace_skill_dir
         .join(".agents/agents/skill-creator.md")
+        .is_file());
+    assert!(workspace_skill_dir
+        .join(".agents/agents/skill-verifier.md")
         .is_file());
     assert!(!workspace_skill_dir
         .join(".agents/agents/README.txt")
