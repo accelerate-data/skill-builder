@@ -14,7 +14,7 @@ interface PromptSetEditorProps {
   draft: SaveScenario;
   mode: EvalWorkbenchMode;
   onChange: (draft: SaveScenario) => void;
-  onNew: () => void;
+  onNew?: () => void;
   onSuggest?: () => void;
   onDelete?: () => void;
   suggestDisabled?: boolean;
@@ -22,6 +22,7 @@ interface PromptSetEditorProps {
   showDelete?: boolean;
   showSuggest?: boolean;
   suggestBusy?: boolean;
+  showNew?: boolean;
 }
 
 function nextTags(
@@ -55,6 +56,7 @@ export function PromptSetEditor({
   showDelete = false,
   showSuggest = true,
   suggestBusy = false,
+  showNew = true,
 }: PromptSetEditorProps) {
   function updateExpectations(nextExpectations: string[]) {
     onChange({ ...draft, expectations: nextExpectations });
@@ -99,9 +101,11 @@ export function PromptSetEditor({
               {suggestBusy ? "Suggesting…" : "Suggest"}
             </Button>
           ) : null}
-          <Button size="sm" variant="outline" onClick={onNew}>
-            New scenario
-          </Button>
+          {showNew && onNew ? (
+            <Button size="sm" variant="outline" onClick={onNew}>
+              New scenario
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -184,6 +188,26 @@ export function PromptSetEditor({
                       key={`${draft.id}-expectation-${expectationIndex}`}
                       className="rounded border p-2"
                     >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Expectation {expectationIndex + 1}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            updateExpectations(
+                              draft.expectations.filter(
+                                (_value, index) => index !== expectationIndex,
+                              ),
+                            )
+                          }
+                          aria-label={`Delete expectation ${expectationIndex + 1}`}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
                       <Textarea
                         value={expectation}
                         onChange={(event) => {
@@ -198,7 +222,7 @@ export function PromptSetEditor({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No expectations yet.
+                  No expectations yet. Add one or use Suggest.
                 </p>
               )}
             </div>

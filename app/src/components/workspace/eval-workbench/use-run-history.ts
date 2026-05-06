@@ -154,6 +154,18 @@ export function useRunHistory({
     return run;
   }, []);
 
+  useEffect(() => {
+    if (runs.length === 0) {
+      setSelectedRunId(null);
+      setSelectedRun(null);
+      return;
+    }
+    if (selectedRunId && runs.some((run) => run.id === selectedRunId)) {
+      return;
+    }
+    void selectRun(runs[0].id);
+  }, [runs, selectRun, selectedRunId]);
+
   const prependRun = useCallback((run: EvalRun) => {
     setRuns((currentRuns) => [
       run,

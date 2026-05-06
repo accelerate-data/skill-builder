@@ -77,11 +77,15 @@ export function WorkspaceEvalWorkbench({
   }, [isRunning, onRunningChange]);
 
   useEffect(() => {
-    const nextSelectedScenario =
-      visibleScenarios.find((scenario) => scenario.name === selectedScenarioName) ??
-      visibleScenarios[0] ??
-      null;
-    setSelectedScenarioName(nextSelectedScenario?.name ?? null);
+    if (!selectedScenarioName) {
+      return;
+    }
+    const nextSelectedScenario = visibleScenarios.find(
+      (scenario) => scenario.name === selectedScenarioName,
+    );
+    if (!nextSelectedScenario) {
+      setSelectedScenarioName(null);
+    }
   }, [selectedScenarioName, visibleScenarios]);
 
   const triggerSkill =
@@ -122,9 +126,7 @@ export function WorkspaceEvalWorkbench({
 
   async function handleDeleteScenario(scenarioName: string) {
     await deleteScenarioMutation.mutateAsync({ scenarioName });
-    const nextSelectedScenario =
-      visibleScenarios.find((scenario) => scenario.name !== scenarioName) ?? null;
-    setSelectedScenarioName(nextSelectedScenario?.name ?? null);
+    setSelectedScenarioName(null);
   }
 
   function handleStartNewScenario() {
@@ -158,9 +160,19 @@ export function WorkspaceEvalWorkbench({
                 Shared scenario files filtered by the active Eval Workbench tab.
               </p>
             </div>
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {activeMode}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {activeMode}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isRunning || createScenarioMutation.isPending}
+                onClick={() => void handleCreateScenario(activeMode)}
+              >
+                New scenario
+              </Button>
+            </div>
           </div>
 
           {scenariosQuery.isLoading ? (
@@ -186,7 +198,7 @@ export function WorkspaceEvalWorkbench({
 
           {!scenariosQuery.isLoading && !scenariosQuery.error ? (
             visibleScenarios.length > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 space-y-2">
                 {visibleScenarios.map((scenario) => (
                   <Button
                     key={scenario.name}
@@ -197,11 +209,16 @@ export function WorkspaceEvalWorkbench({
                         ? "secondary"
                         : "outline"
                     }
+                    className="flex h-auto w-full items-start justify-start p-3 text-left"
                     onClick={() => {
-                      setSelectedScenarioName(scenario.name);
+                      setSelectedScenarioName((current) =>
+                        current === scenario.name ? null : scenario.name,
+                      );
                     }}
                   >
-                    {scenario.name}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{scenario.name}</p>
+                    </div>
                   </Button>
                 ))}
               </div>

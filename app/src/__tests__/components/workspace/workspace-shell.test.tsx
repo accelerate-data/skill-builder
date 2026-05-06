@@ -387,6 +387,7 @@ describe("WorkspaceShell", () => {
     );
 
     await screen.findByText("Regression");
+    await user.click(screen.getByRole("button", { name: "Regression" }));
     await user.click(await screen.findByRole("button", { name: /^evaluate$/i }));
     await waitFor(() => expect(mockRunEvalWorkbench).toHaveBeenCalled());
 
@@ -422,6 +423,8 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="description" />,
     );
 
+    await screen.findByText("Routing checks");
+    await user.click(screen.getByRole("button", { name: "Routing checks" }));
     await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
     await waitFor(() =>
@@ -449,7 +452,7 @@ describe("WorkspaceShell", () => {
     ]);
   });
 
-  it("loads scenario detail separately from the shared scenario list and keeps shared selections across tabs", async () => {
+  it("loads scenario detail separately from the shared scenario list and keeps shared scenarios available across tabs", async () => {
     const user = userEvent.setup();
 
     mockUseScenarios.mockReset().mockReturnValue({
@@ -482,6 +485,8 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
     );
 
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Regression" }));
     expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
     expect(mockUseScenario).toHaveBeenCalledWith(
       "sales-pipeline",
@@ -500,18 +505,7 @@ describe("WorkspaceShell", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: "Trigger" }));
-    expect(
-      await screen.findByDisplayValue("Explains invoice reconciliation routing."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Core workflow coverage" })).toHaveAttribute(
-      "data-variant",
-      "secondary",
-    );
-    expect(mockUseScenario).toHaveBeenLastCalledWith(
-      "sales-pipeline",
-      "skills",
-      "Core workflow coverage",
-    );
+    expect(await screen.findByRole("button", { name: "Core workflow coverage" })).toBeInTheDocument();
   });
 
   it("creates a new persisted scenario immediately", async () => {
@@ -533,7 +527,7 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
     );
 
-    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await screen.findByText("Regression");
     await user.click(screen.getByRole("button", { name: /new scenario/i }));
 
     await waitFor(() =>
@@ -541,6 +535,31 @@ describe("WorkspaceShell", () => {
         mode: "performance",
       }),
     );
+  });
+
+  it("does not render a scenario editor until the user expands or creates a scenario", async () => {
+    render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+    );
+
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
+  });
+
+  it("expands a scenario inline when its row is opened", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+    );
+
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Regression" }));
+
+    expect(await screen.findByLabelText(/scenario name/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Regression")).toBeInTheDocument();
   });
 
   it("disables scenario actions while the selected scenario detail is still loading", async () => {
@@ -574,6 +593,8 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
     );
 
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Regression" }));
     expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
@@ -585,7 +606,7 @@ describe("WorkspaceShell", () => {
     await user.click(screen.getByRole("tab", { name: "Trigger" }));
 
     expect(screen.getByRole("button", { name: /generate candidates/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /run comparison/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
   });
 
   it("deletes a saved scenario and falls back to a remaining selection", async () => {
@@ -623,6 +644,8 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
     );
 
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Regression" }));
     expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /delete scenario/i }));
@@ -632,17 +655,13 @@ describe("WorkspaceShell", () => {
         scenarioName: "Regression",
       }),
     );
-    expect(await screen.findByDisplayValue("Reconcile open customer invoices")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Regression" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Core workflow coverage" })).toHaveAttribute(
-      "data-variant",
-      "secondary",
-    );
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
   });
 
-  it("falls back to the first visible scenario when the selected one does not support the next tab", async () => {
+  it("clears the expanded scenario when switching to a tab where it is not visible", async () => {
     const user = userEvent.setup();
 
     mockUseScenarios.mockReset().mockReturnValue({
@@ -669,6 +688,8 @@ describe("WorkspaceShell", () => {
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
     );
 
+    expect(await screen.findByText("Regression")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Regression" }));
     expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
     expect(mockUseScenario).toHaveBeenLastCalledWith(
       "sales-pipeline",
@@ -678,12 +699,8 @@ describe("WorkspaceShell", () => {
 
     await user.click(screen.getByRole("tab", { name: "Trigger" }));
 
-    expect(await screen.findByDisplayValue("Routing checks")).toBeInTheDocument();
-    expect(mockUseScenario).toHaveBeenLastCalledWith(
-      "sales-pipeline",
-      "skills",
-      "Routing checks",
-    );
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
+    expect(mockUseScenario).toHaveBeenLastCalledWith("sales-pipeline", "skills", null);
   });
 
   it("clears skillFiles cache when skill name changes", async () => {

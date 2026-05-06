@@ -197,12 +197,12 @@ describe("WorkspaceEvals", () => {
       />,
     );
 
-    expect(await screen.findByLabelText(/scenario name/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
     expect(mockListEvalRuns).not.toHaveBeenCalled();
-    expect(screen.getByText("No runs yet.")).toBeInTheDocument();
+    expect(screen.getByText(/no evaluations yet/i)).toBeInTheDocument();
   });
 
-  it("uses scenario-level actions in the empty state", async () => {
+  it("uses a combined results section in the empty state", async () => {
     render(
       <WorkspaceEvals
         skill={skill}
@@ -213,13 +213,11 @@ describe("WorkspaceEvals", () => {
       />,
     );
 
-    expect(await screen.findByLabelText(/scenario name/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /generate scenarios/i }),
-    ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^suggest$/i })).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: /^save scenario$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Results" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
+    expect(screen.queryByRole("heading", { name: /run history/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /latest run/i })).not.toBeInTheDocument();
   });
 
   it("shows plain-language expectations instead of low-level assertion editors", async () => {
@@ -240,37 +238,19 @@ describe("WorkspaceEvals", () => {
     expect(screen.queryByRole("button", { name: /add assertion/i })).not.toBeInTheDocument();
   });
 
-  it("creates a persisted performance scenario immediately when starting a new scenario", async () => {
-    const user = userEvent.setup();
-    const onCreateScenario = vi.fn().mockResolvedValue({
-      id: "case-new",
-      name: "New scenario",
-      tags: ["performance"],
-      prompt: "",
-      shouldTrigger: null,
-      expectations: [],
-    });
-    const onStartNewScenario = vi.fn();
-
+  it("leaves new scenario creation to the parent Scenarios section", async () => {
     render(
       <WorkspaceEvals
         skill={skill}
         workspacePath="/workspace"
         scenario={performanceScenario}
-        onStartNewScenario={onStartNewScenario}
+        onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onCreateScenario={onCreateScenario}
       />,
     );
 
-    await screen.findByDisplayValue("Forecast next quarter revenue");
-
-    await user.click(screen.getByRole("button", { name: /new scenario/i }));
-    expect(onStartNewScenario).toHaveBeenCalled();
-
-    await waitFor(() =>
-      expect(onCreateScenario).toHaveBeenCalled(),
-    );
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /new scenario/i })).not.toBeInTheDocument();
   });
 
   it("autosaves edits after a persisted scenario exists", async () => {
@@ -306,6 +286,38 @@ describe("WorkspaceEvals", () => {
     );
   });
 
+  it("deletes an expectation from the expanded scenario editor", async () => {
+    const user = userEvent.setup();
+    const onSaveScenario = vi.fn().mockResolvedValue({
+      ...performanceScenario,
+      expectations: [],
+    });
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={onSaveScenario}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue("Explains the forecast assumptions.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /delete expectation 1/i }));
+
+    await waitFor(() =>
+      expect(onSaveScenario).toHaveBeenCalledWith({
+        id: "case-1",
+        name: "Regression",
+        tags: ["performance"],
+        prompt: "Forecast next quarter revenue",
+        shouldTrigger: null,
+        expectations: [],
+      }, { previousScenarioName: "Regression" }),
+    );
+  });
+
   it("builds an improvement brief and sends it to Refine", async () => {
     const user = userEvent.setup();
     const onNavigateToRefine = vi.fn();
@@ -322,7 +334,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText("Missed assumptions section");
     await user.click(screen.getByRole("button", { name: /send to refine/i }));
 
@@ -336,7 +347,6 @@ describe("WorkspaceEvals", () => {
   });
 
   it("keeps package history stable when the selected scenario changes", async () => {
-    const user = userEvent.setup();
     const { rerender } = render(
       <WorkspaceEvals
         skill={skill}
@@ -348,7 +358,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText("Missed assumptions section");
 
     rerender(
@@ -366,7 +375,6 @@ describe("WorkspaceEvals", () => {
   });
 
   it("reloads filtered history and clears the selected run when the workspace changes", async () => {
-    const user = userEvent.setup();
     const { rerender } = render(
       <WorkspaceEvals
         skill={skill}
@@ -378,7 +386,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText("Missed assumptions section");
 
     rerender(
@@ -400,7 +407,7 @@ describe("WorkspaceEvals", () => {
         "Package",
       ),
     );
-    expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument();
+    await screen.findByText("Missed assumptions section");
   });
 
   it("ignores stale history responses after the workspace changes", async () => {
@@ -441,7 +448,6 @@ describe("WorkspaceEvals", () => {
   });
 
   it("ignores stale run-detail responses after the workspace changes", async () => {
-    const user = userEvent.setup();
     const staleDetail = createDeferred(runDetail);
     mockReadEvalRun.mockReset().mockReturnValue(staleDetail.promise);
     mockListEvalRuns
@@ -460,7 +466,6 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
 
     rerender(
       <WorkspaceEvals
@@ -478,7 +483,7 @@ describe("WorkspaceEvals", () => {
     await waitFor(() =>
       expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument(),
     );
-    expect(screen.getByText(/select a run to inspect its results/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send to refine/i })).toBeInTheDocument();
   });
 
   it("persists and reloads the selected scenario from the scenario-level suggest action", async () => {

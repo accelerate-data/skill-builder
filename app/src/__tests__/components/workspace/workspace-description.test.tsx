@@ -365,7 +365,6 @@ describe("WorkspaceDescription", () => {
   });
 
   it("reloads filtered history and clears selected run details when the scenario changes", async () => {
-    const user = userEvent.setup();
     const { rerender } = render(
       <WorkspaceDescription
         skill={skill}
@@ -377,7 +376,6 @@ describe("WorkspaceDescription", () => {
     );
 
     await screen.findByDisplayValue("Routing checks");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByText(/invoice reconciliation or payment matching/i);
 
     rerender(
@@ -453,7 +451,6 @@ describe("WorkspaceDescription", () => {
     );
 
     await screen.findByDisplayValue("Routing checks");
-    await user.click(screen.getByRole("button", { name: /view latest run/i }));
     await screen.findByRole("heading", { name: "Candidate 1" });
     await user.click(screen.getByRole("button", { name: /send to refine/i }));
 
@@ -486,9 +483,8 @@ describe("WorkspaceDescription", () => {
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
 
     expect(screen.getByRole("heading", { name: "Baseline" })).toBeInTheDocument();
-    expect(screen.queryByText("Recommended")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /run comparison/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
@@ -589,7 +585,7 @@ describe("WorkspaceDescription", () => {
     await screen.findByDisplayValue("Routing checks");
     await user.click(screen.getByRole("button", { name: /generate candidates/i }));
     await screen.findByText(/invoice reconciliation or payment matching/i);
-    await user.click(screen.getByRole("button", { name: /run comparison/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
