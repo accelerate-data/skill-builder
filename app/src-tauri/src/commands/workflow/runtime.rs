@@ -22,7 +22,7 @@ use super::output_format::{
 };
 use super::prompt::{
     build_evaluator_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt,
-    build_step3_prompt,
+    build_step3_prompt, format_user_context,
 };
 use super::settings::{read_workflow_settings, WorkflowSettings};
 use super::step_config::{
@@ -707,36 +707,42 @@ pub async fn run_answer_evaluator(
     // Ensure agent files are deployed to workspace
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    // Read settings from DB — same pattern as read_workflow_settings but without
-    // step-specific validation (this is a gate, not a workflow step).
-    let (llm, skills_path, plugin_slug) = {
+    let settings = read_workflow_settings(&db, &skill_name, 0, &workspace_path)?;
+
+    let user_context_block = format_user_context(
+        Some(&skill_name),
+        &settings.tags,
+        settings.author_login.as_deref(),
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        settings.intake_json.as_deref(),
+        settings.description.as_deref(),
+        Some(&settings.purpose),
+        settings.version.as_deref(),
+        settings.skill_model.as_deref(),
+        settings.argument_hint.as_deref(),
+        settings.user_invocable,
+        settings.disable_model_invocation,
+        &settings.documents,
+    )
+    .unwrap_or_default();
+
+    let clarifications_json = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn).map_err(|e| {
-            log::error!("run_answer_evaluator: failed to read settings: {}", e);
-            e.to_string()
-        })?;
-        let llm = crate::db::selected_workflow_llm(&settings)
-            .inspect_err(|e| log::error!("run_answer_evaluator: {}", e))?;
-        let _wp = settings.workspace_path.ok_or_else(|| {
-            log::error!("run_answer_evaluator: workspace_path not configured");
-            "Workspace path not configured".to_string()
-        })?;
-        let sp = settings
-            .skills_path
-            .unwrap_or_else(|| workspace_path.clone());
-        // Look up plugin slug for this skill so workspace path resolves correctly.
-        let slug = crate::db::get_skill_master_any_plugin(&conn, &skill_name)
-            .ok()
-            .flatten()
-            .map(|m| m.plugin_slug)
-            .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-        (llm, sp, slug)
+        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_name) {
+            Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
+            _ => "{}".to_string(),
+        }
     };
 
-    // VU-1157: user-context.md is no longer written. Skill metadata flows
-    // into the prompt inline once Task 5 lands.
-
-    let prompt = build_evaluator_prompt(&skill_name, &workspace_path, &plugin_slug, &skills_path);
+    let prompt = build_evaluator_prompt(
+        &skill_name,
+        &workspace_path,
+        &settings.plugin_slug,
+        &settings.skills_path,
+        &user_context_block,
+        &clarifications_json,
+    );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
     log::info!(
@@ -750,8 +756,8 @@ pub async fn run_answer_evaluator(
         &skill_name,
         &prompt,
         &workspace_path,
-        &plugin_slug,
-        llm,
+        &settings.plugin_slug,
+        settings.llm,
     );
 
     log::debug!(

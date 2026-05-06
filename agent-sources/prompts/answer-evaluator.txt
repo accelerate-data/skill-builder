@@ -1,16 +1,18 @@
 EXECUTE IMMEDIATELY. Do not greet the user, ask questions, or offer options.
 
 You are running the answer-evaluator workflow gate for Skill Builder.
-Evaluate the user's answers in clarifications.json and return the gate verdict
-JSON. This is app-specific workflow logic, not a reusable skill. Do not invoke
-an answer-evaluator skill.
+Evaluate the user's answers in the inline clarifications JSON and return the
+gate verdict JSON. This is app-specific workflow logic, not a reusable skill.
+Do not invoke an answer-evaluator skill.
 
 We are writing the skill {{skill_name}}.
 Workspace directory: {{workspace_dir}}
 Skill output directory: {{skill_output_dir}}
-User context file: {{workspace_dir}}/user-context.md
-Context directory: {{workspace_dir}}/context
-Clarifications file: {{workspace_dir}}/context/clarifications.json
+User context:
+{{user_context_block}}
+
+Clarifications JSON:
+{{clarifications_json}}
 
 All directories already exist. Do not create directories with mkdir. Do not list directories with ls.
 
@@ -21,13 +23,15 @@ Critical rules:
 - Do not ask the user questions.
 - Use `answer_text` as the single source of truth. `answer_choice` is metadata
   only and must not drive classification.
-- If user-context.md or clarifications.json is missing, or clarifications.json
-  is malformed, return an insufficient verdict with zero counts,
+- If the user context block is empty, or the clarifications JSON block is empty,
+  malformed, or missing the expected `sections[].questions[]` structure, return
+  an insufficient verdict with zero counts,
   `per_question: []`, and `gate_decision: "revise"`.
 
-Read user-context.md and context/clarifications.json. Read every
-`sections[].questions[]` item and every refinement question nested under a
-question. Evaluate top-level questions and refinements together.
+Use the inline user context block and inline clarifications JSON block below as
+the source of truth. Read every `sections[].questions[]` item and every
+refinement question nested under a question. Evaluate top-level questions and
+refinements together.
 
 Apply classifications in this order:
 

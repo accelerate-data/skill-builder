@@ -225,6 +225,84 @@ pub fn create_plugin(
     Ok((id, slug))
 }
 
+pub fn save_skill_conversation_id(
+    conn: &Connection,
+    plugin_slug: &str,
+    skill_name: &str,
+    conversation_id: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO skill_conversations (plugin_slug, skill_name, conversation_id, updated_at)
+         VALUES (?1, ?2, ?3, datetime('now') || 'Z')
+         ON CONFLICT(plugin_slug, skill_name) DO UPDATE SET
+             conversation_id = excluded.conversation_id,
+             updated_at = excluded.updated_at",
+        rusqlite::params![plugin_slug, skill_name, conversation_id],
+    )
+    .map_err(|e| format!("save_skill_conversation_id: {}", e))?;
+    Ok(())
+}
+
+pub fn get_skill_conversation_id(
+    conn: &Connection,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT conversation_id
+         FROM skill_conversations
+         WHERE plugin_slug = ?1 AND skill_name = ?2",
+        rusqlite::params![plugin_slug, skill_name],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("get_skill_conversation_id: {}", e))
+}
+
+pub fn clear_skill_conversation_id(
+    conn: &Connection,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM skill_conversations WHERE plugin_slug = ?1 AND skill_name = ?2",
+        rusqlite::params![plugin_slug, skill_name],
+    )
+    .map_err(|e| format!("clear_skill_conversation_id: {}", e))?;
+    Ok(())
+}
+
+pub fn rename_skill_conversation_id(
+    conn: &Connection,
+    old_skill_name: &str,
+    new_skill_name: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE skill_conversations
+         SET skill_name = ?2, updated_at = datetime('now') || 'Z'
+         WHERE skill_name = ?1",
+        rusqlite::params![old_skill_name, new_skill_name],
+    )
+    .map_err(|e| format!("rename_skill_conversation_id: {}", e))?;
+    Ok(())
+}
+
+pub fn move_skill_conversation_to_plugin(
+    conn: &Connection,
+    skill_name: &str,
+    from_plugin_slug: &str,
+    to_plugin_slug: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE skill_conversations
+         SET plugin_slug = ?3, updated_at = datetime('now') || 'Z'
+         WHERE skill_name = ?1 AND plugin_slug = ?2",
+        rusqlite::params![skill_name, from_plugin_slug, to_plugin_slug],
+    )
+    .map_err(|e| format!("move_skill_conversation_to_plugin: {}", e))?;
+    Ok(())
+}
+
 // --- Skills Master ---
 
 /// Upsert a row in the `skills` master table. Used by `save_workflow_run` (skill-builder)
@@ -508,6 +586,7 @@ pub fn move_skill_to_plugin(
             skill_name, from_plugin_slug
         ));
     }
+    move_skill_conversation_to_plugin(conn, skill_name, from_plugin_slug, to_plugin_slug)?;
     Ok(())
 }
 
@@ -941,6 +1020,39 @@ mod tests {
             .expect("query ok")
             .expect("skill should exist in target plugin");
         assert_eq!(master.plugin_slug, target_slug);
+    }
+
+    #[test]
+    fn move_skill_to_plugin_moves_persisted_conversation_row() {
+        let conn = create_test_db_for_tests();
+        ensure_default_plugin(&conn).unwrap();
+        let (_, target_slug) = create_plugin(&conn, "target-plugin", "local", None, None).unwrap();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+        save_skill_conversation_id(
+            &conn,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+            "conv-123",
+        )
+        .unwrap();
+
+        move_skill_to_plugin(
+            &conn,
+            "my-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            &target_slug,
+        )
+        .expect("move should succeed");
+
+        assert_eq!(
+            get_skill_conversation_id(&conn, crate::skill_paths::DEFAULT_PLUGIN_SLUG, "my-skill")
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            get_skill_conversation_id(&conn, &target_slug, "my-skill").unwrap(),
+            Some("conv-123".to_string())
+        );
     }
 
     #[test]

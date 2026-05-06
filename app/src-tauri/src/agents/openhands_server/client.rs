@@ -34,6 +34,14 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    pub fn build_get_conversation_request(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Request, reqwest::Error> {
+        self.request(Method::GET, &format!("api/conversations/{conversation_id}"))
+            .build()
+    }
+
     pub fn build_send_event_request(
         &self,
         conversation_id: &str,
@@ -122,6 +130,20 @@ impl OpenHandsServerClient {
         }
         response.error_for_status()?;
         Ok(())
+    }
+
+    pub async fn get_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<serde_json::Value>, reqwest::Error> {
+        let response = self
+            .http
+            .execute(self.build_get_conversation_request(conversation_id)?)
+            .await?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(response.error_for_status()?.json().await?))
     }
 
     pub async fn pause_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
@@ -374,6 +396,14 @@ mod tests {
         assert_eq!(
             client.build_run_request("abc").unwrap().url().path(),
             "/api/conversations/abc/run"
+        );
+        assert_eq!(
+            client
+                .build_get_conversation_request("abc")
+                .unwrap()
+                .url()
+                .path(),
+            "/api/conversations/abc"
         );
         assert_eq!(
             client

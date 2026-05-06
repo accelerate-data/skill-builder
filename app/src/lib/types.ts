@@ -174,12 +174,18 @@ export interface RefineFinalizeResult {
   commit_sha: string | null
 }
 
+export interface ConversationMessage {
+  role: string
+  content: string
+}
+
 export interface RefineSessionInfo {
   session_id: string
   skill_name: string
   created_at: string
   /** Agent names discovered from allowed refine plugins (e.g. "skill-creator:rewrite-skill"). */
   available_agents: string[]
+  restored_messages: ConversationMessage[]
 }
 
 

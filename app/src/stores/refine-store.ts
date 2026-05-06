@@ -32,6 +32,7 @@ export interface RefineMessage {
   id: string;
   role: RefineMessageRole;
   agentId?: string; // set for "agent" role — links to agent-store run
+  agentText?: string; // restored agent text when rehydrating persisted history
   userText?: string; // set for "user" role
   targetFiles?: string[]; // files targeted with @mentions
   toolUseId?: string;
@@ -105,6 +106,7 @@ interface RefineState {
   setSessionExhausted: (v: boolean) => void;
   setAvailableAgents: (agents: string[]) => void;
   setPendingFollowupMessage: (message: string | null) => void;
+  setMessages: (messages: RefineMessage[]) => void;
   clearSession: () => void;
 }
 
@@ -302,6 +304,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setAvailableAgents: (agents) => set({ availableAgents: agents }),
   setPendingFollowupMessage: (message) =>
     set({ pendingFollowupMessage: message }),
+  setMessages: (messages) => set({ messages }),
 
   clearSession: () => set(SESSION_DEFAULTS),
 }));

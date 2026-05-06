@@ -7,7 +7,11 @@ import type { SkillSummary } from "@/lib/types";
 const tauriMocks = vi.hoisted(() => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),
   releaseLock: vi.fn().mockResolvedValue(undefined),
-  startRefineSession: vi.fn().mockResolvedValue({ session_id: "session-1" }),
+  startRefineSession: vi.fn().mockResolvedValue({
+    session_id: "session-1",
+    available_agents: [],
+    restored_messages: [],
+  }),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
@@ -62,6 +66,7 @@ const refineStoreState = vi.hoisted(() => ({
   setRunning: vi.fn(),
   setActiveAgentId: vi.fn(),
   setAvailableAgents: vi.fn(),
+  setMessages: vi.fn(),
   setPendingFollowupMessage: vi.fn(),
   addUserMessage: vi.fn(),
   addAgentTurn: vi.fn(),
@@ -188,6 +193,35 @@ describe("WorkspaceRefine", () => {
       "my-skill",
       "/workspace",
       "skills",
+    );
+  });
+
+  it("hydrates restored messages from the resumed refine session", async () => {
+    const skill = makeSkill("my-skill");
+    tauriMocks.startRefineSession.mockResolvedValueOnce({
+      session_id: "session-1",
+      available_agents: ["skill-creator"],
+      restored_messages: [
+        { role: "user", content: "Tighten the intro" },
+        { role: "agent", content: "Updated the intro section." },
+      ],
+    });
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    expect(refineStoreState.setMessages).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          userText: "Tighten the intro",
+        }),
+        expect.objectContaining({
+          role: "agent",
+          agentText: "Updated the intro section.",
+        }),
+      ]),
     );
   });
 

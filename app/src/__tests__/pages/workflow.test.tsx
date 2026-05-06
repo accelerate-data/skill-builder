@@ -1400,6 +1400,76 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
   });
 
+  it("materializes OpenHands gate result_text when JSON is wrapped in prose", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All answers are actionable.",
+      gate_decision: "run_research",
+      per_question: [
+        { question_id: "Q1", verdict: "clear" },
+        { question_id: "Q2", verdict: "clear" },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === gateEvaluationPath) {
+        return Promise.resolve("NOT VALID JSON {{{");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-openhands-prose-result-text");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().applyConversationState("gate-openhands-prose-result-text", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: [
+          "I reviewed the answers and produced the final decision below.",
+          "```json",
+          JSON.stringify(evaluation),
+          "```",
+          "Use this structured output.",
+        ].join("\n"),
+        timestamp: Date.now(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(materializeAnswerEvaluationOutput)).toHaveBeenCalledWith(
+        "test-skill",
+        "/test/workspace",
+        evaluation,
+      );
+    });
+  });
+
   it("gate falls back when structured gate payload is missing", async () => {
     const jsonData = makeClarificationsJson();
     const evaluation = {

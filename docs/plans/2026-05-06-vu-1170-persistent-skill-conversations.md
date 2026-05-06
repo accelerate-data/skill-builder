@@ -45,11 +45,11 @@ isolated one-shot conversations.
 - Modify: `app/src-tauri/src/agents/openhands_server/tests.rs` or equivalent
 - Modify: frontend tests around skill-open / refine resume when appropriate
 
-- [ ] **Step 1: Add a failing DB test for storing and retrieving one `conversation_id` per `{plugin_slug, skill_name}`**
-- [ ] **Step 2: Add a failing runtime test that the Agent Server process uses `{workspace_skill_dir}/conversations` instead of a shared app root**
-- [ ] **Step 3: Add a failing orchestration test for "saved conversation found -> resume" and "saved conversation missing -> create new and overwrite ID"**
-- [ ] **Step 4: Add a failing refine/workflow-facing test that conversation ownership survives app restart or view close because it is DB-backed**
-- [ ] **Step 5: Run the targeted red tests and commit them**
+- [x] **Step 1: Add a failing DB test for storing and retrieving one `conversation_id` per `{plugin_slug, skill_name}`**
+- [x] **Step 2: Add a failing runtime test that the Agent Server process uses `{workspace_skill_dir}/conversations` instead of a shared app root**
+- [x] **Step 3: Add a failing orchestration test for "saved conversation found -> resume" and "saved conversation missing -> create new and overwrite ID"**
+- [x] **Step 4: Add a failing refine/workflow-facing test that conversation ownership survives app restart or view close because it is DB-backed**
+- [x] **Step 5: Run the targeted red tests and commit them**
 
 ---
 
@@ -60,10 +60,10 @@ isolated one-shot conversations.
 - Modify: `app/src-tauri/src/db/migrations.rs`
 - Modify: `app/src-tauri/src/db/*`
 
-- [ ] **Step 1: Add the DB schema needed to store one active OpenHands conversation per skill**
-- [ ] **Step 2: Add CRUD helpers for load/save/clear by `{plugin_slug, skill_name}`**
-- [ ] **Step 3: Re-run DB tests and make them green**
-- [ ] **Step 4: Commit the schema and DB helper work**
+- [x] **Step 1: Add the DB schema needed to store one active OpenHands conversation per skill**
+- [x] **Step 2: Add CRUD helpers for load/save/clear by `{plugin_slug, skill_name}`**
+- [x] **Step 3: Re-run DB tests and make them green**
+- [x] **Step 4: Commit the schema and DB helper work**
 
 ---
 
@@ -75,11 +75,11 @@ isolated one-shot conversations.
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
 - Modify: `app/src-tauri/src/agents/openhands_server/client.rs`
 
-- [ ] **Step 1: Refactor server startup so the conversations root is derived from the active `workspace_skill_dir`**
-- [ ] **Step 2: Add resume helpers that attempt to load the saved conversation before creating a new one**
-- [ ] **Step 3: Ensure reopen after crash or app restart restarts the server, then reattaches using the saved ID**
-- [ ] **Step 4: Re-run the targeted runtime tests and make them green**
-- [ ] **Step 5: Commit the runtime-lifecycle changes**
+- [x] **Step 1: Refactor server startup so the conversations root is derived from the active `workspace_skill_dir`**
+- [x] **Step 2: Add resume helpers that attempt to load the saved conversation before creating a new one**
+- [x] **Step 3: Ensure reopen after crash or app restart restarts the server, then reattaches using the saved ID**
+- [x] **Step 4: Re-run the targeted runtime tests and make them green**
+- [x] **Step 5: Commit the runtime-lifecycle changes**
 
 ---
 
@@ -91,17 +91,17 @@ isolated one-shot conversations.
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 - Modify: other skill-bound OpenHands callers as needed
 
-- [ ] **Step 1: Replace workflow's isolated per-step conversation creation with reattach-or-create against the skill conversation**
-- [ ] **Step 2: Replace refine's in-memory-only conversation ownership with the DB-backed skill conversation**
-- [ ] **Step 3: Keep pre-skill flows such as initial scope review on their own isolated conversation path**
-- [ ] **Step 4: Add regression tests for workflow plus refine sharing the same saved conversation ID**
-- [ ] **Step 5: Commit the surface integration**
+- [x] **Step 1: Replace workflow's isolated per-step conversation creation with reattach-or-create against the skill conversation**
+- [x] **Step 2: Replace refine's in-memory-only conversation ownership with the DB-backed skill conversation**
+- [x] **Step 3: Keep pre-skill flows such as initial scope review on their own isolated conversation path**
+- [x] **Step 4: Add regression tests for workflow plus refine sharing the same saved conversation ID**
+- [x] **Step 5: Commit the surface integration**
 
 ---
 
 ### Task 5: Final verification and issue follow-through
 
-- [ ] **Step 1: Run targeted cargo tests for DB, OpenHands runtime, workflow, and refine**
-- [ ] **Step 2: Run `cd app && npm run test:unit` for any frontend state changes**
-- [ ] **Step 3: Run `markdownlint` on the design doc and this plan if they changed during implementation**
-- [ ] **Step 4: Update the plan checklist and add verification notes to `VU-1170`**
+- [x] **Step 1: Run targeted cargo tests for DB, OpenHands runtime, workflow, and refine**
+- [x] **Step 2: Run `cd app && npm run test:unit` for any frontend state changes**
+- [x] **Step 3: Run `markdownlint` on the design doc and this plan if they changed during implementation**
+- [x] **Step 4: Update the plan checklist and add verification notes to `VU-1170`**

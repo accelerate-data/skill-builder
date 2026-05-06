@@ -455,6 +455,8 @@ pub(crate) fn build_evaluator_prompt(
     workspace_path: &str,
     plugin_slug: &str,
     skills_path: &str,
+    user_context_block: &str,
+    clarifications_json: &str,
 ) -> String {
     let workspace_dir =
         resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
@@ -468,4 +470,6 @@ pub(crate) fn build_evaluator_prompt(
         .replace("{{skill_name}}", skill_name)
         .replace("{{workspace_dir}}", &workspace_str)
         .replace("{{skill_output_dir}}", &skill_output_str)
+        .replace("{{user_context_block}}", user_context_block)
+        .replace("{{clarifications_json}}", clarifications_json)
 }

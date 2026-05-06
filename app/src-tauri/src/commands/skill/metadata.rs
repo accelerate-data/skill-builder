@@ -277,6 +277,10 @@ pub(crate) fn rename_skill_inner(
             rusqlite::params![old_name, new_name],
         )
         .map_err(&tx_err)?;
+        crate::db::rename_skill_conversation_id(&tx, old_name, new_name).map_err(|e| {
+            log::error!("[rename_skill] failed to rename persisted conversation: {}", e);
+            e
+        })?;
 
         tx.commit().map_err(&tx_err)?;
     }

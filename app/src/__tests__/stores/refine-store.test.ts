@@ -394,6 +394,28 @@ describe("useRefineStore", () => {
     expect(useRefineStore.getState().sessionId).toBeNull();
   });
 
+  it("setMessages replaces the restored conversation history", () => {
+    useRefineStore.getState().setMessages([
+      { id: "u1", role: "user", userText: "Refine this", timestamp: 1 },
+      {
+        id: "a1",
+        role: "agent",
+        agentText: "I tightened the copy.",
+        timestamp: 2,
+      },
+    ]);
+
+    expect(useRefineStore.getState().messages).toEqual([
+      { id: "u1", role: "user", userText: "Refine this", timestamp: 1 },
+      {
+        id: "a1",
+        role: "agent",
+        agentText: "I tightened the copy.",
+        timestamp: 2,
+      },
+    ]);
+  });
+
   it("setActiveAgentId sets and clears the active agent id", () => {
     useRefineStore.getState().setActiveAgentId("agent-xyz");
     expect(useRefineStore.getState().activeAgentId).toBe("agent-xyz");

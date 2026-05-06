@@ -3,10 +3,11 @@ pub mod events;
 pub mod process;
 pub mod types;
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use futures::{SinkExt, StreamExt};
-use tauri::Listener;
+use tauri::{Listener, Manager};
 use tokio_tungstenite::tungstenite::Message;
 
 pub use types::{OpenHandsOneShotRequest, StartConversationRequest};
@@ -15,6 +16,7 @@ use self::client::OpenHandsServerClient;
 use self::events::normalize_server_event;
 use self::process::ensure_agent_server;
 use crate::agents::sidecar::SidecarConfig;
+use crate::db::Db;
 
 pub struct OpenHandsOneShotRunParams {
     pub agent_id_prefix: String,
@@ -24,6 +26,47 @@ pub struct OpenHandsOneShotRunParams {
 
 pub struct OpenHandsOneShotRun {
     pub conversation_state: serde_json::Value,
+}
+
+fn is_persistent_skill_request(request: &OpenHandsOneShotRequest) -> bool {
+    request.skill_name.is_some() && request.task_kind.as_deref() != Some("scope_review")
+}
+
+fn load_saved_skill_conversation_id(
+    app: &tauri::AppHandle,
+    request: &OpenHandsOneShotRequest,
+) -> Result<Option<String>, String> {
+    let Some(skill_name) = request.skill_name.as_deref() else {
+        return Ok(None);
+    };
+    let db = app.state::<Db>();
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::get_skill_conversation_id(&conn, &request.plugin_slug, skill_name)
+}
+
+fn save_skill_conversation_id(
+    app: &tauri::AppHandle,
+    request: &OpenHandsOneShotRequest,
+    conversation_id: &str,
+) -> Result<(), String> {
+    let Some(skill_name) = request.skill_name.as_deref() else {
+        return Ok(());
+    };
+    let db = app.state::<Db>();
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::save_skill_conversation_id(&conn, &request.plugin_slug, skill_name, conversation_id)
+}
+
+async fn create_conversation_for_request(
+    client: &OpenHandsServerClient,
+    request: &OpenHandsOneShotRequest,
+) -> Result<String, String> {
+    let start_request = StartConversationRequest::from_one_shot(request);
+    let conversation = client
+        .create_conversation(&start_request)
+        .await
+        .map_err(|e| format!("Failed to create OpenHands Agent Server conversation: {e}"))?;
+    extract_conversation_id(&conversation)
 }
 
 enum OpenHandsOneShotEvent {
@@ -88,59 +131,24 @@ pub async fn dispatch_openhands_one_shot(
     config: SidecarConfig,
 ) -> Result<(), String> {
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
-    let start_request = StartConversationRequest::from_one_shot(&request);
-
-    let server = ensure_agent_server(Duration::from_secs(60)).await?;
-    let client = OpenHandsServerClient::new(
-        server
-            .base_url()
-            .parse()
-            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
-        Some(server.session_api_key.clone()),
-    );
-
-    let config_event = redact_openhands_config_for_log(&config, server.port);
-    super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
-
-    let conversation = client
-        .create_conversation(&start_request)
-        .await
-        .map_err(|e| format!("Failed to create OpenHands Agent Server conversation: {e}"))?;
-    let conversation_id = extract_conversation_id(&conversation)?;
-    let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
-    let websocket_url = server.websocket_url(&conversation_id);
-
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    register_cancel(agent_id, cancel_tx)?;
-
-    let app_for_task = app.clone();
-    let agent_for_task = agent_id.to_string();
-    let session_api_key = server.session_api_key.clone();
-    tokio::spawn(async move {
-        let task = OpenHandsConversationTask {
-            app: app_for_task.clone(),
-            agent_id: agent_for_task.clone(),
-            client,
-            conversation_id,
-            websocket_url,
-            session_api_key,
-            summary_context,
-            backfill_existing_events: true,
-        };
-        let result = run_conversation_task(task, cancel_rx).await;
-        unregister_cancel(&agent_for_task);
-        match result {
-            Ok(()) => {}
-            Err(error) => {
-                super::events::handle_sidecar_exit_with_detail(
-                    &app_for_task,
-                    &agent_for_task,
-                    false,
-                    Some(error),
-                );
-            }
-        }
-    });
+    let persisted = is_persistent_skill_request(&request);
+    let existing_conversation_id = if persisted {
+        load_saved_skill_conversation_id(app, &request)?
+    } else {
+        None
+    };
+    let conversation_id = dispatch_openhands_turn_with_request(
+        app,
+        agent_id,
+        config,
+        request.clone(),
+        existing_conversation_id,
+        !persisted,
+    )
+    .await?;
+    if persisted {
+        save_skill_conversation_id(app, &request, &conversation_id)?;
+    }
 
     Ok(())
 }
@@ -314,25 +322,19 @@ async fn run_refine_conversation_task(
     result
 }
 
-/// Dispatch a refine turn against the OpenHands Agent Server.
-///
-/// On turn 1 (`conversation_id` is `None`) creates a new conversation seeded
-/// with `config.prompt` as the initial message. On turn N (`conversation_id`
-/// is `Some`) sends `config.prompt` as a follow-up `SendMessageRequest` event
-/// and re-runs the existing conversation. Returns the conversation_id that
-/// the caller must persist for subsequent turns.
-///
-/// The conversation is NOT deleted when the run completes. The caller owns
-/// deletion via `close_openhands_refine_session`.
-pub async fn dispatch_openhands_refine_turn(
+async fn dispatch_openhands_turn_with_request(
     app: &tauri::AppHandle,
     agent_id: &str,
     config: SidecarConfig,
+    request: OpenHandsOneShotRequest,
     conversation_id: Option<String>,
+    delete_when_finished: bool,
 ) -> Result<String, String> {
-    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
-
-    let server = ensure_agent_server(Duration::from_secs(60)).await?;
+    let server = ensure_agent_server(
+        Duration::from_secs(60),
+        Path::new(&request.workspace_skill_dir),
+    )
+    .await?;
     let client = OpenHandsServerClient::new(
         server
             .base_url()
@@ -344,9 +346,17 @@ pub async fn dispatch_openhands_refine_turn(
     let config_event = redact_openhands_config_for_log(&config, server.port);
     super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
 
-    let is_first_turn = conversation_id.is_none();
+    let resume_existing = match conversation_id.as_deref() {
+        Some(existing) => client
+            .get_conversation(existing)
+            .await
+            .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
+            .is_some(),
+        None => false,
+    };
+    let is_first_turn = !resume_existing;
     let conversation_id = match conversation_id {
-        Some(existing) => {
+        Some(existing) if resume_existing => {
             let event = serde_json::to_value(types::SendMessageRequest {
                 role: "user".to_string(),
                 content: vec![types::TextContent {
@@ -355,20 +365,21 @@ pub async fn dispatch_openhands_refine_turn(
                 }],
                 run: false,
             })
-            .map_err(|e| format!("Failed to serialize refine event: {e}"))?;
+            .map_err(|e| format!("Failed to serialize OpenHands conversation event: {e}"))?;
             client.send_event(&existing, event).await.map_err(|e| {
-                format!("Failed to send refine event to OpenHands conversation: {e}")
+                format!("Failed to send event to OpenHands conversation: {e}")
             })?;
             existing
         }
-        None => {
-            let start_request = StartConversationRequest::from_one_shot(&request);
-            let conversation = client
-                .create_conversation(&start_request)
-                .await
-                .map_err(|e| format!("Failed to create OpenHands refine conversation: {e}"))?;
-            extract_conversation_id(&conversation)?
+        Some(existing) => {
+            log::info!(
+                "[openhands-agent-server] saved conversation {} was not found under {}; creating a new conversation",
+                existing,
+                request.workspace_skill_dir
+            );
+            create_conversation_for_request(&client, &request).await?
         }
+        None => create_conversation_for_request(&client, &request).await?,
     };
 
     let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
@@ -392,7 +403,11 @@ pub async fn dispatch_openhands_refine_turn(
             summary_context,
             backfill_existing_events: is_first_turn,
         };
-        let result = run_refine_conversation_task(task, cancel_rx).await;
+        let result = if delete_when_finished {
+            run_conversation_task(task, cancel_rx).await
+        } else {
+            run_refine_conversation_task(task, cancel_rx).await
+        };
         unregister_cancel(&agent_for_task);
         if let Err(error) = result {
             super::events::handle_sidecar_exit_with_detail(
@@ -407,29 +422,31 @@ pub async fn dispatch_openhands_refine_turn(
     Ok(conversation_id)
 }
 
-/// Best-effort delete of an OpenHands refine conversation.
+/// Dispatch a refine turn against the OpenHands Agent Server.
 ///
-/// Errors are logged and swallowed — the server will eventually GC abandoned
-/// conversations, so a transient failure here is not fatal.
-pub async fn close_openhands_refine_session(conversation_id: &str) -> Result<(), String> {
-    let server = ensure_agent_server(Duration::from_secs(60))
-        .await
-        .map_err(|e| format!("OpenHands Agent Server not available: {e}"))?;
-    let client = OpenHandsServerClient::new(
-        server
-            .base_url()
-            .parse()
-            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
-        Some(server.session_api_key.clone()),
-    );
-    if let Err(e) = client.delete_conversation(conversation_id).await {
-        log::warn!(
-            "[close_openhands_refine_session] failed to delete conversation {}: {}",
-            conversation_id,
-            e
-        );
-    }
-    Ok(())
+/// On turn 1 (`conversation_id` is `None`) creates a new conversation seeded
+/// with `config.prompt` as the initial message. On turn N (`conversation_id`
+/// is `Some`) reuses the saved conversation when it is still available,
+/// otherwise creates a replacement conversation and returns the new id for the
+/// caller to persist.
+pub async fn dispatch_openhands_refine_turn(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    config: SidecarConfig,
+    conversation_id: Option<String>,
+) -> Result<String, String> {
+    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+    let conversation_id = dispatch_openhands_turn_with_request(
+        app,
+        agent_id,
+        config,
+        request.clone(),
+        conversation_id,
+        false,
+    )
+    .await?;
+    save_skill_conversation_id(app, &request, &conversation_id)?;
+    Ok(conversation_id)
 }
 
 async fn run_conversation_task_inner(
@@ -1146,6 +1163,73 @@ mod tests {
             run_result.get("pluginSlug").and_then(|v| v.as_str()),
             Some("skill-creator")
         );
+    }
+
+    #[test]
+    fn existing_conversation_is_only_reused_when_server_can_still_load_it() {
+        let reuse = |existing_conversation_id: Option<&str>, conversation_found: bool| {
+            existing_conversation_id.is_some() && conversation_found
+        };
+
+        assert!(reuse(Some("conv-1"), true));
+        assert!(!reuse(Some("conv-1"), false));
+        assert!(!reuse(None, false));
+    }
+
+    #[test]
+    fn workflow_and_refine_requests_share_the_same_persistent_skill_key() {
+        let llm = crate::types::WorkflowLlmConfig {
+            model: "anthropic/claude-sonnet-4-5".to_string(),
+            api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+            base_url: None,
+            api_version: None,
+            temperature: None,
+            max_output_tokens: None,
+            timeout_seconds: None,
+            num_retries: None,
+            reasoning_effort: None,
+            extra_headers: None,
+            input_cost_per_token: None,
+            output_cost_per_token: None,
+            usage_id: None,
+        };
+        let workflow_request = OpenHandsOneShotRequest {
+            prompt: "workflow".to_string(),
+            llm: llm.clone(),
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            allowed_tools: vec![],
+            max_turns: 50,
+            user_message_suffix: None,
+            task_kind: Some("workflow.skill_generation".to_string()),
+            plugin_slug: "default".to_string(),
+            skill_name: Some("my-skill".to_string()),
+            step_id: Some(3),
+            run_source: Some("workflow".to_string()),
+            workflow_session_id: Some("workflow-session".to_string()),
+            usage_session_id: None,
+        };
+        let refine_request = OpenHandsOneShotRequest {
+            prompt: "refine".to_string(),
+            llm,
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            allowed_tools: vec![],
+            max_turns: 50,
+            user_message_suffix: None,
+            task_kind: Some("refine".to_string()),
+            plugin_slug: "default".to_string(),
+            skill_name: Some("my-skill".to_string()),
+            step_id: Some(-10),
+            run_source: Some("refine".to_string()),
+            workflow_session_id: None,
+            usage_session_id: Some("refine-session".to_string()),
+        };
+
+        assert!(is_persistent_skill_request(&workflow_request));
+        assert!(is_persistent_skill_request(&refine_request));
+        assert_eq!(workflow_request.plugin_slug, refine_request.plugin_slug);
+        assert_eq!(workflow_request.skill_name, refine_request.skill_name);
     }
 
     #[test]

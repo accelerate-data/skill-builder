@@ -30,6 +30,39 @@ pub(crate) fn workflow_step_log_name(step_id: i32) -> String {
     crate::db::step_name(step_id)
 }
 
+fn clear_persistent_skill_conversation_state(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<(), String> {
+    let mut plugin_slugs = vec![plugin_slug.to_string()];
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    }
+
+    for slug in plugin_slugs {
+        crate::db::clear_skill_conversation_id(conn, &slug, skill_name)?;
+        let conversations_dir = crate::skill_paths::workspace_skill_dir(
+            Path::new(workspace_path),
+            &slug,
+            skill_name,
+        )
+        .join("conversations");
+        if conversations_dir.exists() {
+            std::fs::remove_dir_all(&conversations_dir).map_err(|e| {
+                format!(
+                    "Failed to remove persistent conversation state at {}: {}",
+                    conversations_dir.display(),
+                    e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 // --- Workflow state persistence (SQLite-backed) ---
 
 #[tauri::command]
@@ -145,6 +178,7 @@ pub fn save_workflow_state(
 mod tests {
     use crate::commands::test_utils::create_test_db;
     use crate::types::StepStatusUpdate;
+    use tempfile::tempdir;
 
     /// Replicate the effective_status override logic from `save_workflow_state` so it can be
     /// tested without needing the Tauri runtime or a `tauri::State<'_, Db>`.
@@ -251,6 +285,66 @@ mod tests {
         ];
         let effective_status = compute_effective_status("completed", &step_statuses);
         assert_eq!(effective_status, "completed");
+    }
+
+    #[test]
+    fn test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state() {
+        let conn = create_test_db();
+        let tmp = tempdir().unwrap();
+        let workspace_path = tmp.path().to_str().unwrap();
+        let skill_name = "reset-me";
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
+            .unwrap();
+        let default_conversations = crate::skill_paths::workspace_skill_dir(
+            tmp.path(),
+            default_slug,
+            skill_name,
+        )
+        .join("conversations");
+        std::fs::create_dir_all(&default_conversations).unwrap();
+        std::fs::write(default_conversations.join("meta.json"), "{}").unwrap();
+
+        let (_, plugin_slug) =
+            crate::db::create_plugin(&conn, "Marketplace Plugin", "local", None, None).unwrap();
+        crate::db::upsert_skill_in_plugin(
+            &conn,
+            skill_name,
+            "imported",
+            "domain",
+            &plugin_slug,
+        )
+        .unwrap();
+        crate::db::save_skill_conversation_id(&conn, &plugin_slug, skill_name, "conv-plugin")
+            .unwrap();
+        let plugin_conversations = crate::skill_paths::workspace_skill_dir(
+            tmp.path(),
+            &plugin_slug,
+            skill_name,
+        )
+        .join("conversations");
+        std::fs::create_dir_all(&plugin_conversations).unwrap();
+        std::fs::write(plugin_conversations.join("meta.json"), "{}").unwrap();
+
+        super::clear_persistent_skill_conversation_state(
+            &conn,
+            workspace_path,
+            &plugin_slug,
+            skill_name,
+        )
+        .unwrap();
+
+        assert_eq!(
+            crate::db::get_skill_conversation_id(&conn, &plugin_slug, skill_name).unwrap(),
+            None
+        );
+        assert_eq!(
+            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
+            None
+        );
+        assert!(!plugin_conversations.exists());
+        assert!(!default_conversations.exists());
     }
 
     /// TC-06: Test the full DB path of save_workflow_run + save_workflow_step
@@ -455,9 +549,7 @@ pub fn reset_workflow_step(
 
     let plugin_slug = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_master_any_plugin(&conn, &skill_name)?
-            .map(|m| m.plugin_slug)
-            .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
+        lookup_plugin_slug(&conn, &skill_name)
     };
 
     // Auto-commit: checkpoint before artifacts are deleted, at the per-skill repo dir
@@ -515,6 +607,7 @@ pub fn reset_workflow_step(
 
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    clear_persistent_skill_conversation_state(&conn, &workspace_path, &plugin_slug, &skill_name)?;
     crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
 
     // Update the workflow run's current step
