@@ -1,11 +1,9 @@
-import { useEffect, useState } from "react";
 import { AlertTriangle, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { type SaveScenario } from "@/lib/eval-workbench";
-import { formatElapsed } from "@/lib/utils";
 
 interface PromptSetEditorProps {
   draft: SaveScenario;
@@ -23,12 +21,6 @@ interface PromptSetEditorProps {
     tone: "running" | "error";
     message: string;
   } | null;
-  footerBar?: {
-    tone: "idle" | "running" | "error";
-    modelLabel?: string | null;
-    startedAt?: number | null;
-    message?: string | null;
-  } | null;
 }
 
 export function PromptSetEditor({
@@ -44,26 +36,10 @@ export function PromptSetEditor({
   suggestBusy = false,
   showNew = true,
   footerStatus = null,
-  footerBar = null,
 }: PromptSetEditorProps) {
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    if (footerBar?.tone !== "running" || !footerBar.startedAt) {
-      return;
-    }
-    const id = window.setInterval(() => setTick((tick) => tick + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [footerBar?.startedAt, footerBar?.tone]);
-
   function updateExpectations(nextExpectations: string[]) {
     onChange({ ...draft, expectations: nextExpectations });
   }
-
-  const footerBarElapsed =
-    footerBar?.tone === "running" && footerBar.startedAt
-      ? formatElapsed(Math.max(0, Date.now() - footerBar.startedAt))
-      : null;
 
   return (
     <section className="rounded-lg border bg-card p-4">
@@ -213,61 +189,6 @@ export function PromptSetEditor({
         </div>
       ) : null}
 
-      <div
-        className="mt-4 flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4"
-        data-testid="eval-suggest-status-bar"
-      >
-        <div className="flex items-center gap-1.5">
-          <div
-            className={
-              footerBar?.tone === "running"
-                ? "size-[5px] rounded-full animate-pulse"
-                : footerBar?.tone === "error"
-                  ? "size-[5px] rounded-full bg-destructive"
-                  : "size-[5px] rounded-full bg-muted-foreground/40"
-            }
-            style={
-              footerBar?.tone === "running"
-                ? { background: "var(--color-pacific)" }
-                : undefined
-            }
-          />
-          <span className="text-xs text-muted-foreground/60">
-            {footerBar?.tone === "running"
-              ? "running…"
-              : footerBar?.tone === "error"
-                ? "error"
-                : "ready"}
-          </span>
-        </div>
-
-        {footerBar?.modelLabel ? (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground/60">
-              {footerBar.modelLabel}
-            </span>
-          </>
-        ) : null}
-
-        {footerBarElapsed ? (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
-              {footerBarElapsed}
-            </span>
-          </>
-        ) : null}
-
-        {footerBar?.tone === "error" && footerBar.message ? (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="truncate text-xs text-destructive/90">
-              {footerBar.message}
-            </span>
-          </>
-        ) : null}
-      </div>
     </section>
   );
 }

@@ -20,6 +20,7 @@ import { formatModelName } from "@/stores/agent-store";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 import { ResultTable } from "./eval-workbench/result-table";
 import { useRunHistory } from "./eval-workbench/use-run-history";
+import { formatElapsed } from "@/lib/utils";
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
@@ -71,6 +72,7 @@ export function WorkspaceEvals({
   const [actionError, setActionError] = useState<string | null>(null);
   const [suggestionStatusError, setSuggestionStatusError] = useState<string | null>(null);
   const lastPersistedSnapshotRef = useRef<string | null>(null);
+  const [, setSuggestStatusTick] = useState(0);
   const {
     activeRunId,
     cancelActiveRun,
@@ -106,6 +108,17 @@ export function WorkspaceEvals({
     onRunningChange?.(running);
     setEvalsRunning(running);
   }, [running, onRunningChange]);
+
+  useEffect(() => {
+    if (!(suggestingScenario || suggestScenarioPending) || !suggestScenarioStartedAt) {
+      return;
+    }
+    const id = window.setInterval(
+      () => setSuggestStatusTick((tick) => tick + 1),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, [suggestScenarioPending, suggestScenarioStartedAt, suggestingScenario]);
 
   useEffect(
     () => () => {
@@ -306,6 +319,17 @@ export function WorkspaceEvals({
     );
   }
 
+  const suggestStatusTone =
+    suggestingScenario || suggestScenarioPending
+      ? "running"
+      : suggestionStatusError
+        ? "error"
+        : "idle";
+  const suggestStatusElapsed =
+    suggestStatusTone === "running" && suggestScenarioStartedAt
+      ? formatElapsed(Math.max(0, Date.now() - suggestScenarioStartedAt))
+      : null;
+
   return (
     <div className="flex flex-col gap-6">
       {actionError ? (
@@ -342,17 +366,6 @@ export function WorkspaceEvals({
                   }
                 : null
           }
-          footerBar={{
-            tone:
-              suggestingScenario || suggestScenarioPending
-                ? "running"
-                : suggestionStatusError
-                  ? "error"
-                  : "idle",
-            modelLabel: currentModel ? formatModelName(currentModel) : null,
-            startedAt: suggestScenarioStartedAt,
-            message: suggestionStatusError,
-          }}
         />
       ) : null}
 
@@ -448,6 +461,62 @@ export function WorkspaceEvals({
           </div>
         )}
       </section>
+
+      <div
+        className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4"
+        data-testid="eval-suggest-status-bar"
+      >
+        <div className="flex items-center gap-1.5">
+          <div
+            className={
+              suggestStatusTone === "running"
+                ? "size-[5px] rounded-full animate-pulse"
+                : suggestStatusTone === "error"
+                  ? "size-[5px] rounded-full bg-destructive"
+                  : "size-[5px] rounded-full bg-muted-foreground/40"
+            }
+            style={
+              suggestStatusTone === "running"
+                ? { background: "var(--color-pacific)" }
+                : undefined
+            }
+          />
+          <span className="text-xs text-muted-foreground/60">
+            {suggestStatusTone === "running"
+              ? "running…"
+              : suggestStatusTone === "error"
+                ? "error"
+                : "ready"}
+          </span>
+        </div>
+
+        {currentModel ? (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs text-muted-foreground/60">
+              {formatModelName(currentModel)}
+            </span>
+          </>
+        ) : null}
+
+        {suggestStatusElapsed ? (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+              {suggestStatusElapsed}
+            </span>
+          </>
+        ) : null}
+
+        {suggestStatusTone === "error" && suggestionStatusError ? (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="truncate text-xs text-destructive/90">
+              {suggestionStatusError}
+            </span>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
