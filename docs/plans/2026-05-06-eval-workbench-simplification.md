@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Simplify Eval Workbench so each skill owns one eval package with multiple scenarios, each scenario has one prompt plus multiple user-readable expectations, each expectation is judged independently, `Performance` is always on, `Trigger` is optional, and generation is scenario-scoped rather than bulk-scoped.
+**Goal:** Simplify Eval Workbench so each skill owns one eval package with multiple scenarios, each scenario has one prompt plus multiple user-readable expectations, each expectation is judged independently, `Performance` is always on, `Trigger` is optional, generation is scenario-scoped rather than bulk-scoped, scenario authoring uses an accordion-style `Scenarios` section, and evaluation history plus details live in one master-detail `Results` section.
 
-**Persistence contract:** `Add scenario` creates and persists a real scenario record immediately. `Suggest` calls Rust, Rust builds a context envelope from all available skill context, generates prompt plus expectations for that one scenario, overwrites the saved scenario content, and the UI reloads it. After a scenario exists, UI edits autosave. There is no explicit `Save scenario` action. `Evaluate` runs the full package, not a single selected scenario.
+**Persistence contract:** `Add scenario` creates and persists a real scenario record immediately. `Suggest` calls Rust, Rust builds a context envelope from all available skill context, generates scenario name plus prompt plus expectations for that one scenario, overwrites the saved scenario content, and the UI reloads it. After a scenario exists, UI edits autosave. There is no explicit `Save scenario` action. `Evaluate` runs the full package, not a single selected scenario.
 
 **Architecture:** Replace the current `scenario -> cases[]` authoring model and low-level matcher assertions with a single-scenario contract exposed consistently through frontend types, Tauri commands, YAML storage, and Promptfoo run preparation. Author scenarios in business-readable expectations, then compile each expectation into one Promptfoo `llm-rubric` assertion at runtime. Keep the broader runtime boundary intact: git-backed scenario files, Rust-owned command layer, Promptfoo-sidecar execution, and app-local run history.
 
@@ -14,7 +14,7 @@
 
 **Supersedes:** `docs/plans/2026-05-05-eval-workbench-scenarios.md` for the active authored-model work.
 
-**Follow-up scope for this branch:** finish the scenario-level authoring flow by exposing scenario deletion in the UI, replacing bulk generation with persisted single-scenario suggestion, removing explicit save in favor of autosaved edits on persisted scenarios, and changing evaluation from selected-scenario run to package-level execution.
+**Follow-up scope for this branch:** finish the scenario-level authoring flow by exposing scenario deletion in the UI, replacing bulk generation with persisted single-scenario suggestion, removing explicit save in favor of autosaved edits on persisted scenarios, changing evaluation from selected-scenario run to package-level execution, moving to an accordion-based scenario list with inline expansion, and consolidating run history plus selected-run detail into one `Results` section.
 
 ---
 
@@ -26,10 +26,11 @@
 | `app/src/lib/tauri-command-types.ts` | Update typed scenario command shapes if payloads change. |
 | `app/src/lib/tauri-command-types.typecheck.ts` | Update compile-time command examples for the new scenario payloads. |
 | `app/src/lib/queries/eval-scenarios.ts` | Keep query hooks aligned with the updated scenario contract. |
-| `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx` | Replace nested case UI and low-level matcher editing with a single-scenario prompt-plus-expectations editor. |
-| `app/src/components/workspace/workspace-evals.tsx` | Remove bulk generation, add persisted scenario-level suggest, remove explicit save, autosave edits, and switch to package-level Evaluate. |
-| `app/src/components/workspace/workspace-description.tsx` | Rename trigger generation to `Generate candidates` and keep trigger-specific scenario editing aligned. |
-| `app/src/components/workspace/workspace-eval-workbench.tsx` | Keep selection and empty-state behavior aligned with the simplified editor. |
+| `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx` | Replace nested case UI and low-level matcher editing with a single-scenario prompt-plus-expectations editor, including per-expectation delete. |
+| `app/src/components/workspace/workspace-evals.tsx` | Remove bulk generation, add persisted scenario-level suggest, remove explicit save, autosave edits, switch to package-level Evaluate, and restructure the page into `Scenarios` plus `Results`. |
+| `app/src/components/workspace/workspace-description.tsx` | Rename trigger generation to `Generate candidates`, align trigger-specific scenario editing with the accordion model, and use the same `Results` pattern. |
+| `app/src/components/workspace/workspace-eval-workbench.tsx` | Keep empty-state behavior aligned with the accordion-first authoring flow and remove obsolete selected-scenario assumptions. |
+| `app/src/components/workspace/eval-workbench/**` | Add or refactor shared accordion row and results master-detail UI helpers as needed. |
 | `app/src-tauri/src/commands/eval_workbench/mod.rs` | Update scenario DTO conversion, context-envelope prompt loading, single-scenario suggestion, autosave persistence hooks, expectation-to-rubric translation, validation, and package-level run preparation. |
 | `app/src-tauri/src/commands/eval_workbench/scenarios.rs` | Update file-backed scenario types and YAML read/write helpers. |
 | `agent-sources/prompts/**` | Replace the externalized single-scenario suggest prompt with a richer skill-grounded expectations prompt. |
@@ -57,26 +58,32 @@
 - [ ] Update YAML load/save helpers so one file maps directly to one scenario prompt and expectation set.
 - [ ] Decide whether a compatibility migration is needed for existing `cases[]` files and document the exact behavior in code comments if so.
 
-## Task 2: Simplify the performance editor and persistence flow
+## Task 2: Rebuild scenario authoring around accordion rows
 
 **Files:**
 
 - Modify: `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx`
 - Modify: `app/src/components/workspace/workspace-evals.tsx`
 - Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
+- Modify: `app/src/components/workspace/eval-workbench/**` as needed for shared accordion helpers
 
 - [ ] Remove nested case rendering from the shared editor UI.
 - [ ] Keep `Performance` visible but disabled/greyed and always enabled in the draft.
 - [ ] Keep `Trigger` as an optional checkbox.
 - [ ] Show `Should trigger` only when trigger is enabled.
-- [ ] Replace the current top-level `Generate scenarios` action with one scenario-level `Suggest` action.
 - [ ] Remove per-case `Suggest` controls.
 - [ ] Remove the separate `Expected outcome` editor field.
 - [ ] Remove low-level authored matcher editing for `contains`, `equals`, and `javascript`.
-- [ ] Add a scenario-level delete affordance for persisted scenarios and keep selection state consistent after delete.
-- [ ] Move the performance-mode `Suggest` action into the scenario editor so the flow is `Add scenario -> Suggest -> edit -> autosave`.
-- [ ] Remove the explicit `Save scenario` action from the performance editor.
-- [ ] Make `New scenario` create and persist a real scenario immediately instead of only creating a local draft.
+- [ ] Replace the current top scenario card plus separate editor card with one accordion-based `Scenarios` section.
+- [ ] Make the section itself collapsible and keep `New scenario` in the section header.
+- [ ] Show one compact collapsed row per scenario with scenario name, mode badges, and prompt preview only.
+- [ ] Expand a scenario inline when its row is clicked; do not keep a separate hidden selected-scenario state.
+- [ ] Allow only one expanded scenario at a time.
+- [ ] Make `New scenario` create and persist a real scenario immediately and expand that row right away.
+- [ ] If there are no scenarios, show only the `Scenarios` empty state and do not render an editor yet.
+- [ ] Move the performance-mode `Suggest` action into the expanded scenario row so the flow is `New scenario -> Suggest -> edit -> autosave`.
+- [ ] Add a scenario-level delete affordance for persisted scenarios and keep the accordion state consistent after delete.
+- [ ] Add per-expectation delete affordances in the expanded editor.
 - [ ] Make prompt, trigger, and expectation edits autosave after the scenario exists.
 - [ ] Show a busy pointer/spinner affordance while `Suggest` is in flight.
 
@@ -89,7 +96,7 @@
 
 - [ ] Rename trigger-mode generation controls from generic `Generate` wording to `Generate candidates`.
 - [ ] Keep trigger description candidate generation separate from scenario authoring generation.
-- [ ] Ensure the trigger view uses the same simplified scenario payload as performance mode.
+- [ ] Ensure the trigger view uses the same simplified scenario payload and accordion row model as performance mode.
 - [ ] Keep current compare/apply/refine behavior unchanged unless it depends on removed nested-case fields.
 
 ## Task 4: Rework scenario-level suggestion
@@ -101,7 +108,7 @@
 - Modify: frontend wrappers in `app/src/lib/eval-workbench.ts` if the request/response shape changes
 
 - [ ] Replace the bulk `generate_scenarios` workflow with a scenario-scoped suggestion workflow.
-- [ ] Make the scenario-level `Suggest` action generate prompt text and expectation lines for one persisted scenario.
+- [ ] Make the scenario-level `Suggest` action generate scenario name plus prompt text plus expectation lines for one persisted scenario.
 - [ ] Ensure suggestion persists the active scenario through Rust and reloads the saved scenario instead of mutating only a local draft.
 - [ ] Use a single-scenario response shape, not a top-level `scenarios[]` bulk response.
 - [ ] Remove dead frontend and backend paths that only supported bulk scenario generation.
@@ -109,10 +116,29 @@
 - [ ] Build a suggestion context envelope that passes the canonical skill path, workspace skill path when relevant, skill files, clarifications when present, decisions when present, and current scenario state.
 - [ ] Explicitly instruct the LLM to read and understand the skill before generating the scenario prompt and expectations.
 - [ ] Make suggestion overwrite the current scenario prompt and expectations rather than filling blanks.
+- [ ] Allow suggestion to overwrite the scenario name as well, not just prompt and expectations.
 - [ ] Replace the current invalid-JSON failure with a clearer scenario-suggestion error path that includes enough response context to debug malformed structured output.
 - [ ] Tighten the parser so malformed structured output is rejected deterministically and mapped to a user-facing suggestion error.
 
-## Task 5: Update run preparation and validation
+## Task 5: Rebuild results around one master-detail section
+
+**Files:**
+
+- Modify: `app/src/components/workspace/workspace-evals.tsx`
+- Modify: `app/src/components/workspace/workspace-description.tsx`
+- Modify: `app/src/components/workspace/eval-workbench/use-run-history.ts`
+- Modify: `app/src/components/workspace/eval-workbench/**` as needed for shared results helpers
+
+- [ ] Replace the separate `Run history` and `Latest run` cards with one `Results` section.
+- [ ] Move `Evaluate` into the `Results` section header rather than keeping it near the top of the page.
+- [ ] Present history as a reverse-chronological run list, newest first.
+- [ ] Auto-open the newest run by default.
+- [ ] Prepend a newly completed run to the top of the list and open it immediately.
+- [ ] Keep run detail in the same section as a master-detail view rather than a separate card.
+- [ ] Keep `Send to Refine` in the selected run detail pane.
+- [ ] Use a stacked history-then-detail layout on narrow screens.
+
+## Task 6: Update run preparation and validation
 
 **Files:**
 
@@ -130,7 +156,7 @@
 - [ ] Preserve run history lookup by scenario identity and mode even when one Evaluate action runs the package.
 - [ ] Keep the current app-local Promptfoo history boundary intact.
 
-## Task 6: Refresh tests around the simplified model
+## Task 7: Refresh tests around the simplified model
 
 **Files:**
 
@@ -143,21 +169,27 @@
 - [ ] Replace fixtures that currently depend on nested `cases[]` payloads.
 - [ ] Add coverage that there is no explicit `Save scenario` button.
 - [ ] Add coverage that `New scenario` persists immediately.
+- [ ] Add coverage that `New scenario` creates an expanded accordion row immediately.
+- [ ] Add coverage that only one scenario row is expanded at a time.
+- [ ] Add coverage that collapsed rows show prompt preview only.
 - [ ] Add coverage that prompt/expectation edits autosave after persistence.
 - [ ] Add coverage that performance mode no longer exposes bulk generation or per-case suggestion.
 - [ ] Add coverage that scenario-level `Suggest` persists and reloads exactly one scenario.
 - [ ] Add coverage that the scenario editor renders plain-language expectations rather than low-level matcher controls.
 - [ ] Add coverage that performance mode exposes `Suggest` from the scenario editor, not the workbench header.
 - [ ] Add coverage that deleting a saved scenario updates the list and selected scenario state correctly.
+- [ ] Add coverage that expectations can be deleted individually.
 - [ ] Add coverage for malformed scenario-suggestion responses so the surfaced error is actionable.
 - [ ] Add coverage that `Suggest` shows a busy affordance while it is running.
 - [ ] Add coverage that trigger mode uses `Generate candidates`.
 - [ ] Add coverage that the primary performance action is `Evaluate`, not `Run scenario`.
 - [ ] Add coverage that `Evaluate` invokes package-level execution rather than passing a single scenario name.
+- [ ] Add coverage that `Results` is one combined master-detail section rather than separate history/detail cards.
+- [ ] Add coverage that run history is reverse chronological and the newest run opens by default.
 - [ ] Add coverage that each expectation becomes its own model-graded runtime assertion.
 - [ ] Keep existing run-history and selected-scenario regression coverage green after the model change.
 
-## Task 7: Final documentation sync
+## Task 8: Final documentation sync
 
 **Files:**
 
@@ -177,3 +209,4 @@
 - [ ] `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::eval_workbench`
 - [ ] `cd app && npx tsc --noEmit`
 - [ ] `cd app && npm run test:e2e -- --grep @evals`
+- [ ] `cd app && npm run test:e2e -- --grep @description`
