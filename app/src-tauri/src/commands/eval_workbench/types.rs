@@ -11,21 +11,13 @@ pub type SaveEvalPromptSet = crate::db::SaveEvalPromptSet;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScenarioAssertionDto {
-    #[serde(rename = "type")]
-    pub assertion_type: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ScenarioDto {
     pub id: String,
     pub name: String,
     pub tags: Vec<String>,
     pub prompt: String,
     pub should_trigger: Option<bool>,
-    pub assertions: Vec<ScenarioAssertionDto>,
+    pub expectations: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -54,15 +46,6 @@ pub struct SuggestDescriptionCandidatesRequest {
     pub scenario_name: String,
     pub baseline_description: String,
     pub candidate_count: Option<u32>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SuggestAssertionsRequest {
-    pub plugin_slug: String,
-    pub skill_name: String,
-    pub prompt: String,
-    pub expected_outcome: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

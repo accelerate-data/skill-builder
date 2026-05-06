@@ -23,13 +23,6 @@ impl ScenarioTag {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ScenarioAssertion {
-    #[serde(rename = "type")]
-    pub assertion_type: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scenario {
     pub id: String,
     pub name: String,
@@ -37,7 +30,7 @@ pub struct Scenario {
     pub prompt: String,
     pub should_trigger: Option<bool>,
     #[serde(default)]
-    pub assertions: Vec<ScenarioAssertion>,
+    pub expectations: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -258,10 +251,7 @@ mod tests {
             tags: vec![ScenarioTag::Both],
             prompt: "Show me Q3 booking trends".into(),
             should_trigger: Some(true),
-            assertions: vec![ScenarioAssertion {
-                assertion_type: "contains".into(),
-                value: "region".into(),
-            }],
+            expectations: vec!["Explains the regional booking trends.".into()],
         }
     }
 

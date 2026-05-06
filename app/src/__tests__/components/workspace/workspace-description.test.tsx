@@ -85,7 +85,7 @@ const triggerScenario = {
   tags: ["trigger"] as const,
   prompt: "Reconcile open customer invoices",
   shouldTrigger: true,
-  assertions: [],
+  expectations: [],
 };
 
 const bothScenario = {
@@ -94,7 +94,7 @@ const bothScenario = {
   tags: ["both"] as const,
   prompt: "Reconcile open customer invoices",
   shouldTrigger: true,
-  assertions: [{ type: "contains", value: "invoice reconciliation" }],
+  expectations: ["Explains invoice reconciliation routing."],
 };
 
 const alternateTriggerScenario = {
@@ -103,7 +103,7 @@ const alternateTriggerScenario = {
   tags: ["trigger"] as const,
   prompt: "Match unapplied cash receipts",
   shouldTrigger: true,
-  assertions: [],
+  expectations: [],
 };
 
 const runSummary = {
@@ -358,8 +358,9 @@ describe("WorkspaceDescription", () => {
       "aria-checked",
       "true",
     );
-    expect(screen.getByDisplayValue("contains")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("invoice reconciliation")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Explains invoice reconciliation routing."),
+    ).toBeInTheDocument();
     expect(screen.getByText(/should trigger/i)).toBeInTheDocument();
   });
 

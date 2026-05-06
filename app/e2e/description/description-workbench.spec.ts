@@ -115,24 +115,12 @@ test.describe("Description Workbench", { tag: "@description" }, () => {
       },
       list_scenarios: [{ name: "Routing checks", tags: ["trigger"] }],
       load_scenario: {
+        id: "case-1",
         name: "Routing checks",
         tags: ["trigger"],
-        cases: [
-          {
-            id: "case-1",
-            prompt: "Reconcile open customer invoices",
-            expectedOutcome: null,
-            shouldTrigger: true,
-            assertions: [],
-          },
-          {
-            id: "case-2",
-            prompt: "Clean up old billing notes",
-            expectedOutcome: null,
-            shouldTrigger: false,
-            assertions: [],
-          },
-        ],
+        prompt: "Reconcile open customer invoices",
+        shouldTrigger: true,
+        expectations: [],
       },
     });
     await trackInvokes(page, [

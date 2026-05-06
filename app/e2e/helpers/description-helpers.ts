@@ -3,17 +3,12 @@ import { reloadWithOverrides } from "./app-helpers";
 import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "./test-paths";
 
 const TRIGGER_SCENARIO = {
+  id: "case-1",
   name: "Routing checks",
   tags: ["trigger"] as const,
-  cases: [
-    {
-      id: "case-1",
-      prompt: "Reconcile open customer invoices",
-      expectedOutcome: null,
-      shouldTrigger: true,
-      assertions: [],
-    },
-  ],
+  prompt: "Reconcile open customer invoices",
+  shouldTrigger: true,
+  expectations: [],
 };
 
 const TRIGGER_RUN_SUMMARY = {

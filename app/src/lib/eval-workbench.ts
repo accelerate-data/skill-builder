@@ -3,18 +3,13 @@ import { invokeCommand } from "@/lib/tauri";
 export type EvalWorkbenchMode = "performance" | "trigger";
 export type ScenarioTag = "performance" | "trigger" | "both";
 
-export interface ScenarioAssertion {
-  type: string;
-  value: string;
-}
-
 export interface Scenario {
   id: string;
   name: string;
   tags: ScenarioTag[];
   prompt: string;
   shouldTrigger: boolean | null;
-  assertions: ScenarioAssertion[];
+  expectations: string[];
 }
 
 export interface ScenarioSummary {
@@ -229,7 +224,7 @@ export function createDraftScenario(
     tags: [mode],
     prompt: "",
     shouldTrigger: mode === "trigger" ? true : null,
-    assertions: [],
+    expectations: [],
   };
 }
 
@@ -247,7 +242,9 @@ export function scenarioToDraft(scenario: Scenario): SaveScenario {
     tags: [...scenario.tags],
     prompt: scenario.prompt,
     shouldTrigger: scenario.shouldTrigger,
-    assertions: Array.isArray(scenario.assertions) ? scenario.assertions : [],
+    expectations: Array.isArray(scenario.expectations)
+      ? scenario.expectations
+      : [],
   };
 }
 
@@ -259,7 +256,9 @@ export function normalizeScenario(draft: SaveScenario): SaveScenario {
     prompt: draft.prompt.trim(),
     shouldTrigger:
       typeof draft.shouldTrigger === "boolean" ? draft.shouldTrigger : null,
-    assertions: Array.isArray(draft.assertions) ? draft.assertions : [],
+    expectations: Array.isArray(draft.expectations)
+      ? draft.expectations.map((expectation) => expectation.trim())
+      : [],
   };
 }
 
@@ -273,8 +272,8 @@ export function validateScenario(
   if (draft.tags.length === 0) {
     return "Select at least one scenario mode.";
   }
-  if (!Array.isArray(draft.assertions)) {
-    return "Assertions must be an array.";
+  if (!Array.isArray(draft.expectations)) {
+    return "Expectations must be an array.";
   }
   if (mode && !scenarioSupportsMode(draft, mode)) {
     return `This scenario is not tagged for ${mode} mode.`;
@@ -289,8 +288,12 @@ export function validateScenarioForEvaluation(
   if (!draft.prompt.trim()) {
     return "Scenario prompt is required.";
   }
-  if (!Array.isArray(draft.assertions) || draft.assertions.length === 0) {
-    return "Performance scenarios need at least one assertion.";
+  if (
+    !Array.isArray(draft.expectations) ||
+    draft.expectations.filter((expectation) => expectation.trim().length > 0)
+      .length === 0
+  ) {
+    return "Performance scenarios need at least one expectation.";
   }
   if (scenarioSupportsMode(draft, "trigger") && typeof draft.shouldTrigger !== "boolean") {
     return "Trigger scenarios must mark whether they should trigger.";

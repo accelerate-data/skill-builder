@@ -8,7 +8,6 @@ import {
   scenarioSupportsMode,
   type EvalWorkbenchMode,
   type SaveScenario,
-  type ScenarioAssertion,
 } from "@/lib/eval-workbench";
 
 interface PromptSetEditorProps {
@@ -57,8 +56,8 @@ export function PromptSetEditor({
   showSuggest = true,
   suggestBusy = false,
 }: PromptSetEditorProps) {
-  function updateAssertions(nextAssertions: ScenarioAssertion[]) {
-    onChange({ ...draft, assertions: nextAssertions });
+  function updateExpectations(nextExpectations: string[]) {
+    onChange({ ...draft, expectations: nextExpectations });
   }
 
   const triggerEnabled = scenarioSupportsMode(draft, "trigger");
@@ -165,59 +164,41 @@ export function PromptSetEditor({
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>Assertions</Label>
+                <Label>Expectations</Label>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    updateAssertions([
-                      ...draft.assertions,
-                      { type: "", value: "" },
-                    ])
+                    updateExpectations([...draft.expectations, ""])
                   }
                 >
                   <Plus className="mr-1 size-3.5" />
-                  Add assertion
+                  Add expectation
                 </Button>
               </div>
-              {draft.assertions.length > 0 ? (
+              {draft.expectations.length > 0 ? (
                 <div className="space-y-2">
-                  {draft.assertions.map((assertion, assertionIndex) => (
+                  {draft.expectations.map((expectation, expectationIndex) => (
                     <div
-                      key={`${draft.id}-assertion-${assertionIndex}`}
-                      className="grid gap-2 rounded border p-2 md:grid-cols-[140px_1fr]"
+                      key={`${draft.id}-expectation-${expectationIndex}`}
+                      className="rounded border p-2"
                     >
-                      <Input
-                        value={assertion.type}
+                      <Textarea
+                        value={expectation}
                         onChange={(event) => {
-                          const next = [...draft.assertions];
-                          next[assertionIndex] = {
-                            ...assertion,
-                            type: event.target.value,
-                          };
-                          updateAssertions(next);
+                          const next = [...draft.expectations];
+                          next[expectationIndex] = event.target.value;
+                          updateExpectations(next);
                         }}
-                        placeholder="contains"
-                      />
-                      <Input
-                        value={assertion.value}
-                        onChange={(event) => {
-                          const next = [...draft.assertions];
-                          next[assertionIndex] = {
-                            ...assertion,
-                            value: event.target.value,
-                          };
-                          updateAssertions(next);
-                        }}
-                        placeholder="Expected phrase or expression"
+                        placeholder="Describe the business outcome the answer should satisfy."
                       />
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No assertions yet.
+                  No expectations yet.
                 </p>
               )}
             </div>

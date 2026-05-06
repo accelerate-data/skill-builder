@@ -81,7 +81,7 @@ const performanceScenario = {
   tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue",
   shouldTrigger: null,
-  assertions: [{ type: "contains", value: "assumptions" }],
+  expectations: ["Explains the forecast assumptions."],
 };
 
 const alternatePerformanceScenario = {
@@ -90,7 +90,7 @@ const alternatePerformanceScenario = {
   tags: ["performance"] as const,
   prompt: "Summarize pipeline risk",
   shouldTrigger: null,
-  assertions: [{ type: "contains", value: "blockers" }],
+  expectations: ["Summarizes the main pipeline blockers."],
 };
 
 const runSummary = {
@@ -222,6 +222,24 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
   });
 
+  it("shows plain-language expectations instead of low-level assertion editors", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue("Forecast next quarter revenue")).toBeInTheDocument();
+    expect(screen.getByText("Expectations")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Explains the forecast assumptions.")).toBeInTheDocument();
+    expect(screen.queryByText("Assertions")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add assertion/i })).not.toBeInTheDocument();
+  });
+
   it("creates a persisted performance scenario immediately when starting a new scenario", async () => {
     const user = userEvent.setup();
     const onCreateScenario = vi.fn().mockResolvedValue({
@@ -230,7 +248,7 @@ describe("WorkspaceEvals", () => {
       tags: ["performance"],
       prompt: "",
       shouldTrigger: null,
-      assertions: [],
+      expectations: [],
     });
     const onStartNewScenario = vi.fn();
 
@@ -283,7 +301,7 @@ describe("WorkspaceEvals", () => {
         tags: ["performance"],
         prompt: "Forecast next quarter revenue with assumptions",
         shouldTrigger: null,
-        assertions: [{ type: "contains", value: "assumptions" }],
+        expectations: ["Explains the forecast assumptions."],
       }, { previousScenarioName: "Regression" }),
     );
   });
@@ -471,7 +489,7 @@ describe("WorkspaceEvals", () => {
       tags: ["performance"],
       prompt: "Summarize pipeline risk",
       shouldTrigger: null,
-      assertions: [{ type: "contains", value: "blockers" }],
+      expectations: ["Summarizes the main pipeline blockers."],
     });
 
     render(
@@ -493,8 +511,9 @@ describe("WorkspaceEvals", () => {
       expect(onSuggestScenario).toHaveBeenCalled(),
     );
     expect(await screen.findByDisplayValue("Summarize pipeline risk")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("contains")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("blockers")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Summarizes the main pipeline blockers."),
+    ).toBeInTheDocument();
   });
 
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
@@ -533,7 +552,7 @@ describe("WorkspaceEvals", () => {
       tags: ["performance"],
       prompt: "Forecast next quarter revenue",
       shouldTrigger: null,
-      assertions: [{ type: "contains", value: "assumptions" }],
+      expectations: ["Explains the forecast assumptions."],
     });
 
     render(

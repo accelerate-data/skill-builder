@@ -40,7 +40,7 @@ describe("eval scenario queries", () => {
       tags: ["performance"],
       prompt: "Summarize pipeline risk",
       shouldTrigger: null,
-      assertions: [],
+      expectations: [],
     });
 
     function Wrapper({ children }: { children: ReactNode }) {
@@ -61,7 +61,7 @@ describe("eval scenario queries", () => {
         tags: ["performance"],
         prompt: "Summarize pipeline risk",
         shouldTrigger: null,
-        assertions: [],
+        expectations: [],
       },
       previousScenarioName: "Regression",
     });

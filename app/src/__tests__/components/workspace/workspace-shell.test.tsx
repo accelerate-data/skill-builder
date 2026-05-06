@@ -156,7 +156,7 @@ const performanceScenario = {
   tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue",
   shouldTrigger: null,
-  assertions: [{ type: "contains", value: "assumptions" }],
+  expectations: ["Explains the forecast assumptions."],
 };
 
 const performanceScenarioSummary = {
@@ -170,7 +170,7 @@ const triggerScenario = {
   tags: ["trigger"] as const,
   prompt: "Reconcile open customer invoices",
   shouldTrigger: true,
-  assertions: [],
+  expectations: [],
 };
 
 const triggerScenarioSummary = {
@@ -184,7 +184,7 @@ const sharedScenario = {
   tags: ["both"] as const,
   prompt: "Reconcile open customer invoices",
   shouldTrigger: true,
-  assertions: [{ type: "contains", value: "invoice reconciliation" }],
+  expectations: ["Explains invoice reconciliation routing."],
 };
 
 const sharedScenarioSummary = {
@@ -490,7 +490,9 @@ describe("WorkspaceShell", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Core workflow coverage" }));
-    expect(await screen.findByDisplayValue("invoice reconciliation")).toBeInTheDocument();
+    expect(
+      await screen.findByDisplayValue("Explains invoice reconciliation routing."),
+    ).toBeInTheDocument();
     expect(mockUseScenario).toHaveBeenLastCalledWith(
       "sales-pipeline",
       "skills",
@@ -498,7 +500,9 @@ describe("WorkspaceShell", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: "Trigger" }));
-    expect(await screen.findByDisplayValue("invoice reconciliation")).toBeInTheDocument();
+    expect(
+      await screen.findByDisplayValue("Explains invoice reconciliation routing."),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Core workflow coverage" })).toHaveAttribute(
       "data-variant",
       "secondary",
@@ -518,7 +522,7 @@ describe("WorkspaceShell", () => {
       tags: ["performance"],
       prompt: "",
       shouldTrigger: null,
-      assertions: [],
+      expectations: [],
     });
     mockUseCreateScenario.mockReset().mockReturnValue({
       mutateAsync,

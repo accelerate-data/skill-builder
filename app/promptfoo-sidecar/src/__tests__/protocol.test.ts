@@ -24,7 +24,7 @@ describe("promptfoo sidecar protocol", () => {
             id: "case-1",
             prompt: "Help me create a skill",
             shouldTrigger: true,
-            assertions: [{ type: "equals", value: "true" }],
+            expectations: ["Explains when the skill should trigger."],
           },
         ],
         executions: [
@@ -51,10 +51,9 @@ describe("promptfoo sidecar protocol", () => {
       throw new Error("Expected run_eval request");
     }
     expect(request.candidates).toHaveLength(1);
-    expect(request.cases[0]?.assertions[0]).toEqual({
-      type: "equals",
-      value: "true",
-    });
+    expect(request.cases[0]?.expectations[0]).toBe(
+      "Explains when the skill should trigger.",
+    );
   });
 
   it("rejects unsupported request types", () => {

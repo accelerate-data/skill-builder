@@ -9,13 +9,16 @@ use crate::agents::promptfoo_sidecar::process::{
     run_eval as run_promptfoo_eval,
 };
 use crate::agents::promptfoo_sidecar::protocol::{
-    EvalAssertion, EvalAssertionType, EvalCandidate as SidecarEvalCandidate, EvalCase,
-    EvalExecution, EvalMode as SidecarEvalMode, ListHistoryRequest, PersistedEvalRun,
-    ReadHistoryRequest, RunEvalRequest,
+    EvalCandidate as SidecarEvalCandidate, EvalCase, EvalExecution,
+    EvalMode as SidecarEvalMode, ListHistoryRequest, PersistedEvalRun, ReadHistoryRequest,
+    RunEvalRequest,
 };
 use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
+use crate::commands::workflow::prompt::{
+    clarifications_record_to_json_string, decisions_record_to_json_string,
+};
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::{
     get_skill_master_in_plugin, read_description_candidate, read_eval_run as db_read_eval_run,
@@ -31,8 +34,7 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 pub use types::{
     ApplyDescriptionCandidateResponse, RefineImprovementBrief, RunEvalWorkbenchRequest,
-    ScenarioAssertionDto, ScenarioDto, ScenarioSummaryDto,
-    SuggestAssertionsRequest, SuggestDescriptionCandidatesRequest,
+    ScenarioDto, ScenarioSummaryDto, SuggestDescriptionCandidatesRequest,
 };
 
 const DEFAULT_DESCRIPTION_CANDIDATE_COUNT: u32 = 3;
@@ -114,22 +116,18 @@ fn validate_prompt_set_input(input: &SaveEvalPromptSet) -> Result<(), String> {
             return Err("shouldTrigger is only valid for trigger scenarios".to_string());
         }
         if input.mode == EvalWorkbenchMode::Performance
-            && case.expected.as_deref().unwrap_or("").trim().is_empty()
             && case
                 .assertions
                 .as_array()
                 .is_some_and(|items| items.is_empty())
         {
-            return Err(
-                "Performance scenario cases need an expected outcome or at least one assertion"
-                    .to_string(),
-            );
+            return Err("Performance scenario cases need at least one expectation".to_string());
         }
         if input.mode == EvalWorkbenchMode::Trigger && case.should_trigger.is_none() {
             return Err("Trigger scenario cases must include shouldTrigger".to_string());
         }
         if !case.assertions.is_array() {
-            return Err("Scenario case assertions must be an array".to_string());
+            return Err("Scenario case expectations must be an array".to_string());
         }
     }
     Ok(())
@@ -174,14 +172,7 @@ fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
         tags,
         prompt: dto.prompt,
         should_trigger: dto.should_trigger,
-        assertions: dto
-            .assertions
-            .into_iter()
-            .map(|assertion| scenarios::ScenarioAssertion {
-                assertion_type: assertion.assertion_type,
-                value: assertion.value,
-            })
-            .collect(),
+        expectations: dto.expectations,
     };
     scenarios::validate_scenario(&scenario)?;
     Ok(scenario)
@@ -194,14 +185,7 @@ fn scenario_to_dto(scenario: scenarios::Scenario) -> ScenarioDto {
         tags: scenario_tag_strings(&scenario.tags),
         prompt: scenario.prompt,
         should_trigger: scenario.should_trigger,
-        assertions: scenario
-            .assertions
-            .into_iter()
-            .map(|assertion| ScenarioAssertionDto {
-                assertion_type: assertion.assertion_type,
-                value: assertion.value,
-            })
-            .collect(),
+        expectations: scenario.expectations,
     }
 }
 
@@ -212,17 +196,12 @@ fn scenario_summary_to_dto(summary: scenarios::ScenarioSummary) -> ScenarioSumma
     }
 }
 
-fn scenario_assertions_json(scenario: &scenarios::Scenario) -> Value {
+fn scenario_expectations_json(scenario: &scenarios::Scenario) -> Value {
     Value::Array(
         scenario
-            .assertions
+            .expectations
             .iter()
-            .map(|assertion| {
-                serde_json::json!({
-                    "type": assertion.assertion_type,
-                    "value": assertion.value,
-                })
-            })
+            .map(|expectation| Value::String(expectation.clone()))
             .collect(),
     )
 }
@@ -238,7 +217,7 @@ fn scenario_run_snapshot(prompt_set: &EvalPromptSet) -> Value {
             "prompt": case.prompt,
             "expected": case.expected,
             "shouldTrigger": case.should_trigger,
-            "assertions": case.assertions,
+            "expectations": case.assertions,
             "sortOrder": case.sort_order,
         })).collect::<Vec<_>>()
     })
@@ -297,7 +276,7 @@ fn scenario_runtime_from_summary_snapshot(snapshot: &Value) -> Result<EvalPrompt
                     .map(str::to_string),
                 should_trigger: case.get("shouldTrigger").and_then(Value::as_bool),
                 assertions: case
-                    .get("assertions")
+                    .get("expectations")
                     .cloned()
                     .unwrap_or_else(|| Value::Array(vec![])),
                 sort_order: case.get("sortOrder").and_then(Value::as_i64).unwrap_or(0),
@@ -405,8 +384,8 @@ fn load_package_runtime(
         if scenario.prompt.trim().is_empty() {
             return Err(format!("Scenario '{}' is missing a prompt.", scenario.name));
         }
-        if scenario.assertions.is_empty() {
-            return Err(format!("Scenario '{}' is missing assertions.", scenario.name));
+        if scenario.expectations.is_empty() {
+            return Err(format!("Scenario '{}' is missing expectations.", scenario.name));
         }
         if mode == EvalWorkbenchMode::Trigger && scenario.should_trigger.is_none() {
             return Err(format!(
@@ -423,7 +402,7 @@ fn load_package_runtime(
             } else {
                 None
             },
-            assertions: scenario_assertions_json(scenario),
+            assertions: scenario_expectations_json(scenario),
             sort_order: cases.len() as i64,
         });
     }
@@ -452,7 +431,7 @@ fn load_scenario_runtime(
     if !scenario.tags.iter().any(|tag| tag.matches_mode(mode)) {
         return Err("Scenario is not available for the selected mode".to_string());
     }
-    let assertions = scenario_assertions_json(&scenario);
+    let expectations = scenario_expectations_json(&scenario);
 
     Ok(EvalPromptSet {
         id: scenario_runtime_id(plugin_slug, skill_name, scenario_name, mode),
@@ -469,7 +448,7 @@ fn load_scenario_runtime(
             } else {
                 None
             },
-            assertions,
+            assertions: expectations,
             sort_order: 0,
         }],
         created_at: String::new(),
@@ -559,34 +538,17 @@ fn from_sidecar_mode(mode: SidecarEvalMode) -> EvalWorkbenchMode {
     }
 }
 
-fn parse_assertions(value: &Value) -> Result<Vec<EvalAssertion>, String> {
+fn parse_expectations(value: &Value) -> Result<Vec<String>, String> {
     let array = value
         .as_array()
-        .ok_or_else(|| "Prompt case assertions must be an array".to_string())?;
+        .ok_or_else(|| "Prompt case expectations must be an array".to_string())?;
 
     array
         .iter()
         .map(|item| {
-            let object = item
-                .as_object()
-                .ok_or_else(|| "Each assertion must be an object".to_string())?;
-            let assertion_type = match object.get("type").and_then(Value::as_str) {
-                Some("equals") => EvalAssertionType::Equals,
-                Some("contains") => EvalAssertionType::Contains,
-                Some("javascript") => EvalAssertionType::Javascript,
-                _ => {
-                    return Err("Assertion type must be equals, contains, or javascript".to_string())
-                }
-            };
-            let raw_value = object
-                .get("value")
-                .cloned()
-                .ok_or_else(|| "Assertion value is required".to_string())?;
-
-            Ok(EvalAssertion {
-                assertion_type,
-                value: raw_value,
-            })
+            item.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "Each expectation must be a string".to_string())
         })
         .collect()
 }
@@ -601,7 +563,7 @@ fn to_sidecar_cases(prompt_set: &EvalPromptSet) -> Result<Vec<EvalCase>, String>
                 prompt: case.prompt.clone(),
                 expected: case.expected.clone(),
                 should_trigger: case.should_trigger,
-                assertions: parse_assertions(&case.assertions)?,
+                expectations: parse_expectations(&case.assertions)?,
             })
         })
         .collect()
@@ -891,20 +853,14 @@ fn generated_scenarios_output_format() -> Value {
                             },
                             "prompt": { "type": "string" },
                             "shouldTrigger": { "type": ["boolean", "null"] },
-                            "assertions": {
+                            "expectations": {
                                 "type": "array",
                                 "items": {
-                                    "type": "object",
-                                    "additionalProperties": false,
-                                    "properties": {
-                                        "type": { "type": "string" },
-                                        "value": { "type": "string" }
-                                    },
-                                    "required": ["type", "value"]
+                                    "type": "string"
                                 }
                             }
                         },
-                        "required": ["id", "name", "tags", "prompt", "assertions"]
+                        "required": ["id", "name", "tags", "prompt", "expectations"]
                     }
                 }
             },
@@ -923,53 +879,14 @@ fn suggested_scenario_output_format() -> Value {
             "properties": {
                 "prompt": { "type": "string" },
                 "shouldTrigger": { "type": ["boolean", "null"] },
-                "assertions": {
+                "expectations": {
                     "type": "array",
                     "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "type": {
-                                "type": "string",
-                                "enum": ["equals", "contains", "javascript"]
-                            },
-                            "value": { "type": "string" }
-                        },
-                        "required": ["type", "value"]
+                        "type": "string"
                     }
                 }
             },
-            "required": ["prompt", "assertions"]
-        }
-    })
-}
-
-#[allow(dead_code)]
-fn suggested_assertions_output_format() -> Value {
-    serde_json::json!({
-        "type": "json_schema",
-        "name": "eval_workbench_suggested_assertions",
-        "schema": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-                "assertions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "type": {
-                                "type": "string",
-                                "enum": ["equals", "contains", "javascript"]
-                            },
-                            "value": { "type": "string" }
-                        },
-                        "required": ["type", "value"]
-                    }
-                }
-            },
-            "required": ["assertions"]
+            "required": ["prompt", "expectations"]
         }
     })
 }
@@ -1038,8 +955,8 @@ Each scenario must have:\n\
 - `tags`: one or more of `performance`, `trigger`, `both`\n\
 - `prompt`: one realistic user prompt\n\
 - `shouldTrigger` for trigger or both scenarios\n\
-- `assertions`: 1 to 3 assertions using only equals, contains, or javascript\n\
-Performance is always evaluated, so every scenario must include assertions.\n\
+- `expectations`: 1 to 3 plain-language business expectations\n\
+Performance is always evaluated, so every scenario must include expectations.\n\
 Use the skill context below and do not mention eval internals.\n\n\
 {skill_context}",
     )
@@ -1049,7 +966,10 @@ fn build_suggest_scenario_prompt(
     skill_name: &str,
     scenario: &scenarios::Scenario,
     skill_files: &[crate::types::SkillFileContent],
+    clarifications_json: &str,
+    decisions_json: &str,
 ) -> String {
+    let skill_path = format!("/skills/{skill_name}/SKILL.md");
     let skill_context = skill_files
         .iter()
         .take(8)
@@ -1069,22 +989,33 @@ fn build_suggest_scenario_prompt(
         .replace("{{scenario_name}}", &scenario.name)
         .replace("{{scenario_modes}}", &mode_labels)
         .replace("{{existing_prompt}}", scenario.prompt.trim())
-        .replace("{{existing_assertions}}", &scenario_assertions_json(scenario).to_string())
+        .replace(
+            "{{existing_expectations}}",
+            &scenario_expectations_json(scenario).to_string(),
+        )
         .replace("{{existing_should_trigger}}", trigger_expectation)
+        .replace("{{skill_path}}", &skill_path)
+        .replace("{{clarifications_json}}", clarifications_json)
+        .replace("{{decisions_json}}", decisions_json)
         .replace("{{skill_context}}", &skill_context)
 }
 
-#[allow(dead_code)]
-fn build_suggested_assertions_prompt(prompt: &str, expected_outcome: &str) -> String {
-    format!(
-        "Suggest 1 to 3 automated assertions for this eval case.\n\
-Return JSON with a top-level `assertions` array.\n\
-Each assertion must use one of: equals, contains, javascript.\n\
-Prefer contains for key phrases and javascript for simple structural checks.\n\
-Do not include prose outside the JSON.\n\n\
-User prompt:\n{prompt}\n\n\
-Expected outcome:\n{expected_outcome}\n",
-    )
+fn load_suggest_scenario_context(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+) -> (String, String) {
+    let clarifications_json = crate::db::workflow_artifacts::read_clarifications(conn, skill_name)
+        .ok()
+        .flatten()
+        .map(|record| clarifications_record_to_json_string(&record))
+        .unwrap_or_else(|| "Not available.".to_string());
+    let decisions_json = crate::db::workflow_artifacts::read_decisions(conn, skill_name)
+        .ok()
+        .flatten()
+        .map(|record| decisions_record_to_json_string(&record))
+        .unwrap_or_else(|| "Not available.".to_string());
+
+    (clarifications_json, decisions_json)
 }
 
 fn build_eval_diagnosis_prompt(
@@ -1339,30 +1270,28 @@ fn parse_suggested_scenario_response(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "Scenario suggestion response missing prompt".to_string())?;
-    let assertions = parsed
-        .get("assertions")
+    let expectations = parsed
+        .get("expectations")
         .and_then(Value::as_array)
-        .ok_or_else(|| "Scenario suggestion response missing assertions array".to_string())?;
-    if assertions.is_empty() {
-        return Err("Scenario suggestion response missing assertions".to_string());
+        .ok_or_else(|| "Scenario suggestion response missing expectations array".to_string())?;
+    if expectations.is_empty() {
+        return Err("Scenario suggestion response missing expectations".to_string());
     }
 
-    let parsed_assertions = assertions
+    let parsed_expectations = expectations
         .iter()
-        .cloned()
         .map(|item| {
-            serde_json::from_value::<ScenarioAssertionDto>(item)
-                .map_err(|error| error.to_string())
-                .map(|assertion| scenarios::ScenarioAssertion {
-                    assertion_type: assertion.assertion_type,
-                    value: assertion.value,
-                })
+            item.as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| "Scenario suggestion expectations must be non-empty strings".to_string())
         })
         .collect::<Result<Vec<_>, String>>()?;
 
     let mut next_scenario = existing_scenario.clone();
     next_scenario.prompt = prompt.to_string();
-    next_scenario.assertions = parsed_assertions;
+    next_scenario.expectations = parsed_expectations;
     if scenario_tag_strings(&existing_scenario.tags)
         .iter()
         .any(|tag| tag == "trigger" || tag == "both")
@@ -1378,26 +1307,6 @@ fn parse_suggested_scenario_response(
     }
 
     Ok(next_scenario)
-}
-
-#[allow(dead_code)]
-fn parse_suggested_assertions_response(
-    state: &serde_json::Value,
-) -> Result<Vec<ScenarioAssertionDto>, String> {
-    let parsed = parse_openhands_structured_output(state)?;
-    let assertions = parsed
-        .get("assertions")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "Assertion suggestion response missing assertions array".to_string())?;
-    if !(1..=3).contains(&assertions.len()) {
-        return Err("Assertion suggestion must return between 1 and 3 assertions".to_string());
-    }
-
-    assertions
-        .iter()
-        .cloned()
-        .map(|item| serde_json::from_value::<ScenarioAssertionDto>(item).map_err(|e| e.to_string()))
-        .collect()
 }
 
 fn build_performance_sidecar_config(
@@ -2071,7 +1980,7 @@ pub fn create_scenario(
         } else {
             None
         },
-        assertions: vec![],
+        expectations: vec![],
     };
     let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
     scenarios::write_scenario_file(&path, &scenario)?;
@@ -2166,9 +2075,19 @@ pub async fn suggest_scenario(
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     let existing_scenario = scenarios::load_scenario(&eval_dir, &scenario_name)?
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))?;
+    let (clarifications_json, decisions_json) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        load_suggest_scenario_context(&conn, &skill_name)
+    };
     let runtime_ctx = read_initialized_runtime_context(&db)?;
     ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    let prompt = build_suggest_scenario_prompt(&skill_name, &existing_scenario, &skill_files);
+    let prompt = build_suggest_scenario_prompt(
+        &skill_name,
+        &existing_scenario,
+        &skill_files,
+        &clarifications_json,
+        &decisions_json,
+    );
     let config = build_generation_sidecar_config(
         &plugin_slug,
         &skill_name,
@@ -2191,45 +2110,6 @@ pub async fn suggest_scenario(
     let path = scenarios::scenario_file_path(&eval_dir, &suggested_scenario.name);
     scenarios::write_scenario_file(&path, &suggested_scenario)?;
     Ok(scenario_to_dto(suggested_scenario))
-}
-
-#[tauri::command]
-#[allow(dead_code)]
-pub async fn suggest_assertions(
-    app: tauri::AppHandle,
-    request: SuggestAssertionsRequest,
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<ScenarioAssertionDto>, String> {
-    validate_plugin_slug(&request.plugin_slug)?;
-    validate_skill_name(&request.skill_name)?;
-    if request.prompt.trim().is_empty() {
-        return Err("Prompt cannot be empty".to_string());
-    }
-    if request.expected_outcome.trim().is_empty() {
-        return Err("Expected outcome cannot be empty".to_string());
-    }
-
-    let runtime_ctx = read_initialized_runtime_context(&db)?;
-    ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    let prompt = build_suggested_assertions_prompt(&request.prompt, &request.expected_outcome);
-    let config = build_generation_sidecar_config(
-        &request.plugin_slug,
-        &request.skill_name,
-        &prompt,
-        suggested_assertions_output_format(),
-        &runtime_ctx,
-    );
-    let run = run_openhands_one_shot(
-        &app,
-        OpenHandsOneShotRunParams {
-            agent_id_prefix: format!("{}-assertion-gen", request.skill_name),
-            config,
-            timeout: std::time::Duration::from_secs(60),
-        },
-    )
-    .await?;
-
-    parse_suggested_assertions_response(&run.conversation_state)
 }
 
 #[tauri::command]
@@ -2685,17 +2565,13 @@ mod tests {
             cases: vec![crate::db::SaveEvalPromptCase {
                 id: None,
                 prompt: "Forecast revenue".to_string(),
-                expected: if mode == EvalWorkbenchMode::Performance {
-                    Some("Include the revenue forecast".to_string())
-                } else {
-                    None
-                },
+                expected: None,
                 should_trigger: if mode == EvalWorkbenchMode::Trigger {
                     Some(true)
                 } else {
                     None
                 },
-                assertions: serde_json::json!([]),
+                assertions: serde_json::json!(["Explains the revenue forecast."]),
                 sort_order: None,
             }],
         }
@@ -2725,7 +2601,7 @@ mod tests {
                     "id": "case-1",
                     "prompt": "Forecast next quarter revenue",
                     "shouldTrigger": true,
-                    "assertions": [],
+                    "expectations": [],
                     "sortOrder": 0
                 }]
             })),
@@ -2749,10 +2625,7 @@ mod tests {
             tags: vec!["performance".to_string()],
             prompt: "Forecast next quarter revenue".to_string(),
             should_trigger: None,
-            assertions: vec![ScenarioAssertionDto {
-                assertion_type: "contains".to_string(),
-                value: "assumptions".to_string(),
-            }],
+            expectations: vec!["Explains the forecast assumptions.".to_string()],
         }
     }
 
@@ -2763,7 +2636,7 @@ mod tests {
             tags: vec!["trigger".to_string()],
             prompt: "Route invoice reconciliation".to_string(),
             should_trigger: Some(true),
-            assertions: vec![],
+            expectations: vec![],
         }
     }
 
@@ -2889,13 +2762,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_performance_case_without_expectation_or_assertions() {
+    fn rejects_performance_case_without_expectations() {
         let mut input = valid_prompt_set(EvalWorkbenchMode::Performance);
-        input.cases[0].expected = Some(String::new());
+        input.cases[0].assertions = serde_json::json!([]);
 
         let err = validate_prompt_set_input(&input).unwrap_err();
 
-        assert!(err.contains("expected outcome or at least one assertion"));
+        assert!(err.contains("at least one expectation"));
     }
 
     #[test]
@@ -2972,9 +2845,9 @@ mod tests {
             cases: vec![crate::db::EvalPromptCase {
                 id: "case-1".to_string(),
                 prompt: "Forecast next quarter revenue".to_string(),
-                expected: Some("Includes assumptions".to_string()),
+                expected: None,
                 should_trigger: None,
-                assertions: serde_json::json!([{ "type": "contains", "value": "assumptions" }]),
+                assertions: serde_json::json!(["Explains the forecast assumptions."]),
                 sort_order: 0,
             }],
             created_at: String::new(),
@@ -2994,12 +2867,9 @@ mod tests {
                 sidecar_cases: vec![EvalCase {
                     id: "case-1".to_string(),
                     prompt: "Forecast next quarter revenue".to_string(),
-                    expected: Some("Includes assumptions".to_string()),
+                    expected: None,
                     should_trigger: None,
-                    assertions: vec![EvalAssertion {
-                        assertion_type: EvalAssertionType::Contains,
-                        value: serde_json::json!("assumptions"),
-                    }],
+                    expectations: vec!["Explains the forecast assumptions.".to_string()],
                 }],
                 persisted_candidates: vec![],
             },
@@ -3041,9 +2911,9 @@ mod tests {
                 "cases": [{
                     "id": "case-1",
                     "prompt": "Forecast next quarter revenue",
-                    "expected": "Includes assumptions",
+                    "expected": null,
                     "shouldTrigger": null,
-                    "assertions": [{ "type": "contains", "value": "assumptions" }],
+                    "expectations": ["Explains the forecast assumptions."],
                     "sortOrder": 0
                 }]
             }))
@@ -3068,9 +2938,9 @@ mod tests {
             cases: vec![crate::db::EvalPromptCase {
                 id: "case-1".to_string(),
                 prompt: "Forecast next quarter revenue".to_string(),
-                expected: Some("Includes assumptions".to_string()),
+                expected: None,
                 should_trigger: None,
-                assertions: serde_json::json!([{ "type": "contains", "value": "assumptions" }]),
+                assertions: serde_json::json!(["Explains the forecast assumptions."]),
                 sort_order: 0,
             }],
             created_at: String::new(),
@@ -3117,10 +2987,7 @@ mod tests {
         assert_eq!(resolved.mode, EvalWorkbenchMode::Performance);
         assert_eq!(resolved.cases.len(), 1);
         assert_eq!(resolved.cases[0].prompt, "Forecast next quarter revenue");
-        assert_eq!(
-            resolved.cases[0].expected.as_deref(),
-            Some("Includes assumptions")
-        );
+        assert!(resolved.cases[0].expected.is_none());
     }
 
     #[test]
@@ -3239,34 +3106,36 @@ mod tests {
                 path: "SKILL.md".to_string(),
                 content: "Use when the user needs booking and pipeline guidance.".to_string(),
             }],
+            "Not available.",
+            "Not available.",
         );
 
         assert!(prompt.contains("Return exactly one valid JSON object"));
         assert!(prompt.contains("\"prompt\": \"string\""));
-        assert!(prompt.contains("\"assertions\": ["));
-        assert!(prompt.contains("\"type\": \"equals | contains | javascript\""));
-        assert!(prompt.contains("\"value\": \"string\""));
+        assert!(prompt.contains("\"expectations\": ["));
         assert!(prompt.contains("\"shouldTrigger\": true"));
         assert!(prompt.contains("Before returning, check that"));
-        assert!(prompt.contains("every assertion object includes both `type` and `value`"));
+        assert!(prompt.contains("every expectation is a non-empty string"));
     }
 
     #[test]
-    fn rejects_suggested_assertions_outside_expected_bounds() {
-        let state = serde_json::json!({
-            "type": "conversation_state",
-            "status": "completed",
-            "structured_output": {
-                "assertions": []
-            }
-        });
-
-        let error = parse_suggested_assertions_response(&state).unwrap_err();
-
-        assert_eq!(
-            error,
-            "Assertion suggestion must return between 1 and 3 assertions"
+    fn build_suggest_scenario_prompt_includes_skill_path_and_workflow_context() {
+        let prompt = build_suggest_scenario_prompt(
+            "measuring-pipeline-value",
+            &scenario_from_dto(sample_trigger_scenario_dto("Bookings routing")).unwrap(),
+            &[crate::types::SkillFileContent {
+                path: "SKILL.md".to_string(),
+                content: "Use when the user needs booking and pipeline guidance.".to_string(),
+            }],
+            "Not available.",
+            "Not available.",
         );
+
+        assert!(prompt.contains("Skill path:"));
+        assert!(prompt.contains("Clarifications:"));
+        assert!(prompt.contains("Decisions:"));
+        assert!(prompt.contains("\"expectations\": ["));
+        assert!(prompt.contains("Read the skill and understand what it does"));
     }
 
     #[test]
@@ -3669,9 +3538,8 @@ mod tests {
         assert_eq!(response.id, "case-1");
         assert_eq!(response.prompt, "Forecast next quarter revenue");
         assert_eq!(response.should_trigger, None);
-        assert_eq!(response.assertions.len(), 1);
-        assert_eq!(response.assertions[0].assertion_type, "contains");
-        assert_eq!(response.assertions[0].value, "assumptions");
+        assert_eq!(response.expectations.len(), 1);
+        assert_eq!(response.expectations[0], "Explains the forecast assumptions.");
     }
 
     #[test]

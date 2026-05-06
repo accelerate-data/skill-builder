@@ -4,18 +4,11 @@ function executionKey(caseId, candidateId) {
   return `${candidateId}::${caseId}`;
 }
 
-function toPromptfooAssertion(assertion) {
-  return {
-    type: assertion.type,
-    value:
-      typeof assertion.value === "string"
-        ? assertion.value
-        : JSON.stringify(assertion.value),
-  };
-}
-
 function buildAssertions(testCase) {
-  const assertions = testCase.assertions.map(toPromptfooAssertion);
+  const assertions = testCase.expectations.map((expectation) => ({
+    type: "llm-rubric",
+    value: expectation,
+  }));
   if (testCase.expected) {
     assertions.push({ type: "contains", value: testCase.expected });
   }
@@ -77,7 +70,7 @@ function buildTests(request, cases) {
           prompt: scenarioCase.prompt,
           expected: scenarioCase.expected,
           shouldTrigger: scenarioCase.shouldTrigger,
-          assertions: scenarioCase.assertions,
+          expectations: scenarioCase.expectations,
           sortOrder: index,
         })),
       },

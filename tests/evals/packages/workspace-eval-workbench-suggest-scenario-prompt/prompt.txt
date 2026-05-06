@@ -1,34 +1,28 @@
-Suggest the prompt and assertions for one eval scenario for the skill `measuring-pipeline-value`.
+Suggest the prompt and expectations for one eval scenario for the skill `measuring-pipeline-value`.
 
 Return exactly one valid JSON object with this shape:
 {
   "prompt": "string",
-  "assertions": [
-    {
-      "type": "equals | contains | javascript",
-      "value": "string"
-    }
-  ],
+  "expectations": ["string"],
   "shouldTrigger": true
 }
 
 Rules:
 - This is for one existing scenario, not a batch.
 - Do not return prose, Markdown, code fences, or comments.
-- Performance is always evaluated, so assertions are required.
-- Return 1 to 3 assertions.
-- Every assertion object must include both `type` and `value`.
-- Use only `equals`, `contains`, or `javascript` for assertion `type`.
+- Performance is always evaluated, so expectations are required.
+- Return 1 to 3 expectations.
+- Every expectation must be a non-empty string.
 - If the scenario mode does not include trigger, return `shouldTrigger: null`.
 - Keep the suggestion grounded in the real skill behavior and files below.
 - Do not mention evals, Promptfoo, or implementation details.
-- Before returning, check that the response is valid JSON, matches the shape above exactly, and every assertion object includes both `type` and `value`.
+- Before returning, check that the response is valid JSON, matches the shape above exactly, and every expectation is a non-empty string.
 
 Scenario name: Pipeline to bookings reconciliation
 Scenario modes: performance
 Existing prompt:
 Existing shouldTrigger: null
-Existing assertions: []
+Existing expectations: []
 
 Skill context:
 ## SKILL.md

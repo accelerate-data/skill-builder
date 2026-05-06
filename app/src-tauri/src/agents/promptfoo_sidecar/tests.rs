@@ -5,8 +5,8 @@ use super::process::{
     resolve_runner_from_dist_candidates, PromptfooSidecarPathError,
 };
 use super::protocol::{
-    parse_sidecar_event, EvalAssertion, EvalAssertionType, EvalCandidate, EvalCase, EvalExecution,
-    EvalMode, RunEvalRequest, SidecarEvent, SidecarResultPayload,
+    parse_sidecar_event, EvalCandidate, EvalCase, EvalExecution, EvalMode, RunEvalRequest,
+    SidecarEvent, SidecarResultPayload,
 };
 
 #[test]
@@ -28,10 +28,7 @@ fn run_eval_request_serializes_sidecar_payload() {
             prompt: "Classify these tables.".to_string(),
             expected: None,
             should_trigger: Some(true),
-            assertions: vec![EvalAssertion {
-                assertion_type: EvalAssertionType::Contains,
-                value: json!("warehouse-domain"),
-            }],
+            expectations: vec!["Explains the warehouse-domain routing expectation.".to_string()],
         }],
         vec![EvalExecution {
             case_id: "case-1".to_string(),
@@ -54,7 +51,10 @@ fn run_eval_request_serializes_sidecar_payload() {
         "Use for warehouse domain classification prompts."
     );
     assert_eq!(payload["cases"][0]["shouldTrigger"], true);
-    assert_eq!(payload["cases"][0]["assertions"][0]["type"], "contains");
+    assert_eq!(
+        payload["cases"][0]["expectations"][0],
+        "Explains the warehouse-domain routing expectation."
+    );
     assert_eq!(payload["executions"][0]["candidateId"], "candidate-1");
 }
 

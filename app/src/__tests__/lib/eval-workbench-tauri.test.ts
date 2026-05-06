@@ -50,7 +50,7 @@ describe("Eval Workbench Tauri wrappers", () => {
         tags: ["performance"],
         prompt: "Forecast next quarter revenue",
         shouldTrigger: null,
-        assertions: [],
+        expectations: ["Explains the forecast assumptions."],
       },
       "Old regression",
     );
@@ -64,7 +64,7 @@ describe("Eval Workbench Tauri wrappers", () => {
         tags: ["performance"],
         prompt: "Forecast next quarter revenue",
         shouldTrigger: null,
-        assertions: [],
+        expectations: ["Explains the forecast assumptions."],
       },
       previousScenarioName: "Old regression",
     });

@@ -23,7 +23,7 @@ const defaultPerformanceScenario = {
   id: "case-1",
   prompt: "Forecast next quarter revenue for the west region pipeline.",
   shouldTrigger: null as null,
-  assertions: [],
+  expectations: [],
 };
 
 const defaultPerformanceRunSummary = {

@@ -13,7 +13,7 @@ const PERFORMANCE_SCENARIO = {
   tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue for the west region pipeline.",
   shouldTrigger: null,
-  assertions: [],
+  expectations: ["Explains the forecast assumptions."],
 };
 
 const PERFORMANCE_RUN_SUMMARY = {
@@ -87,7 +87,7 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
     await expect(page.getByText("run-1")).toBeVisible();
   });
 
-  test("runs a scenario and sends the failure brief to Refine", async ({
+  test("evaluates the package and sends the failure brief to Refine", async ({
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
@@ -106,14 +106,13 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
       "build_refine_improvement_brief",
     ]);
 
-    await page.getByRole("button", { name: "Run scenario" }).click();
+    await page.getByRole("button", { name: "Evaluate" }).click();
 
     await expect(page.getByText("Missed assumptions section")).toBeVisible();
     await expect(await getTrackedInvokeCount(page, "run_eval_workbench")).toBe(1);
     const runCalls = await getTrackedInvokes(page, "run_eval_workbench");
     expect(runCalls[0]?.args).toMatchObject({
       request: {
-        scenarioName: "Regression",
         candidateIds: ["current-skill"],
       },
     });
