@@ -141,7 +141,7 @@ Related docs:
 
 - [openhands-agent-server-runtime](../openhands-agent-server-runtime/README.md)
 - [openhands-native-migration](../openhands-native-migration/README.md)
-- [openhands-workspace-management](../openhands-workspace-management/README.md)
+- [persistent-skill-conversations](../persistent-skill-conversations/README.md)
 
 ## Canonical Data Flow
 
@@ -192,10 +192,11 @@ Use this page as the entrypoint, then drop to the next level only when needed:
 |---|---|
 | Runtime process boundary and event transport | [openhands-agent-server-runtime](../openhands-agent-server-runtime/README.md) |
 | OpenHands migration shape and what was removed | [openhands-native-migration](../openhands-native-migration/README.md) |
+| Persistent skill conversations and resume behavior | [persistent-skill-conversations](../persistent-skill-conversations/README.md) |
 | Backend persistence, command surface, and storage | [backend-design](../backend-design/README.md) |
 | Workflow step lifecycle and reset behavior | [workflow-state](../workflow-state/README.md) |
 | Artifact ownership and storage rules | [workflow-artifact-storage](../workflow-artifact-storage/README.md) |
-| Workspace preparation and `.agents/**` deployment | [openhands-workspace-management](../openhands-workspace-management/README.md) |
+| Workspace preparation, main-agent suffix wiring, and conversation storage | [persistent-skill-conversations](../persistent-skill-conversations/README.md) |
 | Agent and artifact contract details | [agent-specs](../agent-specs/README.md) |
 
 ## Open Questions

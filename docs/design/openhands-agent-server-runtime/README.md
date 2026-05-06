@@ -7,13 +7,17 @@ functional-specs: []
 > **Status:** Draft
 > **Issue:** VU-1153
 > **Functional specs:** Not applicable; this design covers the runtime integration contract rather than an end-user flow.
+> **Runtime update:** Skill-scoped conversation ownership now lives in
+> `docs/design/persistent-skill-conversations/README.md`. This document remains
+> the transport/runtime boundary reference for REST, WebSocket, and Rust-owned
+> Agent Server orchestration.
 
 ## Overview
 
 Skill Builder uses an auto-managed local OpenHands Agent Server as the only
-OpenHands runtime boundary. Rust starts one Agent Server process per app
-instance on a random localhost port, calls the server over REST, receives live
-conversation events over WebSocket, and shuts the process down with the app.
+OpenHands runtime boundary. Rust starts and manages the Agent Server, calls the
+server over REST, receives live conversation events over WebSocket, and shuts
+the process down with the owning skill or app lifecycle.
 
 This is a clean break from the Node sidecar, the Python stdin/stdout runner, and
 the PyInstaller `openhands-runner` packaging path. Rust owns Skill Builder
@@ -61,7 +65,7 @@ Reference docs:
 |---|---|
 | Use OpenHands Agent Server as the process boundary. | The OpenHands docs define Agent Server as the HTTP/WebSocket execution surface. Using it avoids maintaining a custom Python stdin/stdout runner. |
 | Rust owns the Agent Server process. | The Tauri backend already owns app lifecycle, settings, workspace paths, logging, cancellation, and event delivery to React. |
-| Bind to `127.0.0.1:<random-free-port>` per app instance. | A fixed port blocks parallel app instances and worktrees. Random local ports make the runtime instance-scoped. |
+| Bind to `127.0.0.1:<random-free-port>` per server instance. | A fixed port blocks parallel app instances and worktrees. Random local ports make each runtime instance isolated. |
 | Delete the Node sidecar for OpenHands runtime. | The target branch is a clean break. Keeping Node as a compatibility adapter preserves the old boundary and leaves the runtime migration incomplete. |
 | Rust owns durable workspace management. | Skill Builder already creates `{data_dir}/workspace`, skill-scoped workspace folders, `.agents/**` deployment, logs, and app settings. Agent Server must not choose the product workspace path. |
 | Agent Server owns conversation execution. | Rust sends API requests; it does not reconstruct OpenHands SDK internals after the server boundary is adopted. |
@@ -84,12 +88,12 @@ React UI
             -> WebSocket: stream conversation events
 ```
 
-The Agent Server process is persistent for the app instance. Individual
-workflow steps are conversations, not processes. A one-shot workflow run creates
-a conversation, sends one rendered prompt, starts the run, streams events until
-terminal state, then closes or deletes the conversation according to the server
-API. A future refine session keeps the conversation open across multiple user
-messages.
+The Agent Server process is persistent for the lifetime of the owning skill
+session. Individual prompts are turns within one or more conversations managed
+by that server. Conversation ownership, persistence roots, and resume rules are
+defined in
+`docs/design/persistent-skill-conversations/README.md`; this document focuses
+on the transport boundary and runtime process contract.
 
 ## Workspace Ownership
 
@@ -197,8 +201,8 @@ The one-shot request includes the same semantic fields the Python runner used:
 
 ### One-Shot
 
-Used by scope review, workflow steps, answer evaluation, skill generation,
-description optimization, and eval generation.
+Used by pre-skill flows such as scope review, or any future call site that
+intentionally wants an isolated throwaway conversation.
 
 Lifecycle:
 
@@ -217,11 +221,13 @@ One-shot conversations cannot expose app-owned user-question tools.
 
 ### Interactive
 
-Used by future OpenHands refine.
+Used by skill-bound persistent conversations such as refine and reused workflow
+sessions.
 
 Lifecycle:
 
-- Rust creates one conversation per refine session.
+- Rust creates or reattaches to a conversation according to the owning
+  skill/session policy.
 - The frontend sends additional user messages through Tauri.
 - Rust forwards them to Agent Server.
 - The same WebSocket event adapter streams conversation events.

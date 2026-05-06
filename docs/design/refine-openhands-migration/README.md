@@ -5,6 +5,11 @@ functional-specs: []
 # Refine → OpenHands Multi-Turn Conversation
 
 > **Status:** Draft
+> **Runtime update:** Persistent per-skill conversation ownership now lives in
+> `docs/design/persistent-skill-conversations/README.md`. This document remains
+> useful for refine-specific multi-turn mechanics, but any statements about
+> creating a conversation only for refine or deleting it on close are
+> superseded by the persistent skill conversation design.
 
 ## Overview
 
@@ -14,8 +19,10 @@ The Refine tab is a streaming chat UI where users ask the skill-creator agent to
 
 **Covers**
 
-- Multi-turn conversation lifecycle: create on turn 1, append event + run on turns 2+, keep-alive between turns
-- Cancel (pause conversation, stay in refine view) vs Close/navigate-away (stop any running turn + delete conversation)
+- Multi-turn conversation lifecycle: attach or create on turn 1, append event +
+  run on later turns, keep-alive between turns
+- Cancel (pause conversation, stay in refine view) vs Close/navigate-away
+  (stop any running turn, but keep the persisted skill conversation)
 - New `dispatch_openhands_refine_turn` function in `openhands_server/mod.rs` — a no-delete variant of `dispatch_openhands_one_shot`
 - `RefineSession` field additions (`conversation_id`, `current_agent_id`) and removal (`stream_started`)
 - Removal of Claude Code-only artifacts: `discover_plugin_agents`, `answer_refine_question`, `SidecarPool` params on refine commands
@@ -36,7 +43,7 @@ The Refine tab is a streaming chat UI where users ask the skill-creator agent to
 |---|---|
 | One persistent conversation per session, kept alive between turns | The agent retains full edit history, file state, and conversation tone across turns without the app reconstructing context each time |
 | Cancel = POST /pause then wait for real `PauseEvent` from server, keep conversation alive | User may want to stop a long edit and send a corrected instruction; the conversation stays valid. A synthetic cancel event was previously emitted by the client — that is wrong because the server may not have actually stopped yet. The real `PauseEvent` streamed back via WebSocket is the authoritative stop confirmation. |
-| Close/navigate-away = cancel active turn (if any) + DELETE conversation | Prevents resource leaks on the OpenHands server; user is explicitly leaving the surface |
+| Close/navigate-away keeps the persisted skill conversation. | Refine is now one surface on the skill's long-lived OpenHands thread. Leaving the view must not discard that thread by default. |
 | `dispatch_openhands_refine_turn` skips `delete_conversation` | The only structural difference from the one-shot path; cancel registry, WebSocket loop, and event emission are unchanged |
 | `current_agent_id` stored in `RefineSession` | Close must be able to cancel a running turn without knowing the agent_id out-of-band |
 | `available_agents` is always `["skill-creator"]` | `discover_plugin_agents` scans Claude Code plugin dirs (`.claude/plugins/`); OpenHands uses `.agents/`, and skill-creator is the only refine agent |
@@ -46,7 +53,7 @@ The Refine tab is a streaming chat UI where users ask the skill-creator agent to
 
 ### Turn 1 — first `send_refine_message`
 
-```
+```text
 app                            OpenHands Agent Server
  │                                     │
  ├── POST /api/conversations ──────────►  initial_message = context + user message
@@ -67,7 +74,7 @@ app                            OpenHands Agent Server
 
 ### Turn N — subsequent `send_refine_message`
 
-```
+```text
 app                            OpenHands Agent Server
  │                                     │
  ├── POST /api/conversations/{id}/events ►  MessageEvent: user text
@@ -80,7 +87,7 @@ app                            OpenHands Agent Server
 
 ### Cancel — user clicks stop, stays in refine view
 
-```
+```text
 cancel_refine_turn(session_id)
   ├── read current_agent_id from RefineSession
   └── cancel_openhands_one_shot(current_agent_id)
@@ -99,14 +106,16 @@ The cancelled event comes from the real `PauseEvent` the server streams after `P
 
 ### Close / navigate-away — `close_refine_session`
 
-```
+```text
 close_refine_session(session_id)
   ├── remove session from RefineSessionManager
   ├── if session.current_agent_id.is_some() and turn is active:
   │     cancel_openhands_one_shot(current_agent_id)   ← stops streaming, pauses server
-  └── if session.conversation_id.is_some():
-        DELETE /api/conversations/{conversation_id}
+  └── keep persisted conversation_id for future resume
 ```
+
+The refine view owns only the live in-memory UI/session wrapper. The underlying
+skill conversation remains durable and is reused when the skill is reopened.
 
 ## Bug Fix: Cancel Path in `run_conversation_task_inner`
 
@@ -279,7 +288,7 @@ The template variables that survive: `{{skill_name}}`, `{{skill_dir}}`, `{{conte
 
 The updated `refine-initial.txt` sets workspace context and delegates immediately to the user message, with no tool-routing instructions:
 
-```
+```text
 We are refining the skill {{skill_name}}. The skill directory is: {{skill_dir}}. The context directory is: {{context_dir}}. The workspace directory is: {{workspace_dir}}. The user context file is at: {{workspace_dir}}/user-context.md — read it for purpose, description, and all user context.{{target_files_clause}}
 
 Read SKILL.md and any reference files in the references/ directory to understand the current skill before making any changes.
@@ -301,7 +310,7 @@ Turn N: `build_followup_prompt_with_output_dir(user_message, &skill_output_dir, 
 
 Subsequent `send_refine_message` calls append a `MessageEvent` to the conversation and then `run`. The message content is built by `build_followup_prompt_with_output_dir`:
 
-```
+```text
 [IMPORTANT: Only edit these files: {abs_file_paths}. Do not modify any other files.
 
 ]{user_message}

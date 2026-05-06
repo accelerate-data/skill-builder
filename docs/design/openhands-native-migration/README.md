@@ -8,6 +8,10 @@
 > topology, prompt ownership, `.agents/**` workspace layout, and app-facing
 > event semantics remain useful where they do not conflict with the Agent Server
 > runtime design.
+> **Conversation update:** Persistent per-skill conversation ownership and main
+> agent suffix wiring now live in
+> `docs/design/persistent-skill-conversations/README.md`. Any older one-shot or
+> "skills only, no suffix" assumptions below should defer to that design.
 
 ## Overview
 
@@ -49,7 +53,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | No dual-runtime compatibility. | Maintaining two parallel execution paths adds indefinite carrying cost. A branch release with a 1-month test window validates OpenHands before it becomes the default. |
 | Rust-managed local OpenHands Agent Server. | The active VU-1153 runtime starts the pinned Agent Server package on a random loopback port and calls it over REST/WebSocket. The old PyInstaller runner option is historical only. |
 | One top-level OpenHands agent, `skill-creator`. | OpenHands `Agent` is the reasoning/action executor and `Conversation` is the stateful run boundary. Skill Builder should create one agent identity and vary task prompts, tools, and output schemas per request. |
-| One-shot runs are single-message conversations. | A one-shot run is not a single OpenHands `step()`. It is a `Conversation` with one user message, no app-owned follow-up questions, and a bounded `run(max_iterations=...)` lifecycle. |
+| Pre-skill isolated runs are single-message conversations. | A one-shot run is not a single OpenHands `step()`. It is a `Conversation` with one user message, no app-owned follow-up questions, and a bounded `run(max_iterations=...)` lifecycle. Skill-bound surfaces may instead reuse a persistent skill conversation. |
 | Progress visibility is mandatory. | The UI must keep showing users that the agent is working. OpenHands reasoning/progress events, tool calls, file operations, and status updates must stream as `conversation_event` records before terminal `conversation_state`. |
 | Workspace agent and skills mirror OpenHands `.agents/**`. | `agent-sources/workspace/**` is copied into `.agents/**`; only `.agents/agents/skill-creator.md` and `.agents/skills/**` are runtime workspace files. |
 | Task prompts are app-owned templates. | Task-specific instructions live under `agent-sources/prompts/**`, are compiled/rendered by Rust, and are sent as explicit `Conversation.send_message(...)` content. They are not copied into `.agents/**`. |
@@ -59,7 +63,7 @@ The runtime boundary contract is detailed in `docs/design/agent-runtime-boundary
 | Confirm-decisions logic moves into app prompts. | Step 2 and step 3 are both one-shot conversations with `skill-creator`. The rendered task prompt and output schema distinguish decision confirmation from skill generation. |
 | LiteLLM provider strings for multi-model support. | OpenHands routes all LLM calls through LiteLLM. Any provider string (`anthropic/claude-sonnet-4-6`, `openai/gpt-4o`, `google/gemini-2.0-flash`, `ollama/llama3.2`) works without runner changes. Settings adds a provider picker and per-provider API key. |
 | `AGENTS.md` is the always-on context file. | Both Claude Code and OpenHands read `AGENTS.md` natively. No change to the always-on instruction layer. |
-| Default OpenHands system prompt is used; `skill-creator.md` body is not sent as a system prompt override. | The SDK `Agent.system_prompt` field intentionally receives no value. The skill-creator identity and domain guidance come from the two AgentSkills (`creating-skills`, `researching-skill-requirements`) loaded via `agent_context.skills`. Overriding the default system prompt would replace OpenHands' built-in safety, tool, and reasoning instructions with no benefit — the skills carry the task-specific guidance. The SDK docs explicitly warn against overriding unless the agent is being repurposed for a completely different task. |
+| `skill-creator.md` body is sent as `agent_context.system_message_suffix`, not as a full system prompt override. | The main agent should keep the default OpenHands system prompt template while explicitly appending the shared `skill-creator` instructions as `system_message_suffix`. This makes the main-agent identity deterministic without replacing OpenHands' built-in system prompt. |
 | `AskUserQuestion` is not needed for Refine. | Refine uses OpenHands multi-turn conversation: each user message is a `MessageEvent` appended to the event log, not an interrupt. The `AskUserQuestion` custom tool would only be needed if an agent mid-turn needed to ask a question; Refine's design never requires that pattern. See `docs/design/refine-openhands-migration/README.md`. |
 | Workspace, LLM, and agent invocation are backend-owned boundaries. | App startup initializes the workspace and deploys `.agents` artifacts; Rust projects settings into `WorkflowLlmConfig`; product features invoke app agents through one-shot or streaming runtime APIs instead of constructing raw runtime details. |
 
@@ -132,13 +136,12 @@ step_config.rs -> task kind + prompt + schema
           -> step 3 task: skill generation
 ```
 
-Each item above is a separate one-shot conversation: the runner constructs the
-same top-level `skill-creator` agent, sends one rendered task prompt, streams
-conversation events as normalized app-visible progress, runs to completion with
-a bounded iteration count, and returns terminal `conversation_state`. The app can
-later use the same runner to create a long-lived conversation for refine chat;
-that mode keeps the same agent and workspace but permits repeated
-`send_message` calls and the app-owned question tool.
+Pre-skill isolated runs use separate one-shot conversations. Skill-bound
+surfaces can instead reuse one persistent per-skill conversation: the runtime
+constructs the same top-level `skill-creator` agent, appends task-specific
+messages as turns, streams conversation events as normalized app-visible
+progress, and preserves the skill's conversation history across workflow,
+refine, and other skill-bound surfaces.
 
 The app JSONL protocol remains the boundary, but OpenHands-native requests use
 `conversation_event` for progress and terminal `conversation_state` for
@@ -204,7 +207,11 @@ skills:
 
 The body contains shared rules that apply to every task: obey the rendered task prompt, respect the output schema, never ask user questions during one-shot runs, and write only the files requested by the current task.
 
-**System prompt policy:** The `skill-creator.md` body is deployed to the workspace for reference but is NOT sent as a custom `system_prompt` override on the `Agent`. The SDK default "You are OpenHands agent, a helpful AI assistant..." system prompt is used as-is. The `Agent.system_prompt` field in `StartConversationRequest` is intentionally left unset. Skill-creator identity is provided through the AgentSkills in `agent_context.skills`, not a system prompt override. The SDK docs warn that overriding this replaces OpenHands' built-in safety and reasoning instructions and is only appropriate for agents repurposed for completely different tasks.
+**System prompt policy:** The `skill-creator.md` body is deployed to the
+workspace and should also be sent on the main agent as
+`agent_context.system_message_suffix`. The SDK default system prompt template is
+still used as-is; the app does not replace `Agent.system_prompt` with a custom
+full override.
 
 ### App-Owned Prompt Templates
 
