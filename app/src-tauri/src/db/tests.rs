@@ -198,6 +198,78 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
 }
 
 #[test]
+fn test_repair_plugin_ownership_schema_collapses_legacy_skills_default_plugin() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    conn.execute(
+        "INSERT INTO plugins (slug, display_name, source_type, is_default)
+         VALUES ('skills', 'skills', 'synthetic', 1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE plugins SET is_default = 1 WHERE slug = 'default'",
+        [],
+    )
+    .unwrap();
+
+    let skills_plugin_id: i64 = conn
+        .query_row("SELECT id FROM plugins WHERE slug = 'skills'", [], |row| row.get(0))
+        .unwrap();
+    let default_plugin_id: i64 = conn
+        .query_row("SELECT id FROM plugins WHERE slug = 'default'", [], |row| row.get(0))
+        .unwrap();
+
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, purpose, plugin_id, created_at, updated_at)
+         VALUES ('legacy-skill', 'skill-builder', 'domain', ?1, datetime('now'), datetime('now'))",
+        [skills_plugin_id],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, purpose, plugin_id, created_at, updated_at)
+         VALUES ('default-skill', 'skill-builder', 'domain', ?1, datetime('now'), datetime('now'))",
+        [default_plugin_id],
+    )
+    .unwrap();
+
+    repair_plugin_ownership_schema(&conn).unwrap();
+
+    let default_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM plugins WHERE is_default = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(default_count, 1);
+
+    let legacy_plugin_id_after: i64 = conn
+        .query_row(
+            "SELECT plugin_id FROM skills WHERE name = 'legacy-skill'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(legacy_plugin_id_after, default_plugin_id);
+
+    let skills_plugin_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM plugins WHERE slug = 'skills'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(skills_plugin_count, 0);
+}
+
+#[test]
 fn test_eval_workbench_scenario_identity_migration_recovers_from_stale_eval_runs_v2_table() {
     let conn = Connection::open_in_memory().unwrap();
     ensure_migration_table(&conn).unwrap();

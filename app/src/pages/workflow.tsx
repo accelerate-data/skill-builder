@@ -314,6 +314,7 @@ export default function WorkflowPage() {
         nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
         skillName={skillName}
+        pluginSlug={pluginSlug}
         skillsPath={skillsPath}
         clarificationsEditable={!!stepConfig?.clarificationsEditable && !reviewMode}
         clarificationsData={clarificationsData}

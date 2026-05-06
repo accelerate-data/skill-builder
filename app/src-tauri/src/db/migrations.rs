@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 type MigrationFn = fn(&Connection) -> Result<(), rusqlite::Error>;
 
@@ -1353,7 +1353,7 @@ pub(super) fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqli
 
 /// Ensure first-class plugin ownership exists even if migration 38 was marked applied
 /// before the schema rebuild actually ran.
-pub(super) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(crate) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
     let plugins_table_exists = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'plugins'",
         [],
@@ -1394,6 +1394,77 @@ pub(super) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), ru
         "UPDATE skills
          SET plugin_id = (SELECT id FROM plugins WHERE slug = 'default')
          WHERE plugin_id IS NULL;",
+    )?;
+
+    let default_plugin_id: i64 = conn.query_row(
+        "SELECT id FROM plugins WHERE slug = 'default' LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if let Ok(legacy_plugin_id) = conn.query_row(
+        "SELECT id FROM plugins WHERE slug = 'skills' LIMIT 1",
+        [],
+        |row| row.get::<_, i64>(0),
+    ) {
+        let legacy_rows: Vec<(i64, String)> = conn
+            .prepare("SELECT id, name FROM skills WHERE plugin_id = ?1 ORDER BY id")?
+            .query_map([legacy_plugin_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|row| row.ok())
+            .collect();
+
+        for (legacy_skill_id, skill_name) in legacy_rows {
+            let canonical_skill_id = conn
+                .query_row(
+                    "SELECT id FROM skills
+                     WHERE plugin_id = ?1 AND name = ?2 AND id != ?3
+                     LIMIT 1",
+                    rusqlite::params![default_plugin_id, skill_name, legacy_skill_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?;
+
+            if let Some(canonical_skill_id) = canonical_skill_id {
+                for table in [
+                    "workflow_runs",
+                    "skill_tags",
+                    "skill_locks",
+                    "workflow_sessions",
+                    "document_skills",
+                ] {
+                    let sql =
+                        format!("UPDATE {table} SET skill_id = ?1 WHERE skill_id = ?2");
+                    conn.execute(&sql, rusqlite::params![canonical_skill_id, legacy_skill_id])?;
+                }
+                conn.execute(
+                    "DELETE FROM skills WHERE id = ?1",
+                    rusqlite::params![legacy_skill_id],
+                )?;
+            } else {
+                conn.execute(
+                    "UPDATE skills SET plugin_id = ?1 WHERE id = ?2",
+                    rusqlite::params![default_plugin_id, legacy_skill_id],
+                )?;
+            }
+        }
+
+        let legacy_skill_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE plugin_id = ?1",
+            [legacy_plugin_id],
+            |row| row.get(0),
+        )?;
+        if legacy_skill_count == 0 {
+            conn.execute(
+                "DELETE FROM plugins WHERE id = ?1 AND slug = 'skills' AND source_type = 'synthetic'",
+                [legacy_plugin_id],
+            )?;
+        }
+    }
+
+    conn.execute(
+        "UPDATE plugins
+         SET is_default = CASE WHEN slug = 'default' THEN 1 ELSE 0 END",
+        [],
     )?;
 
     Ok(())

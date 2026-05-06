@@ -101,6 +101,7 @@ vi.mock("@/components/research-summary-card", () => ({
 }));
 
 import { WorkflowStepComplete } from "@/components/step-complete";
+import { listSkillFiles } from "@/lib/tauri";
 
 function makeRun(totalCost: number): AgentRunRecord {
   return {
@@ -192,6 +193,38 @@ describe("WorkflowStepComplete — agent runs", () => {
 
     render(<WorkflowStepComplete {...baseProps} reviewMode={true} />);
     await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith("my-skill", 0));
+  });
+});
+
+describe("WorkflowStepComplete — plugin-aware file lookup", () => {
+  it("passes plugin slug through listSkillFiles for completed-step file loading", async () => {
+    vi.mocked(listSkillFiles).mockResolvedValue([
+      {
+        name: "SKILL.md",
+        relative_path: "SKILL.md",
+        absolute_path: "/skills/analytics/skills/my-skill/SKILL.md",
+        is_directory: false,
+        is_readonly: false,
+        size_bytes: 12,
+      },
+    ]);
+    mockReadFile.mockResolvedValue("# My Skill");
+    mockGetStepAgentRuns.mockResolvedValue([]);
+
+    render(
+      <WorkflowStepComplete
+        stepName="Generate Skill"
+        stepId={3}
+        outputFiles={["skill/SKILL.md"]}
+        skillName="my-skill"
+        pluginSlug="analytics"
+        skillsPath="/skills"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listSkillFiles).toHaveBeenCalledWith("/skills", "my-skill", "analytics");
+    });
   });
 });
 
