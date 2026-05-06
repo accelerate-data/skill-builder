@@ -69,8 +69,9 @@ when future agents should load the skill, using trigger conditions and exclusion
 boundaries from the confirmed decisions. Do not run a separate description
 candidate generation, ranking, or tuning flow here.
 
-Use the verifier prompt bundled inside the `creating-skills` skill for a
-fresh-context verification pass through the named `skill-verifier` subagent.
+Use the verifier prompt bundled inside the `creating-skills` skill to launch
+the named `skill-verifier` subagent via `task_tool_set` for a fresh-context
+verification pass.
 Give the verifier only the synthesized generation brief, generated files, and
 verifier instructions.
 Incorporate material verifier findings, then run exactly one re-verification

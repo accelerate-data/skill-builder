@@ -128,6 +128,7 @@ try {
     terminalStatus: undefined,
     terminalEvent: undefined,
     taskToolSetSeen: false,
+    invokeSkillSeen: false,
     toolNamesSeen: new Set(),
   };
 
@@ -147,6 +148,13 @@ try {
       )} terminal=${JSON.stringify(observed.terminalEvent)}`,
       );
     }
+  if (observed.invokeSkillSeen) {
+    throw new Error(
+      `Subagent smoke FAILED: agent used invoke_skill instead of task_tool_set for "${SUBAGENT_NAME}". tools_seen=${JSON.stringify(
+        [...observed.toolNamesSeen].sort(),
+      )} terminal=${JSON.stringify(observed.terminalEvent)}`,
+    );
+  }
   if (["error", "failed", "cancelled", "canceled"].includes(observed.terminalStatus)) {
     throw new Error(
       `Subagent smoke ended with ${observed.terminalStatus}: ${JSON.stringify(
@@ -243,7 +251,7 @@ async function createConversation({
         {
           type: "text",
           text:
-            "You must delegate via task_tool_set to the named skill-verifier subagent. Do not inspect README.md yourself. Your first substantive action must be task_tool_set calling skill-verifier. Ask it to inspect README.md and return exactly VERIFIER_OK. After the subagent completes, finish with exactly VERIFIER_OK.",
+            "Launch the named skill-verifier subagent via task_tool_set. Do not inspect README.md yourself. Your first substantive action must be task_tool_set calling skill-verifier. Ask it to inspect README.md and return exactly VERIFIER_OK. After the subagent completes, finish with exactly VERIFIER_OK.",
         },
       ],
       run: false,
@@ -263,7 +271,7 @@ async function createConversation({
       include_default_tools: ["FinishTool", "ThinkTool"],
       agent_context: {
         system_message_suffix:
-          "When the user explicitly instructs you to delegate to a named subagent, you must call task_tool_set first instead of doing the work yourself.",
+          "When the user explicitly instructs you to launch a named subagent via task_tool_set, use task_tool_set first instead of doing the work yourself.",
       },
     },
   };
@@ -408,6 +416,12 @@ function inspectEvent(payload, observed) {
       const action = JSON.stringify(payload.action ?? payload);
       if (action.includes(SUBAGENT_NAME)) {
         observed.taskToolSetSeen = true;
+      }
+    }
+    if (toolName === "invoke_skill") {
+      const action = JSON.stringify(payload.action ?? payload);
+      if (action.includes(SUBAGENT_NAME)) {
+        observed.invokeSkillSeen = true;
       }
     }
   }

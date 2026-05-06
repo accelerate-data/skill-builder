@@ -127,6 +127,30 @@ describe("projectConversationEvent", () => {
     expect(item.subagentStatus).toBe("running");
   });
 
+  it("projects task_tool_set as a subagent item", () => {
+    const event = makeEvent("ActionEvent", {
+      source: "agent",
+      action: {
+        subagent_type: "skill-verifier",
+        description: "Verify generated HR analytics skill",
+      },
+      tool_name: "task_tool_set",
+      tool_call_id: "call-task-1",
+      summary: "Verify generated HR analytics skill",
+    });
+
+    const result = projectConversationEvent(event, {});
+    const item = result.add[0];
+    expect(item.type).toBe("subagent");
+    expect(item.toolName).toBe("task_tool_set");
+    expect(item.toolSummary).toBe("Launch subagent: skill-verifier");
+    expect(item.subagentType).toBe("skill-verifier");
+    expect(item.subagentDescription).toBe(
+      "Verify generated HR analytics skill",
+    );
+    expect(item.subagentStatus).toBe("running");
+  });
+
   it("projects think into a pending thinking item with Reasoning step label", () => {
     const event = makeEvent("ActionEvent", {
       source: "agent",

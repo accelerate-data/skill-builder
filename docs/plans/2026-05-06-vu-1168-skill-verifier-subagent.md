@@ -3,8 +3,9 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let workflow step 3 invoke a named `skill-verifier` subagent through
-the OpenHands Agent Server path, using the persistent per-skill conversation
-model and the default `task_tool_set`.
+the OpenHands Agent Server path, surface the verifier's nested tool activity in
+the UI, and remove the stale generated-skill `metadata.version` /
+`version_bump` contract from step 3.
 
 **Architecture:** The main `skill-creator` conversation keeps a default tool set
 that includes `task_tool_set`. The Agent Server uses the skill-scoped
@@ -13,10 +14,16 @@ that includes `task_tool_set`. The Agent Server uses the skill-scoped
 OpenHands file-agent registration. The runtime therefore needs to deploy a
 dedicated `skill-verifier.md` file into `.agents/agents/`, keep step 3 on the
 skill-scoped workspace, and prompt the main conversation to invoke
-`skill-verifier` by name during the generator-verifier loop. Because
+`skill-verifier` by name during the generator-verifier loop. Parent
+conversation events only stream the `task`/`TaskObservation` boundary; nested
+subagent tool activity is persisted under
+`{parent_conversation}/subagents/<conversation_id>/events/`, so the UI must
+load and project those child events into `subagentItems` explicitly. Because
 conversations are persistent per skill and OpenHands only rereads workspace
 file agents when a conversation is rebuilt, changes to skill or agent
 definitions require an app restart to take effect on an existing conversation.
+Generated skill frontmatter should no longer include `metadata.version`, and
+the step 3 output contract should stop requiring `version_bump`.
 
 **Tech Stack:** Rust / Tauri / OpenHands Agent Server / workspace agent files /
 Vitest / cargo tests.
@@ -36,6 +43,10 @@ Vitest / cargo tests.
 | `app/src-tauri/src/agents/openhands_server/client.rs` | Request-shape tests for skill-scoped workspace and default tool contract |
 | `agent-sources/workspace/skills/creating-skills/SKILL.md` | Update generation guidance to call the verifier by name |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Step 3 prompt/runtime wiring if explicit verifier mention is needed |
+| `app/src-tauri/src/commands/workflow/output_format.rs` | Remove generated-skill metadata.version / version_bump validation |
+| `app/src/lib/openhands-event-projection.ts` | Project task-tool subagents and attach nested child events |
+| `app/src/lib/openhands-conversation-events.ts` | Add helpers needed to map/load child subagent conversations |
+| `app/src/components/agent-items/subagent-item.tsx` | Render nested verifier tool activity consistently |
 | `app/agent-tests/**` | Structural coverage for new verifier agent file |
 | `tests/evals/**` or a repo-local smoke harness | Minimal end-to-end smoke coverage for verifier delegation |
 
@@ -95,6 +106,44 @@ Vitest / cargo tests.
 - [x] **Step 3: Run `cd app && npm run test:unit` if agent contract types changed in frontend-visible code**
 - [x] **Step 4: Run one smoke test that exercises step 3 verifier delegation end to end on the Agent Server path**
 - [x] **Step 5: Update the plan checkboxes and capture verification notes in `VU-1168`**
+
+---
+
+## Follow-up Scope Expansion
+
+### Task 5: Remove stale generated-skill version contract
+
+**Files:**
+
+- Modify: `agent-sources/prompts/skill-generation.txt`
+- Modify: `agent-sources/workspace/skills/creating-skills/SKILL.md`
+- Modify: `app/src-tauri/src/commands/workflow/output_format.rs`
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+- Modify: any generated contract/schema files touched by the shape change
+
+- [ ] **Step 1: Remove `metadata.version` generation instructions from the step 3 prompt and `creating-skills` skill guidance**
+- [ ] **Step 2: Remove `version_bump` from the generated-skill output contract and backend validation**
+- [ ] **Step 3: Update materialization/publish validation so generated skills no longer fail on missing or non-`1.0.0` metadata.version**
+- [ ] **Step 4: Add or update tests that prove a generated skill without `metadata.version` is accepted**
+- [ ] **Step 5: Re-run the targeted Rust tests for step 3 output parsing/materialization**
+
+### Task 6: Surface nested subagent tool calls inside the subagent row
+
+**Files:**
+
+- Modify: `app/src-tauri/src/agents/openhands_server/**` if backend payload/state needs to expose child conversation IDs
+- Modify: `app/src/lib/openhands-event-projection.ts`
+- Modify: `app/src/lib/openhands-conversation-events.ts`
+- Modify: `app/src/components/agent-items/subagent-item.tsx`
+- Modify: `app/src/__tests__/lib/openhands-event-projection.test.ts`
+- Modify: `app/src/__tests__/components/agent-items/subagent-item.test.tsx`
+
+- [ ] **Step 1: Confirm the parent-to-child mapping strategy for persisted task-tool subagents using the existing `subagents/` directory layout**
+- [ ] **Step 2: Load child subagent event streams and map them onto the parent task/subagent item**
+- [ ] **Step 3: Project nested child tool events into `subagentItems` so verifier tool calls render inside the parent subagent row, not as sibling timeline rows**
+- [ ] **Step 4: Preserve the current parent task row as the subagent summary while adding nested child activity and conclusion text inside it**
+- [ ] **Step 5: Add focused tests for projection/rendering of nested subagent tool activity**
+- [ ] **Step 6: Run a real OpenHands-backed smoke or manual persisted-conversation check proving verifier child events are visible**
 
 ## Verification Notes
 
