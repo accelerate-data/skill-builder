@@ -608,6 +608,22 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText("ready")).toBeInTheDocument();
   });
 
+  it("anchors the workbench footer to the bottom of the panel", async () => {
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={null}
+        hasScenarios
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+      />,
+    );
+
+    const footer = await screen.findByTestId("eval-suggest-status-bar");
+    expect(footer).toHaveClass("mt-auto");
+  });
+
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
     const user = userEvent.setup();
     const onSuggestScenario = vi.fn().mockRejectedValue(
@@ -696,6 +712,12 @@ describe("WorkspaceEvals", () => {
     const onRunningChange = vi.fn();
     const deferredRun = createDeferred(runSummary);
     mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
+    useSettingsStore.getState().setSettings({
+      modelSettings: {
+        provider: "opencode",
+        model: "opencode-go/minimax-m2.7",
+      },
+    });
 
     render(
       <WorkspaceEvals
@@ -723,12 +745,16 @@ describe("WorkspaceEvals", () => {
       }),
     );
     await waitFor(() => expect(onRunningChange).toHaveBeenCalledWith(true));
+    expect(screen.getByText("running…")).toBeInTheDocument();
+    expect(screen.getByText("Opencode Go/minimax M2.7")).toBeInTheDocument();
+    expect(screen.getByText(/\d+s/)).toBeInTheDocument();
 
     deferredRun.resolve(runSummary);
 
     await waitFor(() =>
       expect(onRunningChange).toHaveBeenLastCalledWith(false),
     );
+    expect(screen.getByText("ready")).toBeInTheDocument();
   });
 
   it("shows progress and cancels the active workbench run", async () => {

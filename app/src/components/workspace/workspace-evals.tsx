@@ -67,6 +67,7 @@ export function WorkspaceEvals({
   const [suggestingScenario, setSuggestingScenario] = useState(false);
   const [suggestScenarioStartedAt, setSuggestScenarioStartedAt] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [sendingToRefine, setSendingToRefine] = useState(false);
   const [draft, setDraft] = useState<SaveScenario>(() =>
     createDraftScenario("performance"),
@@ -112,7 +113,10 @@ export function WorkspaceEvals({
   }, [running, onRunningChange]);
 
   useEffect(() => {
-    if (!(suggestingScenario || suggestScenarioPending) || !suggestScenarioStartedAt) {
+    const hasActiveTimedStatus =
+      (suggestingScenario || suggestScenarioPending) ||
+      running;
+    if (!hasActiveTimedStatus) {
       return;
     }
     const id = window.setInterval(
@@ -120,7 +124,7 @@ export function WorkspaceEvals({
       1000,
     );
     return () => window.clearInterval(id);
-  }, [suggestScenarioPending, suggestScenarioStartedAt, suggestingScenario]);
+  }, [runStartedAt, running, suggestScenarioPending, suggestScenarioStartedAt, suggestingScenario]);
 
   useEffect(
     () => () => {
@@ -251,6 +255,7 @@ export function WorkspaceEvals({
 
     const runId = crypto.randomUUID();
     setRunning(true);
+    setRunStartedAt(Date.now());
     setActionError(null);
     startActiveRun(runId);
     try {
@@ -267,6 +272,7 @@ export function WorkspaceEvals({
       setActionError(getErrorMessage(runError));
     } finally {
       setRunning(false);
+      setRunStartedAt(null);
       clearActiveRun();
     }
   }
@@ -323,19 +329,26 @@ export function WorkspaceEvals({
     );
   }
 
-  const suggestStatusTone =
-    suggestingScenario || suggestScenarioPending
+  const footerStatusTone =
+    running
+      ? "running"
+      : suggestingScenario || suggestScenarioPending
       ? "running"
       : suggestionStatusError
         ? "error"
         : "idle";
-  const suggestStatusElapsed =
-    suggestStatusTone === "running" && suggestScenarioStartedAt
-      ? formatElapsed(Math.max(0, Date.now() - suggestScenarioStartedAt))
+  const footerStatusElapsed =
+    footerStatusTone === "running" && (runStartedAt || suggestScenarioStartedAt)
+      ? formatElapsed(
+          Math.max(
+            0,
+            Date.now() - (runStartedAt ?? suggestScenarioStartedAt ?? Date.now()),
+          ),
+        )
       : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-h-full flex-col gap-6">
       {actionError ? (
         <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -467,28 +480,28 @@ export function WorkspaceEvals({
       </section>
 
       <div
-        className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4"
+        className="mt-auto flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4"
         data-testid="eval-suggest-status-bar"
       >
         <div className="flex items-center gap-1.5">
           <div
             className={
-              suggestStatusTone === "running"
+              footerStatusTone === "running"
                 ? "size-[5px] rounded-full animate-pulse"
-                : suggestStatusTone === "error"
+                : footerStatusTone === "error"
                   ? "size-[5px] rounded-full bg-destructive"
                   : "size-[5px] rounded-full bg-muted-foreground/40"
             }
             style={
-              suggestStatusTone === "running"
+              footerStatusTone === "running"
                 ? { background: "var(--color-pacific)" }
                 : undefined
             }
           />
           <span className="text-xs text-muted-foreground/60">
-            {suggestStatusTone === "running"
+            {footerStatusTone === "running"
               ? "running…"
-              : suggestStatusTone === "error"
+              : footerStatusTone === "error"
                 ? "error"
                 : "ready"}
           </span>
@@ -503,16 +516,16 @@ export function WorkspaceEvals({
           </>
         ) : null}
 
-        {suggestStatusElapsed ? (
+        {footerStatusElapsed ? (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
-              {suggestStatusElapsed}
+              {footerStatusElapsed}
             </span>
           </>
         ) : null}
 
-        {suggestStatusTone === "error" && suggestionStatusError ? (
+        {footerStatusTone === "error" && suggestionStatusError ? (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="truncate text-xs text-destructive/90">
