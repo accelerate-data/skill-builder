@@ -3171,6 +3171,45 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
   }
 
+  async function triggerStep1Gate(
+    evaluation: Record<string, unknown>,
+    options?: { agentId?: string; success?: boolean },
+  ) {
+    const agentId = options?.agentId ?? "gate-step1-test";
+    const success = options?.success ?? true;
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === gateEvaluationPath) {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue(agentId);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun(agentId, "haiku");
+      useAgentStore.getState().completeRun(agentId, success);
+    });
+  }
+
   it("gate with sufficient verdict auto-advances from step 0 to step 1", async () => {
     // Gate is fully automatic: run_research default → advance without any dialog or button.
     const evaluation = {
@@ -3242,6 +3281,30 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().currentStep).toBe(0);
   });
 
+  it("gate with contradiction-driven revise stays on current step", async () => {
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 1,
+      total_count: 2,
+      gate_decision: "revise",
+      reasoning: "One answer contradicts another.",
+      per_question: [
+        { question_id: "Q1", verdict: "clear" },
+        { question_id: "Q2", verdict: "contradictory", reason: "Conflicts with Q1." },
+      ],
+    };
+
+    await triggerGateDialog(evaluation);
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+    expect(useWorkflowStore.getState().currentStep).toBe(0);
+  });
+
   it("gate on step 1 auto-advances to step 2", async () => {
     // Gate 2 (step 1 completed) with run_research → advances to step 2
     const jsonData = makeClarificationsJson();
@@ -3294,6 +3357,141 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
       expect(useWorkflowStore.getState().currentStep).toBe(2);
     });
+  });
+
+  it("gate with revise decision on step 1 stays on current step", async () => {
+    const evaluation = {
+      verdict: "insufficient",
+      answered_count: 0,
+      empty_count: 2,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      gate_decision: "revise",
+      reasoning: "Answers are missing.",
+      per_question: [
+        { question_id: "Q1", verdict: "not_answered" },
+        { question_id: "Q2", verdict: "not_answered" },
+      ],
+    };
+
+    await triggerStep1Gate(evaluation, { agentId: "gate-step1-revise" });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    });
+    expect(useWorkflowStore.getState().currentStep).toBe(1);
+  });
+
+  it("gate with contradiction-driven revise on step 1 stays on current step", async () => {
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 1,
+      total_count: 2,
+      gate_decision: "revise",
+      reasoning: "One answer contradicts another.",
+      per_question: [
+        { question_id: "Q1", verdict: "clear" },
+        { question_id: "Q2", verdict: "contradictory", reason: "Conflicts with Q1." },
+      ],
+    };
+
+    await triggerStep1Gate(evaluation, {
+      agentId: "gate-step1-contradiction-revise",
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    });
+    expect(useWorkflowStore.getState().currentStep).toBe(1);
+  });
+
+  it("step 1 gate stays on current step when answer-evaluation.json parse fails", async () => {
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === gateEvaluationPath) {
+        return Promise.resolve("NOT VALID JSON {{{");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-step1-bad-json");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-step1-bad-json", "haiku");
+      useAgentStore.getState().completeRun("gate-step1-bad-json", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+    expect(mockToast.error).toHaveBeenCalled();
+  });
+
+  it("step 1 gate stays on current step when verdict is unrecognized", async () => {
+    const evaluation = {
+      verdict: "unknown_verdict",
+      answered_count: 0,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 0,
+      reasoning: "Unknown.",
+      per_question: [],
+    };
+
+    await triggerStep1Gate(evaluation, { agentId: "gate-step1-bad-verdict" });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+    expect(mockToast.error).toHaveBeenCalled();
+  });
+
+  it("step 1 gate agent error keeps the workflow on the current step", async () => {
+    const evaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All clear.",
+      per_question: [],
+    };
+
+    await triggerStep1Gate(evaluation, {
+      agentId: "gate-step1-error-agent",
+      success: false,
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+    expect(useWorkflowStore.getState().gateLoading).toBe(false);
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
   it("runGateOrAdvance falls through to advanceToNextStep when step is not 0 or 1", async () => {
@@ -3389,7 +3587,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().currentStep).toBe(0);
   });
 
-  it("finishGateEvaluation proceeds normally when answer-evaluation.json parse fails", async () => {
+  it("finishGateEvaluation stays on current step when answer-evaluation.json parse fails", async () => {
     const jsonData = makeClarificationsJson();
 
     vi.mocked(readFile).mockImplementation((path: string) => {
@@ -3425,14 +3623,15 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       useAgentStore.getState().completeRun("gate-bad-json", true);
     });
 
-    // JSON parse fails → proceedNormally → step completed, advances
+    // JSON parse fails → step stays completed on the current step with an error signal
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-      expect(useWorkflowStore.getState().currentStep).toBe(1);
+      expect(useWorkflowStore.getState().currentStep).toBe(0);
     });
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
-  it("finishGateEvaluation proceeds normally when verdict is unrecognized", async () => {
+  it("finishGateEvaluation stays on current step when verdict is unrecognized", async () => {
     const jsonData = makeClarificationsJson();
     const evaluation = {
       verdict: "unknown_verdict",
@@ -3478,14 +3677,15 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       useAgentStore.getState().completeRun("gate-bad-verdict", true);
     });
 
-    // Invalid verdict → proceedNormally → step completed, advances
+    // Invalid verdict → step stays completed on the current step with an error signal
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-      expect(useWorkflowStore.getState().currentStep).toBe(1);
+      expect(useWorkflowStore.getState().currentStep).toBe(0);
     });
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
-  it("gate agent error falls through: marks step completed and advances", async () => {
+  it("step 0 gate agent error keeps the workflow on the current step", async () => {
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-error-agent");
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -3513,14 +3713,15 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       useAgentStore.getState().completeRun("gate-error-agent", false);
     });
 
-    // Error path in gate watcher → step completed, advances
+    // Error path in gate watcher → step completed, stays put, and reports an error
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-      expect(useWorkflowStore.getState().currentStep).toBe(1);
+      expect(useWorkflowStore.getState().currentStep).toBe(0);
     });
 
-    // Gate loading should be cleared
+    // Gate loading should be cleared and the user should see an error
     expect(useWorkflowStore.getState().gateLoading).toBe(false);
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
   it("gate verdict updates: persists actionable per-question verdicts to DB", async () => {
