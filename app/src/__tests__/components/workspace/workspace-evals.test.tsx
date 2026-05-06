@@ -519,6 +519,53 @@ describe("WorkspaceEvals", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a workflow-style footer status while scenario suggestion is running", async () => {
+    const user = userEvent.setup();
+    const deferredSuggestion = createDeferred({
+      id: "generated-case",
+      name: "Risk Summary",
+      tags: ["performance"],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      expectations: ["Summarizes the main pipeline blockers."],
+    });
+    const onSuggestScenario = vi.fn().mockReturnValue(deferredSuggestion.promise);
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
+
+    expect(
+      await screen.findByText("Reading skill and drafting scenario…"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /suggesting/i })).toBeDisabled();
+
+    deferredSuggestion.resolve({
+      id: "generated-case",
+      name: "Risk Summary",
+      tags: ["performance"],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      expectations: ["Summarizes the main pipeline blockers."],
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Reading skill and drafting scenario…"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
     const user = userEvent.setup();
     const onSuggestScenario = vi.fn().mockRejectedValue(
@@ -545,6 +592,31 @@ describe("WorkspaceEvals", () => {
       await screen.findByText(/scenario suggestion failed/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/invalid json/i)).toBeInTheDocument();
+  });
+
+  it("shows suggestion failures in the scenario footer status area", async () => {
+    const user = userEvent.setup();
+    const onSuggestScenario = vi.fn().mockRejectedValue(
+      new Error("missing field `name`"),
+    );
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
+      />,
+    );
+
+    await screen.findByDisplayValue("Forecast next quarter revenue");
+    await user.click(screen.getByRole("button", { name: /^suggest$/i }));
+
+    expect(
+      await screen.findByText("Scenario suggestion failed: missing field `name`"),
+    ).toBeInTheDocument();
   });
 
   it("keeps trigger-mode generation separate from performance suggestion", async () => {

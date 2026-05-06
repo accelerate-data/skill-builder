@@ -83,7 +83,10 @@
 - [ ] Add a scenario-level delete affordance for persisted scenarios and keep the accordion state consistent after delete.
 - [ ] Add per-expectation delete affordances in the expanded editor.
 - [ ] Make prompt and expectation edits autosave after the scenario exists.
-- [ ] Show a busy pointer/spinner affordance while `Suggest` is in flight.
+- [ ] Show `Suggesting…` in the button while `Suggest` is in flight.
+- [ ] Show the same status-bar treatment and behavior used by workflow steps at the bottom of the expanded scenario editor while `Suggest` is running.
+- [ ] Use specific in-flight copy such as `Reading skill and drafting scenario…`, not generic loading text.
+- [ ] Remove the status bar after the saved scenario reload completes, and reuse the same position for inline error feedback when suggestion fails.
 - [ ] Keep each expanded scenario editor to just scenario name, user prompt, and expectations.
 
 ## Task 3: Remove trigger-mode authoring from Eval Workbench

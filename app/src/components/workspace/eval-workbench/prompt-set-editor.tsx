@@ -1,4 +1,4 @@
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,10 @@ interface PromptSetEditorProps {
   showSuggest?: boolean;
   suggestBusy?: boolean;
   showNew?: boolean;
+  footerStatus?: {
+    tone: "running" | "error";
+    message: string;
+  } | null;
 }
 
 export function PromptSetEditor({
@@ -31,6 +35,7 @@ export function PromptSetEditor({
   showSuggest = true,
   suggestBusy = false,
   showNew = true,
+  footerStatus = null,
 }: PromptSetEditorProps) {
   function updateExpectations(nextExpectations: string[]) {
     onChange({ ...draft, expectations: nextExpectations });
@@ -164,6 +169,25 @@ export function PromptSetEditor({
         </div>
 
       </div>
+
+      {footerStatus ? (
+        <div
+          role={footerStatus.tone === "error" ? "alert" : "status"}
+          aria-live="polite"
+          className={
+            footerStatus.tone === "error"
+              ? "mt-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+              : "mt-4 flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+          }
+        >
+          {footerStatus.tone === "error" ? (
+            <AlertTriangle className="size-3.5 shrink-0" />
+          ) : (
+            <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+          )}
+          <span>{footerStatus.message}</span>
+        </div>
+      ) : null}
     </section>
   );
 }

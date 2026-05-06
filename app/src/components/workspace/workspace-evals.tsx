@@ -65,6 +65,7 @@ export function WorkspaceEvals({
     createDraftScenario("performance"),
   );
   const [actionError, setActionError] = useState<string | null>(null);
+  const [suggestionStatusError, setSuggestionStatusError] = useState<string | null>(null);
   const lastPersistedSnapshotRef = useRef<string | null>(null);
   const {
     activeRunId,
@@ -94,6 +95,7 @@ export function WorkspaceEvals({
       ? JSON.stringify(normalizeScenario(scenario))
       : null;
     setActionError(null);
+    setSuggestionStatusError(null);
   }, [scenario]);
 
   useEffect(() => {
@@ -161,6 +163,7 @@ export function WorkspaceEvals({
 
     onStartNewScenario();
     setActionError(null);
+    setSuggestionStatusError(null);
     try {
       const created = await onCreateScenario("performance");
       lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(created));
@@ -176,6 +179,7 @@ export function WorkspaceEvals({
     }
     setSuggestingScenario(true);
     setActionError(null);
+    setSuggestionStatusError(null);
     try {
       const saved = await onSuggestScenario(scenario.name);
       lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
@@ -183,9 +187,11 @@ export function WorkspaceEvals({
     } catch (suggestionError) {
       const message = getErrorMessage(suggestionError);
       if (/structured result was not valid json/i.test(message)) {
-        setActionError(`Scenario suggestion failed: invalid JSON in structured result. ${message}`);
+        setSuggestionStatusError(
+          `Scenario suggestion failed: invalid JSON in structured result. ${message}`,
+        );
       } else {
-        setActionError(`Scenario suggestion failed: ${message}`);
+        setSuggestionStatusError(`Scenario suggestion failed: ${message}`);
       }
     } finally {
       setSuggestingScenario(false);
@@ -198,6 +204,7 @@ export function WorkspaceEvals({
     }
 
     setActionError(null);
+    setSuggestionStatusError(null);
     try {
       await onDeleteScenario(scenario.name);
       setDraft(createDraftScenario("performance"));
@@ -315,6 +322,19 @@ export function WorkspaceEvals({
           deleteDisabled={scenarioLoading || deleteScenarioPending || !scenario}
           showDelete={Boolean(scenario)}
           showNew={false}
+          footerStatus={
+            suggestingScenario || suggestScenarioPending
+              ? {
+                  tone: "running",
+                  message: "Reading skill and drafting scenario…",
+                }
+              : suggestionStatusError
+                ? {
+                    tone: "error",
+                    message: suggestionStatusError,
+                  }
+                : null
+          }
         />
       ) : null}
 
