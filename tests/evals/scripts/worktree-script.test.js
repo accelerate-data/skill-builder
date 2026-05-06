@@ -112,3 +112,38 @@ test('worktree helper leaves Promptfoo state setup to the eval runtime', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('worktree helper copies sidecar dist into the created worktree when available', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-builder-worktree-'));
+
+  try {
+    const { env, worktreeBase } = createBaseEnv(tmpDir);
+    const result = spawnSync(SCRIPT_PATH, ['feature/sidecar-dist-bootstrap'], {
+      cwd: REPO_ROOT,
+      env,
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+
+    const sourceSidecarDist = path.join(REPO_ROOT, 'app', 'sidecar', 'dist');
+    const worktreeSidecarDist = path.join(
+      worktreeBase,
+      'feature',
+      'sidecar-dist-bootstrap',
+      'app',
+      'sidecar',
+      'dist',
+    );
+
+    if (fs.existsSync(sourceSidecarDist)) {
+      assert.equal(fs.existsSync(path.join(worktreeSidecarDist, 'package.json')), true);
+      assert.equal(fs.existsSync(path.join(worktreeSidecarDist, 'bootstrap.js')), true);
+      assert.equal(fs.existsSync(path.join(worktreeSidecarDist, 'agent-runner.js')), true);
+    } else {
+      assert.equal(fs.existsSync(worktreeSidecarDist), false);
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
