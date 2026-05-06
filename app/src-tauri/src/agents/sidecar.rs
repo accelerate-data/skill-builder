@@ -2,6 +2,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::SecretString;
 
+const SKILL_CREATOR_AGENT_MARKDOWN: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/workspace/agents/skill-creator.md"
+));
+
+pub(crate) fn skill_creator_system_message_suffix() -> String {
+    strip_optional_yaml_frontmatter(SKILL_CREATOR_AGENT_MARKDOWN)
+        .trim()
+        .to_string()
+}
+
+fn strip_optional_yaml_frontmatter(raw: &str) -> String {
+    let normalized = raw.replace("\r\n", "\n");
+    let Some(rest) = normalized.strip_prefix("---\n") else {
+        return normalized;
+    };
+    let Some(idx) = rest.find("\n---\n") else {
+        return normalized;
+    };
+    rest[idx + "\n---\n".len()..].to_string()
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SidecarConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,6 +102,12 @@ pub struct SidecarConfig {
     /// Optional suffix appended by the runtime to every user message.
     #[serde(rename = "userMessageSuffix", skip_serializing_if = "Option::is_none")]
     pub user_message_suffix: Option<String>,
+    /// Optional suffix appended to the default OpenHands system prompt.
+    #[serde(
+        rename = "systemMessageSuffix",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub system_message_suffix: Option<String>,
 }
 
 impl std::fmt::Debug for SidecarConfig {
@@ -108,6 +136,10 @@ impl std::fmt::Debug for SidecarConfig {
                 "user_message_suffix",
                 &self.user_message_suffix.as_ref().map(|_| "[configured]"),
             )
+            .field(
+                "system_message_suffix",
+                &self.system_message_suffix.as_ref().map(|_| "[configured]"),
+            )
             .finish()
     }
 }
@@ -135,6 +167,8 @@ pub struct OpenHandsOneShotConfigParams {
 /// selected LLM must already have been resolved by the backend runtime context
 /// API before this helper is called.
 pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> SidecarConfig {
+    let system_message_suffix =
+        (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix);
     SidecarConfig {
         mode: Some("one-shot".to_string()),
         prompt: params.prompt,
@@ -165,6 +199,7 @@ pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> 
         persistence_dir: None,
         task_kind: params.task_kind,
         user_message_suffix: params.user_message_suffix,
+        system_message_suffix,
     }
 }
 
@@ -204,6 +239,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -259,6 +295,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -302,6 +339,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -348,6 +386,7 @@ mod tests {
             persistence_dir: None,
             task_kind: None,
             user_message_suffix: None,
+            system_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -405,6 +444,7 @@ mod tests {
             user_message_suffix: Some(
                 "Follow the current user message exactly. Do not infer a different task than the one stated in the message.".to_string(),
             ),
+            system_message_suffix: Some("# Skill Creator Agent".to_string()),
         };
 
         let json = serde_json::to_value(&config).unwrap();
@@ -413,5 +453,53 @@ mod tests {
             json["userMessageSuffix"],
             "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
         );
+        assert_eq!(json["systemMessageSuffix"], "# Skill Creator Agent");
+    }
+
+    #[test]
+    fn test_skill_creator_system_message_suffix_strips_frontmatter() {
+        let suffix = skill_creator_system_message_suffix();
+        assert!(suffix.starts_with("# Skill Creator Agent"));
+        assert!(!suffix.contains("\n---\n"));
+        assert!(
+            !suffix.starts_with("---"),
+            "frontmatter delimiter must not reach the system message suffix"
+        );
+    }
+
+    #[test]
+    fn test_non_skill_creator_openhands_config_does_not_inject_system_message_suffix() {
+        let config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+            prompt: "Analyze".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_run_dir: "/tmp/workspace".to_string(),
+            agent_name: "answer-evaluator".to_string(),
+            task_kind: Some("workflow.answer_evaluator".to_string()),
+            user_message_suffix: None,
+            allowed_tools: vec![],
+            max_turns: 8,
+            output_format: None,
+            skill_name: None,
+            step_id: None,
+            run_source: None,
+            plugin_slug: "default".to_string(),
+        });
+
+        assert!(config.system_message_suffix.is_none());
     }
 }

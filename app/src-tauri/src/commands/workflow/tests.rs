@@ -864,6 +864,11 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace/default/skills/pipeline-value"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(3));
+    let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+    assert_eq!(
+        config.system_message_suffix.as_deref(),
+        Some(expected_suffix.as_str())
+    );
     assert!(
         config.required_plugins.is_none(),
         "OpenHands one-shot config should rely on workspace .agents layout"

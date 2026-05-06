@@ -13,6 +13,7 @@ pub struct OpenHandsOneShotRequest {
     pub allowed_tools: Vec<String>,
     pub max_turns: u32,
     pub user_message_suffix: Option<String>,
+    pub system_message_suffix: Option<String>,
     pub task_kind: Option<String>,
     pub plugin_slug: String,
     pub skill_name: Option<String>,
@@ -37,6 +38,7 @@ impl OpenHandsOneShotRequest {
             allowed_tools: config.allowed_tools.clone().unwrap_or_default(),
             max_turns: config.max_turns.unwrap_or(50),
             user_message_suffix: config.user_message_suffix.clone(),
+            system_message_suffix: config.system_message_suffix.clone(),
             task_kind: config.task_kind.clone(),
             plugin_slug: config.plugin_slug.clone(),
             skill_name: config.skill_name.clone(),
@@ -143,6 +145,11 @@ pub struct OpenHandsAgentContext {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skills: Vec<OpenHandsSkill>,
     #[serde(
+        rename = "system_message_suffix",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub system_message_suffix: Option<String>,
+    #[serde(
         rename = "user_message_suffix",
         skip_serializing_if = "Option::is_none"
     )]
@@ -233,6 +240,7 @@ impl StartConversationRequest {
                     }
                     OpenHandsAgentContext {
                         skills,
+                        system_message_suffix: request.system_message_suffix.clone(),
                         user_message_suffix: request.user_message_suffix.clone(),
                     }
                 },

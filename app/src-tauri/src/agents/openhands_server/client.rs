@@ -307,6 +307,7 @@ mod tests {
             plugin_slug: "default".to_string(),
             task_kind: Some("workflow".to_string()),
             user_message_suffix: Some("Stay in scope.".to_string()),
+            system_message_suffix: Some("# Skill Creator Agent".to_string()),
         }
     }
 
@@ -330,6 +331,10 @@ mod tests {
                 {"name": "file_editor", "params": {}},
                 {"name": "terminal", "params": {}}
             ])
+        );
+        assert_eq!(
+            json["agent"]["agent_context"]["system_message_suffix"],
+            "# Skill Creator Agent"
         );
         assert_eq!(json["max_iterations"], 8);
         assert_eq!(json["tags"]["skill"], "lead-routing");

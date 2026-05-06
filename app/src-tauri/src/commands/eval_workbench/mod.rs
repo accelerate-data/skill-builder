@@ -2526,6 +2526,29 @@ mod tests {
         }
     }
 
+    fn sample_runtime_context(
+        workspace_path: &str,
+    ) -> crate::commands::workflow::settings::InitializedRuntimeContext {
+        crate::commands::workflow::settings::InitializedRuntimeContext {
+            workspace_path: workspace_path.to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+        }
+    }
+
     fn create_scenario_db(skills_path: &Path) -> Db {
         let conn = create_test_db_for_tests();
         write_settings(
@@ -2538,6 +2561,51 @@ mod tests {
         .unwrap();
 
         Db(std::sync::Mutex::new(conn))
+    }
+
+    #[test]
+    fn eval_workbench_skill_creator_configs_include_system_message_suffix() {
+        let runtime_ctx = sample_runtime_context("/tmp/skill-builder/workspace");
+        let prompt_set = EvalPromptSet {
+            id: "ps-1".to_string(),
+            plugin_slug: "default".to_string(),
+            skill_name: "forecast".to_string(),
+            mode: EvalWorkbenchMode::Performance,
+            name: "Smoke".to_string(),
+            cases: vec![],
+            created_at: "2026-05-06T00:00:00Z".to_string(),
+            updated_at: "2026-05-06T00:00:00Z".to_string(),
+        };
+        let output_format = serde_json::json!({"type":"json_schema","schema":{"type":"object"}});
+        let trigger_workspace =
+            crate::skill_paths::workspace_skill_dir(
+                Path::new(&runtime_ctx.workspace_path),
+                &prompt_set.plugin_slug,
+                &prompt_set.skill_name,
+            );
+        let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+
+        let configs = vec![
+            build_generation_sidecar_config(
+                &prompt_set.plugin_slug,
+                &prompt_set.skill_name,
+                "prompt",
+                output_format.clone(),
+                &runtime_ctx,
+            ),
+            build_performance_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
+            build_trigger_sidecar_config(&prompt_set, "prompt", &runtime_ctx, &trigger_workspace),
+            build_eval_diagnosis_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
+            build_description_candidate_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
+        ];
+
+        for config in configs {
+            assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
+            assert_eq!(
+                config.system_message_suffix.as_deref(),
+                Some(expected_suffix.as_str())
+            );
+        }
     }
 
     fn mirrored_scenario_prompt_set_count(

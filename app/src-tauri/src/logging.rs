@@ -3,31 +3,6 @@ use tauri_plugin_log::{Target, TargetKind};
 /// The log file name written to the app log directory each session.
 const LOG_FILE_NAME: &str = "app";
 
-/// Truncate the log file so each session starts fresh.
-///
-/// Called from `.setup()` after the log plugin has already opened the file.
-/// We use the Tauri path resolver to guarantee the path matches the plugin's
-/// target — the old approach of guessing the path via `dirs` could diverge
-/// from what `tauri-plugin-log` actually resolves (especially in dev builds).
-pub fn truncate_log_file(app: &tauri::AppHandle) {
-    use tauri::Manager;
-    match app.path().app_log_dir() {
-        Ok(log_dir) => {
-            let log_file = log_dir.join(format!("{}.log", LOG_FILE_NAME));
-            if log_file.exists() {
-                // Truncate to zero — the log plugin holds an append-mode handle,
-                // so subsequent writes land at offset 0 in the now-empty file.
-                if let Err(e) = std::fs::write(&log_file, "") {
-                    eprintln!("Failed to truncate log file {:?}: {}", log_file, e);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to resolve app log dir for truncation: {}", e);
-        }
-    }
-}
-
 /// Build the `tauri-plugin-log` plugin instance.
 ///
 /// The plugin is registered in the Tauri builder chain (before `.setup()`),
@@ -35,8 +10,8 @@ pub fn truncate_log_file(app: &tauri::AppHandle) {
 /// `set_log_level()` once settings have been read from the database.
 ///
 /// Targets:
-/// - **LogDir**: persistent file in the app log directory (fresh each session
-///   via `truncate_log_file()` called during `.setup()`).
+/// - **LogDir**: persistent file in the app log directory. The plugin appends
+///   across restarts and rotates the file once it exceeds `max_file_size`.
 /// - **Stderr**: visible in terminals / dev consoles for CLI users.
 pub fn build_log_plugin() -> tauri_plugin_log::Builder {
     tauri_plugin_log::Builder::new()

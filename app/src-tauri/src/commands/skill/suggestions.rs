@@ -552,6 +552,11 @@ mod tests {
             json["userMessageSuffix"],
             "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
         );
+        let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+        assert_eq!(
+            json["systemMessageSuffix"],
+            serde_json::Value::String(expected_suffix)
+        );
         assert_eq!(json["llm"]["model"], "gpt-4.1");
         assert!(json.get("model").is_none());
         assert_eq!(json["apiKey"], "openhands-llm-config");

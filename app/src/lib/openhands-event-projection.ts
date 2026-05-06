@@ -517,12 +517,27 @@ function projectSystemPromptEvent(
   event: OpenHandsConversationEvent,
 ): ProjectionResult {
   const sysPrompt = asRecord(event.event.system_prompt);
-  const text =
+  const systemPromptText =
     (typeof sysPrompt.text === "string" ? sysPrompt.text : undefined) ??
     (typeof event.event.system_prompt === "string"
       ? (event.event.system_prompt as string)
-      : undefined) ??
-    stringifyEventPayload(event.event);
+      : undefined);
+  const dynamicContext = asRecord(event.event.dynamic_context);
+  const dynamicContextText =
+    (typeof dynamicContext.text === "string" ? dynamicContext.text : undefined) ??
+    (typeof event.event.dynamic_context === "string"
+      ? (event.event.dynamic_context as string)
+      : undefined);
+
+  const text =
+    [systemPromptText, dynamicContextText]
+      .filter(
+        (value, index, values): value is string =>
+          typeof value === "string" &&
+          value.length > 0 &&
+          values.indexOf(value) === index,
+      )
+      .join("\n\n") || stringifyEventPayload(event.event);
 
   return {
     add: [
