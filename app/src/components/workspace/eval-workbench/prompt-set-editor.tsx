@@ -15,14 +15,14 @@ interface PromptSetEditorProps {
   draft: SaveScenario;
   mode: EvalWorkbenchMode;
   onChange: (draft: SaveScenario) => void;
-  onSave: () => void;
   onNew: () => void;
   onSuggest?: () => void;
   onDelete?: () => void;
   suggestDisabled?: boolean;
-  saveDisabled?: boolean;
   deleteDisabled?: boolean;
   showDelete?: boolean;
+  showSuggest?: boolean;
+  suggestBusy?: boolean;
 }
 
 function nextTags(
@@ -48,14 +48,14 @@ export function PromptSetEditor({
   draft,
   mode,
   onChange,
-  onSave,
   onNew,
   onSuggest,
   onDelete,
   suggestDisabled = false,
-  saveDisabled = false,
   deleteDisabled = false,
   showDelete = false,
+  showSuggest = true,
+  suggestBusy = false,
 }: PromptSetEditorProps) {
   function updateAssertions(nextAssertions: ScenarioAssertion[]) {
     onChange({ ...draft, assertions: nextAssertions });
@@ -88,15 +88,18 @@ export function PromptSetEditor({
               Delete scenario
             </Button>
           ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onSuggest}
-            disabled={suggestDisabled}
-          >
-            <Sparkles className="mr-1 size-3.5" />
-            Suggest
-          </Button>
+          {showSuggest ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onSuggest}
+              disabled={suggestDisabled}
+              className={suggestBusy ? "cursor-progress" : undefined}
+            >
+              <Sparkles className="mr-1 size-3.5" />
+              {suggestBusy ? "Suggesting…" : "Suggest"}
+            </Button>
+          ) : null}
           <Button size="sm" variant="outline" onClick={onNew}>
             New scenario
           </Button>
@@ -221,11 +224,6 @@ export function PromptSetEditor({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3">
-          <Button size="sm" onClick={onSave} disabled={saveDisabled}>
-            Save scenario
-          </Button>
-        </div>
       </div>
     </section>
   );

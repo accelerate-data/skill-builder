@@ -70,7 +70,7 @@ export interface RunEvalWorkbenchRequest {
   runId: string;
   pluginSlug: string;
   skillName: string;
-  scenarioName: string;
+  scenarioName?: string | null;
   mode: EvalWorkbenchMode;
   candidateIds: string[];
 }
@@ -127,6 +127,17 @@ export const loadScenario = (
     scenarioName,
   });
 
+export const createScenario = (
+  pluginSlug: string,
+  skillName: string,
+  mode: EvalWorkbenchMode,
+) =>
+  invokeCommand("create_scenario", {
+    pluginSlug,
+    skillName,
+    mode,
+  });
+
 export const saveScenario = (
   pluginSlug: string,
   skillName: string,
@@ -145,6 +156,17 @@ export const deleteScenario = (
   skillName: string,
   scenarioName: string,
 ) => invokeCommand("delete_scenario", { pluginSlug, skillName, scenarioName });
+
+export const suggestScenario = (
+  pluginSlug: string,
+  skillName: string,
+  scenarioName: string,
+) =>
+  invokeCommand("suggest_scenario", {
+    pluginSlug,
+    skillName,
+    scenarioName,
+  });
 
 export const generateScenarios = (pluginSlug: string, skillName: string) =>
   invokeCommand("generate_scenarios", { pluginSlug, skillName });
@@ -251,13 +273,23 @@ export function validateScenario(
   if (draft.tags.length === 0) {
     return "Select at least one scenario mode.";
   }
-  if (!draft.prompt.trim()) {
-    return "Scenario prompt is required.";
-  }
   if (!Array.isArray(draft.assertions)) {
     return "Assertions must be an array.";
   }
-  if (scenarioSupportsMode(draft, "performance") && draft.assertions.length === 0) {
+  if (mode && !scenarioSupportsMode(draft, mode)) {
+    return `This scenario is not tagged for ${mode} mode.`;
+  }
+  return null;
+}
+
+export function validateScenarioForEvaluation(
+  draft: SaveScenario,
+  mode?: EvalWorkbenchMode,
+): string | null {
+  if (!draft.prompt.trim()) {
+    return "Scenario prompt is required.";
+  }
+  if (!Array.isArray(draft.assertions) || draft.assertions.length === 0) {
     return "Performance scenarios need at least one assertion.";
   }
   if (scenarioSupportsMode(draft, "trigger") && typeof draft.shouldTrigger !== "boolean") {

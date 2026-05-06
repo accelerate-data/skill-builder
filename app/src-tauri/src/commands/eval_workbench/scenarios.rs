@@ -106,10 +106,6 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     if scenario.id.contains('/') || scenario.id.contains('\\') || scenario.id.contains("..") {
         return Err("Scenario id contains invalid path characters".to_string());
     }
-    if scenario.prompt.trim().is_empty() {
-        return Err("Scenario prompt cannot be empty".to_string());
-    }
-
     Ok(())
 }
 

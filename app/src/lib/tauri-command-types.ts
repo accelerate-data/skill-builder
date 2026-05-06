@@ -456,6 +456,10 @@ export interface TauriCommandMap {
     args: { pluginSlug: string; skillName: string; scenarioName: string };
     result: ScenarioDto | null;
   };
+  create_scenario: {
+    args: { pluginSlug: string; skillName: string; mode: EvalWorkbenchMode };
+    result: ScenarioDto;
+  };
   save_scenario: {
     args: {
       pluginSlug: string;
@@ -472,6 +476,10 @@ export interface TauriCommandMap {
   generate_scenarios: {
     args: { pluginSlug: string; skillName: string };
     result: ScenarioDto[];
+  };
+  suggest_scenario: {
+    args: { pluginSlug: string; skillName: string; scenarioName: string };
+    result: ScenarioDto;
   };
   run_eval_workbench: {
     args: { request: RunEvalWorkbenchRequest };

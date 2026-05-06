@@ -10,10 +10,12 @@ import {
   scenarioSupportsMode,
 } from "@/lib/eval-workbench";
 import {
+  useCreateScenario,
   useDeleteScenario,
   useSaveScenario,
   useScenario,
   useScenarios,
+  useSuggestScenario,
 } from "@/lib/queries/eval-scenarios";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { WorkspaceDescription } from "./workspace-description";
@@ -48,11 +50,12 @@ export function WorkspaceEvalWorkbench({
   const [selectedScenarioName, setSelectedScenarioName] = useState<string | null>(
     null,
   );
-  const [creatingNewScenario, setCreatingNewScenario] = useState(false);
   const isRunning = performanceRunning || triggerRunning;
 
   const scenariosQuery = useScenarios(skillName, pluginSlug);
+  const createScenarioMutation = useCreateScenario(skillName, pluginSlug);
   const saveScenarioMutation = useSaveScenario(skillName, pluginSlug);
+  const suggestScenarioMutation = useSuggestScenario(skillName, pluginSlug);
   const deleteScenarioMutation = useDeleteScenario(skillName, pluginSlug);
   const scenarios = scenariosQuery.data ?? [];
   const visibleScenarios = scenarios.filter((scenario) =>
@@ -74,15 +77,12 @@ export function WorkspaceEvalWorkbench({
   }, [isRunning, onRunningChange]);
 
   useEffect(() => {
-    if (creatingNewScenario) {
-      return;
-    }
     const nextSelectedScenario =
       visibleScenarios.find((scenario) => scenario.name === selectedScenarioName) ??
       visibleScenarios[0] ??
       null;
     setSelectedScenarioName(nextSelectedScenario?.name ?? null);
-  }, [creatingNewScenario, selectedScenarioName, visibleScenarios]);
+  }, [selectedScenarioName, visibleScenarios]);
 
   const triggerSkill =
     "name" in skill
@@ -99,28 +99,35 @@ export function WorkspaceEvalWorkbench({
     const previousScenarioName =
       options && "previousScenarioName" in options
         ? (options.previousScenarioName ?? null)
-        : creatingNewScenario
-          ? null
-          : (selectedScenario?.name ?? null);
+        : (selectedScenario?.name ?? null);
     const savedScenario = await saveScenarioMutation.mutateAsync({
       scenario,
       previousScenarioName,
     });
-    setCreatingNewScenario(false);
+    setSelectedScenarioName(savedScenario.name);
+    return savedScenario;
+  }
+
+  async function handleCreateScenario(mode: EvalWorkbenchMode) {
+    const createdScenario = await createScenarioMutation.mutateAsync({ mode });
+    setSelectedScenarioName(createdScenario.name);
+    return createdScenario;
+  }
+
+  async function handleSuggestScenario(scenarioName: string) {
+    const savedScenario = await suggestScenarioMutation.mutateAsync({ scenarioName });
     setSelectedScenarioName(savedScenario.name);
     return savedScenario;
   }
 
   async function handleDeleteScenario(scenarioName: string) {
     await deleteScenarioMutation.mutateAsync({ scenarioName });
-    setCreatingNewScenario(false);
     const nextSelectedScenario =
       visibleScenarios.find((scenario) => scenario.name !== scenarioName) ?? null;
     setSelectedScenarioName(nextSelectedScenario?.name ?? null);
   }
 
   function handleStartNewScenario() {
-    setCreatingNewScenario(true);
     setSelectedScenarioName(null);
   }
 
@@ -191,7 +198,6 @@ export function WorkspaceEvalWorkbench({
                         : "outline"
                     }
                     onClick={() => {
-                      setCreatingNewScenario(false);
                       setSelectedScenarioName(scenario.name);
                     }}
                   >
@@ -240,9 +246,14 @@ export function WorkspaceEvalWorkbench({
           scenario={selectedScenario}
           scenarioLoading={selectedScenarioQuery.isLoading}
           onStartNewScenario={handleStartNewScenario}
+          onCreateScenario={handleCreateScenario}
           onSaveScenario={handleSaveScenario}
+          onSuggestScenario={handleSuggestScenario}
           onDeleteScenario={handleDeleteScenario}
-          saveScenarioPending={saveScenarioMutation.isPending}
+          saveScenarioPending={
+            createScenarioMutation.isPending || saveScenarioMutation.isPending
+          }
+          suggestScenarioPending={suggestScenarioMutation.isPending}
           deleteScenarioPending={deleteScenarioMutation.isPending}
           onNavigateToRefine={onNavigateToRefine}
           onRunningChange={setPerformanceRunning}
@@ -260,7 +271,9 @@ export function WorkspaceEvalWorkbench({
           scenario={selectedScenario}
           scenarioLoading={selectedScenarioQuery.isLoading}
           onStartNewScenario={handleStartNewScenario}
+          onCreateScenario={handleCreateScenario}
           onSaveScenario={handleSaveScenario}
+          onDeleteScenario={handleDeleteScenario}
           saveScenarioPending={saveScenarioMutation.isPending}
           onNavigateToRefine={onNavigateToRefine}
           onRunningChange={setTriggerRunning}

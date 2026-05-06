@@ -1,0 +1,23 @@
+Suggest the prompt and assertions for one eval scenario for the skill `{{skill_name}}`.
+
+Return JSON only with:
+- `prompt`: one realistic user prompt
+- `assertions`: 1 to 3 assertions using only `equals`, `contains`, or `javascript`
+- `shouldTrigger`: boolean or null
+
+Rules:
+- This is for one existing scenario, not a batch.
+- Do not return prose, Markdown, or code fences.
+- Performance is always evaluated, so assertions are required.
+- If the scenario mode does not include trigger, return `shouldTrigger: null`.
+- Keep the suggestion grounded in the real skill behavior and files below.
+- Do not mention evals, Promptfoo, or implementation details.
+
+Scenario name: {{scenario_name}}
+Scenario modes: {{scenario_modes}}
+Existing prompt: {{existing_prompt}}
+Existing shouldTrigger: {{existing_should_trigger}}
+Existing assertions: {{existing_assertions}}
+
+Skill context:
+{{skill_context}}

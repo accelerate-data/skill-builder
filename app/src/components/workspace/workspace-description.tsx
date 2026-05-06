@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Sparkles, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,10 +35,12 @@ interface WorkspaceDescriptionProps {
   scenario: ScenarioDto | null;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
+  onCreateScenario?: (mode: "trigger") => Promise<ScenarioDto>;
   onSaveScenario: (
     scenario: ScenarioDto,
     options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
+  onDeleteScenario?: (scenarioName: string) => Promise<void>;
   saveScenarioPending?: boolean;
   onRunningChange?: (running: boolean) => void;
   onApply?: (newDescription: string, newVersion: string) => void;
@@ -51,7 +53,9 @@ export function WorkspaceDescription({
   scenario,
   scenarioLoading = false,
   onStartNewScenario,
+  onCreateScenario,
   onSaveScenario,
+  onDeleteScenario,
   saveScenarioPending = false,
   onRunningChange,
   onApply,
@@ -68,6 +72,7 @@ export function WorkspaceDescription({
     null,
   );
   const [actionError, setActionError] = useState<string | null>(null);
+  const lastPersistedSnapshotRef = useRef<string | null>(null);
   const isRunning = generatingCandidates || running;
   const {
     activeRunId,
@@ -93,6 +98,9 @@ export function WorkspaceDescription({
 
   useEffect(() => {
     setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("trigger"));
+    lastPersistedSnapshotRef.current = scenario
+      ? JSON.stringify(normalizeScenario(scenario))
+      : null;
     setCandidates([]);
     setActionError(null);
   }, [scenario]);
@@ -143,19 +151,76 @@ export function WorkspaceDescription({
     }
   }
 
-  async function handleSaveScenario() {
+  useEffect(() => {
+    if (!scenario || scenarioLoading || saveScenarioPending || generatingCandidates || running) {
+      return;
+    }
+
     const validationError = validateScenario(draft);
     if (validationError) {
-      setActionError(validationError);
+      return;
+    }
+
+    const normalizedDraft = normalizeScenario(draft);
+    const nextSnapshot = JSON.stringify(normalizedDraft);
+    if (nextSnapshot === lastPersistedSnapshotRef.current) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const saved = await onSaveScenario(normalizedDraft, {
+            previousScenarioName: scenario.name,
+          });
+          lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
+          setDraft(scenarioToDraft(saved));
+        } catch (saveError) {
+          setActionError(getErrorMessage(saveError));
+        }
+      })();
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    draft,
+    generatingCandidates,
+    onSaveScenario,
+    running,
+    saveScenarioPending,
+    scenario,
+    scenarioLoading,
+  ]);
+
+  async function handleCreateScenario() {
+    if (!onCreateScenario) {
+      return;
+    }
+
+    onStartNewScenario();
+    setActionError(null);
+    try {
+      const created = await onCreateScenario("trigger");
+      lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(created));
+      setDraft(scenarioToDraft(created));
+      setCandidates([]);
+    } catch (createError) {
+      setActionError(getErrorMessage(createError));
+    }
+  }
+
+  async function handleDeleteScenario() {
+    if (!scenario || !onDeleteScenario) {
       return;
     }
 
     setActionError(null);
     try {
-      const saved = await onSaveScenario(normalizeScenario(draft));
-      setDraft(scenarioToDraft(saved));
-    } catch (saveError) {
-      setActionError(getErrorMessage(saveError));
+      await onDeleteScenario(scenario.name);
+      setDraft(createDraftScenario("trigger"));
+      setCandidates([]);
+    } catch (deleteError) {
+      setActionError(getErrorMessage(deleteError));
     }
   }
 
@@ -377,14 +442,11 @@ export function WorkspaceDescription({
         draft={draft}
         mode="trigger"
         onChange={setDraft}
-        onSave={() => void handleSaveScenario()}
-        onNew={() => {
-          onStartNewScenario();
-          setDraft(createDraftScenario("trigger"));
-          setCandidates([]);
-          setActionError(null);
-        }}
-        saveDisabled={scenarioLoading || saveScenarioPending}
+        onNew={() => void handleCreateScenario()}
+        onDelete={() => void handleDeleteScenario()}
+        deleteDisabled={scenarioLoading || saveScenarioPending || !scenario}
+        showDelete={Boolean(scenario)}
+        showSuggest={false}
       />
 
       <section className="rounded-lg border bg-card p-4">

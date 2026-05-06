@@ -81,7 +81,7 @@ const performanceScenario = {
   tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue",
   shouldTrigger: null,
-  assertions: [],
+  assertions: [{ type: "contains", value: "assumptions" }],
 };
 
 const alternatePerformanceScenario = {
@@ -90,7 +90,7 @@ const alternatePerformanceScenario = {
   tags: ["performance"] as const,
   prompt: "Summarize pipeline risk",
   shouldTrigger: null,
-  assertions: [],
+  assertions: [{ type: "contains", value: "blockers" }],
 };
 
 const runSummary = {
@@ -177,13 +177,13 @@ describe("WorkspaceEvals", () => {
         "forecast-skill",
         "performance",
         20,
-        "Regression",
+        "Package",
       ),
     );
     expect(
       await screen.findByDisplayValue("Forecast next quarter revenue"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /run scenario/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeInTheDocument();
   });
 
   it("does not request run history before a scenario exists", async () => {
@@ -218,18 +218,19 @@ describe("WorkspaceEvals", () => {
       screen.queryByRole("button", { name: /generate scenarios/i }),
     ).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^suggest$/i })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: /run scenario/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^save scenario$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
   });
 
-  it("saves a new performance scenario through the shared workbench surface", async () => {
+  it("creates a persisted performance scenario immediately when starting a new scenario", async () => {
     const user = userEvent.setup();
-    const onSaveScenario = vi.fn().mockResolvedValue({
-      id: "case-2",
-      name: "Smoke",
+    const onCreateScenario = vi.fn().mockResolvedValue({
+      id: "case-new",
+      name: "New scenario",
       tags: ["performance"],
-      prompt: "Summarize pipeline risk",
+      prompt: "",
       shouldTrigger: null,
-      assertions: [{ type: "contains", value: "blockers" }],
+      assertions: [],
     });
     const onStartNewScenario = vi.fn();
 
@@ -239,7 +240,8 @@ describe("WorkspaceEvals", () => {
         workspacePath="/workspace"
         scenario={performanceScenario}
         onStartNewScenario={onStartNewScenario}
-        onSaveScenario={onSaveScenario}
+        onSaveScenario={vi.fn()}
+        onCreateScenario={onCreateScenario}
       />,
     );
 
@@ -248,27 +250,41 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getByRole("button", { name: /new scenario/i }));
     expect(onStartNewScenario).toHaveBeenCalled();
 
-    await user.clear(screen.getByLabelText(/scenario name/i));
-    await user.type(screen.getByLabelText(/scenario name/i), "Smoke");
-    await user.clear(screen.getByLabelText(/user prompt/i));
-    await user.type(screen.getByLabelText(/user prompt/i), "Summarize pipeline risk");
-    await user.click(screen.getByRole("button", { name: /add assertion/i }));
-    const assertionInputs = screen.getAllByPlaceholderText(
-      /expected phrase or expression|contains/i,
+    await waitFor(() =>
+      expect(onCreateScenario).toHaveBeenCalled(),
     );
-    await user.type(assertionInputs[0]!, "contains");
-    await user.type(assertionInputs[1]!, "blockers");
-    await user.click(screen.getByRole("button", { name: /^save scenario$/i }));
+  });
+
+  it("autosaves edits after a persisted scenario exists", async () => {
+    const user = userEvent.setup();
+    const onSaveScenario = vi.fn().mockResolvedValue({
+      ...performanceScenario,
+      prompt: "Forecast next quarter revenue with assumptions",
+    });
+
+    render(
+      <WorkspaceEvals
+        skill={skill}
+        workspacePath="/workspace"
+        scenario={performanceScenario}
+        onStartNewScenario={vi.fn()}
+        onSaveScenario={onSaveScenario}
+      />,
+    );
+
+    const prompt = await screen.findByLabelText(/user prompt/i);
+    await user.clear(prompt);
+    await user.type(prompt, "Forecast next quarter revenue with assumptions");
 
     await waitFor(() =>
       expect(onSaveScenario).toHaveBeenCalledWith({
-        id: expect.any(String),
-        name: "Smoke",
+        id: "case-1",
+        name: "Regression",
         tags: ["performance"],
-        prompt: "Summarize pipeline risk",
+        prompt: "Forecast next quarter revenue with assumptions",
         shouldTrigger: null,
-        assertions: [{ type: "contains", value: "blockers" }],
-      }),
+        assertions: [{ type: "contains", value: "assumptions" }],
+      }, { previousScenarioName: "Regression" }),
     );
   });
 
@@ -301,7 +317,7 @@ describe("WorkspaceEvals", () => {
     expect(onNavigateToRefine).toHaveBeenCalled();
   });
 
-  it("reloads filtered history and clears the selected run when the scenario changes", async () => {
+  it("keeps package history stable when the selected scenario changes", async () => {
     const user = userEvent.setup();
     const { rerender } = render(
       <WorkspaceEvals
@@ -327,16 +343,8 @@ describe("WorkspaceEvals", () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(mockListEvalRuns).toHaveBeenLastCalledWith(
-        "skills",
-        "forecast-skill",
-        "performance",
-        20,
-        "Smoke",
-      ),
-    );
-    expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument();
+    expect(mockListEvalRuns).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Missed assumptions section")).toBeInTheDocument();
   });
 
   it("reloads filtered history and clears the selected run when the workspace changes", async () => {
@@ -371,7 +379,7 @@ describe("WorkspaceEvals", () => {
         "forecast-skill",
         "performance",
         20,
-        "Regression",
+        "Package",
       ),
     );
     expect(screen.queryByText("Missed assumptions section")).not.toBeInTheDocument();
@@ -455,18 +463,16 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText(/select a run to inspect its results/i)).toBeInTheDocument();
   });
 
-  it("fills the current draft from the scenario-level suggest action only", async () => {
+  it("persists and reloads the selected scenario from the scenario-level suggest action", async () => {
     const user = userEvent.setup();
-    mockGenerateScenarios.mockResolvedValue([
-      {
-        id: "generated-case",
-        name: "Generated smoke",
-        tags: ["performance"],
-        prompt: "Summarize pipeline risk",
-        shouldTrigger: null,
-        assertions: [{ type: "contains", value: "blockers" }],
-      },
-    ]);
+    const onSuggestScenario = vi.fn().mockResolvedValue({
+      id: "generated-case",
+      name: "Regression",
+      tags: ["performance"],
+      prompt: "Summarize pipeline risk",
+      shouldTrigger: null,
+      assertions: [{ type: "contains", value: "blockers" }],
+    });
 
     render(
       <WorkspaceEvals
@@ -475,6 +481,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
       />,
     );
 
@@ -482,6 +489,9 @@ describe("WorkspaceEvals", () => {
     expect(screen.getAllByRole("button", { name: /^suggest$/i })).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
+    await waitFor(() =>
+      expect(onSuggestScenario).toHaveBeenCalled(),
+    );
     expect(await screen.findByDisplayValue("Summarize pipeline risk")).toBeInTheDocument();
     expect(screen.getByDisplayValue("contains")).toBeInTheDocument();
     expect(screen.getByDisplayValue("blockers")).toBeInTheDocument();
@@ -489,7 +499,7 @@ describe("WorkspaceEvals", () => {
 
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
     const user = userEvent.setup();
-    mockGenerateScenarios.mockRejectedValue(
+    const onSuggestScenario = vi.fn().mockRejectedValue(
       new Error(
         "OpenHands eval structured result was not valid JSON: expected value at line 2 column 1",
       ),
@@ -502,6 +512,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
       />,
     );
 
@@ -516,16 +527,14 @@ describe("WorkspaceEvals", () => {
 
   it("keeps trigger-mode generation separate from performance suggestion", async () => {
     const user = userEvent.setup();
-    mockGenerateScenarios.mockResolvedValue([
-      {
-        id: "case-1",
-        name: "Happy Path",
-        tags: ["performance"],
-        prompt: "Forecast next quarter revenue",
-        shouldTrigger: null,
-        assertions: [{ type: "contains", value: "assumptions" }],
-      },
-    ]);
+    const onSuggestScenario = vi.fn().mockResolvedValue({
+      id: "case-1",
+      name: "Happy Path",
+      tags: ["performance"],
+      prompt: "Forecast next quarter revenue",
+      shouldTrigger: null,
+      assertions: [{ type: "contains", value: "assumptions" }],
+    });
 
     render(
       <WorkspaceEvals
@@ -534,6 +543,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
+        onSuggestScenario={onSuggestScenario}
       />,
     );
 
@@ -541,10 +551,7 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getAllByRole("button", { name: /^suggest$/i })[0]!);
 
     await waitFor(() =>
-      expect(mockGenerateScenarios).toHaveBeenCalledWith(
-        "skills",
-        "forecast-skill",
-      ),
+      expect(onSuggestScenario).toHaveBeenCalled(),
     );
   });
 
@@ -568,14 +575,13 @@ describe("WorkspaceEvals", () => {
     await screen.findByDisplayValue("Forecast next quarter revenue");
     onRunningChange.mockClear();
 
-    await user.click(screen.getByRole("button", { name: /run scenario/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
         pluginSlug: "skills",
         skillName: "forecast-skill",
-        scenarioName: "Regression",
         mode: "performance",
         candidateIds: ["current-skill"],
       }),
@@ -605,14 +611,13 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
-    await user.click(screen.getByRole("button", { name: /run scenario/i }));
+    await user.click(screen.getByRole("button", { name: /^evaluate$/i }));
 
     await waitFor(() =>
       expect(mockRunEvalWorkbench).toHaveBeenCalledWith({
         runId: expect.any(String),
         pluginSlug: "skills",
         skillName: "forecast-skill",
-        scenarioName: "Regression",
         mode: "performance",
         candidateIds: ["current-skill"],
       }),

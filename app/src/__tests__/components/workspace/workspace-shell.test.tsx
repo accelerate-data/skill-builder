@@ -80,7 +80,9 @@ vi.mock("@/lib/tauri", () => ({
 
 const mockUseScenarios = vi.fn();
 const mockUseScenario = vi.fn();
+const mockUseCreateScenario = vi.fn();
 const mockUseSaveScenario = vi.fn();
+const mockUseSuggestScenario = vi.fn();
 const mockUseDeleteScenario = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
@@ -92,7 +94,9 @@ const mockBuildRefineImprovementBrief = vi.fn();
 vi.mock("@/lib/queries/eval-scenarios", () => ({
   useScenarios: (...args: unknown[]) => mockUseScenarios(...args),
   useScenario: (...args: unknown[]) => mockUseScenario(...args),
+  useCreateScenario: (...args: unknown[]) => mockUseCreateScenario(...args),
   useSaveScenario: (...args: unknown[]) => mockUseSaveScenario(...args),
+  useSuggestScenario: (...args: unknown[]) => mockUseSuggestScenario(...args),
   useDeleteScenario: (...args: unknown[]) => mockUseDeleteScenario(...args),
 }));
 
@@ -152,7 +156,7 @@ const performanceScenario = {
   tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue",
   shouldTrigger: null,
-  assertions: [],
+  assertions: [{ type: "contains", value: "assumptions" }],
 };
 
 const performanceScenarioSummary = {
@@ -255,7 +259,15 @@ describe("WorkspaceShell", () => {
         refetch: vi.fn(),
       }),
     );
+    mockUseCreateScenario.mockReset().mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
+      isPending: false,
+    });
     mockUseSaveScenario.mockReset().mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
+      isPending: false,
+    });
+    mockUseSuggestScenario.mockReset().mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
     });
@@ -375,7 +387,7 @@ describe("WorkspaceShell", () => {
     );
 
     await screen.findByText("Regression");
-    await user.click(await screen.findByRole("button", { name: /run scenario/i }));
+    await user.click(await screen.findByRole("button", { name: /^evaluate$/i }));
     await waitFor(() => expect(mockRunEvalWorkbench).toHaveBeenCalled());
 
     const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(
@@ -498,17 +510,17 @@ describe("WorkspaceShell", () => {
     );
   });
 
-  it("saves a newly created scenario without sending a previous scenario name", async () => {
+  it("creates a new persisted scenario immediately", async () => {
     const user = userEvent.setup();
     const mutateAsync = vi.fn().mockResolvedValue({
       id: "case-1",
       name: "Smoke",
       tags: ["performance"],
-      prompt: "Summarize pipeline risk",
+      prompt: "",
       shouldTrigger: null,
-      assertions: [{ type: "contains", value: "blockers" }],
+      assertions: [],
     });
-    mockUseSaveScenario.mockReset().mockReturnValue({
+    mockUseCreateScenario.mockReset().mockReturnValue({
       mutateAsync,
       isPending: false,
     });
@@ -519,29 +531,10 @@ describe("WorkspaceShell", () => {
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
     await user.click(screen.getByRole("button", { name: /new scenario/i }));
-    await user.clear(screen.getByLabelText(/scenario name/i));
-    await user.type(screen.getByLabelText(/scenario name/i), "Smoke");
-    await user.clear(screen.getByLabelText(/user prompt/i));
-    await user.type(screen.getByLabelText(/user prompt/i), "Summarize pipeline risk");
-    await user.click(screen.getByRole("button", { name: /add assertion/i }));
-    const assertionInputs = screen.getAllByPlaceholderText(
-      /expected phrase or expression|contains/i,
-    );
-    await user.type(assertionInputs[0]!, "contains");
-    await user.type(assertionInputs[1]!, "blockers");
-    await user.click(screen.getByRole("button", { name: /^save scenario$/i }));
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        scenario: {
-          id: expect.any(String),
-          name: "Smoke",
-          tags: ["performance"],
-          prompt: "Summarize pipeline risk",
-          shouldTrigger: null,
-          assertions: [{ type: "contains", value: "blockers" }],
-        },
-        previousScenarioName: null,
+        mode: "performance",
       }),
     );
   });
@@ -583,7 +576,7 @@ describe("WorkspaceShell", () => {
 
     expect(await screen.findByText("Loading scenario…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^suggest$/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /run scenario/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
 
     await user.click(screen.getByRole("tab", { name: "Trigger" }));
 

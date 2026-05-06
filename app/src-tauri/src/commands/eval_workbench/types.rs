@@ -41,7 +41,7 @@ pub struct RunEvalWorkbenchRequest {
     pub run_id: String,
     pub plugin_slug: String,
     pub skill_name: String,
-    pub scenario_name: String,
+    pub scenario_name: Option<String>,
     pub mode: EvalWorkbenchMode,
     pub candidate_ids: Vec<String>,
 }

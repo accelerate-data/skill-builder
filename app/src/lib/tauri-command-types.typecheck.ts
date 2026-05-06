@@ -128,6 +128,12 @@ void invokeCommand("load_scenario", {
   scenarioName: "Regression",
 });
 
+void invokeCommand("create_scenario", {
+  pluginSlug: "skills",
+  skillName: "demo",
+  mode: "performance",
+});
+
 void invokeCommand("save_scenario", {
   pluginSlug: "skills",
   skillName: "demo",
@@ -140,12 +146,17 @@ void invokeCommand("generate_scenarios", {
   skillName: "demo",
 });
 
+void invokeCommand("suggest_scenario", {
+  pluginSlug: "skills",
+  skillName: "demo",
+  scenarioName: "Regression",
+});
+
 void invokeCommand("run_eval_workbench", {
   request: {
     runId: "run-1",
     pluginSlug: "skills",
     skillName: "demo",
-    scenarioName: "Regression",
     mode: "performance",
     candidateIds: ["current-skill"],
   },

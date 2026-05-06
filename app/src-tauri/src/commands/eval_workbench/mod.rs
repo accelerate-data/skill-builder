@@ -37,6 +37,10 @@ pub use types::{
 
 const DEFAULT_DESCRIPTION_CANDIDATE_COUNT: u32 = 3;
 const CURRENT_SKILL_CANDIDATE_ID: &str = "current-skill";
+const SUGGEST_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agent-sources/prompts/eval-workbench-suggest-scenario.txt"
+));
 
 #[cfg(test)]
 use crate::db::{
@@ -341,6 +345,99 @@ fn read_scenario(
     let eval_dir = crate::skill_paths::resolve_eval_dir(skills_path, plugin_slug, skill_name);
     scenarios::load_scenario(&eval_dir, scenario_name)?
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))
+}
+
+fn next_default_scenario_name(
+    eval_dir: &Path,
+    mode: EvalWorkbenchMode,
+) -> Result<String, String> {
+    let existing_names = scenarios::list_scenarios(eval_dir)?
+        .into_iter()
+        .map(|scenario| scenario.name)
+        .collect::<HashSet<_>>();
+    let prefix = match mode {
+        EvalWorkbenchMode::Performance => "Scenario",
+        EvalWorkbenchMode::Trigger => "Trigger scenario",
+    };
+
+    for index in 1..=10_000 {
+        let candidate = format!("{prefix} {index}");
+        if !existing_names.contains(&candidate) {
+            return Ok(candidate);
+        }
+    }
+
+    Err("Unable to generate a unique default scenario name".to_string())
+}
+
+fn load_scenarios_for_mode(
+    skills_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+    mode: EvalWorkbenchMode,
+) -> Result<Vec<scenarios::Scenario>, String> {
+    let eval_dir = crate::skill_paths::resolve_eval_dir(skills_path, plugin_slug, skill_name);
+    let matching = scenarios::list_scenarios(&eval_dir)?
+        .into_iter()
+        .filter(|summary| summary.tags.iter().any(|tag| tag.matches_mode(mode)))
+        .map(|summary| {
+            scenarios::load_scenario(&eval_dir, &summary.name)?
+                .ok_or_else(|| format!("Scenario '{}' not found", summary.name))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    if matching.is_empty() {
+        return Err("Add at least one scenario before evaluating the package.".to_string());
+    }
+
+    Ok(matching)
+}
+
+fn load_package_runtime(
+    skills_path: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+    mode: EvalWorkbenchMode,
+) -> Result<EvalPromptSet, String> {
+    let scenarios = load_scenarios_for_mode(skills_path, plugin_slug, skill_name, mode)?;
+    let mut cases = Vec::with_capacity(scenarios.len());
+    for scenario in &scenarios {
+        if scenario.prompt.trim().is_empty() {
+            return Err(format!("Scenario '{}' is missing a prompt.", scenario.name));
+        }
+        if scenario.assertions.is_empty() {
+            return Err(format!("Scenario '{}' is missing assertions.", scenario.name));
+        }
+        if mode == EvalWorkbenchMode::Trigger && scenario.should_trigger.is_none() {
+            return Err(format!(
+                "Scenario '{}' must declare whether it should trigger.",
+                scenario.name
+            ));
+        }
+        cases.push(crate::db::EvalPromptCase {
+            id: scenario.id.clone(),
+            prompt: scenario.prompt.clone(),
+            expected: None,
+            should_trigger: if mode == EvalWorkbenchMode::Trigger {
+                scenario.should_trigger
+            } else {
+                None
+            },
+            assertions: scenario_assertions_json(scenario),
+            sort_order: cases.len() as i64,
+        });
+    }
+
+    Ok(EvalPromptSet {
+        id: format!("package:{}:{}:{}", plugin_slug, skill_name, mode.as_str()),
+        plugin_slug: plugin_slug.to_string(),
+        skill_name: skill_name.to_string(),
+        mode,
+        name: "Package".to_string(),
+        cases,
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
 }
 
 fn load_scenario_runtime(
@@ -768,6 +865,7 @@ fn diagnosis_output_format() -> Value {
     })
 }
 
+#[allow(dead_code)]
 fn generated_scenarios_output_format() -> Value {
     serde_json::json!({
         "type": "json_schema",
@@ -811,6 +909,37 @@ fn generated_scenarios_output_format() -> Value {
                 }
             },
             "required": ["scenarios"]
+        }
+    })
+}
+
+fn suggested_scenario_output_format() -> Value {
+    serde_json::json!({
+        "type": "json_schema",
+        "name": "eval_workbench_suggested_scenario",
+        "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "prompt": { "type": "string" },
+                "shouldTrigger": { "type": ["boolean", "null"] },
+                "assertions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["equals", "contains", "javascript"]
+                            },
+                            "value": { "type": "string" }
+                        },
+                        "required": ["type", "value"]
+                    }
+                }
+            },
+            "required": ["prompt", "assertions"]
         }
     })
 }
@@ -888,6 +1017,7 @@ Return JSON with:\n\
     )
 }
 
+#[allow(dead_code)]
 fn build_generated_scenarios_prompt(
     skill_name: &str,
     skill_files: &[crate::types::SkillFileContent],
@@ -913,6 +1043,35 @@ Performance is always evaluated, so every scenario must include assertions.\n\
 Use the skill context below and do not mention eval internals.\n\n\
 {skill_context}",
     )
+}
+
+fn build_suggest_scenario_prompt(
+    skill_name: &str,
+    scenario: &scenarios::Scenario,
+    skill_files: &[crate::types::SkillFileContent],
+) -> String {
+    let skill_context = skill_files
+        .iter()
+        .take(8)
+        .map(|file| format!("## {}\n{}", file.path, file.content))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let mode_labels = scenario_tag_strings(&scenario.tags).join(", ");
+    let trigger_expectation = match scenario.should_trigger {
+        Some(true) => "true",
+        Some(false) => "false",
+        None => "null",
+    };
+
+    SUGGEST_SCENARIO_PROMPT_TEMPLATE
+        .trim_end_matches('\n')
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{scenario_name}}", &scenario.name)
+        .replace("{{scenario_modes}}", &mode_labels)
+        .replace("{{existing_prompt}}", scenario.prompt.trim())
+        .replace("{{existing_assertions}}", &scenario_assertions_json(scenario).to_string())
+        .replace("{{existing_should_trigger}}", trigger_expectation)
+        .replace("{{skill_context}}", &skill_context)
 }
 
 #[allow(dead_code)]
@@ -1149,6 +1308,7 @@ fn parse_description_candidate_response(
     })
 }
 
+#[allow(dead_code)]
 fn parse_generated_scenarios_response(
     state: &serde_json::Value,
 ) -> Result<Vec<ScenarioDto>, String> {
@@ -1166,6 +1326,58 @@ fn parse_generated_scenarios_response(
         .cloned()
         .map(|item| serde_json::from_value::<ScenarioDto>(item).map_err(|e| e.to_string()))
         .collect()
+}
+
+fn parse_suggested_scenario_response(
+    state: &serde_json::Value,
+    existing_scenario: &scenarios::Scenario,
+) -> Result<scenarios::Scenario, String> {
+    let parsed = parse_openhands_structured_output(state)?;
+    let prompt = parsed
+        .get("prompt")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Scenario suggestion response missing prompt".to_string())?;
+    let assertions = parsed
+        .get("assertions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Scenario suggestion response missing assertions array".to_string())?;
+    if assertions.is_empty() {
+        return Err("Scenario suggestion response missing assertions".to_string());
+    }
+
+    let parsed_assertions = assertions
+        .iter()
+        .cloned()
+        .map(|item| {
+            serde_json::from_value::<ScenarioAssertionDto>(item)
+                .map_err(|error| error.to_string())
+                .map(|assertion| scenarios::ScenarioAssertion {
+                    assertion_type: assertion.assertion_type,
+                    value: assertion.value,
+                })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let mut next_scenario = existing_scenario.clone();
+    next_scenario.prompt = prompt.to_string();
+    next_scenario.assertions = parsed_assertions;
+    if scenario_tag_strings(&existing_scenario.tags)
+        .iter()
+        .any(|tag| tag == "trigger" || tag == "both")
+    {
+        next_scenario.should_trigger = Some(
+            parsed
+                .get("shouldTrigger")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| "Scenario suggestion response missing shouldTrigger".to_string())?,
+        );
+    } else {
+        next_scenario.should_trigger = None;
+    }
+
+    Ok(next_scenario)
 }
 
 #[allow(dead_code)]
@@ -1834,6 +2046,39 @@ pub fn load_scenario(
 }
 
 #[tauri::command]
+pub fn create_scenario(
+    plugin_slug: String,
+    skill_name: String,
+    mode: EvalWorkbenchMode,
+    db: tauri::State<'_, Db>,
+) -> Result<ScenarioDto, String> {
+    validate_plugin_slug(&plugin_slug)?;
+    validate_skill_name(&skill_name)?;
+    let skills_path = resolve_skills_path(&db)?;
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    let name = next_default_scenario_name(&eval_dir, mode)?;
+    let scenario = scenarios::Scenario {
+        id: format!("case-{}", uuid::Uuid::new_v4().simple()),
+        name,
+        tags: match mode {
+            EvalWorkbenchMode::Performance => vec![scenarios::ScenarioTag::Performance],
+            EvalWorkbenchMode::Trigger => vec![scenarios::ScenarioTag::Trigger],
+        },
+        prompt: String::new(),
+        should_trigger: if mode == EvalWorkbenchMode::Trigger {
+            Some(true)
+        } else {
+            None
+        },
+        assertions: vec![],
+    };
+    let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
+    scenarios::write_scenario_file(&path, &scenario)?;
+    Ok(scenario_to_dto(scenario))
+}
+
+#[tauri::command]
 pub fn save_scenario(
     plugin_slug: String,
     skill_name: String,
@@ -1904,38 +2149,48 @@ pub fn delete_scenario(
 }
 
 #[tauri::command]
-pub async fn generate_scenarios(
+pub async fn suggest_scenario(
     app: tauri::AppHandle,
     plugin_slug: String,
     skill_name: String,
+    scenario_name: String,
     db: tauri::State<'_, Db>,
-) -> Result<Vec<ScenarioDto>, String> {
+) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
+    scenarios::validate_scenario_name(&scenario_name)?;
 
     let skills_path = resolve_skills_path(&db)?;
     let skill_files = get_skill_content_inner_for_plugin(&skill_name, &skills_path, &plugin_slug)?;
+    let eval_dir =
+        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    let existing_scenario = scenarios::load_scenario(&eval_dir, &scenario_name)?
+        .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))?;
     let runtime_ctx = read_initialized_runtime_context(&db)?;
     ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    let prompt = build_generated_scenarios_prompt(&skill_name, &skill_files);
+    let prompt = build_suggest_scenario_prompt(&skill_name, &existing_scenario, &skill_files);
     let config = build_generation_sidecar_config(
         &plugin_slug,
         &skill_name,
         &prompt,
-        generated_scenarios_output_format(),
+        suggested_scenario_output_format(),
         &runtime_ctx,
     );
     let run = run_openhands_one_shot(
         &app,
         OpenHandsOneShotRunParams {
-            agent_id_prefix: format!("{}-scenario-gen", skill_name),
+            agent_id_prefix: format!("{}-scenario-suggest", skill_name),
             config,
             timeout: std::time::Duration::from_secs(90),
         },
     )
     .await?;
 
-    parse_generated_scenarios_response(&run.conversation_state)
+    let suggested_scenario =
+        parse_suggested_scenario_response(&run.conversation_state, &existing_scenario)?;
+    let path = scenarios::scenario_file_path(&eval_dir, &suggested_scenario.name);
+    scenarios::write_scenario_file(&path, &suggested_scenario)?;
+    Ok(scenario_to_dto(suggested_scenario))
 }
 
 #[tauri::command]
@@ -1988,7 +2243,14 @@ pub async fn run_eval_workbench(
     validate_id("Run id", &request.run_id)?;
     validate_plugin_slug(&request.plugin_slug)?;
     validate_skill_name(&request.skill_name)?;
-    if request.scenario_name.trim().is_empty() {
+    if request.mode == EvalWorkbenchMode::Trigger
+        && request
+            .scenario_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
         return Err("Scenario name cannot be empty".to_string());
     }
     {
@@ -2002,14 +2264,25 @@ pub async fn run_eval_workbench(
     let preparation = || -> Result<_, String> {
         let skills_path = resolve_skills_path(&db)?;
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-        let prompt_set = load_scenario_runtime(
-            &mut conn,
-            Path::new(&skills_path),
-            &request.plugin_slug,
-            &request.skill_name,
-            &request.scenario_name,
-            request.mode,
-        )?;
+        let prompt_set = match request.mode {
+            EvalWorkbenchMode::Performance => load_package_runtime(
+                Path::new(&skills_path),
+                &request.plugin_slug,
+                &request.skill_name,
+                request.mode,
+            )?,
+            EvalWorkbenchMode::Trigger => load_scenario_runtime(
+                &mut conn,
+                Path::new(&skills_path),
+                &request.plugin_slug,
+                &request.skill_name,
+                request
+                    .scenario_name
+                    .as_deref()
+                    .ok_or_else(|| "Scenario name cannot be empty".to_string())?,
+                request.mode,
+            )?,
+        };
         let sidecar_candidates =
             load_sidecar_candidates(&conn, &prompt_set, &request.candidate_ids)?;
         let persisted_candidates = if prompt_set.mode == EvalWorkbenchMode::Trigger {

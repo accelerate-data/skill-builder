@@ -1,18 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Play, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { SaveScenario, ScenarioDto } from "@/lib/eval-workbench";
 import {
-  areScenariosEqual,
   buildRefineImprovementBrief,
   createDraftScenario,
-  generateScenarios,
   getErrorMessage,
+  validateScenarioForEvaluation,
   runEvalWorkbench,
   normalizeScenario,
   scenarioToDraft,
-  validateScenario,
   PERFORMANCE_CANDIDATE_IDS,
 } from "@/lib/eval-workbench";
 import { setEvalsRunning } from "@/lib/eval-running-state";
@@ -29,12 +27,15 @@ interface WorkspaceEvalsProps {
   scenario: ScenarioDto | null;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
+  onCreateScenario?: (mode: "performance") => Promise<ScenarioDto>;
   onSaveScenario: (
     scenario: ScenarioDto,
     options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
+  onSuggestScenario?: (scenarioName: string) => Promise<ScenarioDto>;
   onDeleteScenario?: (scenarioName: string) => Promise<void>;
   saveScenarioPending?: boolean;
+  suggestScenarioPending?: boolean;
   deleteScenarioPending?: boolean;
   onNavigateToRefine?: () => void;
   onRunningChange?: (running: boolean) => void;
@@ -46,9 +47,12 @@ export function WorkspaceEvals({
   scenario,
   scenarioLoading = false,
   onStartNewScenario,
+  onCreateScenario,
   onSaveScenario,
+  onSuggestScenario,
   onDeleteScenario,
   saveScenarioPending = false,
+  suggestScenarioPending = false,
   deleteScenarioPending = false,
   onNavigateToRefine,
   onRunningChange,
@@ -63,6 +67,7 @@ export function WorkspaceEvals({
     createDraftScenario("performance"),
   );
   const [actionError, setActionError] = useState<string | null>(null);
+  const lastPersistedSnapshotRef = useRef<string | null>(null);
   const {
     activeRunId,
     cancelActiveRun,
@@ -82,11 +87,14 @@ export function WorkspaceEvals({
     skillName,
     mode: "performance",
     workspacePath,
-    scenarioName: scenario?.name ?? null,
+    scenarioName: scenario ? "Package" : null,
   });
 
   useEffect(() => {
     setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("performance"));
+    lastPersistedSnapshotRef.current = scenario
+      ? JSON.stringify(normalizeScenario(scenario))
+      : null;
     setActionError(null);
   }, [scenario]);
 
@@ -112,43 +120,68 @@ export function WorkspaceEvals({
     }
   }
 
-  async function handleSaveScenario() {
-    const validationError = validateScenario(draft, "performance");
-    if (validationError) {
-      setActionError(validationError);
+  useEffect(() => {
+    if (!scenario || scenarioLoading || saveScenarioPending || suggestingScenario || running) {
       return;
     }
 
+    const normalizedDraft = normalizeScenario(draft);
+    const nextSnapshot = JSON.stringify(normalizedDraft);
+    if (nextSnapshot === lastPersistedSnapshotRef.current) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const saved = await onSaveScenario(normalizedDraft, {
+            previousScenarioName: scenario.name,
+          });
+          lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
+          setDraft(scenarioToDraft(saved));
+        } catch (saveError) {
+          setActionError(getErrorMessage(saveError));
+        }
+      })();
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    draft,
+    onSaveScenario,
+    running,
+    saveScenarioPending,
+    scenario,
+    scenarioLoading,
+    suggestingScenario,
+  ]);
+
+  async function handleCreateScenario() {
+    if (!onCreateScenario) {
+      return;
+    }
+
+    onStartNewScenario();
     setActionError(null);
     try {
-      const saved = await onSaveScenario(normalizeScenario(draft));
-      setDraft(scenarioToDraft(saved));
-    } catch (saveError) {
-      setActionError(getErrorMessage(saveError));
+      const created = await onCreateScenario("performance");
+      lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(created));
+      setDraft(scenarioToDraft(created));
+    } catch (createError) {
+      setActionError(getErrorMessage(createError));
     }
   }
 
   async function handleSuggestScenario() {
+    if (!scenario || !onSuggestScenario) {
+      return;
+    }
     setSuggestingScenario(true);
     setActionError(null);
     try {
-      const generated = await generateScenarios(pluginSlug, skillName);
-      const suggested = generated[0];
-
-      if (!suggested) {
-        throw new Error("Suggestion did not return a scenario.");
-      }
-
-      setDraft((current) => ({
-        ...current,
-        name: current.name.trim() || suggested.name,
-        tags: current.tags.includes("trigger") ? ["both"] : ["performance"],
-        prompt: suggested.prompt,
-        shouldTrigger: current.tags.includes("trigger")
-          ? (suggested.shouldTrigger ?? true)
-          : null,
-        assertions: suggested.assertions,
-      }));
+      const saved = await onSuggestScenario(scenario.name);
+      lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
+      setDraft(scenarioToDraft(saved));
     } catch (suggestionError) {
       const message = getErrorMessage(suggestionError);
       if (/structured result was not valid json/i.test(message)) {
@@ -176,8 +209,14 @@ export function WorkspaceEvals({
   }
 
   async function handleRunScenario() {
-    if (!scenario || !areScenariosEqual(scenario, draft)) {
-      setActionError("Save the scenario before running it.");
+    if (!scenario) {
+      setActionError("Add at least one scenario before evaluating the package.");
+      return;
+    }
+
+    const validationError = validateScenarioForEvaluation(draft, "performance");
+    if (validationError) {
+      setActionError(validationError);
       return;
     }
 
@@ -190,7 +229,6 @@ export function WorkspaceEvals({
         runId,
         pluginSlug,
         skillName,
-        scenarioName: scenario.name,
         mode: "performance",
         candidateIds: PERFORMANCE_CANDIDATE_IDS,
       });
@@ -273,10 +311,10 @@ export function WorkspaceEvals({
             <Button
               size="sm"
               onClick={() => void handleRunScenario()}
-              disabled={scenarioLoading || running || !scenario}
+              disabled={scenarioLoading || running || !scenario || saveScenarioPending}
             >
               <Play className="mr-1 size-3.5" />
-              Run scenario
+              Evaluate
             </Button>
             {running && activeRunId ? (
               <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
@@ -304,16 +342,13 @@ export function WorkspaceEvals({
         draft={draft}
         mode="performance"
         onChange={setDraft}
-        onSave={() => void handleSaveScenario()}
-        onNew={() => {
-          onStartNewScenario();
-          setDraft(createDraftScenario("performance"));
-          setActionError(null);
-        }}
+        onNew={() => void handleCreateScenario()}
         onSuggest={() => void handleSuggestScenario()}
         onDelete={() => void handleDeleteScenario()}
-        suggestDisabled={scenarioLoading || suggestingScenario}
-        saveDisabled={scenarioLoading || saveScenarioPending}
+        suggestDisabled={
+          scenarioLoading || suggestingScenario || suggestScenarioPending || !scenario
+        }
+        suggestBusy={suggestingScenario || suggestScenarioPending}
         deleteDisabled={scenarioLoading || deleteScenarioPending || !scenario}
         showDelete={Boolean(scenario)}
       />
