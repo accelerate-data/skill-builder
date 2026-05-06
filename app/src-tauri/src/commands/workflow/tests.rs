@@ -820,6 +820,7 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("decisions.json"));
     assert!(prompt.contains("clarifications.json"));
     assert!(prompt.contains("fresh-context verification"));
+    assert!(prompt.contains("named `skill-verifier` subagent"));
     assert!(prompt.contains("run exactly one re-verification"));
     assert!(prompt.contains("Do not invoke a separate validator skill"));
     assert!(prompt.contains("Do not invoke a legacy writer agent"));

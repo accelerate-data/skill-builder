@@ -48,11 +48,11 @@ Vitest / cargo tests.
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
 - Modify: `app/agent-tests/**` or the closest structural test file
 
-- [ ] **Step 1: Add a failing structural test that `agent-sources/workspace/agents/skill-verifier.md` exists and has valid file-agent frontmatter**
-- [ ] **Step 2: Add a failing structural or behavioral test that step 3 guidance explicitly invokes `skill-verifier` by name**
-- [ ] **Step 3: Add a failing Rust test that persistent conversation compatibility rejects saved conversations that lack verifier-capable workspace agent state**
-- [ ] **Step 4: Run the targeted red tests and confirm the failures are about missing verifier/subagent wiring**
-- [ ] **Step 5: Commit the red tests**
+- [x] **Step 1: Add a failing structural test that `agent-sources/workspace/agents/skill-verifier.md` exists and has valid file-agent frontmatter**
+- [x] **Step 2: Add a failing structural or behavioral test that step 3 guidance explicitly invokes `skill-verifier` by name**
+- [x] **Step 3: Add a failing Rust test that persistent conversation compatibility rejects saved conversations that lack verifier-capable workspace agent state**
+- [x] **Step 4: Run the targeted red tests and confirm the failures are about missing verifier/subagent wiring**
+- [x] **Step 5: Commit the red tests**
 
 ---
 
@@ -64,11 +64,11 @@ Vitest / cargo tests.
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
 - Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
 
-- [ ] **Step 1: Create `skill-verifier.md` with clear step 3 validation scope and no workflow-routing frontmatter leakage**
-- [ ] **Step 2: Ensure workspace deployment copies `skill-verifier.md` into both workspace root and skill-scoped `.agents/agents/` layouts**
-- [ ] **Step 3: Extend persistent-conversation compatibility checks so old conversations without the verifier-enabled contract are recreated once**
-- [ ] **Step 4: Re-run the targeted tests and make them green**
-- [ ] **Step 5: Commit the runtime wiring**
+- [x] **Step 1: Create `skill-verifier.md` with clear step 3 validation scope and no workflow-routing frontmatter leakage**
+- [x] **Step 2: Ensure workspace deployment copies `skill-verifier.md` into both workspace root and skill-scoped `.agents/agents/` layouts**
+- [x] **Step 3: Extend persistent-conversation compatibility checks so old conversations without the verifier-enabled contract are recreated once**
+- [x] **Step 4: Re-run the targeted tests and make them green**
+- [x] **Step 5: Commit the runtime wiring**
 
 ---
 
@@ -79,18 +79,26 @@ Vitest / cargo tests.
 - Modify: `agent-sources/workspace/skills/creating-skills/SKILL.md`
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs` if the step 3 prompt needs explicit verifier-routing language
 
-- [ ] **Step 1: Update `creating-skills` guidance to require `task_tool_set` delegation to the named `skill-verifier` agent**
-- [ ] **Step 2: Preserve the one-repair-pass contract when findings are material**
-- [ ] **Step 3: Update any step 3 prompt text that still assumes the verifier is implicit, inline, or unnamed**
-- [ ] **Step 4: Run agent-structural tests plus the targeted Rust tests**
-- [ ] **Step 5: Commit the guidance update**
+- [x] **Step 1: Update `creating-skills` guidance to require `task_tool_set` delegation to the named `skill-verifier` agent**
+- [x] **Step 2: Preserve the one-repair-pass contract when findings are material**
+- [x] **Step 3: Update any step 3 prompt text that still assumes the verifier is implicit, inline, or unnamed**
+- [x] **Step 4: Run agent-structural tests plus the targeted Rust tests**
+- [x] **Step 5: Commit the guidance update**
 
 ---
 
 ### Task 4: Final verification
 
-- [ ] **Step 1: Run `cd app && npm run test:agents:structural`**
-- [ ] **Step 2: Run the targeted Rust `openhands_server` tests for workspace contract and persistent-conversation compatibility**
-- [ ] **Step 3: Run `cd app && npm run test:unit` if agent contract types changed in frontend-visible code**
-- [ ] **Step 4: Run one smoke test that exercises step 3 verifier delegation end to end on the Agent Server path**
-- [ ] **Step 5: Update the plan checkboxes and capture verification notes in `VU-1168`**
+- [x] **Step 1: Run `cd app && npm run test:agents:structural`**
+- [x] **Step 2: Run the targeted Rust `openhands_server` tests for workspace contract and persistent-conversation compatibility**
+- [x] **Step 3: Run `cd app && npm run test:unit` if agent contract types changed in frontend-visible code**
+- [x] **Step 4: Run one smoke test that exercises step 3 verifier delegation end to end on the Agent Server path**
+- [x] **Step 5: Update the plan checkboxes and capture verification notes in `VU-1168`**
+
+## Verification Notes
+
+- `cd app && npm run test:agents:structural`
+- `cargo test --manifest-path app/src-tauri/Cargo.toml openhands_server -- --nocapture`
+- `cargo test --manifest-path app/src-tauri/Cargo.toml skill_generation_prompt_renders_app_owned_openhands_task_context -- --nocapture`
+- `cd app && npm run test:openhands:subagent-smoke`
+- `cd app && OPENHANDS_AGENT_SERVER_LIVE_SMOKE=1 npm run test:openhands:subagent-smoke`

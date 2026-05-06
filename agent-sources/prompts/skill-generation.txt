@@ -70,8 +70,9 @@ boundaries from the confirmed decisions. Do not run a separate description
 candidate generation, ranking, or tuning flow here.
 
 Use the verifier prompt bundled inside the `creating-skills` skill for a
-fresh-context verification pass. Give the verifier only the synthesized
-generation brief, generated files, and verifier instructions.
+fresh-context verification pass through the named `skill-verifier` subagent.
+Give the verifier only the synthesized generation brief, generated files, and
+verifier instructions.
 Incorporate material verifier findings, then run exactly one re-verification
 pass. Do not run an unbounded verification loop. If material findings remain
 after the one re-verification pass, return `skipped: true` and explain the

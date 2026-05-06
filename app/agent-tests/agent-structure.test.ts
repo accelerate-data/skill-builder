@@ -12,7 +12,7 @@ const WORKSPACE_AGENTS_DIR = path.join(
   "agents",
 );
 
-const OPENHANDS_WORKFLOW_AGENTS = ["skill-creator"] as const;
+const OPENHANDS_WORKFLOW_AGENTS = ["skill-creator", "skill-verifier"] as const;
 const OPENHANDS_WORKFLOW_SKILLS = ["creating-skills"] as const;
 
 const OBSOLETE_WORKFLOW_AGENT_PATHS = [
@@ -148,12 +148,26 @@ describe("agent files", () => {
     expect(fm.description).toMatch(/writing a new reusable skill/i);
     expect(fm.description).not.toMatch(/workflow step|step \d/i);
     expect(content).toMatch(/Fresh-Context Verification/);
+    expect(content).toMatch(/skill-verifier/);
     expect(content).toMatch(/verifier-subagent-prompt\.md/);
     expect(content).toMatch(/run exactly one\s+re-verification pass/i);
     expect(content).toMatch(/Return the raw JSON object requested by the caller/i);
     // Verifier must be spawned as a subagent via task_tool_set so it runs in a
     // fresh context, not inline in the generator's context.
     expect(content).toMatch(/task_tool_set/);
+  });
+
+  it("skill-verifier is a file-based subagent with verifier-only instructions", () => {
+    const file = resolveAgentPath("skill-verifier");
+    const fm = frontmatter(file);
+    const content = fs.readFileSync(file, "utf8");
+
+    expect(fm.name).toBe("skill-verifier");
+    expect(fm.description).toMatch(/verifier/i);
+    expect(content).toMatch(/generated skill package/i);
+    expect(content).toMatch(/Return only JSON/i);
+    expect(content).not.toMatch(/write the skill/i);
+    expect(content).not.toMatch(/create a new reusable skill/i);
   });
 
   it("creating-skills does not include legacy lifecycle mechanics", () => {
@@ -375,6 +389,7 @@ describe("Agent output contracts (backend protocol alignment)", () => {
     const content = `${agentContent}\n${skillContent}\n${promptContent}`;
     expect(content).toMatch(/workflow\.skill_generation/);
     expect(content).toMatch(/creating-skills/);
+    expect(content).toMatch(/skill-verifier/);
     expect(content).toMatch(/status.*generated/);
     expect(content).toMatch(/version_bump.*1\.0\.0/);
     expect(content).toMatch(/fresh[- ]context (?:verification|verifier)/i);

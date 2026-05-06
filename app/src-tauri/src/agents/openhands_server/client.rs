@@ -347,6 +347,37 @@ mod tests {
     }
 
     #[test]
+    fn conversation_payload_tags_workspace_agent_fingerprint_when_agents_are_deployed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_skill_dir = tmp.path().join("default/skills/lead-routing");
+        let agents_dir = workspace_skill_dir.join(".agents/agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+        std::fs::write(
+            agents_dir.join("skill-creator.md"),
+            "---\nname: skill-creator\n---\n# Skill Creator Agent\n",
+        )
+        .unwrap();
+        std::fs::write(
+            agents_dir.join("skill-verifier.md"),
+            "---\nname: skill-verifier\n---\n# Skill Verifier Agent\n",
+        )
+        .unwrap();
+
+        let config = base_config(
+            tmp.path().to_str().unwrap(),
+            workspace_skill_dir.to_str().unwrap(),
+        );
+        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_one_shot(&request);
+        let json = serde_json::to_value(payload).unwrap();
+
+        assert!(
+            json["tags"]["workspace_agents"].as_str().is_some(),
+            "workspace agent fingerprint must be tagged so persistent conversations can be recreated when agent files change"
+        );
+    }
+
+    #[test]
     fn conversation_payload_marks_opencode_go_models_as_openai_compatible_for_litellm() {
         let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
         let llm = config.llm.as_mut().unwrap();
