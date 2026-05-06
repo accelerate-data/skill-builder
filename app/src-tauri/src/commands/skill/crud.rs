@@ -448,8 +448,7 @@ fn post_create_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plu
             log::warn!("Manifest regeneration failed after create: {}", e);
         }
         // Initialize per-skill git repo and commit at the skill dir level
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
+        let skill_dir = crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
         if let Err(e) = crate::git::ensure_repo(&skill_dir) {
             log::warn!(
                 "[post_create_skill_filesystem_inner] failed to init git repo for '{}': {}",
@@ -601,7 +600,11 @@ fn post_delete_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plu
         }
         let msg = format!("{}: deleted", name);
         if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
-            log::warn!("[post_delete_skill_filesystem_inner] git commit failed ({}): {:?}", msg, e);
+            log::warn!(
+                "[post_delete_skill_filesystem_inner] git commit failed ({}): {:?}",
+                msg,
+                e
+            );
         }
     }
 }
@@ -618,8 +621,7 @@ pub(crate) fn delete_skill_db_records_inner(
         // These exist for any skill source and must be cleaned up unconditionally.
         crate::db::workflow_artifacts::delete_clarifications(conn, name)
             .map_err(|e| e.to_string())?;
-        crate::db::workflow_artifacts::delete_decisions(conn, name)
-            .map_err(|e| e.to_string())?;
+        crate::db::workflow_artifacts::delete_decisions(conn, name).map_err(|e| e.to_string())?;
 
         // Full DB cleanup: route to the right delete based on what's in the DB.
         // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
@@ -665,12 +667,12 @@ mod tests {
 
         post_create_skill_filesystem_inner("brand-new-skill", Some(skills_path), plugin_slug);
 
-        let skill_dir = crate::skill_paths::resolve_skill_dir(
-            dir.path(),
-            plugin_slug,
-            "brand-new-skill",
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(dir.path(), plugin_slug, "brand-new-skill");
+        assert!(
+            skill_dir.join(".git").exists(),
+            "per-skill .git must exist after create"
         );
-        assert!(skill_dir.join(".git").exists(), "per-skill .git must exist after create");
     }
 
     #[test]

@@ -347,7 +347,10 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
             log::warn!("[delete_plugin] manifest update failed: {}", e);
         }
         // Per-skill repos are deleted with the plugin directory; no root commit needed.
-        log::info!("[delete_plugin] removed plugin dir '{}'; per-skill repos removed with it", plugin_slug);
+        log::info!(
+            "[delete_plugin] removed plugin dir '{}'; per-skill repos removed with it",
+            plugin_slug
+        );
     }
 
     Ok(())
@@ -516,10 +519,7 @@ pub fn set_plugin_upgrade_lock(
 }
 
 #[tauri::command]
-pub fn delete_imported_skill(
-    skill_id: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
+pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("delete_imported_skill: skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[delete_imported_skill] Failed to acquire DB lock: {}", e);

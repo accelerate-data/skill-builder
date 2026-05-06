@@ -70,7 +70,9 @@ pub async fn generate_suggestions(
     );
 
     let runtime_context = crate::commands::workflow::read_initialized_runtime_context(&db)
-        .inspect_err(|e| log::error!("[generate_suggestions] Runtime context unavailable: {}", e))?;
+        .inspect_err(|e| {
+            log::error!("[generate_suggestions] Runtime context unavailable: {}", e)
+        })?;
 
     let requested_fields = requested_fields(fields.as_deref())?;
     let prompt = render_suggestions_prompt(
@@ -106,15 +108,17 @@ pub async fn generate_suggestions(
     .await
     .inspect_err(|e| log::error!("[generate_suggestions] OpenHands request failed: {}", e))?;
 
-    parse_suggestions_from_conversation_state(
-        &run.conversation_state,
-        &requested_fields,
-    )
+    parse_suggestions_from_conversation_state(&run.conversation_state, &requested_fields)
 }
 
 fn requested_fields(fields: Option<&[String]>) -> Result<Vec<String>, String> {
     fields.map_or_else(
-        || Ok(ALL_FIELDS.iter().map(|field| (*field).to_string()).collect()),
+        || {
+            Ok(ALL_FIELDS
+                .iter()
+                .map(|field| (*field).to_string())
+                .collect())
+        },
         validate_requested_fields,
     )
 }
@@ -147,7 +151,9 @@ fn validate_requested_fields(fields: &[String]) -> Result<Vec<String>, String> {
     }
 
     if normalized.is_empty() {
-        return Err("Requested suggestion fields must include at least one valid field".to_string());
+        return Err(
+            "Requested suggestion fields must include at least one valid field".to_string(),
+        );
     }
 
     Ok(normalized)
@@ -318,22 +324,24 @@ pub(crate) fn build_suggestions_runtime_config(
 ) -> Result<SidecarConfig, String> {
     let workspace_dir = params.workspace_path.replace('\\', "/");
 
-    Ok(crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
-        prompt: params.prompt.to_string(),
-        llm: params.llm,
-        workspace_root_dir: workspace_dir.clone(),
-        workspace_run_dir: workspace_dir,
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("skill_suggestions".to_string()),
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        allowed_tools: vec!["file_editor".to_string()],
-        max_turns: 4,
-        output_format: Some(suggestions_output_format(&params.requested_fields)?),
-        skill_name: Some(params.skill_name.to_string()),
-        step_id: Some(-31),
-        run_source: None,
-        plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
-    }))
+    Ok(crate::agents::sidecar::build_openhands_one_shot_config(
+        OpenHandsOneShotConfigParams {
+            prompt: params.prompt.to_string(),
+            llm: params.llm,
+            workspace_root_dir: workspace_dir.clone(),
+            workspace_run_dir: workspace_dir,
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("skill_suggestions".to_string()),
+            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+            allowed_tools: vec!["file_editor".to_string()],
+            max_turns: 4,
+            output_format: Some(suggestions_output_format(&params.requested_fields)?),
+            skill_name: Some(params.skill_name.to_string()),
+            step_id: Some(-31),
+            run_source: None,
+            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+        },
+    ))
 }
 
 fn parse_suggestions_from_conversation_state(
@@ -398,7 +406,10 @@ fn parse_suggestions_result_text(
     let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
 
     let parsed: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
-        log::error!("[generate_suggestions] Failed to parse result: raw text={}", text);
+        log::error!(
+            "[generate_suggestions] Failed to parse result: raw text={}",
+            text
+        );
         format!("Failed to parse result: {}", e)
     })?;
 
@@ -599,10 +610,7 @@ mod tests {
 
         let result = parse_suggestions_from_conversation_state(
             &state,
-            &[
-                "description".to_string(),
-                "agent_mistakes".to_string(),
-            ],
+            &["description".to_string(), "agent_mistakes".to_string()],
         )
         .unwrap();
 
@@ -722,11 +730,8 @@ mod tests {
             "result_text": r#"{"domain":"Revenue ops"}"#
         });
 
-        let error = parse_suggestions_from_conversation_state(
-            &state,
-            &["description".to_string()],
-        )
-        .unwrap_err();
+        let error = parse_suggestions_from_conversation_state(&state, &["description".to_string()])
+            .unwrap_err();
         assert!(error.contains("not requested"));
     }
 

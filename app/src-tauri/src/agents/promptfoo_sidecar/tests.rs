@@ -49,7 +49,10 @@ fn run_eval_request_serializes_sidecar_payload() {
     assert_eq!(payload["pluginSlug"], "skills");
     assert_eq!(payload["scenarioName"], "Routing checks");
     assert_eq!(payload["promptfooConfigDir"], "/tmp/promptfoo");
-    assert_eq!(payload["candidates"][0]["description"], "Use for warehouse domain classification prompts.");
+    assert_eq!(
+        payload["candidates"][0]["description"],
+        "Use for warehouse domain classification prompts."
+    );
     assert_eq!(payload["cases"][0]["shouldTrigger"], true);
     assert_eq!(payload["cases"][0]["assertions"][0]["type"], "contains");
     assert_eq!(payload["executions"][0]["candidateId"], "candidate-1");
@@ -125,7 +128,10 @@ fn sidecar_result_event_deserializes_history_payload() {
     .expect("deserialize history result event");
 
     match event {
-        SidecarEvent::Result { id, payload: SidecarResultPayload::Runs { runs } } => {
+        SidecarEvent::Result {
+            id,
+            payload: SidecarResultPayload::Runs { runs },
+        } => {
             assert_eq!(id, "list-history");
             assert_eq!(runs.len(), 1);
         }

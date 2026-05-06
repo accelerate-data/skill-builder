@@ -53,7 +53,8 @@ pub(crate) fn reconcile_skill_builder(
             if !has_clarifications {
                 log::info!(
                     "[reconcile] '{}': resetting step {} → 0 (clarifications missing from DB)",
-                    name, early_run.current_step
+                    name,
+                    early_run.current_step
                 );
                 crate::db::save_workflow_run(conn, name, 0, "pending", &early_run.purpose)?;
                 notifications.push(format!(
@@ -68,7 +69,8 @@ pub(crate) fn reconcile_skill_builder(
                 if !has_decisions {
                     log::info!(
                         "[reconcile] '{}': resetting step {} → 0 (decisions missing from DB)",
-                        name, early_run.current_step
+                        name,
+                        early_run.current_step
                     );
                     crate::db::save_workflow_run(conn, name, 0, "pending", &early_run.purpose)?;
                     notifications.push(format!(

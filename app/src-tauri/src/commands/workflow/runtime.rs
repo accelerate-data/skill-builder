@@ -369,8 +369,7 @@ async fn run_workflow_step_inner(
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
                 match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
                     Ok(Some(rec)) => {
-                        let json_str =
-                            super::prompt::clarifications_record_to_json_string(&rec);
+                        let json_str = super::prompt::clarifications_record_to_json_string(&rec);
                         let verdicts = super::prompt::render_answer_verdicts(&rec);
                         (json_str, verdicts)
                     }
@@ -414,11 +413,10 @@ async fn run_workflow_step_inner(
                         Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
                         _ => "{}".to_string(),
                     };
-                let dec =
-                    match crate::db::workflow_artifacts::read_decisions(&conn, skill_name) {
-                        Ok(Some(rec)) => super::prompt::decisions_record_to_json_string(&rec),
-                        _ => "{}".to_string(),
-                    };
+                let dec = match crate::db::workflow_artifacts::read_decisions(&conn, skill_name) {
+                    Ok(Some(rec)) => super::prompt::decisions_record_to_json_string(&rec),
+                    _ => "{}".to_string(),
+                };
                 (clar, dec)
             };
             build_step3_prompt(
@@ -494,7 +492,9 @@ async fn run_workflow_step_inner(
             workflow_session_id,
         ),
         _ => {
-            return Err(format!("Invalid workflow step_id={step_id}: only steps 0-3 are valid"));
+            return Err(format!(
+                "Invalid workflow step_id={step_id}: only steps 0-3 are valid"
+            ));
         }
     };
 
@@ -506,10 +506,7 @@ async fn run_workflow_step_inner(
 
     let materialization_listener = if step_id == 0 {
         Some(install_research_materialization_listener(
-            app,
-            runs,
-            &agent_id,
-            skill_name,
+            app, runs, &agent_id, skill_name,
         ))
     } else {
         None
@@ -527,12 +524,7 @@ async fn run_workflow_step_inner(
         );
     }
 
-    let start_result = openhands_server::dispatch_openhands_one_shot(
-        app,
-        &agent_id,
-        config,
-    )
-    .await;
+    let start_result = openhands_server::dispatch_openhands_one_shot(app, &agent_id, config).await;
 
     start_result.map_err(|e| {
         log::error!(
@@ -780,23 +772,19 @@ pub async fn run_answer_evaluator(
         );
     }
 
-    openhands_server::dispatch_openhands_one_shot(
-        &app,
-        &agent_id,
-        config,
-    )
-    .await
-    .map_err(|e| {
-        log::error!(
-            "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
-            agent_id,
+    openhands_server::dispatch_openhands_one_shot(&app, &agent_id, config)
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
+                agent_id,
+                e
+            );
+            if let Ok(mut map) = runs.0.lock() {
+                map.remove(&agent_id);
+            }
             e
-        );
-        if let Ok(mut map) = runs.0.lock() {
-            map.remove(&agent_id);
-        }
-        e
-    })?;
+        })?;
 
     Ok(agent_id)
 }

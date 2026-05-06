@@ -227,6 +227,9 @@ mod tests {
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_decisions(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(!check_decisions_guard_db(&conn, "skill-dec-conflict-resolved"));
+        assert!(!check_decisions_guard_db(
+            &conn,
+            "skill-dec-conflict-resolved"
+        ));
     }
 }

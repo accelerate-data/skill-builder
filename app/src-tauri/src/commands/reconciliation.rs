@@ -426,7 +426,10 @@ mod tests {
         migrate_workspace_to_plugin_layout(workspace, &conn);
 
         // Should have been moved to the plugin-organised location
-        let new_path = workspace.join("default").join("skills").join("britney-spears");
+        let new_path = workspace
+            .join("default")
+            .join("skills")
+            .join("britney-spears");
         assert!(
             new_path.exists(),
             "plugin-organised dir should exist after migration"

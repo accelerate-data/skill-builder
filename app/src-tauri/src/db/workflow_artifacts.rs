@@ -282,7 +282,13 @@ pub fn upsert_clarifications(
         tx.execute(
             "INSERT INTO clarification_notes (skill_id, ordinal, type, title, body)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![skill_id, note.ordinal, note.note_type, note.title, note.body],
+            rusqlite::params![
+                skill_id,
+                note.ordinal,
+                note.note_type,
+                note.title,
+                note.body
+            ],
         )?;
     }
 
@@ -479,7 +485,11 @@ pub fn read_clarifications(
     use std::collections::HashMap;
     let mut node_map: HashMap<String, ClarificationQuestion> = HashMap::new();
     let mut order: Vec<(String, Option<String>)> = Vec::with_capacity(flat_rows.len());
-    for FlatQuestion { parent, mut question } in flat_rows {
+    for FlatQuestion {
+        parent,
+        mut question,
+    } in flat_rows
+    {
         if let Some(choices) = choices_by_question.remove(&question.question_id) {
             question.choices = choices;
         }
@@ -585,10 +595,7 @@ pub fn update_question_answer(
 }
 
 /// Delete clarifications and all child rows for a skill. Idempotent.
-pub fn delete_clarifications(
-    conn: &Connection,
-    skill_id: &str,
-) -> Result<(), rusqlite::Error> {
+pub fn delete_clarifications(conn: &Connection, skill_id: &str) -> Result<(), rusqlite::Error> {
     // Children are CASCADE-deleted by FK, but we don't depend on FK
     // enforcement being on (see db/mod.rs comment). Delete explicitly so the
     // call works regardless of pragma state.
@@ -1249,7 +1256,9 @@ mod tests {
         tx.commit().unwrap();
 
         // Confirm both rows exist.
-        assert!(read_clarifications(&conn, "purge-test-skill").unwrap().is_some());
+        assert!(read_clarifications(&conn, "purge-test-skill")
+            .unwrap()
+            .is_some());
         assert!(read_decisions(&conn, "purge-test-skill").unwrap().is_some());
 
         // Delete via the skill-deletion DB hook.
@@ -1266,7 +1275,9 @@ mod tests {
 
         // Both artifact families must be gone.
         assert!(
-            read_clarifications(&conn, "purge-test-skill").unwrap().is_none(),
+            read_clarifications(&conn, "purge-test-skill")
+                .unwrap()
+                .is_none(),
             "delete_skill must purge clarifications rows"
         );
         assert!(

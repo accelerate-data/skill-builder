@@ -12,14 +12,10 @@ pub async fn graceful_shutdown(
     instance: tauri::State<'_, InstanceInfo>,
 ) -> Result<(), String> {
     const TIMEOUT_SECS: u64 = 5;
-    log::info!(
-        "[graceful_shutdown] called (timeout={}s)",
-        TIMEOUT_SECS
-    );
+    log::info!("[graceful_shutdown] called (timeout={}s)", TIMEOUT_SECS);
 
-    let shutdown_result = tokio::time::timeout(
-        std::time::Duration::from_secs(TIMEOUT_SECS),
-        async {
+    let shutdown_result =
+        tokio::time::timeout(std::time::Duration::from_secs(TIMEOUT_SECS), async {
             // Release all skill locks and end workflow sessions for this instance
             if let Ok(conn) = db.0.lock() {
                 let _ = crate::db::release_all_instance_locks(&conn, &instance.id);
@@ -29,9 +25,8 @@ pub async fn graceful_shutdown(
                 );
                 log::info!("[graceful_shutdown] locks released, sessions ended");
             }
-        },
-    )
-    .await;
+        })
+        .await;
 
     match shutdown_result {
         Ok(()) => {
@@ -39,10 +34,7 @@ pub async fn graceful_shutdown(
             Ok(())
         }
         Err(_) => {
-            log::warn!(
-                "[graceful_shutdown] timed out after {}s",
-                TIMEOUT_SECS,
-            );
+            log::warn!("[graceful_shutdown] timed out after {}s", TIMEOUT_SECS,);
             Err(format!(
                 "Graceful shutdown timed out after {}s. Force-exit required.",
                 TIMEOUT_SECS

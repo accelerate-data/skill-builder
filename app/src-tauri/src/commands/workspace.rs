@@ -110,7 +110,7 @@ fn migrate_workspace_layout(workspace_path: &str) {
                 if skill_dir.file_name().and_then(|n| n.to_str()) == Some("skills") {
                     continue;
                 }
-            // Remove stale VU-1157 context files.
+                // Remove stale VU-1157 context files.
                 for name in &[
                     "context/clarifications.json",
                     "context/decisions.json",
@@ -375,33 +375,33 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
         };
         for skill_root in skill_roots {
             for skill_dir in non_hidden_subdirs(&skill_root) {
-            if skill_dir.join(".git").exists() {
-                log::debug!(
-                    "[migrate_to_per_skill_repos] {} already has .git, skipping",
-                    skill_dir.display()
-                );
-                continue;
+                if skill_dir.join(".git").exists() {
+                    log::debug!(
+                        "[migrate_to_per_skill_repos] {} already has .git, skipping",
+                        skill_dir.display()
+                    );
+                    continue;
+                }
+                if let Err(e) = crate::git::ensure_repo(&skill_dir) {
+                    log::warn!(
+                        "[migrate_to_per_skill_repos] failed to init repo at {}: {}",
+                        skill_dir.display(),
+                        e
+                    );
+                    continue;
+                }
+                match crate::git::commit_all(&skill_dir, "initial commit") {
+                    Ok(_) => log::info!(
+                        "[migrate_to_per_skill_repos] initialized repo at {}",
+                        skill_dir.display()
+                    ),
+                    Err(e) => log::warn!(
+                        "[migrate_to_per_skill_repos] commit failed at {}: {}",
+                        skill_dir.display(),
+                        e
+                    ),
+                }
             }
-            if let Err(e) = crate::git::ensure_repo(&skill_dir) {
-                log::warn!(
-                    "[migrate_to_per_skill_repos] failed to init repo at {}: {}",
-                    skill_dir.display(),
-                    e
-                );
-                continue;
-            }
-            match crate::git::commit_all(&skill_dir, "initial commit") {
-                Ok(_) => log::info!(
-                    "[migrate_to_per_skill_repos] initialized repo at {}",
-                    skill_dir.display()
-                ),
-                Err(e) => log::warn!(
-                    "[migrate_to_per_skill_repos] commit failed at {}: {}",
-                    skill_dir.display(),
-                    e
-                ),
-            }
-        }
         }
     }
 
@@ -459,13 +459,11 @@ pub fn init_workspace(
                 .map(|skill| skill.name)
                 .collect::<std::collections::HashSet<_>>()
         };
-        if let Err(e) =
-            super::imported_skills::purge_stale_bundled_skills(
-                &workspace_path,
-                &bundled_skills_dir,
-                &protected_workspace_skill_names,
-            )
-        {
+        if let Err(e) = super::imported_skills::purge_stale_bundled_skills(
+            &workspace_path,
+            &bundled_skills_dir,
+            &protected_workspace_skill_names,
+        ) {
             log::warn!("purge_stale_bundled_skills: failed: {}", e);
         }
         if let Err(e) =
@@ -600,7 +598,11 @@ mod tests {
     #[test]
     fn test_cleanup_stale_snapshots_noop_when_no_snapshots() {
         let workspace = tempfile::tempdir().unwrap();
-        let skill_dir = workspace.path().join("default").join("skills").join("my-skill");
+        let skill_dir = workspace
+            .path()
+            .join("default")
+            .join("skills")
+            .join("my-skill");
         fs::create_dir_all(skill_dir.join("references")).unwrap();
 
         cleanup_stale_snapshots(workspace.path().to_str().unwrap());
@@ -630,8 +632,14 @@ mod tests {
         migrate_to_marketplace_layout(root.to_str().unwrap());
 
         let migrated = root.join("analytics").join("skills").join("weekly-report");
-        assert!(migrated.join("SKILL.md").is_file(), "SKILL.md should be canonicalized");
-        assert!(migrated.join("references").is_dir(), "references/ should remain");
+        assert!(
+            migrated.join("SKILL.md").is_file(),
+            "SKILL.md should be canonicalized"
+        );
+        assert!(
+            migrated.join("references").is_dir(),
+            "references/ should remain"
+        );
         assert!(root.join("analytics").is_dir(), "plugin dir should exist");
     }
 
@@ -743,26 +751,14 @@ mod tests {
 
         // Write stale VU-1157 context files.
         fs::create_dir_all(skill_dir.join("context")).unwrap();
-        fs::write(
-            skill_dir.join("context/clarifications.json"),
-            "{}",
-        )
-        .unwrap();
-        fs::write(
-            skill_dir.join("context/decisions.json"),
-            "{}",
-        )
-        .unwrap();
+        fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
+        fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
         fs::write(skill_dir.join("user-context.md"), "# ctx").unwrap();
         fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
         fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
         // Write an unrelated file inside context/ — should survive.
-        fs::write(
-            skill_dir.join("context/something-else.txt"),
-            "keep me",
-        )
-        .unwrap();
+        fs::write(skill_dir.join("context/something-else.txt"), "keep me").unwrap();
 
         // Create an empty logs/ dir (simulating dead persistence dirs).
         fs::create_dir_all(skill_dir.join("logs")).unwrap();
@@ -818,11 +814,7 @@ mod tests {
             .join("some-skill");
 
         fs::create_dir_all(skill_dir.join("context")).unwrap();
-        fs::write(
-            skill_dir.join("context/clarifications.json"),
-            "{}",
-        )
-        .unwrap();
+        fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
 
         migrate_workspace_layout(workspace.path().to_str().unwrap());
 
@@ -886,7 +878,9 @@ mod tests {
         fs::write(workspace.path().join("CLAUDE.md"), "# legacy").unwrap();
         fs::create_dir_all(workspace.path().join(".claude/skills/legacy-skill")).unwrap();
         fs::write(
-            workspace.path().join(".claude/skills/legacy-skill/SKILL.md"),
+            workspace
+                .path()
+                .join(".claude/skills/legacy-skill/SKILL.md"),
             "# legacy skill",
         )
         .unwrap();
@@ -959,11 +953,17 @@ mod migration_tests {
         let skills_path = dir.path();
         setup_shared_repo(skills_path);
 
-        assert!(skills_path.join(".git").exists(), "pre: shared .git must exist");
+        assert!(
+            skills_path.join(".git").exists(),
+            "pre: shared .git must exist"
+        );
 
         super::migrate_to_per_skill_repos(skills_path);
 
-        assert!(!skills_path.join(".git").exists(), "shared .git must be removed after migration");
+        assert!(
+            !skills_path.join(".git").exists(),
+            "shared .git must be removed after migration"
+        );
     }
 
     #[test]
@@ -975,14 +975,18 @@ mod migration_tests {
         super::migrate_to_per_skill_repos(skills_path);
 
         let skill_dir = skills_path.join("default").join("skills").join("my-skill");
-        assert!(skill_dir.join(".git").exists(), "per-skill .git must exist after migration");
+        assert!(
+            skill_dir.join(".git").exists(),
+            "per-skill .git must exist after migration"
+        );
     }
 
     #[test]
     fn test_migrate_to_per_skill_repos_is_noop_without_shared_git() {
         let dir = tempdir().unwrap();
         let skills_path = dir.path();
-        std::fs::create_dir_all(skills_path.join("default").join("skills").join("my-skill")).unwrap();
+        std::fs::create_dir_all(skills_path.join("default").join("skills").join("my-skill"))
+            .unwrap();
 
         // No .git at root — should be a no-op, no panic
         super::migrate_to_per_skill_repos(skills_path);
@@ -1002,14 +1006,28 @@ mod migration_tests {
         // Pre-create a per-skill repo with one commit
         crate::git::ensure_repo(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# Pre-existing").unwrap();
-        let original_sha = crate::git::commit_all(&skill_dir, "pre-existing").unwrap().unwrap();
+        let original_sha = crate::git::commit_all(&skill_dir, "pre-existing")
+            .unwrap()
+            .unwrap();
 
         super::migrate_to_per_skill_repos(skills_path);
 
         // Per-skill repo must still have exactly the same HEAD commit (not reinit'd)
         let repo = git2::Repository::open(&skill_dir).unwrap();
-        let head_sha = repo.head().unwrap().peel_to_commit().unwrap().id().to_string();
-        assert_eq!(head_sha, original_sha, "existing per-skill repo must not be disturbed by migration");
-        assert!(!skills_path.join(".git").exists(), "shared .git must still be removed");
+        let head_sha = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
+        assert_eq!(
+            head_sha, original_sha,
+            "existing per-skill repo must not be disturbed by migration"
+        );
+        assert!(
+            !skills_path.join(".git").exists(),
+            "shared .git must still be removed"
+        );
     }
 }

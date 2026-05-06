@@ -119,4 +119,3 @@ pub(crate) fn workflow_output_format_for_step(step_id: u32) -> Option<serde_json
         })
     })
 }
-

@@ -44,8 +44,8 @@ fn compute_dir_sha(roots: &[&Path]) -> Result<String, String> {
             continue;
         }
         for entry in walkdir::WalkDir::new(root).sort_by_file_name() {
-            let entry = entry
-                .map_err(|e| format!("walkdir error under {}: {}", root.display(), e))?;
+            let entry =
+                entry.map_err(|e| format!("walkdir error under {}: {}", root.display(), e))?;
             if entry.file_type().is_file() {
                 paths.push(entry.into_path());
             }
@@ -56,8 +56,7 @@ fn compute_dir_sha(roots: &[&Path]) -> Result<String, String> {
     for path in paths {
         hasher.update(path.to_string_lossy().as_bytes());
         hasher.update(b"\0");
-        let bytes = std::fs::read(&path)
-            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+        let bytes = std::fs::read(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
         hasher.update(&bytes);
     }
     Ok(hex::encode(hasher.finalize()))
@@ -249,11 +248,7 @@ pub(crate) fn ensure_workspace_prompts_inner(
     };
 
     if tier_1_changed && (agents_src.is_dir() || workspace_skills_src.is_dir()) {
-        copy_workspace_sources_to_openhands_dir(
-            agents_src,
-            workspace_skills_src,
-            workspace_root,
-        )?;
+        copy_workspace_sources_to_openhands_dir(agents_src, workspace_skills_src, workspace_root)?;
     }
 
     // ---- Tier 2: <workspace>/.agents/ → per-skill .agents/ ---------------
@@ -273,10 +268,7 @@ pub(crate) fn ensure_workspace_prompts_inner(
             let entry = cache_lock.entry(workspace_key.clone()).or_default();
             let layout_ok = crate::skill_paths::workspace_agent_files_dir(&skill_dir).is_dir()
                 && crate::skill_paths::workspace_agent_skills_dir(&skill_dir).is_dir();
-            entry
-                .per_skill_sha
-                .get(&skill_key)
-                .map(String::as_str)
+            entry.per_skill_sha.get(&skill_key).map(String::as_str)
                 != Some(current_root_sha.as_str())
                 || !layout_ok
         };

@@ -96,11 +96,7 @@ pub fn prune_transcript_files(workspace_path: &str) {
     use chrono::Local;
     use std::path::Path;
 
-    fn prune_logs_dir(
-        logs_dir: &Path,
-        skill_label: &str,
-        today: chrono::NaiveDate,
-    ) -> u32 {
+    fn prune_logs_dir(logs_dir: &Path, skill_label: &str, today: chrono::NaiveDate) -> u32 {
         let mut skill_pruned: u32 = 0;
         let log_entries = match std::fs::read_dir(logs_dir) {
             Ok(e) => e,
@@ -367,7 +363,10 @@ mod tests {
         let tmp = tempdir().unwrap();
         let workspace = tmp.path();
 
-        let nested_logs = workspace.join("analytics").join("forecast-skill").join("logs");
+        let nested_logs = workspace
+            .join("analytics")
+            .join("forecast-skill")
+            .join("logs");
         fs::create_dir_all(&nested_logs).unwrap();
         fs::write(nested_logs.join("old.jsonl"), "{}").unwrap();
         let past = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86400);

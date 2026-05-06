@@ -638,9 +638,18 @@ mod tests {
         let run = read_eval_run(&conn, "run-file-backed").unwrap().unwrap();
         let serialized = serde_json::to_value(&run).unwrap();
 
-        assert_eq!(serialized.get("scenarioName").and_then(Value::as_str), Some("Regression"));
-        assert_eq!(serialized.get("pluginSlug").and_then(Value::as_str), Some("skills"));
-        assert_eq!(serialized.get("skillName").and_then(Value::as_str), Some("forecast"));
+        assert_eq!(
+            serialized.get("scenarioName").and_then(Value::as_str),
+            Some("Regression")
+        );
+        assert_eq!(
+            serialized.get("pluginSlug").and_then(Value::as_str),
+            Some("skills")
+        );
+        assert_eq!(
+            serialized.get("skillName").and_then(Value::as_str),
+            Some("forecast")
+        );
         assert_eq!(serialized.get("promptSetId"), Some(&Value::Null));
     }
 

@@ -208,13 +208,9 @@ impl StartConversationRequest {
                 // InvokeSkillTool. InvokeSkillTool is auto-attached by the
                 // agent when an AgentSkills-format skill is present in
                 // agent_context.skills, so it doesn't need to be listed here.
-                include_default_tools: vec![
-                    "FinishTool".to_string(),
-                    "ThinkTool".to_string(),
-                ],
+                include_default_tools: vec!["FinishTool".to_string(), "ThinkTool".to_string()],
                 agent_context: {
-                    let skills =
-                        discover_agentskills(Path::new(&request.workspace_skill_dir));
+                    let skills = discover_agentskills(Path::new(&request.workspace_skill_dir));
                     if skills.is_empty() {
                         log::warn!(
                             "[openhands-agent-server] no AgentSkills found under {}/.agents/skills/ \
@@ -502,9 +498,7 @@ fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHand
         "grep" | "Grep" | "GrepTool" => Some("grep"),
         "glob" | "Glob" | "GlobTool" => Some("glob"),
         "task_tool_set" | "TaskToolSet" => Some("task_tool_set"),
-        "browser_tool_set" | "BrowserToolSet" | "browser" | "Browser" => {
-            Some("browser_tool_set")
-        }
+        "browser_tool_set" | "BrowserToolSet" | "browser" | "Browser" => Some("browser_tool_set"),
         "planning_file_editor" | "PlanningFileEditorTool" | "planning" => {
             Some("planning_file_editor")
         }
@@ -588,9 +582,15 @@ mod skill_discovery_tests {
         let skills = discover_agentskills(workspace_skill_dir);
 
         let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, vec!["creating-skills", "researching-skill-requirements"]);
+        assert_eq!(
+            names,
+            vec!["creating-skills", "researching-skill-requirements"]
+        );
 
-        let researching = skills.iter().find(|s| s.name == "researching-skill-requirements").unwrap();
+        let researching = skills
+            .iter()
+            .find(|s| s.name == "researching-skill-requirements")
+            .unwrap();
         assert!(researching.is_agentskills_format);
         assert_eq!(
             researching.description.as_deref(),
@@ -598,7 +598,10 @@ mod skill_discovery_tests {
         );
         assert_eq!(researching.version.as_deref(), Some("1.2.0"));
         assert!(researching.content.contains("Body."));
-        assert!(!researching.content.contains("---"), "frontmatter should be stripped");
+        assert!(
+            !researching.content.contains("---"),
+            "frontmatter should be stripped"
+        );
         let resources = researching.resources.as_ref().unwrap();
         assert_eq!(resources.references, vec!["template.md".to_string()]);
         assert!(resources.scripts.is_empty());
@@ -621,4 +624,3 @@ mod skill_discovery_tests {
         assert!(parsed.body.contains("Body"));
     }
 }
-

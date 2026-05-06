@@ -348,8 +348,8 @@ pub fn verify_step_output(
             .map(|opt| opt.is_some())
             .unwrap_or(false)),
         _ => {
-            let skills_path = read_skills_path(&db)
-                .ok_or_else(|| "Skills path not configured".to_string())?;
+            let skills_path =
+                read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
             let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
             let target_dir = crate::skill_paths::resolve_skill_dir(
                 Path::new(&skills_path),
@@ -1032,9 +1032,6 @@ mod per_skill_git_tests {
             "skills root must NOT have .git in per-skill repos"
         );
         // Skill dir MUST have .git
-        assert!(
-            skill_dir.join(".git").exists(),
-            "skill_dir MUST have .git"
-        );
+        assert!(skill_dir.join(".git").exists(), "skill_dir MUST have .git");
     }
 }

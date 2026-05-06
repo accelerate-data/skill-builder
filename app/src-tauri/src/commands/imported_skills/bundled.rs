@@ -171,8 +171,11 @@ pub(crate) fn seed_bundled_skills(
         }
 
         // Copy directory to the canonical workspace skill location.
-        let dest_dir =
-            resolve_workspace_skill_dir(Path::new(workspace_path), DEFAULT_PLUGIN_SLUG, &skill_name);
+        let dest_dir = resolve_workspace_skill_dir(
+            Path::new(workspace_path),
+            DEFAULT_PLUGIN_SLUG,
+            &skill_name,
+        );
         if dest_dir.exists() {
             fs::remove_dir_all(&dest_dir)
                 .map_err(|e| format!("Failed to remove existing bundled skill dir: {}", e))?;
@@ -183,8 +186,12 @@ pub(crate) fn seed_bundled_skills(
 
         copy_dir_recursive(&entry_path, &dest_dir)
             .map_err(|e| format!("Failed to copy bundled skill '{}': {}", skill_name, e))?;
-        fs::write(dest_dir.join(BUNDLED_WORKSPACE_MARKER), "")
-            .map_err(|e| format!("Failed to write bundled skill marker '{}': {}", skill_name, e))?;
+        fs::write(dest_dir.join(BUNDLED_WORKSPACE_MARKER), "").map_err(|e| {
+            format!(
+                "Failed to write bundled skill marker '{}': {}",
+                skill_name, e
+            )
+        })?;
 
         log::info!(
             "seed_bundled_skills: seeded '{}' (version={} model={} user_invocable={} disable_model_invocation={})",
@@ -216,19 +223,13 @@ mod tests {
         )
         .unwrap();
 
-        seed_bundled_skills(
-            workspace.path().to_str().unwrap(),
-            bundled.path(),
-        )
-        .unwrap();
+        seed_bundled_skills(workspace.path().to_str().unwrap(), bundled.path()).unwrap();
 
-        assert!(resolve_workspace_skill_dir(
-            workspace.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "demo-skill"
-        )
-        .join("SKILL.md")
-        .is_file());
+        assert!(
+            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "demo-skill")
+                .join("SKILL.md")
+                .is_file()
+        );
         assert!(
             !workspace
                 .path()
@@ -276,7 +277,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(kept_workspace_dir.exists(), "current bundled skill should remain");
+        assert!(
+            kept_workspace_dir.exists(),
+            "current bundled skill should remain"
+        );
         assert!(
             !stale_workspace_dir.exists(),
             "stale bundled skill mirror should be removed from canonical workspace layout"

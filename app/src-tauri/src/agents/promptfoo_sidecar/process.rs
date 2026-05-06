@@ -94,7 +94,10 @@ where
         let detail = if stderr.is_empty() {
             format!("Promptfoo sidecar exited with status {}", output.status)
         } else {
-            format!("Promptfoo sidecar exited with status {}: {stderr}", output.status)
+            format!(
+                "Promptfoo sidecar exited with status {}: {stderr}",
+                output.status
+            )
         };
         return Err(detail);
     }

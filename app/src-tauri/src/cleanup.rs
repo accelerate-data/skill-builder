@@ -1,7 +1,5 @@
 use crate::commands::workflow::get_step_output_files;
-use crate::skill_paths::{
-    resolve_existing_skill_dir, resolve_existing_workspace_skill_dir,
-};
+use crate::skill_paths::{resolve_existing_skill_dir, resolve_existing_workspace_skill_dir};
 use std::path::Path;
 
 /// Try to remove a file, logging the outcome.
@@ -150,11 +148,9 @@ pub fn clean_step_output(
             // as part of the current step 3 contract.
             remove_dir_logged(LABEL, &skill_dir.join("evals"));
             // Remove git version tags so re-running step 3 can create 1.0.0 again.
-            if let Err(e) = crate::git::delete_skill_version_tags(
-                &skill_output_dir,
-                plugin_slug,
-                skill_name,
-            ) {
+            if let Err(e) =
+                crate::git::delete_skill_version_tags(&skill_output_dir, plugin_slug, skill_name)
+            {
                 log::warn!(
                     "[{}] failed to delete git version tags for '{}': {}",
                     LABEL,
@@ -627,18 +623,21 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Set up a per-skill git repo, write SKILL.md and commit it.
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         crate::git::ensure_repo(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
         crate::git::commit_all(&skill_dir, "generated skill").unwrap();
         crate::git::create_skill_version_tag(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap();
-        assert!(crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap());
+        assert!(
+            crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap()
+        );
 
         clean_step_output(workspace, "my-skill", SLUG, 3, skills_path);
 
-        assert!(!crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap());
+        assert!(
+            !crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap()
+        );
     }
 
     #[test]

@@ -19,9 +19,9 @@ use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resol
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::{
     get_skill_master_in_plugin, read_description_candidate, read_eval_run as db_read_eval_run,
-    record_eval_run as db_record_eval_run, set_skill_behaviour_in_plugin, Db,
-    DescriptionCandidate, EvalPromptSet, EvalRun, EvalWorkbenchMode, NewDescriptionCandidate,
-    NewEvalRun, NewEvalRunResult,
+    record_eval_run as db_record_eval_run, set_skill_behaviour_in_plugin, Db, DescriptionCandidate,
+    EvalPromptSet, EvalRun, EvalWorkbenchMode, NewDescriptionCandidate, NewEvalRun,
+    NewEvalRunResult,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -261,7 +261,10 @@ fn summary_with_scenario_snapshot(summary: Value, prompt_set: &EvalPromptSet) ->
         Value::Object(object) => object,
         _ => serde_json::Map::new(),
     };
-    summary_object.insert("scenarioSnapshot".to_string(), scenario_run_snapshot(prompt_set));
+    summary_object.insert(
+        "scenarioSnapshot".to_string(),
+        scenario_run_snapshot(prompt_set),
+    );
     Value::Object(summary_object)
 }
 
@@ -612,9 +615,7 @@ fn read_owned_description_candidate(
     }
     if let Some(expected_mode) = mode {
         if run.mode != expected_mode {
-            return Err(
-                "Description candidate does not belong to the selected mode".to_string(),
-            );
+            return Err("Description candidate does not belong to the selected mode".to_string());
         }
     }
 
@@ -1422,7 +1423,10 @@ fn persisted_run_to_eval_run(
         results: results
             .into_iter()
             .map(|result| crate::db::EvalRunResult {
-                id: format!("{}:{}:{}", promptfoo_eval_id, result.case_id, result.candidate_id),
+                id: format!(
+                    "{}:{}:{}",
+                    promptfoo_eval_id, result.case_id, result.candidate_id
+                ),
                 run_id: id.clone(),
                 case_id: result.case_id,
                 candidate_id: result.candidate_id,
@@ -1880,8 +1884,9 @@ pub fn save_scenario(
     } else {
         None
     };
-    let is_rename =
-        previous_scenario_name.as_deref().is_some_and(|previous| previous != scenario.name);
+    let is_rename = previous_scenario_name
+        .as_deref()
+        .is_some_and(|previous| previous != scenario.name);
     let is_create = previous_scenario_name.is_none();
     if existing_scenario.is_some() && (is_create || is_rename) {
         return Err(format!("Scenario '{}' already exists", scenario.name));
@@ -2183,7 +2188,9 @@ pub async fn list_eval_runs(
     };
     let request = ListHistoryRequest::new(
         format!("list-history-{plugin_slug}-{skill_name}-{}", mode.as_str()),
-        promptfoo_config_dir(&data_dir).to_string_lossy().to_string(),
+        promptfoo_config_dir(&data_dir)
+            .to_string_lossy()
+            .to_string(),
         plugin_slug.clone(),
         skill_name.clone(),
         scenario_name,
@@ -2211,7 +2218,9 @@ pub async fn read_eval_run(
     validate_id("Run id", &run_id)?;
     let request = ReadHistoryRequest::new(
         format!("read-history-{run_id}"),
-        promptfoo_config_dir(&data_dir).to_string_lossy().to_string(),
+        promptfoo_config_dir(&data_dir)
+            .to_string_lossy()
+            .to_string(),
         run_id.clone(),
     );
     let persisted_run = read_promptfoo_history(&app, &request).await?;
@@ -2303,7 +2312,14 @@ pub fn apply_description_candidate(
     validate_id("Candidate id", &candidate_id)?;
     let candidate = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        read_owned_description_candidate(&conn, &candidate_id, &plugin_slug, &skill_name, None, None)?
+        read_owned_description_candidate(
+            &conn,
+            &candidate_id,
+            &plugin_slug,
+            &skill_name,
+            None,
+            None,
+        )?
     };
     let (skill_md_path, previous_content) =
         write_skill_description_to_disk(&db, &plugin_slug, &skill_name, &candidate.description)?;
@@ -2346,7 +2362,9 @@ pub async fn build_refine_improvement_brief(
     let skills_path = resolve_skills_path(&db)?;
     let request = ReadHistoryRequest::new(
         format!("read-history-{run_id}"),
-        promptfoo_config_dir(&data_dir).to_string_lossy().to_string(),
+        promptfoo_config_dir(&data_dir)
+            .to_string_lossy()
+            .to_string(),
         run_id.clone(),
     );
     let persisted_run = read_promptfoo_history(&app, &request).await?;
@@ -2402,10 +2420,10 @@ fn build_refine_improvement_brief_inner(run: &EvalRun) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::eval_workbench::scenarios::write_scenario_file;
     use crate::db::{
         create_test_db_for_tests, record_eval_run, save_eval_prompt_set, write_settings,
     };
-    use crate::commands::eval_workbench::scenarios::write_scenario_file;
     use crate::skill_paths::resolve_eval_dir;
     use crate::types::AppSettings;
     use std::path::Path;
@@ -3179,11 +3197,12 @@ mod tests {
         )
         .unwrap();
 
-        let run = read_eval_run_with_deps(&conn, "/tmp/promptfoo", "completed-run", |_request| async {
-            Ok(None)
-        })
-        .await
-        .unwrap();
+        let run =
+            read_eval_run_with_deps(&conn, "/tmp/promptfoo", "completed-run", |_request| async {
+                Ok(None)
+            })
+            .await
+            .unwrap();
 
         assert!(run.is_none());
     }
@@ -3215,13 +3234,12 @@ mod tests {
         )
         .unwrap();
 
-        let run =
-            read_eval_run_with_deps(&conn, "/tmp/promptfoo", "draft-run", |_request| async {
-                Ok(None)
-            })
-            .await
-            .unwrap()
-            .unwrap();
+        let run = read_eval_run_with_deps(&conn, "/tmp/promptfoo", "draft-run", |_request| async {
+            Ok(None)
+        })
+        .await
+        .unwrap()
+        .unwrap();
 
         assert_eq!(run.id, "draft-run");
         assert_eq!(run.status, "draft");
@@ -3485,19 +3503,17 @@ mod tests {
             prompt_set.cases[0].expected.as_deref(),
             Some("Includes assumptions")
         );
-        assert!(
-            db_read_eval_prompt_set(
-                &conn,
-                &scenario_runtime_id(
-                    "skills",
-                    "forecast",
-                    "Regression",
-                    EvalWorkbenchMode::Performance,
-                ),
-            )
-            .unwrap()
-            .is_none()
-        );
+        assert!(db_read_eval_prompt_set(
+            &conn,
+            &scenario_runtime_id(
+                "skills",
+                "forecast",
+                "Regression",
+                EvalWorkbenchMode::Performance,
+            ),
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]
@@ -3544,19 +3560,17 @@ mod tests {
             prompt_set.cases[0].expected.as_deref(),
             Some("Uses latest assumptions")
         );
-        assert!(
-            db_read_eval_prompt_set(
-                &conn,
-                &scenario_runtime_id(
-                    "skills",
-                    "forecast",
-                    "Regression",
-                    EvalWorkbenchMode::Performance,
-                ),
-            )
-            .unwrap()
-            .is_none()
-        );
+        assert!(db_read_eval_prompt_set(
+            &conn,
+            &scenario_runtime_id(
+                "skills",
+                "forecast",
+                "Regression",
+                EvalWorkbenchMode::Performance,
+            ),
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]
@@ -3584,19 +3598,17 @@ mod tests {
         assert_eq!(prompt_set.mode, EvalWorkbenchMode::Trigger);
         assert_eq!(prompt_set.cases.len(), 1);
         assert_eq!(prompt_set.cases[0].should_trigger, Some(true));
-        assert!(
-            db_read_eval_prompt_set(
-                &conn,
-                &scenario_runtime_id(
-                    "skills",
-                    "forecast",
-                    "Routing checks",
-                    EvalWorkbenchMode::Trigger,
-                ),
-            )
-            .unwrap()
-            .is_none()
-        );
+        assert!(db_read_eval_prompt_set(
+            &conn,
+            &scenario_runtime_id(
+                "skills",
+                "forecast",
+                "Routing checks",
+                EvalWorkbenchMode::Trigger,
+            ),
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]
