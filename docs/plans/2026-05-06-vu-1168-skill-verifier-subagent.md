@@ -153,12 +153,28 @@ Vitest / cargo tests.
 - [x] **Step 6: Add focused tests for normalization, projection, and rendering of nested subagent tool activity**
 - [x] **Step 7: Run a real OpenHands-backed smoke or manual persisted-conversation check proving verifier child events are visible**
 
+### Task 7: Stream nested subagent tool calls live while the subagent is running
+
+**Files:**
+
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/events.rs`
+- Modify: `app/src/__tests__/lib/openhands-conversation-events.test.ts` if normalized linkage coverage expands
+- Modify: `app/src/__tests__/stores/agent-store.test.ts` if store semantics need additional live-stream assertions
+
+- [x] **Step 1: Add failing backend tests that pin the current bug: child subagent events must emit before the parent task observation completes**
+- [x] **Step 2: Introduce a dedicated async subagent event streaming worker owned by the parent conversation task, not a separate UI path**
+- [x] **Step 3: Have that worker poll the persisted `subagents/*/events/*.json` tree incrementally, dedupe child event ids, and emit normal `conversation_event` messages with `parentToolCallId`**
+- [x] **Step 4: Keep the existing parent WebSocket loop focused on parent conversation events and lifecycle while sharing launch state/cancellation cleanly with the child worker**
+- [x] **Step 5: Verify that the UI shows nested verifier tool calls while the subagent row is still `Running...`, not only after completion**
+
 ## Verification Notes
 
 - `cd app && npm run test:agents:structural`
 - `cd app && npx tsc --noEmit`
 - `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 - `cargo test --manifest-path app/src-tauri/Cargo.toml openhands_server -- --nocapture`
+- `cargo test --manifest-path app/src-tauri/Cargo.toml live_subagent_scan -- --nocapture`
 - `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow -- --nocapture`
 - `cargo test --manifest-path app/src-tauri/Cargo.toml skill_generation_prompt_renders_app_owned_openhands_task_context -- --nocapture`
 - `cd app && bash tests/run.sh e2e --tag @workflow`

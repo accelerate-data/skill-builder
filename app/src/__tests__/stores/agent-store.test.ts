@@ -381,6 +381,125 @@ describe("useAgentStore", () => {
       },
     });
   });
+
+  it("queues child subagent conversation events until the parent subagent row exists", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const childAction = makeConversationEvent(
+      "ActionEvent",
+      {
+        source: "agent",
+        action: { command: "view", path: "/repo/SKILL.md" },
+        tool_name: "file_editor",
+        tool_call_id: "call-child-queued-1",
+      },
+      1_050,
+      {
+        conversationId: "conv-child-queued-1",
+        parentToolCallId: "call-parent-late-1",
+      },
+    );
+
+    useAgentStore.getState().addConversationEvent("agent-1", childAction);
+
+    let run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(0);
+
+    const parentAction = makeConversationEvent(
+      "ActionEvent",
+      {
+        source: "agent",
+        action: {
+          subagent_type: "skill-verifier",
+          description: "Verify generated skill package",
+        },
+        tool_name: "task",
+        tool_call_id: "call-parent-late-1",
+        summary: "Verify generated skill package",
+      },
+      1_100,
+    );
+
+    useAgentStore.getState().addConversationEvent("agent-1", parentAction);
+
+    run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.pendingSubagentItemsByParentToolCallId).toEqual({});
+
+    const subagentItem = run.displayItems[0];
+    expect(subagentItem.type).toBe("subagent");
+    expect(subagentItem.toolCallId).toBe("call-parent-late-1");
+    expect(subagentItem.subagentItems).toHaveLength(1);
+    expect(subagentItem.subagentItems?.[0]).toMatchObject({
+      type: "tool_call",
+      toolCallId: "call-child-queued-1",
+      toolSummary: "Read file: SKILL.md",
+      parentToolCallId: "call-parent-late-1",
+    });
+  });
+
+  it("queues child subagent conversation events when they arrive before the run is registered", () => {
+    const childAction = makeConversationEvent(
+      "ActionEvent",
+      {
+        source: "agent",
+        action: { command: "view", path: "/repo/SKILL.md" },
+        tool_name: "file_editor",
+        tool_call_id: "call-child-queued-before-run-1",
+      },
+      1_050,
+      {
+        conversationId: "conv-child-queued-before-run-1",
+        parentToolCallId: "call-parent-before-run-1",
+      },
+    );
+
+    useAgentStore.getState().addConversationEvent("agent-1", childAction);
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    let run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(0);
+    expect(run.pendingSubagentItemsByParentToolCallId).toMatchObject({
+      "call-parent-before-run-1": [
+        expect.objectContaining({
+          toolCallId: "call-child-queued-before-run-1",
+          parentToolCallId: "call-parent-before-run-1",
+        }),
+      ],
+    });
+
+    const parentAction = makeConversationEvent(
+      "ActionEvent",
+      {
+        source: "agent",
+        action: {
+          subagent_type: "skill-verifier",
+          description: "Verify generated skill package",
+        },
+        tool_name: "task",
+        tool_call_id: "call-parent-before-run-1",
+        summary: "Verify generated skill package",
+      },
+      1_100,
+    );
+
+    useAgentStore.getState().addConversationEvent("agent-1", parentAction);
+
+    run = useAgentStore.getState().runs["agent-1"];
+    expect(run.pendingSubagentItemsByParentToolCallId).toEqual({});
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0]).toMatchObject({
+      type: "subagent",
+      toolCallId: "call-parent-before-run-1",
+      subagentItems: [
+        expect.objectContaining({
+          type: "tool_call",
+          toolCallId: "call-child-queued-before-run-1",
+          parentToolCallId: "call-parent-before-run-1",
+        }),
+      ],
+    });
+  });
 });
 
 describe("shutdownRun", () => {

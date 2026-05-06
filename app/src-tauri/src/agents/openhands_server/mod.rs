@@ -3,7 +3,11 @@ pub mod events;
 pub mod process;
 pub mod types;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::{Duration, Instant};
 
 use futures::{SinkExt, StreamExt};
@@ -19,7 +23,6 @@ use crate::agents::sidecar::SidecarConfig;
 use crate::db::Db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
 
 pub struct OpenHandsOneShotRunParams {
     pub agent_id_prefix: String,
@@ -142,12 +145,25 @@ struct OpenHandsConversationTask {
 struct PendingSubagentLaunch {
     tool_call_id: String,
     prompt: String,
+    started_at_ms: i64,
 }
 
 struct PersistedSubagentConversation {
     conversation_id: String,
     first_prompt: String,
-    events: Vec<serde_json::Value>,
+    first_event_timestamp_ms: i64,
+    events: Vec<PersistedSubagentEvent>,
+}
+
+struct PersistedSubagentEvent {
+    dedupe_key: String,
+    raw: serde_json::Value,
+}
+
+#[derive(Default)]
+struct LiveSubagentStreamState {
+    parent_tool_call_by_child_conversation: HashMap<String, String>,
+    emitted_child_event_keys: HashSet<String>,
 }
 
 fn maybe_record_subagent_launch(
@@ -176,33 +192,39 @@ fn maybe_record_subagent_launch(
         .or_else(|| raw.pointer("/tool_call/id"))
         .and_then(|value| value.as_str());
     let prompt = raw.pointer("/action/prompt").and_then(|value| value.as_str());
+    let started_at_ms = raw
+        .get("timestamp")
+        .and_then(|value| value.as_str())
+        .and_then(parse_timestamp_ms)
+        .unwrap_or_default();
     if let (Some(tool_call_id), Some(prompt)) = (tool_call_id, prompt) {
         launches.insert(
             tool_call_id.to_string(),
             PendingSubagentLaunch {
                 tool_call_id: tool_call_id.to_string(),
                 prompt: prompt.to_string(),
+                started_at_ms,
             },
         );
     }
 }
 
-fn persisted_subagents_root(task: &OpenHandsConversationTask) -> PathBuf {
-    Path::new(&task.summary_context.workspace_path)
+fn persisted_subagents_root(workspace_path: &str, conversation_id: &str) -> PathBuf {
+    let storage_dir = conversation_id.replace('-', "");
+    Path::new(workspace_path)
         .join("conversations")
-        .join(&task.conversation_id)
+        .join(storage_dir)
         .join("subagents")
 }
 
 fn list_persisted_subagent_conversations(
-    task: &OpenHandsConversationTask,
+    root: &Path,
 ) -> Result<Vec<PersistedSubagentConversation>, String> {
-    let root = persisted_subagents_root(task);
     if !root.exists() {
         return Ok(vec![]);
     }
     let mut conversations = Vec::new();
-    let entries = fs::read_dir(&root)
+    let entries = fs::read_dir(root)
         .map_err(|e| format!("Failed to read subagent directory {}: {e}", root.display()))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read subagent entry: {e}"))?;
@@ -228,25 +250,55 @@ fn list_persisted_subagent_conversations(
         event_paths.sort();
         let mut events = Vec::new();
         let mut first_prompt = None;
+        let mut first_event_timestamp_ms = None;
         for event_path in event_paths {
             let raw = fs::read_to_string(&event_path)
                 .map_err(|e| format!("Failed to read child event {}: {e}", event_path.display()))?;
             let parsed: serde_json::Value = serde_json::from_str(&raw)
                 .map_err(|e| format!("Failed to parse child event {}: {e}", event_path.display()))?;
+            let dedupe_key = parsed
+                .get("id")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+                .or_else(|| {
+                    event_path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| format!("event-{}", events.len()));
             if first_prompt.is_none() {
                 first_prompt = extract_user_message_text(&parsed);
             }
-            events.push(parsed);
+            if first_event_timestamp_ms.is_none() {
+                first_event_timestamp_ms = parsed
+                    .get("timestamp")
+                    .and_then(|value| value.as_str())
+                    .and_then(parse_timestamp_ms);
+            }
+            events.push(PersistedSubagentEvent {
+                dedupe_key,
+                raw: parsed,
+            });
         }
-        if let Some(first_prompt) = first_prompt {
+        if let (Some(first_prompt), Some(first_event_timestamp_ms)) =
+            (first_prompt, first_event_timestamp_ms)
+        {
             conversations.push(PersistedSubagentConversation {
                 conversation_id,
                 first_prompt,
+                first_event_timestamp_ms,
                 events,
             });
         }
     }
     Ok(conversations)
+}
+
+fn parse_timestamp_ms(timestamp: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|value| value.timestamp_millis())
 }
 
 fn extract_user_message_text(raw: &serde_json::Value) -> Option<String> {
@@ -275,66 +327,125 @@ fn extract_user_message_text(raw: &serde_json::Value) -> Option<String> {
         })
 }
 
-fn emit_child_subagent_events_for_observation(
-    task: &OpenHandsConversationTask,
-    raw: &serde_json::Value,
+fn collect_live_child_subagent_events(
+    root: &Path,
+    agent_id: &str,
     launches: &HashMap<String, PendingSubagentLaunch>,
-    emitted_child_conversations: &mut HashSet<String>,
+    state: &mut LiveSubagentStreamState,
+) -> Result<Vec<serde_json::Value>, String> {
+    let children = list_persisted_subagent_conversations(root)?;
+    let mut emitted = Vec::new();
+
+    for child in children {
+        let parent_tool_call_id = if let Some(existing) = state
+            .parent_tool_call_by_child_conversation
+            .get(&child.conversation_id)
+            .cloned()
+        {
+            existing
+        } else {
+            let matched = launches
+                .values()
+                .find(|launch| {
+                    launch.prompt == child.first_prompt
+                        && child.first_event_timestamp_ms >= launch.started_at_ms
+                        && !state
+                            .parent_tool_call_by_child_conversation
+                            .values()
+                            .any(|used| used == &launch.tool_call_id)
+                })
+                .map(|launch| launch.tool_call_id.clone());
+            let Some(matched) = matched else {
+                continue;
+            };
+            state
+                .parent_tool_call_by_child_conversation
+                .insert(child.conversation_id.clone(), matched.clone());
+            matched
+        };
+
+        for child_event in child.events {
+            let emitted_key = format!("{}:{}", child.conversation_id, child_event.dedupe_key);
+            if !state.emitted_child_event_keys.insert(emitted_key) {
+                continue;
+            }
+
+            let mut linked_child = child_event.raw;
+            if let Some(record) = linked_child.as_object_mut() {
+                record.insert(
+                    "parent_tool_call_id".to_string(),
+                    serde_json::Value::String(parent_tool_call_id.clone()),
+                );
+            }
+            let normalized = normalize_server_event(agent_id, &child.conversation_id, &linked_child);
+            if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
+            {
+                emitted.push(normalized);
+            }
+        }
+    }
+
+    Ok(emitted)
+}
+
+async fn stream_live_child_subagent_events(
+    task: &OpenHandsConversationTask,
+    launches: Arc<Mutex<HashMap<String, PendingSubagentLaunch>>>,
+    stop: Arc<AtomicBool>,
 ) {
-    let kind = raw
-        .get("kind")
-        .or_else(|| raw.get("event_class"))
-        .or_else(|| raw.get("eventClass"))
-        .or_else(|| raw.get("type"))
-        .and_then(|value| value.as_str());
-    if kind != Some("ObservationEvent") {
-        return;
-    }
-    let tool_name = raw
-        .get("tool_name")
-        .or_else(|| raw.get("toolName"))
-        .and_then(|value| value.as_str());
-    if !matches!(tool_name, Some("task" | "task_tool_set")) {
-        return;
-    }
-    let tool_call_id = raw
-        .get("tool_call_id")
-        .or_else(|| raw.get("toolCallId"))
-        .and_then(|value| value.as_str());
-    let Some(tool_call_id) = tool_call_id else {
-        return;
-    };
-    let Some(launch) = launches.get(tool_call_id) else {
-        return;
-    };
-    let Ok(children) = list_persisted_subagent_conversations(task) else {
-        return;
-    };
-    let Some(child) = children.into_iter().find(|child| {
-        !emitted_child_conversations.contains(&child.conversation_id)
-            && child.first_prompt == launch.prompt
-    }) else {
-        return;
-    };
-    emitted_child_conversations.insert(child.conversation_id.clone());
-    for child_event in child.events {
-        let mut linked_child = child_event;
-        if let Some(record) = linked_child.as_object_mut() {
-            record.insert(
-                "parent_tool_call_id".to_string(),
-                serde_json::Value::String(launch.tool_call_id.clone()),
-            );
+    let root = persisted_subagents_root(&task.summary_context.workspace_path, &task.conversation_id);
+    let mut state = LiveSubagentStreamState::default();
+
+    loop {
+        let launches_snapshot = match launches.lock() {
+            Ok(guard) => guard.clone(),
+            Err(error) => {
+                log::warn!(
+                    "[openhands-agent-server:{}] failed to lock subagent launches for live stream: {}",
+                    task.agent_id,
+                    error
+                );
+                HashMap::new()
+            }
+        };
+
+        match collect_live_child_subagent_events(&root, &task.agent_id, &launches_snapshot, &mut state)
+        {
+            Ok(events) => {
+                for event in events {
+                    super::events::handle_sidecar_message(
+                        &task.app,
+                        &task.agent_id,
+                        &event.to_string(),
+                    );
+                }
+            }
+            Err(error) => {
+                log::warn!(
+                    "[openhands-agent-server:{}] live child subagent event scan failed: {}",
+                    task.agent_id,
+                    error
+                );
+            }
         }
-        let normalized =
-            normalize_server_event(&task.agent_id, &child.conversation_id, &linked_child);
-        if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event") {
-            super::events::handle_sidecar_message(
-                &task.app,
-                &task.agent_id,
-                &normalized.to_string(),
-            );
+
+        if stop.load(Ordering::Relaxed) {
+            break;
         }
+
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
+}
+
+fn record_subagent_launch(
+    raw: &serde_json::Value,
+    launches: &Arc<Mutex<HashMap<String, PendingSubagentLaunch>>>,
+) {
+    let Ok(mut guard) = launches.lock() else {
+        log::warn!("failed to lock subagent launches for parent conversation stream");
+        return;
+    };
+    maybe_record_subagent_launch(raw, &mut guard);
 }
 
 pub async fn dispatch_openhands_one_shot(
@@ -698,8 +809,8 @@ async fn run_conversation_task_inner(
     // rows. Multi-turn refine turns N+1 already saw prior turns and use the
     // live WS only — backfilling there would replay the whole history.
     let mut seen_event_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut pending_subagent_launches: HashMap<String, PendingSubagentLaunch> = HashMap::new();
-    let mut emitted_child_conversations: HashSet<String> = HashSet::new();
+    let pending_subagent_launches: Arc<Mutex<HashMap<String, PendingSubagentLaunch>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let mut terminal_state: Option<serde_json::Value> = None;
     let mut socket_error: Option<String> = None;
     if task.backfill_existing_events {
@@ -711,7 +822,7 @@ async fn run_conversation_task_inner(
                             continue;
                         }
                     }
-                    maybe_record_subagent_launch(&raw, &mut pending_subagent_launches);
+                    record_subagent_launch(&raw, &pending_subagent_launches);
                     let normalized =
                         normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
                     if normalized.get("type").and_then(|value| value.as_str())
@@ -725,12 +836,6 @@ async fn run_conversation_task_inner(
                         &task.agent_id,
                         &normalized.to_string(),
                     );
-                    emit_child_subagent_events_for_observation(
-                        task,
-                        &raw,
-                        &pending_subagent_launches,
-                        &mut emitted_child_conversations,
-                    );
                 }
             }
             Err(e) => {
@@ -742,6 +847,27 @@ async fn run_conversation_task_inner(
             }
         }
     }
+
+    let stop_subagent_stream = Arc::new(AtomicBool::new(false));
+    let subagent_stream_handle = if terminal_state.is_none() {
+        let launches = Arc::clone(&pending_subagent_launches);
+        let stop = Arc::clone(&stop_subagent_stream);
+        let worker_task = OpenHandsConversationTask {
+            app: task.app.clone(),
+            agent_id: task.agent_id.clone(),
+            client: task.client.clone(),
+            conversation_id: task.conversation_id.clone(),
+            websocket_url: task.websocket_url.clone(),
+            session_api_key: task.session_api_key.clone(),
+            summary_context: task.summary_context.clone(),
+            backfill_existing_events: false,
+        };
+        Some(tokio::spawn(async move {
+            stream_live_child_subagent_events(&worker_task, launches, stop).await
+        }))
+    } else {
+        None
+    };
 
     let mut cancel_pending = false;
     // If REST backfill drained a terminal `conversation_state`, the
@@ -802,7 +928,7 @@ async fn run_conversation_task_inner(
                         continue;
                     }
                 }
-                maybe_record_subagent_launch(&raw, &mut pending_subagent_launches);
+                record_subagent_launch(&raw, &pending_subagent_launches);
                 let normalized = normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
                 let is_terminal = normalized
                     .get("type")
@@ -813,26 +939,39 @@ async fn run_conversation_task_inner(
                     break;
                 } else {
                     super::events::handle_sidecar_message(&task.app, &task.agent_id, &normalized.to_string());
-                    emit_child_subagent_events_for_observation(
-                        task,
-                        &raw,
-                        &pending_subagent_launches,
-                        &mut emitted_child_conversations,
-                    );
                 }
             }
         }
     }
 
+    stop_subagent_stream.store(true, Ordering::Relaxed);
+    if let Some(handle) = subagent_stream_handle {
+        if let Err(error) = handle.await {
+            log::warn!(
+                "[openhands-agent-server:{}] subagent event stream worker join failed: {}",
+                task.agent_id,
+                error
+            );
+        }
+    }
+
     let terminal_state = match terminal_state {
         Some(state) if terminal_state_needs_final_response(&state) => {
-            fetch_final_response_state(
+            match fetch_final_response_state(
                 &task.client,
                 &task.agent_id,
                 &task.conversation_id,
                 Some(state),
             )
-            .await?
+            .await
+            {
+                Ok(final_state) => final_state,
+                Err(error) => build_missing_completed_payload_state(
+                    &task.agent_id,
+                    &task.conversation_id,
+                    &error,
+                ),
+            }
         }
         Some(state) => state,
         None if cancel_pending => build_cancelled_state(&task.agent_id, &task.conversation_id),
@@ -888,10 +1027,10 @@ async fn recover_terminal_state_after_socket_failure(
                     {
                         Ok(final_state) => return final_state,
                         Err(error) => {
-                            log::warn!(
-                                "[openhands-agent-server:{}] failed to fetch final response after socket failure: {}",
-                                task.agent_id,
-                                error
+                            return build_missing_completed_payload_state(
+                                &task.agent_id,
+                                &task.conversation_id,
+                                &error,
                             );
                         }
                     }
@@ -1057,6 +1196,9 @@ async fn fetch_final_response_state(
         .and_then(|value| value.as_str())
         .unwrap_or("")
         .to_string();
+    if response.trim().is_empty() {
+        return Err("OpenHands completed without structured output or final response".to_string());
+    }
     Ok(serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
@@ -1071,6 +1213,24 @@ async fn fetch_final_response_state(
             "final_response": final_response,
         },
     }))
+}
+
+fn build_missing_completed_payload_state(
+    agent_id: &str,
+    conversation_id: &str,
+    error_detail: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "type": "conversation_state",
+        "runtime": "openhands",
+        "agent_id": agent_id,
+        "conversation_id": conversation_id,
+        "status": "error",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "error_detail": error_detail,
+        "result_text": null,
+        "structured_output": null,
+    })
 }
 
 fn redact_openhands_config_for_log(config: &SidecarConfig, port: u16) -> serde_json::Value {
@@ -1212,6 +1372,8 @@ fn unregister_cancel(agent_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn terminal_state_without_payload_requires_final_response_fetch() {
@@ -1250,6 +1412,24 @@ mod tests {
         assert!(!terminal_state_needs_final_response(&with_text));
         assert!(!terminal_state_needs_final_response(&with_structured));
         assert!(!terminal_state_needs_final_response(&with_empty_string));
+    }
+
+    #[test]
+    fn empty_fetched_final_response_is_not_a_valid_completed_payload() {
+        let state = build_missing_completed_payload_state(
+            "agent-1",
+            "conversation-1",
+            "OpenHands completed without structured output or final response",
+        );
+
+        assert_eq!(state["type"], "conversation_state");
+        assert_eq!(state["status"], "error");
+        assert_eq!(
+            state["error_detail"],
+            "OpenHands completed without structured output or final response"
+        );
+        assert!(state["result_text"].is_null());
+        assert!(state["structured_output"].is_null());
     }
 
     #[test]
@@ -1507,6 +1687,230 @@ mod tests {
         assert!(is_persistent_skill_request(&refine_request));
         assert_eq!(workflow_request.plugin_slug, refine_request.plugin_slug);
         assert_eq!(workflow_request.skill_name, refine_request.skill_name);
+    }
+
+    #[test]
+    fn live_subagent_scan_emits_child_events_before_parent_observation() {
+        let dir = tempdir().expect("tempdir");
+        let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
+        let root = persisted_subagents_root(
+            dir.path().to_str().expect("workspace root path"),
+            conversation_id,
+        );
+        let child_events_dir = root.join("child-1").join("events");
+        fs::create_dir_all(&child_events_dir).expect("child events dir");
+
+        fs::write(
+            child_events_dir.join("event-00001.json"),
+            serde_json::json!({
+                "id": "child-msg-1",
+                "kind": "MessageEvent",
+                "source": "user",
+                "timestamp": "2026-05-06T23:40:10.000000Z",
+                "llm_message": {
+                    "content": [{"text": "Verify generated skill package"}]
+                }
+            })
+            .to_string(),
+        )
+        .expect("write child user message");
+        fs::write(
+            child_events_dir.join("event-00002.json"),
+            serde_json::json!({
+                "id": "child-action-1",
+                "kind": "ActionEvent",
+                "source": "agent",
+                "timestamp": "2026-05-06T23:40:11.000000Z",
+                "tool_name": "file_editor",
+                "tool_call_id": "child-tool-1",
+                "action": {
+                    "tool_call_id": "child-tool-1",
+                    "path": "skill/SKILL.md"
+                }
+            })
+            .to_string(),
+        )
+        .expect("write child action");
+
+        let launches = HashMap::from([(
+            "parent-task-1".to_string(),
+            PendingSubagentLaunch {
+                tool_call_id: "parent-task-1".to_string(),
+                prompt: "Verify generated skill package".to_string(),
+                started_at_ms: parse_timestamp_ms("2026-05-06T23:40:00.000000Z").unwrap(),
+            },
+        )]);
+        let mut state = LiveSubagentStreamState::default();
+
+        let emitted =
+            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+                .expect("collect child events");
+
+        assert_eq!(emitted.len(), 2);
+        assert!(emitted.iter().all(|event| {
+            event.get("parent_tool_call_id").and_then(|value| value.as_str())
+                == Some("parent-task-1")
+        }));
+    }
+
+    #[test]
+    fn live_subagent_scan_only_emits_new_child_events_incrementally() {
+        let dir = tempdir().expect("tempdir");
+        let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
+        let root = persisted_subagents_root(
+            dir.path().to_str().expect("workspace root path"),
+            conversation_id,
+        );
+        let child_events_dir = root.join("child-1").join("events");
+        fs::create_dir_all(&child_events_dir).expect("child events dir");
+
+        fs::write(
+            child_events_dir.join("event-00001.json"),
+            serde_json::json!({
+                "id": "child-msg-1",
+                "kind": "MessageEvent",
+                "source": "user",
+                "timestamp": "2026-05-06T23:40:10.000000Z",
+                "llm_message": {
+                    "content": [{"text": "Verify generated skill package"}]
+                }
+            })
+            .to_string(),
+        )
+        .expect("write child user message");
+
+        let launches = HashMap::from([(
+            "parent-task-1".to_string(),
+            PendingSubagentLaunch {
+                tool_call_id: "parent-task-1".to_string(),
+                prompt: "Verify generated skill package".to_string(),
+                started_at_ms: parse_timestamp_ms("2026-05-06T23:40:00.000000Z").unwrap(),
+            },
+        )]);
+        let mut state = LiveSubagentStreamState::default();
+
+        let first =
+            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+                .expect("first collect");
+        assert_eq!(first.len(), 1);
+
+        let second =
+            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+                .expect("second collect");
+        assert!(second.is_empty());
+
+        fs::write(
+            child_events_dir.join("event-00002.json"),
+            serde_json::json!({
+                "id": "child-observation-1",
+                "kind": "ObservationEvent",
+                "source": "agent",
+                "timestamp": "2026-05-06T23:40:12.000000Z",
+                "tool_name": "file_editor",
+                "tool_call_id": "child-tool-1",
+                "observation": "Read SKILL.md"
+            })
+            .to_string(),
+        )
+        .expect("write child observation");
+
+        let third =
+            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+                .expect("third collect");
+        assert_eq!(third.len(), 1);
+        assert_eq!(third[0]["tool_call_id"], "child-tool-1");
+        assert_eq!(third[0]["parent_tool_call_id"], "parent-task-1");
+    }
+
+    #[test]
+    fn live_subagent_scan_ignores_older_child_conversation_for_same_prompt() {
+        let dir = tempdir().expect("tempdir");
+        let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
+        let root = persisted_subagents_root(
+            dir.path().to_str().expect("workspace root path"),
+            conversation_id,
+        );
+
+        for (child, timestamp, tool_call) in [
+            (
+                "child-old",
+                "2026-05-06T23:39:00.000000Z",
+                "child-tool-old",
+            ),
+            (
+                "child-new",
+                "2026-05-06T23:40:10.000000Z",
+                "child-tool-new",
+            ),
+        ] {
+            let child_events_dir = root.join(child).join("events");
+            fs::create_dir_all(&child_events_dir).expect("child events dir");
+            fs::write(
+                child_events_dir.join("event-00001.json"),
+                serde_json::json!({
+                    "id": format!("{child}-msg-1"),
+                    "kind": "MessageEvent",
+                    "source": "user",
+                    "timestamp": timestamp,
+                    "llm_message": {
+                        "content": [{"text": "Verify generated skill package"}]
+                    }
+                })
+                .to_string(),
+            )
+            .expect("write child user message");
+            fs::write(
+                child_events_dir.join("event-00002.json"),
+                serde_json::json!({
+                    "id": format!("{child}-action-1"),
+                    "kind": "ActionEvent",
+                    "source": "agent",
+                    "timestamp": timestamp,
+                    "tool_name": "file_editor",
+                    "tool_call_id": tool_call,
+                    "action": {
+                        "tool_call_id": tool_call,
+                        "path": "skill/SKILL.md"
+                    }
+                })
+                .to_string(),
+            )
+            .expect("write child action");
+        }
+
+        let launches = HashMap::from([(
+            "parent-task-1".to_string(),
+            PendingSubagentLaunch {
+                tool_call_id: "parent-task-1".to_string(),
+                prompt: "Verify generated skill package".to_string(),
+                started_at_ms: parse_timestamp_ms("2026-05-06T23:40:00.000000Z").unwrap(),
+            },
+        )]);
+        let mut state = LiveSubagentStreamState::default();
+
+        let emitted =
+            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+                .expect("collect child events");
+
+        assert_eq!(emitted.len(), 2);
+        assert!(emitted.iter().all(|event| event["tool_call_id"] != "child-tool-old"));
+        assert!(emitted.iter().any(|event| event["tool_call_id"] == "child-tool-new"));
+    }
+
+    #[test]
+    fn persisted_subagents_root_uses_compact_conversation_directory_name() {
+        let root = persisted_subagents_root(
+            "/tmp/workspace/default/skills/my-skill",
+            "3f43be4d-c1c6-4866-a42a-c4d2a1f43040",
+        );
+
+        assert_eq!(
+            root,
+            Path::new("/tmp/workspace/default/skills/my-skill")
+                .join("conversations")
+                .join("3f43be4dc1c64866a42ac4d2a1f43040")
+                .join("subagents")
+        );
     }
 
     #[test]

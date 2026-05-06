@@ -89,6 +89,44 @@ function appendChildItemToParentToolCall(
   return changed ? nextItems : items;
 }
 
+function flushQueuedChildItems(
+  items: DisplayItem[],
+  queuedByParentToolCallId: Record<string, DisplayItem[]>,
+): {
+  items: DisplayItem[];
+  remaining: Record<string, DisplayItem[]>;
+} {
+  let nextItems = items;
+  const remaining: Record<string, DisplayItem[]> = {};
+
+  for (const [parentToolCallId, queuedItems] of Object.entries(
+    queuedByParentToolCallId,
+  )) {
+    let localItems = nextItems;
+    let attachedCount = 0;
+
+    for (const item of queuedItems) {
+      const maybeNested = appendChildItemToParentToolCall(
+        localItems,
+        parentToolCallId,
+        item,
+      );
+      if (maybeNested === localItems) {
+        break;
+      }
+      localItems = maybeNested;
+      attachedCount += 1;
+    }
+
+    nextItems = localItems;
+    if (attachedCount < queuedItems.length) {
+      remaining[parentToolCallId] = queuedItems.slice(attachedCount);
+    }
+  }
+
+  return { items: nextItems, remaining };
+}
+
 // ---------------------------------------------------------------------------
 // Pending agent event buffer (for typed events arriving before run registration)
 // ---------------------------------------------------------------------------
@@ -304,6 +342,8 @@ export interface AgentRun {
   /** Pending OpenHands ActionEvents awaiting their matching ObservationEvent.
    *  Keyed by tool_call_id. Used by the projection to pair actions ↔ observations. */
   pendingActionsByToolCallId: Record<string, PendingActionEntry>;
+  /** Child subagent items that arrived before the parent subagent row existed. */
+  pendingSubagentItemsByParentToolCallId: Record<string, DisplayItem[]>;
   messages?: AgentMessage[];
   startTime: number;
   endTime?: number;
@@ -412,6 +452,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 conversationEvents: [],
                 pendingActionsByToolCallId: {},
+                pendingSubagentItemsByParentToolCallId: {},
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -465,6 +506,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 displayItems: [],
                 conversationEvents: [],
                 pendingActionsByToolCallId: {},
+                pendingSubagentItemsByParentToolCallId: {},
                 startTime: Date.now(),
                 contextHistory: [],
                 contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -502,7 +544,21 @@ export const useAgentStore = create<AgentState>((set) => ({
         );
         // Project against an empty pending map for the freshly created run.
         const projection = projectConversationEvent(event, {});
-        const nextDisplayItems: DisplayItem[] = [...projection.add];
+        const nextPendingSubagentItems: Record<string, DisplayItem[]> = {};
+        let nextDisplayItems: DisplayItem[] = [];
+        if (parentToolCallId) {
+          for (const item of projection.add) {
+            nextPendingSubagentItems[parentToolCallId] = [
+              ...(nextPendingSubagentItems[parentToolCallId] ?? []),
+              {
+                ...item,
+                parentToolCallId,
+              },
+            ];
+          }
+        } else {
+          nextDisplayItems = [...projection.add];
+        }
         const nextPending: Record<string, PendingActionEntry> = {};
         for (const entry of projection.pendingDelta.set ?? []) {
           nextPending[entry.key] = entry.value;
@@ -520,6 +576,7 @@ export const useAgentStore = create<AgentState>((set) => ({
               displayItems: nextDisplayItems,
               conversationEvents: [event],
               pendingActionsByToolCallId: nextPending,
+              pendingSubagentItemsByParentToolCallId: nextPendingSubagentItems,
               startTime: Date.now(),
               contextHistory: [],
               contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -537,6 +594,9 @@ export const useAgentStore = create<AgentState>((set) => ({
 
       // Apply updates: shallow-merge each patch onto the matching DisplayItem by id.
       let nextDisplayItems: DisplayItem[] = run.displayItems;
+      let nextPendingSubagentItems = {
+        ...run.pendingSubagentItemsByParentToolCallId,
+      };
       if (projection.update.length > 0) {
         for (const update of projection.update) {
           nextDisplayItems = patchDisplayItemById(
@@ -558,15 +618,26 @@ export const useAgentStore = create<AgentState>((set) => ({
               parentToolCallId,
               nestedItem,
             );
-            nextDisplayItems =
-              maybeNested === nextDisplayItems
-                ? [...nextDisplayItems, nestedItem]
-                : maybeNested;
+            if (maybeNested === nextDisplayItems) {
+              nextPendingSubagentItems[parentToolCallId] = [
+                ...(nextPendingSubagentItems[parentToolCallId] ?? []),
+                nestedItem,
+              ];
+            } else {
+              nextDisplayItems = maybeNested;
+            }
           }
         } else {
           nextDisplayItems = [...nextDisplayItems, ...projection.add];
         }
       }
+
+      const flushed = flushQueuedChildItems(
+        nextDisplayItems,
+        nextPendingSubagentItems,
+      );
+      nextDisplayItems = flushed.items;
+      nextPendingSubagentItems = flushed.remaining;
 
       // Apply pending-actions delta (set first, then delete — matches projection contract).
       let nextPending = run.pendingActionsByToolCallId;
@@ -590,6 +661,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             conversationEvents: [...(run.conversationEvents ?? []), event],
             displayItems: nextDisplayItems,
             pendingActionsByToolCallId: nextPending,
+            pendingSubagentItemsByParentToolCallId: nextPendingSubagentItems,
           },
         },
       };
@@ -666,6 +738,7 @@ export const useAgentStore = create<AgentState>((set) => ({
               displayItems: terminalItem ? [terminalItem] : [],
               conversationEvents: [],
               pendingActionsByToolCallId: {},
+              pendingSubagentItemsByParentToolCallId: {},
               conversationState: event,
               startTime: now,
               endTime: nextEndTime,
