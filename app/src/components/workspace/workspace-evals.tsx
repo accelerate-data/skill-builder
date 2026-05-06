@@ -20,7 +20,7 @@ import { formatModelName } from "@/stores/agent-store";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 import { ResultTable } from "./eval-workbench/result-table";
 import { useRunHistory } from "./eval-workbench/use-run-history";
-import { formatElapsed } from "@/lib/utils";
+import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
@@ -329,7 +329,7 @@ export function WorkspaceEvals({
     );
   }
 
-  const footerStatusTone =
+  const footerStatusTone: FooterDisplayStatus =
     running
       ? "running"
       : suggestingScenario || suggestScenarioPending
@@ -337,14 +337,9 @@ export function WorkspaceEvals({
       : suggestionStatusError
         ? "error"
         : "idle";
-  const footerStatusElapsed =
-    footerStatusTone === "running" && (runStartedAt || suggestScenarioStartedAt)
-      ? formatElapsed(
-          Math.max(
-            0,
-            Date.now() - (runStartedAt ?? suggestScenarioStartedAt ?? Date.now()),
-          ),
-        )
+  const footerStatusStartAt =
+    footerStatusTone === "running"
+      ? (runStartedAt ?? suggestScenarioStartedAt)
       : null;
 
   return (
@@ -479,61 +474,14 @@ export function WorkspaceEvals({
         )}
       </section>
 
-      <div
-        className="mt-auto flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4"
-        data-testid="eval-suggest-status-bar"
-      >
-        <div className="flex items-center gap-1.5">
-          <div
-            className={
-              footerStatusTone === "running"
-                ? "size-[5px] rounded-full animate-pulse"
-                : footerStatusTone === "error"
-                  ? "size-[5px] rounded-full bg-destructive"
-                  : "size-[5px] rounded-full bg-muted-foreground/40"
-            }
-            style={
-              footerStatusTone === "running"
-                ? { background: "var(--color-pacific)" }
-                : undefined
-            }
-          />
-          <span className="text-xs text-muted-foreground/60">
-            {footerStatusTone === "running"
-              ? "running…"
-              : footerStatusTone === "error"
-                ? "error"
-                : "ready"}
-          </span>
-        </div>
-
-        {currentModel ? (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground/60">
-              {formatModelName(currentModel)}
-            </span>
-          </>
-        ) : null}
-
-        {footerStatusElapsed ? (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
-              {footerStatusElapsed}
-            </span>
-          </>
-        ) : null}
-
-        {footerStatusTone === "error" && suggestionStatusError ? (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="truncate text-xs text-destructive/90">
-              {suggestionStatusError}
-            </span>
-          </>
-        ) : null}
-      </div>
+      <RunStatusFooter
+        status={footerStatusTone}
+        model={currentModel ? formatModelName(currentModel) : null}
+        elapsedMs={footerStatusStartAt ? Math.max(0, Date.now() - footerStatusStartAt) : null}
+        errorText={footerStatusTone === "error" ? suggestionStatusError : null}
+        testId="eval-suggest-status-bar"
+        className="mt-auto"
+      />
     </div>
   );
 }
