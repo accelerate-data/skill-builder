@@ -15,6 +15,8 @@ import {
 import { setEvalsRunning } from "@/lib/eval-running-state";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { useRefineStore } from "@/stores/refine-store";
+import { useSettingsStore } from "@/stores/settings-store";
+import { formatModelName } from "@/stores/agent-store";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 import { ResultTable } from "./eval-workbench/result-table";
 import { useRunHistory } from "./eval-workbench/use-run-history";
@@ -57,8 +59,10 @@ export function WorkspaceEvals({
 }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
+  const currentModel = useSettingsStore((state) => state.modelSettings.model);
 
   const [suggestingScenario, setSuggestingScenario] = useState(false);
+  const [suggestScenarioStartedAt, setSuggestScenarioStartedAt] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
   const [sendingToRefine, setSendingToRefine] = useState(false);
   const [draft, setDraft] = useState<SaveScenario>(() =>
@@ -178,6 +182,7 @@ export function WorkspaceEvals({
       return;
     }
     setSuggestingScenario(true);
+    setSuggestScenarioStartedAt(Date.now());
     setActionError(null);
     setSuggestionStatusError(null);
     try {
@@ -195,6 +200,7 @@ export function WorkspaceEvals({
       }
     } finally {
       setSuggestingScenario(false);
+      setSuggestScenarioStartedAt(null);
     }
   }
 
@@ -205,6 +211,7 @@ export function WorkspaceEvals({
 
     setActionError(null);
     setSuggestionStatusError(null);
+    setSuggestScenarioStartedAt(null);
     try {
       await onDeleteScenario(scenario.name);
       setDraft(createDraftScenario("performance"));
@@ -335,6 +342,17 @@ export function WorkspaceEvals({
                   }
                 : null
           }
+          footerBar={{
+            tone:
+              suggestingScenario || suggestScenarioPending
+                ? "running"
+                : suggestionStatusError
+                  ? "error"
+                  : "idle",
+            modelLabel: currentModel ? formatModelName(currentModel) : null,
+            startedAt: suggestScenarioStartedAt,
+            message: suggestionStatusError,
+          }}
         />
       ) : null}
 

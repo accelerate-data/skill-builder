@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
 import { mockListen, resetTauriMocks } from "@/test/mocks/tauri";
+import { useSettingsStore } from "@/stores/settings-store";
 
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
@@ -141,6 +142,7 @@ function createDeferred<T>() {
 describe("WorkspaceEvals", () => {
   beforeEach(() => {
     resetTauriMocks();
+    useSettingsStore.getState().reset();
     progressListener = null;
     mockListen.mockImplementation((eventName, callback) => {
       if (eventName === "eval-workbench-progress") {
@@ -520,6 +522,12 @@ describe("WorkspaceEvals", () => {
   });
 
   it("shows a workflow-style footer status while scenario suggestion is running", async () => {
+    useSettingsStore.getState().setSettings({
+      modelSettings: {
+        provider: "opencode",
+        model: "opencode-go/minimax-m2.7",
+      },
+    });
     const user = userEvent.setup();
     const deferredSuggestion = createDeferred({
       id: "generated-case",
@@ -543,12 +551,15 @@ describe("WorkspaceEvals", () => {
     );
 
     await screen.findByDisplayValue("Forecast next quarter revenue");
+    expect(screen.getByTestId("eval-suggest-status-bar")).toBeInTheDocument();
+    expect(screen.getByText("ready")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
-    expect(
-      await screen.findByText("Reading skill and drafting scenario…"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Reading skill and drafting scenario…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /suggesting/i })).toBeDisabled();
+    expect(screen.getByText("running…")).toBeInTheDocument();
+    expect(screen.getByText("Opencode Go/minimax M2.7")).toBeInTheDocument();
+    expect(screen.getByText(/\d+s/)).toBeInTheDocument();
 
     deferredSuggestion.resolve({
       id: "generated-case",
@@ -558,12 +569,12 @@ describe("WorkspaceEvals", () => {
       shouldTrigger: null,
       expectations: ["Summarizes the main pipeline blockers."],
     });
-
     await waitFor(() =>
       expect(
         screen.queryByText("Reading skill and drafting scenario…"),
       ).not.toBeInTheDocument(),
     );
+    expect(screen.getByText("ready")).toBeInTheDocument();
   });
 
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
@@ -589,9 +600,9 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
     expect(
-      await screen.findByText(/scenario suggestion failed/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/invalid json/i)).toBeInTheDocument();
+      await screen.findAllByText(/scenario suggestion failed/i),
+    ).toHaveLength(2);
+    expect(screen.getAllByText(/invalid json/i)).toHaveLength(2);
   });
 
   it("shows suggestion failures in the scenario footer status area", async () => {
@@ -615,8 +626,8 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
     expect(
-      await screen.findByText("Scenario suggestion failed: missing field `name`"),
-    ).toBeInTheDocument();
+      await screen.findAllByText("Scenario suggestion failed: missing field `name`"),
+    ).toHaveLength(2);
   });
 
   it("keeps trigger-mode generation separate from performance suggestion", async () => {
