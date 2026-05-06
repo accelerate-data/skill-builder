@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowRight, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SaveScenario, ScenarioDto } from "@/lib/eval-workbench";
@@ -41,6 +41,7 @@ interface WorkspaceEvalsProps {
   deleteScenarioPending?: boolean;
   onNavigateToRefine?: () => void;
   onRunningChange?: (running: boolean) => void;
+  headerContent?: ReactNode;
 }
 
 export function WorkspaceEvals({
@@ -59,6 +60,7 @@ export function WorkspaceEvals({
   deleteScenarioPending = false,
   onNavigateToRefine,
   onRunningChange,
+  headerContent,
 }: WorkspaceEvalsProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
@@ -343,136 +345,148 @@ export function WorkspaceEvals({
       : null;
 
   return (
-    <div className="flex min-h-full flex-col gap-6">
-      {actionError ? (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>{actionError}</span>
-        </div>
-      ) : null}
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card"
+      data-testid="eval-workbench-panel"
+    >
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-6"
+        data-testid="eval-workbench-content"
+      >
+        <div className="flex flex-col gap-6 pb-6">
+          {headerContent}
 
-      {scenario ? (
-        <PromptSetEditor
-          draft={draft}
-          onChange={setDraft}
-          onNew={() => void handleCreateScenario()}
-          onSuggest={() => void handleSuggestScenario()}
-          onDelete={() => void handleDeleteScenario()}
-          suggestDisabled={
-            scenarioLoading || suggestingScenario || suggestScenarioPending || !scenario
-          }
-          suggestBusy={suggestingScenario || suggestScenarioPending}
-          deleteDisabled={scenarioLoading || deleteScenarioPending || !scenario}
-          showDelete={Boolean(scenario)}
-          showNew={false}
-          footerStatus={
-            suggestingScenario || suggestScenarioPending
-              ? {
-                  tone: "running",
-                  message: "Reading skill and drafting scenario…",
-                }
-              : suggestionStatusError
-                ? {
-                    tone: "error",
-                    message: suggestionStatusError,
-                  }
-                : null
-          }
-        />
-      ) : null}
-
-      <section className="rounded-lg border bg-card p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">Results</h2>
-            <p className="text-xs text-muted-foreground">
-              Evaluate the package and inspect recent results.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={() => void handleRunScenario()}
-              disabled={scenarioLoading || running || !hasScenarios || saveScenarioPending}
-            >
-              <Play className="mr-1 size-3.5" />
-              Evaluate
-            </Button>
-            {running && activeRunId ? (
-              <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
-                <Square className="mr-1 size-3.5" />
-                Cancel
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        {running && progress ? (
-          <p className="mb-4 text-xs text-muted-foreground">
-            {progress.message} ({progress.completed}/{progress.total})
-          </p>
-        ) : null}
-
-        {runs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No evaluations yet. Run Evaluate to score this package.
-          </p>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
-            <div className="space-y-2">
-              {runs.map((run) => {
-                const summary = run.summary as { passed?: number; total?: number };
-                return (
-                  <Button
-                    key={run.id}
-                    type="button"
-                    variant={selectedRunId === run.id ? "secondary" : "outline"}
-                    className="flex h-auto w-full items-start justify-between gap-3 p-3 text-left"
-                    onClick={() => void handleSelectRun(run.id)}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{run.id}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {summary.passed ?? 0}/{summary.total ?? 0} passed
-                      </p>
-                    </div>
-                  </Button>
-                );
-              })}
+          {actionError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>{actionError}</span>
             </div>
+          ) : null}
 
-            <div className="rounded-lg border bg-background/60 p-4">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold">
-                    {selectedRun ? `Run ${selectedRun.id}` : "Run details"}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Review expectation-level results and send findings to Refine.
-                  </p>
-                </div>
+          {scenario ? (
+            <PromptSetEditor
+              draft={draft}
+              onChange={setDraft}
+              onNew={() => void handleCreateScenario()}
+              onSuggest={() => void handleSuggestScenario()}
+              onDelete={() => void handleDeleteScenario()}
+              suggestDisabled={
+                scenarioLoading || suggestingScenario || suggestScenarioPending || !scenario
+              }
+              suggestBusy={suggestingScenario || suggestScenarioPending}
+              deleteDisabled={scenarioLoading || deleteScenarioPending || !scenario}
+              showDelete={Boolean(scenario)}
+              showNew={false}
+              footerStatus={
+                suggestingScenario || suggestScenarioPending
+                  ? {
+                      tone: "running",
+                      message: "Reading skill and drafting scenario…",
+                    }
+                  : suggestionStatusError
+                    ? {
+                        tone: "error",
+                        message: suggestionStatusError,
+                      }
+                    : null
+              }
+            />
+          ) : null}
+
+          <section className="rounded-lg border bg-background/60 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Results</h2>
+                <p className="text-xs text-muted-foreground">
+                  Evaluate the package and inspect recent results.
+                </p>
+              </div>
+              <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
-                  disabled={scenarioLoading || !selectedRun || sendingToRefine}
-                  onClick={() => void handleSendToRefine()}
+                  onClick={() => void handleRunScenario()}
+                  disabled={scenarioLoading || running || !hasScenarios || saveScenarioPending}
                 >
-                  <ArrowRight className="mr-1 size-3.5" />
-                  {sendingToRefine ? "Sending…" : "Send to Refine"}
+                  <Play className="mr-1 size-3.5" />
+                  Evaluate
                 </Button>
+                {running && activeRunId ? (
+                  <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
+                    <Square className="mr-1 size-3.5" />
+                    Cancel
+                  </Button>
+                ) : null}
               </div>
-
-              {selectedRun ? (
-                <ResultTable mode="performance" run={selectedRun} />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Select a run to inspect its results.
-                </p>
-              )}
             </div>
-          </div>
-        )}
-      </section>
+
+            {running && progress ? (
+              <p className="mb-4 text-xs text-muted-foreground">
+                {progress.message} ({progress.completed}/{progress.total})
+              </p>
+            ) : null}
+
+            {runs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No evaluations yet. Run Evaluate to score this package.
+              </p>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
+                <div className="space-y-2">
+                  {runs.map((run) => {
+                    const summary = run.summary as { passed?: number; total?: number };
+                    return (
+                      <Button
+                        key={run.id}
+                        type="button"
+                        variant={selectedRunId === run.id ? "secondary" : "outline"}
+                        className="flex h-auto w-full items-start justify-between gap-3 p-3 text-left"
+                        onClick={() => void handleSelectRun(run.id)}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{run.id}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {summary.passed ?? 0}/{summary.total ?? 0} passed
+                          </p>
+                        </div>
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-lg border bg-background/60 p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        {selectedRun ? `Run ${selectedRun.id}` : "Run details"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Review expectation-level results and send findings to Refine.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={scenarioLoading || !selectedRun || sendingToRefine}
+                      onClick={() => void handleSendToRefine()}
+                    >
+                      <ArrowRight className="mr-1 size-3.5" />
+                      {sendingToRefine ? "Sending…" : "Send to Refine"}
+                    </Button>
+                  </div>
+
+                  {selectedRun ? (
+                    <ResultTable mode="performance" run={selectedRun} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Select a run to inspect its results.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
 
       <RunStatusFooter
         status={footerStatusTone}
@@ -480,7 +494,6 @@ export function WorkspaceEvals({
         elapsedMs={footerStatusStartAt ? Math.max(0, Date.now() - footerStatusStartAt) : null}
         errorText={footerStatusTone === "error" ? suggestionStatusError : null}
         testId="eval-suggest-status-bar"
-        className="mt-auto"
       />
     </div>
   );

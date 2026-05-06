@@ -111,105 +111,105 @@ export function WorkspaceEvalWorkbench({
     setSelectedScenarioName(null);
   }
 
-  return (
-    <div className="flex h-full flex-col gap-4">
-      <section className="px-6 pt-6">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold">Scenarios</h2>
-              <p className="text-xs text-muted-foreground">
-                Create and edit performance evaluation scenarios for this skill.
-              </p>
-            </div>
+  const scenariosSection = (
+    <section>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Scenarios</h2>
+          <p className="text-xs text-muted-foreground">
+            Create and edit performance evaluation scenarios for this skill.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isRunning || createScenarioMutation.isPending}
+          onClick={() => void handleCreateScenario("performance")}
+        >
+          New scenario
+        </Button>
+      </div>
+
+      {scenariosQuery.isLoading ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Loading scenarios…
+        </p>
+      ) : null}
+
+      {scenariosQuery.error ? (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+          <p className="text-sm text-destructive">
+            {getErrorMessage(scenariosQuery.error)}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void scenariosQuery.refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {!scenariosQuery.isLoading && !scenariosQuery.error ? (
+        scenarios.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            {scenarios.map((scenario) => (
+              <Button
+                key={scenario.name}
+                type="button"
+                size="sm"
+                variant={
+                  selectedScenarioName === scenario.name
+                    ? "secondary"
+                    : "outline"
+                }
+                className="flex h-auto w-full items-start justify-start p-3 text-left"
+                onClick={() => {
+                  setSelectedScenarioName((current) =>
+                    current === scenario.name ? null : scenario.name,
+                  );
+                }}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{scenario.name}</p>
+                </div>
+              </Button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No scenarios yet. Create one below.
+          </p>
+        )
+      ) : null}
+
+      {!scenariosQuery.isLoading && !scenariosQuery.error && selectedScenarioName ? (
+        selectedScenarioQuery.isLoading ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Loading scenario…
+          </p>
+        ) : selectedScenarioQuery.error ? (
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-sm text-destructive">
+              {getErrorMessage(selectedScenarioQuery.error)}
+            </p>
             <Button
               size="sm"
               variant="outline"
-              disabled={isRunning || createScenarioMutation.isPending}
-              onClick={() => void handleCreateScenario("performance")}
+              onClick={() => void selectedScenarioQuery.refetch()}
             >
-              New scenario
+              Retry
             </Button>
           </div>
+        ) : null
+      ) : null}
+    </section>
+  );
 
-          {scenariosQuery.isLoading ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              Loading scenarios…
-            </p>
-          ) : null}
-
-          {scenariosQuery.error ? (
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
-              <p className="text-sm text-destructive">
-                {getErrorMessage(scenariosQuery.error)}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void scenariosQuery.refetch()}
-              >
-                Retry
-              </Button>
-            </div>
-          ) : null}
-
-          {!scenariosQuery.isLoading && !scenariosQuery.error ? (
-            scenarios.length > 0 ? (
-              <div className="mt-4 space-y-2">
-                {scenarios.map((scenario) => (
-                  <Button
-                    key={scenario.name}
-                    type="button"
-                    size="sm"
-                    variant={
-                      selectedScenarioName === scenario.name
-                        ? "secondary"
-                        : "outline"
-                    }
-                    className="flex h-auto w-full items-start justify-start p-3 text-left"
-                    onClick={() => {
-                      setSelectedScenarioName((current) =>
-                        current === scenario.name ? null : scenario.name,
-                      );
-                    }}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{scenario.name}</p>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-muted-foreground">
-                No scenarios yet. Create one below.
-              </p>
-            )
-          ) : null}
-
-          {!scenariosQuery.isLoading && !scenariosQuery.error && selectedScenarioName ? (
-            selectedScenarioQuery.isLoading ? (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Loading scenario…
-              </p>
-            ) : selectedScenarioQuery.error ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                <p className="text-sm text-destructive">
-                  {getErrorMessage(selectedScenarioQuery.error)}
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void selectedScenarioQuery.refetch()}
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : null
-          ) : null}
-        </div>
-      </section>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+  return (
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex flex-1 flex-col">
         <WorkspaceEvals
           key={`performance-${skillName}`}
           skill={skill}
@@ -229,6 +229,7 @@ export function WorkspaceEvalWorkbench({
           deleteScenarioPending={deleteScenarioMutation.isPending}
           onNavigateToRefine={onNavigateToRefine}
           onRunningChange={setRunning}
+          headerContent={scenariosSection}
         />
       </div>
     </div>

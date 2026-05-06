@@ -608,7 +608,7 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText("ready")).toBeInTheDocument();
   });
 
-  it("anchors the workbench footer to the bottom of the panel", async () => {
+  it("uses the workflow-style panel layout for the workbench footer", async () => {
     render(
       <WorkspaceEvals
         skill={skill}
@@ -620,8 +620,28 @@ describe("WorkspaceEvals", () => {
       />,
     );
 
+    const shell = await screen.findByTestId("eval-workbench-panel");
+    const content = await screen.findByTestId("eval-workbench-content");
     const footer = await screen.findByTestId("eval-suggest-status-bar");
-    expect(footer).toHaveClass("mt-auto");
+    expect(shell).toHaveClass(
+      "flex",
+      "min-h-0",
+      "flex-1",
+      "flex-col",
+      "overflow-hidden",
+      "rounded-lg",
+      "border",
+      "bg-card",
+    );
+    expect(content).toHaveClass(
+      "min-h-0",
+      "flex-1",
+      "overflow-y-auto",
+      "px-6",
+      "pt-6",
+      "pb-6",
+    );
+    expect(shell.lastElementChild).toBe(footer);
   });
 
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {

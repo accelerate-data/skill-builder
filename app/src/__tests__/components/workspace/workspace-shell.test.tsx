@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
@@ -297,6 +297,37 @@ describe("WorkspaceShell", () => {
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Trigger" })).not.toBeInTheDocument();
     expect(screen.queryByText(/^trigger$/i)).not.toBeInTheDocument();
+  });
+
+  it("renders scenarios, results, and the footer inside one owning eval panel", async () => {
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+
+    const panel = await screen.findByTestId("eval-workbench-panel");
+    expect(within(panel).getByRole("heading", { name: "Scenarios" })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "Results" })).toBeInTheDocument();
+    expect(within(panel).getByTestId("eval-suggest-status-bar")).toBeInTheDocument();
+  });
+
+  it("gives the eval panel a flex parent so it can expand to the full tab height", async () => {
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+
+    const panel = await screen.findByTestId("eval-workbench-panel");
+    const panelParent = panel.parentElement;
+
+    expect(panelParent).not.toBeNull();
+    expect(panelParent).toHaveClass("min-h-0", "flex", "flex-1", "flex-col");
+    expect(panel).toHaveClass("flex-1");
+  });
+
+  it("does not pad the outer eval workbench wrapper, keeping the panel flush with the tab area", async () => {
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+
+    const panel = await screen.findByTestId("eval-workbench-panel");
+    const wrapper = panel.parentElement?.parentElement;
+
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).toHaveClass("flex", "h-full", "flex-col");
+    expect(wrapper?.className).not.toMatch(/\bpx-6\b|\bpt-6\b|\bpb-6\b/);
   });
 
   it("shows dialog when switching away from Refine while agent is running", async () => {
