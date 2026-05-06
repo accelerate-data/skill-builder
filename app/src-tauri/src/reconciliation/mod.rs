@@ -4,7 +4,7 @@ use crate::fs_validation::detect_furthest_step;
 use crate::skill_paths::{enumerate_skill_locations, DEFAULT_PLUGIN_SLUG};
 use crate::types::{DiscoveredSkill, ReconciliationResult};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn normalized_plugin_slug(plugin_slug: &str) -> &str {
     if plugin_slug == "skills" {
@@ -199,6 +199,74 @@ fn normalize_root_layout(
     Ok(())
 }
 
+fn workspace_legacy_skill_candidates(
+    workspace_root: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Vec<PathBuf> {
+    let mut candidates = vec![
+        workspace_root.join(plugin_slug).join(skill_name),
+        workspace_root.join(skill_name),
+    ];
+    if plugin_slug == DEFAULT_PLUGIN_SLUG {
+        candidates.push(workspace_root.join("skills").join(skill_name));
+        candidates.push(
+            workspace_root
+                .join("skills")
+                .join("skills")
+                .join(skill_name),
+        );
+    }
+    candidates
+}
+
+fn normalize_workspace_layout_from_db(
+    conn: &rusqlite::Connection,
+    workspace_root: &Path,
+    notifications: &mut Vec<String>,
+) -> Result<(), String> {
+    let all_skills = crate::db::list_all_skills(conn)?;
+    for skill in all_skills {
+        let canonical_dir = crate::skill_paths::resolve_workspace_skill_dir(
+            workspace_root,
+            normalized_plugin_slug(&skill.plugin_slug),
+            &skill.name,
+        );
+        for source_dir in workspace_legacy_skill_candidates(
+            workspace_root,
+            normalized_plugin_slug(&skill.plugin_slug),
+            &skill.name,
+        ) {
+            if source_dir == canonical_dir || !source_dir.exists() {
+                continue;
+            }
+            let source_display = source_dir.display().to_string();
+            let destination_display = canonical_dir.display().to_string();
+            if merge_skill_directory(&source_dir, &canonical_dir)? {
+                notifications.push(format!(
+                    "'{}' workspace path normalized from '{}' to '{}'",
+                    skill.name, source_display, destination_display
+                ));
+            }
+            if source_dir.exists()
+                && std::fs::read_dir(&source_dir)
+                    .map_err(|e| e.to_string())?
+                    .next()
+                    .is_none()
+            {
+                std::fs::remove_dir(&source_dir).map_err(|e| e.to_string())?;
+            }
+            prune_empty_legacy_roots(workspace_root, &source_dir);
+        }
+    }
+
+    if remove_legacy_default_plugin_root(workspace_root)? {
+        notifications.push("Removed legacy 'skills' plugin wrapper from workspace root".into());
+    }
+
+    Ok(())
+}
+
 fn normalize_legacy_startup_state(
     conn: &rusqlite::Connection,
     workspace_root: &Path,
@@ -206,7 +274,7 @@ fn normalize_legacy_startup_state(
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {
     crate::db::migrations::repair_plugin_ownership_schema(conn).map_err(|e| e.to_string())?;
-    normalize_root_layout(workspace_root, notifications, "workspace")?;
+    normalize_workspace_layout_from_db(conn, workspace_root, notifications)?;
     normalize_root_layout(skills_root, notifications, "skills")?;
     Ok(())
 }

@@ -2170,6 +2170,83 @@ fn test_startup_normalization_prunes_empty_legacy_default_plugin_dirs() {
     );
 }
 
+#[test]
+fn test_startup_normalization_moves_workspace_legacy_dirs_with_agents_only_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace_root = tmp.path().join("workspace");
+    let skills_root = tmp.path().join("skills");
+    std::fs::create_dir_all(&workspace_root).unwrap();
+    std::fs::create_dir_all(&skills_root).unwrap();
+
+    let workspace = workspace_root.to_str().unwrap();
+    let skills_path = skills_root.to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::ensure_plugin(&conn, "sample-plugin", "Sample Plugin", "local", None, None, false)
+        .unwrap();
+    crate::db::upsert_skill(&conn, "hr-analytics", "skill-builder", "domain").unwrap();
+    crate::db::upsert_skill_in_plugin(
+        &conn,
+        "pipeline-analysis",
+        "skill-builder",
+        "domain",
+        "sample-plugin",
+    )
+    .unwrap();
+
+    let default_legacy = workspace_root.join("skills").join("hr-analytics");
+    let nested_legacy = workspace_root
+        .join("skills")
+        .join("skills")
+        .join("hr-analytics");
+    let plugin_legacy = workspace_root.join("sample-plugin").join("pipeline-analysis");
+
+    std::fs::create_dir_all(default_legacy.join(".agents").join("agents")).unwrap();
+    std::fs::write(
+        default_legacy.join(".agents").join("agents").join("agent.md"),
+        "default legacy\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(nested_legacy.join(".agents").join("skills")).unwrap();
+    std::fs::write(
+        nested_legacy.join(".agents").join("skills").join("skill.md"),
+        "nested legacy\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(plugin_legacy.join(".agents").join("agents")).unwrap();
+    std::fs::write(
+        plugin_legacy.join(".agents").join("agents").join("agent.md"),
+        "plugin legacy\n",
+    )
+    .unwrap();
+
+    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    let default_canonical = workspace_root
+        .join(DEFAULT_PLUGIN_SLUG)
+        .join("skills")
+        .join("hr-analytics");
+    let plugin_canonical = workspace_root
+        .join("sample-plugin")
+        .join("skills")
+        .join("pipeline-analysis");
+
+    assert!(
+        default_canonical.join(".agents").join("agents").join("agent.md").exists(),
+        "default legacy workspace dir should move into canonical location"
+    );
+    assert!(
+        default_canonical.join(".agents").join("skills").join("skill.md").exists(),
+        "nested legacy workspace dir should merge into canonical location"
+    );
+    assert!(
+        plugin_canonical.join(".agents").join("agents").join("agent.md").exists(),
+        "plugin legacy workspace dir should move into canonical location"
+    );
+    assert!(!workspace_root.join("skills").exists());
+    assert!(!workspace_root.join("sample-plugin").join("pipeline-analysis").exists());
+}
+
 // ── Phase 1f: Dedup tests ───────────────────────────────────────────────────
 
 /// Simulates the state after a failed move + Phase 1c discovery:

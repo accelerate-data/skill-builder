@@ -119,23 +119,30 @@ pub fn reconcile_startup(
 }
 
 fn cleanup_app_local_startup_state(data_dir: &Path) -> Result<u32, String> {
+    let mut cleaned = 0u32;
     let conversations_root = data_dir.join("workspace").join("conversations");
-    if !conversations_root.exists() {
-        return Ok(0);
+    if conversations_root.exists() {
+        for entry in fs::read_dir(&conversations_root).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.join("meta.json").exists() {
+                continue;
+            }
+            fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+            cleaned += 1;
+        }
     }
 
-    let mut cleaned = 0u32;
-    for entry in fs::read_dir(&conversations_root).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
+    let legacy_db = data_dir.join("skill-builder.db");
+    if legacy_db.exists() {
+        let metadata = fs::metadata(&legacy_db).map_err(|e| e.to_string())?;
+        if metadata.is_file() && metadata.len() == 0 {
+            fs::remove_file(&legacy_db).map_err(|e| e.to_string())?;
+            cleaned += 1;
         }
-        if path.join("meta.json").exists() {
-            continue;
-        }
-        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
-        cleaned += 1;
     }
 
     Ok(cleaned)
@@ -539,5 +546,17 @@ mod tests {
         assert_eq!(cleaned, 1);
         assert!(!orphan.exists());
         assert!(valid.exists());
+    }
+
+    #[test]
+    fn test_cleanup_app_local_startup_state_prunes_zero_byte_legacy_db_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let legacy_db = tmp.path().join("skill-builder.db");
+        fs::write(&legacy_db, "").unwrap();
+
+        let cleaned = cleanup_app_local_startup_state(tmp.path()).unwrap();
+
+        assert_eq!(cleaned, 1);
+        assert!(!legacy_db.exists());
     }
 }
