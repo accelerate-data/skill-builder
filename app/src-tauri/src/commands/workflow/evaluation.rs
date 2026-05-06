@@ -336,20 +336,29 @@ pub fn verify_step_output(
         workflow_step_log_name(step_id as i32),
         step_id
     );
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
     match step_id {
-        0 => Ok(db_artifacts::read_clarifications(&conn, &skill_name)
-            .map(|opt| opt.is_some())
-            .unwrap_or(false)),
-        1 => Ok(db_artifacts::read_clarifications(&conn, &skill_name)
-            .map(|opt| opt.map(|r| r.refinement_count > 0).unwrap_or(false))
-            .unwrap_or(false)),
-        2 => Ok(db_artifacts::read_decisions(&conn, &skill_name)
-            .map(|opt| opt.is_some())
-            .unwrap_or(false)),
+        0 => {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            Ok(db_artifacts::read_clarifications(&conn, &skill_name)
+                .map(|opt| opt.is_some())
+                .unwrap_or(false))
+        }
+        1 => {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            Ok(db_artifacts::read_clarifications(&conn, &skill_name)
+                .map(|opt| opt.map(|r| r.refinement_count > 0).unwrap_or(false))
+                .unwrap_or(false))
+        }
+        2 => {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            Ok(db_artifacts::read_decisions(&conn, &skill_name)
+                .map(|opt| opt.is_some())
+                .unwrap_or(false))
+        }
         _ => {
             let skills_path =
                 read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
             let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
             let target_dir = crate::skill_paths::resolve_skill_dir(
                 Path::new(&skills_path),
@@ -358,6 +367,53 @@ pub fn verify_step_output(
             );
             Ok(target_dir.join("SKILL.md").exists())
         }
+    }
+}
+
+#[cfg(test)]
+mod verify_step_output_tests {
+    use super::*;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+    fn db_state(db: &Db) -> tauri::State<'_, Db> {
+        // SAFETY: `tauri::State<'_, T>` is a transparent wrapper over `&T`.
+        unsafe { std::mem::transmute(db) }
+    }
+
+    #[test]
+    fn step3_checks_published_skill_without_deadlocking() {
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\n").unwrap();
+
+        let conn = crate::db::create_test_db_for_tests();
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, plugin_id) \
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+            rusqlite::params!["my-skill", DEFAULT_PLUGIN_SLUG],
+        )
+        .unwrap();
+        crate::db::write_settings(
+            &conn,
+            &crate::types::AppSettings {
+                skills_path: Some(skills_tmp.path().to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let db = Db(std::sync::Mutex::new(conn));
+
+        let result = verify_step_output(
+            String::new(),
+            "my-skill".to_string(),
+            3,
+            db_state(&db),
+        )
+        .unwrap();
+
+        assert!(result);
     }
 }
 
