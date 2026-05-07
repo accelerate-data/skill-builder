@@ -517,9 +517,35 @@ pub async fn start_refine_session(
     }
     let mut prepared_fresh_conversation = false;
     if saved_conversation_id.is_none() {
+        let (user_context_block, clarifications_json, decisions_json) =
+            load_refine_prompt_context(&db, &skill_name, &runtime_ctx.workspace_path)?;
+        let initial_prompt = build_refine_prompt_with_output_dir(RefinePromptRequest {
+            skill_name: &skill_name,
+            workspace_path: &runtime_ctx.workspace_path,
+            plugin_slug: &plugin_slug,
+            skill_output_dir: &resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?,
+            user_message: "",
+            target_files: None,
+            context: RefinePromptContext {
+                user_context_block: &user_context_block,
+                clarifications_json: &clarifications_json,
+                decisions_json: &decisions_json,
+            },
+        });
+        let session_config = build_refine_openhands_config(
+            &skill_name,
+            &plugin_slug,
+            &initial_prompt,
+            &runtime_ctx.workspace_path,
+            runtime_ctx.llm.clone(),
+        );
         saved_conversation_id = Some(
-            crate::agents::openhands_server::prepare_openhands_session(&app, session_config, None)
-                .await?,
+            crate::agents::openhands_server::prepare_openhands_session_with_initial_message(
+                &app,
+                session_config,
+                None,
+            )
+            .await?,
         );
         prepared_fresh_conversation = true;
     }
@@ -639,7 +665,7 @@ pub async fn send_refine_message(
         plugin_slug,
         conversation_id,
         user_message,
-        target_files,
+        target_files: _target_files,
     } = input;
 
     let session_key = refine_session_key(&skill_name, &plugin_slug);
@@ -677,8 +703,6 @@ pub async fn send_refine_message(
     );
 
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
-    let skills_path = resolve_skills_path(&db)?;
-    let skill_output_dir = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
 
     // Deploy bundled OpenHands agents and AgentSkills into the workspace so the
     // Agent Server can resolve the skill-creator agent and its skills. Workflow
@@ -687,29 +711,11 @@ pub async fn send_refine_message(
     crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
 
     ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &plugin_slug, &skill_name);
-    let (user_context_block, clarifications_json, decisions_json) =
-        load_refine_prompt_context(&db, &skill_name, &runtime_ctx.workspace_path)?;
-
-    let target_files_slice = target_files.as_deref();
-
-    let prompt = build_refine_prompt_with_output_dir(RefinePromptRequest {
-        skill_name: &skill_name,
-        workspace_path: &runtime_ctx.workspace_path,
-        plugin_slug: &plugin_slug,
-        skill_output_dir: &skill_output_dir,
-        user_message: &user_message,
-        target_files: target_files_slice,
-        context: RefinePromptContext {
-            user_context_block: &user_context_block,
-            clarifications_json: &clarifications_json,
-            decisions_json: &decisions_json,
-        },
-    });
 
     let config = build_refine_openhands_config(
         &skill_name,
         &plugin_slug,
-        &prompt,
+        &user_message,
         &runtime_ctx.workspace_path,
         runtime_ctx.llm.clone(),
     );

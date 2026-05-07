@@ -162,6 +162,13 @@ function hydrateRestoredTranscript(
       const text = normalized ? getMessageText(normalized) : undefined;
       if (source === "user" && text && text.trim().length > 0) {
         flushAgentSegment(event.timestamp);
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "user",
+          userText: text,
+          timestamp: event.timestamp,
+        });
+        continue;
       }
     }
 
@@ -386,6 +393,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
       store.setRunning(true);
+      store.addUserMessage(text, targetFiles);
 
       try {
         const agentId = await sendRefineMessage(
@@ -410,6 +418,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         store.setActiveAgentId(agentId);
       } catch (err) {
         console.error("[workspace-refine] Failed to send refine message:", err);
+        const nextMessages = [...useRefineStore.getState().messages];
+        const lastMessage = nextMessages[nextMessages.length - 1];
+        if (lastMessage?.role === "user" && lastMessage.userText === text) {
+          nextMessages.pop();
+          useRefineStore.getState().setMessages(nextMessages);
+        }
         store.setRunning(false);
         store.setActiveAgentId(null);
         toast.error(err instanceof Error ? err.message : String(err), {

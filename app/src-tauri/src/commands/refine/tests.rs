@@ -902,7 +902,7 @@ fn test_get_refine_diff_stat_ignores_patch_file_header_lines() {
 }
 
 #[test]
-fn test_prepared_refine_session_uses_contextual_prompt_on_first_and_later_turns() {
+fn test_prepared_refine_session_uses_contextual_prompt_only_for_initial_load() {
     let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
     let mut session = RefineSession {
         skill_name: "my-skill".to_string(),
@@ -939,29 +939,16 @@ fn test_prepared_refine_session_uses_contextual_prompt_on_first_and_later_turns(
     session.current_agent_id = Some("agent-456".to_string());
     session.dispatched_user_turn_count = 1;
 
-    let later_prompt = build_refine_prompt_with_output_dir(RefinePromptRequest {
-        skill_name: &session.skill_name,
-        workspace_path: "/workspace",
-        plugin_slug: &session.plugin_slug,
-        skill_output_dir: &skill_output_dir,
-        user_message: "Tighten the overview",
-        target_files: None,
-        context: RefinePromptContext {
-            user_context_block: "## User Context\n**Industry**: Healthcare",
-            clarifications_json: r#"{ "sections": [{ "id": "Q1" }] }"#,
-            decisions_json: r#"{ "decisions": [{ "id": "D1" }] }"#,
-        },
-    });
+    let later_prompt = "Tighten the overview".to_string();
 
     assert_eq!(session.conversation_id.as_deref(), Some("conv-456"));
     assert_eq!(session.current_agent_id.as_deref(), Some("agent-456"));
     assert_eq!(session.dispatched_user_turn_count, 1);
-    assert!(later_prompt.contains("Tighten the overview"));
-    assert!(later_prompt.contains("## User Context"));
+    assert_eq!(later_prompt, "Tighten the overview");
 }
 
 #[test]
-fn test_prepared_refine_session_does_not_change_prompt_shape_after_dispatch() {
+fn test_prepared_refine_session_switches_away_from_contextual_prompt_after_dispatch() {
     let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
     let mut session = RefineSession {
         skill_name: "my-skill".to_string(),
@@ -987,28 +974,17 @@ fn test_prepared_refine_session_does_not_change_prompt_shape_after_dispatch() {
         },
     });
     session.dispatched_user_turn_count = 1;
-    let after_dispatch = build_refine_prompt_with_output_dir(RefinePromptRequest {
-        skill_name: &session.skill_name,
-        workspace_path: "/workspace",
-        plugin_slug: &session.plugin_slug,
-        skill_output_dir: &skill_output_dir,
-        user_message: "Tighten the overview",
-        target_files: None,
-        context: RefinePromptContext {
-            user_context_block: "## User Context",
-            clarifications_json: "{}",
-            decisions_json: "{}",
-        },
-    });
+    let after_dispatch = "Tighten the overview".to_string();
 
     assert_eq!(
         session.conversation_id.as_deref(),
         Some("prepared-conversation")
     );
     assert_eq!(session.current_agent_id.as_deref(), Some("prepared-agent"));
-    assert_eq!(before_dispatch, after_dispatch);
-    assert!(after_dispatch.contains("We are refining the skill my-skill"));
-    assert!(after_dispatch.contains("## User Context"));
+    assert_ne!(before_dispatch, after_dispatch);
+    assert!(before_dispatch.contains("We are refining the skill my-skill"));
+    assert!(before_dispatch.contains("## User Context"));
+    assert_eq!(after_dispatch, "Tighten the overview");
 }
 
 #[test]

@@ -235,7 +235,7 @@ describe("WorkspaceRefine", () => {
     );
   });
 
-  it("hydrates resumed transcript events into a restored agent turn", async () => {
+  it("hydrates resumed transcript events into user and restored agent messages", async () => {
     const skill = makeSkill("my-skill");
     tauriMocks.startRefineSession.mockResolvedValueOnce({
       conversation_id: "conv-1",
@@ -296,9 +296,8 @@ describe("WorkspaceRefine", () => {
       "refine",
       "synthetic:refine:my-skill:conv-1:restored:0",
     );
-    expect(agentStoreState.addConversationEvent).toHaveBeenCalledTimes(4);
-    expect(agentStoreState.addConversationEvent).toHaveBeenNthCalledWith(
-      1,
+    expect(agentStoreState.addConversationEvent).toHaveBeenCalledTimes(3);
+    expect(agentStoreState.addConversationEvent).not.toHaveBeenCalledWith(
       "restored:conv-1:0",
       expect.objectContaining({
         eventClass: "MessageEvent",
@@ -313,6 +312,10 @@ describe("WorkspaceRefine", () => {
       true,
     );
     expect(refineStoreState.setMessages).toHaveBeenCalledWith([
+      expect.objectContaining({
+        role: "user",
+        userText: "Tighten the intro",
+      }),
       expect.objectContaining({
         role: "agent",
         agentId: "restored:conv-1:0",
@@ -379,8 +382,8 @@ describe("WorkspaceRefine", () => {
       expect.objectContaining({
         eventClass: "MessageEvent",
         event: expect.objectContaining({
-          source: "user",
-          message: "Tighten the intro",
+          source: "agent",
+          message: "Updated the intro section.",
         }),
       }),
     );
@@ -388,6 +391,10 @@ describe("WorkspaceRefine", () => {
       expect.objectContaining({
         role: "agent",
         agentId: "restored:conv-1:0",
+      }),
+      expect.objectContaining({
+        role: "user",
+        userText: "Tighten the intro",
       }),
       expect.objectContaining({
         role: "agent",
@@ -516,7 +523,7 @@ describe("WorkspaceRefine", () => {
     expect(agentStoreState.clearRunsBySource).toHaveBeenCalledWith("refine");
   });
 
-  it("does not add a duplicate plain user bubble when dispatching a refine turn", async () => {
+  it("adds a plain user bubble when dispatching a refine turn", async () => {
     const skill = makeSkill("my-skill");
     refineStoreState.selectedSkill = skill;
 
@@ -530,7 +537,10 @@ describe("WorkspaceRefine", () => {
       screen.getByTestId("chat-panel").click();
     });
 
-    expect(refineStoreState.addUserMessage).not.toHaveBeenCalled();
+    expect(refineStoreState.addUserMessage).toHaveBeenCalledWith(
+      "Refine this",
+      undefined,
+    );
     expect(agentStoreState.registerRun).toHaveBeenCalledWith(
       "agent-1",
       "openhands",

@@ -602,9 +602,14 @@ fn record_subagent_launch(
     }
 }
 
-fn session_init_request(request: &OpenHandsRuntimeRequest) -> OpenHandsRuntimeRequest {
+fn session_init_request(
+    request: &OpenHandsRuntimeRequest,
+    preserve_initial_prompt: bool,
+) -> OpenHandsRuntimeRequest {
     let mut session_request = request.clone();
-    session_request.prompt.clear();
+    if !preserve_initial_prompt {
+        session_request.prompt.clear();
+    }
     session_request
 }
 
@@ -759,8 +764,9 @@ fn log_session_resolution(
 async fn create_prepared_conversation_for_request(
     client: &OpenHandsServerClient,
     request: &OpenHandsRuntimeRequest,
+    preserve_initial_prompt: bool,
 ) -> Result<String, String> {
-    let session_request = session_init_request(request);
+    let session_request = session_init_request(request, preserve_initial_prompt);
     let conversation = client
         .create_conversation(&StartConversationRequest::from_runtime_request(
             &session_request,
@@ -781,6 +787,7 @@ async fn resolve_openhands_conversation_id(
     request: &OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
+    preserve_initial_prompt: bool,
 ) -> Result<String, String> {
     let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
@@ -828,7 +835,7 @@ async fn resolve_openhands_conversation_id(
     match resolution {
         OpenHandsConversationResolution::Reuse { conversation_id } => Ok(conversation_id),
         OpenHandsConversationResolution::Create { .. } => {
-            create_prepared_conversation_for_request(&client, request).await
+            create_prepared_conversation_for_request(&client, request, preserve_initial_prompt).await
         }
         OpenHandsConversationResolution::Error(error) => Err(error.to_string()),
     }
@@ -839,12 +846,30 @@ pub async fn prepare_openhands_session(
     config: SidecarConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
+    prepare_openhands_session_internal(app, config, conversation_id, false).await
+}
+
+pub async fn prepare_openhands_session_with_initial_message(
+    app: &tauri::AppHandle,
+    config: SidecarConfig,
+    conversation_id: Option<String>,
+) -> Result<String, String> {
+    prepare_openhands_session_internal(app, config, conversation_id, true).await
+}
+
+async fn prepare_openhands_session_internal(
+    app: &tauri::AppHandle,
+    config: SidecarConfig,
+    conversation_id: Option<String>,
+    preserve_initial_prompt: bool,
+) -> Result<String, String> {
     let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
     let conversation_id = resolve_openhands_conversation_id(
         app,
         &request,
         conversation_id,
         OpenHandsConversationSelection::ResumeOrCreate,
+        preserve_initial_prompt,
     )
     .await?;
     save_skill_conversation_id(app, &request, &conversation_id)?;
@@ -1046,7 +1071,7 @@ async fn dispatch_openhands_turn_with_request(
     selection: OpenHandsConversationSelection,
 ) -> Result<String, String> {
     let conversation_id =
-        resolve_openhands_conversation_id(app, &request, conversation_id, selection).await?;
+        resolve_openhands_conversation_id(app, &request, conversation_id, selection, false).await?;
     let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
         server
@@ -2198,7 +2223,7 @@ mod tests {
             usage_session_id: None,
         };
 
-        let session_request = session_init_request(&request);
+        let session_request = session_init_request(&request, false);
         let existing_conversation = serde_json::json!({
             "agent": {
                 "agent_context": {
@@ -2902,6 +2927,47 @@ mod tests {
                 "Refine this skill"
             ),
             EventRecoveryMode::Delta
+        );
+    }
+
+    #[test]
+    fn session_init_request_clears_prompt_only_when_requested() {
+        let request = OpenHandsRuntimeRequest {
+            prompt: "We are refining the skill".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: None,
+            },
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            allowed_tools: vec![],
+            max_turns: 20,
+            user_message_suffix: None,
+            system_message_suffix: None,
+            task_kind: Some("refine".to_string()),
+            plugin_slug: "default".to_string(),
+            skill_name: Some("my-skill".to_string()),
+            step_id: Some(-10),
+            run_source: Some("refine".to_string()),
+            workflow_session_id: None,
+            usage_session_id: None,
+        };
+
+        assert_eq!(session_init_request(&request, false).prompt, "");
+        assert_eq!(
+            session_init_request(&request, true).prompt,
+            "We are refining the skill"
         );
     }
 }
