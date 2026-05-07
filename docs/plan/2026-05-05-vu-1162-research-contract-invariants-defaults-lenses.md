@@ -17,10 +17,8 @@
 - Linear issue: `VU-1162`
 - Functional spec: user-directed source `[custom-plugin-management](</Users/hbanerjee/src/worktrees/feature/vu-1145-implement-openhands-native-clean-break-agent-runtime/docs/functional/custom-plugin-management/README.md>)`
 - Related design docs:
-  - [docs/design/openhands-native-migration/README.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/design/openhands-native-migration/README.md)
-  - [docs/design/workflow-research-clean-break/README.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/design/workflow-research-clean-break/README.md)
-  - [docs/design/workflow-detailed-research-clean-break/README.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/design/workflow-detailed-research-clean-break/README.md)
-  - [docs/design/openhands-workspace-management/README.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/design/openhands-workspace-management/README.md)
+  - [docs/design/openhands-runtime-model/README.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/design/openhands-runtime-model/README.md)
+  - [docs/design/openhands-runtime-model/README.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/design/openhands-runtime-model/README.md)
   - [docs/design/skill-purpose-taxonomy/README.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/design/skill-purpose-taxonomy/README.md)
 - Related implementation plan:
   - [docs/plan/2026-05-01-vu-1135-skill-builder-eval-coverage.md](/Users/hbanerjee/src/worktrees/feature/vu-1162-reframe-researching-skill-requirements-around-invariants/docs/plan/2026-05-01-vu-1135-skill-builder-eval-coverage.md)
@@ -75,7 +73,7 @@
 - Modify: `app/src/components/skill-dialog.tsx`
 - Modify: `app/src-tauri/src/commands/workflow/prompt.rs`
 - Modify: `app/src-tauri/src/commands/skill/suggestions.rs`
-- Modify: `docs/design/workflow-research-clean-break/README.md`
+- Modify: `docs/design/openhands-runtime-model/README.md`
 - Add: `docs/design/skill-purpose-taxonomy/README.md`
 
 - [x] Step 1: Verify the current contract still mixes outputs/tests with research ownership

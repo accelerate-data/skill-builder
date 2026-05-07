@@ -1,93 +1,96 @@
-# Agent Architecture
+# Agent And Artifact Contracts
 
-## Two-layer model
+This directory documents the current app-owned contracts around workflow
+artifacts, storage ownership, and runtime-facing outputs.
 
-The workflow runs on two layers:
+It is not the runtime architecture doc. For session lifecycle, persistent
+versus throwaway OpenHands sessions, and frontend/backend/runtime layering, see
+[../openhands-runtime-model/README.md](../openhands-runtime-model/README.md).
 
-**Plugin agents** (`agent-sources/plugins/*/agents/`) — one agent per workflow step, owned by managed plugins. Agents read context files from disk; for JSON-contract steps they return structured payloads and Rust materializes files after validation. Tied to the plugin release cycle.
+## What Lives Here
 
-**Bundled skills** (`agent-sources/skills/` and plugin-internal) — pure computation units. No file I/O, no path knowledge. Each skill receives inputs inline, runs its logic (including spawning sub-agents via `Task`), and returns results as delimited inline text:
+- [canonical-format.md](canonical-format.md)
+  Canonical artifact and output contracts for the workflow pipeline. The Rust
+  contract structs under `app/src-tauri/src/contracts/` are authoritative.
+- [storage.md](storage.md)
+  Ownership and layout of the database, runtime workspace, and skills path.
 
-```text
-=== SECTION NAME ===
-[full content]
-=== NEXT SECTION ===
-[full content]
-```
+## Current Model
 
-The calling agent (or backend materializer, for JSON-contract paths) extracts each section/payload and writes files to disk. Skills are marketplace-updatable — teams can replace them without an app release.
+### One top-level OpenHands agent
 
-One agent delegates to a plugin-internal skill:
+Workflow, refine, create-skill validation, and eval helpers all run through the
+same top-level agent identity: `skill-creator`.
 
-- `skill-content-researcher:research-orchestrator` → `skills/research/` (dimension scoring, parallel research, consolidation)
+- Runtime prompts are rendered by Rust from `agent-sources/prompts/*.txt`.
+- Bundled file-based agents and AgentSkills are deployed into `.agents/**`.
+- The OpenHands session/conversation lifecycle is defined in
+  [../openhands-runtime-model/README.md](../openhands-runtime-model/README.md).
 
----
+### Workflow artifact authority
 
-## Workflow
+Workflow step outputs split into two families:
 
-| Step | Agent | Reads | Writes |
-| --- | --- | --- | --- |
-| 0 | `research-orchestrator` (→ research skill) | [user-context.md](canonical-format.md#canonical-user-contextmd-format) | [clarifications.json](canonical-format.md#canonical-clarificationsjson-format) |
-| 1 | `detailed-research` | [clarifications.json](canonical-format.md#canonical-clarificationsjson-format), [answer-evaluation.json](canonical-format.md#canonical-answer-evaluationjson-format) | [clarifications.json](canonical-format.md#canonical-clarificationsjson-format) (adds refinements) |
-| 2 | `confirm-decisions` | [clarifications.json](canonical-format.md#canonical-clarificationsjson-format) | [decisions.json](canonical-format.md#canonical-decisionsjson-format) |
-| 3 | `generate-skill` | [decisions.json](canonical-format.md#canonical-decisionsjson-format) | `SKILL.md`, `references/`, `context/evaluations.md` |
+| Step | Output authority | Canonical output |
+|---|---|---|
+| 0 Research | SQLite + typed contract validation | `ResearchStepOutput` wrapping `ClarificationsFile` |
+| 1 Detailed Research | SQLite + typed contract validation | `DetailedResearchOutput` wrapping `ClarificationsFile` |
+| 2 Confirm Decisions | SQLite + typed contract validation | `DecisionsOutput` |
+| 3 Generate Skill | Filesystem skill output + typed terminal result | `GenerateSkillOutput` plus `SKILL.md` / `references/` |
 
-`answer-evaluator` runs as a gate check before advancing from steps 0 and 1 — it is not a numbered step.
+The current Rust contract structs live in:
 
-JSON contract write path:
+- `app/src-tauri/src/contracts/clarifications.rs`
+- `app/src-tauri/src/contracts/decisions.rs`
+- `app/src-tauri/src/contracts/workflow_outputs.rs`
+- `app/src-tauri/src/contracts/workflow_artifacts.rs`
 
-- Steps 0, 1, and 2 return JSON payloads as the final agent message.
-- `outputFormat` is an app-side contract signal. OpenHands does not receive it as an SDK option; the rendered task prompt includes the JSON contract.
-- The app extracts one JSON object from terminal result text. Rust deserializes that object into typed contract structs (`ResearchStepOutput`, `DetailedResearchOutput`, `DecisionsOutput`) — this is the authoritative validation.
-- `answer-evaluator` follows the same structured-output pattern for `answer-evaluation.json`.
-- Agent-facing schema references are at `agent-sources/workspace/skills/shared/schemas.md` (semantic rules) and `shared/output-schemas/` (generated JSON Schema files agents can Read).
+### Prompt and parsing flow
 
-Step-level structured payload keys:
+Workflow commands:
 
-- Step 0 (`research-orchestrator`): envelope includes `research_output` carrying canonical clarifications JSON.
-- Step 1 (`detailed-research`): envelope includes `clarifications_json` carrying canonical clarifications JSON.
-- Step 2 (`confirm-decisions`): `DecisionsOutput` with `version`, `metadata`, `decisions`.
+1. Load app-owned context from SQLite and settings.
+2. Render the task prompt in Rust.
+3. Send the prompt to OpenHands with an output schema attached to the request.
+4. Extract the terminal `conversation_state.result_text`.
+5. Deserialize into typed Rust structs.
+6. Persist normalized artifact rows or materialize skill output files.
 
-Canonical format for every artifact: [canonical-format.md](canonical-format.md).
+Code entry points:
 
-Storage layout (workspace, skills path, database, file ownership, startup sequence): [storage.md](storage.md).
+- `app/src-tauri/src/commands/workflow/runtime.rs`
+- `app/src-tauri/src/commands/workflow/prompt.rs`
+- `app/src-tauri/src/commands/workflow/output_format.rs`
 
----
+### What is no longer true
 
-## Infrastructure Files
+This directory no longer describes the old Claude/plugin runtime model.
 
-Files that span multiple steps or are written by infrastructure rather than agents.
+These older assumptions are obsolete:
 
-**`{workspace}/{skill}/user-context.md`**
-Written by Rust before each agent step (desktop app) or by the plugin coordinator at the end of Scoping Turn 2 (plugin). Contains skill name, purpose, description, tags, industry, function, and free-form context (what Claude needs to know). Agents read it from disk at the start of each step. This dual-source design keeps agent prompts identical across both frontends.
+- one workflow step per plugin-owned top-level agent
+- `.claude/plugins/**` as the active runtime layout
+- `user-context.md`, `clarifications.json`, `decisions.json`, or
+  `answer-evaluation.json` as canonical workflow state files on disk
+- sidecar JSONL/stdout as the active runtime contract
 
-**`{workspace}/{skill}/logs/{step}-{timestamp}.jsonl`**
-One file per agent run. Written by the Rust sidecar as the agent executes — each line is a JSON object capturing the full SDK conversation: prompt, assistant messages, tool use, and tool results. The first line is a config object (API key redacted). Used for debugging; inspect with `tail -f` or any JSONL viewer.
+## Relationship To Other Design Docs
 
-**`{skills_path}/{skill}/context/answer-evaluation.json`**
-Written by `answer-evaluator` as a gate check before advancing from steps 0 and 1. Contains structured evaluation of the user's answers to clarification questions — gap analysis, contradiction detection, and readiness signal. Read by `detailed-research` (step 1) to guide targeted refinement generation. Format: [canonical-format.md](canonical-format.md#canonical-answer-evaluationjson-format).
+| Doc | Responsibility |
+|---|---|
+| [../openhands-runtime-model/README.md](../openhands-runtime-model/README.md) | Session lifecycle, runtime primitives, surface mapping, workspace/conversation ownership |
+| [../workflow-artifact-storage/README.md](../workflow-artifact-storage/README.md) | Broader artifact persistence boundary and DB-first workflow state model |
+| [../product-architecture/README.md](../product-architecture/README.md) | Product-level architecture overview |
 
----
+## Key Source Files
 
-## Contract Audit Snapshot (2026-04)
-
-| Contract area | Prompt/runtime state | Documentation state | Status |
-| --- | --- | --- | --- |
-| Clarifications artifact type | Agents + runtime use `clarifications.json` | Canonical spec now defines `clarifications.json` | aligned |
-| Decisions artifact type | Agents + runtime use `decisions.json` | Canonical spec now defines `decisions.json` | aligned |
-| Structured-output materialization | Steps 0/1/2 + gate evaluator validated/written by backend | This page now documents backend materialization path | aligned |
-| Rust contract structs | All workflow output types defined in `contracts/` with Specta + Schemars derives | `canonical-format.md` references Rust as canonical source | aligned |
-| Codegen pipeline | `cargo run --bin codegen` generates TS types + inline JSON Schema | Enforcement layers table documents freshness check | aligned |
-| Output contract signal | Inline JSON Schema generated for workflow JSON contracts; OpenHands receives prompt instructions, not SDK schema options | `canonical-format.md` documents extraction flow | aligned |
-| Missing-output handling | Emits a structured-output error when JSON extraction or Rust validation fails | `canonical-format.md` documents extraction flow | aligned |
-| Agent prompt directives | Agent `.md` files reference generated `output-schemas/` and include "raw JSON only" instructions | `schemas.md` path updated to `shared/` | aligned |
-| Workflow step outputs | Step 3 writes `SKILL.md`, `references/`, `context/evaluations.md` | Workflow table includes all three outputs | aligned |
-| `answer-evaluation.json` consumers | Used by `detailed-research` | Infrastructure note reflects `detailed-research` only | aligned |
-| Mock transcript fixtures | Some sidecar mock transcripts still include legacy `clarifications.md`/`decisions.md` wording in sample text | Not yet fully normalized in fixtures/docs | follow-up |
-
-## Remediation Plan
-
-1. Normalize remaining legacy `clarifications.md` / `decisions.md` wording in sidecar mock transcript templates.
-2. Add/extend tests to flag new legacy transcript references automatically.
-3. Keep this page and `canonical-format.md` synchronized whenever agent I/O contracts change.
-4. Keep prompt-level JSON directives and Rust validation aligned. If final text does not contain valid contract JSON, fail the run rather than materializing partial artifacts.
+| File | Purpose |
+|---|---|
+| `app/src-tauri/src/contracts/clarifications.rs` | Canonical clarifications schema |
+| `app/src-tauri/src/contracts/decisions.rs` | Canonical decisions schema |
+| `app/src-tauri/src/contracts/workflow_outputs.rs` | Canonical step output wrapper types |
+| `app/src-tauri/src/contracts/workflow_artifacts.rs` | Canonical DTOs for artifact CRUD commands |
+| `app/src-tauri/src/db/workflow_artifacts.rs` | Normalized SQLite storage for clarifications and decisions |
+| `app/src-tauri/src/commands/workflow/output_format.rs` | Terminal output extraction and typed validation |
+| `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow runtime orchestration |
+| `app/src-tauri/src/commands/workflow/prompt.rs` | Inline prompt rendering from DB-backed state |

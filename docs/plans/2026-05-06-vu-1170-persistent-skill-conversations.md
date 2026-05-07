@@ -18,7 +18,7 @@ isolated one-shot conversations.
 **Tech Stack:** Rust / Tauri / SQLite / OpenHands Agent Server / React / Vitest
 / cargo tests.
 
-**Design doc:** `docs/design/persistent-skill-conversations/README.md`
+**Design doc:** `docs/design/openhands-runtime-model/README.md`
 
 ---
 

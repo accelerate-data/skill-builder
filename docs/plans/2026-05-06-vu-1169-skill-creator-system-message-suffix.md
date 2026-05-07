@@ -15,7 +15,7 @@ workflow, refine, and other skill-bound Agent Server calls.
 **Tech Stack:** Rust / Tauri / OpenHands Agent Server / workspace agent files /
 Vitest / cargo tests.
 
-**Design doc:** `docs/design/persistent-skill-conversations/README.md`
+**Design doc:** `docs/design/openhands-runtime-model/README.md`
 
 ---
 
@@ -70,7 +70,7 @@ Vitest / cargo tests.
 
 **Files:**
 
-- Modify: `docs/design/openhands-native-migration/README.md` only if implementation details materially differ from the design
+- Modify: `docs/design/openhands-runtime-model/README.md` only if implementation details materially differ from the design
 - Modify: any nearby request-shape tests in `app/src-tauri/src/agents/openhands_server/`
 
 - [x] **Step 1: Add or update a golden request-shape test that captures `system_message_suffix` next to `user_message_suffix`**

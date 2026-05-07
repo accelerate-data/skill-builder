@@ -96,7 +96,7 @@ restores a run, the reconstruction comes from backend-owned state and artifacts.
 
 Related docs:
 
-- [workflow-state](../workflow-state/README.md)
+- [openhands-runtime-model](../openhands-runtime-model/README.md)
 - [openhands-event-display-projection](../openhands-event-display-projection/README.md)
 
 ### 2. Product Backend Layer
@@ -139,9 +139,7 @@ entire app.
 
 Related docs:
 
-- [openhands-agent-server-runtime](../openhands-agent-server-runtime/README.md)
-- [openhands-native-migration](../openhands-native-migration/README.md)
-- [persistent-skill-conversations](../persistent-skill-conversations/README.md)
+- [openhands-runtime-model](../openhands-runtime-model/README.md)
 
 ## Canonical Data Flow
 
@@ -190,13 +188,11 @@ Use this page as the entrypoint, then drop to the next level only when needed:
 
 | Need | Doc |
 |---|---|
-| Runtime process boundary and event transport | [openhands-agent-server-runtime](../openhands-agent-server-runtime/README.md) |
-| OpenHands migration shape and what was removed | [openhands-native-migration](../openhands-native-migration/README.md) |
-| Persistent skill conversations and resume behavior | [persistent-skill-conversations](../persistent-skill-conversations/README.md) |
+| Runtime process boundary, session model, and event transport | [openhands-runtime-model](../openhands-runtime-model/README.md) |
 | Backend persistence, command surface, and storage | [backend-design](../backend-design/README.md) |
-| Workflow step lifecycle and reset behavior | [workflow-state](../workflow-state/README.md) |
+| Workflow step lifecycle and runtime routing | [openhands-runtime-model](../openhands-runtime-model/README.md) |
 | Artifact ownership and storage rules | [workflow-artifact-storage](../workflow-artifact-storage/README.md) |
-| Workspace preparation, main-agent suffix wiring, and conversation storage | [persistent-skill-conversations](../persistent-skill-conversations/README.md) |
+| Workspace preparation, main-agent suffix wiring, and conversation storage | [openhands-runtime-model](../openhands-runtime-model/README.md) |
 | Agent and artifact contract details | [agent-specs](../agent-specs/README.md) |
 
 ## Open Questions

@@ -166,8 +166,7 @@ The source split is required to prove both sides of the rule:
 
 | Spec | Relationship |
 |---|---|
-| [workflow-research-clean-break](../workflow-research-clean-break/README.md) | Narrows the internal purpose lenses and removes platform as an active research purpose. |
-| [workflow-detailed-research-clean-break](../workflow-detailed-research-clean-break/README.md) | Applies the same taxonomy and harness-owned boundaries to step 1 refinements. |
+| [openhands-runtime-model](../openhands-runtime-model/README.md) | Carries the active workflow prompt routing and runtime model that apply this taxonomy to research and detailed-research turns. |
 | [skills](../skills/README.md) | Legacy skill-purpose descriptions should align to the revised three-purpose model over time. |
 
 ## Key Source Files

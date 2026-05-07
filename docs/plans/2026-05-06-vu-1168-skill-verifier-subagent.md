@@ -32,7 +32,7 @@ conversation. Generated skill frontmatter should no longer include
 **Tech Stack:** Rust / Tauri / OpenHands Agent Server / workspace agent files /
 Vitest / cargo tests.
 
-**Design doc:** `docs/design/persistent-skill-conversations/README.md`
+**Design doc:** `docs/design/openhands-runtime-model/README.md`
 
 ---
 

@@ -43,7 +43,7 @@ That review has already been incorporated into the current `VU-1166` description
 | `app/src-tauri/src/commands/documents/mod.rs` | Stop treating `skills` as the default plugin in SQL ordering |
 | `app/src/__tests__/components/workflow-step-complete*.test.tsx` | Completed-step file loading regressions |
 | `app/src/__tests__/components/app-layout.test.tsx` | Startup reconciliation / silent cleanup behavior |
-| `docs/design/openhands-agent-server-runtime/README.md` and stale comments | Align docs/comments to canonical path contract after code lands |
+| `docs/design/openhands-runtime-model/README.md` and stale comments | Align docs/comments to canonical path contract after code lands |
 
 ---
 
@@ -559,7 +559,7 @@ git commit -m "fix: clean stale app-local startup artifacts during normalization
 
 **Files:**
 
-- Modify: `docs/design/openhands-agent-server-runtime/README.md`
+- Modify: `docs/design/openhands-runtime-model/README.md`
 - Modify: stale comments in `reconciliation/mod.rs`, `commands/skill/crud.rs`, `commands/documents/mod.rs`, `reconciliation/tests.rs`
 - Modify: `AGENTS.md` only if a durable new repo-memory fact remains after implementation
 
@@ -573,7 +573,7 @@ Examples:
 - [x] **Step 2: Run the required validation suites**
 
 ```bash
-markdownlint docs/plans/2026-05-06-vu-1166-path-normalization-and-startup-cleanup.md docs/design/openhands-agent-server-runtime/README.md
+markdownlint docs/plans/2026-05-06-vu-1166-path-normalization-and-startup-cleanup.md docs/design/openhands-runtime-model/README.md
 cd app && npx tsc --noEmit
 cd app && npm run test:unit
 cargo test --manifest-path app/src-tauri/Cargo.toml
@@ -585,7 +585,7 @@ Expected: all pass.
 - [ ] **Step 3: Commit docs plus final verification changes**
 
 ```bash
-git add docs/design/openhands-agent-server-runtime/README.md app/src-tauri/src/reconciliation/mod.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/documents/mod.rs
+git add docs/design/openhands-runtime-model/README.md app/src-tauri/src/reconciliation/mod.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/documents/mod.rs
 git commit -m "docs: align path contract with default plugin normalization"
 ```
 

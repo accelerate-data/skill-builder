@@ -179,9 +179,8 @@ Mutating in place preserves React keys and any user-controlled expand state.
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/openhands-native-migration/README.md` | Umbrella OpenHands migration. This spec is the cross-surface rendering decision triggered by the runtime migration. Every UI surface that displayed Claude Code runs now consumes the projected DisplayItems for OpenHands runs. |
-| `docs/design/refine-openhands-migration/README.md` | Refine-specific migration. Surfaced this rendering gap; consumes the projection but does not own it. |
-| `docs/design/openhands-agent-server-runtime/README.md` | Defines the event shapes (`conversation_event`, `event_class`) this projection consumes. |
+| `docs/design/openhands-runtime-model/README.md` | Defines the active OpenHands runtime and event model that this projection renders across surfaces. |
+| `docs/design/openhands-runtime-model/README.md` | Defines the active session model and event shapes (`conversation_event`, `conversation_state`) this projection consumes. |
 | Sidecar `app/sidecar/display-types.ts` | Canonical definition of `DisplayItem`. The projection produces values matching this shape verbatim. The frontend mirror at `app/src/lib/display-types.ts` stays in sync. |
 
 ## Key Source Files

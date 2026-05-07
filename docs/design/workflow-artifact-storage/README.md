@@ -73,7 +73,6 @@ clean-break storage model. Step 3 should not materialize `evals/evals.json`,
 Per-artifact normalized tables. JSON is the wire format only; rows are typed.
 
 ### Workspace is runtime scratch
-### Workspace is runtime scratch
 
 ```text
 {workspace}/{plugin}/{skill}/
@@ -259,8 +258,7 @@ None blocking. Remaining detail decisions live in the migration plan task notes.
 | Spec | Relationship |
 |---|---|
 | `docs/design/agent-specs/storage.md` | Predecessor; refresh after this lands |
-| `docs/design/workflow-state/README.md` | Step machine — references `context/*.json` paths that need to be updated to mention DB rows |
-| `docs/design/refine-openhands-migration/README.md` | Refine surface still uses `user-context.md`; coordinate the inline-prompt change there |
+| `docs/design/openhands-runtime-model/README.md` | Runtime/session model for workflow and refine surfaces that consume these artifacts |
 
 ## Migration Sequencing
 

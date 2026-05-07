@@ -1,496 +1,307 @@
-# Canonical Workflow Artifact Formats
+# Canonical Workflow Contracts
 
-Authoritative format spec for all artifacts produced and consumed during the skill-builder workflow. This is the agent ↔ app contract: what agents write and what the app expects to parse.
+This document records the active app ↔ agent contracts for workflow artifacts
+and terminal step outputs.
 
----
+The authoritative type definitions live in Rust under
+`app/src-tauri/src/contracts/`. If examples in this doc ever diverge from those
+types, treat the Rust structs as source of truth and update this page in the
+same change.
 
-## Contract Enforcement
+## Contract Sources Of Truth
 
-This spec is normative. If examples and implementation diverge, treat this document as the source of truth and update prompts/parsers/tests in the same change.
+| Contract | Rust source |
+|---|---|
+| Clarifications artifact | `app/src-tauri/src/contracts/clarifications.rs` |
+| Decisions artifact | `app/src-tauri/src/contracts/decisions.rs` |
+| Step output wrappers | `app/src-tauri/src/contracts/workflow_outputs.rs` |
+| Artifact CRUD DTOs | `app/src-tauri/src/contracts/workflow_artifacts.rs` |
+| Event envelope contracts | `app/src-tauri/src/contracts/agent_events.rs` |
 
-**Generated contracts:** Structural contracts for workflow artifacts (clarifications, decisions, answer evaluation, generate-skill output) and agent events are now defined as Rust structs in `app/src-tauri/src/contracts/` and generated via Specta (TypeScript types) and Schemars (JSON Schema). The Rust structs are the canonical type definitions; TypeScript consumers import from `app/src/generated/contracts.ts` and `app/sidecar/generated/contracts.ts`.
+## Enforcement
 
-### Required test gates for contract changes
+The current validation path is:
 
-When changing any format in this file, run all applicable checks before merge:
+1. Rust attaches an output schema to OpenHands requests where applicable.
+2. The prompt instructs the agent to return raw JSON.
+3. The backend extracts terminal `conversation_state.result_text`.
+4. Rust deserializes that payload into typed contract structs.
+5. Validated results are persisted or materialized by the workflow command path.
+
+Primary code:
+
+- `app/src-tauri/src/commands/workflow/runtime.rs`
+- `app/src-tauri/src/commands/workflow/output_format.rs`
+
+### Required validation when contracts change
 
 | Changed area | Required checks |
 |---|---|
-| Agent prompts in `agents/*.md` | `cd app && npm run test:agents:structural` |
-| Workspace agent instructions in `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
-| Parser-facing artifacts (`app/sidecar/mock-templates/**`, `app/e2e/fixtures/agent-responses/**`) | `cd app && npm run test:unit` |
-| Rust parser logic (`app/src-tauri/src/commands/workflow.rs`) | `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::workflow` |
-| Agent behavior contract changes | `cd app && FORCE_PLUGIN_TESTS=1 npm run test:agents:smoke` |
+| `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
+| Parser-facing fixtures | `cd app && npm run test:unit` |
+| Rust contract or extraction logic | `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::workflow` |
+| Generated schemas/types | `cd app && npm run codegen && git diff --exit-code src/generated/ sidecar/generated/ src-tauri/src/generated/` |
 
-### Enforcement layers
+## Active Workflow Outputs
 
-| Layer | What it guarantees | Command |
-|---|---|---|
-| Structural (static) | Prompt inventory, frontmatter/model tiers, anti-pattern bans, and key policy-text invariants | `cd app && npm run test:agents:structural` |
-| Unit parser checks | App-side parsing stays compatible with canonical artifacts | `cd app && npm run test:unit` |
-| Codegen freshness | Generated TypeScript types and JSON Schema match Rust contract structs | `cd app && npm run codegen && git diff --exit-code src/generated/ sidecar/generated/ src-tauri/src/generated/` |
-| Output contract signal | Inline JSON Schema generated from Rust contract structs. OpenHands does not receive it as an SDK option; task prompts instruct JSON output and Rust uses schema-backed types for validation. | `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::workflow` |
-| Prompt directives | Agent `.md` files include "CRITICAL — raw JSON only" directives and reference generated JSON schema files at `shared/output-schemas/`. These reinforce the JSON-only contract but are not the extraction path. | Manual / smoke tests |
-| Result extraction | The terminal agent message is treated as text. The app extracts one JSON object from final text for JSON-contract runs, then passes it to Rust for typed validation. Missing or invalid JSON is a run error. | `cd app/sidecar && npx vitest run __tests__/structured-output-required.test.ts` |
-| Rust serde (final) | Typed deserialization into contract structs (`ResearchStepOutput`, `DetailedResearchOutput`, `DecisionsOutput`). Rejects missing required fields, wrong types, invalid enum values. This is the authoritative validation layer. | `cd app && cargo test --manifest-path src-tauri/Cargo.toml` |
-| Promptfoo smoke (live) | End-to-end behavior still produces contract-compliant outputs in representative scenarios | `cd app && FORCE_PLUGIN_TESTS=1 npm run test:agents:smoke` |
+### Step 0: Research
 
-### Promptfoo scenario ownership
+Rust type: `ResearchStepOutput`
 
-Promptfoo smoke scenarios are defined in:
+```json
+{
+  "status": "research_complete",
+  "question_count": 7,
+  "research_output": {
+    "version": "1",
+    "metadata": {
+      "title": "Clarifications: Example",
+      "question_count": 7,
+      "section_count": 2,
+      "refinement_count": 0,
+      "must_answer_count": 3,
+      "priority_questions": ["Q1", "Q2"]
+    },
+    "sections": [],
+    "notes": []
+  }
+}
+```
 
-- `app/agent-tests/promptfoo/promptfooconfig.yaml` (scenario matrix + assertions)
-- `app/agent-tests/promptfoo/provider.mjs` (fixture setup + agent invocation + schema-level validations)
+Rules:
 
-Scenarios currently covering the behavior contract:
+- `status` is `research_complete`
+- `research_output` is a full `ClarificationsFile`
 
-- `research-orchestrator`
-- `answer-evaluator`
-- `confirm-decisions`
-- `rewrite-skill`
+### Step 1: Detailed Research
 
----
+Rust type: `DetailedResearchOutput`
 
-# Canonical `clarifications.json` Format
+```json
+{
+  "status": "detailed_research_complete",
+  "refinement_count": 2,
+  "section_count": 3,
+  "clarifications_json": {
+    "version": "1",
+    "metadata": {
+      "title": "Clarifications: Example",
+      "question_count": 8,
+      "section_count": 3,
+      "refinement_count": 2,
+      "must_answer_count": 3,
+      "priority_questions": ["Q1", "Q2"]
+    },
+    "sections": [],
+    "notes": []
+  }
+}
+```
 
-Written by the research skill (via `research-orchestrator`, Step 0). Updated in-place by `detailed-research` (Step 1). Read by `answer-evaluator`, `detailed-research`, `confirm-decisions`, and guard logic in downstream agents.
+Rules:
 
-> **Canonical type definition:** `app/src-tauri/src/contracts/clarifications.rs` (`ClarificationsFile` struct). TypeScript types are generated from Rust via codegen.
+- `status` is `detailed_research_complete`
+- `clarifications_json` is a full `ClarificationsFile`
 
----
+### Step 2: Confirm Decisions
 
-## JSON Schema
+Rust type: `DecisionsOutput`
 
 ```json
 {
   "version": "1",
   "metadata": {
-    "title": "Clarifications: {Domain Name}",
-    "question_count": 26,
-    "section_count": 6,
+    "decision_count": 2,
+    "conflicts_resolved": 1,
+    "round": 1
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Framework Choice",
+      "original_question": "Which framework?",
+      "decision": "Use React",
+      "implication": "Need React expertise",
+      "status": "resolved"
+    }
+  ]
+}
+```
+
+Rules:
+
+- `status` is not wrapped at the top level for this step
+- decision status values are:
+  - `resolved`
+  - `conflict-resolved`
+  - `needs-review`
+  - `revised`
+
+### Step 3: Generate Skill
+
+Rust type: `GenerateSkillOutput`
+
+```json
+{
+  "status": "generated",
+  "skipped": false,
+  "commit_summary": "Updated SKILL.md and references",
+  "call_trace": ["wrote SKILL.md", "wrote references/source-system.md"]
+}
+```
+
+Optional fields:
+
+- `benchmark_path`
+- `skipped`
+- `commit_summary`
+- `call_trace`
+
+The durable skill output still lives on disk in the skills path:
+
+- `SKILL.md`
+- `references/**`
+
+## Active Artifact Schemas
+
+### Clarifications Artifact
+
+Rust type: `ClarificationsFile`
+
+High-level shape:
+
+```json
+{
+  "version": "1",
+  "metadata": {
+    "title": "Clarifications: Example",
+    "question_count": 7,
+    "section_count": 2,
     "refinement_count": 0,
     "must_answer_count": 3,
-    "priority_questions": ["Q1", "Q2", "Q3"],
-    "duplicates_removed": 17,
-    "scope_recommendation": false
+    "priority_questions": ["Q1", "Q2"]
   },
   "sections": [
     {
-      "id": "S1",
-      "title": "Section Name",
-      "description": "Brief section summary.",
+      "id": 1,
+      "title": "Business Rules",
+      "description": "Optional",
       "questions": [
         {
           "id": "Q1",
-          "title": "Short title",
+          "title": "Question title",
+          "text": "Full question text",
           "must_answer": true,
-          "text": "Full question text...",
-          "consolidated_from": ["Metrics Research", "Business Rules"],
-          "choices": [
-            {"id": "A", "text": "Choice A", "is_other": false},
-            {"id": "B", "text": "Choice B", "is_other": false},
-            {"id": "C", "text": "Choice C", "is_other": false},
-            {"id": "D", "text": "Other (please specify)", "is_other": true}
-          ],
-          "recommendation": "A — rationale",
-          "answer_choice": null,
-          "answer_text": null,
+          "choices": [],
           "refinements": []
         }
       ]
     }
   ],
-  "notes": [
+  "notes": []
+}
+```
+
+Important current details from code:
+
+- `Section.id` is an integer
+- `Question.refinements` is recursive `Vec<Question>`
+- `metadata.warning` and `metadata.error` are optional structured objects
+- `answer_evaluator_notes` is optional
+
+### Decisions Artifact
+
+Rust types: `DecisionsMetadata`, `Decision`
+
+High-level shape:
+
+```json
+{
+  "version": "1",
+  "metadata": {
+    "decision_count": 2,
+    "conflicts_resolved": 1,
+    "round": 1,
+    "contradictory_inputs": true,
+    "scope_recommendation": false
+  },
+  "decisions": [
     {
-      "type": "inconsistency",
-      "title": "Contradiction title",
-      "body": "What is inconsistent and why it matters."
+      "id": "D1",
+      "title": "Decision title",
+      "original_question": "Source question",
+      "decision": "Chosen answer",
+      "implication": "Engineering consequence",
+      "status": "resolved"
     }
   ]
 }
 ```
 
-### Rules
+Important current details from code:
 
-- `version` is fixed to `"1"`.
-- `question_count` must equal total `sections[].questions[]` length.
-- `section_count` must equal total `sections[]` length.
-- `must_answer_count` must equal questions where `must_answer: true`.
-- `priority_questions` must list all question IDs where `must_answer: true`.
-- `refinement_count` is `0` at step 0; incremented by `detailed-research`.
-- Every question must include 2-4 concrete choices plus final `"Other (please specify)"`.
-- `answer_choice` and `answer_text` start as `null`.
-- `refinements` starts as `[]` and is populated in step 1 for targeted follow-up.
+- `contradictory_inputs` is an untagged union:
+  - `true` / `false`
+  - `"revised"`
+- decision statuses are kebab-case strings
 
-### Refinement object schema (added by `detailed-research`)
+### Answer Evaluation Output
 
-```json
-{
-  "id": "R6.1",
-  "parent_question_id": "Q6",
-  "title": "Refinement title",
-  "text": "Why this follow-up is needed.",
-  "choices": [
-    {"id": "A", "text": "Choice A", "is_other": false},
-    {"id": "B", "text": "Choice B", "is_other": false},
-    {"id": "C", "text": "Choice C", "is_other": false},
-    {"id": "D", "text": "Other (please specify)", "is_other": true}
-  ],
-  "recommendation": "B",
-  "must_answer": false,
-  "answer_choice": null,
-  "answer_text": null,
-  "refinements": []
-}
-```
+Rust type: `AnswerEvaluationOutput`
 
-Refinement IDs follow `R{parent}.{n}` (for example `R6.1`, `R6.2`) and must keep `parent_question_id` aligned.
-
----
-
-# Canonical `decisions.md` Format
-
-Written by `confirm-decisions` (Step 5). Read by `generate-skill` and `validate-skill`.
-
----
-
-## YAML Frontmatter
-
-```yaml
----
-decision_count: 12          # required — total D-level decisions
-conflicts_resolved: 2       # required — number of conflict-resolved decisions
-round: 1                    # required — iteration count (1 for first pass)
-contradictory_inputs: true  # optional — set ONLY when answers are logically incompatible
-scope_recommendation: true  # optional — set when scope is too broad (stub file)
----
-```
-
-### Required fields
-
-| Field | Type | Description |
-|---|---|---|
-| `decision_count` | integer | Total number of `### D{N}:` decision entries |
-| `conflicts_resolved` | integer | Count of decisions with `status: conflict-resolved` |
-| `round` | integer | Iteration number (1 on first write, incremented on re-analysis) |
-
-### Optional fields
-
-| Field | Type | Description |
-|---|---|---|
-| `contradictory_inputs` | boolean | Set `true` only when user answers are logically incompatible — not just different approaches |
-| `scope_recommendation` | boolean | Set `true` in the stub file when scope is too broad |
-
----
-
-## Decision Entry Template
-
-```markdown
-### D1: Customer Hierarchy Depth
-- **Original question:** How many levels should the customer hierarchy support?
-- **Decision:** Two levels — parent company and subsidiary
-- **Implication:** Need a self-referencing FK in dim_customer; gold layer aggregates must roll up at both levels
-- **Status:** resolved
-```
-
-### Field-by-field spec
-
-| Field | Format | Required | Notes |
-|---|---|---|---|
-| Heading | `### D{N}: Title` | yes | H3, D-numbered sequentially |
-| Original question | `- **Original question:** text` | yes | Source question text (verbatim or summarized) |
-| Decision | `- **Decision:** text` | yes | What was decided |
-| Implication | `- **Implication:** text` | yes | Design/engineering consequence |
-| Status | `- **Status:** value` | yes | One of: `resolved`, `conflict-resolved`, `needs-review` |
-
-### Status values
-
-| Value | When to use |
-|---|---|
-| `resolved` | Clean answer, direct derivation |
-| `conflict-resolved` | Contradiction detected, agent picked most reasonable option with documented reasoning |
-| `needs-review` | Ambiguous or insufficient information for a confident decision |
-
-### Rules
-
-- All field labels use `**Field:**` (colon inside bold), matching the clarifications convention.
-- Every answered question (first-round and refinements) produces at least one decision with an implication.
-- Contradictions are resolved with reasoning in the `**Implication:**` field — user reviews and can override.
-- File is a clean snapshot, not a log — written from scratch each time.
-
----
-
-## Scope Recommendation Stub
-
-When the scope is too broad, `confirm-decisions` writes a minimal stub instead of decisions:
-
-```markdown
----
-scope_recommendation: true
-decision_count: 0
----
-## Scope Recommendation Active
-
-The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No decisions were generated.
-```
-
----
-
-# Canonical Research Plan Representation
-
-The research planner now represents the research plan **inside the `research_output` JSON**, not as a standalone markdown file. The top‑level app contract for Step 0 is:
+High-level shape:
 
 ```json
 {
-  "status": "research_complete",
-  "dimensions_selected": 4,
-  "question_count": 26,
-  "research_output": {
-    "version": "1",
-    "metadata": {
-      "question_count": 26,
-      "section_count": 6,
-      "must_answer_count": 3,
-      "priority_questions": ["Q1", "Q2", "Q3"],
-      "scope_recommendation": false,
-      "research_plan": {
-        "purpose": "domain",
-        "domain": "Sales Pipeline",
-        "topic_relevance": "relevant",
-        "dimensions_evaluated": 6,
-        "dimensions_selected": 4,
-        "dimension_scores": [],
-        "selected_dimensions": []
-      }
-    },
-    "sections": [],
-    "notes": [],
-    "answer_evaluator_notes": []
-  }
-}
-```
-
-The precise field-level schema for `research_output` is defined in the Rust contract struct `app/src-tauri/src/contracts/clarifications.rs` (canonical type definition) and the agent-facing reference at `agent-sources/workspace/skills/shared/schemas.md`. Generated inline JSON Schema files are at `agent-sources/workspace/skills/shared/output-schemas/`. Runtime enforcement uses Serde deserialization against the Rust types. If `schemas.md` and this example diverge, treat the Rust contract types as authoritative.
-
-## Structured Output Extraction Flow
-
-1. Rust generates inline JSON Schema from the same structs used for typed deserialization.
-2. The workflow prompt includes the JSON contract and requires a raw JSON object as the final answer.
-3. The OpenHands runner emits the final assistant message as terminal `conversation_state.result_text`.
-4. The app extracts one JSON object from `result_text`.
-5. Rust deserializes that object into typed contract structs — this is the final validation.
-
-Legacy `research-plan.md` markdown output is no longer part of the app ↔ agent contract; it may still be generated for human‑readable views but must be derived from `research_output.metadata.research_plan`.
-
----
-
-# Canonical `test-skill.md` Format
-
-Written by `validate-skill` orchestrator (Step 7). Rendered as markdown in the UI.
-
-## YAML Frontmatter
-
-```yaml
----
-test_date: 2026-01-01        # required — ISO date
-total_tests: 5                # required — total test count
-passed: 4                     # required — PASS count
-partial: 1                    # required — PARTIAL count
-failed: 0                     # required — FAIL count
-scope_recommendation: true    # optional — stub indicator
----
-```
-
-## Structure
-
-```markdown
-# Skill Test Report
-
-## Summary
-- **Total**: 5 | **Passed**: 4 | **Partial**: 1 | **Failed**: 0
-
-## Test Results
-
-### Test 1: [Prompt text]
-- **Category**: [category] | **Result**: PASS | PARTIAL | FAIL
-- **Skill coverage**: [evidence from skill files]
-- **Gap**: [what's missing, or "None"]
-
-## Skill Content Issues
-### Uncovered Topic Areas
-### Vague Content Needing Detail
-### Missing SKILL.md Pointers
-
-## Suggested PM Prompts
-```
-
----
-
-# Canonical `agent-validation-log.md` Format
-
-Written by `validate-skill` orchestrator (Step 7). Rendered as markdown in the UI. No YAML frontmatter (unless scope recommendation stub).
-
-## Structure
-
-```markdown
-# Validation Log
-
-## Structural Checks
-- [PASS] Check description
-- [FAIL] Check description — details
-
-## Content Quality Checks
-### [filename]
-- Actionability: N/5 — description
-- Specificity: N/5 — description
-
-## Decision Coverage
-- D1 (Title): Covered in [file:section]
-- D8 (Title): Not deeply covered (minor gap)
-
-## Issues Found
-- N critical issues
-- N minor gaps
-- N items auto-fixed
-
-## Summary
-[One-sentence verdict]
-```
-
----
-
-# Canonical `user-context.md` Format
-
-Generated at runtime by Rust (desktop app) or by the plugin coordinator's Scoping phase, written to the per-skill workspace directory (`app_local_data_dir()/workspace/{skill-name}/`) so agents can read it. Source data: user settings and intake/scoping answers.
-
-## Structure
-
-```markdown
-# User Context
-
-### Skill
-**Name**: dbt-fabric-patterns
-**Purpose**: Organization specific data engineering standards
-**Description**: Standards for dbt model layering and testing
-**Tags**: dbt, silver-layer
-
-### About You
-**Industry**: Financial Services
-**Function**: Analytics Engineering
-
-### What Claude Needs to Know
-Multi-region Snowflake deployment with strict SCD Type 2 requirements
-
-### Configuration
-**Version**: 1.0.0
-**Model**: sonnet
-```
-
-### Rules
-
-- Top-level heading is always `## User Context` (H2)
-- Sections use `### SubHeading` format (H3)
-- Fields within sections use `**Label**: value` (bold label, no dash prefix)
-- Sections are only written if at least one field in that section has a non-empty value
-- If the skill name is present but no optional fields have values, only the `### Skill` section with `**Name**` is written
-
----
-
-# Canonical `answer-evaluation.json` Format
-
-Written by `answer-evaluator`. Runs at two gates: after Step 2 (Q-level answers) and after Step 4 (Q-level and R-level answers). Read by the app and by `detailed-research`.
-
-## JSON Schema
-
-```json
-{
-  "verdict": "sufficient",
-  "answered_count": 8,
-  "empty_count": 0,
-  "vague_count": 0,
+  "verdict": "mixed",
+  "answered_count": 5,
+  "empty_count": 3,
+  "vague_count": 1,
   "contradictory_count": 0,
-  "total_count": 8,
-  "reasoning": "All 8 questions have detailed, specific answers.",
+  "total_count": 9,
+  "reasoning": "5 of 9 questions have substantive answers.",
+  "gate_decision": "run_research",
   "per_question": [
-    { "question_id": "Q1", "verdict": "needs_refinement" },
-    { "question_id": "Q2", "verdict": "clear" },
-    { "question_id": "Q3", "verdict": "vague", "reason": "Missing concrete thresholds and examples." },
-    { "question_id": "Q4", "verdict": "contradictory", "contradicts": "Q2", "reason": "Conflicts with Q2 because this answer picks the opposite source of truth." }
+    { "question_id": "Q1", "verdict": "needs_refinement", "reason": "Missing threshold." },
+    { "question_id": "Q2", "verdict": "clear" }
   ]
 }
 ```
 
-### Field spec
+Current gate decisions allowed by code:
 
-| Field | Type | Required | Values |
-|---|---|---|---|
-| `verdict` | string | yes | `"sufficient"`, `"mixed"`, `"insufficient"` |
-| `answered_count` | integer | yes | Count of substantive answers (`clear` + `needs_refinement`) |
-| `empty_count` | integer | yes | Count of empty/whitespace answers |
-| `vague_count` | integer | yes | Count of vague answers (<5 words, "TBD", etc.) |
-| `contradictory_count` | integer | no | Count of contradictory answers |
-| `total_count` | integer | yes | Total question count |
-| `reasoning` | string | yes | Single sentence explaining the verdict |
-| `per_question` | array | yes | Array of per-question verdict entries. Required keys always: `question_id`, `verdict` |
+- `run_research`
+- `revise`
 
-### Rules
+Current per-question verdict values:
 
-- `answered_count + empty_count + vague_count == total_count` (where `answered_count` includes both `clear` and `needs_refinement`)
-- If present, `answered_count + empty_count + vague_count + contradictory_count == total_count`
-- `verdict` logic: `sufficient` when all answered, `insufficient` when none answered, `mixed` otherwise
-- Per-question verdict values: `"clear"`, `"needs_refinement"`, `"not_answered"`, `"vague"`, `"contradictory"`
-- `vague` entries must include non-empty `reason`
-- `contradictory` entries must include non-empty `reason` and `contradicts` (question ID); reason text should reference the conflicting ID
-- Output must be valid JSON with no markdown fences or extra text
+- `clear`
+- `needs_refinement`
+- `not_answered`
+- `vague`
+- `contradictory`
 
----
+## Event Contracts
 
-# Canonical `logs/{step}-{timestamp}.jsonl` Format
+The old sidecar event model is no longer the active runtime contract.
 
-Written by the Rust sidecar layer (`sidecar_pool.rs`) for every agent run. Stored at `{workspace}/{skill-name}/logs/`. Not read by agents — used for debugging and observability.
+Current event contracts are defined in:
 
-## Filename
+- `app/src-tauri/src/contracts/agent_events.rs`
+- OpenHands-facing message normalization in the frontend under
+  `app/src/lib/openhands-conversation-events.ts`
 
-```text
-{step-label}-{timestamp}.jsonl
-```
+For the active runtime event model, see
+[../openhands-runtime-model/README.md](../openhands-runtime-model/README.md).
 
-- `step-label` — derived from the agent ID (e.g. `step0`, `step2`, `step4`, `step5`)
-- `timestamp` — local time in `YYYY-MM-DDTHH-MM-SS` format
+## Deprecated Contracts Removed From This Doc
 
-## Format
+These are no longer documented as active contracts here:
 
-One JSON object per line (JSONL). The file is **not** valid JSON as a whole.
+- `user-context.md` as a canonical persisted workflow artifact
+- `test-skill.md`
+- `agent-validation-log.md`
+- Claude-sidecar JSONL transcript config/event envelopes
 
-**Line 1** — request config (written before the agent runs):
-
-```json
-{
-  "prompt": "The domain is: ...",
-  "model": "claude-sonnet-4-5-20250929",
-  "apiKey": "[REDACTED]",
-  "cwd": "/Users/alice/.vibedata",
-  "allowedTools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"],
-  "maxTurns": 50,
-  "permissionMode": "bypassPermissions",
-  "sessionId": null,
-  "agentName": "research-orchestrator"
-}
-```
-
-`apiKey` is always redacted. All other fields are included as sent to the SDK.
-
-**Lines 2+** — raw SDK stdout events, one per line. Each line is a JSON object emitted by the `@anthropic-ai/claude-agent-sdk`. Common event shapes:
-
-```json
-{ "type": "assistant", "message": { "content": [...] } }
-{ "type": "tool_use", "name": "Read", "input": { "file_path": "..." } }
-{ "type": "tool_result", "content": "..." }
-{ "type": "result", "subtype": "success", "total_cost": 0.042 }
-```
-
-## Rules
-
-- Line 1 is always the config object; agent output begins at line 2.
-- The file is created before the agent runs; if the agent fails to start, line 1 may be the only content.
-- Transcripts are non-fatal: if the log file cannot be created, the agent still runs.
+Those either belong to historical fixtures or to other docs, not to the active
+workflow artifact contract.

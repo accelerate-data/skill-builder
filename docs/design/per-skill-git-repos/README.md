@@ -151,7 +151,7 @@ Migration is a one-way transition triggered once on startup when the shared root
 |---|---|
 | `docs/design/agent-specs/storage.md` | **Partial supersedes** — the skills-path git repo section changes. Update after this lands |
 | `docs/design/workflow-artifact-storage/README.md` | **No change** — skills path layout (`SKILL.md`, `references/`) is unchanged |
-| `docs/design/workflow-state/README.md` | **Compatible** — step reset file deletion cascade is unchanged; tag cleanup path argument updates |
+| `docs/design/openhands-runtime-model/README.md` | **Compatible** — workflow still routes through backend-owned runtime commands; this topology change does not alter the session model |
 
 ## Key Source Files
 

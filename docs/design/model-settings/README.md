@@ -9,7 +9,13 @@ functional-specs: []
 
 ## Overview
 
-Skill Builder configures the language model used by workflow agents through the OpenHands SDK `LLM` abstraction. The app owns settings persistence, validation, and secret handling. OpenHands owns agent execution, tool use, workspace operations, and provider-specific LLM behavior.
+Skill Builder configures the language model used by backend-owned OpenHands
+requests through one canonical app settings contract. This doc defines how
+provider, model, credentials, and request-option settings are stored,
+validated, and projected into runtime requests. It does not define session
+lifecycle, workspace ownership, event transport, or persistent versus
+throwaway execution semantics; those belong to
+`docs/design/openhands-runtime-model/README.md`.
 
 This design replaces the transitional Anthropic/OpenHands settings shape with one canonical model settings contract. It does not preserve upgrade compatibility for legacy Claude SDK fields.
 
@@ -19,8 +25,7 @@ This design replaces the transitional Anthropic/OpenHands settings shape with on
 
 - The Settings UI shape for configuring workflow agent models.
 - The app settings and DB contract for canonical model configuration.
-- How Rust maps persisted settings into the local OpenHands Agent Server `LLM` request.
-- The relationship between Skill Builder's workspace directory and OpenHands `Conversation.workspace`.
+- How Rust maps persisted settings into the OpenHands request `llm` payload.
 - Model catalog, validation, and capability detection boundaries.
 - Clean-break behavior for existing legacy model settings.
 
@@ -30,7 +35,9 @@ This design replaces the transitional Anthropic/OpenHands settings shape with on
 - Using OpenHands `LLMProfileStore` as the app's settings store.
 - Storing model profiles or secrets in the agent workspace directory.
 - Migrating or backfilling legacy model settings.
-- Implementing refine streaming or the OpenHands `AskUserQuestion` custom tool.
+- Session lifecycle, pause/resume semantics, or surface routing.
+- Workspace/conversation ownership rules beyond the fact that secrets must stay
+  outside agent-readable workspace paths.
 
 ## Key Decisions
 
@@ -415,9 +422,9 @@ pub struct WorkflowLlmConfig {
 }
 ```
 
-## Sidecar Contract
+## Runtime Request Projection
 
-OpenHands workflow requests carry a required `llm` object:
+OpenHands-backed requests carry a required `llm` object:
 
 ```ts
 type OpenHandsLlmConfig = {
@@ -443,7 +450,11 @@ type OpenHandsRunRequest = {
 };
 ```
 
-The workflow OpenHands path no longer reads these top-level fields:
+This doc only defines the shape of the `llm` projection. The surrounding
+session API, event transport, and persistence behavior are defined in
+`docs/design/openhands-runtime-model/README.md`.
+
+The OpenHands request path no longer reads these top-level fields:
 
 ```text
 model
@@ -457,75 +468,25 @@ thinking
 
 Those fields can continue to exist only for non-workflow legacy paths until those paths are separately removed or migrated.
 
-Sidecar validation rejects OpenHands workflow requests without `llm`. Redaction covers:
+Backend validation rejects OpenHands requests without `llm`. Redaction covers:
 
 - `llm.apiKey`
 - all `llm.extraHeaders` values
 - legacy `apiKey`, while any legacy caller remains
 
-## OpenHands Runner Mapping
+The runtime layer omits null/empty optional values when building the actual
+OpenHands request.
 
-The Python runner consumes only `request["llm"]` for OpenHands workflow runs:
+## Storage Boundary
 
-```python
-llm_config = request["llm"]
+Model settings live in app settings, not in the agent workspace.
 
-kwargs = {
-    "model": llm_config["model"],
-}
+- The database-backed app settings row is the source of truth.
+- The agent workspace is execution space, not a profile or secret store.
+- Skill Builder does not store model credentials under the workspace path.
 
-if llm_config.get("apiKey"):
-    kwargs["api_key"] = SecretStr(llm_config["apiKey"])
-if llm_config.get("baseUrl"):
-    kwargs["base_url"] = llm_config["baseUrl"]
-if llm_config.get("apiVersion"):
-    kwargs["api_version"] = llm_config["apiVersion"]
-if llm_config.get("temperature") is not None:
-    kwargs["temperature"] = llm_config["temperature"]
-if llm_config.get("maxOutputTokens") is not None:
-    kwargs["max_output_tokens"] = llm_config["maxOutputTokens"]
-if llm_config.get("timeoutSeconds") is not None:
-    kwargs["timeout"] = llm_config["timeoutSeconds"]
-if llm_config.get("numRetries") is not None:
-    kwargs["num_retries"] = llm_config["numRetries"]
-if llm_config.get("reasoningEffort") not in (None, "auto"):
-    kwargs["reasoning_effort"] = llm_config["reasoningEffort"]
-if llm_config.get("extraHeaders"):
-    kwargs["extra_headers"] = llm_config["extraHeaders"]
-if llm_config.get("inputCostPerToken") is not None:
-    kwargs["input_cost_per_token"] = llm_config["inputCostPerToken"]
-if llm_config.get("outputCostPerToken") is not None:
-    kwargs["output_cost_per_token"] = llm_config["outputCostPerToken"]
-kwargs["usage_id"] = "workflow"
-
-llm = LLM(**kwargs)
-```
-
-The runner omits `None` values rather than passing nulls into the SDK.
-
-## Workspace Boundary
-
-Skill Builder's existing `workspace_path` maps to OpenHands `Conversation.workspace`.
-
-```python
-conversation = Conversation(
-    agent=agent,
-    workspace=workspace_skill_dir,
-)
-```
-
-The workspace is for agent execution:
-
-- `.agents/agents`
-- `.agents/skills`
-- per-skill scratch files
-- `user-context.md`
-- tool file reads and writes
-- optional run logs
-
-The workspace is not a profile or secret store. Skill Builder does not write `.openhands/profiles` under the workspace, and OpenHands user skills are not auto-loaded from `~/.openhands` unless the app explicitly enables that behavior.
-
-If SDK event persistence is needed, the app may map a run-specific app-owned log directory to OpenHands `Conversation.persistence_dir`. That directory is separate from model settings.
+The exact workspace and conversation ownership model lives in
+`docs/design/openhands-runtime-model/README.md`.
 
 ## Model Catalog And Validation
 
@@ -605,10 +566,8 @@ Workflow agent runs require `ready` or `verified`. They never fallback to legacy
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/openhands-native-migration/README.md` | Refines the migration's model-settings portion into a clean-break OpenHands `LLM` contract. |
-| `docs/design/agent-runtime-boundary/README.md` | Provides the runtime boundary this model settings contract feeds. |
-
-| `docs/design/agent-specs/storage.md` | Defines the existing DB/workspace/skills-path boundary. This design preserves DB settings as source of truth and maps workspace to OpenHands `Conversation.workspace`. |
+| `docs/design/openhands-runtime-model/README.md` | Defines session lifecycle, workspace ownership, and the runtime boundary that consumes this `llm` contract. |
+| `docs/design/agent-specs/storage.md` | Defines the broader DB/workspace/skills-path storage boundary that this settings contract fits within. |
 
 ## Key Source Files
 
@@ -620,8 +579,7 @@ Workflow agent runs require `ready` or `verified`. They never fallback to legacy
 | `app/src/lib/types.ts` | Frontend `AppSettings`; target home for `modelSettings`. |
 | `app/src/stores/settings-store.ts` | Frontend settings state. |
 | `app/src/components/settings/sdk-section.tsx` | Current model/API settings UI; target for replacement by `Models`. |
-| `app/src-tauri/src/agents/openhands_server/types.rs` | Converts app-owned model settings into OpenHands Agent Server `LLM`, `Agent`, and `StartConversationRequest` JSON. |
-| `app/src-tauri/src/agents/openhands_server/client.rs` | Sends authenticated Agent Server REST requests. |
+| `app/src-tauri/src/agents/openhands_server/types.rs` | Converts app-owned model settings into the OpenHands request `llm` JSON payload. |
 | `docs/design/agent-specs/storage.md` | Existing storage boundary: DB is settings source of truth; workspace is transient agent execution space. |
 
 ## Open Questions
