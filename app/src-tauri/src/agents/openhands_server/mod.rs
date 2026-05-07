@@ -361,6 +361,11 @@ fn parse_timestamp_ms(timestamp: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(timestamp)
         .ok()
         .map(|value| value.timestamp_millis())
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S%.f")
+                .ok()
+                .map(|value| value.and_utc().timestamp_millis())
+        })
 }
 
 fn extract_user_message_text(raw: &serde_json::Value) -> Option<String> {
@@ -2278,6 +2283,81 @@ mod tests {
         assert_eq!(emitted.len(), 2);
         assert!(emitted.iter().all(|event| event["tool_call_id"] != "child-tool-old"));
         assert!(emitted.iter().any(|event| event["tool_call_id"] == "child-tool-new"));
+    }
+
+    #[test]
+    fn live_subagent_scan_matches_children_with_timezone_less_timestamps() {
+        let dir = tempdir().expect("tempdir");
+        let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
+        let root = persisted_subagents_root(
+            dir.path().to_str().expect("workspace root path"),
+            conversation_id,
+        );
+        let child_events_dir = root.join("child-1").join("events");
+        fs::create_dir_all(&child_events_dir).expect("child events dir");
+
+        fs::write(
+            child_events_dir.join("event-00000.json"),
+            serde_json::json!({
+                "id": "child-system-1",
+                "kind": "SystemPromptEvent",
+                "source": "agent",
+                "timestamp": "2026-05-07T15:06:51.329624"
+            })
+            .to_string(),
+        )
+        .expect("write child system prompt");
+        fs::write(
+            child_events_dir.join("event-00001.json"),
+            serde_json::json!({
+                "id": "child-msg-1",
+                "kind": "MessageEvent",
+                "source": "user",
+                "timestamp": "2026-05-07T15:06:51.330719",
+                "llm_message": {
+                    "content": [{"text": "Search through the conversations to find Q3"}]
+                }
+            })
+            .to_string(),
+        )
+        .expect("write child user message");
+        fs::write(
+            child_events_dir.join("event-00002.json"),
+            serde_json::json!({
+                "id": "child-finish-1",
+                "kind": "ObservationEvent",
+                "source": "environment",
+                "timestamp": "2026-05-07T15:10:25.000000",
+                "tool_name": "finish",
+                "tool_call_id": "child-finish-tool",
+                "observation": {
+                    "content": [{"text": "Q3 details found"}],
+                    "kind": "FinishObservation"
+                }
+            })
+            .to_string(),
+        )
+        .expect("write child finish observation");
+
+        let launches = HashMap::from([(
+            "parent-task-1".to_string(),
+            PendingSubagentLaunch {
+                tool_call_id: "parent-task-1".to_string(),
+                prompt: "Search through the conversations to find Q3".to_string(),
+                started_at_ms: parse_timestamp_ms("2026-05-07T15:06:50.604092").unwrap_or_default(),
+            },
+        )]);
+        let mut state = LiveSubagentStreamState::default();
+
+        let emitted =
+            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+                .expect("collect child events");
+
+        assert_eq!(emitted.len(), 3);
+        assert!(emitted.iter().all(|event| {
+            event.get("parent_tool_call_id").and_then(|value| value.as_str())
+                == Some("parent-task-1")
+        }));
     }
 
     #[test]
