@@ -38,6 +38,7 @@ zip = "8"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 thiserror = "2"
+dashmap = "6"
 log = "0.4"
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }

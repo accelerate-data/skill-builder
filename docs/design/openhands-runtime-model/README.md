@@ -21,12 +21,11 @@ Skill Builder integrates with OpenHands through two layers:
    throwaway conversations.
 
 The key model is that OpenHands always operates on a conversation-backed
-session. The important product distinction is not "one-shot" versus
-"streaming" as separate OpenHands concepts. The distinction is whether Skill
-Builder keeps the conversation alive for future user-visible turns or treats it
-as a persistent skill conversation versus a non-resumable throwaway run. The
-active runtime model in this branch is persistent-session preparation plus
-throwaway runtime roots.
+session. The important product distinction is whether Skill Builder keeps the
+conversation alive for future user-visible turns or treats it as a persistent
+skill conversation versus a non-resumable throwaway run. The active runtime
+model in this branch is persistent-session preparation plus throwaway runtime
+roots.
 
 ## Design Scope
 
@@ -53,7 +52,7 @@ throwaway runtime roots.
 
 | Decision | Rationale |
 |---|---|
-| Model OpenHands around sessions, not ad hoc one-shot helpers. | OpenHands is conversation-backed in both persistent and throwaway cases. The product should name the actual lifecycle boundary. |
+| Model OpenHands around sessions, not ad hoc helpers. | OpenHands is conversation-backed in both persistent and throwaway cases. The product should name the actual lifecycle boundary. |
 | Keep two explicit layers: product commands and runtime primitives. | Frontend surfaces should call product-specific commands; only the backend should speak in raw OpenHands session terms. |
 | Use four backend -> OpenHands primitives. | The runtime only needs `StartOpenHandsSession`, `OpenHandsSendMessage`, `PauseOpenHandsSession`, and `RunThrowawayOpenHandsSession`. Everything else is product orchestration. |
 | Persistent session reuse now covers workflow, refine, and skill-bound eval authoring/diagnosis flows. | The branch routes workflow steps, answer evaluation, scenario definition, and refine-brief generation through the saved skill conversation model. |

@@ -78,7 +78,7 @@ Per-artifact normalized tables. JSON is the wire format only; rows are typed.
 {workspace}/{plugin}/{skill}/
   .agents/              ← skill-scoped agent prompts (deploy step)
   logs/                 ← OpenHands JSONL run logs
-  tmp/                  ← optional one-shot materialized files
+  tmp/                  ← optional throwaway materialized files
 ```
 
 Removed: `context/`, `user-context.md`, `answer-evaluation.json`, root-level `.agents/`.

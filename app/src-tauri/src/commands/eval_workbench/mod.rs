@@ -3,7 +3,7 @@ pub mod types;
 
 use crate::agents::openhands_server::{
     cancel_openhands_runs_with_prefix, pause_openhands_session, run_throwaway_openhands_session,
-    start_openhands_session, OpenHandsOneShotRunParams,
+    start_openhands_session, OpenHandsThrowawayRunParams,
 };
 use crate::agents::promptfoo_sidecar::process::{
     list_history as list_promptfoo_history, read_history as read_promptfoo_history,
@@ -1720,7 +1720,7 @@ async fn execute_performance_cases(
         );
         let run = run_throwaway_openhands_session(
             app,
-            OpenHandsOneShotRunParams {
+            OpenHandsThrowawayRunParams {
                 agent_id_prefix: format!(
                     "{}-performance-{}",
                     eval_workbench_agent_prefix(run_id),
@@ -1798,7 +1798,7 @@ async fn execute_trigger_cases(
                 );
                 let run = run_throwaway_openhands_session(
                     app,
-                    OpenHandsOneShotRunParams {
+                    OpenHandsThrowawayRunParams {
                         agent_id_prefix: format!(
                             "{}-trigger-{}",
                             eval_workbench_agent_prefix(run_id),

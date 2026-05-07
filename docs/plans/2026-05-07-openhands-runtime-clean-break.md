@@ -241,6 +241,32 @@ The highest-signal findings that shaped the remaining work are:
   persistent eval turns, refine lifecycle, workflow gate reuse, throwaway
   lifecycle, and the live eval path
 
+### Additional Review Follow-Ups
+
+The follow-up review at
+`docs/plans/2026-05-07-openhands-runtime-clean-break-review.md` identified
+several non-stale implementation concerns that should be handled as part of
+this clean break:
+
+- [x] Add direct primitive-layer tests in
+      `app/src-tauri/src/agents/openhands_server/mod.rs` for:
+  - `ResumeOrCreate` with matching saved conversation
+  - `ResumeOrCreate` with mismatching saved conversation
+  - `ResumeOrCreate` with missing saved conversation
+  - `SendExistingOnly` with missing conversation
+  - prepared-session request shaping / prompt clearing
+- [x] Extract and unit-test the `backfill_existing_events` decision so first
+      turn history replay behavior is explicit and protected against regressions.
+- [x] Replace stringly-typed primitive errors with a structured runtime error
+      taxonomy or a narrow internal error enum that product commands can map
+      back to strings at the Tauri boundary.
+- [x] Add lightweight runtime observability for session reuse vs creation and
+      throwaway run duration so persistent-session regressions can be diagnosed.
+- [x] Review the cancellation/task lifecycle for runtime tasks and decide
+      whether a tracked task-handle registry is required for graceful shutdown.
+- [x] Rename remaining throwaway runtime types that still say `OneShot` when
+      they represent the clean-break throwaway session model.
+
 ---
 
 ## File Map

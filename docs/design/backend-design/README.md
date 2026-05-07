@@ -138,7 +138,8 @@ The primary agent runtime is the **OpenHands Agent Server**, a Python service ma
 **Process management**: `process.rs` spawns the server via `uvx` (bundled `uv` binary when available, system `uvx` otherwise). The server is pinned to `openhands-agent-server==<version>` and `openhands-tools==<version>`. `init_bundled_uv_path()` is called at Tauri startup to locate the bundled binary.
 
 **Request dispatch**:
-- `run_openhands_one_shot` — fires a single workflow-step run and streams results back.
+
+- throwaway OpenHands session dispatch — fires a single bounded workflow-step run and streams results back.
 - `dispatch_openhands_refine_turn` — sends one refine message turn within a persistent conversation.
 
 **Conversation persistence**: The Agent Server stores per-conversation state on disk under a runtime directory. `skill_conversations` maps `(plugin_slug, skill_name)` to conversation IDs so sessions survive app restarts.

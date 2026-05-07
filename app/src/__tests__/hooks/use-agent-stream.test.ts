@@ -320,7 +320,7 @@ describe("initAgentStream", () => {
     expect(question.questions).toHaveLength(1);
   });
 
-  it("drops question messages for active one-shot workflow agents", async () => {
+  it("drops question messages for active workflow agents", async () => {
     useAgentStore.getState().setActiveAgent("workflow-agent");
     await initAgentStream();
 

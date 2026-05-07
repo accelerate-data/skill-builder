@@ -10,8 +10,10 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use tauri::{Listener, Manager};
+use thiserror::Error;
 use tokio_tungstenite::tungstenite::Message;
 
 pub use types::{OpenHandsOneShotRequest, StartConversationRequest};
@@ -24,14 +26,60 @@ use crate::db::Db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
-pub struct OpenHandsOneShotRunParams {
+pub struct OpenHandsThrowawayRunParams {
     pub agent_id_prefix: String,
     pub config: SidecarConfig,
     pub timeout: Duration,
 }
 
-pub struct OpenHandsOneShotRun {
+pub struct OpenHandsThrowawayRun {
     pub conversation_state: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+enum OpenHandsRuntimeError {
+    #[error("OpenHands send-message requires an existing conversation id")]
+    MissingExistingConversation,
+    #[error("OpenHands conversation {id} was not found and cannot be resumed")]
+    ConversationNotFound { id: String },
+    #[error("OpenHands conversation {id} does not match the current request")]
+    ConversationMismatch { id: String },
+    #[error("{operation}: {detail}")]
+    Operation {
+        operation: &'static str,
+        detail: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenHandsSessionCreateReason {
+    New,
+    NotFound,
+    Mismatch,
+}
+
+impl OpenHandsSessionCreateReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::New => "new",
+            Self::NotFound => "not_found",
+            Self::Mismatch => "mismatch",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SavedConversationStatus {
+    Compatible,
+    Incompatible,
+    Missing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OpenHandsConversationResolution {
+    Reuse { conversation_id: String },
+    Create { reason: OpenHandsSessionCreateReason },
+    Error(OpenHandsRuntimeError),
 }
 
 fn load_saved_skill_conversation_id(
@@ -519,6 +567,103 @@ fn session_init_request(request: &OpenHandsOneShotRequest) -> OpenHandsOneShotRe
     session_request
 }
 
+fn resolve_saved_conversation_outcome(
+    saved_conversation_id: Option<&str>,
+    selection: OpenHandsConversationSelection,
+    saved_status: Option<SavedConversationStatus>,
+) -> OpenHandsConversationResolution {
+    match (saved_conversation_id, selection, saved_status) {
+        (Some(existing), OpenHandsConversationSelection::SendExistingOnly, Some(SavedConversationStatus::Compatible)) => {
+            OpenHandsConversationResolution::Reuse {
+                conversation_id: existing.to_string(),
+            }
+        }
+        (Some(existing), OpenHandsConversationSelection::SendExistingOnly, Some(SavedConversationStatus::Missing)) => {
+            OpenHandsConversationResolution::Error(
+                OpenHandsRuntimeError::ConversationNotFound {
+                    id: existing.to_string(),
+                },
+            )
+        }
+        (Some(existing), OpenHandsConversationSelection::SendExistingOnly, Some(SavedConversationStatus::Incompatible)) => {
+            OpenHandsConversationResolution::Error(
+                OpenHandsRuntimeError::ConversationMismatch {
+                    id: existing.to_string(),
+                },
+            )
+        }
+        (Some(existing), OpenHandsConversationSelection::ResumeOrCreate, Some(SavedConversationStatus::Compatible)) => {
+            OpenHandsConversationResolution::Reuse {
+                conversation_id: existing.to_string(),
+            }
+        }
+        (Some(_), OpenHandsConversationSelection::ResumeOrCreate, Some(SavedConversationStatus::Missing)) => {
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::NotFound,
+            }
+        }
+        (Some(_), OpenHandsConversationSelection::ResumeOrCreate, Some(SavedConversationStatus::Incompatible)) => {
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::Mismatch,
+            }
+        }
+        (None, OpenHandsConversationSelection::ResumeOrCreate, None) => {
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::New,
+            }
+        }
+        (None, OpenHandsConversationSelection::SendExistingOnly, None) => {
+            OpenHandsConversationResolution::Error(
+                OpenHandsRuntimeError::MissingExistingConversation,
+            )
+        }
+        _ => OpenHandsConversationResolution::Error(OpenHandsRuntimeError::Operation {
+            operation: "resolve OpenHands conversation",
+            detail: "invalid saved conversation state".to_string(),
+        }),
+    }
+}
+
+fn should_backfill_existing_events(
+    selection: OpenHandsConversationSelection,
+    prompt: &str,
+) -> bool {
+    selection == OpenHandsConversationSelection::SendExistingOnly && prompt.trim().is_empty()
+}
+
+fn log_session_resolution(
+    request: &OpenHandsOneShotRequest,
+    selection: OpenHandsConversationSelection,
+    resolution: &OpenHandsConversationResolution,
+) {
+    match resolution {
+        OpenHandsConversationResolution::Reuse { conversation_id } => {
+            log::info!(
+                "[openhands-agent-server] session_resolved action=reuse selection={:?} conversation_id={} run_dir={}",
+                selection,
+                conversation_id,
+                request.runtime_run_dir().display()
+            );
+        }
+        OpenHandsConversationResolution::Create { reason } => {
+            log::info!(
+                "[openhands-agent-server] session_resolved action=create reason={} selection={:?} run_dir={}",
+                reason.as_str(),
+                selection,
+                request.runtime_run_dir().display()
+            );
+        }
+        OpenHandsConversationResolution::Error(error) => {
+            log::warn!(
+                "[openhands-agent-server] session_resolved action=error selection={:?} run_dir={} error={}",
+                selection,
+                request.runtime_run_dir().display(),
+                error
+            );
+        }
+    }
+}
+
 async fn create_prepared_conversation_for_request(
     client: &OpenHandsServerClient,
     request: &OpenHandsOneShotRequest,
@@ -527,7 +672,13 @@ async fn create_prepared_conversation_for_request(
     let conversation = client
         .create_conversation(&StartConversationRequest::from_one_shot(&session_request))
         .await
-        .map_err(|e| format!("Failed to create OpenHands Agent Server conversation: {e}"))?;
+        .map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "create OpenHands Agent Server conversation",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?;
     extract_conversation_id(&conversation)
 }
 
@@ -541,8 +692,14 @@ async fn resolve_openhands_conversation_id(
     let client = OpenHandsServerClient::new(
         server
             .base_url()
-            .parse()
-            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+            .parse::<reqwest::Url>()
+            .map_err(|e| {
+                OpenHandsRuntimeError::Operation {
+                    operation: "parse OpenHands Agent Server base URL",
+                    detail: e.to_string(),
+                }
+                .to_string()
+            })?,
         Some(server.session_api_key),
     );
 
@@ -552,59 +709,37 @@ async fn resolve_openhands_conversation_id(
         load_saved_skill_conversation_id(app, request)?
     };
 
-    match (saved_conversation_id, selection) {
-        (Some(existing), OpenHandsConversationSelection::SendExistingOnly) => {
-            let conversation = client
-                .get_conversation(&existing)
-                .await
-                .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
-                .ok_or_else(|| {
-                    format!(
-                        "OpenHands conversation {} was not found and cannot be resumed",
-                        existing
-                    )
-                })?;
-            if !conversation_matches_request(&conversation, request) {
-                return Err(format!(
-                    "OpenHands conversation {} does not match the current request",
-                    existing
-                ));
+    let saved_status = if let Some(existing) = saved_conversation_id.as_deref() {
+        match client
+            .get_conversation(existing)
+            .await
+            .map_err(|e| {
+                OpenHandsRuntimeError::Operation {
+                    operation: "load OpenHands conversation",
+                    detail: e.to_string(),
+                }
+                .to_string()
+            })? {
+            Some(conversation) if conversation_matches_request(&conversation, request) => {
+                Some(SavedConversationStatus::Compatible)
             }
-            Ok(existing)
+            Some(_) => Some(SavedConversationStatus::Incompatible),
+            None => Some(SavedConversationStatus::Missing),
         }
-        (Some(existing), OpenHandsConversationSelection::ResumeOrCreate) => {
-            match client
-                .get_conversation(&existing)
-                .await
-                .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
-            {
-                Some(conversation) if conversation_matches_request(&conversation, request) => {
-                    Ok(existing)
-                }
-                Some(_) => {
-                    log::info!(
-                        "[openhands-agent-server] saved conversation {} under {} no longer matches the current request; creating a new conversation",
-                        existing,
-                        request.runtime_run_dir().display()
-                    );
-                    create_prepared_conversation_for_request(&client, request).await
-                }
-                None => {
-                    log::info!(
-                        "[openhands-agent-server] saved conversation {} was not found under {}; creating a new conversation",
-                        existing,
-                        request.runtime_run_dir().display()
-                    );
-                    create_prepared_conversation_for_request(&client, request).await
-                }
-            }
-        }
-        (None, OpenHandsConversationSelection::ResumeOrCreate) => {
+    } else {
+        None
+    };
+
+    let resolution =
+        resolve_saved_conversation_outcome(saved_conversation_id.as_deref(), selection, saved_status);
+    log_session_resolution(request, selection, &resolution);
+
+    match resolution {
+        OpenHandsConversationResolution::Reuse { conversation_id } => Ok(conversation_id),
+        OpenHandsConversationResolution::Create { .. } => {
             create_prepared_conversation_for_request(&client, request).await
         }
-        (None, OpenHandsConversationSelection::SendExistingOnly) => {
-            Err("OpenHands send-message requires an existing conversation id".to_string())
-        }
+        OpenHandsConversationResolution::Error(error) => Err(error.to_string()),
     }
 }
 
@@ -664,25 +799,19 @@ pub async fn openhands_send_message(
 }
 
 pub fn pause_openhands_session(agent_id: &str) -> bool {
-    let Ok(mut registry) = cancel_registry().lock() else {
-        log::warn!(
-            "[openhands-agent-server:{}] failed to lock cancellation registry",
-            agent_id
-        );
-        return false;
-    };
-    registry
+    cancel_registry()
         .remove(agent_id)
-        .map(|cancel| cancel.send(()).is_ok())
+        .map(|(_, cancel)| cancel.send(()).is_ok())
         .unwrap_or(false)
 }
 
 pub async fn run_throwaway_openhands_session(
     app: &tauri::AppHandle,
-    params: OpenHandsOneShotRunParams,
-) -> Result<OpenHandsOneShotRun, String> {
+    params: OpenHandsThrowawayRunParams,
+) -> Result<OpenHandsThrowawayRun, String> {
     let config = params.config;
     let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
+    let started_at = Instant::now();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
     let target_agent_id = agent_id.clone();
@@ -707,7 +836,7 @@ pub async fn run_throwaway_openhands_session(
     let shutdown_listener = app.listen("agent-shutdown", move |event| {
         if event.payload().contains(target_agent_id.as_str()) {
             let _ = tx_shutdown.send(OpenHandsOneShotEvent::Lifecycle(Err(
-                "OpenHands one-shot run cancelled".to_string(),
+                "OpenHands throwaway run cancelled".to_string(),
             )));
         }
     });
@@ -758,39 +887,37 @@ pub async fn run_throwaway_openhands_session(
         Ok(Err(error)) => return Err(error),
         Err(_) => {
             let _ = pause_openhands_session(&agent_id);
-            return Err("OpenHands one-shot run timed out".to_string());
+            return Err("OpenHands throwaway run timed out".to_string());
         }
     };
 
     let conversation_state = terminal_state.unwrap_or_else(|| {
-        Err("OpenHands one-shot run completed without conversation_state".into())
+        Err("OpenHands throwaway run completed without conversation_state".into())
     })?;
     lifecycle_result.unwrap_or_else(|| {
-        Err("OpenHands one-shot lifecycle listener closed unexpectedly".to_string())
+        Err("OpenHands throwaway lifecycle listener closed unexpectedly".to_string())
     })?;
 
-    Ok(OpenHandsOneShotRun { conversation_state })
+    log::info!(
+        "[openhands-agent-server] throwaway_run_completed agent_id={} duration_ms={}",
+        agent_id,
+        started_at.elapsed().as_millis()
+    );
+
+    Ok(OpenHandsThrowawayRun { conversation_state })
 }
 
 pub fn cancel_openhands_runs_with_prefix(agent_id_prefix: &str) -> usize {
-    let Ok(mut registry) = cancel_registry().lock() else {
-        log::warn!(
-            "[openhands-agent-server:{}] failed to lock cancellation registry for prefix cancel",
-            agent_id_prefix
-        );
-        return 0;
-    };
-
-    let matching_ids = registry
-        .keys()
+    let matching_ids = cancel_registry()
+        .iter()
+        .map(|entry| entry.key().clone())
         .filter(|agent_id| agent_id.starts_with(agent_id_prefix))
-        .cloned()
         .collect::<Vec<_>>();
     let mut cancelled = 0usize;
     for agent_id in matching_ids {
-        if registry
+        if cancel_registry()
             .remove(&agent_id)
-            .is_some_and(|cancel| cancel.send(()).is_ok())
+            .is_some_and(|(_, cancel)| cancel.send(()).is_ok())
         {
             cancelled += 1;
         }
@@ -824,7 +951,7 @@ async fn dispatch_openhands_turn_with_request(
     let client = OpenHandsServerClient::new(
         server
             .base_url()
-            .parse()
+            .parse::<reqwest::Url>()
             .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
         Some(server.session_api_key.clone()),
     );
@@ -832,8 +959,8 @@ async fn dispatch_openhands_turn_with_request(
     let config_event = redact_openhands_config_for_log(&config, server.port);
     super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
 
-    let backfill_existing_events = selection == OpenHandsConversationSelection::SendExistingOnly
-        && request.prompt.trim().is_empty();
+    let backfill_existing_events =
+        should_backfill_existing_events(selection, request.prompt.as_str());
     send_user_message(&client, &conversation_id, &request.prompt).await?;
 
     let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
@@ -846,7 +973,7 @@ async fn dispatch_openhands_turn_with_request(
     let agent_for_task = agent_id.to_string();
     let conversation_id_clone = conversation_id.clone();
     let session_api_key = server.session_api_key.clone();
-    tokio::spawn(async move {
+    let task_handle = tokio::spawn(async move {
         let task = OpenHandsConversationTask {
             app: app_for_task.clone(),
             agent_id: agent_for_task.clone(),
@@ -859,6 +986,7 @@ async fn dispatch_openhands_turn_with_request(
         };
         let result = run_conversation_task(task, cancel_rx).await;
         unregister_cancel(&agent_for_task);
+        unregister_task_handle(&agent_for_task);
         if let Err(error) = result {
             super::events::handle_sidecar_exit_with_detail(
                 &app_for_task,
@@ -868,6 +996,7 @@ async fn dispatch_openhands_turn_with_request(
             );
         }
     });
+    register_task_handle(agent_id, &task_handle);
 
     Ok(conversation_id)
 }
@@ -1435,26 +1564,43 @@ fn openhands_conversation_state_error_detail(
         .to_string()
 }
 
-type OpenHandsCancelRegistry =
-    std::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<()>>>;
+type OpenHandsCancelRegistry = DashMap<String, tokio::sync::oneshot::Sender<()>>;
+type OpenHandsTaskRegistry = DashMap<String, tokio::task::AbortHandle>;
 
 fn cancel_registry() -> &'static OpenHandsCancelRegistry {
     static REGISTRY: std::sync::OnceLock<OpenHandsCancelRegistry> = std::sync::OnceLock::new();
-    REGISTRY.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+    REGISTRY.get_or_init(OpenHandsCancelRegistry::new)
 }
 
-fn register_cancel(agent_id: &str, cancel: tokio::sync::oneshot::Sender<()>) -> Result<(), String> {
-    let mut registry = cancel_registry()
-        .lock()
-        .map_err(|e| format!("Failed to lock OpenHands cancellation registry: {e}"))?;
-    registry.insert(agent_id.to_string(), cancel);
+fn task_registry() -> &'static OpenHandsTaskRegistry {
+    static REGISTRY: std::sync::OnceLock<OpenHandsTaskRegistry> = std::sync::OnceLock::new();
+    REGISTRY.get_or_init(OpenHandsTaskRegistry::new)
+}
+
+fn register_cancel(
+    agent_id: &str,
+    cancel: tokio::sync::oneshot::Sender<()>,
+) -> Result<(), String> {
+    if let Some((_, previous)) = cancel_registry().remove(agent_id) {
+        let _ = previous.send(());
+    }
+    cancel_registry().insert(agent_id.to_string(), cancel);
     Ok(())
 }
 
 fn unregister_cancel(agent_id: &str) {
-    if let Ok(mut registry) = cancel_registry().lock() {
-        registry.remove(agent_id);
+    cancel_registry().remove(agent_id);
+}
+
+fn register_task_handle(agent_id: &str, handle: &tokio::task::JoinHandle<()>) {
+    if let Some((_, previous)) = task_registry().remove(agent_id) {
+        previous.abort();
     }
+    task_registry().insert(agent_id.to_string(), handle.abort_handle());
+}
+
+fn unregister_task_handle(agent_id: &str) {
+    task_registry().remove(agent_id);
 }
 
 #[cfg(test)]
@@ -2180,5 +2326,123 @@ mod tests {
             Err(tokio::sync::oneshot::error::TryRecvError::Empty)
         ));
         assert!(pause_openhands_session(&other_agent));
+    }
+
+    #[test]
+    fn resolve_saved_conversation_outcome_reuses_matching_saved_conversation() {
+        let outcome = resolve_saved_conversation_outcome(
+            Some("conversation-1"),
+            OpenHandsConversationSelection::ResumeOrCreate,
+            Some(SavedConversationStatus::Compatible),
+        );
+
+        assert_eq!(
+            outcome,
+            OpenHandsConversationResolution::Reuse {
+                conversation_id: "conversation-1".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_saved_conversation_outcome_creates_when_saved_conversation_mismatches() {
+        let outcome = resolve_saved_conversation_outcome(
+            Some("conversation-1"),
+            OpenHandsConversationSelection::ResumeOrCreate,
+            Some(SavedConversationStatus::Incompatible),
+        );
+
+        assert_eq!(
+            outcome,
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::Mismatch
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_saved_conversation_outcome_creates_when_saved_conversation_is_missing() {
+        let outcome = resolve_saved_conversation_outcome(
+            Some("conversation-1"),
+            OpenHandsConversationSelection::ResumeOrCreate,
+            Some(SavedConversationStatus::Missing),
+        );
+
+        assert_eq!(
+            outcome,
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::NotFound
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_saved_conversation_outcome_creates_when_no_saved_conversation_exists() {
+        let outcome = resolve_saved_conversation_outcome(
+            None,
+            OpenHandsConversationSelection::ResumeOrCreate,
+            None,
+        );
+
+        assert_eq!(
+            outcome,
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::New
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_saved_conversation_outcome_errors_when_send_requires_existing_conversation() {
+        let outcome = resolve_saved_conversation_outcome(
+            None,
+            OpenHandsConversationSelection::SendExistingOnly,
+            None,
+        );
+
+        assert_eq!(
+            outcome,
+            OpenHandsConversationResolution::Error(
+                OpenHandsRuntimeError::MissingExistingConversation
+            )
+        );
+    }
+
+    #[test]
+    fn resolve_saved_conversation_outcome_errors_when_send_existing_conversation_mismatches() {
+        let outcome = resolve_saved_conversation_outcome(
+            Some("conversation-1"),
+            OpenHandsConversationSelection::SendExistingOnly,
+            Some(SavedConversationStatus::Incompatible),
+        );
+
+        assert_eq!(
+            outcome,
+            OpenHandsConversationResolution::Error(
+                OpenHandsRuntimeError::ConversationMismatch {
+                    id: "conversation-1".to_string()
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn prepared_session_backfills_history_only_for_blank_send_existing_turns() {
+        assert!(should_backfill_existing_events(
+            OpenHandsConversationSelection::SendExistingOnly,
+            ""
+        ));
+        assert!(should_backfill_existing_events(
+            OpenHandsConversationSelection::SendExistingOnly,
+            "   "
+        ));
+        assert!(!should_backfill_existing_events(
+            OpenHandsConversationSelection::ResumeOrCreate,
+            ""
+        ));
+        assert!(!should_backfill_existing_events(
+            OpenHandsConversationSelection::SendExistingOnly,
+            "Refine this skill"
+        ));
     }
 }

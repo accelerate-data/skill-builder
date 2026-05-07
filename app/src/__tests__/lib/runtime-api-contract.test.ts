@@ -9,13 +9,13 @@ function readSource(relativePath: string) {
 }
 
 describe("runtime API contract", () => {
-  it("exposes streaming refine API and does not expose removed one-shot agent command", () => {
+  it("exposes streaming refine API and does not expose removed legacy agent command", () => {
     const source = readSource("lib/tauri.ts");
 
     expect(source).toContain("export const sendRefineMessage");
     expect(source).toContain("export const pauseRefineSession");
     // start_agent Tauri command has been removed — neither the old raw binding
-    // nor the removed one-shot wrapper should appear.
+    // nor the removed legacy wrapper should appear.
     expect(source).not.toContain("export const startAgent");
     expect(source).not.toContain("export const startOneShotAgent");
     expect(source).not.toContain("answerWorkflowStepQuestion");
@@ -51,7 +51,7 @@ describe("runtime API contract", () => {
     expect(source).not.toContain("startOneShotAgent");
   });
 
-  it("does not expose workflow AskUserQuestion UI for one-shot runs", () => {
+  it("does not expose workflow AskUserQuestion UI for workflow runs", () => {
     const source = readSource("components/agent-output-panel.tsx");
 
     expect(source).not.toContain("answerWorkflowStepQuestion");
