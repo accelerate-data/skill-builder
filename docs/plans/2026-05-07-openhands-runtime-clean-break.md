@@ -41,10 +41,11 @@ section.
 
 ## Remaining Work
 
-### Task A: Finish Persistent Session Ownership
+### Task A: Consolidate Persistent Session Orchestration
 
-**Goal:** Align refine, workflow gate evaluation, and eval-definition flows with
-the design’s persistent-session model.
+**Goal:** Keep the now-working persistent-session flows, but remove duplicated
+orchestration and runtime-layer redundancy across workflow, refine, and eval
+authoring paths.
 
 **Files**
 
@@ -54,21 +55,15 @@ the design’s persistent-session model.
 - `app/src-tauri/src/agents/openhands_server/mod.rs`
 - related tests in `app/src-tauri/src/commands/refine/tests.rs`
 
-- [ ] Make `start_refine_session` establish the persistent OpenHands session
-      instead of deferring actual session start to `send_refine_message`.
-- [ ] Fix refine resume behavior when a saved conversation is readable but
-      incompatible with the current request shape.
-- [ ] Rework `run_answer_evaluator` so it does not overwrite or conflict with
-      the main skill conversation used by workflow and refine.
-- [ ] Move `define_eval_scenario` onto
-      `StartOpenHandsSession -> OpenHandsSendMessage`.
-- [ ] Move `build_refine_improvement_brief` onto
-      `StartOpenHandsSession -> OpenHandsSendMessage`.
 - [ ] Consolidate duplicated persistent-session orchestration so workflow,
       eval workbench, and refine do not each own separate resume/send/retry
       policy.
 - [ ] Reuse one canonical conversation-compatibility contract instead of
       refine keeping its own matcher alongside the runtime layer.
+- [ ] Decide whether `prepare_openhands_session` and
+      `start_openhands_session` should remain distinct helpers or collapse into
+      a single clearer primitive-layer API once product call sites are
+      centralized.
 
 ### Task B: Finish Throwaway Runtime Isolation
 
@@ -81,11 +76,6 @@ retain artifacts only under `.openhands/throwaway/...`.
 - `app/src-tauri/src/skill_paths.rs`
 - `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-- [ ] Move eval throwaway execution and diagnosis onto isolated
-      `.openhands/throwaway/...` runtime roots instead of skill workspace
-      directories.
-- [ ] Verify scope review, eval execution, and any other throwaway commands all
-      follow the same runtime-root policy.
 - [ ] Ensure throwaway conversations remain non-resumable from product state
       while still being retained only under throwaway runtime roots for
       debugging.
@@ -114,6 +104,11 @@ that still preserve the old model internally.
 - [ ] Remove legacy one-shot naming and wrapper residue such as
       `run_openhands_one_shot`, `dispatch_openhands_one_shot`, and active
       "one-shot" wording where the clean-break primitive is really throwaway.
+- [ ] Decouple saved-conversation DB helpers from `AppHandle` where the runtime
+      layer only needs database access, so primitive-layer tests do not depend
+      on Tauri state extraction.
+- [ ] Remove clone-heavy request shaping such as `session_init_request` if the
+      runtime rename/simplification pass already touches that code.
 
 ### Task D: Finish Dead-Surface Cleanup
 
@@ -225,26 +220,23 @@ were run after the first implementation pass:
 
 The highest-signal findings that shaped the remaining work are:
 
-- refine session start still does not establish the OpenHands conversation
 - duplicated persistent-session orchestration still exists across product
   modules
 - legacy one-shot naming and wrapper residue still exists in the runtime layer
 - stale Eval Workbench trigger/comparison helpers are still compiled in backend
   code
-- some throwaway diagnosis/helper paths still need consistent
-  `.openhands/throwaway/...` isolation
+- some throwaway diagnosis/helper paths still need full
+  `.openhands/throwaway/...` isolation even though scope review and eval
+  execution already use throwaway runtime roots
 - old eval description/trigger surface cleanup is incomplete across docs,
   contracts, and helper code
-- eval-workbench runs may still be tagged too generically in runtime metadata
-- runtime documentation is still partially out of sync with the code
 - additional Rust, integration, and E2E coverage is still needed around
   persistent eval turns, refine lifecycle, workflow gate reuse, throwaway
   lifecycle, and the live eval path
 
 ### Additional Review Follow-Ups
 
-The follow-up review at
-`docs/plans/2026-05-07-openhands-runtime-clean-break-review.md` identified
+The 2026-05-07 follow-up review identified
 several non-stale implementation concerns that should be handled as part of
 this clean break:
 
@@ -264,8 +256,16 @@ this clean break:
       throwaway run duration so persistent-session regressions can be diagnosed.
 - [x] Review the cancellation/task lifecycle for runtime tasks and decide
       whether a tracked task-handle registry is required for graceful shutdown.
-- [x] Rename remaining throwaway runtime types that still say `OneShot` when
+- [ ] Rename remaining throwaway runtime types that still say `OneShot` when
       they represent the clean-break throwaway session model.
+- [ ] Keep the review-driven cleanup scoped to real residual work on this
+      branch:
+  - do not re-open `start_refine_session` session ownership work that is
+    already implemented
+  - do not treat `user_message_suffix` compatibility matching as a blocker
+    unless the suffix contract stops being app-owned and stable
+  - do keep the runtime naming cleanup, trigger-surface deletion, and
+    orchestration consolidation in scope
 
 ---
 
