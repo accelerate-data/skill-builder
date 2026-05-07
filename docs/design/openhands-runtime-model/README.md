@@ -14,7 +14,7 @@ Skill Builder integrates with OpenHands through two layers:
 
 1. **Frontend -> Backend API**
    Product-specific Tauri commands such as `run_workflow_step`,
-   `start_refine_session`, `review_skill_scope`, and `suggest_scenario`.
+   `start_refine_session`, `review_skill_scope`, and `define_eval_scenario`.
 2. **Backend -> OpenHands API**
    A small set of runtime primitives that create or resume OpenHands
    conversations, send messages, pause active execution, or run disposable
@@ -54,8 +54,8 @@ as a throwaway session that is deleted after one bounded run.
 | Model OpenHands around sessions, not ad hoc one-shot helpers. | OpenHands is conversation-backed in both persistent and throwaway cases. The product should name the actual lifecycle boundary. |
 | Keep two explicit layers: product commands and runtime primitives. | Frontend surfaces should call product-specific commands; only the backend should speak in raw OpenHands session terms. |
 | Use four backend -> OpenHands primitives. | The runtime only needs `StartOpenHandsSession`, `OpenHandsSendMessage`, `PauseOpenHandsSession`, and `RunThrowawayOpenHandsSession`. Everything else is product orchestration. |
-| Persistent session reuse is skill-scoped. | Workflow and Refine should accumulate context on the same skill conversation instead of rebuilding context each turn. |
-| Throwaway sessions are still real OpenHands sessions. | Scope validation, field suggestions, and eval execution create a conversation, run it, collect the terminal result, and then delete it. |
+| Persistent session reuse is skill-scoped. | Workflow, Refine, and skill-bound eval-definition flows should accumulate context on the same skill conversation instead of rebuilding context each turn. |
+| Throwaway sessions are reserved for bounded execution tasks. | Scope validation and eval execution create a conversation, run it, collect the terminal result, and then delete it. |
 | Rust owns Agent Server lifecycle and workspace selection. | The backend already owns persistence, filesystem policy, event delivery, logging, and cancellation. |
 | The frontend never calls OpenHands-shaped APIs directly. | Product APIs stay stable even if the runtime implementation changes. |
 | `skill-creator.md` is always sent through `system_message_suffix`. | The main agent should preserve the default OpenHands system prompt while deterministically appending Skill Builder's stable instructions. |
@@ -72,13 +72,14 @@ product surfaces, not OpenHands transport details.
 Examples:
 
 - `run_workflow_step`
+- `run_answer_evaluator`
 - `start_refine_session`
 - `send_refine_message`
 - `pause_refine_session`
 - `close_refine_session`
 - `review_skill_scope`
-- `generate_suggestions`
-- `suggest_scenario`
+- `define_eval_scenario`
+- `build_refine_improvement_brief`
 - `run_eval_workbench`
 
 Each command is responsible for:
@@ -102,6 +103,17 @@ This is the **backend -> OpenHands** contract.
 
 These primitives are generic runtime concepts. They should not know about
 Workflow step numbers, Refine UI state, or Eval Workbench entities.
+
+Rules:
+
+- `StartOpenHandsSession` owns resume-or-create behavior.
+- `OpenHandsSendMessage` sends the next turn into an already-established
+  persistent session.
+- `PauseOpenHandsSession` is only for explicit user stop/cancel during an
+  active run.
+- A successfully completed turn does not auto-pause. The conversation remains
+  persisted and idle.
+- `RunThrowawayOpenHandsSession` is for bounded tasks with no later reply path.
 
 ## Two-Layer Model
 
@@ -127,11 +139,12 @@ OpenHands runtime layer
 
 The frontend should stay product-oriented:
 
-- Workflow calls `run_workflow_step`.
+- Workflow calls `run_workflow_step` and `run_answer_evaluator`.
 - Refine calls `start_refine_session`, `send_refine_message`,
   `pause_refine_session`, and `close_refine_session`.
-- Create Skill calls `review_skill_scope` and `generate_suggestions`.
-- Eval Workbench calls scenario generation, run, and diagnosis commands.
+- Create Skill calls `review_skill_scope`.
+- Eval Workbench calls eval scenario definition, eval execution, and
+  refine-brief generation commands.
 
 The frontend should not need to know whether a surface reuses a persistent
 session or uses a throwaway one.
@@ -156,16 +169,20 @@ That layer owns:
 
 ### Persistent Session
 
-Use a persistent session when the user should be able to continue on the same
-conversation later.
+Use a persistent session when the product wants later turns to reuse the same
+skill-bound conversation.
 
 ```text
-start or reopen skill
+open or resume session
   -> StartOpenHandsSession
-  -> save / restore conversation_id
-  -> OpenHandsSendMessage for each new user-visible turn
-  -> PauseOpenHandsSession on stop
-  -> keep conversation on close
+
+normal product turn
+  -> OpenHandsSendMessage
+  -> run completes
+  -> conversation remains persisted and idle
+
+explicit user stop during active run
+  -> PauseOpenHandsSession
 ```
 
 Properties:
@@ -173,6 +190,7 @@ Properties:
 - conversation survives between turns
 - conversation survives leaving the view
 - prior context is intentionally preserved
+- completed turns do not require an explicit pause
 - app stores the current `conversation_id`
 
 ### Throwaway Session
@@ -208,6 +226,40 @@ Properties:
 | `{workspace_skill_dir}/.agents/skills` | Rust deployment | OpenHands AgentSkills. |
 | `{workspace_skill_dir}/conversations` | Rust + Agent Server | Persistent conversation storage for the skill. |
 | `{workspace_skill_dir}/logs` | Rust | App logs and transcripts. |
+
+### Throwaway runtime workspaces
+
+Throwaway runs still need a full OpenHands runtime workspace. They should not
+reuse a skill-owned workspace directory or skill-owned `conversations/`
+directory.
+
+They still use the same top-level OpenHands agent identity as persistent
+surfaces: `skill-creator`. The distinction is runtime workspace ownership,
+resumability, and retention policy, not a different main agent.
+
+Recommended shape:
+
+```text
+{workspace}/.openhands/throwaway/{surface}/{run_id}/
+  .agents/
+    agents/
+    skills/
+  conversations/
+  logs/
+```
+
+Rules:
+
+- throwaway runs get their own runtime directory outside
+  `{workspace}/{plugin_slug}/{skill_name}`
+- `.agents/agents` and `.agents/skills` are deployed into that throwaway run
+  directory the same way they are for persistent skill workspaces
+- throwaway conversations are stored under that run directory's
+  `conversations/`
+- throwaway runs are not saved in normal skill conversation state and are not
+  resumable from product state
+- throwaway artifacts may still be retained for debugging and cleaned up later
+  by retention policy
 
 ### Agent Server Ownership
 
@@ -253,69 +305,32 @@ The default tool policy for OpenHands requests lives in the child doc:
 
 - [tools-included.md](tools-included.md)
 
-## Surface Mapping
+## Active Product Surface Mapping
 
-### Workflow
+### Persistent surfaces
 
-Workflow is a **persistent session consumer**, even though the UI interaction
-is step-oriented rather than chat-oriented.
+| Product surface | Product command | OpenHands primitive mapping | Notes |
+|---|---|---|---|
+| Workflow step execution | `run_workflow_step` | `StartOpenHandsSession` -> `OpenHandsSendMessage` | Step-oriented UI, but should reuse one persistent skill conversation |
+| Workflow gate evaluation | `run_answer_evaluator` | `StartOpenHandsSession` -> `OpenHandsSendMessage` | Part of the same workflow conversation, not a disposable side run |
+| Refine session start | `start_refine_session` | `StartOpenHandsSession` | Owns resume-or-create and history restoration |
+| Refine chat turn | `send_refine_message` | `OpenHandsSendMessage` | Sends the next user turn into the already-started session |
+| Refine stop | `pause_refine_session` | `PauseOpenHandsSession` | Explicit user stop only |
+| Eval scenario definition | `define_eval_scenario` | `StartOpenHandsSession` -> `OpenHandsSendMessage` | Skill-bound scenario definition should accumulate on the same conversation |
+| Eval-to-refine brief | `build_refine_improvement_brief` | `StartOpenHandsSession` -> `OpenHandsSendMessage` | Skill-bound reasoning that benefits from conversation context |
 
-`run_workflow_step` does product orchestration:
+### Throwaway surfaces
 
-- load the skill-scoped workspace
-- render the prompt for the selected step
-- attach output schema and task metadata
-- start or resume the persistent skill conversation
-- send the step message
-- parse terminal output into workflow-owned artifacts
+| Product surface | Product command | OpenHands primitive mapping | Notes |
+|---|---|---|---|
+| Create Skill scope validation | `review_skill_scope` | `RunThrowawayOpenHandsSession` | Bounded validation run, no later reply path |
+| Eval execution | `run_eval_workbench` | `RunThrowawayOpenHandsSession` | Disposable evaluation execution |
 
-Workflow steps remain:
+### Product-only wrapper commands
 
-| Step | Purpose | Runtime shape |
+| Product command | OpenHands primitive mapping | Notes |
 |---|---|---|
-| 0 | Research | persistent session turn |
-| 1 | Detailed Research | persistent session turn |
-| 2 | Confirm Decisions | persistent session turn |
-| 3 | Generate Skill | persistent session turn |
-
-The runtime distinction is that Workflow still uses the persistent skill
-conversation, not a separate throwaway conversation per step.
-
-### Refine
-
-Refine is the most explicit persistent-session surface.
-
-- `start_refine_session` resolves and resumes or creates the skill session
-- `send_refine_message` appends the next user turn
-- `pause_refine_session` pauses active execution
-- `close_refine_session` closes the product wrapper without deleting the
-  persistent OpenHands conversation
-
-### Create Skill
-
-Create-skill pre-skill helpers are **throwaway session** consumers.
-
-| Command | Runtime shape |
-|---|---|
-| `review_skill_scope` | throwaway session |
-| `generate_suggestions` | throwaway session |
-
-These runs happen before a durable skill workspace or skill-bound conversation
-needs to exist.
-
-### Eval Workbench
-
-Eval Workbench uses both models:
-
-| Flow | Runtime shape |
-|---|---|
-| performance execution | throwaway session |
-| trigger execution | throwaway session |
-| diagnosis / refine brief | throwaway session |
-| persistent scenario/candidate generation follow-ups | persistent session when the product wants suggestion history to accumulate |
-
-The deciding rule is whether the feature is a disposable evaluation task or a
-user-visible skill-bound conversation that should be resumed later.
+| `close_refine_session` | none | Product-layer cleanup only; does not delete the persistent OpenHands conversation |
 
 ## Workflow Prompt Routing
 
@@ -359,6 +374,19 @@ transport details evolve.
 | `docs/design/skill-scope-review/README.md` | Owns create-skill behavior. This doc defines the runtime shape that behavior uses. |
 | `docs/design/openhands-event-display-projection/README.md` | Consumes the event model defined here for UI projection. |
 
+## Dead Code Cleanup
+
+The runtime model should describe only active product surfaces. The following
+paths are no longer part of the intended surface model and should be removed as
+cleanup work:
+
+- `generate_suggestions`
+- `WorkspaceDescription`
+- `suggest_description_candidates`
+- `apply_description_candidate`
+- old trigger/comparison-specific Eval Workbench code that is no longer part of
+  the live one-tab product surface
+
 ## Key Source Files
 
 | File | Purpose |
@@ -367,21 +395,19 @@ transport details evolve.
 | `app/src-tauri/src/agents/openhands_server/process.rs` | Agent Server process lifecycle and environment wiring. |
 | `app/src-tauri/src/agents/openhands_server/types.rs` | OpenHands request shape, tool list, suffix wiring, and agent definitions. |
 | `app/src-tauri/src/agents/sidecar.rs` | Backend-owned request/config builder used by product commands. |
+| `app/src-tauri/src/skill_paths.rs` | Runtime workspace path resolution for persistent skill workspaces and future throwaway runtime directories. |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow product command orchestration. |
 | `app/src-tauri/src/commands/refine/mod.rs` | Refine product command orchestration and session wrapper state. |
 | `app/src-tauri/src/commands/skill/scope_review.rs` | Create-skill scope validation command. |
-| `app/src-tauri/src/commands/skill/suggestions.rs` | Create-skill suggestions command. |
 | `app/src-tauri/src/commands/eval_workbench/mod.rs` | Eval Workbench command surface and runtime call sites. |
 | `agent-sources/workspace/agents/skill-creator.md` | Main-agent instruction source. |
 | `agent-sources/workspace/skills/` | Bundled AgentSkills deployed into `.agents/skills`. |
 | `agent-sources/prompts/` | App-owned task prompts rendered by the backend. |
 
-## Open Questions
+## Resolved Cleanup Direction
 
-1. `[design]` Should Workflow always use the persistent skill conversation for
-   every step, or should some step-specific operations remain throwaway despite
-   being skill-bound?
-2. `[design]` How much refine-specific wrapper state should remain in the
-   backend once persistent session start/resume behavior is centralized?
-3. `[design]` Which Eval Workbench suggestion flows should intentionally join
-   the persistent skill conversation rather than remain disposable?
+- Simplify Refine backend session state once persistent session start/resume is
+  centralized. Keep only the minimal product-layer wrapper state needed for
+  active-run control and UI lifecycle.
+- Remove the old Eval Workbench trigger/comparison path as part of this
+  migration rather than deferring it to a follow-up cleanup pass.
