@@ -157,11 +157,18 @@ describe("SubagentItem", () => {
       />,
     );
 
-    const itemList = screen.getByTestId("display-item-list");
-    const conclusionLabel = screen.getAllByTestId("subagent-base-item-label")[1];
-    const itemListPos = itemList.compareDocumentPosition(conclusionLabel);
+    const children = screen.getAllByTestId("subagent-base-item-children");
+    const nestedList = screen.getByTestId("display-item-list");
+    const conclusionHeading = screen.getByRole("heading", { name: "Done" });
+    const sharedContainer = children.find(
+      (node) => node.contains(nestedList) && node.contains(conclusionHeading),
+    );
 
-    expect(itemListPos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sharedContainer).toBeTruthy();
+    expect(
+      nestedList.compareDocumentPosition(conclusionHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("omits the conclusion section when no final result text is present", () => {
