@@ -629,7 +629,7 @@ fn default_refine_prompt_context() -> RefinePromptContext<'static> {
 }
 
 #[test]
-fn test_refine_prompt_includes_all_three_paths() {
+fn test_refine_prompt_includes_skill_and_workspace_paths_with_permissions() {
     let ws = std::env::temp_dir()
         .join("vibedata")
         .join("skill-builder")
@@ -660,7 +660,11 @@ fn test_refine_prompt_includes_all_three_paths() {
         skills_fwd,
         crate::skill_paths::DEFAULT_PLUGIN_SLUG
     )));
-    assert!(system_prompt.contains("The context directory is:"));
+    assert!(system_prompt.contains("YOU CAN ONLY CHANGE FILES IN THIS DIRECTORY."));
+    assert!(system_prompt.contains(
+        "You may read files from this directory for context, but do not edit files in this directory."
+    ));
+    assert!(!system_prompt.contains("The context directory is:"));
 }
 
 #[test]
@@ -676,6 +680,10 @@ fn test_refine_prompt_includes_metadata() {
     assert!(system_prompt.contains("We are refining the skill my-skill"));
     assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
+    assert!(system_prompt.contains("YOU CAN ONLY CHANGE FILES IN THIS DIRECTORY."));
+    assert!(system_prompt.contains(
+        "You may read files from this directory for context, but do not edit files in this directory."
+    ));
 }
 
 #[test]
@@ -718,8 +726,9 @@ fn test_refine_prompt_includes_user_message() {
 fn test_refine_prompt_includes_derived_paths() {
     let system_prompt =
         build_refine_prompt("s", "/ws", "/sk", "edit", None, default_refine_prompt_context());
-    assert!(system_prompt.contains("The context directory is:"));
     assert!(system_prompt.contains("The workspace directory is:"));
+    assert!(system_prompt.contains("The skill directory is:"));
+    assert!(!system_prompt.contains("The context directory is:"));
 }
 
 #[test]

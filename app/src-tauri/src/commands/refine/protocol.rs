@@ -73,8 +73,6 @@ pub(super) fn build_refine_prompt_with_output_dir(
         crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
-    let context_str = format!("{}/context", workspace_str);
-
     let target_files_clause = match target_files {
         Some(files) if !files.is_empty() => format!(
             "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
@@ -89,7 +87,6 @@ pub(super) fn build_refine_prompt_with_output_dir(
     REFINE_PROMPT_TEMPLATE
         .replace("{{skill_name}}", skill_name)
         .replace("{{skill_dir}}", &skill_output_str)
-        .replace("{{context_dir}}", &context_str)
         .replace("{{workspace_dir}}", &workspace_str)
         .replace("{{target_files_clause}}", &target_files_clause)
         .replace("{{user_context_block}}", user_context_block)
