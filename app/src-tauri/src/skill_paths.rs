@@ -161,6 +161,28 @@ pub fn workspace_agent_skills_dir(workspace_skill_dir: &Path) -> PathBuf {
     workspace_agents_dir(workspace_skill_dir).join("skills")
 }
 
+/// Canonical throwaway runtime root for a product surface run.
+///
+/// Shape:
+/// `{workspace}/.openhands/throwaway/{surface}/{run_id}/`
+pub fn throwaway_runtime_dir(workspace: &Path, surface: &str, run_id: &str) -> PathBuf {
+    workspace
+        .join(".openhands")
+        .join("throwaway")
+        .join(surface)
+        .join(run_id)
+}
+
+/// Conversation storage for a throwaway runtime run.
+pub fn throwaway_conversations_dir(run_dir: &Path) -> PathBuf {
+    run_dir.join("conversations")
+}
+
+/// Optional logs directory for a throwaway runtime run.
+pub fn throwaway_logs_dir(run_dir: &Path) -> PathBuf {
+    run_dir.join("logs")
+}
+
 /// Returns the canonical plugin-layout skill directory path
 /// (`{root}/{plugin_slug}/skills/{skill_name}`). Does not check existence.
 pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
@@ -514,6 +536,30 @@ mod tests {
         assert_eq!(
             workspace_agent_skills_dir(&workspace_skill),
             workspace_skill.join(".agents").join("skills")
+        );
+    }
+
+    #[test]
+    fn throwaway_runtime_dirs_are_isolated_from_the_skill_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = throwaway_runtime_dir(tmp.path(), "scope_review", "run-123");
+
+        assert_eq!(
+            runtime_dir,
+            tmp.path()
+                .join(".openhands")
+                .join("throwaway")
+                .join("scope_review")
+                .join("run-123")
+        );
+        assert_eq!(
+            throwaway_conversations_dir(&runtime_dir),
+            runtime_dir.join("conversations")
+        );
+        assert_eq!(throwaway_logs_dir(&runtime_dir), runtime_dir.join("logs"));
+        assert_ne!(
+            runtime_dir,
+            workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report")
         );
     }
 

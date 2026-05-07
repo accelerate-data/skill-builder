@@ -211,7 +211,7 @@ test('step 3 skill generation has no legacy writer or validator runtime dependen
 
   for (const token of [
     'tools_for_agent("skill-writer-agent")',
-    'one_shot_tools_for_agent("skill-writer-agent")',
+    'legacy_tools_for_agent("skill-writer-agent")',
     'evals/evals.json',
     'pending-eval.json',
     'write-evals',

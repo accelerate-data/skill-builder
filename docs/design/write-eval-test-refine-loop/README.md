@@ -10,10 +10,10 @@ with grader) remains design-only.
 
 ## Overview
 
-This document describes the design for an integrated skill improvement loop: one-shot
-skill generation from pre-captured context, batch evaluation with with/without
-comparison, user feedback capture, and iterative improvement. It also covers
-description optimization as a discrete UI action.
+This document describes the design for an integrated skill improvement loop:
+single-pass skill generation from pre-captured context, batch evaluation with
+with/without comparison, user feedback capture, and iterative improvement. It
+also covers description optimization as a discrete UI action.
 
 The design consolidates the current fragmented surfaces (Workflow, Test, Refine pages)
 into a **Skill Workspace** hub with tabs, backed by a durable state machine rather

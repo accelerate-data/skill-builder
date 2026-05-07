@@ -220,10 +220,14 @@ fn test_repair_plugin_ownership_schema_collapses_legacy_skills_default_plugin() 
     .unwrap();
 
     let skills_plugin_id: i64 = conn
-        .query_row("SELECT id FROM plugins WHERE slug = 'skills'", [], |row| row.get(0))
+        .query_row("SELECT id FROM plugins WHERE slug = 'skills'", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     let default_plugin_id: i64 = conn
-        .query_row("SELECT id FROM plugins WHERE slug = 'default'", [], |row| row.get(0))
+        .query_row("SELECT id FROM plugins WHERE slug = 'default'", [], |row| {
+            row.get(0)
+        })
         .unwrap();
 
     conn.execute(

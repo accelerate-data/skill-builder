@@ -233,7 +233,7 @@ export async function initAgentStream() {
           const activeAgentId = useAgentStore.getState().activeAgentId;
           if (activeAgentId === agent_id) {
             console.warn(
-              "[use-agent-stream] dropping question from one-shot workflow agent agent_id=%s",
+              "[use-agent-stream] dropping question from workflow agent agent_id=%s",
               agent_id,
             );
           } else {

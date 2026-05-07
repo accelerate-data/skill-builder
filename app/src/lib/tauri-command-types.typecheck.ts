@@ -91,15 +91,18 @@ void invokeCommand("resolve_discovery", {
   pluginSlug: null,
 });
 
-// @ts-expect-error refine command requires camelCase sessionId
+// @ts-expect-error refine close requires skillName and pluginSlug
 void invokeCommand("close_refine_session", { session_id: "session-1" });
 
-// @ts-expect-error send_refine_message requires nullable targetFiles and command fields
+// @ts-expect-error send_refine_message requires targetFiles
 void invokeCommand("send_refine_message", {
-  sessionId: "session-1",
-  userMessage: "Update this skill",
-  pluginSlug: "skills",
-  workspacePath: "/tmp/workspace",
+  input: {
+    skillName: "demo-skill",
+    pluginSlug: "skills",
+    conversationId: "conv-1",
+    userMessage: "Update this skill",
+    targetFiles: 123,
+  },
 });
 
 // @ts-expect-error answer evaluator output must match AnswerEvaluationOutput
@@ -141,16 +144,13 @@ void invokeCommand("save_scenario", {
   previousScenarioName: null,
 });
 
-void invokeCommand("generate_scenarios", {
-  pluginSlug: "skills",
-  skillName: "demo",
-});
-
-void invokeCommand("suggest_scenario", {
+void invokeCommand("define_eval_scenario", {
   pluginSlug: "skills",
   skillName: "demo",
   scenarioName: "Regression",
 });
+
+void invokeCommand("cancel_eval_workbench_run", { runId: "run-1" });
 
 void invokeCommand("run_eval_workbench", {
   request: {
@@ -162,25 +162,9 @@ void invokeCommand("run_eval_workbench", {
   },
 });
 
-void invokeCommand("suggest_description_candidates", {
-  request: {
-    pluginSlug: "skills",
-    skillName: "demo",
-    scenarioName: "Routing checks",
-    baselineDescription: "Route invoice reconciliation requests",
-    candidateCount: 3,
-  },
-});
-
 // @ts-expect-error workbench run request requires runId and candidateIds
 void invokeCommand("run_eval_workbench", {
   request: {
     scenarioName: "Regression",
   },
-});
-
-// @ts-expect-error apply_description_candidate requires candidateId
-void invokeCommand("apply_description_candidate", {
-  pluginSlug: "skills",
-  skillName: "demo",
 });

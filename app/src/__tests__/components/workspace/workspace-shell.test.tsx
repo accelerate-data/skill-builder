@@ -34,7 +34,7 @@ const refineState = vi.hoisted(() => ({
   previewRevision: 0,
   isRunning: false,
   activeAgentId: null,
-  sessionId: null,
+  conversationId: null,
   selectedModifiedFile: null as string | null,
   activeFileTab: null as string | null,
   setSkillFiles: vi.fn(),
@@ -67,7 +67,14 @@ vi.mock("@/hooks/use-agent-stream", () => ({}));
 vi.mock("@/lib/tauri", () => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),
   releaseLock: vi.fn().mockResolvedValue(undefined),
-  startRefineSession: vi.fn().mockResolvedValue({ session_id: "test-session" }),
+  startRefineSession: vi.fn().mockResolvedValue({
+    conversation_id: "test-conversation",
+    skill_name: "test-skill",
+    created_at: new Date().toISOString(),
+    available_agents: ["skill-creator"],
+    restored_messages: [],
+    restored_transcript_events: [],
+  }),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
@@ -82,13 +89,11 @@ const mockUseScenarios = vi.fn();
 const mockUseScenario = vi.fn();
 const mockUseCreateScenario = vi.fn();
 const mockUseSaveScenario = vi.fn();
-const mockUseSuggestScenario = vi.fn();
+const mockUseDefineEvalScenario = vi.fn();
 const mockUseDeleteScenario = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
-const mockSuggestDescriptionCandidates = vi.fn();
-const mockApplyDescriptionCandidate = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
 
 vi.mock("@/lib/queries/eval-scenarios", () => ({
@@ -96,7 +101,7 @@ vi.mock("@/lib/queries/eval-scenarios", () => ({
   useScenario: (...args: unknown[]) => mockUseScenario(...args),
   useCreateScenario: (...args: unknown[]) => mockUseCreateScenario(...args),
   useSaveScenario: (...args: unknown[]) => mockUseSaveScenario(...args),
-  useSuggestScenario: (...args: unknown[]) => mockUseSuggestScenario(...args),
+  useDefineEvalScenario: (...args: unknown[]) => mockUseDefineEvalScenario(...args),
   useDeleteScenario: (...args: unknown[]) => mockUseDeleteScenario(...args),
 }));
 
@@ -110,10 +115,6 @@ vi.mock("@/lib/eval-workbench", async () => {
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
-    suggestDescriptionCandidates: (...args: unknown[]) =>
-      mockSuggestDescriptionCandidates(...args),
-    applyDescriptionCandidate: (...args: unknown[]) =>
-      mockApplyDescriptionCandidate(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
   };
@@ -181,7 +182,6 @@ const runSummary = {
   createdAt: "2026-05-04T00:00:00Z",
   completedAt: "2026-05-04T00:05:00Z",
   results: [],
-  descriptionCandidates: [],
 };
 
 function createDeferred<T>() {
@@ -245,7 +245,7 @@ describe("WorkspaceShell", () => {
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
     });
-    mockUseSuggestScenario.mockReset().mockReturnValue({
+    mockUseDefineEvalScenario.mockReset().mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
     });
@@ -256,19 +256,6 @@ describe("WorkspaceShell", () => {
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
     mockReadEvalRun.mockReset().mockResolvedValue(runSummary);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
-    mockSuggestDescriptionCandidates.mockReset().mockResolvedValue([
-      {
-        id: "candidate-1",
-        runId: "draft-run",
-        label: "Candidate 1",
-        description: "Use when the user needs invoice reconciliation or payment matching",
-        rationale: "Best routing precision",
-        rank: 1,
-      },
-    ]);
-    mockApplyDescriptionCandidate.mockReset().mockResolvedValue({
-      description: "Use when the user needs invoice reconciliation or payment matching",
-    });
     mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
       runId: "run-1",
       brief: "Improve assumptions handling",

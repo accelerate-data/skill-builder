@@ -31,7 +31,6 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | `update_skill_tags` | Upsert tags for a skill |
 | `update_skill_metadata` | Update description, version, model, argument hint, flags |
 | `get_all_tags` | Sorted list of all tags across all skills |
-| `generate_suggestions` | AI-generated skill name and purpose suggestions |
 | `acquire_lock` | Lock a skill to this instance |
 | `release_lock` | Release a skill lock |
 | `get_externally_locked_skills` | Locks held by other app instances |
@@ -145,10 +144,10 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | Command | Description |
 |---|---|
 | `get_skill_content_for_refine` | Load skill files into the refine editor |
-| `start_refine_session` | Spawn an OpenHands session with skill content as context |
-| `send_refine_message` | Continue a refine conversation |
-| `pause_refine_session` | Suspend the session without closing it |
-| `close_refine_session` | End session, optionally persist changes |
+| `start_refine_session` | Resolve or prepare the persistent Refine conversation |
+| `send_refine_message` | Dispatch the next Refine turn on that conversation |
+| `cancel_agent_run` | Pause the active live run by `agent_id` |
+| `close_refine_session` | Tear down the local Refine surface/session wrapper |
 | `finalize_refine_run` | Write final summary and close run metrics |
 
 ## Git History
@@ -195,17 +194,15 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 |---|---|
 | `list_scenarios` | List scenario summaries for a plugin skill from disk |
 | `load_scenario` | Read one full scenario from disk |
-| `create_scenario` | Create a new eval scenario |
-| `define_eval_scenario` | Define or update scenario configuration |
-| `save_scenario` | Create, update, or rename a disk-backed scenario |
-| `delete_scenario` | Delete a disk-backed scenario |
-| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a scenario |
-| `cancel_eval_workbench_run` | Stop a running eval |
-| `list_eval_runs` | List Promptfoo-backed Eval Workbench runs for a skill |
-| `read_eval_run` | Read one Eval Workbench run with results and candidates |
-| `read_latest_benchmark` | Read the latest benchmark snapshot |
-| `clean_benchmark_snapshot` | Clean benchmark artifacts |
-| `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a workbench run |
+| `create_scenario` | Create a new performance scenario draft for a plugin skill |
+| `save_scenario` | Persist a performance scenario to disk and mirror it into the prompt-set store |
+| `delete_scenario` | Delete a saved performance scenario file while preserving historical eval runs |
+| `define_eval_scenario` | Rewrite an existing scenario from skill context and saved workflow artifacts |
+| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a selected scenario and mode |
+| `cancel_eval_workbench_run` | Cancel an in-flight Eval Workbench run and pause any active OpenHands session |
+| `list_eval_runs` | List Promptfoo-backed Eval Workbench runs for a skill and mode |
+| `read_eval_run` | Read one Eval Workbench run with results and persisted run metadata |
+| `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a saved workbench run |
 
 ## Feedback
 

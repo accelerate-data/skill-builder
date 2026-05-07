@@ -26,7 +26,6 @@ vi.mock("@tanstack/react-router", () => ({
 
 const updateSkillMetadataMock = vi.fn();
 const renameSkillMock = vi.fn();
-const generateSuggestionsMock = vi.fn();
 
 vi.mock("@/lib/tauri", async () => {
   const actual = await vi.importActual<typeof import("@/lib/tauri")>("@/lib/tauri");
@@ -34,7 +33,6 @@ vi.mock("@/lib/tauri", async () => {
     ...actual,
     updateSkillMetadata: (...args: unknown[]) => updateSkillMetadataMock(...args),
     renameSkill: (...args: unknown[]) => renameSkillMock(...args),
-    generateSuggestions: (...args: unknown[]) => generateSuggestionsMock(...args),
   };
 });
 
@@ -127,7 +125,6 @@ describe("SkillDialog (edit mode)", () => {
     mockNavigate.mockReset();
     updateSkillMetadataMock.mockReset().mockResolvedValue(undefined);
     renameSkillMock.mockReset().mockResolvedValue(undefined);
-    generateSuggestionsMock.mockReset().mockResolvedValue({});
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
     useSettingsStore.getState().reset();

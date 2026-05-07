@@ -9,16 +9,19 @@ function readSource(relativePath: string) {
 }
 
 describe("runtime API contract", () => {
-  it("exposes streaming refine API and does not expose removed one-shot agent command", () => {
+  it("exposes streaming refine API and does not expose removed legacy agent command", () => {
     const source = readSource("lib/tauri.ts");
 
     expect(source).toContain("export const sendRefineMessage");
+    expect(source).toContain("export const cancelAgentRun");
+    expect(source).not.toContain("export const pauseRefineSession");
     // start_agent Tauri command has been removed — neither the old raw binding
-    // nor the removed one-shot wrapper should appear.
+    // nor the removed legacy wrapper should appear.
     expect(source).not.toContain("export const startAgent");
     expect(source).not.toContain("export const startOneShotAgent");
     expect(source).not.toContain("answerWorkflowStepQuestion");
     expect(source).not.toContain("answerStreamingRefineQuestion");
+    expect(source).not.toContain("cancelRefineTurn");
   });
 
   it("keeps evals on the workbench API and feedback on direct submission", () => {
@@ -31,14 +34,11 @@ describe("runtime API contract", () => {
     expect(feedbackSource).not.toContain("runEvalWorkbench");
 
     const evalsSource = readSource("components/workspace/workspace-evals.tsx");
-    const descriptionSource = readSource("components/workspace/workspace-description.tsx");
     expect(evalsSource).toContain("runEvalWorkbench");
     expect(evalsSource).toContain("useRunHistory");
     expect(evalsSource).toContain('from "@/lib/eval-workbench"');
     expect(evalsSource).not.toContain("startOneShotAgent");
     expect(evalsSource).not.toContain("sendRefineMessage");
-    expect(descriptionSource).toContain('from "@/lib/eval-workbench"');
-    expect(descriptionSource).not.toContain('from "@/lib/tauri"');
     expect(runHistorySource).toContain("cancelEvalWorkbenchRun");
     expect(runHistorySource).toContain("listEvalRuns");
     expect(runHistorySource).toContain("readEvalRun");
@@ -52,7 +52,7 @@ describe("runtime API contract", () => {
     expect(source).not.toContain("startOneShotAgent");
   });
 
-  it("does not expose workflow AskUserQuestion UI for one-shot runs", () => {
+  it("does not expose workflow AskUserQuestion UI for workflow runs", () => {
     const source = readSource("components/agent-output-panel.tsx");
 
     expect(source).not.toContain("answerWorkflowStepQuestion");

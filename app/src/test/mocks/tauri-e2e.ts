@@ -35,7 +35,6 @@ const defaultPerformanceRunSummary = {
   createdAt: "2026-05-04T00:00:00Z",
   completedAt: "2026-05-04T00:05:00Z",
   results: [],
-  descriptionCandidates: [],
 };
 
 const defaultPerformanceRunDetail = {
@@ -125,14 +124,14 @@ const mockResponses: Record<string, unknown> = {
   get_locked_skills: [],
   // Refine page
   start_refine_session: {
-    session_id: "e2e-refine-session-001",
+    conversation_id: "e2e-refine-conversation-001",
     skill_name: "test-skill",
     created_at: new Date().toISOString(),
     available_agents: ["skill-creator"],
     restored_messages: [],
+    restored_transcript_events: [],
   },
   send_refine_message: "refine-test-skill-e2e-001",
-  cancel_refine_turn: undefined,
   close_refine_session: undefined,
   list_refinable_skills: [
     {
@@ -276,10 +275,7 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   list_eval_runs: [defaultPerformanceRunSummary],
   read_eval_run: defaultPerformanceRunDetail,
   run_eval_workbench: defaultPerformanceRunSummary,
-  suggest_description_candidates: [],
-  apply_description_candidate: {
-    description: "Use when the user needs invoice reconciliation or payment matching",
-  },
+  define_eval_scenario: defaultPerformanceScenario,
   build_refine_improvement_brief: {
     runId: "run-1",
     brief: "Improve assumptions handling",

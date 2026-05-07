@@ -19,16 +19,20 @@ import {
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
-  cancelRefineTurn,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
   acquireLock,
   releaseLock,
+  cancelAgentRun,
 } from "@/lib/tauri";
-import type { EditableSkill } from "@/lib/types";
+import type { EditableSkill, RefineSessionInfo, RestoredConversationEvent } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
+import {
+  getMessageText,
+  normalizeConversationEventMessage,
+} from "@/lib/openhands-conversation-events";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { initAgentStream } from "@/hooks/use-agent-stream";
 
@@ -83,6 +87,102 @@ function mapRestoredMessages(
     }));
 }
 
+function normalizeRestoredConversationEvent(
+  event: RestoredConversationEvent,
+  agentId: string,
+) {
+  return normalizeConversationEventMessage({
+    type: "conversation_event",
+    runtime: "openhands",
+    agent_id: agentId,
+    event_class: event.event_class,
+    event: event.event,
+    timestamp: event.timestamp,
+    tool_call_id: event.tool_call_id ?? undefined,
+    parent_tool_call_id: event.parent_tool_call_id ?? undefined,
+  });
+}
+
+function hydrateRestoredTranscript(
+  session: RefineSessionInfo,
+  skillName: string,
+  model: string | null,
+): RefineMessage[] | null {
+  const transcript = session.restored_transcript_events ?? [];
+  if (transcript.length === 0) return null;
+
+  const agentStore = useAgentStore.getState();
+  const messages: RefineMessage[] = [];
+  let segmentIndex = 0;
+  let pendingAgentEvents: RestoredConversationEvent[] = [];
+
+  const flushAgentSegment = (timestampFallback?: number) => {
+    const normalizedEvents = pendingAgentEvents
+      .map((event) =>
+        normalizeRestoredConversationEvent(
+          event,
+          `restored:${session.conversation_id}:${segmentIndex}`,
+        ),
+      )
+      .filter((event): event is NonNullable<typeof event> => event !== null);
+
+    if (normalizedEvents.length > 0) {
+      const restoredAgentId = `restored:${session.conversation_id}:${segmentIndex}`;
+      agentStore.registerRun(
+        restoredAgentId,
+        model ?? "openhands",
+        skillName,
+        "refine",
+        `synthetic:refine:${skillName}:${session.conversation_id}:restored:${segmentIndex}`,
+      );
+      for (const event of normalizedEvents) {
+        agentStore.addConversationEvent(restoredAgentId, event);
+      }
+      agentStore.completeRun(restoredAgentId, true);
+      messages.push({
+        id: crypto.randomUUID(),
+        role: "agent",
+        agentId: restoredAgentId,
+        timestamp:
+          normalizedEvents[normalizedEvents.length - 1]?.timestamp ??
+          timestampFallback ??
+          Date.now(),
+      });
+      segmentIndex += 1;
+    }
+
+    pendingAgentEvents = [];
+  };
+
+  for (const event of transcript) {
+    if (event.event_class === "MessageEvent") {
+      const normalized = normalizeRestoredConversationEvent(event, "restored:probe");
+      const source =
+        typeof event.event.source === "string" ? event.event.source : undefined;
+      const text = normalized ? getMessageText(normalized) : undefined;
+      if (source === "user" && text && text.trim().length > 0) {
+        flushAgentSegment(event.timestamp);
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "user",
+          userText: text,
+          timestamp: event.timestamp,
+        });
+        continue;
+      }
+    }
+
+    pendingAgentEvents.push(event);
+  }
+
+  flushAgentSegment();
+  return messages.length > 0 ? messages : null;
+}
+
+function clearRefineAgentRuns(): void {
+  useAgentStore.getState().clearRunsBySource("refine");
+}
+
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model);
@@ -123,15 +223,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     return () => {
       const store = useRefineStore.getState();
       if (store.selectedSkill) {
-        if (store.sessionId) {
-          closeRefineSession(store.sessionId).catch((e) =>
-            console.warn(
-              "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
-              e,
-            ),
-          );
-        }
+        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
+          console.warn(
+            "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
+            e,
+          ),
+        );
         releaseSkillResources(store.selectedSkill.name, "unmount");
+        clearRefineAgentRuns();
         store.clearSession();
       }
     };
@@ -144,10 +243,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const store = useRefineStore.getState();
       store.setRunning(false);
       store.setActiveAgentId(null);
-      useAgentStore.getState().clearRuns();
+      clearRefineAgentRuns();
 
-      if (store.sessionId) {
-        closeRefineSession(store.sessionId).catch((e) =>
+      if (store.selectedSkill) {
+        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
           console.warn(
             "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
             e,
@@ -176,7 +275,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       console.log("[workspace-refine] selectSkill: %s", s.name);
       const store = useRefineStore.getState();
 
-      if (store.selectedSkill?.name === s.name && store.sessionId) return;
+      if (store.selectedSkill?.name === s.name && store.conversationId) return;
 
       const prevSkill = store.selectedSkill;
       if (prevSkill && prevSkill.name !== s.name) {
@@ -207,9 +306,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         return;
       }
 
-      const prevSessionId = store.sessionId;
-      if (prevSessionId) {
-        await closeRefineSession(prevSessionId).catch((err) =>
+      if (store.selectedSkill) {
+        await closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((err) =>
           console.warn(
             "[workspace-refine] Failed to close previous session:",
             err,
@@ -217,6 +315,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         );
       }
 
+      clearRefineAgentRuns();
       store.selectSkill(s);
       store.setLoadingFiles(true);
       // Reset session metrics for the new skill.
@@ -232,9 +331,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             s.plugin_slug,
           );
           const nextStore = useRefineStore.getState();
-          nextStore.setSessionId(session.session_id);
+          nextStore.setConversationId(session.conversation_id);
           nextStore.setAvailableAgents(session.available_agents ?? []);
-          nextStore.setMessages(mapRestoredMessages(session.restored_messages));
+          nextStore.setMessages(
+            hydrateRestoredTranscript(session, s.name, selectedModel) ??
+              mapRestoredMessages(session.restored_messages),
+          );
         } catch (err) {
           console.error(
             "[workspace-refine] Failed to start refine session:",
@@ -264,7 +366,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         store.setLoadingFiles(false);
       }
     },
-    [workspacePath],
+    [selectedModel, workspacePath],
   );
 
   useEffect(() => {
@@ -277,8 +379,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[]) => {
       const store = useRefineStore.getState();
-      const sessionId = store.sessionId;
-      if (!selectedSkill || !workspacePath || !sessionId) return;
+      const conversationId = store.conversationId;
+      if (!selectedSkill || !conversationId) return;
       if (store.isRunning) return;
 
       console.log(
@@ -290,15 +392,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       runSkillRef.current = selectedSkill;
       store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
-      store.addUserMessage(text, targetFiles);
       store.setRunning(true);
+      store.addUserMessage(text, targetFiles);
 
       try {
         const agentId = await sendRefineMessage(
-          sessionId,
-          text,
-          workspacePath,
+          selectedSkill.name,
           selectedSkill.plugin_slug,
+          conversationId,
+          text,
           targetFiles,
         );
 
@@ -309,13 +411,19 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             selectedModel ?? "openhands",
             selectedSkill.name,
             "refine",
-            `synthetic:refine:${selectedSkill.name}:${sessionId}`,
+            `synthetic:refine:${selectedSkill.name}:${conversationId}`,
           );
 
         store.addAgentTurn(agentId);
         store.setActiveAgentId(agentId);
       } catch (err) {
         console.error("[workspace-refine] Failed to send refine message:", err);
+        const nextMessages = [...useRefineStore.getState().messages];
+        const lastMessage = nextMessages[nextMessages.length - 1];
+        if (lastMessage?.role === "user" && lastMessage.userText === text) {
+          nextMessages.pop();
+          useRefineStore.getState().setMessages(nextMessages);
+        }
         store.setRunning(false);
         store.setActiveAgentId(null);
         toast.error(err instanceof Error ? err.message : String(err), {
@@ -323,50 +431,38 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         });
       }
     },
-    [selectedSkill, workspacePath, selectedModel],
+    [selectedSkill, selectedModel],
   );
 
   const handleCancel = useCallback(async () => {
     const store = useRefineStore.getState();
-    if (!store.sessionId || !store.isRunning) {
+    if (!selectedSkill || !store.activeAgentId || !store.isRunning) {
       return;
     }
 
-    console.log("[workspace-refine] cancel: session=%s", store.sessionId);
+    console.log("[workspace-refine] pause: agent=%s", store.activeAgentId);
 
     try {
-      await cancelRefineTurn(store.sessionId);
+      await cancelAgentRun(store.activeAgentId);
     } catch (err) {
-      console.error("[workspace-refine] Failed to cancel refine turn:", err);
-      toast.error("Failed to cancel current run", {
+      console.error("[workspace-refine] Failed to pause refine session:", err);
+      toast.error("Failed to pause current run", {
         duration: Infinity,
         cause: err,
-        context: { operation: "workspace_refine_cancel" },
+        context: { operation: "workspace_refine_pause" },
       });
     }
     // Do NOT optimistically clear running state here. The agent completion
     // useEffect watches activeRunStatus for a terminal event ("completed",
     // "error", "shutdown") and handles cleanup. This ensures the UI only
     // transitions when the stream has actually stopped.
-  }, []);
-
-  // Escape key → interrupt active run
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && useRefineStore.getState().isRunning) {
-        e.preventDefault();
-        handleCancel();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [handleCancel]);
+  }, [selectedSkill]);
 
   // --- Watch agent completion ---
   useEffect(() => {
     if (!activeAgentId || !activeRunStatus) return;
 
-    const isTerminal = ["completed", "error", "shutdown"].includes(
+    const isTerminal = ["completed", "error", "shutdown", "cancelled"].includes(
       activeRunStatus,
     );
     if (!isTerminal) return;
@@ -382,7 +478,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         duration: Infinity,
       });
     }
-    // "shutdown" status is user-initiated (cancel) — no error toast needed.
+    // "shutdown" / "cancelled" statuses are user-initiated pause/cancel
+    // outcomes — no error toast needed.
 
     // Accumulate session-level metrics from the completed run.
     const agentRun = useAgentStore.getState().runs[activeAgentId];

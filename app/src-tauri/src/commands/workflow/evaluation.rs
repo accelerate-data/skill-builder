@@ -43,12 +43,9 @@ fn clear_persistent_skill_conversation_state(
 
     for slug in plugin_slugs {
         crate::db::clear_skill_conversation_id(conn, &slug, skill_name)?;
-        let conversations_dir = crate::skill_paths::workspace_skill_dir(
-            Path::new(workspace_path),
-            &slug,
-            skill_name,
-        )
-        .join("conversations");
+        let conversations_dir =
+            crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), &slug, skill_name)
+                .join("conversations");
         if conversations_dir.exists() {
             std::fs::remove_dir_all(&conversations_dir).map_err(|e| {
                 format!(
@@ -297,33 +294,21 @@ mod tests {
 
         crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
             .unwrap();
-        let default_conversations = crate::skill_paths::workspace_skill_dir(
-            tmp.path(),
-            default_slug,
-            skill_name,
-        )
-        .join("conversations");
+        let default_conversations =
+            crate::skill_paths::workspace_skill_dir(tmp.path(), default_slug, skill_name)
+                .join("conversations");
         std::fs::create_dir_all(&default_conversations).unwrap();
         std::fs::write(default_conversations.join("meta.json"), "{}").unwrap();
 
         let (_, plugin_slug) =
             crate::db::create_plugin(&conn, "Marketplace Plugin", "local", None, None).unwrap();
-        crate::db::upsert_skill_in_plugin(
-            &conn,
-            skill_name,
-            "imported",
-            "domain",
-            &plugin_slug,
-        )
-        .unwrap();
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "imported", "domain", &plugin_slug)
+            .unwrap();
         crate::db::save_skill_conversation_id(&conn, &plugin_slug, skill_name, "conv-plugin")
             .unwrap();
-        let plugin_conversations = crate::skill_paths::workspace_skill_dir(
-            tmp.path(),
-            &plugin_slug,
-            skill_name,
-        )
-        .join("conversations");
+        let plugin_conversations =
+            crate::skill_paths::workspace_skill_dir(tmp.path(), &plugin_slug, skill_name)
+                .join("conversations");
         std::fs::create_dir_all(&plugin_conversations).unwrap();
         std::fs::write(plugin_conversations.join("meta.json"), "{}").unwrap();
 
@@ -477,8 +462,11 @@ mod verify_step_output_tests {
     #[test]
     fn step3_checks_published_skill_without_deadlocking() {
         let skills_tmp = tempfile::tempdir().unwrap();
-        let skill_dir =
-            crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
+            skills_tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+        );
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\n").unwrap();
 
@@ -499,13 +487,8 @@ mod verify_step_output_tests {
         .unwrap();
         let db = Db(std::sync::Mutex::new(conn));
 
-        let result = verify_step_output(
-            String::new(),
-            "my-skill".to_string(),
-            3,
-            db_state(&db),
-        )
-        .unwrap();
+        let result =
+            verify_step_output(String::new(), "my-skill".to_string(), 3, db_state(&db)).unwrap();
 
         assert!(result);
     }

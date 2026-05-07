@@ -179,13 +179,22 @@ export interface ConversationMessage {
   content: string
 }
 
+export interface RestoredConversationEvent {
+  event_class: string
+  event: Record<string, unknown>
+  timestamp: number
+  tool_call_id?: string | null
+  parent_tool_call_id?: string | null
+}
+
 export interface RefineSessionInfo {
-  session_id: string
+  conversation_id: string
   skill_name: string
   created_at: string
   /** Agent names discovered from allowed refine plugins (e.g. "skill-creator:rewrite-skill"). */
   available_agents: string[]
   restored_messages: ConversationMessage[]
+  restored_transcript_events: RestoredConversationEvent[]
 }
 
 

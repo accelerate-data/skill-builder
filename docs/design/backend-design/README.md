@@ -123,10 +123,10 @@ On each app launch, `reconcile_on_startup` runs before the dashboard loads. See 
 ### Refine session lifecycle
 
 1. `get_skill_content_for_refine` loads current skill files into the editor.
-2. `start_refine_session` spawns an OpenHands Agent Server session with the skill content as context; returns a `session_id`. Conversation state is persisted in `skill_conversations`.
-3. `send_refine_message` continues the conversation within the same session.
-4. `pause_refine_session` suspends the session without closing it (conversation ID persists).
-5. `close_refine_session` optionally persists changes back to disk and ends the session record.
+2. `start_refine_session` selects or prepares the persistent OpenHands conversation and returns its `conversation_id`. Conversation state is persisted in `skill_conversations`.
+3. `send_refine_message` dispatches the next turn on that conversation and returns the current live-run `agent_id`.
+4. `cancel_agent_run` pauses the current live run without discarding the persistent conversation.
+5. `close_refine_session` tears down the local Refine surface state while leaving the saved conversation resumable.
 6. `finalize_refine_run` writes the final summary and closes out the run metrics.
 
 ---
@@ -138,7 +138,8 @@ The primary agent runtime is the **OpenHands Agent Server**, a Python service ma
 **Process management**: `process.rs` spawns the server via `uvx` (bundled `uv` binary when available, system `uvx` otherwise). The server is pinned to `openhands-agent-server==<version>` and `openhands-tools==<version>`. `init_bundled_uv_path()` is called at Tauri startup to locate the bundled binary.
 
 **Request dispatch**:
-- `run_openhands_one_shot` — fires a single workflow-step run and streams results back.
+
+- throwaway OpenHands session dispatch — fires a single bounded workflow-step run and streams results back.
 - `dispatch_openhands_refine_turn` — sends one refine message turn within a persistent conversation.
 
 **Conversation persistence**: The Agent Server stores per-conversation state on disk under a runtime directory. `skill_conversations` maps `(plugin_slug, skill_name)` to conversation IDs so sessions survive app restarts.

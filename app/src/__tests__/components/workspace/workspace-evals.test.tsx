@@ -10,7 +10,6 @@ const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
 const mockCancelEvalWorkbenchRun = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
-const mockGenerateScenarios = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
 let progressListener:
@@ -45,7 +44,6 @@ vi.mock("@/lib/eval-workbench", async () => {
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
     cancelEvalWorkbenchRun: (...args: unknown[]) =>
       mockCancelEvalWorkbenchRun(...args),
-    generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
   };
@@ -103,7 +101,6 @@ const runSummary = {
   createdAt: "2026-05-04T00:00:00Z",
   completedAt: "2026-05-04T00:05:00Z",
   results: [],
-  descriptionCandidates: [],
 };
 
 const runDetail = {
@@ -154,7 +151,6 @@ describe("WorkspaceEvals", () => {
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
     mockCancelEvalWorkbenchRun.mockReset().mockResolvedValue(undefined);
-    mockGenerateScenarios.mockReset().mockResolvedValue([]);
     mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
       runId: "run-1",
       brief: "Improve assumptions handling",
@@ -519,7 +515,7 @@ describe("WorkspaceEvals", () => {
 
   it("persists and reloads the selected scenario from the scenario-level suggest action", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockResolvedValue({
+    const onDefineEvalScenario = vi.fn().mockResolvedValue({
       id: "generated-case",
       name: "Regression",
       tags: ["performance"],
@@ -535,7 +531,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -544,7 +540,7 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
     await waitFor(() =>
-      expect(onSuggestScenario).toHaveBeenCalled(),
+      expect(onDefineEvalScenario).toHaveBeenCalled(),
     );
     expect(await screen.findByDisplayValue("Summarize pipeline risk")).toBeInTheDocument();
     expect(
@@ -568,7 +564,7 @@ describe("WorkspaceEvals", () => {
       shouldTrigger: null,
       expectations: ["Summarizes the main pipeline blockers."],
     });
-    const onSuggestScenario = vi.fn().mockReturnValue(deferredSuggestion.promise);
+    const onDefineEvalScenario = vi.fn().mockReturnValue(deferredSuggestion.promise);
 
     render(
       <WorkspaceEvals
@@ -577,7 +573,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -646,7 +642,7 @@ describe("WorkspaceEvals", () => {
 
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockRejectedValue(
+    const onDefineEvalScenario = vi.fn().mockRejectedValue(
       new Error(
         "OpenHands eval structured result was not valid JSON: expected value at line 2 column 1",
       ),
@@ -659,7 +655,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -674,7 +670,7 @@ describe("WorkspaceEvals", () => {
 
   it("shows suggestion failures in the scenario footer status area", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockRejectedValue(
+    const onDefineEvalScenario = vi.fn().mockRejectedValue(
       new Error("missing field `name`"),
     );
 
@@ -685,7 +681,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -699,7 +695,7 @@ describe("WorkspaceEvals", () => {
 
   it("keeps trigger-mode generation separate from performance suggestion", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockResolvedValue({
+    const onDefineEvalScenario = vi.fn().mockResolvedValue({
       id: "case-1",
       name: "Happy Path",
       tags: ["performance"],
@@ -715,7 +711,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -723,7 +719,7 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getAllByRole("button", { name: /^suggest$/i })[0]!);
 
     await waitFor(() =>
-      expect(onSuggestScenario).toHaveBeenCalled(),
+      expect(onDefineEvalScenario).toHaveBeenCalled(),
     );
   });
 
@@ -777,7 +773,7 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText("ready")).toBeInTheDocument();
   });
 
-  it("shows progress and cancels the active workbench run", async () => {
+  it("shows progress, cancels the active workbench run, and ignores stale progress after cancel", async () => {
     const user = userEvent.setup();
     const deferredRun = createDeferred(runSummary);
     mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
@@ -831,6 +827,20 @@ describe("WorkspaceEvals", () => {
     deferredRun.resolve(runSummary);
     await waitFor(() =>
       expect(screen.queryByText("Running case 1 of 3 (1/3)")).not.toBeInTheDocument(),
+    );
+
+    progressListener?.({
+      payload: {
+        runId,
+        phase: "performance",
+        completed: 2,
+        total: 3,
+        message: "Stale progress after cancel",
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText("Stale progress after cancel (2/3)")).not.toBeInTheDocument(),
     );
   });
 });

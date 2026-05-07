@@ -2083,7 +2083,11 @@ fn test_startup_normalization_merges_legacy_skills_default_into_default_plugin()
     let plugins = crate::db::list_plugins(&conn).unwrap();
     assert_eq!(plugins.iter().filter(|plugin| plugin.is_default).count(), 1);
     assert_eq!(
-        plugins.iter().find(|plugin| plugin.is_default).unwrap().slug,
+        plugins
+            .iter()
+            .find(|plugin| plugin.is_default)
+            .unwrap()
+            .slug,
         DEFAULT_PLUGIN_SLUG
     );
 
@@ -2140,9 +2144,18 @@ fn test_startup_normalization_moves_legacy_skills_and_workspace_dirs_to_default_
 
     assert!(canonical_workspace.exists());
     assert!(canonical_output.join("SKILL.md").exists());
-    assert!(canonical_output.join("references").join("notes.md").exists());
-    assert!(!legacy_workspace.exists(), "legacy workspace dir should be migrated");
-    assert!(!legacy_output.exists(), "legacy output dir should be migrated");
+    assert!(canonical_output
+        .join("references")
+        .join("notes.md")
+        .exists());
+    assert!(
+        !legacy_workspace.exists(),
+        "legacy workspace dir should be migrated"
+    );
+    assert!(
+        !legacy_output.exists(),
+        "legacy output dir should be migrated"
+    );
 }
 
 #[test]
@@ -2163,7 +2176,9 @@ fn test_startup_normalization_prunes_empty_legacy_default_plugin_dirs() {
     std::fs::create_dir_all(legacy_plugin_root.join("hr-analytics")).unwrap();
     std::fs::create_dir_all(legacy_plugin_root.join(".claude-plugin")).unwrap();
     std::fs::write(
-        legacy_plugin_root.join(".claude-plugin").join("plugin.json"),
+        legacy_plugin_root
+            .join(".claude-plugin")
+            .join("plugin.json"),
         "{}\n",
     )
     .unwrap();
@@ -2188,8 +2203,16 @@ fn test_startup_normalization_moves_workspace_legacy_dirs_with_agents_only_conte
     let skills_path = skills_root.to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::ensure_plugin(&conn, "sample-plugin", "Sample Plugin", "local", None, None, false)
-        .unwrap();
+    crate::db::ensure_plugin(
+        &conn,
+        "sample-plugin",
+        "Sample Plugin",
+        "local",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
     crate::db::upsert_skill(&conn, "hr-analytics", "skill-builder", "domain").unwrap();
     crate::db::upsert_skill_in_plugin(
         &conn,
@@ -2205,23 +2228,34 @@ fn test_startup_normalization_moves_workspace_legacy_dirs_with_agents_only_conte
         .join("skills")
         .join("skills")
         .join("hr-analytics");
-    let plugin_legacy = workspace_root.join("sample-plugin").join("pipeline-analysis");
+    let plugin_legacy = workspace_root
+        .join("sample-plugin")
+        .join("pipeline-analysis");
 
     std::fs::create_dir_all(default_legacy.join(".agents").join("agents")).unwrap();
     std::fs::write(
-        default_legacy.join(".agents").join("agents").join("agent.md"),
+        default_legacy
+            .join(".agents")
+            .join("agents")
+            .join("agent.md"),
         "default legacy\n",
     )
     .unwrap();
     std::fs::create_dir_all(nested_legacy.join(".agents").join("skills")).unwrap();
     std::fs::write(
-        nested_legacy.join(".agents").join("skills").join("skill.md"),
+        nested_legacy
+            .join(".agents")
+            .join("skills")
+            .join("skill.md"),
         "nested legacy\n",
     )
     .unwrap();
     std::fs::create_dir_all(plugin_legacy.join(".agents").join("agents")).unwrap();
     std::fs::write(
-        plugin_legacy.join(".agents").join("agents").join("agent.md"),
+        plugin_legacy
+            .join(".agents")
+            .join("agents")
+            .join("agent.md"),
         "plugin legacy\n",
     )
     .unwrap();
@@ -2238,19 +2272,34 @@ fn test_startup_normalization_moves_workspace_legacy_dirs_with_agents_only_conte
         .join("pipeline-analysis");
 
     assert!(
-        default_canonical.join(".agents").join("agents").join("agent.md").exists(),
+        default_canonical
+            .join(".agents")
+            .join("agents")
+            .join("agent.md")
+            .exists(),
         "default legacy workspace dir should move into canonical location"
     );
     assert!(
-        default_canonical.join(".agents").join("skills").join("skill.md").exists(),
+        default_canonical
+            .join(".agents")
+            .join("skills")
+            .join("skill.md")
+            .exists(),
         "nested legacy workspace dir should merge into canonical location"
     );
     assert!(
-        plugin_canonical.join(".agents").join("agents").join("agent.md").exists(),
+        plugin_canonical
+            .join(".agents")
+            .join("agents")
+            .join("agent.md")
+            .exists(),
         "plugin legacy workspace dir should move into canonical location"
     );
     assert!(!workspace_root.join("skills").exists());
-    assert!(!workspace_root.join("sample-plugin").join("pipeline-analysis").exists());
+    assert!(!workspace_root
+        .join("sample-plugin")
+        .join("pipeline-analysis")
+        .exists());
 }
 
 // ── Phase 1f: Dedup tests ───────────────────────────────────────────────────

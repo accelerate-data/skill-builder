@@ -106,7 +106,7 @@ The Rust backend is the control plane for the desktop app. It owns:
 - Tauri command handlers as the only frontend-to-system boundary;
 - SQLite persistence for workflow state, usage, imported skills, and settings;
 - plugin and skill path resolution, plus `.agents/**` deployment;
-- orchestration of one-shot workflow runs and longer-lived conversation flows;
+- orchestration of workflow runs and longer-lived conversation flows;
 - normalization of runtime events into app-facing progress and terminal result
   semantics.
 

@@ -7,17 +7,13 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum ScenarioTag {
     Performance,
-    Trigger,
-    Both,
 }
 
 impl ScenarioTag {
     pub fn matches_mode(&self, mode: crate::db::EvalWorkbenchMode) -> bool {
         matches!(
             (self, mode),
-            (Self::Both, _)
-                | (Self::Performance, crate::db::EvalWorkbenchMode::Performance)
-                | (Self::Trigger, crate::db::EvalWorkbenchMode::Trigger)
+            (Self::Performance, crate::db::EvalWorkbenchMode::Performance)
         )
     }
 }
@@ -28,7 +24,6 @@ pub struct Scenario {
     pub name: String,
     pub tags: Vec<ScenarioTag>,
     pub prompt: String,
-    pub should_trigger: Option<bool>,
     #[serde(default)]
     pub expectations: Vec<String>,
 }
@@ -89,9 +84,6 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     validate_scenario_name(&scenario.name)?;
     if scenario.tags.is_empty() {
         return Err("Scenario tags cannot be empty".to_string());
-    }
-    if scenario.tags.contains(&ScenarioTag::Both) && scenario.tags.len() > 1 {
-        return Err("Scenario tag 'both' must not be combined with other tags".to_string());
     }
     if scenario.id.trim().is_empty() {
         return Err("Scenario id cannot be empty".to_string());
@@ -248,9 +240,8 @@ mod tests {
         Scenario {
             id: "case-1".into(),
             name: "Regression".into(),
-            tags: vec![ScenarioTag::Both],
+            tags: vec![ScenarioTag::Performance],
             prompt: "Show me Q3 booking trends".into(),
-            should_trigger: Some(true),
             expectations: vec!["Explains the regional booking trends.".into()],
         }
     }
@@ -277,11 +268,11 @@ mod tests {
             vec![
                 ScenarioSummary {
                     name: "Regression".into(),
-                    tags: vec![ScenarioTag::Both],
+                    tags: vec![ScenarioTag::Performance],
                 },
                 ScenarioSummary {
                     name: "Regression".into(),
-                    tags: vec![ScenarioTag::Both],
+                    tags: vec![ScenarioTag::Performance],
                 },
             ]
         );
@@ -325,12 +316,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_both_tag_when_combined_with_other_tags() {
+    fn performance_tag_only_matches_performance_mode() {
         let mut scenario = sample_scenario();
-        scenario.tags = vec![ScenarioTag::Both, ScenarioTag::Trigger];
+        scenario.tags = vec![ScenarioTag::Performance];
 
-        let error = validate_scenario(&scenario).unwrap_err();
-
-        assert!(error.contains("must not be combined"));
+        validate_scenario(&scenario).unwrap();
+        assert!(scenario.tags[0].matches_mode(crate::db::EvalWorkbenchMode::Performance));
+        assert!(!scenario.tags[0].matches_mode(crate::db::EvalWorkbenchMode::Trigger));
     }
 }

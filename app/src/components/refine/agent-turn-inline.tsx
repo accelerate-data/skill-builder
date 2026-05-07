@@ -10,6 +10,7 @@ interface AgentTurnInlineProps {
   fromIndex?: number;
   /** Render only display items up to (not including) this index. */
   toIndex?: number;
+  hideTaskSent?: boolean;
 }
 
 function ThinkingIndicator({ agentId }: { agentId: string }) {
@@ -42,6 +43,7 @@ export const AgentTurnInline = memo(function AgentTurnInline({
   agentId,
   fromIndex,
   toIndex,
+  hideTaskSent = false,
 }: AgentTurnInlineProps) {
   const { displayItems, status } = useAgentStore(
     useShallow((s) => ({
@@ -56,22 +58,25 @@ export const AgentTurnInline = memo(function AgentTurnInline({
     fromIndex !== undefined || toIndex !== undefined
       ? displayItems.slice(fromIndex ?? 0, toIndex)
       : displayItems;
+  const filtered = hideTaskSent
+    ? sliced.filter((item) => !(item.type === "tool_call" && item.toolName === "task_sent"))
+    : sliced;
   const isSliced = fromIndex !== undefined || toIndex !== undefined;
   // Tail slice: fromIndex set, no toIndex — this is the last visible part of the turn
   const isTailSlice = fromIndex !== undefined && toIndex === undefined;
 
   // Typing indicator while agent is running with no output yet
-  if (status === "running" && sliced.length === 0 && !isSliced) {
+  if (status === "running" && filtered.length === 0 && !isSliced) {
     return <ThinkingIndicator agentId={agentId} />;
   }
 
   // Nothing to render for this slice yet
-  if (sliced.length === 0) return null;
+  if (filtered.length === 0) return null;
 
   return (
     <div data-agent-id={agentId} className="flex min-w-0 w-full flex-col gap-2 overflow-hidden">
-      <DisplayItemList items={sliced} />
-      {!isSliced && status === "running" && sliced.length > 0 && (
+      <DisplayItemList items={filtered} />
+      {!isSliced && status === "running" && filtered.length > 0 && (
         <div className="flex items-center gap-1.5 py-1 text-muted-foreground/80">
           <Loader2 className="size-3 animate-spin" />
         </div>

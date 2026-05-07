@@ -205,6 +205,27 @@ pub async fn ensure_workspace_prompts(
     result
 }
 
+/// Copy bundled OpenHands runtime assets into an arbitrary run directory.
+/// Used by throwaway runtime workspaces that sit outside the skill tree.
+pub async fn ensure_openhands_runtime_dir(
+    app_handle: &tauri::AppHandle,
+    runtime_dir: &Path,
+) -> Result<(), String> {
+    let agents_dir = resolve_prompt_source_dirs(app_handle);
+    let workspace_skills_dir = resolve_workspace_skills_dir(app_handle);
+
+    if !agents_dir.is_dir() && !workspace_skills_dir.is_dir() {
+        return Ok(());
+    }
+
+    let target_dir = runtime_dir.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        copy_workspace_sources_to_openhands_dir(&agents_dir, &workspace_skills_dir, &target_dir)
+    })
+    .await
+    .map_err(|e| format!("Throwaway prompt copy task failed: {}", e))?
+}
+
 /// Two-tier SHA-gated deploy. Used by both async and sync entry points and is
 /// exposed to tests so callers can pass explicit source paths instead of
 /// resolving them through `tauri::AppHandle`.

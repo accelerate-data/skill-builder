@@ -174,7 +174,7 @@ export function ChatMessageList({
                 className="flex min-w-0 w-full flex-col gap-2 overflow-hidden"
               >
                 <div className="min-w-0 overflow-hidden">
-                  <AgentTurnInline agentId={msg.agentId} toIndex={splitAt} />
+                  <AgentTurnInline agentId={msg.agentId} toIndex={splitAt} hideTaskSent />
                 </div>
                 {diffFiles.length > 0 && <InlineChangedFiles files={diffFiles} />}
               </div>
@@ -190,7 +190,7 @@ export function ChatMessageList({
                 />
                 {msg.agentId && msg.displayItemSplitIndex !== undefined && (
                   <div className="min-w-0 overflow-hidden">
-                    <AgentTurnInline agentId={msg.agentId} fromIndex={msg.displayItemSplitIndex} />
+                    <AgentTurnInline agentId={msg.agentId} fromIndex={msg.displayItemSplitIndex} hideTaskSent />
                   </div>
                 )}
               </div>

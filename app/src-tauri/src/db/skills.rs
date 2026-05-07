@@ -632,6 +632,7 @@ pub fn set_skill_behaviour(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn set_skill_behaviour_in_plugin(
     conn: &Connection,
     skill_name: &str,

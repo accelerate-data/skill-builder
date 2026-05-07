@@ -38,9 +38,9 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
 }
 
 /// Resolve the absolute path the OpenHands SDK should persist conversation
-/// state and per-event JSON to for a specific skill workspace.
-pub(crate) fn compute_conversations_path(workspace_skill_dir: &Path) -> PathBuf {
-    workspace_skill_dir.join("conversations")
+/// state and per-event JSON to for a specific runtime run directory.
+pub(crate) fn compute_conversations_path(runtime_run_dir: &Path) -> PathBuf {
+    runtime_run_dir.join("conversations")
 }
 
 fn apply_session_env(
@@ -161,10 +161,10 @@ fn agent_server_registry() -> &'static OpenHandsAgentServerRegistry {
 
 pub async fn ensure_agent_server(
     timeout: Duration,
-    workspace_skill_dir: &Path,
+    runtime_run_dir: &Path,
 ) -> Result<OpenHandsAgentServerHandle, String> {
     let mut registry = agent_server_registry().lock().await;
-    let conversations_path = compute_conversations_path(workspace_skill_dir)
+    let conversations_path = compute_conversations_path(runtime_run_dir)
         .to_string_lossy()
         .into_owned();
     if let Some(server) = registry.as_mut() {
@@ -198,7 +198,7 @@ pub async fn ensure_agent_server(
         *registry = None;
     }
 
-    let process = OpenHandsAgentServerProcess::start(timeout, workspace_skill_dir).await?;
+    let process = OpenHandsAgentServerProcess::start(timeout, runtime_run_dir).await?;
     let handle = OpenHandsAgentServerHandle {
         port: process.port,
         session_api_key: process.session_api_key.clone(),
@@ -220,10 +220,10 @@ pub async fn shutdown_agent_server() -> Result<(), String> {
 }
 
 impl OpenHandsAgentServerProcess {
-    pub async fn start(timeout: Duration, workspace_skill_dir: &Path) -> Result<Self, String> {
+    pub async fn start(timeout: Duration, runtime_run_dir: &Path) -> Result<Self, String> {
         let mut last_error = None;
         for attempt in 1..=5 {
-            match Self::start_once(timeout, workspace_skill_dir).await {
+            match Self::start_once(timeout, runtime_run_dir).await {
                 Ok(process) => return Ok(process),
                 Err(error) => {
                     log::warn!(
@@ -237,7 +237,7 @@ impl OpenHandsAgentServerProcess {
         Err(last_error.unwrap_or_else(|| "Failed to start OpenHands Agent Server".to_string()))
     }
 
-    async fn start_once(timeout: Duration, workspace_skill_dir: &Path) -> Result<Self, String> {
+    async fn start_once(timeout: Duration, runtime_run_dir: &Path) -> Result<Self, String> {
         let port = select_random_local_port()?;
         let session_api_key = uuid::Uuid::new_v4().to_string();
         let command = OpenHandsServerCommand::new(port);
@@ -247,7 +247,7 @@ impl OpenHandsAgentServerProcess {
             .map_err(|e| format!("Failed to create OpenHands Agent Server runtime dir: {e}"))?;
         let mut tokio_command = command.tokio_command();
         tokio_command.current_dir(runtime_dir.path());
-        let conversations_path_str = compute_conversations_path(workspace_skill_dir)
+        let conversations_path_str = compute_conversations_path(runtime_run_dir)
             .to_string_lossy()
             .into_owned();
         apply_session_env(
@@ -446,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn compute_conversations_path_resolves_under_workspace_skill_dir() {
+    fn compute_conversations_path_resolves_under_runtime_run_dir() {
         let path = compute_conversations_path(Path::new(
             "/tmp/workspace/default/skills/analyzing-bookings",
         ));

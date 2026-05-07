@@ -16,8 +16,12 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { cancelRefineTurn, cancelWorkflowStep } from "@/lib/tauri";
-import { getEvalsRunning, subscribeEvalsRunning } from "@/lib/eval-running-state";
+import { cancelAgentRun, cancelWorkflowStep } from "@/lib/tauri";
+import {
+  getEvalsRunning,
+  requestEvalsCancel,
+  subscribeEvalsRunning,
+} from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import {
   Dialog,
@@ -82,12 +86,12 @@ export function AppLayout() {
         setPanelCollapsed((prev) => !prev);
       }
       if (e.key === "Escape") {
-        // Refine (streaming): cancel via session UUID from RefineSessionManager.
+        // Refine (streaming): pause via session UUID from RefineSessionManager.
         const refineStore = useRefineStore.getState();
-        if (refineStore.isRunning && refineStore.sessionId) {
-          cancelRefineTurn(refineStore.sessionId).catch((err) => {
-            console.error("[app-layout] escape: cancel refine failed", err);
-            toast.error(`Failed to cancel agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+        if (refineStore.isRunning && refineStore.activeAgentId) {
+          cancelAgentRun(refineStore.activeAgentId).catch((err) => {
+            console.error("[app-layout] escape: cancel refine run failed", err);
+            toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
           });
           return;
         }
@@ -100,6 +104,12 @@ export function AppLayout() {
         if (running) {
           cancelWorkflowStep(running.agentId).catch((err) => {
             console.error("[app-layout] escape: cancel workflow step failed", err);
+          });
+          return;
+        }
+        if (getEvalsRunning()) {
+          requestEvalsCancel().catch((err) => {
+            console.error("[app-layout] escape: cancel eval workbench run failed", err);
           });
         }
       }
@@ -143,7 +153,7 @@ export function AppLayout() {
     }
     useRefineStore.getState().clearSession();
     useAgentStore.getState().clearRuns();
-    toast.info("Agent cancelled — skill switched");
+    toast.info("Agent paused — skill switched");
     setSelectedWorkspaceSkillName(pendingSkillSwitch);
     const tab = pendingSkillSwitchTabRef.current;
     setPendingSkillSwitch(null);

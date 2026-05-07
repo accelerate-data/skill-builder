@@ -34,10 +34,10 @@ interface WorkspaceEvalsProps {
     scenario: ScenarioDto,
     options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
-  onSuggestScenario?: (scenarioName: string) => Promise<ScenarioDto>;
+  onDefineEvalScenario?: (scenarioName: string) => Promise<ScenarioDto>;
   onDeleteScenario?: (scenarioName: string) => Promise<void>;
   saveScenarioPending?: boolean;
-  suggestScenarioPending?: boolean;
+  defineEvalScenarioPending?: boolean;
   deleteScenarioPending?: boolean;
   onNavigateToRefine?: () => void;
   onRunningChange?: (running: boolean) => void;
@@ -53,10 +53,10 @@ export function WorkspaceEvals({
   onStartNewScenario,
   onCreateScenario,
   onSaveScenario,
-  onSuggestScenario,
+  onDefineEvalScenario,
   onDeleteScenario,
   saveScenarioPending = false,
-  suggestScenarioPending = false,
+  defineEvalScenarioPending = false,
   deleteScenarioPending = false,
   onNavigateToRefine,
   onRunningChange,
@@ -66,8 +66,8 @@ export function WorkspaceEvals({
   const pluginSlug = skill.plugin_slug;
   const currentModel = useSettingsStore((state) => state.modelSettings.model);
 
-  const [suggestingScenario, setSuggestingScenario] = useState(false);
-  const [suggestScenarioStartedAt, setSuggestScenarioStartedAt] = useState<number | null>(null);
+  const [definingEvalScenario, setDefiningEvalScenario] = useState(false);
+  const [defineEvalScenarioStartedAt, setDefineEvalScenarioStartedAt] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [sendingToRefine, setSendingToRefine] = useState(false);
@@ -116,7 +116,7 @@ export function WorkspaceEvals({
 
   useEffect(() => {
     const hasActiveTimedStatus =
-      (suggestingScenario || suggestScenarioPending) ||
+      (definingEvalScenario || defineEvalScenarioPending) ||
       running;
     if (!hasActiveTimedStatus) {
       return;
@@ -126,7 +126,7 @@ export function WorkspaceEvals({
       1000,
     );
     return () => window.clearInterval(id);
-  }, [runStartedAt, running, suggestScenarioPending, suggestScenarioStartedAt, suggestingScenario]);
+  }, [runStartedAt, running, defineEvalScenarioPending, defineEvalScenarioStartedAt, definingEvalScenario]);
 
   useEffect(
     () => () => {
@@ -146,7 +146,7 @@ export function WorkspaceEvals({
   }
 
   useEffect(() => {
-    if (!scenario || scenarioLoading || saveScenarioPending || suggestingScenario || running) {
+    if (!scenario || scenarioLoading || saveScenarioPending || definingEvalScenario || running) {
       return;
     }
 
@@ -178,7 +178,7 @@ export function WorkspaceEvals({
     saveScenarioPending,
     scenario,
     scenarioLoading,
-    suggestingScenario,
+    definingEvalScenario,
   ]);
 
   async function handleCreateScenario() {
@@ -198,16 +198,16 @@ export function WorkspaceEvals({
     }
   }
 
-  async function handleSuggestScenario() {
-    if (!scenario || !onSuggestScenario) {
+  async function handleDefineEvalScenario() {
+    if (!scenario || !onDefineEvalScenario) {
       return;
     }
-    setSuggestingScenario(true);
-    setSuggestScenarioStartedAt(Date.now());
+    setDefiningEvalScenario(true);
+    setDefineEvalScenarioStartedAt(Date.now());
     setActionError(null);
     setSuggestionStatusError(null);
     try {
-      const saved = await onSuggestScenario(scenario.name);
+      const saved = await onDefineEvalScenario(scenario.name);
       lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
       setDraft(scenarioToDraft(saved));
     } catch (suggestionError) {
@@ -220,8 +220,8 @@ export function WorkspaceEvals({
         setSuggestionStatusError(`Scenario suggestion failed: ${message}`);
       }
     } finally {
-      setSuggestingScenario(false);
-      setSuggestScenarioStartedAt(null);
+      setDefiningEvalScenario(false);
+      setDefineEvalScenarioStartedAt(null);
     }
   }
 
@@ -232,7 +232,7 @@ export function WorkspaceEvals({
 
     setActionError(null);
     setSuggestionStatusError(null);
-    setSuggestScenarioStartedAt(null);
+    setDefineEvalScenarioStartedAt(null);
     try {
       await onDeleteScenario(scenario.name);
       setDraft(createDraftScenario("performance"));
@@ -334,14 +334,14 @@ export function WorkspaceEvals({
   const footerStatusTone: FooterDisplayStatus =
     running
       ? "running"
-      : suggestingScenario || suggestScenarioPending
+      : definingEvalScenario || defineEvalScenarioPending
       ? "running"
       : suggestionStatusError
         ? "error"
         : "idle";
   const footerStatusStartAt =
     footerStatusTone === "running"
-      ? (runStartedAt ?? suggestScenarioStartedAt)
+      ? (runStartedAt ?? defineEvalScenarioStartedAt)
       : null;
 
   return (
@@ -368,17 +368,17 @@ export function WorkspaceEvals({
               draft={draft}
               onChange={setDraft}
               onNew={() => void handleCreateScenario()}
-              onSuggest={() => void handleSuggestScenario()}
+              onSuggest={() => void handleDefineEvalScenario()}
               onDelete={() => void handleDeleteScenario()}
               suggestDisabled={
-                scenarioLoading || suggestingScenario || suggestScenarioPending || !scenario
+                scenarioLoading || definingEvalScenario || defineEvalScenarioPending || !scenario
               }
-              suggestBusy={suggestingScenario || suggestScenarioPending}
+              suggestBusy={definingEvalScenario || defineEvalScenarioPending}
               deleteDisabled={scenarioLoading || deleteScenarioPending || !scenario}
               showDelete={Boolean(scenario)}
               showNew={false}
               footerStatus={
-                suggestingScenario || suggestScenarioPending
+                definingEvalScenario || defineEvalScenarioPending
                   ? {
                       tone: "running",
                       message: "Reading skill and drafting scenario…",

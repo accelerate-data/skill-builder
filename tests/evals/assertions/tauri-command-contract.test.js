@@ -17,7 +17,6 @@ const vu1140Commands = [
   "get_skill_content_for_refine",
   "start_refine_session",
   "close_refine_session",
-  "cancel_refine_turn",
   "cancel_agent_run",
   "cancel_workflow_step",
   "send_refine_message",
@@ -164,28 +163,48 @@ test("published Eval Workbench command surface omits legacy and no-op commands",
   for (const command of [
     "list_scenarios",
     "load_scenario",
+    "create_scenario",
     "save_scenario",
     "delete_scenario",
+    "define_eval_scenario",
     "run_eval_workbench",
+    "cancel_eval_workbench_run",
     "list_eval_runs",
     "read_eval_run",
-    "suggest_description_candidates",
-    "apply_description_candidate",
     "build_refine_improvement_brief",
   ]) {
     assert.ok(apiSource.includes(`| \`${command}\` |`));
   }
 
+  assert.equal(apiSource.includes("| `generate_suggestions` |"), false);
+
   for (const staleCommand of [
-    "cancel_eval_workbench_run",
+    "generate_scenarios",
     "run_optimization_loop",
     "save_eval_queries",
     "load_eval_queries",
     "start_generate_desc_eval_queries",
     "materialize_eval_benchmark",
+    "suggest_description_candidates",
+    "apply_description_candidate",
   ]) {
     assert.equal(apiSource.includes(`| \`${staleCommand}\` |`), false);
   }
+});
+
+test("Eval Workbench design omits retired description-generation surfaces", () => {
+  const evalWorkbenchSource = read("docs/design/eval-workbench/README.md");
+
+  for (const staleReference of [
+    "workspace-description.tsx",
+    "suggest_description_candidates",
+    "apply_description_candidate",
+  ]) {
+    assert.equal(evalWorkbenchSource.includes(staleReference), false);
+  }
+
+  assert.match(evalWorkbenchSource, /One-tab Eval Workbench shell/);
+  assert.match(evalWorkbenchSource, /one-scenario editor UI/);
 });
 
 test("invokeUnsafe call expressions are rejected outside documented exceptions", () => {

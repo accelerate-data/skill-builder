@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createScenario,
   deleteScenario,
+  defineEvalScenario,
   loadScenario,
   listScenarios,
   saveScenario,
-  suggestScenario,
   type EvalWorkbenchMode,
   type ScenarioDto,
 } from "@/lib/eval-workbench";
@@ -33,7 +33,7 @@ type DeleteScenarioMutationInput = {
   scenarioName: string;
 };
 
-type SuggestScenarioMutationInput = {
+type DefineEvalScenarioMutationInput = {
   scenarioName: string;
 };
 
@@ -109,12 +109,12 @@ export function useCreateScenario(skillName: string | null, pluginSlug: string) 
   });
 }
 
-export function useSuggestScenario(skillName: string | null, pluginSlug: string) {
+export function useDefineEvalScenario(skillName: string | null, pluginSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ scenarioName }: SuggestScenarioMutationInput) =>
-      suggestScenario(pluginSlug, skillName!, scenarioName),
+    mutationFn: ({ scenarioName }: DefineEvalScenarioMutationInput) =>
+      defineEvalScenario(pluginSlug, skillName!, scenarioName),
     onSuccess: (savedScenario, variables) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),

@@ -63,6 +63,7 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn build_delete_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
         self.request(
             Method::DELETE,
@@ -149,14 +150,6 @@ impl OpenHandsServerClient {
     pub async fn pause_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
         self.http
             .execute(self.build_pause_request(conversation_id)?)
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }
-
-    pub async fn delete_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
-        self.http
-            .execute(self.build_delete_request(conversation_id)?)
             .await?
             .error_for_status()?;
         Ok(())
@@ -254,7 +247,7 @@ impl OpenHandsServerClient {
 
 #[cfg(test)]
 mod tests {
-    use super::super::types::OpenHandsOneShotRequest;
+    use super::super::types::OpenHandsRuntimeRequest;
     use super::*;
     use crate::agents::sidecar::SidecarConfig;
     use crate::types::{SecretString, WorkflowLlmConfig};
@@ -314,8 +307,8 @@ mod tests {
     #[test]
     fn conversation_payload_contains_local_workspace_for_skill_directory() {
         let config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
-        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
-        let payload = StartConversationRequest::from_one_shot(&request);
+        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
         assert_eq!(json["workspace"]["kind"], "LocalWorkspace");
@@ -354,8 +347,8 @@ mod tests {
         llm.model = "opencode-go/minimax-m2.7".to_string();
         llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
 
-        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
-        let payload = StartConversationRequest::from_one_shot(&request);
+        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
         assert_eq!(json["agent"]["llm"]["model"], "openai/minimax-m2.7");
@@ -368,8 +361,8 @@ mod tests {
     #[test]
     fn scope_review_payload_uses_workspace_root_as_local_workspace() {
         let config = base_config("/workspace-root", "/workspace-root");
-        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
-        let payload = StartConversationRequest::from_one_shot(&request);
+        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
         assert_eq!(json["workspace"]["working_dir"], "/workspace-root");
@@ -382,9 +375,11 @@ mod tests {
             Some("session-key".to_string()),
         );
         let config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
-        let one_shot = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
+        let runtime_request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
         let create = client
-            .build_create_conversation_request(&StartConversationRequest::from_one_shot(&one_shot))
+            .build_create_conversation_request(&StartConversationRequest::from_runtime_request(
+                &runtime_request,
+            ))
             .unwrap();
         assert_eq!(create.method(), reqwest::Method::POST);
         assert_eq!(
@@ -440,8 +435,8 @@ mod tests {
     fn default_tool_set_includes_search_and_subagent_spawn() {
         let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
         config.allowed_tools = None;
-        let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config).unwrap();
-        let payload = StartConversationRequest::from_one_shot(&request);
+        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
         let names: Vec<String> = json["agent"]["tools"]
