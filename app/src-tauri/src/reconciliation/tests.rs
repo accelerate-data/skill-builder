@@ -284,8 +284,9 @@ fn test_marketplace_skill_preserved_when_skill_md_exists() {
     )
     .unwrap();
 
-    // Create SKILL.md in skills_path (simulates installed marketplace skill)
-    let skill_dir = skills_tmp.path().join("my-skill");
+    // Create SKILL.md in canonical plugin layout (simulates installed marketplace skill)
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Marketplace skill").unwrap();
 
@@ -425,12 +426,17 @@ fn test_fresh_skill_step_0_not_falsely_completed() {
     let conn = create_test_db();
 
     crate::db::save_workflow_run(&conn, "fresh-skill", 0, "pending", "domain").unwrap();
-    // Only create the working directory — no output files
-    std::fs::create_dir_all(tmp.path().join("fresh-skill")).unwrap();
+    // Only create the canonical working directory — no output files
+    std::fs::create_dir_all(crate::skill_paths::workspace_skill_dir(
+        tmp.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "fresh-skill",
+    ))
+    .unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    // No notifications — fresh skill, no action needed
+    // No workflow-state notifications — fresh skill, no action needed
     assert!(result.notifications.is_empty());
 
     // Step 0 should still be absent from steps table (not falsely completed)

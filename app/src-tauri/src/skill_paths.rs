@@ -423,9 +423,7 @@ pub fn plugin_display_name(slug: &str) -> String {
 }
 
 fn is_skill_dir(path: &Path) -> bool {
-    path.join("SKILL.md").is_file()
-        || path.join("references").is_dir()
-        || path.join("context").is_dir()
+    path.join("SKILL.md").is_file() || path.join("references").is_dir()
 }
 
 #[cfg(test)]
@@ -619,6 +617,17 @@ mod tests {
         assert_eq!(locations[0].skill_name, "my-skill");
         assert!(locations[0].is_default_plugin);
         assert_eq!(locations[0].dir, skill_dir);
+    }
+
+    #[test]
+    fn context_only_directory_is_not_treated_as_skill() {
+        let tmp = tempfile::tempdir().unwrap();
+        let context_only = tmp.path().join("orphan-folder");
+        fs::create_dir_all(context_only.join("context")).unwrap();
+        fs::write(context_only.join("context").join("notes.md"), "# Notes").unwrap();
+
+        let locations = enumerate_skill_locations(tmp.path()).unwrap();
+        assert!(locations.is_empty());
     }
 
     #[test]
