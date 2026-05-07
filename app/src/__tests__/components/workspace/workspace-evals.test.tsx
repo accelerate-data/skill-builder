@@ -47,7 +47,6 @@ const performanceScenario = {
   name: "Regression",
   tags: ["performance"] as const,
   prompt: "Forecast next quarter revenue",
-  shouldTrigger: null,
   assertions: ["Explains the forecast assumptions."],
 };
 
@@ -56,7 +55,6 @@ const alternatePerformanceScenario = {
   name: "Smoke",
   tags: ["performance"] as const,
   prompt: "Summarize pipeline risk",
-  shouldTrigger: null,
   assertions: ["Summarizes the main pipeline blockers."],
 };
 

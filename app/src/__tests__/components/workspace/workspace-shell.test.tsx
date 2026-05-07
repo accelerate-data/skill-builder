@@ -146,7 +146,8 @@ const performanceScenario = {
   id: "case-1",
   name: "Regression",
   prompt: "Forecast next quarter revenue",
-  expectations: ["Explains the forecast assumptions."],
+  assertions: ["Explains the forecast assumptions."],
+  tags: ["performance"] as const,
 };
 
 const performanceScenarioSummary = {
@@ -157,7 +158,8 @@ const alternatePerformanceScenario = {
   id: "case-2",
   name: "Smoke",
   prompt: "Summarize pipeline risk",
-  expectations: ["Summarizes the main pipeline blockers."],
+  assertions: ["Summarizes the main pipeline blockers."],
+  tags: ["performance"] as const,
 };
 
 const alternatePerformanceScenarioSummary = {
@@ -398,7 +400,8 @@ describe("WorkspaceShell", () => {
       id: "case-1",
       name: "Smoke",
       prompt: "",
-      expectations: [],
+      assertions: [],
+      tags: ["performance"],
     });
     mockUseCreateScenario.mockReset().mockReturnValue({
       mutateAsync,

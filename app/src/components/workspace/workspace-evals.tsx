@@ -84,11 +84,11 @@ export function WorkspaceEvals({
   }
 
   async function handleSuggest() {
-    if (!scenario || !onSuggestScenario) return;
+    if (!scenario || !onDefineEvalScenario) return;
     setSuggestingScenario(true);
     setActionError(null);
     try {
-      await onSuggestScenario(scenario.name);
+      await onDefineEvalScenario(scenario.name);
     } catch (err) {
       setActionError(getErrorMessage(err));
     } finally {
@@ -147,13 +147,13 @@ export function WorkspaceEvals({
               draft={draft}
               onChange={setDraft}
               onNew={onCreateScenario ? handleCreateScenario : undefined}
-              onSuggest={onSuggestScenario ? handleSuggest : undefined}
+              onSuggest={onDefineEvalScenario ? handleSuggest : undefined}
               onDelete={onDeleteScenario ? handleDelete : undefined}
-              suggestDisabled={suggestScenarioPending}
+              suggestDisabled={defineEvalScenarioPending}
               deleteDisabled={deleteScenarioPending}
               showDelete={true}
-              showSuggest={Boolean(onSuggestScenario)}
-              suggestBusy={suggestingScenario || suggestScenarioPending}
+              showSuggest={Boolean(onDefineEvalScenario)}
+              suggestBusy={suggestingScenario || defineEvalScenarioPending}
               showNew={Boolean(onCreateScenario)}
               footerStatus={
                 actionError

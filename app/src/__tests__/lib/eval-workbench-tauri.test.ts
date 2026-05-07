@@ -60,10 +60,10 @@ describe("Eval Workbench Tauri wrappers", () => {
     });
   });
 
-  it("supports scenario creation, suggestion, and deletion commands", async () => {
+  it("supports scenario creation, definition, and deletion commands", async () => {
     await Promise.all([
       createScenario("skills", "forecast-skill", "performance"),
-      suggestScenario("skills", "forecast-skill", "Regression"),
+      defineEvalScenario("skills", "forecast-skill", "Regression"),
       deleteScenario("skills", "forecast-skill", "Regression"),
     ]);
 
@@ -72,7 +72,7 @@ describe("Eval Workbench Tauri wrappers", () => {
       skillName: "forecast-skill",
       mode: "performance",
     });
-    expect(mockInvoke).toHaveBeenCalledWith("suggest_scenario", {
+    expect(mockInvoke).toHaveBeenCalledWith("define_eval_scenario", {
       pluginSlug: "skills",
       skillName: "forecast-skill",
       scenarioName: "Regression",

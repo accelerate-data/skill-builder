@@ -95,7 +95,7 @@ export function createDraftScenario(
     name,
     prompt: "",
     assertions: [],
-    ...(mode === "trigger" ? { tags: ["trigger"] as ScenarioTag[], shouldTrigger: true } : {}),
+    tags: ["performance"],
   };
 }
 

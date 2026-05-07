@@ -31,12 +31,10 @@ describe("runtime API contract", () => {
     expect(feedbackSource).not.toContain("runEvalWorkbench");
 
     const evalsSource = readSource("components/workspace/workspace-evals.tsx");
-    const descriptionSource = readSource("components/workspace/workspace-description.tsx");
     expect(evalsSource).toContain('from "@/lib/eval-workbench"');
     expect(evalsSource).not.toContain("startOneShotAgent");
     expect(evalsSource).not.toContain("sendRefineMessage");
-    expect(descriptionSource).toContain('from "@/lib/eval-workbench"');
-    expect(descriptionSource).not.toContain('from "@/lib/tauri"');
+    expect(evalsSource).toContain("onDefineEvalScenario");
   });
 
   it("keeps refine UI on the streaming refine API", () => {
