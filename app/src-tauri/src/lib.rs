@@ -298,7 +298,7 @@ pub fn run() {
         .manage(CloseGuardState::default())
         .manage(commands::refine::RefineSessionManager::new())
         .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
-        .manage(commands::eval_workbench::EvalWorkbenchRunManager::default())
+
         .invoke_handler(tauri::generate_handler![
             commands::node::check_node,
             commands::node::check_startup_deps,
@@ -404,12 +404,8 @@ pub fn run() {
             commands::eval_workbench::create_scenario,
             commands::eval_workbench::save_scenario,
             commands::eval_workbench::delete_scenario,
-            commands::eval_workbench::define_eval_scenario,
-            commands::eval_workbench::run_eval_workbench,
-            commands::eval_workbench::cancel_eval_workbench_run,
-            commands::eval_workbench::list_eval_runs,
-            commands::eval_workbench::read_eval_run,
-            commands::eval_workbench::build_refine_improvement_brief,
+            commands::eval_workbench::suggest_scenario,
+
             commands::documents::list_documents,
             commands::documents::list_skills_for_documents,
             commands::documents::add_document_file,
