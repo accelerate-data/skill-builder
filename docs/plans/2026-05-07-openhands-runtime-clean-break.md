@@ -136,81 +136,25 @@ as open work:
 - resumed refine sessions now restore persisted transcript rows, including
   runtime setup before the first user turn and prior tool activity, instead of
   only flattening chat bubbles
+- resumed refine sessions now replay persisted child-subagent transcript rows
+  and preserve parent tool-call links when hydrating restored history
+- refine session follow-up routing now derives from dispatched user-turn count
+  instead of the old `has_dispatched_turn` latch
 - runtime-layer `OneShot` request / config / event names were renamed to
   runtime-neutral equivalents
 - Eval Workbench now tracks exact active OpenHands `agent_id`s and cancels
   them through `pause_openhands_session(agent_id)` instead of prefix matching
 - trigger-only Eval Workbench config builders and execution paths were removed
   from the live backend run path
+- stale trigger-only Eval Workbench backend DTO fields, scenario tags, and
+  validation branches were removed from the remaining backend authoring surface
 
 ## Pending Work
 
-### Task 1: Finish Refine Resume Semantics
+### Task 1: Final Verification Sweep
 
-**Why this is still open**
-
-The current resume path now restores persisted transcript events into
-synthetic refine runs, but it still does not replay persisted child-subagent
-event logs on resume and still keeps `has_dispatched_turn` as a session-local
-derived flag.
-
-Code evidence:
-
-- `start_refine_session(...)` in
-  `app/src-tauri/src/commands/refine/mod.rs` returns
-  `restored_transcript_events: Vec<RestoredConversationEvent>`
-- `WorkspaceRefine` in `app/src/components/workspace/workspace-refine.tsx`
-  rebuilds prior setup/tool/output rows from those transcript events
-- persisted child-subagent event logs are still only discovered by the live
-  scanner in `app/src-tauri/src/agents/openhands_server/mod.rs`
-
-**Product gap**
-
-A resumed refine session should behave like a real resume:
-
-- show the persisted `SystemPromptEvent`
-- show the initial task / runtime setup rows
-- show prior tool activity
-- show prior subagent activity
-- show prior assistant outputs
-- then continue streaming new live events without duplication
-
-- [ ] Restore persisted child-subagent activity on resume, not just parent
-      conversation events.
-- [ ] Remove or replace `has_dispatched_turn` manual state once resume
-      restoration is derived cleanly from persisted conversation history.
-- [ ] Deduplicate restored history against live stream delivery by stable event
-      identity so reconnect / resume does not duplicate rows.
-- [ ] Add regression coverage for resumed refine sessions that verifies:
-  - `SystemPromptEvent` is visible after resume
-  - prior tool activity is visible after resume
-  - prior subagent activity is visible after resume
-  - a resumed session can continue streaming new events without replay
-    duplication
-
-### Task 2: Finish Trigger-Mode Eval Backend Cleanup
-
-**Why this is still open**
-
-The live eval run path is now performance-only, but trigger-specific DTO
-fields, scenario-validation branches, and tests still exist in the backend
-surface.
-
-Current examples on this branch:
-
-- `should_trigger` still exists in `ScenarioDto` and prompt-case plumbing
-- trigger-only validation and runtime-loading branches still exist in
-  `app/src-tauri/src/commands/eval_workbench/mod.rs`
-- trigger-specific tests still remain in the eval workbench backend module
-
-- [ ] Remove stale trigger-only DTO fields and tests that only exist for the
-      deleted backend surface.
-- [ ] Re-run the affected eval-workbench backend and frontend tests after the
-      trigger cleanup.
-
-### Task 3: Final Verification Sweep
-
-Run this after Tasks 1-2 land.
+The implementation tasks are complete. Run the full branch verification sweep
+before final merge.
 
 - [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 - [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml`
@@ -222,9 +166,7 @@ Run this after Tasks 1-2 land.
 
 ## Notes For The Next Coding Pass
 
-- Treat the resume-history gap as the primary product bug still open on this
-  branch.
-- Do not re-open already landed routing refactors unless the resume fix proves
-  they are directly in the way.
-- Keep the next pass focused: restore real resume semantics first, then finish
-  the remaining naming cleanup, then run the regression sweep.
+- Treat the remaining work as verification and cleanup only unless new review
+  findings reopen a specific runtime seam.
+- Do not re-open already landed routing refactors unless a failing verification
+  step proves they are directly implicated.

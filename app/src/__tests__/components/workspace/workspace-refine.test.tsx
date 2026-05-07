@@ -381,6 +381,61 @@ describe("WorkspaceRefine", () => {
     ]);
   });
 
+  it("passes restored child subagent events through with parent tool links", async () => {
+    const skill = makeSkill("my-skill");
+    tauriMocks.startRefineSession.mockResolvedValueOnce({
+      session_id: "session-1",
+      available_agents: ["skill-creator"],
+      restored_messages: [],
+      restored_transcript_events: [
+        {
+          event_class: "MessageEvent",
+          timestamp: 1710000000000,
+          event: {
+            source: "user",
+            message: "Find the MRR rationale",
+          },
+        },
+        {
+          event_class: "ActionEvent",
+          timestamp: 1710000001000,
+          tool_call_id: "parent-task-1",
+          event: {
+            tool_name: "task",
+            action: {
+              prompt: "Find the MRR rationale",
+            },
+          },
+        },
+        {
+          event_class: "ActionEvent",
+          timestamp: 1710000002000,
+          tool_call_id: "child-tool-1",
+          parent_tool_call_id: "parent-task-1",
+          event: {
+            tool_name: "terminal",
+            action: {
+              tool_call_id: "child-tool-1",
+              command: "rg MRR conversations",
+            },
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    expect(agentStoreState.addConversationEvent).toHaveBeenCalledWith(
+      "restored:session-1:0",
+      expect.objectContaining({
+        toolCallId: "child-tool-1",
+        parentToolCallId: "parent-task-1",
+      }),
+    );
+  });
+
   it("calls closeRefineSession and startRefineSession when skill prop changes", async () => {
     const skill1 = makeSkill("skill-a");
     const skill2 = makeSkill("skill-b");

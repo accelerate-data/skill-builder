@@ -6,8 +6,6 @@ pub struct ScenarioDto {
     #[serde(default)]
     pub tags: Vec<String>,
     pub prompt: String,
-    #[serde(default)]
-    pub should_trigger: Option<bool>,
     pub expectations: Vec<String>,
 }
 

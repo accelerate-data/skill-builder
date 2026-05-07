@@ -59,7 +59,9 @@ fn event_class(raw: &serde_json::Value) -> Option<&str> {
         .and_then(|value| value.as_str())
 }
 
-fn first_string<'a>(values: impl IntoIterator<Item = Option<&'a serde_json::Value>>) -> Option<&'a str> {
+fn first_string<'a>(
+    values: impl IntoIterator<Item = Option<&'a serde_json::Value>>,
+) -> Option<&'a str> {
     values
         .into_iter()
         .flatten()
@@ -161,18 +163,41 @@ fn extract_restored_conversation_events(
         .collect()
 }
 
-fn restored_conversation_has_dispatched_turn(
-    events: &[RestoredConversationEvent],
-) -> bool {
-    events.iter().any(|event| {
-        event.event_class == "MessageEvent"
-            && event
-                .event
-                .get("source")
-                .and_then(|value| value.as_str())
-                .map(|source| source == "user")
-                .unwrap_or(false)
-    })
+fn extract_restored_conversation_events_from_normalized(
+    events: &[serde_json::Value],
+) -> Vec<RestoredConversationEvent> {
+    events
+        .iter()
+        .filter(|raw| {
+            raw.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
+        })
+        .filter_map(|raw| {
+            let event_class = raw.get("event_class").and_then(|value| value.as_str())?;
+            let event = raw.get("event")?.clone();
+            Some(RestoredConversationEvent {
+                event_class: event_class.to_string(),
+                event,
+                timestamp: extract_timestamp_ms(raw),
+                tool_call_id: extract_tool_call_id(raw),
+                parent_tool_call_id: extract_parent_tool_call_id(raw),
+            })
+        })
+        .collect()
+}
+
+fn restored_conversation_user_turn_count(events: &[RestoredConversationEvent]) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            event.event_class == "MessageEvent"
+                && event
+                    .event
+                    .get("source")
+                    .and_then(|value| value.as_str())
+                    .map(|source| source == "user")
+                    .unwrap_or(false)
+        })
+        .count()
 }
 
 async fn load_saved_refine_conversation(
@@ -180,12 +205,16 @@ async fn load_saved_refine_conversation(
     plugin_slug: &str,
     skill_name: &str,
     conversation_id: &str,
-) -> Result<Option<(serde_json::Value, Vec<RestoredConversationEvent>, Vec<ConversationMessage>)>, String> {
-    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(workspace_path),
-        plugin_slug,
-        skill_name,
-    );
+) -> Result<
+    Option<(
+        serde_json::Value,
+        Vec<RestoredConversationEvent>,
+        Vec<ConversationMessage>,
+    )>,
+    String,
+> {
+    let workspace_skill_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let server = ensure_agent_server(Duration::from_secs(60), &workspace_skill_dir).await?;
     let client = OpenHandsServerClient::new(
         server
@@ -205,9 +234,21 @@ async fn load_saved_refine_conversation(
         .list_all_events(conversation_id)
         .await
         .map_err(|e| format!("Failed to list OpenHands conversation events: {e}"))?;
+    let mut restored_events = extract_restored_conversation_events(&events);
+    let restored_child_events =
+        crate::agents::openhands_server::load_linked_persisted_subagent_conversation_events(
+            workspace_path,
+            conversation_id,
+            &events,
+        )?;
+    restored_events.extend(extract_restored_conversation_events_from_normalized(
+        &restored_child_events,
+    ));
+    restored_events.sort_by_key(|event| event.timestamp);
+
     Ok(Some((
         conversation,
-        extract_restored_conversation_events(&events),
+        restored_events,
         extract_conversation_messages(&events),
     )))
 }
@@ -219,13 +260,10 @@ fn build_refine_openhands_config(
     workspace_path: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> crate::agents::sidecar::SidecarConfig {
-    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(workspace_path),
-        plugin_slug,
-        skill_name,
-    )
-    .to_string_lossy()
-    .replace('\\', "/");
+    let workspace_skill_dir =
+        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
+            .to_string_lossy()
+            .replace('\\', "/");
 
     build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
@@ -270,10 +308,11 @@ pub struct RefineSession {
     /// does not actively clear this field — the frontend tracks live turn
     /// status via the `agent-message` and `agent-exit` event stream.
     pub current_agent_id: Option<String>,
-    /// True once at least one real refine turn has been dispatched into this
-    /// prepared session. Blank prepared sessions need the full initial refine
-    /// prompt on first send; subsequent turns use the lighter follow-up prompt.
-    pub has_dispatched_turn: bool,
+    /// Count of persisted or newly dispatched user turns in this session's
+    /// OpenHands conversation. Blank prepared sessions need the full initial
+    /// refine prompt on first send; subsequent turns use the lighter
+    /// follow-up prompt.
+    pub dispatched_user_turn_count: usize,
     /// HEAD SHA of the skills repo when the session started.
     /// Used by `finalize_refine_run` to detect whether the agent actually committed.
     pub head_sha_at_start: Option<String>,
@@ -324,7 +363,8 @@ pub async fn start_refine_session(
         e
     })?;
 
-    let skill_md = resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?.join("SKILL.md");
+    let skill_md =
+        resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?.join("SKILL.md");
     if !skill_md.exists() {
         let msg = format!("SKILL.md not found at {}", skill_md.display());
         log::error!("[start_refine_session] {}", msg);
@@ -455,7 +495,7 @@ pub async fn start_refine_session(
             usage_session_id: new_refine_usage_session_id(&skill_name),
             conversation_id: saved_conversation_id,
             current_agent_id: None,
-            has_dispatched_turn: restored_conversation_has_dispatched_turn(
+            dispatched_user_turn_count: restored_conversation_user_turn_count(
                 &restored_transcript_events,
             ),
             head_sha_at_start,
@@ -491,7 +531,7 @@ pub async fn send_refine_message(
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    let (skill_name, plugin_slug, conversation_id, has_dispatched_turn) = {
+    let (skill_name, plugin_slug, conversation_id, dispatched_user_turn_count) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(
                 "[send_refine_message] failed to acquire session lock: {}",
@@ -513,7 +553,7 @@ pub async fn send_refine_message(
             session.skill_name.clone(),
             session.plugin_slug.clone(),
             session.conversation_id.clone(),
-            session.has_dispatched_turn,
+            session.dispatched_user_turn_count,
         )
     };
 
@@ -534,17 +574,13 @@ pub async fn send_refine_message(
     // per-session so repeated turns are cheap.
     crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
 
-    ensure_skill_workspace_dir(
-        &runtime_ctx.workspace_path,
-        &plugin_slug,
-        &skill_name,
-    );
+    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &plugin_slug, &skill_name);
 
     let target_files_slice = target_files.as_deref();
-    let conversation_id =
-        conversation_id.ok_or_else(|| "Refine session is missing a prepared conversation".to_string())?;
+    let conversation_id = conversation_id
+        .ok_or_else(|| "Refine session is missing a prepared conversation".to_string())?;
 
-    let prompt = if has_dispatched_turn {
+    let prompt = if dispatched_user_turn_count > 0 {
         build_followup_prompt_with_output_dir(&user_message, &skill_output_dir, target_files_slice)
     } else {
         build_refine_prompt_with_output_dir(
@@ -583,7 +619,7 @@ pub async fn send_refine_message(
         if let Some(session) = map.get_mut(&session_id) {
             session.conversation_id = Some(returned_conversation_id);
             session.current_agent_id = Some(agent_id.clone());
-            session.has_dispatched_turn = true;
+            session.dispatched_user_turn_count += 1;
         }
     }
 

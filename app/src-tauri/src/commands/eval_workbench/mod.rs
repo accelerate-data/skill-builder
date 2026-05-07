@@ -10,9 +10,8 @@ use crate::agents::promptfoo_sidecar::process::{
     run_eval as run_promptfoo_eval,
 };
 use crate::agents::promptfoo_sidecar::protocol::{
-    EvalCandidate as SidecarEvalCandidate, EvalCase, EvalExecution,
-    EvalMode as SidecarEvalMode, ListHistoryRequest, PersistedEvalRun, ReadHistoryRequest,
-    RunEvalRequest,
+    EvalCandidate as SidecarEvalCandidate, EvalCase, EvalExecution, EvalMode as SidecarEvalMode,
+    ListHistoryRequest, PersistedEvalRun, ReadHistoryRequest, RunEvalRequest,
 };
 use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
@@ -21,22 +20,20 @@ use crate::commands::workflow::prompt::{
     clarifications_record_to_json_string, decisions_record_to_json_string,
 };
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
-use crate::db::{
-    get_skill_master_in_plugin, read_eval_run as db_read_eval_run, record_eval_run as db_record_eval_run,
-    Db, DescriptionCandidate, EvalPromptSet, EvalRun, EvalWorkbenchMode, NewDescriptionCandidate,
-    NewEvalRun, NewEvalRunResult,
-};
 #[cfg(test)]
 use crate::db::read_description_candidate;
+use crate::db::{
+    get_skill_master_in_plugin, read_eval_run as db_read_eval_run,
+    record_eval_run as db_record_eval_run, Db, DescriptionCandidate, EvalPromptSet, EvalRun,
+    EvalWorkbenchMode, NewDescriptionCandidate, NewEvalRun, NewEvalRunResult,
+};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Listener};
-pub use types::{
-    RefineImprovementBrief, RunEvalWorkbenchRequest, ScenarioDto, ScenarioSummaryDto,
-};
+pub use types::{RefineImprovementBrief, RunEvalWorkbenchRequest, ScenarioDto, ScenarioSummaryDto};
 
 const CURRENT_SKILL_CANDIDATE_ID: &str = "current-skill";
 const DEFINE_EVAL_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
@@ -104,6 +101,9 @@ fn parse_optional_mode(mode: Option<String>) -> Result<Option<EvalWorkbenchMode>
 
 #[cfg(test)]
 fn validate_prompt_set_input(input: &SaveEvalPromptSet) -> Result<(), String> {
+    if input.mode != EvalWorkbenchMode::Performance {
+        return Err("Eval Workbench only supports performance mode".to_string());
+    }
     validate_plugin_slug(&input.plugin_slug)?;
     validate_skill_name(&input.skill_name)?;
     if input.name.trim().is_empty() {
@@ -113,19 +113,17 @@ fn validate_prompt_set_input(input: &SaveEvalPromptSet) -> Result<(), String> {
         if case.prompt.trim().is_empty() {
             return Err("Scenario case prompt cannot be empty".to_string());
         }
-        if input.mode == EvalWorkbenchMode::Performance && case.should_trigger.is_some() {
-            return Err("shouldTrigger is only valid for trigger scenarios".to_string());
+        if case.should_trigger.is_some() {
+            return Err(
+                "shouldTrigger is not part of the performance scenario contract".to_string(),
+            );
         }
-        if input.mode == EvalWorkbenchMode::Performance
-            && case
-                .assertions
-                .as_array()
-                .is_some_and(|items| items.is_empty())
+        if case
+            .assertions
+            .as_array()
+            .is_some_and(|items| items.is_empty())
         {
             return Err("Performance scenario cases need at least one expectation".to_string());
-        }
-        if input.mode == EvalWorkbenchMode::Trigger && case.should_trigger.is_none() {
-            return Err("Trigger scenario cases must include shouldTrigger".to_string());
         }
         if !case.assertions.is_array() {
             return Err("Scenario case expectations must be an array".to_string());
@@ -143,9 +141,7 @@ fn parse_scenario_tags(tags: &[String]) -> Result<Vec<scenarios::ScenarioTag>, S
     for tag in tags {
         let next = match tag.trim() {
             "performance" => scenarios::ScenarioTag::Performance,
-            "trigger" => scenarios::ScenarioTag::Trigger,
-            "both" => scenarios::ScenarioTag::Both,
-            other => return Err(format!("Unsupported scenario tag: {other}")),
+            other => return Err(format!("Unsupported performance scenario tag: {other}")),
         };
         if !parsed.contains(&next) {
             parsed.push(next);
@@ -158,8 +154,6 @@ fn scenario_tag_strings(tags: &[scenarios::ScenarioTag]) -> Vec<String> {
     tags.iter()
         .map(|tag| match tag {
             scenarios::ScenarioTag::Performance => "performance",
-            scenarios::ScenarioTag::Trigger => "trigger",
-            scenarios::ScenarioTag::Both => "both",
         })
         .map(str::to_string)
         .collect()
@@ -176,7 +170,6 @@ fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
         name: dto.name,
         tags,
         prompt: dto.prompt,
-        should_trigger: dto.should_trigger,
         expectations: dto.expectations,
     };
     scenarios::validate_scenario(&scenario)?;
@@ -189,7 +182,6 @@ fn scenario_to_dto(scenario: scenarios::Scenario) -> ScenarioDto {
         name: scenario.name,
         tags: scenario_tag_strings(&scenario.tags),
         prompt: scenario.prompt,
-        should_trigger: scenario.should_trigger,
         expectations: scenario.expectations,
     }
 }
@@ -262,7 +254,6 @@ fn scenario_run_snapshot(prompt_set: &EvalPromptSet) -> Value {
             "id": case.id,
             "prompt": case.prompt,
             "expected": case.expected,
-            "shouldTrigger": case.should_trigger,
             "expectations": case.assertions,
             "sortOrder": case.sort_order,
         })).collect::<Vec<_>>()
@@ -372,18 +363,12 @@ fn read_scenario(
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))
 }
 
-fn next_default_scenario_name(
-    eval_dir: &Path,
-    mode: EvalWorkbenchMode,
-) -> Result<String, String> {
+fn next_default_scenario_name(eval_dir: &Path) -> Result<String, String> {
     let existing_names = scenarios::list_scenarios(eval_dir)?
         .into_iter()
         .map(|scenario| scenario.name)
         .collect::<HashSet<_>>();
-    let prefix = match mode {
-        EvalWorkbenchMode::Performance => "Scenario",
-        EvalWorkbenchMode::Trigger => "Trigger scenario",
-    };
+    let prefix = "Scenario";
 
     for index in 1..=10_000 {
         let candidate = format!("{prefix} {index}");
@@ -401,6 +386,9 @@ fn load_scenarios_for_mode(
     skill_name: &str,
     mode: EvalWorkbenchMode,
 ) -> Result<Vec<scenarios::Scenario>, String> {
+    if mode != EvalWorkbenchMode::Performance {
+        return Err("Eval Workbench only supports performance mode".to_string());
+    }
     let eval_dir = crate::skill_paths::resolve_eval_dir(skills_path, plugin_slug, skill_name);
     let matching = scenarios::list_scenarios(&eval_dir)?
         .into_iter()
@@ -431,11 +419,8 @@ fn load_package_runtime(
             return Err(format!("Scenario '{}' is missing a prompt.", scenario.name));
         }
         if scenario.expectations.is_empty() {
-            return Err(format!("Scenario '{}' is missing expectations.", scenario.name));
-        }
-        if mode == EvalWorkbenchMode::Trigger && scenario.should_trigger.is_none() {
             return Err(format!(
-                "Scenario '{}' must declare whether it should trigger.",
+                "Scenario '{}' is missing expectations.",
                 scenario.name
             ));
         }
@@ -443,11 +428,7 @@ fn load_package_runtime(
             id: scenario.id.clone(),
             prompt: scenario.prompt.clone(),
             expected: None,
-            should_trigger: if mode == EvalWorkbenchMode::Trigger {
-                scenario.should_trigger
-            } else {
-                None
-            },
+            should_trigger: None,
             assertions: scenario_expectations_json(scenario),
             sort_order: cases.len() as i64,
         });
@@ -473,6 +454,9 @@ fn load_scenario_runtime(
     scenario_name: &str,
     mode: EvalWorkbenchMode,
 ) -> Result<EvalPromptSet, String> {
+    if mode != EvalWorkbenchMode::Performance {
+        return Err("Eval Workbench only supports performance mode".to_string());
+    }
     let scenario = read_scenario(skills_path, plugin_slug, skill_name, scenario_name)?;
     if !scenario.tags.iter().any(|tag| tag.matches_mode(mode)) {
         return Err("Scenario is not available for the selected mode".to_string());
@@ -489,11 +473,7 @@ fn load_scenario_runtime(
             id: scenario.id,
             prompt: scenario.prompt,
             expected: None,
-            should_trigger: if mode == EvalWorkbenchMode::Trigger {
-                scenario.should_trigger
-            } else {
-                None
-            },
+            should_trigger: None,
             assertions: expectations,
             sort_order: 0,
         }],
@@ -1105,7 +1085,11 @@ fn build_generation_sidecar_config(
     })
 }
 
-fn eval_workbench_throwaway_runtime_dir(workspace_path: &str, run_id: &str, phase: &str) -> PathBuf {
+fn eval_workbench_throwaway_runtime_dir(
+    workspace_path: &str,
+    run_id: &str,
+    phase: &str,
+) -> PathBuf {
     crate::skill_paths::throwaway_runtime_dir(Path::new(workspace_path), "eval-workbench", run_id)
         .join(phase)
 }
@@ -1214,7 +1198,9 @@ fn parse_suggested_scenario_response(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string)
-                .ok_or_else(|| "Scenario suggestion expectations must be non-empty strings".to_string())
+                .ok_or_else(|| {
+                    "Scenario suggestion expectations must be non-empty strings".to_string()
+                })
         })
         .collect::<Result<Vec<_>, String>>()?;
 
@@ -1222,7 +1208,6 @@ fn parse_suggested_scenario_response(
     next_scenario.name = name.to_string();
     next_scenario.prompt = prompt.to_string();
     next_scenario.expectations = parsed_expectations;
-    next_scenario.should_trigger = None;
 
     Ok(next_scenario)
 }
@@ -1744,20 +1729,15 @@ pub fn create_scenario(
     let skills_path = resolve_skills_path(&db)?;
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    let name = next_default_scenario_name(&eval_dir, mode)?;
+    if mode != EvalWorkbenchMode::Performance {
+        return Err("Eval Workbench only supports performance mode".to_string());
+    }
+    let name = next_default_scenario_name(&eval_dir)?;
     let scenario = scenarios::Scenario {
         id: format!("case-{}", uuid::Uuid::new_v4().simple()),
         name,
-        tags: match mode {
-            EvalWorkbenchMode::Performance => vec![scenarios::ScenarioTag::Performance],
-            EvalWorkbenchMode::Trigger => vec![scenarios::ScenarioTag::Trigger],
-        },
+        tags: vec![scenarios::ScenarioTag::Performance],
         prompt: String::new(),
-        should_trigger: if mode == EvalWorkbenchMode::Trigger {
-            Some(true)
-        } else {
-            None
-        },
         expectations: vec![],
     };
     let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
@@ -2127,11 +2107,7 @@ mod tests {
                 id: None,
                 prompt: "Forecast revenue".to_string(),
                 expected: None,
-                should_trigger: if mode == EvalWorkbenchMode::Trigger {
-                    Some(true)
-                } else {
-                    None
-                },
+                should_trigger: None,
                 assertions: serde_json::json!(["Explains the revenue forecast."]),
                 sort_order: None,
             }],
@@ -2145,7 +2121,7 @@ mod tests {
             plugin_slug: "skills".to_string(),
             skill_name: "forecast".to_string(),
             scenario_name: "Promptfoo scenario".to_string(),
-            mode: SidecarEvalMode::Trigger,
+            mode: SidecarEvalMode::Performance,
             status: "completed".to_string(),
             summary: crate::agents::promptfoo_sidecar::protocol::PersistedEvalRunSummary {
                 total: 1,
@@ -2157,12 +2133,11 @@ mod tests {
                 "pluginSlug": "skills",
                 "skillName": "forecast",
                 "scenarioName": "Promptfoo scenario",
-                "mode": "trigger",
+                "mode": "performance",
                 "cases": [{
                     "id": "case-1",
                     "prompt": "Forecast next quarter revenue",
-                    "shouldTrigger": true,
-                    "expectations": [],
+                    "expectations": ["Explains the forecast assumptions."],
                     "sortOrder": 0
                 }]
             })),
@@ -2185,19 +2160,7 @@ mod tests {
             name: name.to_string(),
             tags: vec!["performance".to_string()],
             prompt: "Forecast next quarter revenue".to_string(),
-            should_trigger: None,
             expectations: vec!["Explains the forecast assumptions.".to_string()],
-        }
-    }
-
-    fn sample_trigger_scenario_dto(name: &str) -> ScenarioDto {
-        ScenarioDto {
-            id: "case-1".to_string(),
-            name: name.to_string(),
-            tags: vec!["trigger".to_string()],
-            prompt: "Route invoice reconciliation".to_string(),
-            should_trigger: Some(true),
-            expectations: vec![],
         }
     }
 
@@ -2252,8 +2215,11 @@ mod tests {
             updated_at: "2026-05-06T00:00:00Z".to_string(),
         };
         let output_format = serde_json::json!({"type":"json_schema","schema":{"type":"object"}});
-        let performance_runtime =
-            eval_workbench_throwaway_runtime_dir(&runtime_ctx.workspace_path, "run-1", "performance");
+        let performance_runtime = eval_workbench_throwaway_runtime_dir(
+            &runtime_ctx.workspace_path,
+            "run-1",
+            "performance",
+        );
         let persistent_workspace = crate::skill_paths::workspace_skill_dir(
             Path::new(&runtime_ctx.workspace_path),
             &prompt_set.plugin_slug,
@@ -2322,8 +2288,10 @@ mod tests {
         .to_string();
 
         assert_eq!(
-            parse_terminal_conversation_state(&payload, "agent-1")
-                .and_then(|value| value.get("status").and_then(|status| status.as_str()).map(str::to_string)),
+            parse_terminal_conversation_state(&payload, "agent-1").and_then(|value| value
+                .get("status")
+                .and_then(|status| status.as_str())
+                .map(str::to_string)),
             Some("completed".to_string())
         );
         assert!(parse_terminal_conversation_state(&payload, "other-agent").is_none());
@@ -2356,17 +2324,16 @@ mod tests {
 
         let err = validate_prompt_set_input(&input).unwrap_err();
 
-        assert!(err.contains("shouldTrigger is only valid"));
+        assert!(err.contains("shouldTrigger is not part"));
     }
 
     #[test]
-    fn rejects_trigger_cases_without_should_trigger() {
-        let mut input = valid_prompt_set(EvalWorkbenchMode::Trigger);
-        input.cases[0].should_trigger = None;
+    fn rejects_non_performance_prompt_sets() {
+        let input = valid_prompt_set(EvalWorkbenchMode::Trigger);
 
         let err = validate_prompt_set_input(&input).unwrap_err();
 
-        assert!(err.contains("must include shouldTrigger"));
+        assert_eq!(err, "Eval Workbench only supports performance mode");
     }
 
     #[test]
@@ -2520,7 +2487,6 @@ mod tests {
                     "id": "case-1",
                     "prompt": "Forecast next quarter revenue",
                     "expected": null,
-                    "shouldTrigger": null,
                     "expectations": ["Explains the forecast assumptions."],
                     "sortOrder": 0
                 }]
@@ -2704,15 +2670,15 @@ mod tests {
             "How does our current pipeline coverage break down by deal type?"
         );
         assert_eq!(suggested.expectations.len(), 2);
-        assert_eq!(suggested.should_trigger, None);
     }
 
     #[test]
     fn rejects_description_candidate_from_other_prompt_set() {
         let mut conn = create_test_db_for_tests();
         let prompt_set_a =
-            save_eval_prompt_set(&mut conn, valid_prompt_set(EvalWorkbenchMode::Trigger)).unwrap();
-        let mut prompt_set_b_input = valid_prompt_set(EvalWorkbenchMode::Trigger);
+            save_eval_prompt_set(&mut conn, valid_prompt_set(EvalWorkbenchMode::Performance))
+                .unwrap();
+        let mut prompt_set_b_input = valid_prompt_set(EvalWorkbenchMode::Performance);
         prompt_set_b_input.name = "Other".to_string();
         let prompt_set_b = save_eval_prompt_set(&mut conn, prompt_set_b_input).unwrap();
 
@@ -2724,7 +2690,7 @@ mod tests {
                 plugin_slug: prompt_set_a.plugin_slug.clone(),
                 skill_name: prompt_set_a.skill_name.clone(),
                 scenario_name: prompt_set_a.name.clone(),
-                mode: EvalWorkbenchMode::Trigger,
+                mode: EvalWorkbenchMode::Performance,
                 status: "draft".to_string(),
                 summary: serde_json::json!({}),
                 completed_at: None,
@@ -2758,7 +2724,8 @@ mod tests {
     fn allows_description_candidate_for_matching_prompt_set() {
         let mut conn = create_test_db_for_tests();
         let prompt_set =
-            save_eval_prompt_set(&mut conn, valid_prompt_set(EvalWorkbenchMode::Trigger)).unwrap();
+            save_eval_prompt_set(&mut conn, valid_prompt_set(EvalWorkbenchMode::Performance))
+                .unwrap();
         record_eval_run(
             &mut conn,
             NewEvalRun {
@@ -2767,7 +2734,7 @@ mod tests {
                 plugin_slug: prompt_set.plugin_slug.clone(),
                 skill_name: prompt_set.skill_name.clone(),
                 scenario_name: prompt_set.name.clone(),
-                mode: EvalWorkbenchMode::Trigger,
+                mode: EvalWorkbenchMode::Performance,
                 status: "draft".to_string(),
                 summary: serde_json::json!({}),
                 completed_at: None,
@@ -2807,7 +2774,7 @@ mod tests {
                 plugin_slug: "skills".to_string(),
                 skill_name: "forecast".to_string(),
                 scenario_name: "Routing checks".to_string(),
-                mode: EvalWorkbenchMode::Trigger,
+                mode: EvalWorkbenchMode::Performance,
                 status: "draft".to_string(),
                 summary: serde_json::json!({}),
                 completed_at: None,
@@ -2829,7 +2796,7 @@ mod tests {
             "skills",
             "forecast",
             Some("Routing checks"),
-            Some(EvalWorkbenchMode::Trigger),
+            Some(EvalWorkbenchMode::Performance),
         )
         .unwrap();
 
@@ -2848,7 +2815,7 @@ mod tests {
                 plugin_slug: "skills".to_string(),
                 skill_name: "forecast".to_string(),
                 scenario_name: "DB scenario".to_string(),
-                mode: EvalWorkbenchMode::Trigger,
+                mode: EvalWorkbenchMode::Performance,
                 status: "completed".to_string(),
                 summary: serde_json::json!({ "passed": 0, "failed": 1, "total": 1 }),
                 completed_at: Some("2026-05-04T00:00:00Z".to_string()),
@@ -2902,7 +2869,7 @@ mod tests {
                 plugin_slug: "skills".to_string(),
                 skill_name: "forecast".to_string(),
                 scenario_name: "DB only".to_string(),
-                mode: EvalWorkbenchMode::Trigger,
+                mode: EvalWorkbenchMode::Performance,
                 status: "completed".to_string(),
                 summary: serde_json::json!({ "passed": 0, "failed": 1, "total": 1 }),
                 completed_at: Some("2026-05-04T00:00:00Z".to_string()),
@@ -2917,7 +2884,7 @@ mod tests {
             "/tmp/promptfoo",
             "skills",
             "forecast",
-            EvalWorkbenchMode::Trigger,
+            EvalWorkbenchMode::Performance,
             20,
             |_request| async { Ok(vec![sample_persisted_run("run-1")]) },
         )
@@ -2940,7 +2907,7 @@ mod tests {
                 plugin_slug: "skills".to_string(),
                 skill_name: "forecast".to_string(),
                 scenario_name: "Completed scenario".to_string(),
-                mode: EvalWorkbenchMode::Trigger,
+                mode: EvalWorkbenchMode::Performance,
                 status: "completed".to_string(),
                 summary: serde_json::json!({ "passed": 0, "failed": 1, "total": 1 }),
                 completed_at: Some("2026-05-04T00:00:00Z".to_string()),
@@ -2979,7 +2946,7 @@ mod tests {
                 plugin_slug: "skills".to_string(),
                 skill_name: "forecast".to_string(),
                 scenario_name: "Draft scenario".to_string(),
-                mode: EvalWorkbenchMode::Trigger,
+                mode: EvalWorkbenchMode::Performance,
                 status: "draft".to_string(),
                 summary: serde_json::json!({}),
                 completed_at: None,
@@ -3013,10 +2980,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
         std::fs::create_dir_all(&eval_dir).unwrap();
+        let skill_dir = tmp.path().join("skills/skills/forecast");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "Use when the user needs forecast guidance.",
+        )
+        .unwrap();
         let scenario_path = eval_dir.join("promptfoo-scenario.yaml");
         write_scenario_file(
             &scenario_path,
-            &scenario_from_dto(sample_trigger_scenario_dto("Promptfoo scenario")).unwrap(),
+            &scenario_from_dto(sample_scenario_dto("Promptfoo scenario")).unwrap(),
         )
         .unwrap();
         std::fs::remove_file(&scenario_path).unwrap();
@@ -3033,7 +3007,8 @@ mod tests {
         assert_eq!(run.id, "run-1");
         assert_eq!(run.scenario_name, "Promptfoo scenario");
         assert_eq!(prompt_set.name, "Promptfoo scenario");
-        assert!(skill_files.is_empty());
+        assert_eq!(skill_files.len(), 1);
+        assert_eq!(skill_files[0].path, "SKILL.md");
     }
 
     #[test]
@@ -3076,9 +3051,11 @@ mod tests {
         assert_eq!(response.tags, dto.tags);
         assert_eq!(response.id, "case-1");
         assert_eq!(response.prompt, "Forecast next quarter revenue");
-        assert_eq!(response.should_trigger, None);
         assert_eq!(response.expectations.len(), 1);
-        assert_eq!(response.expectations[0], "Explains the forecast assumptions.");
+        assert_eq!(
+            response.expectations[0],
+            "Explains the forecast assumptions."
+        );
     }
 
     #[test]
@@ -3094,6 +3071,22 @@ mod tests {
         .unwrap();
 
         assert!(response.is_none());
+    }
+
+    #[test]
+    fn create_scenario_rejects_non_performance_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = create_scenario_db(tmp.path());
+
+        let err = create_scenario(
+            "skills".into(),
+            "forecast".into(),
+            EvalWorkbenchMode::Trigger,
+            db_state(&db),
+        )
+        .unwrap_err();
+
+        assert_eq!(err, "Eval Workbench only supports performance mode");
     }
 
     #[test]
@@ -3341,7 +3334,9 @@ mod tests {
         assert!(!original_path.exists());
         let renamed_path = scenarios::scenario_file_path(&eval_dir, &suggested.name);
         assert!(renamed_path.exists());
-        assert!(scenarios::load_scenario(&eval_dir, "Scenario 1").unwrap().is_none());
+        assert!(scenarios::load_scenario(&eval_dir, "Scenario 1")
+            .unwrap()
+            .is_none());
         assert_eq!(
             scenarios::load_scenario(&eval_dir, "Pipeline coverage by deal type")
                 .unwrap()
@@ -3352,17 +3347,17 @@ mod tests {
     }
 
     #[test]
-    fn load_scenario_runtime_allows_file_only_trigger_candidate_generation() {
+    fn load_scenario_runtime_rejects_non_performance_mode() {
         let tmp = tempfile::tempdir().unwrap();
         let db = create_scenario_db(tmp.path());
-        let dto = sample_trigger_scenario_dto("Routing checks");
+        let dto = sample_scenario_dto("Routing checks");
         let scenario = scenario_from_dto(dto).unwrap();
         let eval_dir = resolve_eval_dir(tmp.path(), "skills", "forecast");
         let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
         scenarios::write_scenario_file(&path, &scenario).unwrap();
         let mut conn = db.0.lock().unwrap();
 
-        let prompt_set = load_scenario_runtime(
+        let err = load_scenario_runtime(
             &mut conn,
             tmp.path(),
             "skills",
@@ -3370,23 +3365,9 @@ mod tests {
             "Routing checks",
             EvalWorkbenchMode::Trigger,
         )
-        .unwrap();
+        .unwrap_err();
 
-        assert_eq!(prompt_set.name, "Routing checks");
-        assert_eq!(prompt_set.mode, EvalWorkbenchMode::Trigger);
-        assert_eq!(prompt_set.cases.len(), 1);
-        assert_eq!(prompt_set.cases[0].should_trigger, Some(true));
-        assert!(db_read_eval_prompt_set(
-            &conn,
-            &scenario_runtime_id(
-                "skills",
-                "forecast",
-                "Routing checks",
-                EvalWorkbenchMode::Trigger,
-            ),
-        )
-        .unwrap()
-        .is_none());
+        assert_eq!(err, "Eval Workbench only supports performance mode");
     }
 
     #[test]

@@ -77,8 +77,12 @@ enum SavedConversationStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OpenHandsConversationResolution {
-    Reuse { conversation_id: String },
-    Create { reason: OpenHandsSessionCreateReason },
+    Reuse {
+        conversation_id: String,
+    },
+    Create {
+        reason: OpenHandsSessionCreateReason,
+    },
     Error(OpenHandsRuntimeError),
 }
 
@@ -253,7 +257,9 @@ fn maybe_record_subagent_launch(
         .or_else(|| raw.get("toolCallId"))
         .or_else(|| raw.pointer("/tool_call/id"))
         .and_then(|value| value.as_str());
-    let prompt = raw.pointer("/action/prompt").and_then(|value| value.as_str());
+    let prompt = raw
+        .pointer("/action/prompt")
+        .and_then(|value| value.as_str());
     let started_at_ms = raw
         .get("timestamp")
         .and_then(|value| value.as_str())
@@ -316,8 +322,9 @@ fn list_persisted_subagent_conversations(
         for event_path in event_paths {
             let raw = fs::read_to_string(&event_path)
                 .map_err(|e| format!("Failed to read child event {}: {e}", event_path.display()))?;
-            let parsed: serde_json::Value = serde_json::from_str(&raw)
-                .map_err(|e| format!("Failed to parse child event {}: {e}", event_path.display()))?;
+            let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
+                format!("Failed to parse child event {}: {e}", event_path.display())
+            })?;
             let dedupe_key = parsed
                 .get("id")
                 .and_then(|value| value.as_str())
@@ -375,7 +382,9 @@ fn extract_user_message_text(raw: &serde_json::Value) -> Option<String> {
         .or_else(|| raw.get("eventClass"))
         .or_else(|| raw.get("type"))
         .and_then(|value| value.as_str());
-    if kind != Some("MessageEvent") || raw.get("source").and_then(|value| value.as_str()) != Some("user") {
+    if kind != Some("MessageEvent")
+        || raw.get("source").and_then(|value| value.as_str()) != Some("user")
+    {
         return None;
     }
     raw.pointer("/llm_message/content")
@@ -474,7 +483,8 @@ fn collect_live_child_subagent_events(
                     serde_json::Value::String(parent_tool_call_id.clone()),
                 );
             }
-            let normalized = normalize_server_event(agent_id, &child.conversation_id, &linked_child);
+            let normalized =
+                normalize_server_event(agent_id, &child.conversation_id, &linked_child);
             if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
             {
                 log::info!(
@@ -494,12 +504,28 @@ fn collect_live_child_subagent_events(
     Ok(emitted)
 }
 
+pub(crate) fn load_linked_persisted_subagent_conversation_events(
+    workspace_path: &str,
+    conversation_id: &str,
+    parent_events: &[serde_json::Value],
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut launches = HashMap::new();
+    for raw in parent_events {
+        maybe_record_subagent_launch(raw, &mut launches);
+    }
+
+    let root = persisted_subagents_root(workspace_path, conversation_id);
+    let mut state = LiveSubagentStreamState::default();
+    collect_live_child_subagent_events(&root, "restore", &launches, &mut state)
+}
+
 async fn stream_live_child_subagent_events(
     task: &OpenHandsConversationTask,
     launches: Arc<Mutex<HashMap<String, PendingSubagentLaunch>>>,
     stop: Arc<AtomicBool>,
 ) {
-    let root = persisted_subagents_root(&task.summary_context.workspace_path, &task.conversation_id);
+    let root =
+        persisted_subagents_root(&task.summary_context.workspace_path, &task.conversation_id);
     let mut state = LiveSubagentStreamState::default();
 
     loop {
@@ -515,8 +541,12 @@ async fn stream_live_child_subagent_events(
             }
         };
 
-        match collect_live_child_subagent_events(&root, &task.agent_id, &launches_snapshot, &mut state)
-        {
+        match collect_live_child_subagent_events(
+            &root,
+            &task.agent_id,
+            &launches_snapshot,
+            &mut state,
+        ) {
             Ok(events) => {
                 for event in events {
                     super::events::handle_sidecar_message(
@@ -578,40 +608,48 @@ fn resolve_saved_conversation_outcome(
     saved_status: Option<SavedConversationStatus>,
 ) -> OpenHandsConversationResolution {
     match (saved_conversation_id, selection, saved_status) {
-        (Some(existing), OpenHandsConversationSelection::SendExistingOnly, Some(SavedConversationStatus::Compatible)) => {
-            OpenHandsConversationResolution::Reuse {
-                conversation_id: existing.to_string(),
-            }
-        }
-        (Some(existing), OpenHandsConversationSelection::SendExistingOnly, Some(SavedConversationStatus::Missing)) => {
-            OpenHandsConversationResolution::Error(
-                OpenHandsRuntimeError::ConversationNotFound {
-                    id: existing.to_string(),
-                },
-            )
-        }
-        (Some(existing), OpenHandsConversationSelection::SendExistingOnly, Some(SavedConversationStatus::Incompatible)) => {
-            OpenHandsConversationResolution::Error(
-                OpenHandsRuntimeError::ConversationMismatch {
-                    id: existing.to_string(),
-                },
-            )
-        }
-        (Some(existing), OpenHandsConversationSelection::ResumeOrCreate, Some(SavedConversationStatus::Compatible)) => {
-            OpenHandsConversationResolution::Reuse {
-                conversation_id: existing.to_string(),
-            }
-        }
-        (Some(_), OpenHandsConversationSelection::ResumeOrCreate, Some(SavedConversationStatus::Missing)) => {
-            OpenHandsConversationResolution::Create {
-                reason: OpenHandsSessionCreateReason::NotFound,
-            }
-        }
-        (Some(_), OpenHandsConversationSelection::ResumeOrCreate, Some(SavedConversationStatus::Incompatible)) => {
-            OpenHandsConversationResolution::Create {
-                reason: OpenHandsSessionCreateReason::Mismatch,
-            }
-        }
+        (
+            Some(existing),
+            OpenHandsConversationSelection::SendExistingOnly,
+            Some(SavedConversationStatus::Compatible),
+        ) => OpenHandsConversationResolution::Reuse {
+            conversation_id: existing.to_string(),
+        },
+        (
+            Some(existing),
+            OpenHandsConversationSelection::SendExistingOnly,
+            Some(SavedConversationStatus::Missing),
+        ) => OpenHandsConversationResolution::Error(OpenHandsRuntimeError::ConversationNotFound {
+            id: existing.to_string(),
+        }),
+        (
+            Some(existing),
+            OpenHandsConversationSelection::SendExistingOnly,
+            Some(SavedConversationStatus::Incompatible),
+        ) => OpenHandsConversationResolution::Error(OpenHandsRuntimeError::ConversationMismatch {
+            id: existing.to_string(),
+        }),
+        (
+            Some(existing),
+            OpenHandsConversationSelection::ResumeOrCreate,
+            Some(SavedConversationStatus::Compatible),
+        ) => OpenHandsConversationResolution::Reuse {
+            conversation_id: existing.to_string(),
+        },
+        (
+            Some(_),
+            OpenHandsConversationSelection::ResumeOrCreate,
+            Some(SavedConversationStatus::Missing),
+        ) => OpenHandsConversationResolution::Create {
+            reason: OpenHandsSessionCreateReason::NotFound,
+        },
+        (
+            Some(_),
+            OpenHandsConversationSelection::ResumeOrCreate,
+            Some(SavedConversationStatus::Incompatible),
+        ) => OpenHandsConversationResolution::Create {
+            reason: OpenHandsSessionCreateReason::Mismatch,
+        },
         (None, OpenHandsConversationSelection::ResumeOrCreate, None) => {
             OpenHandsConversationResolution::Create {
                 reason: OpenHandsSessionCreateReason::New,
@@ -697,16 +735,13 @@ async fn resolve_openhands_conversation_id(
 ) -> Result<String, String> {
     let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
-        server
-            .base_url()
-            .parse::<reqwest::Url>()
-            .map_err(|e| {
-                OpenHandsRuntimeError::Operation {
-                    operation: "parse OpenHands Agent Server base URL",
-                    detail: e.to_string(),
-                }
-                .to_string()
-            })?,
+        server.base_url().parse::<reqwest::Url>().map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "parse OpenHands Agent Server base URL",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?,
         Some(server.session_api_key),
     );
 
@@ -717,16 +752,13 @@ async fn resolve_openhands_conversation_id(
     };
 
     let saved_status = if let Some(existing) = saved_conversation_id.as_deref() {
-        match client
-            .get_conversation(existing)
-            .await
-            .map_err(|e| {
-                OpenHandsRuntimeError::Operation {
-                    operation: "load OpenHands conversation",
-                    detail: e.to_string(),
-                }
-                .to_string()
-            })? {
+        match client.get_conversation(existing).await.map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "load OpenHands conversation",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })? {
             Some(conversation) if conversation_matches_request(&conversation, request) => {
                 Some(SavedConversationStatus::Compatible)
             }
@@ -737,8 +769,11 @@ async fn resolve_openhands_conversation_id(
         None
     };
 
-    let resolution =
-        resolve_saved_conversation_outcome(saved_conversation_id.as_deref(), selection, saved_status);
+    let resolution = resolve_saved_conversation_outcome(
+        saved_conversation_id.as_deref(),
+        selection,
+        saved_status,
+    );
     log_session_resolution(request, selection, &resolution);
 
     match resolution {
@@ -859,10 +894,10 @@ pub async fn run_throwaway_openhands_session(
     )
     .await
     .inspect_err(|_| {
-            app.unlisten(message_listener);
-            app.unlisten(exit_listener);
-            app.unlisten(shutdown_listener);
-        })?;
+        app.unlisten(message_listener);
+        app.unlisten(exit_listener);
+        app.unlisten(shutdown_listener);
+    })?;
 
     let mut terminal_state: Option<Result<serde_json::Value, String>> = None;
     let mut lifecycle_result: Option<Result<(), String>> = None;
@@ -1256,7 +1291,8 @@ async fn recover_terminal_state_after_socket_failure(
     build_socket_closed_state(
         &task.agent_id,
         &task.conversation_id,
-        socket_error.unwrap_or("OpenHands Agent Server socket closed before terminal conversation_state"),
+        socket_error
+            .unwrap_or("OpenHands Agent Server socket closed before terminal conversation_state"),
     )
 }
 
@@ -1566,10 +1602,7 @@ fn task_registry() -> &'static OpenHandsTaskRegistry {
     REGISTRY.get_or_init(OpenHandsTaskRegistry::new)
 }
 
-fn register_cancel(
-    agent_id: &str,
-    cancel: tokio::sync::oneshot::Sender<()>,
-) -> Result<(), String> {
+fn register_cancel(agent_id: &str, cancel: tokio::sync::oneshot::Sender<()>) -> Result<(), String> {
     if let Some((_, previous)) = cancel_registry().remove(agent_id) {
         let _ = previous.send(());
     }
@@ -1910,8 +1943,14 @@ mod tests {
         assert_eq!(session_request.prompt, "");
         assert_eq!(session_request.allowed_tools, request.allowed_tools);
         assert_eq!(session_request.max_turns, request.max_turns);
-        assert_eq!(session_request.workspace_root_dir, request.workspace_root_dir);
-        assert_eq!(session_request.workspace_skill_dir, request.workspace_skill_dir);
+        assert_eq!(
+            session_request.workspace_root_dir,
+            request.workspace_root_dir
+        );
+        assert_eq!(
+            session_request.workspace_skill_dir,
+            request.workspace_skill_dir
+        );
         assert_eq!(session_request.plugin_slug, request.plugin_slug);
         assert_eq!(session_request.skill_name, request.skill_name);
         assert_eq!(session_request.task_kind, request.task_kind);
@@ -2072,8 +2111,8 @@ mod tests {
         })
         .to_string();
 
-        let result = parse_openhands_runtime_terminal_state(&payload, "agent-1")
-            .expect("terminal state");
+        let result =
+            parse_openhands_runtime_terminal_state(&payload, "agent-1").expect("terminal state");
 
         assert_eq!(result, Err("OpenHands runtime run failed".to_string()));
     }
@@ -2086,8 +2125,7 @@ mod tests {
         })
         .to_string();
 
-        let result = parse_openhands_lifecycle_state(&payload, "agent-1")
-            .expect("lifecycle state");
+        let result = parse_openhands_lifecycle_state(&payload, "agent-1").expect("lifecycle state");
 
         assert_eq!(result, Err("OpenHands runtime run failed".to_string()));
     }
@@ -2145,13 +2183,14 @@ mod tests {
         )]);
         let mut state = LiveSubagentStreamState::default();
 
-        let emitted =
-            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
-                .expect("collect child events");
+        let emitted = collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+            .expect("collect child events");
 
         assert_eq!(emitted.len(), 2);
         assert!(emitted.iter().all(|event| {
-            event.get("parent_tool_call_id").and_then(|value| value.as_str())
+            event
+                .get("parent_tool_call_id")
+                .and_then(|value| value.as_str())
                 == Some("parent-task-1")
         }));
     }
@@ -2192,14 +2231,12 @@ mod tests {
         )]);
         let mut state = LiveSubagentStreamState::default();
 
-        let first =
-            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
-                .expect("first collect");
+        let first = collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+            .expect("first collect");
         assert_eq!(first.len(), 1);
 
-        let second =
-            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
-                .expect("second collect");
+        let second = collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+            .expect("second collect");
         assert!(second.is_empty());
 
         fs::write(
@@ -2217,9 +2254,8 @@ mod tests {
         )
         .expect("write child observation");
 
-        let third =
-            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
-                .expect("third collect");
+        let third = collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+            .expect("third collect");
         assert_eq!(third.len(), 1);
         assert_eq!(third[0]["tool_call_id"], "child-tool-1");
         assert_eq!(third[0]["parent_tool_call_id"], "parent-task-1");
@@ -2235,16 +2271,8 @@ mod tests {
         );
 
         for (child, timestamp, tool_call) in [
-            (
-                "child-old",
-                "2026-05-06T23:39:00.000000Z",
-                "child-tool-old",
-            ),
-            (
-                "child-new",
-                "2026-05-06T23:40:10.000000Z",
-                "child-tool-new",
-            ),
+            ("child-old", "2026-05-06T23:39:00.000000Z", "child-tool-old"),
+            ("child-new", "2026-05-06T23:40:10.000000Z", "child-tool-new"),
         ] {
             let child_events_dir = root.join(child).join("events");
             fs::create_dir_all(&child_events_dir).expect("child events dir");
@@ -2291,13 +2319,16 @@ mod tests {
         )]);
         let mut state = LiveSubagentStreamState::default();
 
-        let emitted =
-            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
-                .expect("collect child events");
+        let emitted = collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+            .expect("collect child events");
 
         assert_eq!(emitted.len(), 2);
-        assert!(emitted.iter().all(|event| event["tool_call_id"] != "child-tool-old"));
-        assert!(emitted.iter().any(|event| event["tool_call_id"] == "child-tool-new"));
+        assert!(emitted
+            .iter()
+            .all(|event| event["tool_call_id"] != "child-tool-old"));
+        assert!(emitted
+            .iter()
+            .any(|event| event["tool_call_id"] == "child-tool-new"));
     }
 
     #[test]
@@ -2364,13 +2395,85 @@ mod tests {
         )]);
         let mut state = LiveSubagentStreamState::default();
 
-        let emitted =
-            collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
-                .expect("collect child events");
+        let emitted = collect_live_child_subagent_events(&root, "agent-1", &launches, &mut state)
+            .expect("collect child events");
 
         assert_eq!(emitted.len(), 3);
         assert!(emitted.iter().all(|event| {
-            event.get("parent_tool_call_id").and_then(|value| value.as_str())
+            event
+                .get("parent_tool_call_id")
+                .and_then(|value| value.as_str())
+                == Some("parent-task-1")
+        }));
+    }
+
+    #[test]
+    fn restore_subagent_scan_returns_linked_child_events() {
+        let dir = tempdir().expect("tempdir");
+        let workspace_path = dir.path().to_str().expect("workspace root path");
+        let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
+        let root = persisted_subagents_root(workspace_path, conversation_id);
+        let child_events_dir = root.join("child-1").join("events");
+        fs::create_dir_all(&child_events_dir).expect("child events dir");
+
+        fs::write(
+            child_events_dir.join("event-00001.json"),
+            serde_json::json!({
+                "id": "child-msg-1",
+                "kind": "MessageEvent",
+                "source": "user",
+                "timestamp": "2026-05-07T15:06:51.330719",
+                "llm_message": {
+                    "content": [{"text": "Search through the conversations to find Q3"}]
+                }
+            })
+            .to_string(),
+        )
+        .expect("write child user message");
+        fs::write(
+            child_events_dir.join("event-00002.json"),
+            serde_json::json!({
+                "id": "child-action-1",
+                "kind": "ActionEvent",
+                "source": "agent",
+                "timestamp": "2026-05-07T15:06:52.000000",
+                "tool_name": "terminal",
+                "tool_call_id": "child-tool-1",
+                "action": {
+                    "tool_call_id": "child-tool-1",
+                    "command": "rg Q3 conversations"
+                }
+            })
+            .to_string(),
+        )
+        .expect("write child action");
+
+        let parent_events = vec![serde_json::json!({
+            "id": "parent-action-1",
+            "kind": "ActionEvent",
+            "source": "agent",
+            "timestamp": "2026-05-07T15:06:50.604092",
+            "tool_name": "task",
+            "tool_call_id": "parent-task-1",
+            "action": {
+                "prompt": "Search through the conversations to find Q3"
+            }
+        })];
+
+        let restored = load_linked_persisted_subagent_conversation_events(
+            workspace_path,
+            conversation_id,
+            &parent_events,
+        )
+        .expect("load linked child events");
+
+        assert_eq!(restored.len(), 2);
+        assert_eq!(restored[0]["event_class"], "MessageEvent");
+        assert_eq!(restored[1]["event_class"], "ActionEvent");
+        assert!(restored.iter().all(|event| {
+            event
+                .get("parent_tool_call_id")
+                .and_then(|value| value.as_str())
                 == Some("parent-task-1")
         }));
     }
@@ -2493,11 +2596,9 @@ mod tests {
 
         assert_eq!(
             outcome,
-            OpenHandsConversationResolution::Error(
-                OpenHandsRuntimeError::ConversationMismatch {
-                    id: "conversation-1".to_string()
-                }
-            )
+            OpenHandsConversationResolution::Error(OpenHandsRuntimeError::ConversationMismatch {
+                id: "conversation-1".to_string()
+            })
         );
     }
 

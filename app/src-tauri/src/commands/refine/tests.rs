@@ -226,7 +226,7 @@ fn test_session_create_and_lookup() {
                 usage_session_id: "usage-session-1".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
-                has_dispatched_turn: false,
+                dispatched_user_turn_count: 0,
                 head_sha_at_start: None,
             },
         );
@@ -252,7 +252,7 @@ fn test_session_conflict_detection() {
                 usage_session_id: "usage-session-1".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
-                has_dispatched_turn: false,
+                dispatched_user_turn_count: 0,
                 head_sha_at_start: None,
             },
         );
@@ -387,11 +387,11 @@ fn test_extract_restored_conversation_events_preserves_tool_activity_and_dispatc
     assert_eq!(restored[2].event_class, "ActionEvent");
     assert_eq!(restored[2].tool_call_id.as_deref(), Some("tool-1"));
     assert_eq!(restored[3].tool_call_id.as_deref(), Some("tool-1"));
-    assert!(restored_conversation_has_dispatched_turn(&restored));
+    assert_eq!(restored_conversation_user_turn_count(&restored), 1);
 
     let prepared_only = extract_restored_conversation_events(&events[..1]);
     assert!(
-        !restored_conversation_has_dispatched_turn(&prepared_only),
+        restored_conversation_user_turn_count(&prepared_only) == 0,
         "prepared sessions with only setup events must not be treated as already dispatched"
     );
 }
@@ -446,14 +446,14 @@ fn test_prepared_refine_session_starts_without_dispatch_history() {
         usage_session_id: "usage-1".to_string(),
         conversation_id: Some("conv-123".to_string()),
         current_agent_id: None,
-        has_dispatched_turn: false,
+        dispatched_user_turn_count: 0,
         head_sha_at_start: None,
     };
 
     assert_eq!(session.conversation_id.as_deref(), Some("conv-123"));
     assert!(session.current_agent_id.is_none());
     assert!(
-        !session.has_dispatched_turn,
+        session.dispatched_user_turn_count == 0,
         "prepared refine sessions should keep the conversation id before the first dispatched turn"
     );
 }
@@ -709,7 +709,7 @@ fn test_close_session_removes_entry() {
                 usage_session_id: "usage-session-close".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
-                has_dispatched_turn: false,
+                dispatched_user_turn_count: 0,
                 head_sha_at_start: None,
             },
         );
@@ -864,11 +864,11 @@ fn test_prepared_refine_session_uses_initial_prompt_until_first_send_persists_st
         usage_session_id: "usage-1".to_string(),
         conversation_id: Some("conv-123".to_string()),
         current_agent_id: None,
-        has_dispatched_turn: false,
+        dispatched_user_turn_count: 0,
         head_sha_at_start: None,
     };
 
-    let first_prompt = if session.has_dispatched_turn {
+    let first_prompt = if session.dispatched_user_turn_count > 0 {
         build_followup_prompt_with_output_dir("Add SLA metrics", &skill_output_dir, None)
     } else {
         build_refine_prompt_with_output_dir(
@@ -887,9 +887,9 @@ fn test_prepared_refine_session_uses_initial_prompt_until_first_send_persists_st
 
     session.conversation_id = Some("conv-456".to_string());
     session.current_agent_id = Some("agent-456".to_string());
-    session.has_dispatched_turn = true;
+    session.dispatched_user_turn_count = 1;
 
-    let followup_prompt = if session.has_dispatched_turn {
+    let followup_prompt = if session.dispatched_user_turn_count > 0 {
         build_followup_prompt_with_output_dir("Tighten the overview", &skill_output_dir, None)
     } else {
         build_refine_prompt_with_output_dir(
@@ -904,7 +904,7 @@ fn test_prepared_refine_session_uses_initial_prompt_until_first_send_persists_st
 
     assert_eq!(session.conversation_id.as_deref(), Some("conv-456"));
     assert_eq!(session.current_agent_id.as_deref(), Some("agent-456"));
-    assert!(session.has_dispatched_turn);
+    assert_eq!(session.dispatched_user_turn_count, 1);
     assert_eq!(followup_prompt, "Tighten the overview");
 }
 
@@ -917,11 +917,11 @@ fn test_prepared_refine_session_routes_by_dispatch_flag_not_conversation_id() {
         usage_session_id: "usage-1".to_string(),
         conversation_id: Some("prepared-conversation".to_string()),
         current_agent_id: Some("prepared-agent".to_string()),
-        has_dispatched_turn: false,
+        dispatched_user_turn_count: 0,
         head_sha_at_start: None,
     };
 
-    let prompt = if session.has_dispatched_turn {
+    let prompt = if session.dispatched_user_turn_count > 0 {
         build_followup_prompt_with_output_dir("Tighten the overview", &skill_output_dir, None)
     } else {
         build_refine_prompt_with_output_dir(
@@ -1662,7 +1662,7 @@ fn test_refine_session_holds_conversation_and_agent_ids() {
         usage_session_id: "usage-1".to_string(),
         conversation_id: Some("conv-123".to_string()),
         current_agent_id: Some("agent-456".to_string()),
-        has_dispatched_turn: true,
+        dispatched_user_turn_count: 1,
         head_sha_at_start: None,
     };
     assert_eq!(session.conversation_id.as_deref(), Some("conv-123"));
