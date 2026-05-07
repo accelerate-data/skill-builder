@@ -50,6 +50,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (45, run_workflow_artifact_tables_migration),
     (46, run_eval_workbench_scenario_identity_migration),
     (47, run_skill_conversations_migration),
+    (48, run_scenarios_migration),
 ];
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -322,6 +323,74 @@ pub(super) fn run_skill_conversations_migration(conn: &Connection) -> Result<(),
 
         CREATE INDEX IF NOT EXISTS idx_skill_conversations_skill
             ON skill_conversations(skill_name, plugin_slug);",
+    )
+}
+
+pub(super) fn run_scenarios_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS scenarios (
+            id TEXT PRIMARY KEY,
+            plugin_slug TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            name TEXT NOT NULL,
+            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            prompt TEXT NOT NULL DEFAULT '',
+            should_trigger INTEGER,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS assertions (
+            id TEXT PRIMARY KEY,
+            scenario_id TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+            assertion TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scenarios_skill ON scenarios(plugin_slug, skill_name, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_assertions_scenario ON assertions(scenario_id, sort_order);
+
+        -- Migrate data from old tables
+        INSERT INTO scenarios (id, plugin_slug, skill_name, name, mode, prompt, should_trigger, sort_order, created_at, updated_at)
+        SELECT
+            ps.id,
+            ps.plugin_slug,
+            ps.skill_name,
+            ps.name,
+            ps.mode,
+            COALESCE(pc.prompt, ''),
+            pc.should_trigger,
+            pc.sort_order,
+            ps.created_at,
+            ps.updated_at
+        FROM eval_prompt_sets ps
+        JOIN eval_prompt_cases pc ON pc.prompt_set_id = ps.id;
+
+        INSERT INTO assertions (id, scenario_id, assertion, sort_order)
+        SELECT
+            'assert-' || lower(hex(randomblob(8))),
+            pc.prompt_set_id,
+            j.value,
+            j.key
+        FROM eval_prompt_cases pc,
+        json_each(pc.assertions_json) AS j
+        WHERE json_type(pc.assertions_json) = 'array';
+
+        -- Drop old tables
+        DROP TABLE IF EXISTS eval_run_results;
+        DROP TABLE IF EXISTS description_candidates;
+        DROP TABLE IF EXISTS eval_runs;
+        DROP TABLE IF EXISTS eval_prompt_cases;
+        DROP TABLE IF EXISTS eval_prompt_sets;
+
+        -- Drop old indexes
+        DROP INDEX IF EXISTS idx_eval_prompt_sets_skill_mode;
+        DROP INDEX IF EXISTS idx_eval_prompt_cases_set_order;
+        DROP INDEX IF EXISTS idx_eval_runs_skill_mode_created;
+        DROP INDEX IF EXISTS idx_eval_runs_scenario_mode_created;
+        DROP INDEX IF EXISTS idx_eval_run_results_run;
+        DROP INDEX IF EXISTS idx_description_candidates_run_rank;",
     )
 }
 
