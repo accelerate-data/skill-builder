@@ -218,7 +218,7 @@ pub async fn review_skill_scope(
         llm: runtime_context.llm,
     });
 
-    let run = openhands_server::run_openhands_one_shot(
+    let run = openhands_server::run_throwaway_openhands_session(
         &app,
         OpenHandsOneShotRunParams {
             agent_id_prefix: format!("{}-scope-review", skill_name),

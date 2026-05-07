@@ -255,10 +255,9 @@ Those documents split runtime architecture, scenario storage, and remediation in
 | File | Purpose |
 |---|---|
 | `app/src/lib/eval-workbench.ts` | Shared frontend Eval Workbench types and validation helpers; should expose prompt plus expectations and trigger state only. |
-| `app/src/components/workspace/workspace-evals.tsx` | Performance-mode editor and top-level generation/run controls. |
-| `app/src/components/workspace/workspace-description.tsx` | Trigger-mode editor and description candidate generation flow. |
-| `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx` | Shared scenario editor UI; currently renders nested case editing. |
-| `app/src/components/workspace/workspace-eval-workbench.tsx` | Shared scenario selection and tab wiring. |
+| `app/src/components/workspace/workspace-evals.tsx` | One-tab Eval Workbench shell with scenario-level suggestion and run controls. |
+| `app/src/components/workspace/eval-workbench/prompt-set-editor.tsx` | Shared one-scenario editor UI for prompt, expectations, and trigger state. |
+| `app/src/components/workspace/workspace-eval-workbench.tsx` | Shared scenario selection and tab wiring for the one-tab surface. |
 | `app/src-tauri/src/commands/eval_workbench/mod.rs` | Tauri command surface for scenario CRUD, context-envelope suggestion, expectation-to-rubric translation, and eval execution. |
 
 ## Open Questions

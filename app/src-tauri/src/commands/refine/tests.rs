@@ -226,6 +226,7 @@ fn test_session_create_and_lookup() {
                 usage_session_id: "usage-session-1".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
+                has_dispatched_turn: false,
                 head_sha_at_start: None,
             },
         );
@@ -251,6 +252,7 @@ fn test_session_conflict_detection() {
                 usage_session_id: "usage-session-1".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
+                has_dispatched_turn: false,
                 head_sha_at_start: None,
             },
         );
@@ -277,6 +279,24 @@ fn test_new_refine_usage_session_id_is_opaque_and_scoped_to_skill() {
 
     assert!(usage_session_id.starts_with("synthetic:refine:my-skill:"));
     assert_ne!(usage_session_id, new_refine_usage_session_id("my-skill"));
+}
+
+fn test_workflow_llm_config() -> crate::types::WorkflowLlmConfig {
+    crate::types::WorkflowLlmConfig {
+        model: "anthropic/claude-sonnet-4-5".to_string(),
+        api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+        base_url: None,
+        api_version: None,
+        temperature: None,
+        max_output_tokens: None,
+        timeout_seconds: None,
+        num_retries: None,
+        reasoning_effort: None,
+        extra_headers: None,
+        input_cost_per_token: None,
+        output_cost_per_token: None,
+        usage_id: None,
+    }
 }
 
 #[test]
@@ -323,58 +343,51 @@ fn test_extract_conversation_messages_keeps_user_and_agent_message_events_only()
 }
 
 #[test]
-fn test_select_saved_refine_conversation_keeps_compatible_history() {
-    let system_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
-    let conversation = serde_json::json!({
+fn test_saved_refine_conversation_matches_runtime_contract() {
+    let request = crate::agents::openhands_server::OpenHandsOneShotRequest {
+        prompt: String::new(),
+        llm: test_workflow_llm_config(),
+        workspace_root_dir: "/tmp/workspace".to_string(),
+        workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+        allowed_tools: vec![],
+        max_turns: 20,
+        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        system_message_suffix: Some(
+            crate::agents::sidecar::skill_creator_system_message_suffix(),
+        ),
+        task_kind: Some("refine".to_string()),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        skill_name: Some("my-skill".to_string()),
+        step_id: Some(-10),
+        run_source: Some("refine".to_string()),
+        workflow_session_id: None,
+        usage_session_id: None,
+    };
+    let compatible = serde_json::json!({
         "agent": {
             "agent_context": {
-                "system_message_suffix": system_suffix,
-                "user_message_suffix": SKILL_CREATOR_USER_SUFFIX.trim(),
+                "system_message_suffix": request.system_message_suffix,
+                "user_message_suffix": request.user_message_suffix,
             }
         }
     });
-    let restored_messages = vec![ConversationMessage {
-        role: "agent".to_string(),
-        content: "Updated the summary.".to_string(),
-    }];
-
-    let (conversation_id, messages) = select_saved_refine_conversation(
-        Some("conv-123".to_string()),
-        Some(&conversation),
-        restored_messages.clone(),
-        Some(system_suffix.as_str()),
-        Some(SKILL_CREATOR_USER_SUFFIX.trim()),
-    );
-
-    assert_eq!(conversation_id.as_deref(), Some("conv-123"));
-    assert_eq!(messages, restored_messages);
-}
-
-#[test]
-fn test_select_saved_refine_conversation_clears_readable_but_incompatible_history() {
-    let system_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
-    let conversation = serde_json::json!({
+    let incompatible = serde_json::json!({
         "agent": {
             "agent_context": {
-                "system_message_suffix": system_suffix,
+                "system_message_suffix": request.system_message_suffix,
                 "user_message_suffix": "use a different refine contract",
             }
         }
     });
 
-    let (conversation_id, messages) = select_saved_refine_conversation(
-        Some("conv-123".to_string()),
-        Some(&conversation),
-        vec![ConversationMessage {
-            role: "agent".to_string(),
-            content: "stale history".to_string(),
-        }],
-        Some(system_suffix.as_str()),
-        Some(SKILL_CREATOR_USER_SUFFIX.trim()),
-    );
-
-    assert!(conversation_id.is_none());
-    assert!(messages.is_empty());
+    assert!(crate::agents::openhands_server::conversation_matches_request(
+        &compatible,
+        &request,
+    ));
+    assert!(!crate::agents::openhands_server::conversation_matches_request(
+        &incompatible,
+        &request,
+    ));
 }
 
 #[test]
@@ -628,6 +641,7 @@ fn test_close_session_removes_entry() {
                 usage_session_id: "usage-session-close".to_string(),
                 conversation_id: None,
                 current_agent_id: None,
+                has_dispatched_turn: false,
                 head_sha_at_start: None,
             },
         );
@@ -1489,6 +1503,7 @@ fn test_refine_session_holds_conversation_and_agent_ids() {
         usage_session_id: "usage-1".to_string(),
         conversation_id: Some("conv-123".to_string()),
         current_agent_id: Some("agent-456".to_string()),
+        has_dispatched_turn: true,
         head_sha_at_start: None,
     };
     assert_eq!(session.conversation_id.as_deref(), Some("conv-123"));

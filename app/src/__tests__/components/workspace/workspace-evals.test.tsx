@@ -773,7 +773,7 @@ describe("WorkspaceEvals", () => {
     expect(screen.getByText("ready")).toBeInTheDocument();
   });
 
-  it("shows progress and cancels the active workbench run", async () => {
+  it("shows progress, cancels the active workbench run, and ignores stale progress after cancel", async () => {
     const user = userEvent.setup();
     const deferredRun = createDeferred(runSummary);
     mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
@@ -827,6 +827,20 @@ describe("WorkspaceEvals", () => {
     deferredRun.resolve(runSummary);
     await waitFor(() =>
       expect(screen.queryByText("Running case 1 of 3 (1/3)")).not.toBeInTheDocument(),
+    );
+
+    progressListener?.({
+      payload: {
+        runId,
+        phase: "performance",
+        completed: 2,
+        total: 3,
+        message: "Stale progress after cancel",
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText("Stale progress after cancel (2/3)")).not.toBeInTheDocument(),
     );
   });
 });

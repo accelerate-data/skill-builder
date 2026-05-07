@@ -235,32 +235,10 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
 
 async fn dispatch_persistent_skill_turn(
     app: &tauri::AppHandle,
-    db: &Db,
     agent_id: &str,
     config: SidecarConfig,
 ) -> Result<String, String> {
-    let request = crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
-        &config,
-    )?;
-    let conversation_id = match request.skill_name.as_deref() {
-        Some(skill_name) => {
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            crate::db::get_skill_conversation_id(&conn, &request.plugin_slug, skill_name)?
-        }
-        None => None,
-    };
-    if let Some(conversation_id) = conversation_id {
-        crate::agents::openhands_server::openhands_send_message(
-            app,
-            agent_id,
-            config,
-            conversation_id,
-        )
-        .await
-    } else {
-        crate::agents::openhands_server::start_openhands_session(app, agent_id, config, None)
-            .await
-    }
+    crate::agents::openhands_server::start_openhands_session(app, agent_id, config, None).await
 }
 
 const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -554,7 +532,7 @@ async fn run_workflow_step_inner(
         );
     }
 
-    let start_result = dispatch_persistent_skill_turn(app, db, &agent_id, config).await;
+    let start_result = dispatch_persistent_skill_turn(app, &agent_id, config).await;
 
     start_result.map_err(|e| {
         log::error!(
@@ -808,7 +786,7 @@ pub async fn run_answer_evaluator(
         );
     }
 
-    dispatch_persistent_skill_turn(&app, db.inner(), &agent_id, config)
+    dispatch_persistent_skill_turn(&app, &agent_id, config)
         .await
         .map_err(|e| {
             log::error!(

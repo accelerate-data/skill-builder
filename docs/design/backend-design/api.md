@@ -31,7 +31,6 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | `update_skill_tags` | Upsert tags for a skill |
 | `update_skill_metadata` | Update description, version, model, argument hint, flags |
 | `get_all_tags` | Sorted list of all tags across all skills |
-| `generate_suggestions` | AI-generated skill name and purpose suggestions |
 | `acquire_lock` | Lock a skill to this instance |
 | `release_lock` | Release a skill lock |
 | `get_externally_locked_skills` | Locks held by other app instances |

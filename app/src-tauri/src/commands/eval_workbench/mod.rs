@@ -2,8 +2,8 @@ pub mod scenarios;
 pub mod types;
 
 use crate::agents::openhands_server::{
-    cancel_openhands_one_shots_with_prefix, openhands_send_message, pause_openhands_session,
-    run_openhands_one_shot, start_openhands_session, OpenHandsOneShotRunParams,
+    cancel_openhands_one_shots_with_prefix, pause_openhands_session,
+    run_throwaway_openhands_session, start_openhands_session, OpenHandsOneShotRunParams,
 };
 use crate::agents::promptfoo_sidecar::process::{
     list_history as list_promptfoo_history, read_history as read_promptfoo_history,
@@ -1186,26 +1186,6 @@ fn format_eval_diagnosis_brief(run: &EvalRun, diagnosis: &Value) -> String {
     lines.join("\n")
 }
 
-#[allow(dead_code)]
-fn parse_generated_scenarios_response(
-    state: &serde_json::Value,
-) -> Result<Vec<ScenarioDto>, String> {
-    let parsed = parse_openhands_structured_output(state)?;
-    let scenarios = parsed
-        .get("scenarios")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "Scenario generation response missing scenarios array".to_string())?;
-    if !(3..=5).contains(&scenarios.len()) {
-        return Err("Scenario generation must return between 3 and 5 scenarios".to_string());
-    }
-
-    scenarios
-        .iter()
-        .cloned()
-        .map(|item| serde_json::from_value::<ScenarioDto>(item).map_err(|e| e.to_string()))
-        .collect()
-}
-
 fn parse_suggested_scenario_response(
     state: &serde_json::Value,
     existing_scenario: &scenarios::Scenario,
@@ -1270,7 +1250,7 @@ fn build_performance_sidecar_config(
         output_format: None,
         skill_name: None,
         step_id: Some(-12),
-        run_source: Some("test".to_string()),
+        run_source: Some("eval-workbench".to_string()),
         plugin_slug: prompt_set.plugin_slug.clone(),
     })
 }
@@ -1320,7 +1300,7 @@ fn build_trigger_sidecar_config(
         output_format: None,
         skill_name: None,
         step_id: Some(-12),
-        run_source: Some("test".to_string()),
+        run_source: Some("eval-workbench".to_string()),
         plugin_slug: prompt_set.plugin_slug.clone(),
     })
 }
@@ -1352,7 +1332,7 @@ fn build_eval_diagnosis_sidecar_config(
         output_format: Some(diagnosis_output_format()),
         skill_name: Some(prompt_set.skill_name.clone()),
         step_id: Some(-12),
-        run_source: Some("test".to_string()),
+        run_source: Some("eval-workbench".to_string()),
         plugin_slug: prompt_set.plugin_slug.clone(),
     })
 }
@@ -1377,24 +1357,12 @@ fn parse_terminal_conversation_state(
     }
 }
 
-fn should_retry_persistent_eval_turn(error: &str) -> bool {
-    error.contains("was not found and cannot be resumed")
-        || error.contains("does not match the current request")
-}
-
 async fn run_persistent_eval_turn(
     app: &tauri::AppHandle,
-    db: &Db,
-    plugin_slug: &str,
-    skill_name: &str,
     agent_id_prefix: &str,
     config: crate::agents::sidecar::SidecarConfig,
     timeout: std::time::Duration,
 ) -> Result<serde_json::Value, String> {
-    let saved_conversation_id = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_conversation_id(&conn, plugin_slug, skill_name)?
-    };
     let agent_id = format!("{agent_id_prefix}-{}", uuid::Uuid::new_v4());
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
     let listener_agent_id = agent_id.clone();
@@ -1406,33 +1374,9 @@ async fn run_persistent_eval_turn(
         }
     });
 
-    let dispatch_result = match saved_conversation_id {
-        Some(conversation_id) => match openhands_send_message(
-            app,
-            &agent_id,
-            config.clone(),
-            conversation_id,
-        )
+    let dispatch_result = start_openhands_session(app, &agent_id, config, None)
         .await
-        {
-            Ok(_) => Ok(()),
-            Err(error) if should_retry_persistent_eval_turn(&error) => {
-                log::info!(
-                    "[eval_workbench] resetting persistent conversation for skill={} plugin={} after resume failure: {}",
-                    skill_name,
-                    plugin_slug,
-                    error
-                );
-                start_openhands_session(app, &agent_id, config, None)
-                    .await
-                    .map(|_| ())
-            }
-            Err(error) => Err(error),
-        },
-        None => start_openhands_session(app, &agent_id, config, None)
-            .await
-            .map(|_| ()),
-    };
+        .map(|_| ());
 
     if let Err(error) = dispatch_result {
         app.unlisten(listener_id);
@@ -1774,7 +1718,7 @@ async fn execute_performance_cases(
             runtime_ctx,
             &runtime_run_dir,
         );
-        let run = run_openhands_one_shot(
+        let run = run_throwaway_openhands_session(
             app,
             OpenHandsOneShotRunParams {
                 agent_id_prefix: format!(
@@ -1852,7 +1796,7 @@ async fn execute_trigger_cases(
                     runtime_ctx,
                     &candidate_dir,
                 );
-                let run = run_openhands_one_shot(
+                let run = run_throwaway_openhands_session(
                     app,
                     OpenHandsOneShotRunParams {
                         agent_id_prefix: format!(
@@ -2038,9 +1982,6 @@ pub async fn define_eval_scenario(
     );
     let run = run_persistent_eval_turn(
         &app,
-        db.inner(),
-        &plugin_slug,
-        &skill_name,
         &format!("{skill_name}-scenario-suggest"),
         config,
         std::time::Duration::from_secs(90),
@@ -2325,9 +2266,6 @@ pub async fn build_refine_improvement_brief(
     let config = build_eval_diagnosis_sidecar_config(&prompt_set, &prompt, &runtime_ctx);
     let diagnosis_run = run_persistent_eval_turn(
         &app,
-        db.inner(),
-        &prompt_set.plugin_slug,
-        &prompt_set.skill_name,
         &format!("{}-diagnosis", prompt_set.skill_name),
         config,
         std::time::Duration::from_secs(90),
@@ -2599,17 +2537,6 @@ mod tests {
         );
         assert!(parse_terminal_conversation_state(&payload, "other-agent").is_none());
         assert!(parse_terminal_conversation_state(&non_terminal_payload, "agent-1").is_none());
-    }
-
-    #[test]
-    fn retryable_persistent_eval_errors_only_match_resume_reset_cases() {
-        assert!(should_retry_persistent_eval_turn(
-            "OpenHands conversation abc was not found and cannot be resumed"
-        ));
-        assert!(should_retry_persistent_eval_turn(
-            "OpenHands conversation abc does not match the current request"
-        ));
-        assert!(!should_retry_persistent_eval_turn("upstream network failed"));
     }
 
     fn mirrored_scenario_prompt_set_count(
@@ -2918,49 +2845,6 @@ mod tests {
         let error = resolve_run_scenario(&mut conn, tmp.path(), &run).unwrap_err();
 
         assert_eq!(error, "Scenario 'Legacy scenario' not found");
-    }
-
-    #[test]
-    fn rejects_generated_scenarios_outside_expected_bounds() {
-        let state = serde_json::json!({
-            "type": "conversation_state",
-            "status": "completed",
-            "structured_output": {
-                "scenarios": [
-                    sample_scenario_dto("Only one")
-                ]
-            }
-        });
-
-        let error = parse_generated_scenarios_response(&state).unwrap_err();
-
-        assert_eq!(
-            error,
-            "Scenario generation must return between 3 and 5 scenarios"
-        );
-    }
-
-    #[test]
-    fn parses_generated_scenarios_from_fenced_result_text() {
-        let state = serde_json::json!({
-            "type": "conversation_state",
-            "status": "completed",
-            "result_text": format!(
-                "```json\n{}\n```",
-                serde_json::json!({
-                    "scenarios": [
-                        sample_scenario_dto("Regression"),
-                        sample_scenario_dto("Smoke"),
-                        sample_scenario_dto("Edge case"),
-                    ]
-                })
-            )
-        });
-
-        let scenarios = parse_generated_scenarios_response(&state).unwrap();
-
-        assert_eq!(scenarios.len(), 3);
-        assert_eq!(scenarios[0].name, "Regression");
     }
 
     #[test]

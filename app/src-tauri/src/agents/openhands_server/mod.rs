@@ -59,18 +59,6 @@ fn save_skill_conversation_id(
     crate::db::save_skill_conversation_id(&conn, &request.plugin_slug, skill_name, conversation_id)
 }
 
-async fn create_conversation_for_request(
-    client: &OpenHandsServerClient,
-    request: &OpenHandsOneShotRequest,
-) -> Result<String, String> {
-    let start_request = StartConversationRequest::from_one_shot(request);
-    let conversation = client
-        .create_conversation(&start_request)
-        .await
-        .map_err(|e| format!("Failed to create OpenHands Agent Server conversation: {e}"))?;
-    extract_conversation_id(&conversation)
-}
-
 async fn send_user_message(
     client: &OpenHandsServerClient,
     conversation_id: &str,
@@ -91,7 +79,7 @@ async fn send_user_message(
         .map_err(|e| format!("Failed to send event to OpenHands conversation: {e}"))
 }
 
-fn conversation_matches_request(
+pub(crate) fn conversation_matches_request(
     conversation: &serde_json::Value,
     request: &OpenHandsOneShotRequest,
 ) -> bool {
@@ -525,22 +513,116 @@ fn record_subagent_launch(
     }
 }
 
-pub async fn dispatch_openhands_one_shot(
+fn session_init_request(request: &OpenHandsOneShotRequest) -> OpenHandsOneShotRequest {
+    let mut session_request = request.clone();
+    session_request.prompt.clear();
+    session_request
+}
+
+async fn create_prepared_conversation_for_request(
+    client: &OpenHandsServerClient,
+    request: &OpenHandsOneShotRequest,
+) -> Result<String, String> {
+    let session_request = session_init_request(request);
+    let conversation = client
+        .create_conversation(&StartConversationRequest::from_one_shot(&session_request))
+        .await
+        .map_err(|e| format!("Failed to create OpenHands Agent Server conversation: {e}"))?;
+    extract_conversation_id(&conversation)
+}
+
+async fn resolve_openhands_conversation_id(
     app: &tauri::AppHandle,
-    agent_id: &str,
+    request: &OpenHandsOneShotRequest,
+    conversation_id: Option<String>,
+    selection: OpenHandsConversationSelection,
+) -> Result<String, String> {
+    let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key),
+    );
+
+    let saved_conversation_id = if let Some(conversation_id) = conversation_id {
+        Some(conversation_id)
+    } else {
+        load_saved_skill_conversation_id(app, request)?
+    };
+
+    match (saved_conversation_id, selection) {
+        (Some(existing), OpenHandsConversationSelection::SendExistingOnly) => {
+            let conversation = client
+                .get_conversation(&existing)
+                .await
+                .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
+                .ok_or_else(|| {
+                    format!(
+                        "OpenHands conversation {} was not found and cannot be resumed",
+                        existing
+                    )
+                })?;
+            if !conversation_matches_request(&conversation, request) {
+                return Err(format!(
+                    "OpenHands conversation {} does not match the current request",
+                    existing
+                ));
+            }
+            Ok(existing)
+        }
+        (Some(existing), OpenHandsConversationSelection::ResumeOrCreate) => {
+            match client
+                .get_conversation(&existing)
+                .await
+                .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
+            {
+                Some(conversation) if conversation_matches_request(&conversation, request) => {
+                    Ok(existing)
+                }
+                Some(_) => {
+                    log::info!(
+                        "[openhands-agent-server] saved conversation {} under {} no longer matches the current request; creating a new conversation",
+                        existing,
+                        request.runtime_run_dir().display()
+                    );
+                    create_prepared_conversation_for_request(&client, request).await
+                }
+                None => {
+                    log::info!(
+                        "[openhands-agent-server] saved conversation {} was not found under {}; creating a new conversation",
+                        existing,
+                        request.runtime_run_dir().display()
+                    );
+                    create_prepared_conversation_for_request(&client, request).await
+                }
+            }
+        }
+        (None, OpenHandsConversationSelection::ResumeOrCreate) => {
+            create_prepared_conversation_for_request(&client, request).await
+        }
+        (None, OpenHandsConversationSelection::SendExistingOnly) => {
+            Err("OpenHands send-message requires an existing conversation id".to_string())
+        }
+    }
+}
+
+pub async fn prepare_openhands_session(
+    app: &tauri::AppHandle,
     config: SidecarConfig,
-) -> Result<(), String> {
+    conversation_id: Option<String>,
+) -> Result<String, String> {
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
-    dispatch_openhands_turn_with_request(
+    let conversation_id = resolve_openhands_conversation_id(
         app,
-        agent_id,
-        config,
-        request,
-        None,
+        &request,
+        conversation_id,
         OpenHandsConversationSelection::ResumeOrCreate,
     )
     .await?;
-    Ok(())
+    save_skill_conversation_id(app, &request, &conversation_id)?;
+    Ok(conversation_id)
 }
 
 pub async fn start_openhands_session(
@@ -550,21 +632,16 @@ pub async fn start_openhands_session(
     conversation_id: Option<String>,
 ) -> Result<String, String> {
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
-    let saved_conversation_id = if let Some(conversation_id) = conversation_id {
-        Some(conversation_id)
-    } else {
-        load_saved_skill_conversation_id(app, &request)?
-    };
-    let conversation_id = dispatch_openhands_turn_with_request(
+    let conversation_id = prepare_openhands_session(app, config.clone(), conversation_id).await?;
+    dispatch_openhands_turn_with_request(
         app,
         agent_id,
         config,
         request.clone(),
-        saved_conversation_id,
-        OpenHandsConversationSelection::ResumeOrCreate,
+        Some(conversation_id.clone()),
+        OpenHandsConversationSelection::SendExistingOnly,
     )
     .await?;
-    save_skill_conversation_id(app, &request, &conversation_id)?;
     Ok(conversation_id)
 }
 
@@ -598,13 +675,6 @@ pub fn pause_openhands_session(agent_id: &str) -> bool {
         .remove(agent_id)
         .map(|cancel| cancel.send(()).is_ok())
         .unwrap_or(false)
-}
-
-pub async fn run_openhands_one_shot(
-    app: &tauri::AppHandle,
-    params: OpenHandsOneShotRunParams,
-) -> Result<OpenHandsOneShotRun, String> {
-    run_throwaway_openhands_session(app, params).await
 }
 
 pub async fn run_throwaway_openhands_session(
@@ -642,9 +712,17 @@ pub async fn run_throwaway_openhands_session(
         }
     });
 
-    dispatch_openhands_one_shot(app, &agent_id, config)
-        .await
-        .inspect_err(|_| {
+    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+    dispatch_openhands_turn_with_request(
+        app,
+        &agent_id,
+        config,
+        request,
+        None,
+        OpenHandsConversationSelection::ResumeOrCreate,
+    )
+    .await
+    .inspect_err(|_| {
             app.unlisten(message_listener);
             app.unlisten(exit_listener);
             app.unlisten(shutdown_listener);
@@ -740,11 +818,9 @@ async fn dispatch_openhands_turn_with_request(
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
 ) -> Result<String, String> {
-    let server = ensure_agent_server(
-        Duration::from_secs(60),
-        request.runtime_run_dir(),
-    )
-    .await?;
+    let conversation_id =
+        resolve_openhands_conversation_id(app, &request, conversation_id, selection).await?;
+    let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
         server
             .base_url()
@@ -756,62 +832,9 @@ async fn dispatch_openhands_turn_with_request(
     let config_event = redact_openhands_config_for_log(&config, server.port);
     super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
 
-    let (conversation_id, backfill_existing_events) = match (conversation_id, selection) {
-        (Some(existing), OpenHandsConversationSelection::SendExistingOnly) => {
-            let conversation = client
-                .get_conversation(&existing)
-                .await
-                .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
-                .ok_or_else(|| {
-                    format!(
-                        "OpenHands conversation {} was not found and cannot be resumed",
-                        existing
-                    )
-                })?;
-            if !conversation_matches_request(&conversation, &request) {
-                return Err(format!(
-                    "OpenHands conversation {} does not match the current request",
-                    existing
-                ));
-            }
-            send_user_message(&client, &existing, &request.prompt).await?;
-            (existing, false)
-        }
-        (Some(existing), OpenHandsConversationSelection::ResumeOrCreate) => {
-            match client
-                .get_conversation(&existing)
-                .await
-                .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
-            {
-                Some(conversation) if conversation_matches_request(&conversation, &request) => {
-                    send_user_message(&client, &existing, &request.prompt).await?;
-                    (existing, false)
-                }
-                Some(_) => {
-                    log::info!(
-                        "[openhands-agent-server] saved conversation {} under {} no longer matches the current request; creating a new conversation",
-                        existing,
-                        request.runtime_run_dir().display()
-                    );
-                    (create_conversation_for_request(&client, &request).await?, true)
-                }
-                None => {
-                    log::info!(
-                        "[openhands-agent-server] saved conversation {} was not found under {}; creating a new conversation",
-                        existing,
-                        request.runtime_run_dir().display()
-                    );
-                    (create_conversation_for_request(&client, &request).await?, true)
-                }
-            }
-        }
-        (None, OpenHandsConversationSelection::ResumeOrCreate) => {
-            (create_conversation_for_request(&client, &request).await?, true)
-        }
-        (None, OpenHandsConversationSelection::SendExistingOnly) => {
-            return Err("OpenHands send-message requires an existing conversation id".to_string());
-        }
-    };
+    let backfill_existing_events = selection == OpenHandsConversationSelection::SendExistingOnly
+        && request.prompt.trim().is_empty();
+    send_user_message(&client, &conversation_id, &request.prompt).await?;
 
     let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
     let websocket_url = server.websocket_url(&conversation_id);

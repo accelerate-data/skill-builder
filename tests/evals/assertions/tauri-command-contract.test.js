@@ -177,6 +177,8 @@ test("published Eval Workbench command surface omits legacy and no-op commands",
     assert.ok(apiSource.includes(`| \`${command}\` |`));
   }
 
+  assert.equal(apiSource.includes("| `generate_suggestions` |"), false);
+
   for (const staleCommand of [
     "generate_scenarios",
     "run_optimization_loop",
@@ -189,6 +191,21 @@ test("published Eval Workbench command surface omits legacy and no-op commands",
   ]) {
     assert.equal(apiSource.includes(`| \`${staleCommand}\` |`), false);
   }
+});
+
+test("Eval Workbench design omits retired description-generation surfaces", () => {
+  const evalWorkbenchSource = read("docs/design/eval-workbench/README.md");
+
+  for (const staleReference of [
+    "workspace-description.tsx",
+    "suggest_description_candidates",
+    "apply_description_candidate",
+  ]) {
+    assert.equal(evalWorkbenchSource.includes(staleReference), false);
+  }
+
+  assert.match(evalWorkbenchSource, /One-tab Eval Workbench shell/);
+  assert.match(evalWorkbenchSource, /one-scenario editor UI/);
 });
 
 test("invokeUnsafe call expressions are rejected outside documented exceptions", () => {

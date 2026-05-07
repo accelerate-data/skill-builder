@@ -133,42 +133,6 @@ async fn load_saved_refine_conversation(
     Ok(Some((conversation, extract_conversation_messages(&events))))
 }
 
-fn refine_conversation_matches_request(
-    conversation: &serde_json::Value,
-    expected_system_suffix: Option<&str>,
-    expected_user_suffix: Option<&str>,
-) -> bool {
-    let persisted_system_suffix = conversation
-        .pointer("/agent/agent_context/system_message_suffix")
-        .and_then(|value| value.as_str());
-    let persisted_user_suffix = conversation
-        .pointer("/agent/agent_context/user_message_suffix")
-        .and_then(|value| value.as_str());
-    persisted_system_suffix == expected_system_suffix
-        && persisted_user_suffix == expected_user_suffix
-}
-
-fn select_saved_refine_conversation(
-    saved_conversation_id: Option<String>,
-    conversation: Option<&serde_json::Value>,
-    restored_messages: Vec<ConversationMessage>,
-    expected_system_suffix: Option<&str>,
-    expected_user_suffix: Option<&str>,
-) -> (Option<String>, Vec<ConversationMessage>) {
-    match (saved_conversation_id, conversation) {
-        (Some(conversation_id), Some(conversation))
-            if refine_conversation_matches_request(
-                conversation,
-                expected_system_suffix,
-                expected_user_suffix,
-            ) =>
-        {
-            (Some(conversation_id), restored_messages)
-        }
-        _ => (None, Vec::new()),
-    }
-}
-
 fn build_refine_openhands_config(
     skill_name: &str,
     plugin_slug: &str,
@@ -227,6 +191,10 @@ pub struct RefineSession {
     /// does not actively clear this field — the frontend tracks live turn
     /// status via the `agent-message` and `agent-exit` event stream.
     pub current_agent_id: Option<String>,
+    /// True once at least one real refine turn has been dispatched into this
+    /// prepared session. Blank prepared sessions need the full initial refine
+    /// prompt on first send; subsequent turns use the lighter follow-up prompt.
+    pub has_dispatched_turn: bool,
     /// HEAD SHA of the skills repo when the session started.
     /// Used by `finalize_refine_run` to detect whether the agent actually committed.
     pub head_sha_at_start: Option<String>,
@@ -250,14 +218,15 @@ impl RefineSessionManager {
 
 /// Initialize a refine session for a skill.
 ///
-/// This selects the persistent OpenHands conversation to reuse for the refine
-/// session and restores message history when possible. The actual refine turn
-/// is still dispatched per-message in `send_refine_message`.
+/// This selects or creates the persistent OpenHands conversation to reuse for
+/// the refine session and restores message history when possible. The actual
+/// refine turn is still dispatched per-message in `send_refine_message`.
 #[tauri::command]
 pub async fn start_refine_session(
+    app: tauri::AppHandle,
     skill_name: String,
     plugin_slug: String,
-    workspace_path: String,
+    _workspace_path: String,
     sessions: tauri::State<'_, RefineSessionManager>,
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
@@ -283,17 +252,31 @@ pub async fn start_refine_session(
         return Err(msg);
     }
 
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
+    crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
+    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &plugin_slug, &skill_name);
+
+    let session_config = build_refine_openhands_config(
+        &skill_name,
+        &plugin_slug,
+        "",
+        &runtime_ctx.workspace_path,
+        runtime_ctx.llm.clone(),
+    );
+    let session_request =
+        crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
+            &session_config,
+        )?;
+
     let mut saved_conversation_id = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
     };
-    let expected_system_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
-    let expected_user_suffix = SKILL_CREATOR_USER_SUFFIX.trim();
     let mut restored_messages = Vec::new();
     let mut clear_saved_conversation = false;
     if let Some(conversation_id) = saved_conversation_id.clone() {
         match load_saved_refine_conversation(
-            &workspace_path,
+            &runtime_ctx.workspace_path,
             &plugin_slug,
             &skill_name,
             &conversation_id,
@@ -301,15 +284,11 @@ pub async fn start_refine_session(
         .await
         {
             Ok(Some((conversation, messages))) => {
-                let (active_conversation_id, active_messages) = select_saved_refine_conversation(
-                    Some(conversation_id.clone()),
-                    Some(&conversation),
-                    messages,
-                    Some(expected_system_suffix.as_str()),
-                    Some(expected_user_suffix),
-                );
-                if active_conversation_id.is_some() {
-                    restored_messages = active_messages;
+                if crate::agents::openhands_server::conversation_matches_request(
+                    &conversation,
+                    &session_request,
+                ) {
+                    restored_messages = messages;
                 } else {
                     log::info!(
                         "[start_refine_session] saved conversation for skill={} plugin={} no longer matches the refine runtime contract; starting a fresh session",
@@ -344,6 +323,12 @@ pub async fn start_refine_session(
     if clear_saved_conversation {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::clear_skill_conversation_id(&conn, &plugin_slug, &skill_name)?;
+    }
+    if saved_conversation_id.is_none() {
+        saved_conversation_id = Some(
+            crate::agents::openhands_server::prepare_openhands_session(&app, session_config, None)
+                .await?,
+        );
     }
 
     let mut map = sessions.0.lock().map_err(|e| {
@@ -389,6 +374,7 @@ pub async fn start_refine_session(
             usage_session_id: new_refine_usage_session_id(&skill_name),
             conversation_id: saved_conversation_id,
             current_agent_id: None,
+            has_dispatched_turn: !restored_messages.is_empty(),
             head_sha_at_start,
         },
     );
@@ -406,9 +392,9 @@ pub async fn start_refine_session(
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// The session already carries the selected persistent conversation from
-/// `start_refine_session`. This command only dispatches the next message
-/// turn using that session state.
+/// The session already carries a prepared persistent conversation from
+/// `start_refine_session`. This command only dispatches the next message turn
+/// using that session state.
 ///
 /// Returns the `agent_id` so the frontend can listen for `agent-message` and
 /// `agent-exit` events scoped to this turn.
@@ -421,7 +407,7 @@ pub async fn send_refine_message(
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    let (skill_name, plugin_slug, conversation_id) = {
+    let (skill_name, plugin_slug, conversation_id, has_dispatched_turn) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(
                 "[send_refine_message] failed to acquire session lock: {}",
@@ -443,6 +429,7 @@ pub async fn send_refine_message(
             session.skill_name.clone(),
             session.plugin_slug.clone(),
             session.conversation_id.clone(),
+            session.has_dispatched_turn,
         )
     };
 
@@ -470,7 +457,10 @@ pub async fn send_refine_message(
     );
 
     let target_files_slice = target_files.as_deref();
-    let prompt = if conversation_id.is_some() {
+    let conversation_id =
+        conversation_id.ok_or_else(|| "Refine session is missing a prepared conversation".to_string())?;
+
+    let prompt = if has_dispatched_turn {
         build_followup_prompt_with_output_dir(&user_message, &skill_output_dir, target_files_slice)
     } else {
         build_refine_prompt_with_output_dir(
@@ -496,24 +486,20 @@ pub async fn send_refine_message(
         chrono::Utc::now().timestamp_millis()
     );
 
-    let returned_conversation_id = if let Some(existing_conversation_id) = conversation_id {
-        crate::agents::openhands_server::openhands_send_message(
-            &app,
-            &agent_id,
-            config,
-            existing_conversation_id,
-        )
-        .await?
-    } else {
-        crate::agents::openhands_server::start_openhands_session(&app, &agent_id, config, None)
-            .await?
-    };
+    let returned_conversation_id = crate::agents::openhands_server::openhands_send_message(
+        &app,
+        &agent_id,
+        config,
+        conversation_id,
+    )
+    .await?;
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
         if let Some(session) = map.get_mut(&session_id) {
             session.conversation_id = Some(returned_conversation_id);
             session.current_agent_id = Some(agent_id.clone());
+            session.has_dispatched_turn = true;
         }
     }
 
