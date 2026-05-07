@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::agents::openhands_server::client::OpenHandsServerClient;
 use crate::agents::openhands_server::process::ensure_agent_server;
-use crate::agents::sidecar::{build_openhands_one_shot_config, OpenHandsOneShotConfigParams};
+use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsOneShotConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
@@ -148,7 +148,7 @@ fn build_refine_openhands_config(
     .to_string_lossy()
     .replace('\\', "/");
 
-    build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+    build_openhands_runtime_config(OpenHandsOneShotConfigParams {
         prompt: prompt.to_string(),
         llm,
         workspace_root_dir: workspace_path.replace('\\', "/"),
@@ -579,7 +579,7 @@ pub async fn pause_refine_session(
     Ok(())
 }
 
-/// Cancel a one-shot agent run by agent_id via the OpenHands native runner.
+/// Cancel an active OpenHands agent run by agent_id.
 #[tauri::command]
 pub async fn cancel_agent_run(skill_name: String, agent_id: String) -> Result<(), String> {
     log::info!(

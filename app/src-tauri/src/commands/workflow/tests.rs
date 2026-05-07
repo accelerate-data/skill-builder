@@ -502,6 +502,64 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
 }
 
 #[test]
+fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow() {
+    let workflow_config = build_workflow_generate_skill_sidecar_config(
+        "sales-analytics",
+        "generate the skill",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("workflow-session".to_string()),
+    );
+    let answer_evaluator_config = build_answer_evaluator_sidecar_config(
+        "sales-analytics",
+        "evaluate the answers",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+    );
+
+    let workflow_request =
+        crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
+            &workflow_config,
+        )
+        .unwrap();
+    let answer_evaluator_request =
+        crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
+            &answer_evaluator_config,
+        )
+        .unwrap();
+
+    assert_eq!(
+        answer_evaluator_request.plugin_slug,
+        workflow_request.plugin_slug
+    );
+    assert_eq!(
+        answer_evaluator_request.skill_name,
+        workflow_request.skill_name
+    );
+    assert_eq!(
+        answer_evaluator_request.workspace_root_dir,
+        workflow_request.workspace_root_dir
+    );
+    assert_eq!(
+        answer_evaluator_request.workspace_skill_dir,
+        workflow_request.workspace_skill_dir
+    );
+    assert_eq!(
+        answer_evaluator_request.system_message_suffix,
+        workflow_request.system_message_suffix
+    );
+    assert_eq!(
+        answer_evaluator_request.user_message_suffix,
+        workflow_request.user_message_suffix
+    );
+    assert_ne!(answer_evaluator_request.task_kind, workflow_request.task_kind);
+    assert_ne!(answer_evaluator_request.run_source, workflow_request.run_source);
+    assert_ne!(answer_evaluator_request.step_id, workflow_request.step_id);
+}
+
+#[test]
 fn research_json_extraction_parses_raw_completed_result_text() {
     let state = serde_json::json!({
         "type": "conversation_state",

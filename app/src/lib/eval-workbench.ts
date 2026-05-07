@@ -1,7 +1,7 @@
 import { invokeCommand } from "@/lib/tauri";
 
-export type EvalWorkbenchMode = "performance" | "trigger";
-export type ScenarioTag = "performance" | "trigger" | "both";
+export type EvalWorkbenchMode = "performance";
+export type ScenarioTag = "performance";
 
 export interface Scenario {
   id: string;
@@ -9,7 +9,6 @@ export interface Scenario {
   prompt: string;
   expectations: string[];
   tags?: ScenarioTag[];
-  shouldTrigger?: boolean | null;
 }
 
 export interface ScenarioSummary {
@@ -159,7 +158,7 @@ export const buildRefineImprovementBrief = (runId: string) =>
 export const PERFORMANCE_CANDIDATE_IDS = ["current-skill"];
 
 export function createDraftScenario(
-  mode: EvalWorkbenchMode = "performance",
+  _mode: EvalWorkbenchMode = "performance",
   _pluginSlug = "",
   _skillName = "",
   name = "",
@@ -169,7 +168,6 @@ export function createDraftScenario(
     name,
     prompt: "",
     expectations: [],
-    ...(mode === "trigger" ? { tags: ["trigger"] as ScenarioTag[], shouldTrigger: true } : {}),
   };
 }
 
@@ -178,7 +176,7 @@ export function scenarioSupportsMode(
   mode: EvalWorkbenchMode,
 ): boolean {
   const tags = scenario.tags ?? ["performance"];
-  return tags.includes("both") || tags.includes(mode);
+  return tags.includes(mode);
 }
 
 export function scenarioToDraft(scenario: Scenario): SaveScenario {
@@ -190,9 +188,6 @@ export function scenarioToDraft(scenario: Scenario): SaveScenario {
       ? scenario.expectations
       : [],
     ...(scenario.tags ? { tags: [...scenario.tags] } : {}),
-    ...(typeof scenario.shouldTrigger !== "undefined"
-      ? { shouldTrigger: scenario.shouldTrigger }
-      : {}),
   };
 }
 
@@ -206,9 +201,6 @@ export function normalizeScenario(draft: SaveScenario): SaveScenario {
       : [],
     ...(draft.tags && draft.tags.length > 0
       ? { tags: Array.from(new Set(draft.tags)) }
-      : {}),
-    ...(typeof draft.shouldTrigger === "boolean"
-      ? { shouldTrigger: draft.shouldTrigger }
       : {}),
   };
 }
@@ -242,13 +234,6 @@ export function validateScenarioForEvaluation(
       .length === 0
   ) {
     return "Performance scenarios need at least one expectation.";
-  }
-  if (
-    mode === "trigger" &&
-    scenarioSupportsMode(draft, "trigger") &&
-    typeof draft.shouldTrigger !== "boolean"
-  ) {
-    return "Trigger scenarios must mark whether they should trigger.";
   }
   if (mode && !scenarioSupportsMode(draft, mode)) {
     return `This scenario is not tagged for ${mode} mode.`;

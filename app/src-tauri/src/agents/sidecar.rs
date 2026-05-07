@@ -161,12 +161,12 @@ pub struct OpenHandsOneShotConfigParams {
     pub plugin_slug: String,
 }
 
-/// Build the backend-owned OpenHands one-shot runtime request.
+/// Build the backend-owned OpenHands runtime request.
 ///
 /// Feature commands supply only agent/task details. Initialized workspace and
 /// selected LLM must already have been resolved by the backend runtime context
 /// API before this helper is called.
-pub fn build_openhands_one_shot_config(params: OpenHandsOneShotConfigParams) -> SidecarConfig {
+pub fn build_openhands_runtime_config(params: OpenHandsOneShotConfigParams) -> SidecarConfig {
     let system_message_suffix =
         (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix);
     SidecarConfig {
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn test_non_skill_creator_openhands_config_does_not_inject_system_message_suffix() {
-        let config = build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        let config = build_openhands_runtime_config(OpenHandsOneShotConfigParams {
             prompt: "Analyze".to_string(),
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),

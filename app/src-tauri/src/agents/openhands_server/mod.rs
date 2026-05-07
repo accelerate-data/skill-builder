@@ -772,7 +772,7 @@ pub async fn run_throwaway_openhands_session(
     Ok(OpenHandsOneShotRun { conversation_state })
 }
 
-pub fn cancel_openhands_one_shots_with_prefix(agent_id_prefix: &str) -> usize {
+pub fn cancel_openhands_runs_with_prefix(agent_id_prefix: &str) -> usize {
     let Ok(mut registry) = cancel_registry().lock() else {
         log::warn!(
             "[openhands-agent-server:{}] failed to lock cancellation registry for prefix cancel",
@@ -1724,6 +1724,74 @@ mod tests {
     }
 
     #[test]
+    fn prepared_session_init_request_clears_prompt_but_keeps_resume_contract() {
+        let request = OpenHandsOneShotRequest {
+            prompt: "Generate the skill package".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: None,
+            },
+            workspace_root_dir: "/tmp/workspace".to_string(),
+            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+            max_turns: 50,
+            user_message_suffix: Some(
+                "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
+                    .to_string(),
+            ),
+            system_message_suffix: Some(
+                crate::agents::sidecar::skill_creator_system_message_suffix(),
+            ),
+            task_kind: Some("workflow.skill_generation".to_string()),
+            plugin_slug: "default".to_string(),
+            skill_name: Some("my-skill".to_string()),
+            step_id: Some(3),
+            run_source: Some("workflow".to_string()),
+            workflow_session_id: Some("workflow-session".to_string()),
+            usage_session_id: None,
+        };
+
+        let session_request = session_init_request(&request);
+        let existing_conversation = serde_json::json!({
+            "agent": {
+                "agent_context": {
+                    "system_message_suffix": session_request.system_message_suffix,
+                    "user_message_suffix": session_request.user_message_suffix,
+                }
+            }
+        });
+
+        assert_eq!(session_request.prompt, "");
+        assert_eq!(session_request.allowed_tools, request.allowed_tools);
+        assert_eq!(session_request.max_turns, request.max_turns);
+        assert_eq!(session_request.workspace_root_dir, request.workspace_root_dir);
+        assert_eq!(session_request.workspace_skill_dir, request.workspace_skill_dir);
+        assert_eq!(session_request.plugin_slug, request.plugin_slug);
+        assert_eq!(session_request.skill_name, request.skill_name);
+        assert_eq!(session_request.task_kind, request.task_kind);
+        assert_eq!(session_request.run_source, request.run_source);
+        assert_eq!(
+            session_request.workflow_session_id,
+            request.workflow_session_id
+        );
+        assert!(
+            conversation_matches_request(&existing_conversation, &session_request),
+            "prepared-session creation must keep the suffix contract needed to resume the same persistent skill conversation"
+        );
+    }
+
+    #[test]
     fn workflow_and_refine_requests_share_the_same_persistent_skill_key() {
         let llm = crate::types::WorkflowLlmConfig {
             model: "anthropic/claude-sonnet-4-5".to_string(),
@@ -1777,6 +1845,85 @@ mod tests {
 
         assert_eq!(workflow_request.plugin_slug, refine_request.plugin_slug);
         assert_eq!(workflow_request.skill_name, refine_request.skill_name);
+    }
+
+    #[test]
+    fn answer_evaluator_requests_match_existing_skill_creator_conversations() {
+        let workflow_config =
+            crate::commands::workflow::runtime::build_workflow_generate_skill_sidecar_config(
+                "my-skill",
+                "Generate the skill",
+                "/tmp/workspace",
+                "default",
+                crate::types::WorkflowLlmConfig {
+                    model: "anthropic/claude-sonnet-4-5".to_string(),
+                    api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                    base_url: None,
+                    api_version: None,
+                    temperature: None,
+                    max_output_tokens: None,
+                    timeout_seconds: None,
+                    num_retries: None,
+                    reasoning_effort: None,
+                    extra_headers: None,
+                    input_cost_per_token: None,
+                    output_cost_per_token: None,
+                    usage_id: None,
+                },
+                Some("workflow-session".to_string()),
+            );
+        let answer_evaluator_config =
+            crate::commands::workflow::runtime::build_answer_evaluator_sidecar_config(
+                "my-skill",
+                "Evaluate answers",
+                "/tmp/workspace",
+                "default",
+                crate::types::WorkflowLlmConfig {
+                    model: "anthropic/claude-sonnet-4-5".to_string(),
+                    api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                    base_url: None,
+                    api_version: None,
+                    temperature: None,
+                    max_output_tokens: None,
+                    timeout_seconds: None,
+                    num_retries: None,
+                    reasoning_effort: None,
+                    extra_headers: None,
+                    input_cost_per_token: None,
+                    output_cost_per_token: None,
+                    usage_id: None,
+                },
+            );
+
+        let workflow_request =
+            OpenHandsOneShotRequest::try_from_sidecar_config(&workflow_config).unwrap();
+        let answer_evaluator_request =
+            OpenHandsOneShotRequest::try_from_sidecar_config(&answer_evaluator_config).unwrap();
+        let existing_conversation = serde_json::json!({
+            "agent": {
+                "agent_context": {
+                    "system_message_suffix": workflow_request.system_message_suffix,
+                    "user_message_suffix": workflow_request.user_message_suffix,
+                }
+            }
+        });
+
+        assert_eq!(
+            answer_evaluator_request.plugin_slug,
+            workflow_request.plugin_slug
+        );
+        assert_eq!(
+            answer_evaluator_request.skill_name,
+            workflow_request.skill_name
+        );
+        assert_eq!(
+            answer_evaluator_request.workspace_skill_dir,
+            workflow_request.workspace_skill_dir
+        );
+        assert!(
+            conversation_matches_request(&existing_conversation, &answer_evaluator_request),
+            "answer evaluator should be able to resume the existing skill-creator conversation"
+        );
     }
 
     #[test]
@@ -2026,7 +2173,7 @@ mod tests {
         register_cancel(&matching_agent, matching_tx).unwrap();
         register_cancel(&other_agent, other_tx).unwrap();
 
-        assert_eq!(cancel_openhands_one_shots_with_prefix(&prefix), 1);
+        assert_eq!(cancel_openhands_runs_with_prefix(&prefix), 1);
         assert!(matching_rx.try_recv().is_ok());
         assert!(matches!(
             other_rx.try_recv(),

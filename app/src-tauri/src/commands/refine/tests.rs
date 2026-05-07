@@ -391,6 +391,26 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
 }
 
 #[test]
+fn test_prepared_refine_session_starts_without_dispatch_history() {
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("conv-123".to_string()),
+        current_agent_id: None,
+        has_dispatched_turn: false,
+        head_sha_at_start: None,
+    };
+
+    assert_eq!(session.conversation_id.as_deref(), Some("conv-123"));
+    assert!(session.current_agent_id.is_none());
+    assert!(
+        !session.has_dispatched_turn,
+        "prepared refine sessions should keep the conversation id before the first dispatched turn"
+    );
+}
+
+#[test]
 fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
@@ -785,6 +805,97 @@ fn test_followup_prompt_file_targeting() {
 fn test_followup_prompt_no_file_constraint_when_empty() {
     let prompt = build_followup_prompt("edit freely", "/sk", "s", None);
     assert!(!prompt.contains("Only edit these files"));
+}
+
+#[test]
+fn test_prepared_refine_session_uses_initial_prompt_until_first_send_persists_state() {
+    let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
+    let mut session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("conv-123".to_string()),
+        current_agent_id: None,
+        has_dispatched_turn: false,
+        head_sha_at_start: None,
+    };
+
+    let first_prompt = if session.has_dispatched_turn {
+        build_followup_prompt_with_output_dir("Add SLA metrics", &skill_output_dir, None)
+    } else {
+        build_refine_prompt_with_output_dir(
+            &session.skill_name,
+            "/workspace",
+            &session.plugin_slug,
+            &skill_output_dir,
+            "Add SLA metrics",
+            None,
+        )
+    };
+    assert!(
+        first_prompt.contains("We are refining the skill my-skill"),
+        "prepared sessions should still use the full initial prompt before first send"
+    );
+
+    session.conversation_id = Some("conv-456".to_string());
+    session.current_agent_id = Some("agent-456".to_string());
+    session.has_dispatched_turn = true;
+
+    let followup_prompt = if session.has_dispatched_turn {
+        build_followup_prompt_with_output_dir("Tighten the overview", &skill_output_dir, None)
+    } else {
+        build_refine_prompt_with_output_dir(
+            &session.skill_name,
+            "/workspace",
+            &session.plugin_slug,
+            &skill_output_dir,
+            "Tighten the overview",
+            None,
+        )
+    };
+
+    assert_eq!(session.conversation_id.as_deref(), Some("conv-456"));
+    assert_eq!(session.current_agent_id.as_deref(), Some("agent-456"));
+    assert!(session.has_dispatched_turn);
+    assert_eq!(followup_prompt, "Tighten the overview");
+}
+
+#[test]
+fn test_prepared_refine_session_routes_by_dispatch_flag_not_conversation_id() {
+    let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("prepared-conversation".to_string()),
+        current_agent_id: Some("prepared-agent".to_string()),
+        has_dispatched_turn: false,
+        head_sha_at_start: None,
+    };
+
+    let prompt = if session.has_dispatched_turn {
+        build_followup_prompt_with_output_dir("Tighten the overview", &skill_output_dir, None)
+    } else {
+        build_refine_prompt_with_output_dir(
+            &session.skill_name,
+            "/workspace",
+            &session.plugin_slug,
+            &skill_output_dir,
+            "Tighten the overview",
+            None,
+        )
+    };
+
+    assert_eq!(
+        session.conversation_id.as_deref(),
+        Some("prepared-conversation")
+    );
+    assert_eq!(session.current_agent_id.as_deref(), Some("prepared-agent"));
+    assert!(
+        prompt.contains("We are refining the skill my-skill"),
+        "prepared conversation ids must not switch refine into followup mode before the first dispatched turn"
+    );
+    assert_ne!(prompt, "Tighten the overview");
 }
 
 #[test]

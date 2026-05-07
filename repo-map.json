@@ -129,7 +129,7 @@
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, one-shot facade), promptfoo_sidecar/ (embedded Promptfoo sidecar path resolver and JSONL protocol scaffold), events.rs (re-export facade for handle_sidecar_message and handle_sidecar_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), run_persist.rs (run result persistence helpers), sidecar.rs (sidecar config builders for OpenHands one-shot), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
+      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, and persistent/throwaway session helpers), promptfoo_sidecar/ (embedded Promptfoo sidecar path resolver and JSONL protocol scaffold), events.rs (re-export facade for handle_sidecar_message and handle_sidecar_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), run_persist.rs (run result persistence helpers), sidecar.rs (backend-owned OpenHands request/config builders used by runtime call sites), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
     "sidecar_events": {
       "path": "app/sidecar/agent-events.ts",

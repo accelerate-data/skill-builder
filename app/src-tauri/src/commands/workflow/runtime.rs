@@ -182,7 +182,7 @@ fn build_skill_creator_workflow_sidecar_config(
             .replace('\\', "/");
 
     let mut config =
-        crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+        crate::agents::sidecar::build_openhands_runtime_config(OpenHandsOneShotConfigParams {
             prompt: prompt.to_string(),
             llm,
             workspace_root_dir,
@@ -215,7 +215,7 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
             .to_string_lossy()
             .replace('\\', "/");
 
-    crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
+    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsOneShotConfigParams {
         prompt: prompt.to_string(),
         llm,
         workspace_root_dir,
