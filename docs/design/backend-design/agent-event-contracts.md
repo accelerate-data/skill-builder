@@ -122,7 +122,7 @@ Emitted when a refine session has reached its message limit.
 
 Emitted during sidecar startup to report initialization stages.
 
-**Payload shape:** `{ agent_id, timestamp, type, stage }` where `stage` is `"init_start"` or `"sdk_ready"`.
+**Payload shape:** `{ agent_id, timestamp, type, stage }` where `stage` is `"init_start"` or `"runtime_ready"`.
 
 ---
 
@@ -168,21 +168,55 @@ This means frontend payload types have the shape
 
 ---
 
+## RunResultEvent Fields
+
+The `run_result` event (emitted at the end of every agent run) carries the complete run summary. Key fields added since the initial implementation:
+
+| Field | Type | Notes |
+|---|---|---|
+| `skill_name` | `String` | Skill that was run |
+| `step_id` | `i64` | Workflow step index |
+| `plugin_slug` | `String` | Plugin that owns the skill |
+| `model` | `String` | Primary model used |
+| `input_tokens` | `i64` | Total input tokens |
+| `output_tokens` | `i64` | Total output tokens |
+| `cache_read_tokens` | `i64` | Prompt-cache read tokens |
+| `cache_write_tokens` | `i64` | Prompt-cache write tokens |
+| `total_cost_usd` | `f64` | Aggregate cost |
+| `model_usage_breakdown` | `Vec<ModelUsageEntry>` | Per-model token/cost breakdown for multi-model runs |
+| `context_window` | `i64` | Final context window size |
+| `num_turns` | `i64` | Agent turns taken |
+| `duration_ms` | `i64` | Wall-clock duration |
+| `duration_api_ms` | `i64?` | Time spent waiting for API responses |
+| `tool_use_count` | `i64` | Total tool calls |
+| `compaction_count` | `i64` | Number of context compactions |
+| `status` | `RunResultStatus` | Terminal status: `completed`, `error`, or `shutdown` |
+| `run_source` | `RunSource?` | Discriminator: `workflow`, `refine`, or `test` |
+| `result_subtype` | `String?` | Fine-grained classification of the result type |
+| `result_errors` | `Vec<String>?` | Error messages when `status = error` |
+| `result_text` | `String?` | Raw agent output text |
+| `workspace_path` | `String?` | Working directory used for the run |
+| `workflow_session_id` | `String?` | Links to `workflow_sessions` |
+| `usage_session_id` | `String?` | Links to usage tracking session |
+| `stop_reason` | `String?` | SDK stop reason (e.g. `end_turn`, `max_turns`) |
+
+`ModelUsageEntry` carries `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cost`.
+
 ## Structured Output Handling
 
-When a workflow step completes, the SDK result message may include:
+When a workflow step completes, the result message may include:
 
-- `result` or `result_text` — text containing the agent's final output
-- `structured_output` — optional parsed JSON from runtimes that provide one; OpenHands does not provide this
+- `result_text` — the agent's final output text
+- `structured_output` — optional parsed JSON; the OpenHands Agent Server delivers structured output via the conversation state, which Rust extracts from the result text
 
-For JSON-contract runs, the app extracts a JSON object from the terminal result text and forwards that object to Rust validation. If no parseable JSON object is present, the run fails with `errorSubtype: "structured_output_missing"` or the equivalent terminal `conversation_state` error.
+For JSON-contract runs, the app extracts a JSON object from the terminal result text and forwards that object to Rust validation. If no parseable JSON object is present, the run fails with `result_subtype: "structured_output_missing"`.
 
-The `result` text field is used when:
+The `result_text` field is used when:
 
 - The run has no structured-output contract
 - The agent returned an error (non-JSON output)
 
-Rust is the final validator — it deserializes the extracted JSON object into typed contract structs.
+Rust is the final validator — it deserializes the extracted JSON object into typed contract structs defined in `contracts/workflow_outputs.rs`, `contracts/clarifications.rs`, and `contracts/decisions.rs`.
 
 ---
 
@@ -190,11 +224,13 @@ Rust is the final validator — it deserializes the extracted JSON object into t
 
 - Canonical Rust contract types (agent events): `app/src-tauri/src/contracts/agent_events.rs`
 - Canonical Rust contract types (workflow outputs): `app/src-tauri/src/contracts/workflow_outputs.rs`
+- Canonical Rust contract types (clarifications): `app/src-tauri/src/contracts/clarifications.rs`
+- Canonical Rust contract types (decisions): `app/src-tauri/src/contracts/decisions.rs`
+- Canonical Rust contract types (workflow artifacts): `app/src-tauri/src/contracts/workflow_artifacts.rs`
 - Rust emit logic: `app/src-tauri/src/agents/events.rs`
+- Rust event routing: `app/src-tauri/src/agents/event_router.rs`
 - Generated TypeScript types: `app/src/generated/contracts.ts`, `app/sidecar/generated/contracts.ts`
 - Generated JSON Schema (inline, no `$ref`): `agent-sources/workspace/skills/shared/output-schemas/`
-- Sidecar message processing: `app/sidecar/message-processor.ts`
-- Sidecar JSON extraction: `app/sidecar/lib/result-extraction.ts`
 - Frontend listener registration: `app/src/hooks/use-agent-stream.ts`
 - Frontend TypeScript event types: `app/src/lib/agent-events.ts`
 - Frontend run state and error classification: `app/src/stores/agent-store.ts`
