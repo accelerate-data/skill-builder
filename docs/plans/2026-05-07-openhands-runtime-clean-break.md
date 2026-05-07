@@ -1,833 +1,189 @@
 # OpenHands Runtime Clean Break Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Goal:** Finish the remaining clean-break work on
+`feature/openhands-runtime-clean-break` and leave the next coding pass with
+only the real unfinished items.
 
-**Goal:** Replace the current mixed OpenHands helper model with a clean two-mode runtime: persistent skill sessions (`StartOpenHandsSession`, `OpenHandsSendMessage`, `PauseOpenHandsSession`) and throwaway runs (`RunThrowawayOpenHandsSession`), while removing dead eval/create-skill paths in the same change.
+**Current status:** The branch has already landed the core runtime split:
 
-**Architecture:** The Rust backend becomes the sole owner of four explicit OpenHands runtime primitives. Product commands remain product-shaped (`run_workflow_step`, `start_refine_session`, `review_skill_scope`, `run_eval_workbench`, etc.) and map onto those primitives. Persistent flows use skill-scoped conversations; throwaway flows use isolated throwaway runtime workspaces under `workspace/.openhands/throwaway/...` with the same `.agents` deployment model but no resumable product conversation ID.
+- persistent runtime primitives:
+  - `start_openhands_session(...)`
+  - `openhands_send_message(...)`
+  - `pause_openhands_session(...)`
+- throwaway runtime primitive:
+  - `run_throwaway_openhands_session(...)`
+- persistent product flows for:
+  - workflow
+  - refine
+  - `define_eval_scenario`
+  - `build_refine_improvement_brief`
+- throwaway runtime roots for:
+  - scope review
+  - eval execution
+- structured runtime error handling, primitive-layer tests, subagent event
+  discovery, and runtime observability follow-ups
 
-**Tech Stack:** Rust (Tauri backend), TypeScript/React frontend, OpenHands Agent Server, SQLite, Vitest, cargo test, Playwright E2E, markdownlint
+This file is now the audited branch-status plan. The old migration checklist
+has been retired so the next coding agent only sees actual pending work.
 
----
+## Review Triage
 
-## Status Update
+The 2026-05-07 review feedback was audited against the current branch before
+this plan update.
 
-This plan started as the implementation checklist for the first clean-break
-pass. That pass has landed on branch `feature/openhands-runtime-clean-break`,
-and an independent multi-lane review has now been folded back into this plan.
+Accepted into the remaining work:
 
-The plan below is therefore split into:
+- refine resume should restore the full persisted transcript, not just plain
+  chat messages
+- remaining runtime-layer `OneShot` naming should be removed
+- stale trigger-mode Eval Workbench backend code should be deleted
 
-- work already completed in the first pass
-- remaining follow-up work required to finish the clean break
+Explicitly not treated as active blockers:
 
-Do not treat the original unchecked boxes below as the source of truth for
-current branch status. Use the updated task list in the **Remaining Work**
-section.
+- `start_refine_session` ownership of session preparation
+  Current branch already calls `prepare_openhands_session(...)` during
+  refine-session startup.
+- `user_message_suffix` as a current conversation-reuse blocker
+  Current branch uses a stable app-owned suffix contract for workflow/refine.
+- throwaway runtime isolation doubts
+  Current branch already routes scope review and eval execution through
+  `.openhands/throwaway/...` runtime roots.
 
-## Completed In First Pass
+## Audited Complete
 
-- Added explicit runtime primitive entrypoints in
-  `app/src-tauri/src/agents/openhands_server/mod.rs`.
-- Added throwaway runtime path helpers in
-  `app/src-tauri/src/skill_paths.rs`.
-- Made the Agent Server runtime-root aware through the configured
-  conversations root.
-- Renamed `suggest_scenario` to `define_eval_scenario` across the live surface.
-- Removed the dead `generate_suggestions` backend path.
-- Removed the old `workspace-description` surface from the live UI.
-- Renamed refine stop semantics to `pause_refine_session`.
-- Ran the local validation set for the first implementation pass.
+The following plan items are complete on this branch and should not be treated
+as open work:
 
-## Remaining Work
+- explicit runtime primitive entrypoints exist in
+  `app/src-tauri/src/agents/openhands_server/mod.rs`
+- persistent workflow / refine / eval authoring flows route through the
+  clean-break primitives instead of the old helper contract
+- throwaway runtime directories exist under
+  `workspace/.openhands/throwaway/...`
+- throwaway scope review and eval execution use isolated runtime roots
+- stale description-candidate surfaces and old create-skill suggestion paths
+  were removed from the live command surface
+- `suggest_scenario` was renamed to `define_eval_scenario`
+- refine session startup now prepares the persistent conversation up front
+- stale saved refine conversations are cleared when they no longer match the
+  runtime contract
+- primitive-layer resolution and backfill behavior have direct Rust coverage
+- runtime errors are no longer only raw stringly-typed internal state
+- runtime observability and cancellation/task-handle tracking landed
+- subagent child events are now discovered and emitted correctly even when the
+  persisted child timestamps omit a timezone suffix
 
-### Task A: Consolidate Persistent Session Orchestration
+## Pending Work
 
-**Goal:** Keep the now-working persistent-session flows, but remove duplicated
-orchestration and runtime-layer redundancy across workflow, refine, and eval
-authoring paths.
+### Task 1: Make Refine Resume Restore The Full Transcript
 
-**Files**
+**Why this is still open**
 
-- `app/src-tauri/src/commands/refine/mod.rs`
-- `app/src-tauri/src/commands/workflow/runtime.rs`
-- `app/src-tauri/src/commands/eval_workbench/mod.rs`
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-- related tests in `app/src-tauri/src/commands/refine/tests.rs`
+The current resume path restores only flattened user/agent message pairs, not
+the full persisted OpenHands event transcript.
 
-- [ ] Consolidate duplicated persistent-session orchestration so workflow,
-      eval workbench, and refine do not each own separate resume/send/retry
-      policy.
-- [ ] Reuse one canonical conversation-compatibility contract instead of
-      refine keeping its own matcher alongside the runtime layer.
-- [ ] Decide whether `prepare_openhands_session` and
-      `start_openhands_session` should remain distinct helpers or collapse into
-      a single clearer primitive-layer API once product call sites are
-      centralized.
+Code evidence:
 
-### Task B: Finish Throwaway Runtime Isolation
+- `start_refine_session(...)` in
+  `app/src-tauri/src/commands/refine/mod.rs` returns
+  `restored_messages: Vec<ConversationMessage>`
+- `extract_conversation_messages(...)` only pulls `MessageEvent` text
+- `WorkspaceRefine` in `app/src/components/workspace/workspace-refine.tsx`
+  hydrates those plain messages via `setMessages(...)`
+- resumed runtime tasks do not REST-backfill prior events because
+  `backfill_existing_events` is only enabled for first-turn conversation setup
+  in `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-**Goal:** Ensure throwaway runs use isolated runtime roots consistently and
-retain artifacts only under `.openhands/throwaway/...`.
+**Product gap**
 
-**Files**
+A resumed refine session should behave like a real resume:
 
-- `app/src-tauri/src/commands/eval_workbench/mod.rs`
-- `app/src-tauri/src/skill_paths.rs`
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- show the persisted `SystemPromptEvent`
+- show the initial task / runtime setup rows
+- show prior tool activity
+- show prior subagent activity
+- show prior assistant outputs
+- then continue streaming new live events without duplication
 
-- [ ] Ensure throwaway conversations remain non-resumable from product state
-      while still being retained only under throwaway runtime roots for
-      debugging.
-- [ ] Move any remaining diagnosis/helper path that still uses
-      `workspace_skill_dir` onto `.openhands/throwaway/...` roots.
+- [ ] Replace message-only refine resume hydration with full persisted event
+      transcript hydration.
+- [ ] Restore enough persisted metadata on resume for the refine UI to rebuild
+      prior OpenHands display items, not just plain chat bubbles.
+- [ ] Remove or replace `has_dispatched_turn` manual state once resume
+      restoration is derived from persisted conversation history instead of the
+      current message-only bootstrap.
+- [ ] Deduplicate restored history against live stream delivery by stable event
+      identity so reconnect / resume does not duplicate rows.
+- [ ] Add regression coverage for resumed refine sessions that verifies:
+  - `SystemPromptEvent` is visible after resume
+  - prior tool activity is visible after resume
+  - prior subagent activity is visible after resume
+  - a resumed session can continue streaming new events without replay
+    duplication
 
-### Task C: Remove Legacy Runtime Residue
+### Task 2: Remove Remaining `OneShot` Runtime Naming
 
-**Goal:** Finish the clean break by removing alias helpers and stale routing
-that still preserve the old model internally.
+**Why this is still open**
 
-**Files**
+The runtime model is now clean-break in behavior, but several core type and
+helper names still encode the old "one-shot" vocabulary.
 
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-- `app/src-tauri/src/commands/workflow/runtime.rs`
+Current examples on this branch:
 
-- [ ] Replace remaining legacy runtime aliases/usages with direct clean-break
-      primitives.
-- [ ] Remove or simplify wrappers like `dispatch_openhands_refine_turn` and
-      `run_refine_conversation_task` if they no longer add behavior.
-- [ ] Replace workflow cancellation’s `cancel_openhands_one_shot` routing with
-      direct pause semantics.
-- [ ] Trim compile-time-only helper layering if it no longer improves clarity
-      (`OpenHandsSessionKind`, `should_persist_skill_conversation`,
-      `require_existing_conversation_id`).
-- [ ] Remove legacy one-shot naming and wrapper residue such as
-      `run_openhands_one_shot`, `dispatch_openhands_one_shot`, and active
-      "one-shot" wording where the clean-break primitive is really throwaway.
-- [ ] Decouple saved-conversation DB helpers from `AppHandle` where the runtime
-      layer only needs database access, so primitive-layer tests do not depend
-      on Tauri state extraction.
-- [ ] Remove clone-heavy request shaping such as `session_init_request` if the
-      runtime rename/simplification pass already touches that code.
+- `OpenHandsOneShotRequest`
+- `OpenHandsOneShotConfigParams`
+- `OpenHandsOneShotEvent`
+- `StartConversationRequest::from_one_shot(...)`
 
-### Task D: Finish Dead-Surface Cleanup
+This is now misleading because the same request/config contract is used for:
 
-**Goal:** Remove remaining stale types, docs, tests, and contracts from the old
-eval description/trigger comparison model.
+- prepared persistent sessions
+- follow-up persistent turns
+- throwaway runs
 
-**Files**
+- [ ] Rename remaining runtime-layer `OneShot` request / config / event types
+      to runtime-neutral names that match the implemented model.
+- [ ] Update affected tests, helper names, and comments so the branch no longer
+      advertises the pre-clean-break contract internally.
 
-- `app/src/lib/eval-workbench.ts`
-- `app/src/lib/tauri-command-types.ts`
-- `app/src/lib/tauri-command-types.typecheck.ts`
-- `docs/design/backend-design/api.md`
-- `tests/evals/assertions/tauri-command-contract.test.js`
-- any remaining trigger/comparison-only helpers and tests
+### Task 3: Delete Stale Trigger-Mode Eval Backend Paths
 
-- [ ] Remove or reconcile stale `generate_scenarios` surface.
-- [ ] Remove lingering `descriptionCandidates` / trigger-era shared contracts
-      that are no longer part of the live one-tab eval workbench.
-- [ ] Remove stale docs/tests/assertions that still reference removed commands
-      such as `suggest_description_candidates` and
-      `apply_description_candidate`.
-- [ ] Trim stale UI props left behind after the description-surface cleanup.
-- [ ] Remove or explicitly contract-test any frontend-only stale command
-      surface that is no longer registered in the backend.
-- [ ] Delete stale trigger/comparison helpers and dead helper blocks still
-      compiled into `app/src-tauri/src/commands/eval_workbench/mod.rs`.
-- [ ] Remove stale docs that still advertise removed surfaces such as
-      `generate_suggestions` or the deleted description workbench flow.
+**Why this is still open**
 
-### Task E: Reconcile Runtime Documentation
+The frontend no longer exposes the old trigger/comparison workbench surface,
+but the backend still compiles trigger-only helpers and config builders.
 
-**Goal:** Make the runtime design doc match the actual implemented behavior.
+Current examples on this branch:
 
-**Files**
+- `write_trigger_stub_skill(...)`
+- `build_trigger_sidecar_config(...)`
+- trigger-mode execution paths and related DTO fields in
+  `app/src-tauri/src/commands/eval_workbench/mod.rs`
 
-- `docs/design/openhands-runtime-model/README.md`
-- `repo-map.json`
-- `TEST_MAP.md` only if test mapping changes materially
+- [ ] Remove trigger-mode backend helpers and execution paths that are no
+      longer reachable from the live eval workbench.
+- [ ] Remove stale trigger-only DTO fields and tests that only exist for the
+      deleted backend surface.
+- [ ] Re-run the affected eval-workbench backend and frontend tests after the
+      trigger cleanup.
 
-- [ ] Update the runtime model doc so throwaway retention semantics match the
-      code.
-- [ ] Update the runtime model doc so eval flows match the real persistent vs
-      throwaway routing.
-- [ ] Update `repo-map.json` and any affected test/docs indexes after the
-      cleanup.
-- [ ] Reconcile eval-workbench metadata and naming in docs if runtime fields
-      such as `run_source` remain operationally meaningful.
+### Task 4: Final Verification Sweep
 
-### Task F: Close Test Coverage Gaps
-
-**Goal:** Add the missing regression coverage found by the independent
-test-coverage gate.
-
-**Files**
-
-- `app/src-tauri/src/commands/refine/tests.rs`
-- `app/src-tauri/src/agents/openhands_server/mod.rs` tests
-- Eval Workbench tests and E2E coverage
-
-- [ ] Add Rust coverage for refine session lifecycle branches:
-  - unreadable saved conversation clears ID
-  - stale in-memory session replacement
-  - first send persists `conversation_id` and `current_agent_id`
-- [ ] Add behavior-level Rust coverage for persistent eval turns:
-  - saved conversation reuse
-  - incompatible/missing conversation fallback
-  - timeout causes `pause_openhands_session`
-  - non-target agent events are ignored
-- [ ] Add workflow runtime coverage proving answer evaluator reuses the shared
-      skill conversation intentionally and does not trample workflow/refine
-      ownership.
-- [ ] Add deeper mocked-server coverage for throwaway lifecycle:
-  - success
-  - timeout
-  - prefix-cancel
-- [ ] Add Eval Workbench cancellation coverage proving throwaway runs stop and
-      stop reporting progress, including that late progress events are ignored
-      in the UI.
-- [ ] Add one E2E for the live eval path:
-      author scenario -> define/suggest -> run eval -> send to refine.
-- [ ] Keep the deleted description-surface browser coverage replaced by the
-      live-path E2E rather than by stale trigger/comparison tests.
-
-### Task G: Final Regression And Quality Gates
-
-**Goal:** Re-run the clean-break verification after the follow-up work lands.
+Run this after Tasks 1-3 land.
 
 - [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 - [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml`
 - [ ] `cd app && npx tsc --noEmit`
 - [ ] `cd app && npm run test:unit`
 - [ ] `cd app && npm run test:repo-map`
-- [ ] `cd app && bash tests/run.sh e2e --tag @workflow`
 - [ ] `cd app && bash tests/run.sh e2e --tag @refine`
-- [ ] `cd app && bash tests/run.sh e2e --tag @evals`
 - [ ] `markdownlint docs/design/openhands-runtime-model/README.md docs/plans/2026-05-07-openhands-runtime-clean-break.md`
 
-## Review Findings Integrated
-
-The remaining-work tasks above incorporate the independent review lanes that
-were run after the first implementation pass:
-
-- design alignment review
-- plan audit review
-- code review gate
-- simplification review gate
-- test coverage review gate
-- acceptance-criteria review gate
-
-The highest-signal findings that shaped the remaining work are:
-
-- duplicated persistent-session orchestration still exists across product
-  modules
-- legacy one-shot naming and wrapper residue still exists in the runtime layer
-- stale Eval Workbench trigger/comparison helpers are still compiled in backend
-  code
-- some throwaway diagnosis/helper paths still need full
-  `.openhands/throwaway/...` isolation even though scope review and eval
-  execution already use throwaway runtime roots
-- old eval description/trigger surface cleanup is incomplete across docs,
-  contracts, and helper code
-- additional Rust, integration, and E2E coverage is still needed around
-  persistent eval turns, refine lifecycle, workflow gate reuse, throwaway
-  lifecycle, and the live eval path
-
-### Additional Review Follow-Ups
-
-The 2026-05-07 follow-up review identified
-several non-stale implementation concerns that should be handled as part of
-this clean break:
-
-- [x] Add direct primitive-layer tests in
-      `app/src-tauri/src/agents/openhands_server/mod.rs` for:
-  - `ResumeOrCreate` with matching saved conversation
-  - `ResumeOrCreate` with mismatching saved conversation
-  - `ResumeOrCreate` with missing saved conversation
-  - `SendExistingOnly` with missing conversation
-  - prepared-session request shaping / prompt clearing
-- [x] Extract and unit-test the `backfill_existing_events` decision so first
-      turn history replay behavior is explicit and protected against regressions.
-- [x] Replace stringly-typed primitive errors with a structured runtime error
-      taxonomy or a narrow internal error enum that product commands can map
-      back to strings at the Tauri boundary.
-- [x] Add lightweight runtime observability for session reuse vs creation and
-      throwaway run duration so persistent-session regressions can be diagnosed.
-- [x] Review the cancellation/task lifecycle for runtime tasks and decide
-      whether a tracked task-handle registry is required for graceful shutdown.
-- [ ] Rename remaining throwaway runtime types that still say `OneShot` when
-      they represent the clean-break throwaway session model.
-- [ ] Keep the review-driven cleanup scoped to real residual work on this
-      branch:
-  - do not re-open `start_refine_session` session ownership work that is
-    already implemented
-  - do not treat `user_message_suffix` compatibility matching as a blocker
-    unless the suffix contract stops being app-owned and stable
-  - do keep the runtime naming cleanup, trigger-surface deletion, and
-    orchestration consolidation in scope
-
----
-
-## File Map
-
-**Modify**
-
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-  Introduce the clean-break runtime primitive API and remove heuristic persistence behavior from the old helpers.
-- `app/src-tauri/src/agents/openhands_server/process.rs`
-  Support non-skill throwaway runtime workspaces and conversation retention under throwaway run roots.
-- `app/src-tauri/src/agents/openhands_server/types.rs`
-  Keep request construction aligned with the new primitive boundaries and runtime metadata.
-- `app/src-tauri/src/agents/sidecar.rs`
-  Keep request/config building generic around `workspace_root_dir` and `workspace_run_dir`.
-- `app/src-tauri/src/commands/workflow/runtime.rs`
-  Move workflow and answer evaluator onto explicit persistent-session semantics.
-- `app/src-tauri/src/commands/refine/mod.rs`
-  Centralize resume/create in `start_refine_session`, simplify wrapper state, and rename pause semantics.
-- `app/src-tauri/src/commands/eval_workbench/mod.rs`
-  Rename `suggest_scenario` to `define_eval_scenario`, map active flows to persistent vs throwaway, and remove old trigger/comparison surface code.
-- `app/src-tauri/src/commands/skill/scope_review.rs`
-  Keep scope validation on the throwaway runtime primitive and move it to dedicated throwaway runtime workspaces.
-- `app/src-tauri/src/lib.rs`
-  Update the registered Tauri command list to reflect renamed and removed commands.
-- `app/src-tauri/src/skill_paths.rs`
-  Add canonical helpers for throwaway runtime directories under `workspace/.openhands/throwaway/...`.
-- `app/src/lib/tauri-command-types.ts`
-  Update command names and remove deleted command contracts.
-- `app/src/lib/tauri.ts`
-  Update frontend wrappers to match the clean-break backend command set.
-- `app/src/lib/eval-workbench.ts`
-  Rename `suggestScenario` to `defineEvalScenario`, remove stale description-candidate surface, and simplify to the active one-surface workbench model.
-- `app/src/components/workspace/workspace-eval-workbench.tsx`
-  Call the renamed eval-scenario-definition command and keep only the active one-surface workbench flow.
-- `app/src/components/workspace/workspace-evals.tsx`
-  Keep the active eval workbench UI on the simplified command set.
-- `app/src/components/workspace/workspace-refine.tsx`
-  Rename frontend pause/cancel semantics and keep the view aligned to the simplified refine session model.
-- `app/src/components/layout/app-layout.tsx`
-  Update any refine stop command naming.
-- `app/src/__tests__/lib/tauri.test.ts`
-  Update frontend wrapper contract tests for renamed/removed commands.
-- `app/src/__tests__/guards/tauri-command-policy.test.ts`
-  Update command allowlist/removal expectations.
-- `app/src/__tests__/lib/eval-workbench-tauri.test.ts`
-  Update eval workbench wrapper tests for `define_eval_scenario` and deleted description-candidate surface.
-- `app/src/__tests__/components/new-skill-dialog.test.tsx`
-  Keep scope-review-only coverage and remove assumptions about deleted suggestion helpers.
-- `docs/design/openhands-runtime-model/README.md`
-  Keep design doc aligned if implementation reveals any naming or path adjustments.
-- `repo-map.json`
-  Reflect any command file or public-surface changes.
-
-**Delete**
-
-- `app/src/components/workspace/workspace-description.tsx`
-  Orphaned description comparison surface.
-- Any description-candidate-specific tests that only cover the deleted surface.
-- Backend/frontend code paths for:
-  - `generate_suggestions`
-  - `suggest_description_candidates`
-  - `apply_description_candidate`
-  - old trigger/comparison-only eval helpers that are no longer part of the live product surface
-
-**Review**
-
-- `app/src/components/workspace/workspace-shell.tsx`
-  Confirm the one-tab eval workbench routing remains correct after the cleanup.
-- `TEST_MAP.md`
-  Update only if command/test mappings actually change.
-
----
-
-## Archived Original Implementation Checklist
-
-The sections below are preserved as the original first-pass implementation
-checklist. They are retained for history only.
-
-## Task 1: Add Canonical Runtime Primitives
-
-**Files:**
-
-- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
-- Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
-- Modify: `app/src-tauri/src/agents/openhands_server/types.rs`
-- Modify: `app/src-tauri/src/skill_paths.rs`
-- Test: `app/src-tauri/src/agents/openhands_server/` tests and nearby Rust unit tests
-
-- [ ] **Step 1: Add throwaway runtime path helpers**
-
-Implement canonical helpers in `skill_paths.rs` for:
-
-- `throwaway_runtime_dir(workspace_root, surface, run_id)`
-- `throwaway_conversations_dir(run_dir)`
-- optional `throwaway_logs_dir(run_dir)`
-
-Use the agreed shape:
-
-```text
-{workspace}/.openhands/throwaway/{surface}/{run_id}/
-```
-
-- [ ] **Step 2: Make Agent Server runtime-root agnostic**
-
-Refactor the OpenHands Agent Server code so it accepts an arbitrary runtime run
-directory, not just a skill workspace directory. The conversation root should
-still be computed as:
-
-```rust
-runtime_run_dir.join("conversations")
-```
-
-The runtime must continue to restart when the conversations root changes.
-
-- [ ] **Step 3: Introduce explicit runtime primitive entrypoints**
-
-In `app/src-tauri/src/agents/openhands_server/mod.rs`, add explicit functions
-with clear semantics:
-
-- `start_openhands_session(...)`
-- `openhands_send_message(...)`
-- `pause_openhands_session(...)`
-- `run_throwaway_openhands_session(...)`
-
-Rules:
-
-- no heuristic "persistent if skill_name exists"
-- no fallback aliasing to the old helper names
-- persistent start owns resume-or-create
-- send only sends the next turn into an already-established session
-- throwaway run does not create a resumable product conversation ID
-
-- [ ] **Step 4: Retain throwaway conversations for debugging**
-
-Change throwaway semantics from "delete immediately" to:
-
-- not resumable by product state
-- retained under the throwaway runtime workspace
-- eligible for later cleanup policy
-
-Do not write throwaway conversation IDs to `skill_conversations`.
-
-- [ ] **Step 5: Add or update Rust unit tests**
-
-Cover at least:
-
-- persistent session reuses a saved conversation only when compatible
-- `OpenHandsSendMessage` does not own resume/create
-- throwaway runs do not save `skill_conversations`
-- throwaway runtime paths do not live under the skill workspace tree
-
-- [ ] **Step 6: Run Rust verification**
-
-Run:
-
-```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
-```
-
-Expected:
-
-- PASS for new runtime primitive behavior and adjusted session semantics
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add app/src-tauri/src/agents/openhands_server/mod.rs \
-  app/src-tauri/src/agents/openhands_server/process.rs \
-  app/src-tauri/src/agents/openhands_server/types.rs \
-  app/src-tauri/src/skill_paths.rs
-git commit -m "refactor: add explicit openhands runtime primitives"
-```
-
----
-
-## Task 2: Move Workflow To Persistent Session Primitives
-
-**Files:**
-
-- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
-- Test: `app/src-tauri/src/commands/workflow/` tests
-
-- [ ] **Step 1: Route `run_workflow_step` through the persistent primitives**
-
-Update workflow step execution to:
-
-- start/resume the persistent skill session
-- send the step message into that session
-- keep the conversation persisted and idle after completion
-
-Do not pause after successful step completion.
-
-- [ ] **Step 2: Route `run_answer_evaluator` through the same persistent session**
-
-Update answer evaluator to:
-
-- use the same persistent skill conversation model as workflow steps
-- avoid a disposable side conversation
-- preserve the current output parsing and workflow gate behavior
-
-- [ ] **Step 3: Keep workflow cancellation mapped to pause semantics**
-
-When a workflow run is actively in flight and the user cancels, map that to the
-persistent-session pause behavior instead of disposable one-shot cancellation
-semantics.
-
-- [ ] **Step 4: Update Rust workflow tests**
-
-Cover at least:
-
-- step execution starts or resumes the persistent conversation
-- answer evaluator shares the same persistent model
-- completed turns do not auto-pause
-
-- [ ] **Step 5: Run workflow verification**
-
-Run:
-
-```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
-cd app && bash tests/run.sh e2e --tag @workflow
-```
-
-Expected:
-
-- PASS for workflow runtime tests and mocked workflow E2E coverage
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add app/src-tauri/src/commands/workflow/runtime.rs
-git commit -m "refactor: move workflow to persistent openhands sessions"
-```
-
----
-
-## Task 3: Simplify Refine Session Ownership
-
-**Files:**
-
-- Modify: `app/src-tauri/src/commands/refine/mod.rs`
-- Modify: `app/src/lib/tauri-command-types.ts`
-- Modify: `app/src/lib/tauri.ts`
-- Modify: `app/src/components/workspace/workspace-refine.tsx`
-- Modify: `app/src/components/layout/app-layout.tsx`
-- Test: refine Rust tests and frontend tests touching refine commands
-
-- [ ] **Step 1: Move resume/create ownership into `start_refine_session`**
-
-Update refine so `start_refine_session` is responsible for:
-
-- loading or creating the persistent skill conversation
-- validating compatibility
-- restoring message history from the selected conversation
-- returning the session handle for later sends
-
-`send_refine_message` must stop owning resume/create decisions.
-
-- [ ] **Step 2: Reduce backend session wrapper state**
-
-Keep only the minimum refine wrapper state needed for:
-
-- active run control
-- view lifecycle cleanup
-- any still-needed product-only metadata
-
-Do not keep redundant state that can be derived from the persistent session or
-conversation identity.
-
-- [ ] **Step 3: Rename pause semantics cleanly**
-
-Replace `cancel_refine_turn` naming with `pause_refine_session` across:
-
-- Rust command registration
-- TS command map
-- frontend wrappers
-- live components that issue stop/cancel
-
-This is a clean break. Do not keep compatibility aliases.
-
-- [ ] **Step 4: Keep `close_refine_session` as product cleanup only**
-
-Ensure close:
-
-- does not delete the persistent OpenHands conversation
-- only tears down product-layer wrapper state
-
-- [ ] **Step 5: Update tests**
-
-Cover at least:
-
-- start handles resume/create centrally
-- send only sends the next message
-- pause maps to active-run stop semantics
-- close does not delete persistent conversation state
-
-- [ ] **Step 6: Run refine verification**
-
-Run:
-
-```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine
-cd app && npm run test:unit -- workspace-refine
-cd app && bash tests/run.sh e2e --tag @refine
-```
-
-Expected:
-
-- PASS for refine Rust tests, frontend tests, and mocked refine E2E coverage
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add app/src-tauri/src/commands/refine/mod.rs \
-  app/src/lib/tauri-command-types.ts \
-  app/src/lib/tauri.ts \
-  app/src/components/workspace/workspace-refine.tsx \
-  app/src/components/layout/app-layout.tsx
-git commit -m "refactor: simplify refine session ownership"
-```
-
----
-
-## Task 4: Clean-Break Eval Workbench Surface
-
-**Files:**
-
-- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
-- Modify: `app/src/lib/eval-workbench.ts`
-- Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
-- Modify: `app/src/components/workspace/workspace-evals.tsx`
-- Modify: `app/src/lib/tauri-command-types.ts`
-- Modify: `app/src/lib/tauri.ts`
-- Delete: `app/src/components/workspace/workspace-description.tsx`
-- Delete: stale tests tied only to the removed description surface
-
-- [ ] **Step 1: Rename `suggest_scenario` to `define_eval_scenario`**
-
-Apply the rename across:
-
-- Rust command name
-- frontend wrappers
-- typed command map
-- live workbench UI
-- tests and docs
-
-Do not keep a compatibility alias.
-
-- [ ] **Step 2: Move eval scenario definition to persistent primitives**
-
-Update the renamed `define_eval_scenario` flow so it uses:
-
-- `StartOpenHandsSession`
-- `OpenHandsSendMessage`
-
-This flow should be skill-bound and conversation-aware.
-
-- [ ] **Step 3: Move refine-brief generation to persistent primitives**
-
-Update `build_refine_improvement_brief` so it uses the persistent skill
-conversation model rather than a throwaway run.
-
-- [ ] **Step 4: Keep `run_eval_workbench` throwaway**
-
-The actual eval execution path should stay throwaway:
-
-- isolated runtime workspace
-- no resumable product conversation
-- retained throwaway artifacts for debugging
-
-- [ ] **Step 5: Delete the dead description/comparison surface**
-
-Remove:
-
-- `WorkspaceDescription`
-- `suggest_description_candidates`
-- `apply_description_candidate`
-- old trigger/comparison-only helpers and tests no longer reachable from the
-  one-tab eval workbench
-
-- [ ] **Step 6: Update eval tests**
-
-Cover at least:
-
-- renamed `define_eval_scenario`
-- active one-tab workbench command flow
-- deleted description surface no longer appears in wrapper or component tests
-
-- [ ] **Step 7: Run eval verification**
-
-Run:
-
-```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::eval_workbench
-cd app && npm run test:unit -- eval-workbench
-cd app && bash tests/run.sh e2e --tag @evals
-```
-
-Expected:
-
-- PASS for eval workbench backend and frontend tests on the simplified surface
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add app/src-tauri/src/commands/eval_workbench/mod.rs \
-  app/src/lib/eval-workbench.ts \
-  app/src/components/workspace/workspace-eval-workbench.tsx \
-  app/src/components/workspace/workspace-evals.tsx \
-  app/src/lib/tauri-command-types.ts \
-  app/src/lib/tauri.ts
-git rm app/src/components/workspace/workspace-description.tsx
-git commit -m "refactor: simplify eval workbench runtime surface"
-```
-
----
-
-## Task 5: Remove Dead Create-Skill Suggestion Path
-
-**Files:**
-
-- Delete: `app/src-tauri/src/commands/skill/suggestions.rs`
-- Modify: `app/src-tauri/src/lib.rs`
-- Modify: `app/src/lib/tauri-command-types.ts`
-- Modify: `app/src/lib/tauri.ts`
-- Modify: tests/docs that still mention `generate_suggestions`
-
-- [ ] **Step 1: Remove backend command registration and implementation**
-
-Delete the dead `generate_suggestions` path and remove its Tauri registration.
-
-- [ ] **Step 2: Remove frontend wrapper and type surface**
-
-Delete:
-
-- `generateSuggestions(...)` wrapper
-- `FieldSuggestions` command contract if it becomes unused
-
-- [ ] **Step 3: Remove stale tests and docs**
-
-Delete or update tests that only exist for the dead command and remove stale
-docs that still list it as an active product surface.
-
-- [ ] **Step 4: Run create-skill verification**
-
-Run:
-
-```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill
-cd app && npm run test:unit -- new-skill-dialog
-```
-
-Expected:
-
-- PASS with only `review_skill_scope` remaining as the live Create Skill
-  OpenHands surface
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add app/src-tauri/src/lib.rs \
-  app/src/lib/tauri-command-types.ts \
-  app/src/lib/tauri.ts
-git rm app/src-tauri/src/commands/skill/suggestions.rs
-git commit -m "refactor: remove dead create-skill suggestion path"
-```
-
----
-
-## Task 6: Final Docs, Repo Map, and Regression Sweep
-
-**Files:**
-
-- Modify: `docs/design/openhands-runtime-model/README.md`
-- Modify: `repo-map.json`
-- Modify: `TEST_MAP.md` only if command/test mapping changed materially
-
-- [ ] **Step 1: Reconcile docs with final implementation names**
-
-Ensure the runtime model doc matches the actual implemented command names and
-runtime primitive names exactly.
-
-- [ ] **Step 2: Update repo-map if command surfaces changed**
-
-Reflect renamed or removed command surfaces so the repo map matches the code.
-
-- [ ] **Step 3: Run the required docs checks**
-
-Run:
-
-```bash
-markdownlint docs/design/openhands-runtime-model/README.md docs/plans/2026-05-07-openhands-runtime-clean-break.md
-cd app && npm run test:repo-map
-```
-
-Expected:
-
-- PASS for doc lint and repo map audit
-
-- [ ] **Step 4: Run focused final regression**
-
-Run:
-
-```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml
-cd app && npm run test:unit
-cd app && bash tests/run.sh e2e --tag @workflow
-cd app && bash tests/run.sh e2e --tag @refine
-cd app && bash tests/run.sh e2e --tag @evals
-```
-
-Expected:
-
-- PASS on the clean-break runtime model with no fallback aliases
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add docs/design/openhands-runtime-model/README.md repo-map.json TEST_MAP.md
-git commit -m "docs: finalize openhands runtime clean break"
-```
-
----
-
-## Spec Coverage Check
-
-- Explicit four-primitive OpenHands runtime model: covered by Tasks 1-4.
-- Clean break with no fallback compatibility shims: enforced throughout Tasks
-  1-6.
-- Persistent session semantics for Workflow, answer evaluator, Refine,
-  eval-scenario definition, and refine-improvement brief: covered by Tasks 2-4.
-- Throwaway runtime semantics with separate runtime workspaces and debug
-  retention: covered by Task 1 and Task 4.
-- Dead code cleanup of old eval/create-skill surfaces: covered by Tasks 4-5.
-
-## Placeholder Scan
-
-This plan intentionally does **not** include fallback aliases, compatibility
-shims, or "migrate later" branches. Dead surfaces are removed in the same
-change set.
-
-## Type Consistency Check
-
-The intended clean-break command/runtime names used throughout this plan are:
-
-- Runtime primitives:
-  - `StartOpenHandsSession`
-  - `OpenHandsSendMessage`
-  - `PauseOpenHandsSession`
-  - `RunThrowawayOpenHandsSession`
-
-- Product commands:
-  - `run_workflow_step`
-  - `run_answer_evaluator`
-  - `start_refine_session`
-  - `send_refine_message`
-  - `pause_refine_session`
-  - `close_refine_session`
-  - `review_skill_scope`
-  - `define_eval_scenario`
-  - `build_refine_improvement_brief`
-  - `run_eval_workbench`
+## Notes For The Next Coding Pass
+
+- Treat the resume-history gap as the primary product bug still open on this
+  branch.
+- Do not re-open already landed routing refactors unless the resume fix proves
+  they are directly in the way.
+- Keep the next pass focused: restore real resume semantics first, then finish
+  the remaining naming cleanup, then run the regression sweep.
