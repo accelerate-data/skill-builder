@@ -146,6 +146,24 @@ describe("SubagentItem", () => {
     expect(screen.getByTestId("display-item-list")).toHaveAttribute("data-count", "1");
   });
 
+  it("renders child activity before the conclusion block", () => {
+    render(
+      <SubagentItem
+        item={createItem({
+          subagentStatus: "complete",
+          subagentConclusion: "## Done\nFound the root cause.",
+          subagentItems: [createChild("c1")],
+        })}
+      />,
+    );
+
+    const itemList = screen.getByTestId("display-item-list");
+    const conclusionLabel = screen.getAllByTestId("subagent-base-item-label")[1];
+    const itemListPos = itemList.compareDocumentPosition(conclusionLabel);
+
+    expect(itemListPos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("omits the conclusion section when no final result text is present", () => {
     render(
       <SubagentItem

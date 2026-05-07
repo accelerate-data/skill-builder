@@ -84,6 +84,27 @@ describe("initAgentStream", () => {
     );
   });
 
+  it("retries initialization after an early listen failure", async () => {
+    let attempts = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockListen as any).mockImplementation(
+      (event: string, callback: ListenCallback) => {
+        attempts += 1;
+        if (attempts === 1) {
+          return Promise.reject(new Error("bridge not ready"));
+        }
+        listeners[event] = callback;
+        return Promise.resolve(vi.fn());
+      },
+    );
+
+    await expect(initAgentStream()).rejects.toThrow("bridge not ready");
+    await expect(initAgentStream()).resolves.toBeUndefined();
+
+    expect(listeners["agent-message"]).toBeTypeOf("function");
+    expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
+  });
+
   it("adds display_item message to agent store", async () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     await initAgentStream();
@@ -148,6 +169,50 @@ describe("initAgentStream", () => {
         source: "assistant",
         message: "Scope looks focused.",
       },
+    });
+  });
+
+  it("projects persisted OpenHands assistant MessageEvent payloads from llm_message content", async () => {
+    await initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "refine-live-agent",
+        message: {
+          type: "conversation_event",
+          runtime: "openhands",
+          conversation_id: "conv-refine-live",
+          event_class: "MessageEvent",
+          timestamp: 1729,
+          event: {
+            kind: "MessageEvent",
+            source: "agent",
+            llm_message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Based on the conversation history, here are the key decisions.",
+                },
+              ],
+              thinking_blocks: [],
+            },
+          },
+        },
+      },
+    });
+
+    useAgentStore
+      .getState()
+      .registerRun("refine-live-agent", "sonnet", "my-skill", "refine");
+
+    const run = useAgentStore.getState().runs["refine-live-agent"];
+    expect(run.conversationEvents).toHaveLength(1);
+    expect(run.displayItems).toHaveLength(1);
+    expect(run.displayItems[0]).toMatchObject({
+      type: "output",
+      outputText:
+        "Based on the conversation history, here are the key decisions.",
     });
   });
 

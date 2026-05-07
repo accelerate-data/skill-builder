@@ -107,7 +107,11 @@ vi.mock("@/hooks/use-scope-blocked", () => ({
   useScopeBlocked: () => false,
 }));
 
-vi.mock("@/hooks/use-agent-stream", () => ({}));
+const agentStreamMocks = vi.hoisted(() => ({
+  initAgentStream: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/hooks/use-agent-stream", () => agentStreamMocks);
 
 // --- Child component mocks ---
 vi.mock("@/components/refine/chat-panel", () => ({
@@ -189,6 +193,7 @@ describe("WorkspaceRefine", () => {
       renderRefine(skill);
     });
 
+    expect(agentStreamMocks.initAgentStream).toHaveBeenCalled();
     expect(tauriMocks.startRefineSession).toHaveBeenCalledWith(
       "my-skill",
       "/workspace",

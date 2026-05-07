@@ -30,6 +30,13 @@ export const SubagentItem = memo(function SubagentItem({ item, depth = 0 }: { it
     >
       {conclusion || childItems.length > 0 ? (
         <div className="flex flex-col gap-2">
+          {childItems.length > 0 && depth < MAX_NESTING_DEPTH ? (
+            <DisplayItemList items={childItems} depth={depth + 1} />
+          ) : childItems.length > 0 ? (
+            <div className="text-xs text-muted-foreground italic">
+              {childItems.length} nested items (max depth reached)
+            </div>
+          ) : null}
           {conclusion && (
             <BaseItem
               icon={<Bot className="size-3.5" />}
@@ -44,13 +51,6 @@ export const SubagentItem = memo(function SubagentItem({ item, depth = 0 }: { it
               </ErrorBoundary>
             </BaseItem>
           )}
-          {childItems.length > 0 && depth < MAX_NESTING_DEPTH ? (
-            <DisplayItemList items={childItems} depth={depth + 1} />
-          ) : childItems.length > 0 ? (
-            <div className="text-xs text-muted-foreground italic">
-              {childItems.length} nested items (max depth reached)
-            </div>
-          ) : null}
         </div>
       ) : (
         <div className="text-xs text-muted-foreground italic">

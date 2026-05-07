@@ -30,9 +30,7 @@ import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
-
-// Ensure agent-stream listeners are registered
-import "@/hooks/use-agent-stream";
+import { initAgentStream } from "@/hooks/use-agent-stream";
 
 interface WorkspaceRefineProps {
   skill: EditableSkill;
@@ -121,6 +119,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   // Release skill lock on unmount
   useEffect(() => {
+    void initAgentStream();
     return () => {
       const store = useRefineStore.getState();
       if (store.selectedSkill) {

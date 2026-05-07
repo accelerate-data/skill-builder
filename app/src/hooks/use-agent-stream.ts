@@ -71,6 +71,7 @@ const INIT_PROGRESS_MESSAGES: Record<string, string> = {
 // the race condition where Tauri events arrive before a React effect sets up
 // the listener.
 let initialized = false;
+let initPromise: Promise<void> | null = null;
 let _unlisteners: Array<() => void> = [];
 
 interface AgentShutdownPayload {
@@ -79,7 +80,7 @@ interface AgentShutdownPayload {
 
 export async function initAgentStream() {
   if (initialized) return;
-  initialized = true;
+  if (initPromise) return initPromise;
 
   function reg<T>(event: string, handler: (e: { payload: T }) => void): Promise<void> {
     const p = listen<T>(event, handler).then((unlisten) => {
@@ -88,7 +89,7 @@ export async function initAgentStream() {
     return p;
   }
 
-  await Promise.all([
+  initPromise = Promise.all([
     reg<AgentInitProgressPayload>("agent-init-progress", (event) => {
       const { agent_id, stage } = event.payload;
       console.debug(
@@ -278,15 +279,26 @@ export async function initAgentStream() {
     listen<{ agent_id: string }>("agent-turn-complete", (event) => {
       console.log("event=turn_complete component=use-agent-stream agent_id=%s", event.payload.agent_id);
     }).then((u) => { _unlisteners.push(u); }),
-  ]);
+  ]).then(() => {
+    initialized = true;
+  }).catch((error) => {
+    initPromise = null;
+    initialized = false;
+    throw error;
+  });
+
+  return initPromise;
 }
 
 // Initialize eagerly on module load
-void initAgentStream();
+void initAgentStream().catch((error) => {
+  console.warn("[use-agent-stream] initial listener registration failed: %s", error);
+});
 
 /** Reset module-level singleton state for tests. */
 export async function _resetForTesting() {
   await Promise.all(_unlisteners.map((fn) => fn()));
   _unlisteners = [];
   initialized = false;
+  initPromise = null;
 }
