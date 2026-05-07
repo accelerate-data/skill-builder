@@ -34,9 +34,6 @@
     },
     "resources": {
       "../sidecar/dist/": "sidecar/dist",
-      "../promptfoo-sidecar/dist/": "promptfoo-sidecar/dist",
-      "../promptfoo-sidecar/package.json": "promptfoo-sidecar/package.json",
-      "../promptfoo-sidecar/node_modules/": "promptfoo-sidecar/node_modules",
       "../../agent-sources/workspace/": "workspace"
     },
     "icon": [
