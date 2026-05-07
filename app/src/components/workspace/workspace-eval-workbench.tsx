@@ -30,16 +30,14 @@ type SaveScenarioOptions = {
 export function WorkspaceEvalWorkbench({
   skill,
   workspacePath,
-  onRunningChange,
-  onNavigateToRefine,
+  onRunningChange: _onRunningChange,
+  onNavigateToRefine: _onNavigateToRefine,
 }: WorkspaceEvalWorkbenchProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;
-  const [running, setRunning] = useState(false);
   const [selectedScenarioName, setSelectedScenarioName] = useState<string | null>(
     null,
   );
-  const isRunning = running;
 
   const scenariosQuery = useScenarios(skillName, pluginSlug);
   const createScenarioMutation = useCreateScenario(skillName, pluginSlug);
@@ -53,10 +51,6 @@ export function WorkspaceEvalWorkbench({
     selectedScenarioName,
   );
   const selectedScenario = selectedScenarioQuery.data ?? null;
-
-  useEffect(() => {
-    onRunningChange?.(isRunning);
-  }, [isRunning, onRunningChange]);
 
   useEffect(() => {
     if (!selectedScenarioName) {
@@ -119,7 +113,7 @@ export function WorkspaceEvalWorkbench({
         <Button
           size="sm"
           variant="outline"
-          disabled={isRunning || createScenarioMutation.isPending}
+          disabled={createScenarioMutation.isPending}
           onClick={() => void handleCreateScenario("performance")}
         >
           New scenario
@@ -223,8 +217,6 @@ export function WorkspaceEvalWorkbench({
           }
           defineEvalScenarioPending={defineEvalScenarioMutation.isPending}
           deleteScenarioPending={deleteScenarioMutation.isPending}
-          onNavigateToRefine={onNavigateToRefine}
-          onRunningChange={setRunning}
           headerContent={scenariosSection}
         />
       </div>

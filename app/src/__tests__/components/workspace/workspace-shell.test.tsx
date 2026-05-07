@@ -91,10 +91,6 @@ const mockUseCreateScenario = vi.fn();
 const mockUseSaveScenario = vi.fn();
 const mockUseDefineEvalScenario = vi.fn();
 const mockUseDeleteScenario = vi.fn();
-const mockListEvalRuns = vi.fn();
-const mockReadEvalRun = vi.fn();
-const mockRunEvalWorkbench = vi.fn();
-const mockBuildRefineImprovementBrief = vi.fn();
 
 vi.mock("@/lib/queries/eval-scenarios", () => ({
   useScenarios: (...args: unknown[]) => mockUseScenarios(...args),
@@ -112,11 +108,6 @@ vi.mock("@/lib/eval-workbench", async () => {
 
   return {
     ...actual,
-    listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
-    readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
-    runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
-    buildRefineImprovementBrief: (...args: unknown[]) =>
-      mockBuildRefineImprovementBrief(...args),
   };
 });
 
@@ -155,7 +146,8 @@ const performanceScenario = {
   id: "case-1",
   name: "Regression",
   prompt: "Forecast next quarter revenue",
-  expectations: ["Explains the forecast assumptions."],
+  assertions: ["Explains the forecast assumptions."],
+  tags: ["performance"] as const,
 };
 
 const performanceScenarioSummary = {
@@ -166,23 +158,15 @@ const alternatePerformanceScenario = {
   id: "case-2",
   name: "Smoke",
   prompt: "Summarize pipeline risk",
-  expectations: ["Summarizes the main pipeline blockers."],
+  assertions: ["Summarizes the main pipeline blockers."],
+  tags: ["performance"] as const,
 };
 
 const alternatePerformanceScenarioSummary = {
   name: "Smoke",
 };
 
-const runSummary = {
-  id: "run-1",
-  scenarioName: "Regression",
-  mode: "performance" as const,
-  status: "completed",
-  summary: { passed: 1, total: 1 },
-  createdAt: "2026-05-04T00:00:00Z",
-  completedAt: "2026-05-04T00:05:00Z",
-  results: [],
-};
+
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -253,13 +237,7 @@ describe("WorkspaceShell", () => {
       mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
     });
-    mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
-    mockReadEvalRun.mockReset().mockResolvedValue(runSummary);
-    mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
-    mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
-      runId: "run-1",
-      brief: "Improve assumptions handling",
-    });
+
   });
 
   it("renders skill name in header", () => {
@@ -286,13 +264,11 @@ describe("WorkspaceShell", () => {
     expect(screen.queryByText(/^trigger$/i)).not.toBeInTheDocument();
   });
 
-  it("renders scenarios, results, and the footer inside one owning eval panel", async () => {
+  it("renders scenarios inside one owning eval panel", async () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
 
     const panel = await screen.findByTestId("eval-workbench-panel");
     expect(within(panel).getByRole("heading", { name: "Scenarios" })).toBeInTheDocument();
-    expect(within(panel).getByRole("heading", { name: "Results" })).toBeInTheDocument();
-    expect(within(panel).getByTestId("eval-suggest-status-bar")).toBeInTheDocument();
   });
 
   it("gives the eval panel a flex parent so it can expand to the full tab height", async () => {
@@ -381,31 +357,7 @@ describe("WorkspaceShell", () => {
     refineState.isRunning = false;
   });
 
-  it("shows guard dialog when switching away from Eval Workbench while a performance run is active", async () => {
-    const user = userEvent.setup();
-    const deferredRun = createDeferred(runSummary);
-    mockRunEvalWorkbench.mockReset().mockReturnValue(deferredRun.promise);
 
-    const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
-    );
-
-    await screen.findByText("Regression");
-    await user.click(screen.getByRole("button", { name: "Regression" }));
-    await user.click(await screen.findByRole("button", { name: /^evaluate$/i }));
-    await waitFor(() => expect(mockRunEvalWorkbench).toHaveBeenCalled());
-
-    const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find(
-      (t) => t.textContent === "Overview",
-    );
-    await user.click(overviewTab!);
-
-    expect(screen.getByText("Process Running")).toBeInTheDocument();
-    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Eval Workbench");
-
-    deferredRun.resolve(runSummary);
-  });
 
   it("loads scenario detail from the performance-only scenario list", async () => {
     const user = userEvent.setup();
@@ -448,7 +400,8 @@ describe("WorkspaceShell", () => {
       id: "case-1",
       name: "Smoke",
       prompt: "",
-      expectations: [],
+      assertions: [],
+      tags: ["performance"],
     });
     mockUseCreateScenario.mockReset().mockReturnValue({
       mutateAsync,
@@ -528,8 +481,6 @@ describe("WorkspaceShell", () => {
     await user.click(screen.getByRole("button", { name: "Smoke" }));
 
     expect(await screen.findByText("Loading scenario…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^suggest$/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /^evaluate$/i })).toBeDisabled();
   });
 
   it("deletes a saved scenario and falls back to a remaining selection", async () => {

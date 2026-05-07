@@ -37,8 +37,8 @@ export function PromptSetEditor({
   showNew = true,
   footerStatus = null,
 }: PromptSetEditorProps) {
-  function updateExpectations(nextExpectations: string[]) {
-    onChange({ ...draft, expectations: nextExpectations });
+  function updateAssertions(nextAssertions: string[]) {
+    onChange({ ...draft, assertions: nextAssertions });
   }
 
   return (
@@ -107,61 +107,61 @@ export function PromptSetEditor({
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>Expectations</Label>
+                <Label>Assertions</Label>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    updateExpectations([...draft.expectations, ""])
+                    updateAssertions([...draft.assertions, ""])
                   }
                 >
                   <Plus className="mr-1 size-3.5" />
-                  Add expectation
+                  Add assertion
                 </Button>
               </div>
-              {draft.expectations.length > 0 ? (
+              {draft.assertions.length > 0 ? (
                 <div className="space-y-2">
-                  {draft.expectations.map((expectation, expectationIndex) => (
+                  {draft.assertions.map((assertion, assertionIndex) => (
                     <div
-                      key={`${draft.id}-expectation-${expectationIndex}`}
+                      key={`${draft.id}-assertion-${assertionIndex}`}
                       className="rounded border p-2"
                     >
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <span className="text-xs font-medium text-muted-foreground">
-                          Expectation {expectationIndex + 1}
+                          Assertion {assertionIndex + 1}
                         </span>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() =>
-                            updateExpectations(
-                              draft.expectations.filter(
-                                (_value, index) => index !== expectationIndex,
+                            updateAssertions(
+                              draft.assertions.filter(
+                                (_value, index) => index !== assertionIndex,
                               ),
                             )
                           }
-                          aria-label={`Delete expectation ${expectationIndex + 1}`}
+                          aria-label={`Delete assertion ${assertionIndex + 1}`}
                         >
                           <Trash2 className="size-3.5" />
                         </Button>
                       </div>
                       <Textarea
-                        value={expectation}
+                        value={assertion}
                         onChange={(event) => {
-                          const next = [...draft.expectations];
-                          next[expectationIndex] = event.target.value;
-                          updateExpectations(next);
+                          const next = [...draft.assertions];
+                          next[assertionIndex] = event.target.value;
+                          updateAssertions(next);
                         }}
-                        placeholder="Describe the business outcome the answer should satisfy."
+                        placeholder="Describe the assertion the answer should satisfy."
                       />
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No expectations yet. Add one or use Suggest.
+                  No assertions yet. Add one or use Suggest.
                 </p>
               )}
             </div>

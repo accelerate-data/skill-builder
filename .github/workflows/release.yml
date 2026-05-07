@@ -33,7 +33,6 @@ jobs:
           cache-dependency-path: |
             app/package-lock.json
             app/sidecar/package-lock.json
-            app/promptfoo-sidecar/package-lock.json
 
       - name: Pin npm version
         run: npm install -g npm@11.11.0
@@ -63,14 +62,6 @@ jobs:
       - name: Install sidecar dependencies
         working-directory: app/sidecar
         run: npm ci
-
-      - name: Install Promptfoo sidecar dependencies
-        working-directory: app/promptfoo-sidecar
-        run: npm ci
-
-      - name: Build Promptfoo sidecar
-        working-directory: app/promptfoo-sidecar
-        run: npm run build
 
       - name: Stamp version into config files
         working-directory: app
@@ -160,12 +151,9 @@ jobs:
           cp "app/src-tauri/target/release/skill-builder.exe" "$STAGE/"
 
           # Copy runtime JS bundles. The Rust exe-relative fallbacks look for
-          # {exe_dir}/sidecar/dist/... and {exe_dir}/promptfoo-sidecar/{dist,package.json,node_modules}/...
-          mkdir -p "$STAGE/sidecar/dist" "$STAGE/promptfoo-sidecar/dist"
+          # {exe_dir}/sidecar/dist/...
+          mkdir -p "$STAGE/sidecar/dist"
           cp -R "app/sidecar/dist/." "$STAGE/sidecar/dist/"
-          cp -R "app/promptfoo-sidecar/dist/." "$STAGE/promptfoo-sidecar/dist/"
-          cp "app/promptfoo-sidecar/package.json" "$STAGE/promptfoo-sidecar/package.json"
-          cp -R "app/promptfoo-sidecar/node_modules" "$STAGE/promptfoo-sidecar/node_modules"
 
           mkdir -p "$STAGE/agent-sources" "$STAGE/workspace"
           cp -r "agent-sources/skills" "$STAGE/agent-sources/skills"

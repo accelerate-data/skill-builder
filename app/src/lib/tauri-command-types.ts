@@ -36,10 +36,7 @@ import type {
   WorkflowSessionRecord,
 } from "@/lib/types";
 import type {
-  EvalRun,
   EvalWorkbenchMode,
-  RefineImprovementBrief,
-  RunEvalWorkbenchRequest,
   ScenarioListItem,
   ScenarioDto,
 } from "@/lib/eval-workbench";
@@ -449,32 +446,6 @@ export interface TauriCommandMap {
   define_eval_scenario: {
     args: { pluginSlug: string; skillName: string; scenarioName: string };
     result: ScenarioDto;
-  };
-  run_eval_workbench: {
-    args: { request: RunEvalWorkbenchRequest };
-    result: EvalRun;
-  };
-  cancel_eval_workbench_run: {
-    args: { runId: string };
-    result: void;
-  };
-  list_eval_runs: {
-    args: {
-      pluginSlug: string;
-      skillName: string;
-      mode: EvalWorkbenchMode | null;
-      limit: number | null;
-      scenarioName: string | null;
-    };
-    result: EvalRun[];
-  };
-  read_eval_run: {
-    args: { runId: string };
-    result: EvalRun | null;
-  };
-  build_refine_improvement_brief: {
-    args: { runId: string };
-    result: RefineImprovementBrief;
   };
   list_documents: { args: NoArgs; result: Document[] };
   list_skills_for_documents: { args: NoArgs; result: SkillIdName[] };

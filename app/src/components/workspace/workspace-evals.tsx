@@ -1,26 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowRight, Play, Square } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { SaveScenario, ScenarioDto } from "@/lib/eval-workbench";
 import {
-  buildRefineImprovementBrief,
   createDraftScenario,
   getErrorMessage,
-  validateScenarioForEvaluation,
-  runEvalWorkbench,
   normalizeScenario,
   scenarioToDraft,
-  PERFORMANCE_CANDIDATE_IDS,
 } from "@/lib/eval-workbench";
-import { setEvalsRunning } from "@/lib/eval-running-state";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
-import { useRefineStore } from "@/stores/refine-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { formatModelName } from "@/stores/agent-store";
+import { RunStatusFooter } from "@/components/run-status-footer";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
-import { ResultTable } from "./eval-workbench/result-table";
-import { useRunHistory } from "./eval-workbench/use-run-history";
-import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
 
 interface WorkspaceEvalsProps {
   skill: SkillSummary | ImportedSkill;
@@ -39,17 +30,14 @@ interface WorkspaceEvalsProps {
   saveScenarioPending?: boolean;
   defineEvalScenarioPending?: boolean;
   deleteScenarioPending?: boolean;
-  onNavigateToRefine?: () => void;
-  onRunningChange?: (running: boolean) => void;
   headerContent?: ReactNode;
 }
 
 export function WorkspaceEvals({
   skill,
-  workspacePath,
   scenario,
   hasScenarios = Boolean(scenario),
-  scenarioLoading = false,
+  scenarioLoading: _scenarioLoading = false,
   onStartNewScenario,
   onCreateScenario,
   onSaveScenario,
@@ -58,442 +46,145 @@ export function WorkspaceEvals({
   saveScenarioPending = false,
   defineEvalScenarioPending = false,
   deleteScenarioPending = false,
-  onNavigateToRefine,
-  onRunningChange,
   headerContent,
 }: WorkspaceEvalsProps) {
-  const skillName = "name" in skill ? skill.name : skill.skill_name;
-  const pluginSlug = skill.plugin_slug;
-  const currentModel = useSettingsStore((state) => state.modelSettings.model);
-
-  const [definingEvalScenario, setDefiningEvalScenario] = useState(false);
-  const [defineEvalScenarioStartedAt, setDefineEvalScenarioStartedAt] = useState<number | null>(null);
-  const [running, setRunning] = useState(false);
-  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
-  const [sendingToRefine, setSendingToRefine] = useState(false);
+  const [suggestingScenario, setSuggestingScenario] = useState(false);
   const [draft, setDraft] = useState<SaveScenario>(() =>
     createDraftScenario("performance"),
   );
   const [actionError, setActionError] = useState<string | null>(null);
-  const [suggestionStatusError, setSuggestionStatusError] = useState<string | null>(null);
-  const lastPersistedSnapshotRef = useRef<string | null>(null);
-  const [, setSuggestStatusTick] = useState(0);
-  const {
-    activeRunId,
-    cancelActiveRun,
-    clearActiveRun,
-    error,
-    loading,
-    prependRun,
-    progress,
-    refresh,
-    runs,
-    selectRun,
-    selectedRun,
-    selectedRunId,
-    startActiveRun,
-  } = useRunHistory({
-    pluginSlug,
-    skillName,
-    mode: "performance",
-    workspacePath,
-    scenarioName: hasScenarios ? "Package" : null,
-  });
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
+  const skillName = "name" in skill ? skill.name : skill.skill_name;
+
+  const isDirty = scenario
+    ? JSON.stringify(normalizeScenario(scenarioToDraft(scenario))) !==
+      JSON.stringify(normalizeScenario(draft))
+    : false;
 
   useEffect(() => {
-    setDraft(scenario ? scenarioToDraft(scenario) : createDraftScenario("performance"));
-    lastPersistedSnapshotRef.current = scenario
-      ? JSON.stringify(normalizeScenario(scenario))
-      : null;
+    if (scenario) {
+      setDraft(scenarioToDraft(scenario));
+    } else {
+      setDraft(createDraftScenario("performance"));
+    }
     setActionError(null);
-    setSuggestionStatusError(null);
   }, [scenario]);
 
-  useEffect(() => {
-    onRunningChange?.(running);
-    setEvalsRunning(running);
-  }, [running, onRunningChange]);
-
-  useEffect(() => {
-    const hasActiveTimedStatus =
-      (definingEvalScenario || defineEvalScenarioPending) ||
-      running;
-    if (!hasActiveTimedStatus) {
-      return;
-    }
-    const id = window.setInterval(
-      () => setSuggestStatusTick((tick) => tick + 1),
-      1000,
-    );
-    return () => window.clearInterval(id);
-  }, [runStartedAt, running, defineEvalScenarioPending, defineEvalScenarioStartedAt, definingEvalScenario]);
-
-  useEffect(
-    () => () => {
-      onRunningChange?.(false);
-      setEvalsRunning(false);
-    },
-    [onRunningChange],
-  );
-
-  async function handleSelectRun(runId: string) {
+  async function handleSave() {
+    if (!scenario) return;
     setActionError(null);
     try {
-      await selectRun(runId);
-    } catch (runError) {
-      setActionError(getErrorMessage(runError));
+      await onSaveScenario(
+        { ...draft, id: draft.id || scenario.id },
+        { previousScenarioName: scenario.name },
+      );
+    } catch (err) {
+      setActionError(getErrorMessage(err));
     }
   }
 
-  useEffect(() => {
-    if (!scenario || scenarioLoading || saveScenarioPending || definingEvalScenario || running) {
-      return;
-    }
-
-    const normalizedDraft = normalizeScenario(draft);
-    const nextSnapshot = JSON.stringify(normalizedDraft);
-    if (nextSnapshot === lastPersistedSnapshotRef.current) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const saved = await onSaveScenario(normalizedDraft, {
-            previousScenarioName: scenario.name,
-          });
-          lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
-          setDraft(scenarioToDraft(saved));
-        } catch (saveError) {
-          setActionError(getErrorMessage(saveError));
-        }
-      })();
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [
-    draft,
-    onSaveScenario,
-    running,
-    saveScenarioPending,
-    scenario,
-    scenarioLoading,
-    definingEvalScenario,
-  ]);
-
-  async function handleCreateScenario() {
-    if (!onCreateScenario) {
-      return;
-    }
-
-    onStartNewScenario();
+  async function handleSuggest() {
+    if (!scenario || !onDefineEvalScenario) return;
+    setSuggestingScenario(true);
     setActionError(null);
-    setSuggestionStatusError(null);
     try {
-      const created = await onCreateScenario("performance");
-      lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(created));
-      setDraft(scenarioToDraft(created));
-    } catch (createError) {
-      setActionError(getErrorMessage(createError));
-    }
-  }
-
-  async function handleDefineEvalScenario() {
-    if (!scenario || !onDefineEvalScenario) {
-      return;
-    }
-    setDefiningEvalScenario(true);
-    setDefineEvalScenarioStartedAt(Date.now());
-    setActionError(null);
-    setSuggestionStatusError(null);
-    try {
-      const saved = await onDefineEvalScenario(scenario.name);
-      lastPersistedSnapshotRef.current = JSON.stringify(normalizeScenario(saved));
-      setDraft(scenarioToDraft(saved));
-    } catch (suggestionError) {
-      const message = getErrorMessage(suggestionError);
-      if (/structured result was not valid json/i.test(message)) {
-        setSuggestionStatusError(
-          `Scenario suggestion failed: invalid JSON in structured result. ${message}`,
-        );
-      } else {
-        setSuggestionStatusError(`Scenario suggestion failed: ${message}`);
-      }
+      await onDefineEvalScenario(scenario.name);
+    } catch (err) {
+      setActionError(getErrorMessage(err));
     } finally {
-      setDefiningEvalScenario(false);
-      setDefineEvalScenarioStartedAt(null);
+      setSuggestingScenario(false);
     }
   }
 
-  async function handleDeleteScenario() {
-    if (!scenario || !onDeleteScenario) {
-      return;
-    }
-
+  async function handleDelete() {
+    if (!scenario || !onDeleteScenario) return;
     setActionError(null);
-    setSuggestionStatusError(null);
-    setDefineEvalScenarioStartedAt(null);
     try {
       await onDeleteScenario(scenario.name);
-      setDraft(createDraftScenario("performance"));
-    } catch (deleteError) {
-      setActionError(getErrorMessage(deleteError));
+      onStartNewScenario();
+    } catch (err) {
+      setActionError(getErrorMessage(err));
     }
   }
 
-  async function handleRunScenario() {
-    if (!hasScenarios) {
-      setActionError("Add at least one scenario before evaluating the package.");
-      return;
-    }
-
-    if (scenario) {
-      const validationError = validateScenarioForEvaluation(draft, "performance");
-      if (validationError) {
-        setActionError(validationError);
-        return;
-      }
-    }
-
-    const runId = crypto.randomUUID();
-    setRunning(true);
-    setRunStartedAt(Date.now());
-    setActionError(null);
-    startActiveRun(runId);
-    try {
-      const run = await runEvalWorkbench({
-        runId,
-        pluginSlug,
-        skillName,
-        mode: "performance",
-        candidateIds: PERFORMANCE_CANDIDATE_IDS,
-      });
-      prependRun(run);
-      await handleSelectRun(run.id);
-    } catch (runError) {
-      setActionError(getErrorMessage(runError));
-    } finally {
-      setRunning(false);
-      setRunStartedAt(null);
-      clearActiveRun();
-    }
-  }
-
-  async function handleCancelRun() {
-    try {
-      await cancelActiveRun();
-    } catch (cancelError) {
-      setActionError(getErrorMessage(cancelError));
-    }
-  }
-
-  async function handleSendToRefine() {
-    if (!selectedRunId) {
-      return;
-    }
-    setSendingToRefine(true);
+  async function handleCreateScenario() {
+    if (!onCreateScenario) return;
     setActionError(null);
     try {
-      const brief = await buildRefineImprovementBrief(selectedRunId);
-      useRefineStore.getState().setPendingInitialMessage(brief.brief);
-      onNavigateToRefine?.();
-    } catch (briefError) {
-      setActionError(getErrorMessage(briefError));
-    } finally {
-      setSendingToRefine(false);
+      await onCreateScenario("performance");
+    } catch (err) {
+      setActionError(getErrorMessage(err));
     }
   }
-
-  if (!workspacePath) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Configure a workspace before using Eval Workbench.
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading Eval Workbench…
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button variant="outline" size="sm" onClick={() => void refresh()}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  const footerStatusTone: FooterDisplayStatus =
-    running
-      ? "running"
-      : definingEvalScenario || defineEvalScenarioPending
-      ? "running"
-      : suggestionStatusError
-        ? "error"
-        : "idle";
-  const footerStatusStartAt =
-    footerStatusTone === "running"
-      ? (runStartedAt ?? defineEvalScenarioStartedAt)
-      : null;
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card"
+      className="flex h-full flex-1 flex-col"
       data-testid="eval-workbench-panel"
     >
-      <div
-        className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-6"
-        data-testid="eval-workbench-content"
-      >
-        <div className="flex flex-col gap-6 pb-6">
-          {headerContent}
+      <div className="min-h-0 flex flex-1 flex-col px-4">
+        {headerContent}
 
-          {actionError ? (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <span>{actionError}</span>
+        <div className="mt-4 min-h-0 flex flex-1 flex-col gap-4">
+          {!hasScenarios && !scenario && (
+            <div className="rounded-lg border bg-card p-4">
+              <p className="text-sm text-muted-foreground">
+                No scenarios yet. Create your first scenario to get started.
+              </p>
+              <Button
+                className="mt-3"
+                size="sm"
+                onClick={handleCreateScenario}
+                disabled={saveScenarioPending}
+              >
+                New scenario
+              </Button>
             </div>
-          ) : null}
+          )}
 
-          {scenario ? (
+          {scenario && (
             <PromptSetEditor
               draft={draft}
               onChange={setDraft}
-              onNew={() => void handleCreateScenario()}
-              onSuggest={() => void handleDefineEvalScenario()}
-              onDelete={() => void handleDeleteScenario()}
-              suggestDisabled={
-                scenarioLoading || definingEvalScenario || defineEvalScenarioPending || !scenario
-              }
-              suggestBusy={definingEvalScenario || defineEvalScenarioPending}
-              deleteDisabled={scenarioLoading || deleteScenarioPending || !scenario}
-              showDelete={Boolean(scenario)}
-              showNew={false}
+              onNew={onCreateScenario ? handleCreateScenario : undefined}
+              onSuggest={onDefineEvalScenario ? handleSuggest : undefined}
+              onDelete={onDeleteScenario ? handleDelete : undefined}
+              suggestDisabled={defineEvalScenarioPending}
+              deleteDisabled={deleteScenarioPending}
+              showDelete={true}
+              showSuggest={Boolean(onDefineEvalScenario)}
+              suggestBusy={suggestingScenario || defineEvalScenarioPending}
+              showNew={Boolean(onCreateScenario)}
               footerStatus={
-                definingEvalScenario || defineEvalScenarioPending
-                  ? {
-                      tone: "running",
-                      message: "Reading skill and drafting scenario…",
-                    }
-                  : suggestionStatusError
-                    ? {
-                        tone: "error",
-                        message: suggestionStatusError,
-                      }
-                    : null
+                actionError
+                  ? { tone: "error", message: actionError }
+                  : null
               }
             />
-          ) : null}
+          )}
 
-          <section className="rounded-lg border bg-background/60 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Results</h2>
-                <p className="text-xs text-muted-foreground">
-                  Evaluate the package and inspect recent results.
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => void handleRunScenario()}
-                  disabled={scenarioLoading || running || !hasScenarios || saveScenarioPending}
-                >
-                  <Play className="mr-1 size-3.5" />
-                  Evaluate
-                </Button>
-                {running && activeRunId ? (
-                  <Button size="sm" variant="outline" onClick={() => void handleCancelRun()}>
-                    <Square className="mr-1 size-3.5" />
-                    Cancel
+          {scenario && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                {isDirty && (
+                  <Button
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={saveScenarioPending}
+                  >
+                    {saveScenarioPending ? "Saving…" : "Save scenario"}
                   </Button>
-                ) : null}
+                )}
               </div>
             </div>
-
-            {running && progress ? (
-              <p className="mb-4 text-xs text-muted-foreground">
-                {progress.message} ({progress.completed}/{progress.total})
-              </p>
-            ) : null}
-
-            {runs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No evaluations yet. Run Evaluate to score this package.
-              </p>
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
-                <div className="space-y-2">
-                  {runs.map((run) => {
-                    const summary = run.summary as { passed?: number; total?: number };
-                    return (
-                      <Button
-                        key={run.id}
-                        type="button"
-                        variant={selectedRunId === run.id ? "secondary" : "outline"}
-                        className="flex h-auto w-full items-start justify-between gap-3 p-3 text-left"
-                        onClick={() => void handleSelectRun(run.id)}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{run.id}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {summary.passed ?? 0}/{summary.total ?? 0} passed
-                          </p>
-                        </div>
-                      </Button>
-                    );
-                  })}
-                </div>
-
-                <div className="rounded-lg border bg-background/60 p-4">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold">
-                        {selectedRun ? `Run ${selectedRun.id}` : "Run details"}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
-                        Review expectation-level results and send findings to Refine.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={scenarioLoading || !selectedRun || sendingToRefine}
-                      onClick={() => void handleSendToRefine()}
-                    >
-                      <ArrowRight className="mr-1 size-3.5" />
-                      {sendingToRefine ? "Sending…" : "Send to Refine"}
-                    </Button>
-                  </div>
-
-                  {selectedRun ? (
-                    <ResultTable mode="performance" run={selectedRun} />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Select a run to inspect its results.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
+          )}
         </div>
       </div>
 
       <RunStatusFooter
-        status={footerStatusTone}
-        model={currentModel ? formatModelName(currentModel) : null}
-        elapsedMs={footerStatusStartAt ? Math.max(0, Date.now() - footerStatusStartAt) : null}
-        errorText={footerStatusTone === "error" ? suggestionStatusError : null}
-        testId="eval-suggest-status-bar"
+        status="idle"
+        label={skillName}
+        model={selectedModel ? formatModelName(selectedModel) : null}
       />
     </div>
   );

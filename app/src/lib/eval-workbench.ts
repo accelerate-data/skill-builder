@@ -7,7 +7,7 @@ export interface Scenario {
   id: string;
   name: string;
   prompt: string;
-  expectations: string[];
+  assertions: string[];
   tags?: ScenarioTag[];
 }
 
@@ -27,50 +27,6 @@ export function scenarioNameSlug(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-export interface EvalRunResult {
-  id: string;
-  runId: string;
-  caseId: string;
-  candidateId: string;
-  passed: boolean;
-  score: number;
-  output: unknown;
-  reason: string | null;
-}
-
-export interface EvalRun {
-  id: string;
-  scenarioName: string;
-  mode: EvalWorkbenchMode;
-  status: string;
-  summary: Record<string, unknown>;
-  createdAt: string;
-  completedAt: string | null;
-  results: EvalRunResult[];
-}
-
-export interface RunEvalWorkbenchRequest {
-  runId: string;
-  pluginSlug: string;
-  skillName: string;
-  scenarioName?: string | null;
-  mode: EvalWorkbenchMode;
-  candidateIds: string[];
-}
-
-export interface EvalWorkbenchProgressEvent {
-  runId: string;
-  phase: string;
-  completed: number;
-  total: number;
-  message: string;
-}
-
-export interface RefineImprovementBrief {
-  runId: string;
-  brief: string;
 }
 
 export const listScenarios = (pluginSlug: string, skillName: string) =>
@@ -128,35 +84,6 @@ export const defineEvalScenario = (
     scenarioName,
   });
 
-export const runEvalWorkbench = (request: RunEvalWorkbenchRequest) =>
-  invokeCommand("run_eval_workbench", { request });
-
-export const cancelEvalWorkbenchRun = (runId: string) =>
-  invokeCommand("cancel_eval_workbench_run", { runId });
-
-export const listEvalRuns = (
-  pluginSlug: string,
-  skillName: string,
-  mode?: EvalWorkbenchMode | null,
-  limit?: number | null,
-  scenarioName?: string | null,
-) =>
-  invokeCommand("list_eval_runs", {
-    pluginSlug,
-    skillName,
-    mode: mode ?? null,
-    limit: limit ?? null,
-    scenarioName: scenarioName ?? null,
-  });
-
-export const readEvalRun = (runId: string) =>
-  invokeCommand("read_eval_run", { runId });
-
-export const buildRefineImprovementBrief = (runId: string) =>
-  invokeCommand("build_refine_improvement_brief", { runId });
-
-export const PERFORMANCE_CANDIDATE_IDS = ["current-skill"];
-
 export function createDraftScenario(
   _mode: EvalWorkbenchMode = "performance",
   _pluginSlug = "",
@@ -167,7 +94,8 @@ export function createDraftScenario(
     id: `case-${crypto.randomUUID().slice(0, 8)}`,
     name,
     prompt: "",
-    expectations: [],
+    assertions: [],
+    tags: ["performance"],
   };
 }
 
@@ -184,8 +112,8 @@ export function scenarioToDraft(scenario: Scenario): SaveScenario {
     id: scenario.id,
     name: scenario.name,
     prompt: scenario.prompt,
-    expectations: Array.isArray(scenario.expectations)
-      ? scenario.expectations
+    assertions: Array.isArray(scenario.assertions)
+      ? scenario.assertions
       : [],
     ...(scenario.tags ? { tags: [...scenario.tags] } : {}),
   };
@@ -196,8 +124,8 @@ export function normalizeScenario(draft: SaveScenario): SaveScenario {
     id: draft.id || `case-${crypto.randomUUID().slice(0, 8)}`,
     name: draft.name.trim(),
     prompt: draft.prompt.trim(),
-    expectations: Array.isArray(draft.expectations)
-      ? draft.expectations.map((expectation) => expectation.trim())
+    assertions: Array.isArray(draft.assertions)
+      ? draft.assertions.map((assertion) => assertion.trim())
       : [],
     ...(draft.tags && draft.tags.length > 0
       ? { tags: Array.from(new Set(draft.tags)) }
@@ -212,8 +140,8 @@ export function validateScenario(
   if (!draft.name.trim()) {
     return "Scenario name is required.";
   }
-  if (!Array.isArray(draft.expectations)) {
-    return "Expectations must be an array.";
+  if (!Array.isArray(draft.assertions)) {
+    return "Assertions must be an array.";
   }
   if (mode && !scenarioSupportsMode(draft, mode)) {
     return `This scenario is not tagged for ${mode} mode.`;
@@ -229,11 +157,11 @@ export function validateScenarioForEvaluation(
     return "Scenario prompt is required.";
   }
   if (
-    !Array.isArray(draft.expectations) ||
-    draft.expectations.filter((expectation) => expectation.trim().length > 0)
+    !Array.isArray(draft.assertions) ||
+    draft.assertions.filter((assertion) => assertion.trim().length > 0)
       .length === 0
   ) {
-    return "Performance scenarios need at least one expectation.";
+    return "Performance scenarios need at least one assertion.";
   }
   if (mode && !scenarioSupportsMode(draft, mode)) {
     return `This scenario is not tagged for ${mode} mode.`;
@@ -252,16 +180,6 @@ export function areScenariosEqual(
     return false;
   }
   return JSON.stringify(normalizeScenario(left)) === JSON.stringify(normalizeScenario(right));
-}
-
-export function summarizeRun(run: EvalRun): {
-  passed: number;
-  total: number;
-  failed: number;
-} {
-  const total = run.results.length;
-  const passed = run.results.filter((result) => result.passed).length;
-  return { passed, total, failed: total - passed };
 }
 
 export function getErrorMessage(error: unknown): string {

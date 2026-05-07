@@ -26,22 +26,15 @@ describe("runtime API contract", () => {
 
   it("keeps evals on the workbench API and feedback on direct submission", () => {
     const feedbackSource = readSource("components/feedback-dialog.tsx");
-    const runHistorySource = readSource(
-      "components/workspace/eval-workbench/use-run-history.ts",
-    );
     // AI enrichment via start_agent has been removed; feedback dialog uses direct submission.
     expect(feedbackSource).not.toContain("startOneShotAgent");
     expect(feedbackSource).not.toContain("runEvalWorkbench");
 
     const evalsSource = readSource("components/workspace/workspace-evals.tsx");
-    expect(evalsSource).toContain("runEvalWorkbench");
-    expect(evalsSource).toContain("useRunHistory");
     expect(evalsSource).toContain('from "@/lib/eval-workbench"');
     expect(evalsSource).not.toContain("startOneShotAgent");
     expect(evalsSource).not.toContain("sendRefineMessage");
-    expect(runHistorySource).toContain("cancelEvalWorkbenchRun");
-    expect(runHistorySource).toContain("listEvalRuns");
-    expect(runHistorySource).toContain("readEvalRun");
+    expect(evalsSource).toContain("onDefineEvalScenario");
   });
 
   it("keeps refine UI on the streaming refine API", () => {

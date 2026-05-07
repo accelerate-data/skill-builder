@@ -107,6 +107,7 @@ export function useWorkflowGate({
     try {
       setGateLoading(true);
       gateStepRef.current = currentStep;
+      toast.info("Reviewing answers before continuing");
       const agentId = await runAnswerEvaluator(skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
@@ -234,8 +235,9 @@ export function useWorkflowGate({
           // Contradictions found or answers insufficient — stay on step 0 so the user can revise.
           cancelPendingAutoStart();
           setCurrentStep(stepToRestore);
-          toast.info(
+          toast.warning(
             "Please review the feedback and revise your answers before continuing",
+            { duration: Infinity },
           );
           updateStepStatus(stepToRestore, "completed");
           // The query cache was already invalidated above; the clarifications editor
