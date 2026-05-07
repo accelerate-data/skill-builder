@@ -26,32 +26,7 @@ const defaultPerformanceScenario = {
   expectations: [],
 };
 
-const defaultPerformanceRunSummary = {
-  id: "run-1",
-  scenarioName: "Regression",
-  mode: "performance" as const,
-  status: "completed",
-  summary: { passed: 1, total: 1 },
-  createdAt: "2026-05-04T00:00:00Z",
-  completedAt: "2026-05-04T00:05:00Z",
-  results: [],
-};
 
-const defaultPerformanceRunDetail = {
-  ...defaultPerformanceRunSummary,
-  results: [
-    {
-      id: "result-1",
-      runId: "run-1",
-      caseId: "case-1",
-      candidateId: "current-skill",
-      passed: false,
-      score: 0.25,
-      output: {},
-      reason: "Missed assumptions section",
-    },
-  ],
-};
 
 const defaultSettings = {
   model_settings: {
@@ -272,14 +247,6 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   load_scenario: defaultPerformanceScenario,
   save_scenario: defaultPerformanceScenario,
   delete_scenario: undefined,
-  list_eval_runs: [defaultPerformanceRunSummary],
-  read_eval_run: defaultPerformanceRunDetail,
-  run_eval_workbench: defaultPerformanceRunSummary,
-  define_eval_scenario: defaultPerformanceScenario,
-  build_refine_improvement_brief: {
-    runId: "run-1",
-    brief: "Improve assumptions handling",
-  },
 };
 
 function normalizeListSkills(value: unknown): unknown {

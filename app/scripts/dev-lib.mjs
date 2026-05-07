@@ -18,22 +18,4 @@ export function ensureDevPrerequisites(
       cwd: root,
     });
   }
-
-  const nestedNodeModules = join(root, 'promptfoo-sidecar', 'node_modules');
-  if (!existsSync(nestedNodeModules)) {
-    log('\x1b[36m[dev]\x1b[0m Installing missing promptfoo-sidecar dependencies');
-    execSync('npm run promptfoo-sidecar:install', {
-      stdio: 'inherit',
-      cwd: root,
-    });
-  }
-
-  const promptfooDist = join(root, 'promptfoo-sidecar', 'dist');
-  if (!existsSync(promptfooDist)) {
-    log('\x1b[36m[dev]\x1b[0m Building missing promptfoo-sidecar bundle');
-    execSync('npm run promptfoo-sidecar:build', {
-      stdio: 'inherit',
-      cwd: root,
-    });
-  }
 }

@@ -150,21 +150,4 @@ void invokeCommand("define_eval_scenario", {
   scenarioName: "Regression",
 });
 
-void invokeCommand("cancel_eval_workbench_run", { runId: "run-1" });
 
-void invokeCommand("run_eval_workbench", {
-  request: {
-    runId: "run-1",
-    pluginSlug: "skills",
-    skillName: "demo",
-    mode: "performance",
-    candidateIds: ["current-skill"],
-  },
-});
-
-// @ts-expect-error workbench run request requires runId and candidateIds
-void invokeCommand("run_eval_workbench", {
-  request: {
-    scenarioName: "Regression",
-  },
-});
