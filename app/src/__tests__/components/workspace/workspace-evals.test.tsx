@@ -10,7 +10,6 @@ const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
 const mockCancelEvalWorkbenchRun = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
-const mockGenerateScenarios = vi.fn();
 
 const setPendingInitialMessage = vi.fn();
 let progressListener:
@@ -45,7 +44,6 @@ vi.mock("@/lib/eval-workbench", async () => {
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
     cancelEvalWorkbenchRun: (...args: unknown[]) =>
       mockCancelEvalWorkbenchRun(...args),
-    generateScenarios: (...args: unknown[]) => mockGenerateScenarios(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
   };
@@ -103,7 +101,6 @@ const runSummary = {
   createdAt: "2026-05-04T00:00:00Z",
   completedAt: "2026-05-04T00:05:00Z",
   results: [],
-  descriptionCandidates: [],
 };
 
 const runDetail = {
@@ -154,7 +151,6 @@ describe("WorkspaceEvals", () => {
     mockReadEvalRun.mockReset().mockResolvedValue(runDetail);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
     mockCancelEvalWorkbenchRun.mockReset().mockResolvedValue(undefined);
-    mockGenerateScenarios.mockReset().mockResolvedValue([]);
     mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
       runId: "run-1",
       brief: "Improve assumptions handling",

@@ -37,8 +37,7 @@ section.
 - Removed the dead `generate_suggestions` backend path.
 - Removed the old `workspace-description` surface from the live UI.
 - Renamed refine stop semantics to `pause_refine_session`.
-- Ran the local validation set captured in
-  [2026-05-07-openhands-runtime-clean-break-followup-todo.md](./2026-05-07-openhands-runtime-clean-break-followup-todo.md).
+- Ran the local validation set for the first implementation pass.
 
 ## Remaining Work
 

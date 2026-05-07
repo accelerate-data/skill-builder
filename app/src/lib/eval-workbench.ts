@@ -41,15 +41,6 @@ export interface EvalRunResult {
   reason: string | null;
 }
 
-export interface DescriptionCandidate {
-  id: string;
-  runId: string;
-  label: string;
-  description: string;
-  rationale: string | null;
-  rank: number | null;
-}
-
 export interface EvalRun {
   id: string;
   scenarioName: string;
@@ -59,7 +50,6 @@ export interface EvalRun {
   createdAt: string;
   completedAt: string | null;
   results: EvalRunResult[];
-  descriptionCandidates: DescriptionCandidate[];
 }
 
 export interface RunEvalWorkbenchRequest {
@@ -138,9 +128,6 @@ export const defineEvalScenario = (
     skillName,
     scenarioName,
   });
-
-export const generateScenarios = (pluginSlug: string, skillName: string) =>
-  invokeCommand("generate_scenarios", { pluginSlug, skillName });
 
 export const runEvalWorkbench = (request: RunEvalWorkbenchRequest) =>
   invokeCommand("run_eval_workbench", { request });

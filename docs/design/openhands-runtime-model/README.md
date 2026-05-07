@@ -24,7 +24,8 @@ The key model is that OpenHands always operates on a conversation-backed
 session. The important product distinction is not "one-shot" versus
 "streaming" as separate OpenHands concepts. The distinction is whether Skill
 Builder keeps the conversation alive for future user-visible turns or treats it
-as a throwaway session that is deleted after one bounded run.
+as a non-resumable one-shot run that may still leave runtime artifacts behind
+for debugging or cleanup.
 
 ## Design Scope
 
@@ -54,8 +55,8 @@ as a throwaway session that is deleted after one bounded run.
 | Model OpenHands around sessions, not ad hoc one-shot helpers. | OpenHands is conversation-backed in both persistent and throwaway cases. The product should name the actual lifecycle boundary. |
 | Keep two explicit layers: product commands and runtime primitives. | Frontend surfaces should call product-specific commands; only the backend should speak in raw OpenHands session terms. |
 | Use four backend -> OpenHands primitives. | The runtime only needs `StartOpenHandsSession`, `OpenHandsSendMessage`, `PauseOpenHandsSession`, and `RunThrowawayOpenHandsSession`. Everything else is product orchestration. |
-| Persistent session reuse is skill-scoped. | Workflow, Refine, and skill-bound eval-definition flows should accumulate context on the same skill conversation instead of rebuilding context each turn. |
-| Throwaway sessions are reserved for bounded execution tasks. | Scope validation and eval execution create a conversation, run it, collect the terminal result, and then delete it. |
+| Persistent session reuse is currently limited to workflow and refine. | The clean-break target is broader, but the implemented reusable conversation path today is still workflow/refine-oriented; eval-definition and diagnosis remain skill-scoped one-shot runs. |
+| Throwaway sessions are reserved for bounded execution tasks. | Scope validation and eval execution run as non-resumable tasks whose runtime artifacts stay outside normal product conversation state. |
 | Rust owns Agent Server lifecycle and workspace selection. | The backend already owns persistence, filesystem policy, event delivery, logging, and cancellation. |
 | The frontend never calls OpenHands-shaped APIs directly. | Product APIs stay stable even if the runtime implementation changes. |
 | `skill-creator.md` is always sent through `system_message_suffix`. | The main agent should preserve the default OpenHands system prompt while deterministically appending Skill Builder's stable instructions. |
@@ -99,7 +100,7 @@ This is the **backend -> OpenHands** contract.
 | `StartOpenHandsSession` | Create or resume a persistent OpenHands conversation for a skill-scoped session. |
 | `OpenHandsSendMessage` | Append a user message to an existing persistent conversation and run it. |
 | `PauseOpenHandsSession` | Pause active execution on a persistent conversation without deleting it. |
-| `RunThrowawayOpenHandsSession` | Create a bounded conversation, run it to completion, collect the result, and delete it. |
+| `RunThrowawayOpenHandsSession` | Create a bounded conversation, run it to completion, collect the result, and keep it outside resumable product state. |
 
 These primitives are generic runtime concepts. They should not know about
 Workflow step numbers, Refine UI state, or Eval Workbench entities.
@@ -200,12 +201,11 @@ user is not expected to continue talking to that same OpenHands conversation.
 
 ```text
 product command
-  -> RunThrowawayOpenHandsSession
+  -> RunThrowawayOpenHandsSession (or another non-resumable one-shot wrapper)
   -> create conversation
   -> send one task message
   -> run to terminal state
   -> parse result
-  -> delete conversation
 ```
 
 Properties:
@@ -213,6 +213,8 @@ Properties:
 - no saved `conversation_id`
 - no later user reply path
 - the product keeps only the parsed output or evaluation result
+- runtime files may be cleaned immediately or retained outside product state,
+  depending on the specific one-shot implementation
 
 ## Session Ownership Model
 
@@ -260,6 +262,16 @@ Rules:
   resumable from product state
 - throwaway artifacts may still be retained for debugging and cleaned up later
   by retention policy
+
+### Current implementation status
+
+The current clean-break branch uses the target split:
+
+- persistent skill-scoped turns for Workflow, Refine, eval scenario definition,
+  and refine-brief generation
+- isolated `.openhands/throwaway/...` runtime roots for throwaway scope review
+  and eval execution
+- no throwaway flow saves a resumable product conversation ID
 
 ### Agent Server Ownership
 
@@ -324,7 +336,7 @@ The default tool policy for OpenHands requests lives in the child doc:
 | Product surface | Product command | OpenHands primitive mapping | Notes |
 |---|---|---|---|
 | Create Skill scope validation | `review_skill_scope` | `RunThrowawayOpenHandsSession` | Bounded validation run, no later reply path |
-| Eval execution | `run_eval_workbench` | `RunThrowawayOpenHandsSession` | Disposable evaluation execution |
+| Eval execution | `run_eval_workbench` | `RunThrowawayOpenHandsSession` plus Promptfoo sidecar orchestration | Runs execute in isolated `.openhands/throwaway/eval-workbench/...` runtime roots |
 
 ### Product-only wrapper commands
 

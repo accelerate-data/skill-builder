@@ -2,7 +2,8 @@ pub mod scenarios;
 pub mod types;
 
 use crate::agents::openhands_server::{
-    cancel_openhands_one_shots_with_prefix, run_openhands_one_shot, OpenHandsOneShotRunParams,
+    cancel_openhands_one_shots_with_prefix, openhands_send_message, pause_openhands_session,
+    run_openhands_one_shot, start_openhands_session, OpenHandsOneShotRunParams,
 };
 use crate::agents::promptfoo_sidecar::process::{
     list_history as list_promptfoo_history, read_history as read_promptfoo_history,
@@ -30,7 +31,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::Emitter;
+use tauri::{Emitter, Listener};
 pub use types::{
     RefineImprovementBrief, RunEvalWorkbenchRequest, ScenarioDto, ScenarioSummaryDto,
 };
@@ -1108,6 +1109,22 @@ fn build_generation_sidecar_config(
     })
 }
 
+fn eval_workbench_throwaway_runtime_dir(workspace_path: &str, run_id: &str, phase: &str) -> PathBuf {
+    crate::skill_paths::throwaway_runtime_dir(Path::new(workspace_path), "eval-workbench", run_id)
+        .join(phase)
+}
+
+async fn prepare_throwaway_runtime_dir(
+    app: &tauri::AppHandle,
+    runtime_dir: &Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(runtime_dir))
+        .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
+    std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(runtime_dir))
+        .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
+    crate::commands::workflow::deploy::ensure_openhands_runtime_dir(app, runtime_dir).await
+}
+
 fn format_eval_diagnosis_brief(run: &EvalRun, diagnosis: &Value) -> String {
     let read_lines = |key: &str| {
         diagnosis
@@ -1238,21 +1255,13 @@ fn build_performance_sidecar_config(
     prompt_set: &EvalPromptSet,
     prompt: &str,
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
+    runtime_run_dir: &Path,
 ) -> crate::agents::sidecar::SidecarConfig {
-    let workspace_root_dir = runtime_ctx.workspace_path.replace('\\', "/");
-    let workspace_run_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(&runtime_ctx.workspace_path),
-        &prompt_set.plugin_slug,
-        &prompt_set.skill_name,
-    )
-    .to_string_lossy()
-    .replace('\\', "/");
-
     build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
-        workspace_root_dir,
-        workspace_run_dir,
+        workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
+        workspace_run_dir: runtime_run_dir.to_string_lossy().replace('\\', "/"),
         agent_name: "skill-creator".to_string(),
         task_kind: Some("eval_workbench.performance".to_string()),
         user_message_suffix: None,
@@ -1296,13 +1305,13 @@ fn build_trigger_sidecar_config(
     prompt_set: &EvalPromptSet,
     prompt: &str,
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-    workspace_skill_dir: &Path,
+    runtime_run_dir: &Path,
 ) -> crate::agents::sidecar::SidecarConfig {
     build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
-        workspace_run_dir: workspace_skill_dir.to_string_lossy().replace('\\', "/"),
+        workspace_run_dir: runtime_run_dir.to_string_lossy().replace('\\', "/"),
         agent_name: "skill-creator".to_string(),
         task_kind: Some("eval_workbench.trigger".to_string()),
         user_message_suffix: None,
@@ -1346,6 +1355,101 @@ fn build_eval_diagnosis_sidecar_config(
         run_source: Some("test".to_string()),
         plugin_slug: prompt_set.plugin_slug.clone(),
     })
+}
+
+fn parse_terminal_conversation_state(
+    payload: &str,
+    target_agent_id: &str,
+) -> Option<serde_json::Value> {
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+        return None;
+    }
+
+    let message = value.get("message")?;
+    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    match message.get("status").and_then(|v| v.as_str()) {
+        Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
+        _ => None,
+    }
+}
+
+fn should_retry_persistent_eval_turn(error: &str) -> bool {
+    error.contains("was not found and cannot be resumed")
+        || error.contains("does not match the current request")
+}
+
+async fn run_persistent_eval_turn(
+    app: &tauri::AppHandle,
+    db: &Db,
+    plugin_slug: &str,
+    skill_name: &str,
+    agent_id_prefix: &str,
+    config: crate::agents::sidecar::SidecarConfig,
+    timeout: std::time::Duration,
+) -> Result<serde_json::Value, String> {
+    let saved_conversation_id = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_conversation_id(&conn, plugin_slug, skill_name)?
+    };
+    let agent_id = format!("{agent_id_prefix}-{}", uuid::Uuid::new_v4());
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    let listener_agent_id = agent_id.clone();
+    let listener_id = app.listen("agent-message", move |event| {
+        if let Some(state) =
+            parse_terminal_conversation_state(event.payload(), listener_agent_id.as_str())
+        {
+            let _ = tx.send(state);
+        }
+    });
+
+    let dispatch_result = match saved_conversation_id {
+        Some(conversation_id) => match openhands_send_message(
+            app,
+            &agent_id,
+            config.clone(),
+            conversation_id,
+        )
+        .await
+        {
+            Ok(_) => Ok(()),
+            Err(error) if should_retry_persistent_eval_turn(&error) => {
+                log::info!(
+                    "[eval_workbench] resetting persistent conversation for skill={} plugin={} after resume failure: {}",
+                    skill_name,
+                    plugin_slug,
+                    error
+                );
+                start_openhands_session(app, &agent_id, config, None)
+                    .await
+                    .map(|_| ())
+            }
+            Err(error) => Err(error),
+        },
+        None => start_openhands_session(app, &agent_id, config, None)
+            .await
+            .map(|_| ()),
+    };
+
+    if let Err(error) = dispatch_result {
+        app.unlisten(listener_id);
+        return Err(error);
+    }
+
+    let state = tokio::time::timeout(timeout, rx.recv()).await;
+    app.unlisten(listener_id);
+
+    match state {
+        Ok(Some(state)) => Ok(state),
+        Ok(None) => Err("Persistent eval turn listener closed unexpectedly".to_string()),
+        Err(_) => {
+            let _ = pause_openhands_session(&agent_id);
+            Err("Persistent eval turn timed out".to_string())
+        }
+    }
 }
 
 fn build_run_summary(result: &crate::agents::promptfoo_sidecar::protocol::EvalRunResult) -> Value {
@@ -1656,12 +1760,20 @@ async fn execute_performance_cases(
     cases: &[EvalCase],
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
 ) -> Result<Vec<EvalExecution>, String> {
+    let runtime_run_dir =
+        eval_workbench_throwaway_runtime_dir(&runtime_ctx.workspace_path, run_id, "performance");
+    prepare_throwaway_runtime_dir(app, &runtime_run_dir).await?;
     let mut executions = Vec::with_capacity(cases.len());
     let total = cases.len() as u32;
 
     for (index, test_case) in cases.iter().enumerate() {
         ensure_eval_workbench_not_cancelled(runs, run_id)?;
-        let config = build_performance_sidecar_config(prompt_set, &test_case.prompt, runtime_ctx);
+        let config = build_performance_sidecar_config(
+            prompt_set,
+            &test_case.prompt,
+            runtime_ctx,
+            &runtime_run_dir,
+        );
         let run = run_openhands_one_shot(
             app,
             OpenHandsOneShotRunParams {
@@ -1707,17 +1819,20 @@ async fn execute_trigger_cases(
     candidates: &[SidecarEvalCandidate],
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
 ) -> Result<Vec<EvalExecution>, String> {
-    let temp_root = PathBuf::from(&runtime_ctx.workspace_path)
-        .join(".eval-workbench")
-        .join(format!("trigger-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&temp_root).map_err(|e| e.to_string())?;
+    let trigger_root = eval_workbench_throwaway_runtime_dir(
+        &runtime_ctx.workspace_path,
+        run_id,
+        "trigger",
+    );
+    std::fs::create_dir_all(&trigger_root).map_err(|e| e.to_string())?;
 
     let result = async {
         let mut executions = Vec::with_capacity(cases.len() * candidates.len());
         let total = (cases.len() * candidates.len()) as u32;
         let mut completed = 0u32;
         for candidate in candidates {
-            let candidate_dir = temp_root.join(&candidate.id);
+            let candidate_dir = trigger_root.join(&candidate.id);
+            prepare_throwaway_runtime_dir(app, &candidate_dir).await?;
             for test_case in cases {
                 ensure_eval_workbench_not_cancelled(runs, run_id)?;
                 let trigger_marker = format!(
@@ -1779,7 +1894,6 @@ async fn execute_trigger_cases(
     }
     .await;
 
-    let _ = std::fs::remove_dir_all(&temp_root);
     result
 }
 
@@ -1922,18 +2036,18 @@ pub async fn define_eval_scenario(
         suggested_scenario_output_format(),
         &runtime_ctx,
     );
-    let run = run_openhands_one_shot(
+    let run = run_persistent_eval_turn(
         &app,
-        OpenHandsOneShotRunParams {
-            agent_id_prefix: format!("{}-scenario-suggest", skill_name),
-            config,
-            timeout: std::time::Duration::from_secs(90),
-        },
+        db.inner(),
+        &plugin_slug,
+        &skill_name,
+        &format!("{skill_name}-scenario-suggest"),
+        config,
+        std::time::Duration::from_secs(90),
     )
     .await?;
 
-    let suggested_scenario =
-        parse_suggested_scenario_response(&run.conversation_state, &existing_scenario)?;
+    let suggested_scenario = parse_suggested_scenario_response(&run, &existing_scenario)?;
     persist_scenario_file(&eval_dir, &suggested_scenario, Some(&scenario_name))?;
     Ok(scenario_to_dto(suggested_scenario))
 }
@@ -2209,16 +2323,17 @@ pub async fn build_refine_improvement_brief(
     let prompt =
         build_eval_diagnosis_prompt(&run, &prompt_set, &skill_files, &run.description_candidates);
     let config = build_eval_diagnosis_sidecar_config(&prompt_set, &prompt, &runtime_ctx);
-    let diagnosis_run = run_openhands_one_shot(
+    let diagnosis_run = run_persistent_eval_turn(
         &app,
-        OpenHandsOneShotRunParams {
-            agent_id_prefix: format!("{}-diagnosis", prompt_set.skill_name),
-            config,
-            timeout: std::time::Duration::from_secs(90),
-        },
+        db.inner(),
+        &prompt_set.plugin_slug,
+        &prompt_set.skill_name,
+        &format!("{}-diagnosis", prompt_set.skill_name),
+        config,
+        std::time::Duration::from_secs(90),
     )
     .await?;
-    let diagnosis = parse_openhands_structured_output(&diagnosis_run.conversation_state)?;
+    let diagnosis = parse_openhands_structured_output(&diagnosis_run)?;
 
     Ok(RefineImprovementBrief {
         run_id: run.id.clone(),
@@ -2395,12 +2510,16 @@ mod tests {
             updated_at: "2026-05-06T00:00:00Z".to_string(),
         };
         let output_format = serde_json::json!({"type":"json_schema","schema":{"type":"object"}});
-        let trigger_workspace =
-            crate::skill_paths::workspace_skill_dir(
-                Path::new(&runtime_ctx.workspace_path),
-                &prompt_set.plugin_slug,
-                &prompt_set.skill_name,
-            );
+        let performance_runtime =
+            eval_workbench_throwaway_runtime_dir(&runtime_ctx.workspace_path, "run-1", "performance");
+        let trigger_runtime =
+            eval_workbench_throwaway_runtime_dir(&runtime_ctx.workspace_path, "run-1", "trigger")
+                .join("candidate-a");
+        let persistent_workspace = crate::skill_paths::workspace_skill_dir(
+            Path::new(&runtime_ctx.workspace_path),
+            &prompt_set.plugin_slug,
+            &prompt_set.skill_name,
+        );
         let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
 
         let configs = vec![
@@ -2413,29 +2532,84 @@ mod tests {
                     &runtime_ctx,
                 ),
                 true,
+                persistent_workspace.to_string_lossy().replace('\\', "/"),
             ),
             (
-                build_performance_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
+                build_performance_sidecar_config(
+                    &prompt_set,
+                    "prompt",
+                    &runtime_ctx,
+                    &performance_runtime,
+                ),
                 false,
+                performance_runtime.to_string_lossy().replace('\\', "/"),
             ),
             (
-                build_trigger_sidecar_config(&prompt_set, "prompt", &runtime_ctx, &trigger_workspace),
+                build_trigger_sidecar_config(
+                    &prompt_set,
+                    "prompt",
+                    &runtime_ctx,
+                    &trigger_runtime,
+                ),
                 false,
+                trigger_runtime.to_string_lossy().replace('\\', "/"),
             ),
             (
                 build_eval_diagnosis_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
                 true,
+                persistent_workspace.to_string_lossy().replace('\\', "/"),
             ),
         ];
 
-        for (config, is_persistent) in configs {
+        for (config, is_persistent, expected_runtime_dir) in configs {
             assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
             assert_eq!(
                 config.system_message_suffix.as_deref(),
                 Some(expected_suffix.as_str())
             );
             assert_eq!(config.skill_name.is_some(), is_persistent);
+            assert_eq!(config.workspace_skill_dir, expected_runtime_dir);
         }
+    }
+
+    #[test]
+    fn parse_terminal_conversation_state_filters_to_target_agent_and_terminal_statuses() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "completed",
+                "structured_output": { "name": "Regression" }
+            }
+        })
+        .to_string();
+        let non_terminal_payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "running"
+            }
+        })
+        .to_string();
+
+        assert_eq!(
+            parse_terminal_conversation_state(&payload, "agent-1")
+                .and_then(|value| value.get("status").and_then(|status| status.as_str()).map(str::to_string)),
+            Some("completed".to_string())
+        );
+        assert!(parse_terminal_conversation_state(&payload, "other-agent").is_none());
+        assert!(parse_terminal_conversation_state(&non_terminal_payload, "agent-1").is_none());
+    }
+
+    #[test]
+    fn retryable_persistent_eval_errors_only_match_resume_reset_cases() {
+        assert!(should_retry_persistent_eval_turn(
+            "OpenHands conversation abc was not found and cannot be resumed"
+        ));
+        assert!(should_retry_persistent_eval_turn(
+            "OpenHands conversation abc does not match the current request"
+        ));
+        assert!(!should_retry_persistent_eval_turn("upstream network failed"));
     }
 
     fn mirrored_scenario_prompt_set_count(

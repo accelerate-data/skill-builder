@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import {
   buildRefineImprovementBrief,
+  cancelEvalWorkbenchRun,
   createScenario,
   deleteScenario,
   listEvalRuns,
@@ -84,12 +85,13 @@ describe("Eval Workbench Tauri wrappers", () => {
     });
   });
 
-  it("supports scenario creation, scenario suggestion, candidate generation, apply, history, and deletion commands", async () => {
+  it("supports the live eval workbench command set", async () => {
     await Promise.all([
       createScenario("skills", "forecast-skill", "performance"),
       listEvalRuns("skills", "forecast-skill", "performance", 20, "Package"),
       readEvalRun("run-1"),
       defineEvalScenario("skills", "forecast-skill", "Regression"),
+      cancelEvalWorkbenchRun("run-1"),
       buildRefineImprovementBrief("run-1"),
       deleteScenario("skills", "forecast-skill", "Regression"),
     ]);
@@ -111,6 +113,9 @@ describe("Eval Workbench Tauri wrappers", () => {
       pluginSlug: "skills",
       skillName: "forecast-skill",
       scenarioName: "Regression",
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("cancel_eval_workbench_run", {
+      runId: "run-1",
     });
     expect(mockInvoke).toHaveBeenCalledWith("build_refine_improvement_brief", {
       runId: "run-1",

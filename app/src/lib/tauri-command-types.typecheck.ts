@@ -142,16 +142,13 @@ void invokeCommand("save_scenario", {
   previousScenarioName: null,
 });
 
-void invokeCommand("generate_scenarios", {
-  pluginSlug: "skills",
-  skillName: "demo",
-});
-
 void invokeCommand("define_eval_scenario", {
   pluginSlug: "skills",
   skillName: "demo",
   scenarioName: "Regression",
 });
+
+void invokeCommand("cancel_eval_workbench_run", { runId: "run-1" });
 
 void invokeCommand("run_eval_workbench", {
   request: {

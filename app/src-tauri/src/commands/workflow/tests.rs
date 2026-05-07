@@ -485,6 +485,10 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.run_source.as_deref(), Some("gate-eval"));
     assert_eq!(config.output_format, Some(answer_evaluator_output_format()));
     assert_eq!(
+        config.user_message_suffix.as_deref(),
+        Some("Follow the current user message exactly. Do not infer a different task than the one stated in the message.")
+    );
+    assert_eq!(
         config.task_kind.as_deref(),
         Some("workflow.answer_evaluator")
     );

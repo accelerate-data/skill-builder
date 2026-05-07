@@ -19,10 +19,8 @@ import { WorkspaceEvals } from "./workspace-evals";
 interface WorkspaceEvalWorkbenchProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
-  initialMode?: EvalWorkbenchMode;
   onRunningChange?: (running: boolean) => void;
   onNavigateToRefine?: () => void;
-  onApplyDescription?: (newDescription: string, newVersion: string) => void;
 }
 
 type SaveScenarioOptions = {
@@ -32,10 +30,8 @@ type SaveScenarioOptions = {
 export function WorkspaceEvalWorkbench({
   skill,
   workspacePath,
-  initialMode: _initialMode = "performance",
   onRunningChange,
   onNavigateToRefine,
-  onApplyDescription: _onApplyDescription,
 }: WorkspaceEvalWorkbenchProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const pluginSlug = skill.plugin_slug;

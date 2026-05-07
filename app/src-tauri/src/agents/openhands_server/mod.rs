@@ -26,7 +26,6 @@ use std::fs;
 
 pub struct OpenHandsOneShotRunParams {
     pub agent_id_prefix: String,
-    pub agent_id: Option<String>,
     pub config: SidecarConfig,
     pub timeout: Duration,
 }
@@ -110,22 +109,6 @@ fn conversation_matches_request(
 enum OpenHandsConversationSelection {
     ResumeOrCreate,
     SendExistingOnly,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OpenHandsSessionKind {
-    Persistent,
-    Throwaway,
-}
-
-fn should_persist_skill_conversation(kind: OpenHandsSessionKind) -> bool {
-    matches!(kind, OpenHandsSessionKind::Persistent)
-}
-
-fn require_existing_conversation_id(conversation_id: Option<String>) -> Result<String, String> {
-    conversation_id.ok_or_else(|| {
-        "OpenHands send-message requires an existing conversation id".to_string()
-    })
 }
 
 enum OpenHandsOneShotEvent {
@@ -581,9 +564,7 @@ pub async fn start_openhands_session(
         OpenHandsConversationSelection::ResumeOrCreate,
     )
     .await?;
-    if should_persist_skill_conversation(OpenHandsSessionKind::Persistent) {
-        save_skill_conversation_id(app, &request, &conversation_id)?;
-    }
+    save_skill_conversation_id(app, &request, &conversation_id)?;
     Ok(conversation_id)
 }
 
@@ -594,7 +575,6 @@ pub async fn openhands_send_message(
     conversation_id: String,
 ) -> Result<String, String> {
     let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
-    let conversation_id = require_existing_conversation_id(Some(conversation_id))?;
     dispatch_openhands_turn_with_request(
         app,
         agent_id,
@@ -631,13 +611,8 @@ pub async fn run_throwaway_openhands_session(
     app: &tauri::AppHandle,
     params: OpenHandsOneShotRunParams,
 ) -> Result<OpenHandsOneShotRun, String> {
-    debug_assert!(!should_persist_skill_conversation(
-        OpenHandsSessionKind::Throwaway
-    ));
     let config = params.config;
-    let agent_id = params
-        .agent_id
-        .unwrap_or_else(|| format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4()));
+    let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
     let target_agent_id = agent_id.clone();
@@ -704,7 +679,7 @@ pub async fn run_throwaway_openhands_session(
         Ok(Ok(())) => {}
         Ok(Err(error)) => return Err(error),
         Err(_) => {
-            let _ = cancel_openhands_one_shot(&agent_id);
+            let _ = pause_openhands_session(&agent_id);
             return Err("OpenHands one-shot run timed out".to_string());
         }
     };
@@ -719,12 +694,30 @@ pub async fn run_throwaway_openhands_session(
     Ok(OpenHandsOneShotRun { conversation_state })
 }
 
-pub fn pause_openhands_session(agent_id: &str) -> bool {
-    cancel_openhands_one_shot(agent_id)
-}
+pub fn cancel_openhands_one_shots_with_prefix(agent_id_prefix: &str) -> usize {
+    let Ok(mut registry) = cancel_registry().lock() else {
+        log::warn!(
+            "[openhands-agent-server:{}] failed to lock cancellation registry for prefix cancel",
+            agent_id_prefix
+        );
+        return 0;
+    };
 
-pub fn cancel_openhands_one_shot(agent_id: &str) -> bool {
-    pause_openhands_session(agent_id)
+    let matching_ids = registry
+        .keys()
+        .filter(|agent_id| agent_id.starts_with(agent_id_prefix))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut cancelled = 0usize;
+    for agent_id in matching_ids {
+        if registry
+            .remove(&agent_id)
+            .is_some_and(|cancel| cancel.send(()).is_ok())
+        {
+            cancelled += 1;
+        }
+    }
+    cancelled
 }
 
 async fn run_conversation_task(
@@ -737,15 +730,6 @@ async fn run_conversation_task(
         let _ = task.client.pause_conversation(&task.conversation_id).await;
     }
     result
-}
-
-/// Retained conversation task used by persistent sessions and retained
-/// throwaway runs.
-async fn run_refine_conversation_task(
-    task: OpenHandsConversationTask,
-    cancel_rx: tokio::sync::oneshot::Receiver<()>,
-) -> Result<(), String> {
-    run_conversation_task(task, cancel_rx).await
 }
 
 async fn dispatch_openhands_turn_with_request(
@@ -850,7 +834,7 @@ async fn dispatch_openhands_turn_with_request(
             summary_context,
             backfill_existing_events,
         };
-        let result = run_refine_conversation_task(task, cancel_rx).await;
+        let result = run_conversation_task(task, cancel_rx).await;
         unregister_cancel(&agent_for_task);
         if let Err(error) = result {
             super::events::handle_sidecar_exit_with_detail(
@@ -864,16 +848,6 @@ async fn dispatch_openhands_turn_with_request(
 
     Ok(conversation_id)
 }
-
-pub async fn dispatch_openhands_refine_turn(
-    app: &tauri::AppHandle,
-    agent_id: &str,
-    config: SidecarConfig,
-    conversation_id: Option<String>,
-) -> Result<String, String> {
-    start_openhands_session(app, agent_id, config, conversation_id).await
-}
-
 async fn run_conversation_task_inner(
     task: &OpenHandsConversationTask,
     cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,
@@ -1783,25 +1757,6 @@ mod tests {
     }
 
     #[test]
-    fn openhands_send_message_requires_an_existing_conversation() {
-        assert_eq!(
-            require_existing_conversation_id(Some("conversation-1".to_string())).unwrap(),
-            "conversation-1"
-        );
-        assert!(require_existing_conversation_id(None).is_err());
-    }
-
-    #[test]
-    fn throwaway_sessions_do_not_persist_skill_conversations() {
-        assert!(should_persist_skill_conversation(
-            OpenHandsSessionKind::Persistent
-        ));
-        assert!(!should_persist_skill_conversation(
-            OpenHandsSessionKind::Throwaway
-        ));
-    }
-
-    #[test]
     fn live_subagent_scan_emits_child_events_before_parent_observation() {
         let dir = tempdir().expect("tempdir");
         let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
@@ -2032,9 +1987,28 @@ mod tests {
 
         register_cancel(&agent_id, cancel_tx).unwrap();
 
-        assert!(cancel_openhands_one_shot(&agent_id));
+        assert!(pause_openhands_session(&agent_id));
         assert!(cancel_rx.try_recv().is_ok());
-        assert!(!cancel_openhands_one_shot(&agent_id));
+        assert!(!pause_openhands_session(&agent_id));
     }
 
+    #[test]
+    fn prefix_cancellation_registry_signals_matching_agents_only() {
+        let prefix = format!("test-prefix-{}", uuid::Uuid::new_v4());
+        let matching_agent = format!("{prefix}-one");
+        let other_agent = format!("other-prefix-{}", uuid::Uuid::new_v4());
+        let (matching_tx, mut matching_rx) = tokio::sync::oneshot::channel::<()>();
+        let (other_tx, mut other_rx) = tokio::sync::oneshot::channel::<()>();
+
+        register_cancel(&matching_agent, matching_tx).unwrap();
+        register_cancel(&other_agent, other_tx).unwrap();
+
+        assert_eq!(cancel_openhands_one_shots_with_prefix(&prefix), 1);
+        assert!(matching_rx.try_recv().is_ok());
+        assert!(matches!(
+            other_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+        assert!(pause_openhands_session(&other_agent));
+    }
 }

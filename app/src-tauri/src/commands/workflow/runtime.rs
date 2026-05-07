@@ -222,7 +222,7 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
         workspace_run_dir,
         agent_name: "skill-creator".to_string(),
         task_kind: Some("workflow.answer_evaluator".to_string()),
-        user_message_suffix: None,
+        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
         allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
         max_turns: 20,
         output_format: Some(answer_evaluator_output_format()),
@@ -249,14 +249,18 @@ async fn dispatch_persistent_skill_turn(
         }
         None => None,
     };
-
-    crate::agents::openhands_server::dispatch_openhands_refine_turn(
-        app,
-        agent_id,
-        config,
-        conversation_id,
-    )
-    .await
+    if let Some(conversation_id) = conversation_id {
+        crate::agents::openhands_server::openhands_send_message(
+            app,
+            agent_id,
+            config,
+            conversation_id,
+        )
+        .await
+    } else {
+        crate::agents::openhands_server::start_openhands_session(app, agent_id, config, None)
+            .await
+    }
 }
 
 const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -611,7 +615,7 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        openhands_server::cancel_openhands_one_shot(stale_agent_id);
+        openhands_server::pause_openhands_session(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
@@ -845,7 +849,7 @@ pub async fn cancel_workflow_step(
             return Err(msg);
         }
     }
-    openhands_server::cancel_openhands_one_shot(&agent_id);
+    openhands_server::pause_openhands_session(&agent_id);
     Ok(())
 }
 

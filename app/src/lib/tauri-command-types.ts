@@ -443,10 +443,6 @@ export interface TauriCommandMap {
     args: { pluginSlug: string; skillName: string; scenarioName: string };
     result: void;
   };
-  generate_scenarios: {
-    args: { pluginSlug: string; skillName: string };
-    result: ScenarioDto[];
-  };
   define_eval_scenario: {
     args: { pluginSlug: string; skillName: string; scenarioName: string };
     result: ScenarioDto;

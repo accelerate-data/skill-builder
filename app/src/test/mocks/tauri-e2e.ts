@@ -35,7 +35,6 @@ const defaultPerformanceRunSummary = {
   createdAt: "2026-05-04T00:00:00Z",
   completedAt: "2026-05-04T00:05:00Z",
   results: [],
-  descriptionCandidates: [],
 };
 
 const defaultPerformanceRunDetail = {

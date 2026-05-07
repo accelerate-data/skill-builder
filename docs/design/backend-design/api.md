@@ -195,17 +195,11 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 |---|---|
 | `list_scenarios` | List scenario summaries for a plugin skill from disk |
 | `load_scenario` | Read one full scenario from disk |
-| `create_scenario` | Create a new eval scenario |
-| `define_eval_scenario` | Define or update scenario configuration |
-| `save_scenario` | Create, update, or rename a disk-backed scenario |
-| `delete_scenario` | Delete a disk-backed scenario |
-| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a scenario |
-| `cancel_eval_workbench_run` | Stop a running eval |
-| `list_eval_runs` | List Promptfoo-backed Eval Workbench runs for a skill |
-| `read_eval_run` | Read one Eval Workbench run with results and candidates |
-| `read_latest_benchmark` | Read the latest benchmark snapshot |
-| `clean_benchmark_snapshot` | Clean benchmark artifacts |
-| `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a workbench run |
+| `define_eval_scenario` | Rewrite an existing scenario from skill context and saved workflow artifacts |
+| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a selected scenario and mode |
+| `list_eval_runs` | List Promptfoo-backed Eval Workbench runs for a skill and mode |
+| `read_eval_run` | Read one Eval Workbench run with results and persisted run metadata |
+| `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a saved workbench run |
 
 ## Feedback
 

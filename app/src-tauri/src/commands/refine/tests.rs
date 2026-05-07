@@ -323,6 +323,61 @@ fn test_extract_conversation_messages_keeps_user_and_agent_message_events_only()
 }
 
 #[test]
+fn test_select_saved_refine_conversation_keeps_compatible_history() {
+    let system_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+    let conversation = serde_json::json!({
+        "agent": {
+            "agent_context": {
+                "system_message_suffix": system_suffix,
+                "user_message_suffix": SKILL_CREATOR_USER_SUFFIX.trim(),
+            }
+        }
+    });
+    let restored_messages = vec![ConversationMessage {
+        role: "agent".to_string(),
+        content: "Updated the summary.".to_string(),
+    }];
+
+    let (conversation_id, messages) = select_saved_refine_conversation(
+        Some("conv-123".to_string()),
+        Some(&conversation),
+        restored_messages.clone(),
+        Some(system_suffix.as_str()),
+        Some(SKILL_CREATOR_USER_SUFFIX.trim()),
+    );
+
+    assert_eq!(conversation_id.as_deref(), Some("conv-123"));
+    assert_eq!(messages, restored_messages);
+}
+
+#[test]
+fn test_select_saved_refine_conversation_clears_readable_but_incompatible_history() {
+    let system_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+    let conversation = serde_json::json!({
+        "agent": {
+            "agent_context": {
+                "system_message_suffix": system_suffix,
+                "user_message_suffix": "use a different refine contract",
+            }
+        }
+    });
+
+    let (conversation_id, messages) = select_saved_refine_conversation(
+        Some("conv-123".to_string()),
+        Some(&conversation),
+        vec![ConversationMessage {
+            role: "agent".to_string(),
+            content: "stale history".to_string(),
+        }],
+        Some(system_suffix.as_str()),
+        Some(SKILL_CREATOR_USER_SUFFIX.trim()),
+    );
+
+    assert!(conversation_id.is_none());
+    assert!(messages.is_empty());
+}
+
+#[test]
 fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
