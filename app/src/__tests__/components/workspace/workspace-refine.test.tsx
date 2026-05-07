@@ -88,6 +88,7 @@ const agentStoreState = vi.hoisted(() => ({
   registerRun: vi.fn(),
   addConversationEvent: vi.fn(),
   applyConversationState: vi.fn(),
+  completeRun: vi.fn(),
 }));
 
 vi.mock("@/stores/agent-store", () => ({
@@ -295,6 +296,10 @@ describe("WorkspaceRefine", () => {
       "synthetic:refine:my-skill:session-1:restored:0",
     );
     expect(agentStoreState.addConversationEvent).toHaveBeenCalledTimes(3);
+    expect(agentStoreState.completeRun).toHaveBeenCalledWith(
+      "restored:session-1:0",
+      true,
+    );
     expect(refineStoreState.setMessages).toHaveBeenCalledWith([
       expect.objectContaining({
         role: "user",
@@ -303,6 +308,75 @@ describe("WorkspaceRefine", () => {
       expect.objectContaining({
         role: "agent",
         agentId: "restored:session-1:0",
+      }),
+    ]);
+  });
+
+  it("restores setup events before the first user turn", async () => {
+    const skill = makeSkill("my-skill");
+    tauriMocks.startRefineSession.mockResolvedValueOnce({
+      session_id: "session-1",
+      available_agents: ["skill-creator"],
+      restored_messages: [],
+      restored_transcript_events: [
+        {
+          event_class: "SystemPromptEvent",
+          timestamp: 1710000000000,
+          event: {
+            system_prompt: { text: "You are the skill creator." },
+          },
+        },
+        {
+          event_class: "MessageEvent",
+          timestamp: 1710000001000,
+          event: {
+            source: "user",
+            message: "Tighten the intro",
+          },
+        },
+        {
+          event_class: "MessageEvent",
+          timestamp: 1710000002000,
+          event: {
+            source: "agent",
+            message: "Updated the intro section.",
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    expect(agentStoreState.registerRun).toHaveBeenNthCalledWith(
+      1,
+      "restored:session-1:0",
+      "openhands",
+      "my-skill",
+      "refine",
+      "synthetic:refine:my-skill:session-1:restored:0",
+    );
+    expect(agentStoreState.registerRun).toHaveBeenNthCalledWith(
+      2,
+      "restored:session-1:1",
+      "openhands",
+      "my-skill",
+      "refine",
+      "synthetic:refine:my-skill:session-1:restored:1",
+    );
+    expect(refineStoreState.setMessages).toHaveBeenCalledWith([
+      expect.objectContaining({
+        role: "agent",
+        agentId: "restored:session-1:0",
+      }),
+      expect.objectContaining({
+        role: "user",
+        userText: "Tighten the intro",
+      }),
+      expect.objectContaining({
+        role: "agent",
+        agentId: "restored:session-1:1",
       }),
     ]);
   });

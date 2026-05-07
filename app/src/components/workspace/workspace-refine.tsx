@@ -113,67 +113,53 @@ function hydrateRestoredTranscript(
 
   const agentStore = useAgentStore.getState();
   const messages: RefineMessage[] = [];
-  let turnIndex = 0;
-  let pendingUser:
-    | {
-        text: string;
-        timestamp: number;
-      }
-    | null = null;
-  let pendingEvents: RestoredConversationEvent[] = [];
+  let segmentIndex = 0;
+  let pendingAgentEvents: RestoredConversationEvent[] = [];
 
-  const flushTurn = () => {
-    if (!pendingUser) return;
-    const normalizedEvents = pendingEvents
+  const flushAgentSegment = (timestampFallback?: number) => {
+    const normalizedEvents = pendingAgentEvents
       .map((event) =>
         normalizeRestoredConversationEvent(
           event,
-          `restored:${session.session_id}:${turnIndex}`,
+          `restored:${session.session_id}:${segmentIndex}`,
         ),
       )
-      .filter((event) => event !== null);
-
-    messages.push({
-      id: crypto.randomUUID(),
-      role: "user",
-      userText: pendingUser.text,
-      timestamp: pendingUser.timestamp,
-    });
+      .filter(
+        (event): event is NonNullable<typeof event> =>
+          event !== null &&
+          !(
+            event.eventClass === "MessageEvent" &&
+            typeof event.event.source === "string" &&
+            event.event.source === "user"
+          ),
+      );
 
     if (normalizedEvents.length > 0) {
-      const restoredAgentId = `restored:${session.session_id}:${turnIndex}`;
+      const restoredAgentId = `restored:${session.session_id}:${segmentIndex}`;
       agentStore.registerRun(
         restoredAgentId,
         model ?? "openhands",
         skillName,
         "refine",
-        `synthetic:refine:${skillName}:${session.session_id}:restored:${turnIndex}`,
+        `synthetic:refine:${skillName}:${session.session_id}:restored:${segmentIndex}`,
       );
       for (const event of normalizedEvents) {
         agentStore.addConversationEvent(restoredAgentId, event);
       }
-      agentStore.applyConversationState(restoredAgentId, {
-        type: "conversation_state",
-        runtime: "openhands",
-        agentId: restoredAgentId,
-        status: "completed",
-        timestamp:
-          normalizedEvents[normalizedEvents.length - 1]?.timestamp ??
-          pendingUser.timestamp,
-      });
+      agentStore.completeRun(restoredAgentId, true);
       messages.push({
         id: crypto.randomUUID(),
         role: "agent",
         agentId: restoredAgentId,
         timestamp:
           normalizedEvents[normalizedEvents.length - 1]?.timestamp ??
-          pendingUser.timestamp,
+          timestampFallback ??
+          Date.now(),
       });
+      segmentIndex += 1;
     }
 
-    pendingUser = null;
-    pendingEvents = [];
-    turnIndex += 1;
+    pendingAgentEvents = [];
   };
 
   for (const event of transcript) {
@@ -183,18 +169,21 @@ function hydrateRestoredTranscript(
         typeof event.event.source === "string" ? event.event.source : undefined;
       const text = normalized ? getMessageText(normalized) : undefined;
       if (source === "user" && text && text.trim().length > 0) {
-        flushTurn();
-        pendingUser = { text, timestamp: event.timestamp };
+        flushAgentSegment(event.timestamp);
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "user",
+          userText: text,
+          timestamp: event.timestamp,
+        });
         continue;
       }
     }
 
-    if (pendingUser) {
-      pendingEvents.push(event);
-    }
+    pendingAgentEvents.push(event);
   }
 
-  flushTurn();
+  flushAgentSegment();
   return messages.length > 0 ? messages : null;
 }
 

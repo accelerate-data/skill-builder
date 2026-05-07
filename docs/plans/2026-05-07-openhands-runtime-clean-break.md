@@ -133,27 +133,36 @@ as open work:
 - runtime observability and cancellation/task-handle tracking landed
 - subagent child events are now discovered and emitted correctly even when the
   persisted child timestamps omit a timezone suffix
+- resumed refine sessions now restore persisted transcript rows, including
+  runtime setup before the first user turn and prior tool activity, instead of
+  only flattening chat bubbles
+- runtime-layer `OneShot` request / config / event names were renamed to
+  runtime-neutral equivalents
+- Eval Workbench now tracks exact active OpenHands `agent_id`s and cancels
+  them through `pause_openhands_session(agent_id)` instead of prefix matching
+- trigger-only Eval Workbench config builders and execution paths were removed
+  from the live backend run path
 
 ## Pending Work
 
-### Task 1: Make Refine Resume Restore The Full Transcript
+### Task 1: Finish Refine Resume Semantics
 
 **Why this is still open**
 
-The current resume path restores only flattened user/agent message pairs, not
-the full persisted OpenHands event transcript.
+The current resume path now restores persisted transcript events into
+synthetic refine runs, but it still does not replay persisted child-subagent
+event logs on resume and still keeps `has_dispatched_turn` as a session-local
+derived flag.
 
 Code evidence:
 
 - `start_refine_session(...)` in
   `app/src-tauri/src/commands/refine/mod.rs` returns
-  `restored_messages: Vec<ConversationMessage>`
-- `extract_conversation_messages(...)` only pulls `MessageEvent` text
+  `restored_transcript_events: Vec<RestoredConversationEvent>`
 - `WorkspaceRefine` in `app/src/components/workspace/workspace-refine.tsx`
-  hydrates those plain messages via `setMessages(...)`
-- resumed runtime tasks do not REST-backfill prior events because
-  `backfill_existing_events` is only enabled for first-turn conversation setup
-  in `app/src-tauri/src/agents/openhands_server/mod.rs`
+  rebuilds prior setup/tool/output rows from those transcript events
+- persisted child-subagent event logs are still only discovered by the live
+  scanner in `app/src-tauri/src/agents/openhands_server/mod.rs`
 
 **Product gap**
 
@@ -166,13 +175,10 @@ A resumed refine session should behave like a real resume:
 - show prior assistant outputs
 - then continue streaming new live events without duplication
 
-- [ ] Replace message-only refine resume hydration with full persisted event
-      transcript hydration.
-- [ ] Restore enough persisted metadata on resume for the refine UI to rebuild
-      prior OpenHands display items, not just plain chat bubbles.
+- [ ] Restore persisted child-subagent activity on resume, not just parent
+      conversation events.
 - [ ] Remove or replace `has_dispatched_turn` manual state once resume
-      restoration is derived from persisted conversation history instead of the
-      current message-only bootstrap.
+      restoration is derived cleanly from persisted conversation history.
 - [ ] Deduplicate restored history against live stream delivery by stable event
       identity so reconnect / resume does not duplicate rows.
 - [ ] Add regression coverage for resumed refine sessions that verifies:
@@ -182,82 +188,29 @@ A resumed refine session should behave like a real resume:
   - a resumed session can continue streaming new events without replay
     duplication
 
-### Task 2: Remove Remaining `OneShot` Runtime Naming
+### Task 2: Finish Trigger-Mode Eval Backend Cleanup
 
 **Why this is still open**
 
-The runtime model is now clean-break in behavior, but several core type and
-helper names still encode the old "one-shot" vocabulary.
+The live eval run path is now performance-only, but trigger-specific DTO
+fields, scenario-validation branches, and tests still exist in the backend
+surface.
 
 Current examples on this branch:
 
-- `OpenHandsOneShotRequest`
-- `OpenHandsOneShotConfigParams`
-- `OpenHandsOneShotEvent`
-- `StartConversationRequest::from_one_shot(...)`
-
-This is now misleading because the same request/config contract is used for:
-
-- prepared persistent sessions
-- follow-up persistent turns
-- throwaway runs
-
-- [ ] Rename remaining runtime-layer `OneShot` request / config / event types
-      to runtime-neutral names that match the implemented model.
-- [ ] Update affected tests, helper names, and comments so the branch no longer
-      advertises the pre-clean-break contract internally.
-
-### Task 3: Normalize Pause Semantics Across All Surfaces
-
-**Why this is still open**
-
-Refine and workflow already route through `pause_openhands_session(agent_id)`,
-but Eval Workbench still uses a prefix-based runtime helper instead of exact
-run identity.
-
-Code evidence:
-
-- refine backend uses `pause_openhands_session(...)` in
-  `app/src-tauri/src/commands/refine/mod.rs`
-- workflow backend uses `pause_openhands_session(...)` in
-  `app/src-tauri/src/commands/workflow/runtime.rs`
-- eval workbench backend still uses
-  `cancel_openhands_runs_with_prefix(...)` in
+- `should_trigger` still exists in `ScenarioDto` and prompt-case plumbing
+- trigger-only validation and runtime-loading branches still exist in
   `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- trigger-specific tests still remain in the eval workbench backend module
 
-- [ ] Remove `cancel_openhands_runs_with_prefix(...)` from the runtime layer.
-- [ ] Update Eval Workbench run state to track exact active OpenHands
-      `agent_id`s per logical `run_id`.
-- [ ] Route Eval Workbench cancellation through
-      `pause_openhands_session(agent_id)` for each active run instead of
-      prefix matching.
-- [ ] Keep `pause_conversation(conversation_id)` private to the OpenHands
-      server client / runtime-task layer only.
-
-### Task 4: Delete Stale Trigger-Mode Eval Backend Paths
-
-**Why this is still open**
-
-The frontend no longer exposes the old trigger/comparison workbench surface,
-but the backend still compiles trigger-only helpers and config builders.
-
-Current examples on this branch:
-
-- `write_trigger_stub_skill(...)`
-- `build_trigger_sidecar_config(...)`
-- trigger-mode execution paths and related DTO fields in
-  `app/src-tauri/src/commands/eval_workbench/mod.rs`
-
-- [ ] Remove trigger-mode backend helpers and execution paths that are no
-      longer reachable from the live eval workbench.
 - [ ] Remove stale trigger-only DTO fields and tests that only exist for the
       deleted backend surface.
 - [ ] Re-run the affected eval-workbench backend and frontend tests after the
       trigger cleanup.
 
-### Task 5: Final Verification Sweep
+### Task 3: Final Verification Sweep
 
-Run this after Tasks 1-4 land.
+Run this after Tasks 1-2 land.
 
 - [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 - [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml`

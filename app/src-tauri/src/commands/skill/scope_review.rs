@@ -223,8 +223,7 @@ pub async fn review_skill_scope(
     let run = openhands_server::run_throwaway_openhands_session(
         &app,
         OpenHandsThrowawayRunParams {
-            agent_id_prefix: format!("{}-scope-review", skill_name),
-            agent_id: None,
+            agent_id: format!("{}-scope-review-{}", skill_name, uuid::Uuid::new_v4()),
             config,
             timeout: std::time::Duration::from_secs(90),
         },

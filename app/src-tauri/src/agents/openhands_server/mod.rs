@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 
 pub struct OpenHandsThrowawayRunParams {
-    pub agent_id_prefix: String,
+    pub agent_id: String,
     pub config: SidecarConfig,
     pub timeout: Duration,
 }
@@ -817,7 +817,7 @@ pub async fn run_throwaway_openhands_session(
     params: OpenHandsThrowawayRunParams,
 ) -> Result<OpenHandsThrowawayRun, String> {
     let config = params.config;
-    let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
+    let agent_id = params.agent_id.clone();
     let started_at = Instant::now();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsRuntimeEvent>();
@@ -912,24 +912,6 @@ pub async fn run_throwaway_openhands_session(
     );
 
     Ok(OpenHandsThrowawayRun { conversation_state })
-}
-
-pub fn cancel_openhands_runs_with_prefix(agent_id_prefix: &str) -> usize {
-    let matching_ids = cancel_registry()
-        .iter()
-        .map(|entry| entry.key().clone())
-        .filter(|agent_id| agent_id.starts_with(agent_id_prefix))
-        .collect::<Vec<_>>();
-    let mut cancelled = 0usize;
-    for agent_id in matching_ids {
-        if cancel_registry()
-            .remove(&agent_id)
-            .is_some_and(|(_, cancel)| cancel.send(()).is_ok())
-        {
-            cancelled += 1;
-        }
-    }
-    cancelled
 }
 
 async fn run_conversation_task(
@@ -2419,26 +2401,6 @@ mod tests {
         assert!(pause_openhands_session(&agent_id));
         assert!(cancel_rx.try_recv().is_ok());
         assert!(!pause_openhands_session(&agent_id));
-    }
-
-    #[test]
-    fn prefix_cancellation_registry_signals_matching_agents_only() {
-        let prefix = format!("test-prefix-{}", uuid::Uuid::new_v4());
-        let matching_agent = format!("{prefix}-one");
-        let other_agent = format!("other-prefix-{}", uuid::Uuid::new_v4());
-        let (matching_tx, mut matching_rx) = tokio::sync::oneshot::channel::<()>();
-        let (other_tx, mut other_rx) = tokio::sync::oneshot::channel::<()>();
-
-        register_cancel(&matching_agent, matching_tx).unwrap();
-        register_cancel(&other_agent, other_tx).unwrap();
-
-        assert_eq!(cancel_openhands_runs_with_prefix(&prefix), 1);
-        assert!(matching_rx.try_recv().is_ok());
-        assert!(matches!(
-            other_rx.try_recv(),
-            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-        ));
-        assert!(pause_openhands_session(&other_agent));
     }
 
     #[test]
