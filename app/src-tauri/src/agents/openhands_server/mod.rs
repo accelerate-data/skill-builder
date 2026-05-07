@@ -1947,9 +1947,9 @@ mod tests {
 
     #[test]
     fn delta_recovery_filters_out_pre_send_events_and_keeps_new_task_events() {
-        let known_event_ids = std::collections::HashSet::from([
-            "event-00000".to_string(),
-            "event-00001".to_string(),
+        let known_event_keys = std::collections::HashSet::from([
+            "id:event-00000".to_string(),
+            "id:event-00001".to_string(),
         ]);
         let events = vec![
             serde_json::json!({
@@ -1968,7 +1968,7 @@ mod tests {
             }),
         ];
 
-        let recovered = filter_events_after_watermark(Some(&known_event_ids), events);
+        let recovered = filter_events_after_watermark(Some(&known_event_keys), events);
 
         assert_eq!(recovered.len(), 1);
         assert_eq!(recovered[0]["id"], "event-00002");
