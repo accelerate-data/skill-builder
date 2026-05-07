@@ -10,11 +10,11 @@ use std::time::Duration;
 
 use crate::agents::openhands_server::client::OpenHandsServerClient;
 use crate::agents::openhands_server::process::ensure_agent_server;
-use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsOneShotConfigParams};
+use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
-use crate::types::{ConversationMessage, RefineSessionInfo};
+use crate::types::{ConversationMessage, RefineSessionInfo, RestoredConversationEvent};
 
 use protocol::*;
 
@@ -81,6 +81,49 @@ fn extract_message_text(raw: &serde_json::Value) -> Option<String> {
     .map(str::to_string)
 }
 
+fn extract_tool_call_id(raw: &serde_json::Value) -> Option<String> {
+    first_string([
+        raw.get("tool_call_id"),
+        raw.get("toolCallId"),
+        raw.pointer("/action/tool_call_id"),
+        raw.pointer("/action/toolCallId"),
+        raw.pointer("/observation/tool_call_id"),
+        raw.pointer("/observation/toolCallId"),
+        raw.pointer("/tool_calls/0/id"),
+        raw.pointer("/tool_calls/0/tool_call_id"),
+    ])
+    .map(str::to_string)
+}
+
+fn extract_parent_tool_call_id(raw: &serde_json::Value) -> Option<String> {
+    first_string([
+        raw.get("parent_tool_call_id"),
+        raw.get("parentToolCallId"),
+        raw.pointer("/action/parent_tool_call_id"),
+        raw.pointer("/action/parentToolCallId"),
+        raw.pointer("/observation/parent_tool_call_id"),
+        raw.pointer("/observation/parentToolCallId"),
+    ])
+    .map(str::to_string)
+}
+
+fn extract_timestamp_ms(raw: &serde_json::Value) -> i64 {
+    if let Some(timestamp) = raw.get("timestamp") {
+        if let Some(value) = timestamp.as_i64() {
+            return value;
+        }
+        if let Some(value) = timestamp.as_u64() {
+            return value.min(i64::MAX as u64) as i64;
+        }
+        if let Some(value) = timestamp.as_str() {
+            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(value) {
+                return parsed.timestamp_millis();
+            }
+        }
+    }
+    chrono::Utc::now().timestamp_millis()
+}
+
 fn extract_conversation_messages(events: &[serde_json::Value]) -> Vec<ConversationMessage> {
     events
         .iter()
@@ -100,12 +143,44 @@ fn extract_conversation_messages(events: &[serde_json::Value]) -> Vec<Conversati
         .collect()
 }
 
+fn extract_restored_conversation_events(
+    events: &[serde_json::Value],
+) -> Vec<RestoredConversationEvent> {
+    events
+        .iter()
+        .filter_map(|raw| {
+            let event_class = event_class(raw)?;
+            Some(RestoredConversationEvent {
+                event_class: event_class.to_string(),
+                event: raw.clone(),
+                timestamp: extract_timestamp_ms(raw),
+                tool_call_id: extract_tool_call_id(raw),
+                parent_tool_call_id: extract_parent_tool_call_id(raw),
+            })
+        })
+        .collect()
+}
+
+fn restored_conversation_has_dispatched_turn(
+    events: &[RestoredConversationEvent],
+) -> bool {
+    events.iter().any(|event| {
+        event.event_class == "MessageEvent"
+            && event
+                .event
+                .get("source")
+                .and_then(|value| value.as_str())
+                .map(|source| source == "user")
+                .unwrap_or(false)
+    })
+}
+
 async fn load_saved_refine_conversation(
     workspace_path: &str,
     plugin_slug: &str,
     skill_name: &str,
     conversation_id: &str,
-) -> Result<Option<(serde_json::Value, Vec<ConversationMessage>)>, String> {
+) -> Result<Option<(serde_json::Value, Vec<RestoredConversationEvent>, Vec<ConversationMessage>)>, String> {
     let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
         Path::new(workspace_path),
         plugin_slug,
@@ -130,7 +205,11 @@ async fn load_saved_refine_conversation(
         .list_all_events(conversation_id)
         .await
         .map_err(|e| format!("Failed to list OpenHands conversation events: {e}"))?;
-    Ok(Some((conversation, extract_conversation_messages(&events))))
+    Ok(Some((
+        conversation,
+        extract_restored_conversation_events(&events),
+        extract_conversation_messages(&events),
+    )))
 }
 
 fn build_refine_openhands_config(
@@ -148,7 +227,7 @@ fn build_refine_openhands_config(
     .to_string_lossy()
     .replace('\\', "/");
 
-    build_openhands_runtime_config(OpenHandsOneShotConfigParams {
+    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm,
         workspace_root_dir: workspace_path.replace('\\', "/"),
@@ -264,7 +343,7 @@ pub async fn start_refine_session(
         runtime_ctx.llm.clone(),
     );
     let session_request =
-        crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
+        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_sidecar_config(
             &session_config,
         )?;
 
@@ -273,6 +352,7 @@ pub async fn start_refine_session(
         crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
     };
     let mut restored_messages = Vec::new();
+    let mut restored_transcript_events = Vec::new();
     let mut clear_saved_conversation = false;
     if let Some(conversation_id) = saved_conversation_id.clone() {
         match load_saved_refine_conversation(
@@ -283,11 +363,12 @@ pub async fn start_refine_session(
         )
         .await
         {
-            Ok(Some((conversation, messages))) => {
+            Ok(Some((conversation, transcript_events, messages))) => {
                 if crate::agents::openhands_server::conversation_matches_request(
                     &conversation,
                     &session_request,
                 ) {
+                    restored_transcript_events = transcript_events;
                     restored_messages = messages;
                 } else {
                     log::info!(
@@ -374,7 +455,9 @@ pub async fn start_refine_session(
             usage_session_id: new_refine_usage_session_id(&skill_name),
             conversation_id: saved_conversation_id,
             current_agent_id: None,
-            has_dispatched_turn: !restored_messages.is_empty(),
+            has_dispatched_turn: restored_conversation_has_dispatched_turn(
+                &restored_transcript_events,
+            ),
             head_sha_at_start,
         },
     );
@@ -385,6 +468,7 @@ pub async fn start_refine_session(
         created_at,
         available_agents: vec!["skill-creator".to_string()],
         restored_messages,
+        restored_transcript_events,
     })
 }
 

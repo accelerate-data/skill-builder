@@ -11,6 +11,7 @@ const tauriMocks = vi.hoisted(() => ({
     session_id: "session-1",
     available_agents: [],
     restored_messages: [],
+    restored_transcript_events: [],
   }),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
@@ -85,6 +86,8 @@ const agentStoreState = vi.hoisted(() => ({
   runs: {} as Record<string, unknown>,
   clearRuns: vi.fn(),
   registerRun: vi.fn(),
+  addConversationEvent: vi.fn(),
+  applyConversationState: vi.fn(),
 }));
 
 vi.mock("@/stores/agent-store", () => ({
@@ -228,6 +231,80 @@ describe("WorkspaceRefine", () => {
         }),
       ]),
     );
+  });
+
+  it("hydrates resumed transcript events into a restored agent turn", async () => {
+    const skill = makeSkill("my-skill");
+    tauriMocks.startRefineSession.mockResolvedValueOnce({
+      session_id: "session-1",
+      available_agents: ["skill-creator"],
+      restored_messages: [],
+      restored_transcript_events: [
+        {
+          event_class: "MessageEvent",
+          timestamp: 1710000000000,
+          event: {
+            source: "user",
+            message: "Tighten the intro",
+          },
+        },
+        {
+          event_class: "ActionEvent",
+          timestamp: 1710000001000,
+          tool_call_id: "tool-1",
+          event: {
+            action: {
+              tool: "terminal",
+              arguments: { command: "npm test" },
+              tool_call_id: "tool-1",
+            },
+            llm_response_id: "resp-1",
+          },
+        },
+        {
+          event_class: "ObservationEvent",
+          timestamp: 1710000002000,
+          tool_call_id: "tool-1",
+          event: {
+            observation: {
+              content: "Tests passed",
+              tool_call_id: "tool-1",
+            },
+          },
+        },
+        {
+          event_class: "MessageEvent",
+          timestamp: 1710000003000,
+          event: {
+            source: "agent",
+            message: "Updated the intro and verified it.",
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    expect(agentStoreState.registerRun).toHaveBeenCalledWith(
+      "restored:session-1:0",
+      "openhands",
+      "my-skill",
+      "refine",
+      "synthetic:refine:my-skill:session-1:restored:0",
+    );
+    expect(agentStoreState.addConversationEvent).toHaveBeenCalledTimes(3);
+    expect(refineStoreState.setMessages).toHaveBeenCalledWith([
+      expect.objectContaining({
+        role: "user",
+        userText: "Tighten the intro",
+      }),
+      expect.objectContaining({
+        role: "agent",
+        agentId: "restored:session-1:0",
+      }),
+    ]);
   });
 
   it("calls closeRefineSession and startRefineSession when skill prop changes", async () => {

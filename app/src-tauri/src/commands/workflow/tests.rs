@@ -329,7 +329,7 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
     );
     assert!(
         config.required_plugins.is_none(),
-        "OpenHands one-shot config should rely on workspace .agents layout"
+        "OpenHands runtime config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
@@ -442,7 +442,7 @@ fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.output_format, workflow_output_format_for_step(1));
     assert!(
         config.required_plugins.is_none(),
-        "OpenHands one-shot config should rely on workspace .agents layout"
+        "OpenHands runtime config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
@@ -520,12 +520,12 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
     );
 
     let workflow_request =
-        crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
+        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_sidecar_config(
             &workflow_config,
         )
         .unwrap();
     let answer_evaluator_request =
-        crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
+        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_sidecar_config(
             &answer_evaluator_config,
         )
         .unwrap();
@@ -833,7 +833,7 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.output_format, workflow_output_format_for_step(2));
     assert!(
         config.required_plugins.is_none(),
-        "OpenHands one-shot config should rely on workspace .agents layout"
+        "OpenHands runtime config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
@@ -943,7 +943,7 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
     );
     assert!(
         config.required_plugins.is_none(),
-        "OpenHands one-shot config should rely on workspace .agents layout"
+        "OpenHands runtime config should rely on workspace .agents layout"
     );
     assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }

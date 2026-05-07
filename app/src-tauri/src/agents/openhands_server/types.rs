@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::agents::sidecar::SidecarConfig;
 
 #[derive(Debug, Clone)]
-pub struct OpenHandsOneShotRequest {
+pub struct OpenHandsRuntimeRequest {
     pub prompt: String,
     pub llm: crate::types::WorkflowLlmConfig,
     pub workspace_root_dir: String,
@@ -24,7 +24,7 @@ pub struct OpenHandsOneShotRequest {
     pub usage_session_id: Option<String>,
 }
 
-impl OpenHandsOneShotRequest {
+impl OpenHandsRuntimeRequest {
     pub fn try_from_sidecar_config(config: &SidecarConfig) -> Result<Self, String> {
         let llm = config
             .llm
@@ -189,11 +189,11 @@ pub struct StartConversationRequest {
 
 impl StartConversationRequest {
     #[cfg_attr(not(test), allow(dead_code))]
-    pub fn from_one_shot(request: &OpenHandsOneShotRequest) -> Self {
+    pub fn from_runtime_request(request: &OpenHandsRuntimeRequest) -> Self {
         Self::from_runtime_run_dir(request, request.runtime_run_dir())
     }
 
-    pub fn from_runtime_run_dir(request: &OpenHandsOneShotRequest, runtime_run_dir: &Path) -> Self {
+    pub fn from_runtime_run_dir(request: &OpenHandsRuntimeRequest, runtime_run_dir: &Path) -> Self {
         Self {
             workspace: LocalWorkspace::new(runtime_run_dir.to_string_lossy().into_owned()),
             initial_message: SendMessageRequest {

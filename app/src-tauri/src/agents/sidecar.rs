@@ -144,7 +144,7 @@ impl std::fmt::Debug for SidecarConfig {
     }
 }
 
-pub struct OpenHandsOneShotConfigParams {
+pub struct OpenHandsRuntimeConfigParams {
     pub prompt: String,
     pub llm: crate::types::WorkflowLlmConfig,
     pub workspace_root_dir: String,
@@ -166,7 +166,7 @@ pub struct OpenHandsOneShotConfigParams {
 /// Feature commands supply only agent/task details. Initialized workspace and
 /// selected LLM must already have been resolved by the backend runtime context
 /// API before this helper is called.
-pub fn build_openhands_runtime_config(params: OpenHandsOneShotConfigParams) -> SidecarConfig {
+pub fn build_openhands_runtime_config(params: OpenHandsRuntimeConfigParams) -> SidecarConfig {
     let system_message_suffix =
         (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix);
     SidecarConfig {
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn test_non_skill_creator_openhands_config_does_not_inject_system_message_suffix() {
-        let config = build_openhands_runtime_config(OpenHandsOneShotConfigParams {
+        let config = build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
             prompt: "Analyze".to_string(),
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),

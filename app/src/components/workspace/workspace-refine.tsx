@@ -26,9 +26,13 @@ import {
   acquireLock,
   releaseLock,
 } from "@/lib/tauri";
-import type { EditableSkill } from "@/lib/types";
+import type { EditableSkill, RefineSessionInfo, RestoredConversationEvent } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
+import {
+  getMessageText,
+  normalizeConversationEventMessage,
+} from "@/lib/openhands-conversation-events";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { initAgentStream } from "@/hooks/use-agent-stream";
 
@@ -81,6 +85,117 @@ function mapRestoredMessages(
       agentText: message.role === "user" ? undefined : message.content,
       timestamp: Date.now(),
     }));
+}
+
+function normalizeRestoredConversationEvent(
+  event: RestoredConversationEvent,
+  agentId: string,
+) {
+  return normalizeConversationEventMessage({
+    type: "conversation_event",
+    runtime: "openhands",
+    agent_id: agentId,
+    event_class: event.event_class,
+    event: event.event,
+    timestamp: event.timestamp,
+    tool_call_id: event.tool_call_id ?? undefined,
+    parent_tool_call_id: event.parent_tool_call_id ?? undefined,
+  });
+}
+
+function hydrateRestoredTranscript(
+  session: RefineSessionInfo,
+  skillName: string,
+  model: string | null,
+): RefineMessage[] | null {
+  const transcript = session.restored_transcript_events ?? [];
+  if (transcript.length === 0) return null;
+
+  const agentStore = useAgentStore.getState();
+  const messages: RefineMessage[] = [];
+  let turnIndex = 0;
+  let pendingUser:
+    | {
+        text: string;
+        timestamp: number;
+      }
+    | null = null;
+  let pendingEvents: RestoredConversationEvent[] = [];
+
+  const flushTurn = () => {
+    if (!pendingUser) return;
+    const normalizedEvents = pendingEvents
+      .map((event) =>
+        normalizeRestoredConversationEvent(
+          event,
+          `restored:${session.session_id}:${turnIndex}`,
+        ),
+      )
+      .filter((event) => event !== null);
+
+    messages.push({
+      id: crypto.randomUUID(),
+      role: "user",
+      userText: pendingUser.text,
+      timestamp: pendingUser.timestamp,
+    });
+
+    if (normalizedEvents.length > 0) {
+      const restoredAgentId = `restored:${session.session_id}:${turnIndex}`;
+      agentStore.registerRun(
+        restoredAgentId,
+        model ?? "openhands",
+        skillName,
+        "refine",
+        `synthetic:refine:${skillName}:${session.session_id}:restored:${turnIndex}`,
+      );
+      for (const event of normalizedEvents) {
+        agentStore.addConversationEvent(restoredAgentId, event);
+      }
+      agentStore.applyConversationState(restoredAgentId, {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: restoredAgentId,
+        status: "completed",
+        timestamp:
+          normalizedEvents[normalizedEvents.length - 1]?.timestamp ??
+          pendingUser.timestamp,
+      });
+      messages.push({
+        id: crypto.randomUUID(),
+        role: "agent",
+        agentId: restoredAgentId,
+        timestamp:
+          normalizedEvents[normalizedEvents.length - 1]?.timestamp ??
+          pendingUser.timestamp,
+      });
+    }
+
+    pendingUser = null;
+    pendingEvents = [];
+    turnIndex += 1;
+  };
+
+  for (const event of transcript) {
+    if (event.event_class === "MessageEvent") {
+      const normalized = normalizeRestoredConversationEvent(event, "restored:probe");
+      const source =
+        typeof event.event.source === "string" ? event.event.source : undefined;
+      const text = normalized ? getMessageText(normalized) : undefined;
+      if (source === "user" && text && text.trim().length > 0) {
+        flushTurn();
+        pendingUser = { text, timestamp: event.timestamp };
+        continue;
+      }
+    }
+
+    if (pendingUser) {
+      pendingEvents.push(event);
+    }
+  }
+
+  flushTurn();
+  return messages.length > 0 ? messages : null;
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -234,7 +349,10 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           const nextStore = useRefineStore.getState();
           nextStore.setSessionId(session.session_id);
           nextStore.setAvailableAgents(session.available_agents ?? []);
-          nextStore.setMessages(mapRestoredMessages(session.restored_messages));
+          nextStore.setMessages(
+            hydrateRestoredTranscript(session, s.name, selectedModel) ??
+              mapRestoredMessages(session.restored_messages),
+          );
         } catch (err) {
           console.error(
             "[workspace-refine] Failed to start refine session:",
@@ -264,7 +382,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         store.setLoadingFiles(false);
       }
     },
-    [workspacePath],
+    [selectedModel, workspacePath],
   );
 
   useEffect(() => {

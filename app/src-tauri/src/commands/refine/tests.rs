@@ -343,8 +343,62 @@ fn test_extract_conversation_messages_keeps_user_and_agent_message_events_only()
 }
 
 #[test]
+fn test_extract_restored_conversation_events_preserves_tool_activity_and_dispatch_state() {
+    let events = vec![
+        serde_json::json!({
+            "event_class": "SystemPromptEvent",
+            "timestamp": "2026-05-07T10:00:00Z",
+            "message": "system"
+        }),
+        serde_json::json!({
+            "event_class": "MessageEvent",
+            "timestamp": "2026-05-07T10:00:01Z",
+            "source": "user",
+            "message": "Tighten the intro"
+        }),
+        serde_json::json!({
+            "event_class": "ActionEvent",
+            "timestamp": "2026-05-07T10:00:02Z",
+            "action": {
+                "tool": "terminal",
+                "tool_call_id": "tool-1",
+                "arguments": { "command": "npm test" }
+            }
+        }),
+        serde_json::json!({
+            "event_class": "ObservationEvent",
+            "timestamp": "2026-05-07T10:00:03Z",
+            "observation": {
+                "content": "Tests passed",
+                "tool_call_id": "tool-1"
+            }
+        }),
+        serde_json::json!({
+            "event_class": "MessageEvent",
+            "timestamp": "2026-05-07T10:00:04Z",
+            "source": "agent",
+            "message": "Updated the intro and verified it."
+        }),
+    ];
+
+    let restored = extract_restored_conversation_events(&events);
+
+    assert_eq!(restored.len(), 5);
+    assert_eq!(restored[2].event_class, "ActionEvent");
+    assert_eq!(restored[2].tool_call_id.as_deref(), Some("tool-1"));
+    assert_eq!(restored[3].tool_call_id.as_deref(), Some("tool-1"));
+    assert!(restored_conversation_has_dispatched_turn(&restored));
+
+    let prepared_only = extract_restored_conversation_events(&events[..1]);
+    assert!(
+        !restored_conversation_has_dispatched_turn(&prepared_only),
+        "prepared sessions with only setup events must not be treated as already dispatched"
+    );
+}
+
+#[test]
 fn test_saved_refine_conversation_matches_runtime_contract() {
-    let request = crate::agents::openhands_server::OpenHandsOneShotRequest {
+    let request = crate::agents::openhands_server::OpenHandsRuntimeRequest {
         prompt: String::new(),
         llm: test_workflow_llm_config(),
         workspace_root_dir: "/tmp/workspace".to_string(),
@@ -352,9 +406,7 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
         allowed_tools: vec![],
         max_turns: 20,
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        system_message_suffix: Some(
-            crate::agents::sidecar::skill_creator_system_message_suffix(),
-        ),
+        system_message_suffix: Some(crate::agents::sidecar::skill_creator_system_message_suffix()),
         task_kind: Some("refine".to_string()),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         skill_name: Some("my-skill".to_string()),
@@ -380,14 +432,10 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
         }
     });
 
-    assert!(crate::agents::openhands_server::conversation_matches_request(
-        &compatible,
-        &request,
-    ));
-    assert!(!crate::agents::openhands_server::conversation_matches_request(
-        &incompatible,
-        &request,
-    ));
+    assert!(crate::agents::openhands_server::conversation_matches_request(&compatible, &request,));
+    assert!(
+        !crate::agents::openhands_server::conversation_matches_request(&incompatible, &request,)
+    );
 }
 
 #[test]

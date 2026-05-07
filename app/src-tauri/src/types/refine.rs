@@ -39,6 +39,8 @@ pub struct RefineSessionInfo {
     pub available_agents: Vec<String>,
     /// Restored user/agent messages from the persisted skill conversation.
     pub restored_messages: Vec<ConversationMessage>,
+    /// Restored OpenHands event transcript for resume hydration.
+    pub restored_transcript_events: Vec<RestoredConversationEvent>,
 }
 
 impl std::fmt::Debug for RefineSessionInfo {
@@ -58,4 +60,13 @@ impl std::fmt::Debug for RefineSessionInfo {
 pub struct ConversationMessage {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RestoredConversationEvent {
+    pub event_class: String,
+    pub event: serde_json::Value,
+    pub timestamp: i64,
+    pub tool_call_id: Option<String>,
+    pub parent_tool_call_id: Option<String>,
 }

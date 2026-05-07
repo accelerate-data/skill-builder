@@ -14,7 +14,7 @@ use crate::agents::promptfoo_sidecar::protocol::{
     EvalMode as SidecarEvalMode, ListHistoryRequest, PersistedEvalRun, ReadHistoryRequest,
     RunEvalRequest,
 };
-use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsOneShotConfigParams};
+use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
 use crate::commands::workflow::prompt::{
@@ -1091,7 +1091,7 @@ fn build_generation_sidecar_config(
     .to_string_lossy()
     .replace('\\', "/");
 
-    build_openhands_runtime_config(OpenHandsOneShotConfigParams {
+    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir,
@@ -1237,7 +1237,7 @@ fn build_performance_sidecar_config(
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
     runtime_run_dir: &Path,
 ) -> crate::agents::sidecar::SidecarConfig {
-    build_openhands_runtime_config(OpenHandsOneShotConfigParams {
+    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
@@ -1287,7 +1287,7 @@ fn build_trigger_sidecar_config(
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
     runtime_run_dir: &Path,
 ) -> crate::agents::sidecar::SidecarConfig {
-    build_openhands_runtime_config(OpenHandsOneShotConfigParams {
+    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
@@ -1319,7 +1319,7 @@ fn build_eval_diagnosis_sidecar_config(
     .to_string_lossy()
     .replace('\\', "/");
 
-    build_openhands_runtime_config(OpenHandsOneShotConfigParams {
+    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir,

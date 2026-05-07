@@ -16,7 +16,7 @@ use tauri::{Listener, Manager};
 use thiserror::Error;
 use tokio_tungstenite::tungstenite::Message;
 
-pub use types::{OpenHandsOneShotRequest, StartConversationRequest};
+pub use types::{OpenHandsRuntimeRequest, StartConversationRequest};
 
 use self::client::OpenHandsServerClient;
 use self::events::normalize_server_event;
@@ -84,7 +84,7 @@ enum OpenHandsConversationResolution {
 
 fn load_saved_skill_conversation_id(
     app: &tauri::AppHandle,
-    request: &OpenHandsOneShotRequest,
+    request: &OpenHandsRuntimeRequest,
 ) -> Result<Option<String>, String> {
     let Some(skill_name) = request.skill_name.as_deref() else {
         return Ok(None);
@@ -96,7 +96,7 @@ fn load_saved_skill_conversation_id(
 
 fn save_skill_conversation_id(
     app: &tauri::AppHandle,
-    request: &OpenHandsOneShotRequest,
+    request: &OpenHandsRuntimeRequest,
     conversation_id: &str,
 ) -> Result<(), String> {
     let Some(skill_name) = request.skill_name.as_deref() else {
@@ -129,7 +129,7 @@ async fn send_user_message(
 
 pub(crate) fn conversation_matches_request(
     conversation: &serde_json::Value,
-    request: &OpenHandsOneShotRequest,
+    request: &OpenHandsRuntimeRequest,
 ) -> bool {
     let persisted_system_suffix = conversation
         .pointer("/agent/agent_context/system_message_suffix")
@@ -147,7 +147,7 @@ enum OpenHandsConversationSelection {
     SendExistingOnly,
 }
 
-enum OpenHandsOneShotEvent {
+enum OpenHandsRuntimeEvent {
     TerminalState(Result<serde_json::Value, String>),
     Lifecycle(Result<(), String>),
 }
@@ -167,7 +167,7 @@ struct OpenHandsRunSummaryContext {
 }
 
 impl OpenHandsRunSummaryContext {
-    fn new(request: &OpenHandsOneShotRequest, conversation_id: &str) -> Self {
+    fn new(request: &OpenHandsRuntimeRequest, conversation_id: &str) -> Self {
         Self {
             skill_name: request
                 .skill_name
@@ -195,7 +195,7 @@ struct OpenHandsConversationTask {
     session_api_key: String,
     summary_context: OpenHandsRunSummaryContext,
     /// True when this task is the first attached subscriber to the
-    /// conversation (turn 1 of one-shot or refine). The SDK persists
+    /// conversation (initial runtime turn or refine). The SDK persists
     /// SystemPromptEvent + the initial user MessageEvent during conversation
     /// creation, before our WebSocket attaches, so the live stream alone
     /// misses those frames. When true the task drains the REST event log
@@ -566,7 +566,7 @@ fn record_subagent_launch(
     }
 }
 
-fn session_init_request(request: &OpenHandsOneShotRequest) -> OpenHandsOneShotRequest {
+fn session_init_request(request: &OpenHandsRuntimeRequest) -> OpenHandsRuntimeRequest {
     let mut session_request = request.clone();
     session_request.prompt.clear();
     session_request
@@ -637,7 +637,7 @@ fn should_backfill_existing_events(
 }
 
 fn log_session_resolution(
-    request: &OpenHandsOneShotRequest,
+    request: &OpenHandsRuntimeRequest,
     selection: OpenHandsConversationSelection,
     resolution: &OpenHandsConversationResolution,
 ) {
@@ -671,11 +671,13 @@ fn log_session_resolution(
 
 async fn create_prepared_conversation_for_request(
     client: &OpenHandsServerClient,
-    request: &OpenHandsOneShotRequest,
+    request: &OpenHandsRuntimeRequest,
 ) -> Result<String, String> {
     let session_request = session_init_request(request);
     let conversation = client
-        .create_conversation(&StartConversationRequest::from_one_shot(&session_request))
+        .create_conversation(&StartConversationRequest::from_runtime_request(
+            &session_request,
+        ))
         .await
         .map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -689,7 +691,7 @@ async fn create_prepared_conversation_for_request(
 
 async fn resolve_openhands_conversation_id(
     app: &tauri::AppHandle,
-    request: &OpenHandsOneShotRequest,
+    request: &OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
 ) -> Result<String, String> {
@@ -753,7 +755,7 @@ pub async fn prepare_openhands_session(
     config: SidecarConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
-    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
     let conversation_id = resolve_openhands_conversation_id(
         app,
         &request,
@@ -771,7 +773,7 @@ pub async fn start_openhands_session(
     config: SidecarConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
-    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
     let conversation_id = prepare_openhands_session(app, config.clone(), conversation_id).await?;
     dispatch_openhands_turn_with_request(
         app,
@@ -791,7 +793,7 @@ pub async fn openhands_send_message(
     config: SidecarConfig,
     conversation_id: String,
 ) -> Result<String, String> {
-    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
     dispatch_openhands_turn_with_request(
         app,
         agent_id,
@@ -818,14 +820,14 @@ pub async fn run_throwaway_openhands_session(
     let agent_id = format!("{}-{}", params.agent_id_prefix, uuid::Uuid::new_v4());
     let started_at = Instant::now();
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsOneShotEvent>();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsRuntimeEvent>();
     let target_agent_id = agent_id.clone();
     let tx_message = tx.clone();
     let message_listener = app.listen("agent-message", move |event| {
         if let Some(result) =
-            parse_openhands_one_shot_terminal_state(event.payload(), target_agent_id.as_str())
+            parse_openhands_runtime_terminal_state(event.payload(), target_agent_id.as_str())
         {
-            let _ = tx_message.send(OpenHandsOneShotEvent::TerminalState(result));
+            let _ = tx_message.send(OpenHandsRuntimeEvent::TerminalState(result));
         }
     });
 
@@ -833,20 +835,20 @@ pub async fn run_throwaway_openhands_session(
     let tx_exit = tx.clone();
     let exit_listener = app.listen("agent-exit", move |event| {
         if let Some(result) = parse_openhands_lifecycle_state(event.payload(), &target_agent_id) {
-            let _ = tx_exit.send(OpenHandsOneShotEvent::Lifecycle(result));
+            let _ = tx_exit.send(OpenHandsRuntimeEvent::Lifecycle(result));
         }
     });
     let target_agent_id = agent_id.clone();
     let tx_shutdown = tx.clone();
     let shutdown_listener = app.listen("agent-shutdown", move |event| {
         if event.payload().contains(target_agent_id.as_str()) {
-            let _ = tx_shutdown.send(OpenHandsOneShotEvent::Lifecycle(Err(
+            let _ = tx_shutdown.send(OpenHandsRuntimeEvent::Lifecycle(Err(
                 "OpenHands throwaway run cancelled".to_string(),
             )));
         }
     });
 
-    let request = OpenHandsOneShotRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
     dispatch_openhands_turn_with_request(
         app,
         &agent_id,
@@ -867,15 +869,15 @@ pub async fn run_throwaway_openhands_session(
     let wait_result = tokio::time::timeout(params.timeout, async {
         while terminal_state.is_none() || lifecycle_result.is_none() {
             match rx.recv().await {
-                Some(OpenHandsOneShotEvent::TerminalState(result)) => {
+                Some(OpenHandsRuntimeEvent::TerminalState(result)) => {
                     terminal_state.get_or_insert(result);
                 }
-                Some(OpenHandsOneShotEvent::Lifecycle(result)) => {
+                Some(OpenHandsRuntimeEvent::Lifecycle(result)) => {
                     result?;
                     lifecycle_result.get_or_insert(Ok(()));
                 }
                 None => {
-                    return Err("OpenHands one-shot listener closed unexpectedly".to_string());
+                    return Err("OpenHands runtime listener closed unexpectedly".to_string());
                 }
             }
         }
@@ -946,7 +948,7 @@ async fn dispatch_openhands_turn_with_request(
     app: &tauri::AppHandle,
     agent_id: &str,
     config: SidecarConfig,
-    request: OpenHandsOneShotRequest,
+    request: OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
 ) -> Result<String, String> {
@@ -1209,7 +1211,7 @@ async fn run_conversation_task_inner(
             .get("error_detail")
             .and_then(|value| value.as_str())
             .map(str::to_string)
-            .or_else(|| Some("OpenHands one-shot run failed".to_string()))
+            .or_else(|| Some("OpenHands runtime run failed".to_string()))
     } else {
         None
     };
@@ -1505,7 +1507,7 @@ fn extract_conversation_id(conversation: &serde_json::Value) -> Result<String, S
         })
 }
 
-fn parse_openhands_one_shot_terminal_state(
+fn parse_openhands_runtime_terminal_state(
     payload: &str,
     target_agent_id: &str,
 ) -> Option<Result<serde_json::Value, String>> {
@@ -1523,11 +1525,11 @@ fn parse_openhands_one_shot_terminal_state(
         "completed" => Some(Ok(message.clone())),
         "error" => Some(Err(openhands_conversation_state_error_detail(
             message,
-            "OpenHands one-shot run failed",
+            "OpenHands runtime run failed",
         ))),
         "cancelled" | "canceled" => Some(Err(openhands_conversation_state_error_detail(
             message,
-            "OpenHands one-shot run cancelled",
+            "OpenHands runtime run cancelled",
         ))),
         _ => None,
     }
@@ -1551,7 +1553,7 @@ fn parse_openhands_lifecycle_state(
         Some(Err(value
             .get("error_detail")
             .and_then(|v| v.as_str())
-            .unwrap_or("OpenHands one-shot run failed")
+            .unwrap_or("OpenHands runtime run failed")
             .to_string()))
     }
 }
@@ -1833,7 +1835,7 @@ mod tests {
                 }
             }
         });
-        let request = OpenHandsOneShotRequest {
+        let request = OpenHandsRuntimeRequest {
             prompt: "workflow".to_string(),
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),
@@ -1876,7 +1878,7 @@ mod tests {
 
     #[test]
     fn prepared_session_init_request_clears_prompt_but_keeps_resume_contract() {
-        let request = OpenHandsOneShotRequest {
+        let request = OpenHandsRuntimeRequest {
             prompt: "Generate the skill package".to_string(),
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),
@@ -1959,7 +1961,7 @@ mod tests {
             output_cost_per_token: None,
             usage_id: None,
         };
-        let workflow_request = OpenHandsOneShotRequest {
+        let workflow_request = OpenHandsRuntimeRequest {
             prompt: "workflow".to_string(),
             llm: llm.clone(),
             workspace_root_dir: "/tmp/workspace".to_string(),
@@ -1976,7 +1978,7 @@ mod tests {
             workflow_session_id: Some("workflow-session".to_string()),
             usage_session_id: None,
         };
-        let refine_request = OpenHandsOneShotRequest {
+        let refine_request = OpenHandsRuntimeRequest {
             prompt: "refine".to_string(),
             llm,
             workspace_root_dir: "/tmp/workspace".to_string(),
@@ -2047,9 +2049,9 @@ mod tests {
             );
 
         let workflow_request =
-            OpenHandsOneShotRequest::try_from_sidecar_config(&workflow_config).unwrap();
+            OpenHandsRuntimeRequest::try_from_sidecar_config(&workflow_config).unwrap();
         let answer_evaluator_request =
-            OpenHandsOneShotRequest::try_from_sidecar_config(&answer_evaluator_config).unwrap();
+            OpenHandsRuntimeRequest::try_from_sidecar_config(&answer_evaluator_config).unwrap();
         let existing_conversation = serde_json::json!({
             "agent": {
                 "agent_context": {
@@ -2075,6 +2077,37 @@ mod tests {
             conversation_matches_request(&existing_conversation, &answer_evaluator_request),
             "answer evaluator should be able to resume the existing skill-creator conversation"
         );
+    }
+
+    #[test]
+    fn terminal_state_error_uses_runtime_fallback_text() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "error"
+            }
+        })
+        .to_string();
+
+        let result = parse_openhands_runtime_terminal_state(&payload, "agent-1")
+            .expect("terminal state");
+
+        assert_eq!(result, Err("OpenHands runtime run failed".to_string()));
+    }
+
+    #[test]
+    fn lifecycle_state_error_uses_runtime_fallback_text() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "success": false
+        })
+        .to_string();
+
+        let result = parse_openhands_lifecycle_state(&payload, "agent-1")
+            .expect("lifecycle state");
+
+        assert_eq!(result, Err("OpenHands runtime run failed".to_string()));
     }
 
     #[test]

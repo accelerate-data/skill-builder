@@ -1,7 +1,7 @@
 use crate::agents::openhands_server::{
     self, OpenHandsThrowawayRunParams,
 };
-use crate::agents::sidecar::{OpenHandsOneShotConfigParams, SidecarConfig};
+use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, SidecarConfig};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 
@@ -129,7 +129,7 @@ pub(crate) fn build_scope_review_sidecar_config(
     let workspace_root_dir = params.workspace_path.replace('\\', "/");
     let workspace_run_dir = params.workspace_run_dir.replace('\\', "/");
 
-    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsOneShotConfigParams {
+    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: params.prompt.to_string(),
         llm: params.llm,
         workspace_root_dir,
