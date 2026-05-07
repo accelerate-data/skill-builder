@@ -7,9 +7,9 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "esbuild": "^0.25",
-    "typescript": "^5.8",
+    "@types/node": "^25",
+    "esbuild": "^0.28",
+    "typescript": "^6.0",
     "vitest": "^4.0.18"
   },
   "overrides": {
