@@ -113,7 +113,7 @@ export function WorkspaceEvals({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-1 flex-col" data-testid="eval-workbench-panel">
       <div className="min-h-0 flex flex-1 flex-col">
         {headerContent}
 
