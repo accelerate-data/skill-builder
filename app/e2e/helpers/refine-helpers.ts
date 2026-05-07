@@ -80,9 +80,12 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
     },
   ],
   start_refine_session: {
-    session_id: "e2e-refine-session-001",
+    conversation_id: "e2e-refine-conversation-001",
     skill_name: "test-skill",
     created_at: new Date().toISOString(),
+    available_agents: ["skill-creator"],
+    restored_messages: [],
+    restored_transcript_events: [],
   },
   send_refine_message: "refine-test-skill-e2e-001",
   answer_refine_question: undefined,

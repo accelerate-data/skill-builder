@@ -32,7 +32,7 @@ pub struct RefineFinalizeResult {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RefineSessionInfo {
-    pub session_id: String,
+    pub conversation_id: String,
     pub skill_name: String,
     pub created_at: String,
     /// Agent names discovered from the allowed refine plugins.
@@ -46,7 +46,7 @@ pub struct RefineSessionInfo {
 impl std::fmt::Debug for RefineSessionInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RefineSessionInfo")
-            .field("session_id", &"[REDACTED]")
+            .field("conversation_id", &"[REDACTED]")
             .field("skill_name", &self.skill_name)
             .field("created_at", &self.created_at)
             .finish()

@@ -77,7 +77,7 @@ Examples:
 - `run_answer_evaluator`
 - `start_refine_session`
 - `send_refine_message`
-- `pause_refine_session`
+- `cancel_agent_run`
 - `close_refine_session`
 - `review_skill_scope`
 - `define_eval_scenario`
@@ -336,7 +336,7 @@ The default tool policy for OpenHands requests lives in the child doc:
 | Workflow gate evaluation | `run_answer_evaluator` | `StartOpenHandsSession` -> `OpenHandsSendMessage` | Part of the same workflow conversation, not a disposable side run |
 | Refine session start | `start_refine_session` | Persistent session preparation for `StartOpenHandsSession` | Restores compatible history, clears stale saved ids, and prepares the persistent OpenHands conversation before the first send |
 | Refine chat turn | `send_refine_message` | `OpenHandsSendMessage` | Sends the next user turn into the prepared session |
-| Refine stop | `pause_refine_session` | `PauseOpenHandsSession` | Explicit user stop only |
+| Refine stop | `cancel_agent_run` | `PauseOpenHandsSession` | Explicit user stop on the current live run |
 | Eval scenario definition | `define_eval_scenario` | Product helper over `StartOpenHandsSession` / `OpenHandsSendMessage` | Skill-bound scenario definition accumulates on the saved skill conversation |
 | Eval-to-refine brief | `build_refine_improvement_brief` | Product helper over `StartOpenHandsSession` / `OpenHandsSendMessage` | Skill-bound diagnosis reuses the saved skill conversation |
 

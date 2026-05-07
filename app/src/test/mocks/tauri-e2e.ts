@@ -124,14 +124,14 @@ const mockResponses: Record<string, unknown> = {
   get_locked_skills: [],
   // Refine page
   start_refine_session: {
-    session_id: "e2e-refine-session-001",
+    conversation_id: "e2e-refine-conversation-001",
     skill_name: "test-skill",
     created_at: new Date().toISOString(),
     available_agents: ["skill-creator"],
     restored_messages: [],
+    restored_transcript_events: [],
   },
   send_refine_message: "refine-test-skill-e2e-001",
-  pause_refine_session: undefined,
   close_refine_session: undefined,
   list_refinable_skills: [
     {

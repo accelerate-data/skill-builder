@@ -392,7 +392,6 @@ pub fn run() {
             commands::refine::content::get_skill_content_for_refine,
             commands::refine::start_refine_session,
             commands::refine::send_refine_message,
-            commands::refine::pause_refine_session,
             commands::refine::cancel_agent_run,
             commands::refine::close_refine_session,
             commands::refine::output::finalize_refine_run,

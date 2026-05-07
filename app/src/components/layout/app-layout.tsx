@@ -16,7 +16,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { pauseRefineSession, cancelWorkflowStep } from "@/lib/tauri";
+import { cancelAgentRun, cancelWorkflowStep } from "@/lib/tauri";
 import {
   getEvalsRunning,
   requestEvalsCancel,
@@ -88,9 +88,9 @@ export function AppLayout() {
       if (e.key === "Escape") {
         // Refine (streaming): pause via session UUID from RefineSessionManager.
         const refineStore = useRefineStore.getState();
-        if (refineStore.isRunning && refineStore.sessionId) {
-          pauseRefineSession(refineStore.sessionId).catch((err) => {
-            console.error("[app-layout] escape: pause refine failed", err);
+        if (refineStore.isRunning && refineStore.activeAgentId) {
+          cancelAgentRun(refineStore.activeAgentId).catch((err) => {
+            console.error("[app-layout] escape: cancel refine run failed", err);
             toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
           });
           return;

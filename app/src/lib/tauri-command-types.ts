@@ -309,13 +309,14 @@ export interface TauriCommandMap {
     args: { skillName: string; pluginSlug: string; workspacePath: string };
     result: RefineSessionInfo;
   };
-  close_refine_session: { args: { sessionId: string }; result: void };
-  pause_refine_session: { args: { sessionId: string }; result: void };
-  cancel_agent_run: { args: { skillName: string; agentId: string }; result: void };
+  close_refine_session: { args: { skillName: string; pluginSlug: string }; result: void };
+  cancel_agent_run: { args: { agentId: string }; result: void };
   cancel_workflow_step: { args: { agentId: string }; result: void };
   send_refine_message: {
     args: {
-      sessionId: string;
+      skillName: string;
+      pluginSlug: string;
+      conversationId: string;
       userMessage: string;
       targetFiles: string[] | null;
     };

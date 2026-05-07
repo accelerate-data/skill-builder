@@ -419,23 +419,28 @@ export const getSkillContentForRefine = (skillName: string, workspacePath: strin
 export const startRefineSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
   invokeCommand("start_refine_session", { skillName, pluginSlug, workspacePath })
 
-export const closeRefineSession = (sessionId: string) =>
-  invokeCommand("close_refine_session", { sessionId })
+export const closeRefineSession = (skillName: string, pluginSlug: string) =>
+  invokeCommand("close_refine_session", { skillName, pluginSlug })
 
-export const pauseRefineSession = (sessionId: string) =>
-  invokeCommand("pause_refine_session", { sessionId })
-
-export const cancelAgentRun = (skillName: string, agentId: string) =>
-  invokeCommand("cancel_agent_run", { skillName, agentId })
+export const cancelAgentRun = (agentId: string) =>
+  invokeCommand("cancel_agent_run", { agentId })
 
 export const cancelWorkflowStep = (agentId: string) =>
   invokeCommand("cancel_workflow_step", { agentId })
 
 export const sendRefineMessage = (
-  sessionId: string,
+  skillName: string,
+  pluginSlug: string,
+  conversationId: string,
   userMessage: string,
   targetFiles?: string[],
-) => invokeCommand("send_refine_message", { sessionId, userMessage, targetFiles: targetFiles ?? null })
+) => invokeCommand("send_refine_message", {
+  skillName,
+  pluginSlug,
+  conversationId,
+  userMessage,
+  targetFiles: targetFiles ?? null,
+})
 
 export const finalizeRefineRun = (
   skillName: string,

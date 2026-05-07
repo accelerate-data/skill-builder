@@ -36,7 +36,6 @@ const vu1140Commands = [
   "get_skill_content_for_refine",
   "start_refine_session",
   "close_refine_session",
-  "pause_refine_session",
   "cancel_agent_run",
   "cancel_workflow_step",
   "send_refine_message",

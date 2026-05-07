@@ -17,7 +17,7 @@ const initialState = {
   pendingFollowupMessage: null,
   activeAgentId: null,
   isRunning: false,
-  sessionId: null,
+  conversationId: null,
   sessionExhausted: false,
   selectedModifiedFile: null,
 };
@@ -42,7 +42,7 @@ describe("useRefineStore", () => {
     expect(state.pendingFollowupMessage).toBeNull();
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
-    expect(state.sessionId).toBeNull();
+    expect(state.conversationId).toBeNull();
     expect(state.sessionExhausted).toBe(false);
   });
 
@@ -64,7 +64,7 @@ describe("useRefineStore", () => {
     const files: SkillFile[] = [{ filename: "SKILL.md", content: "old" }];
     useRefineStore.setState({
       messages: [{ id: "m1", role: "user", userText: "hi", timestamp: 1 }],
-      sessionId: "sess-1",
+      conversationId: "conv-1",
       diffMode: true,
       skillFiles: files,
       activeFileTab: "references/glossary.md",
@@ -78,7 +78,7 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.selectedSkill).toEqual(skill);
     expect(state.messages).toEqual([]);
-    expect(state.sessionId).toBeNull();
+    expect(state.conversationId).toBeNull();
     expect(state.diffMode).toBe(false);
     expect(state.skillFiles).toEqual([]);
     expect(state.activeFileTab).toBe("SKILL.md");
@@ -323,7 +323,7 @@ describe("useRefineStore", () => {
       messages: [{ id: "m1", role: "user", userText: "hi", timestamp: 1 }],
       activeAgentId: "agent-1",
       isRunning: true,
-      sessionId: "sess-1",
+      conversationId: "conv-1",
       diffMode: true,
       gitDiff: { stat: "1 file changed", files: [] },
       skillFiles: [{ filename: "SKILL.md", content: "new" }],
@@ -340,7 +340,7 @@ describe("useRefineStore", () => {
     expect(state.messages).toEqual([]);
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
-    expect(state.sessionId).toBeNull();
+    expect(state.conversationId).toBeNull();
     expect(state.diffMode).toBe(false);
     expect(state.gitDiff).toBeNull();
     expect(state.skillFiles).toEqual([]);
@@ -387,11 +387,11 @@ describe("useRefineStore", () => {
     expect(useRefineStore.getState().isRunning).toBe(false);
   });
 
-  it("setSessionId sets and clears the session id", () => {
-    useRefineStore.getState().setSessionId("session-abc");
-    expect(useRefineStore.getState().sessionId).toBe("session-abc");
-    useRefineStore.getState().setSessionId(null);
-    expect(useRefineStore.getState().sessionId).toBeNull();
+  it("setConversationId sets and clears the conversation id", () => {
+    useRefineStore.getState().setConversationId("conv-abc");
+    expect(useRefineStore.getState().conversationId).toBe("conv-abc");
+    useRefineStore.getState().setConversationId(null);
+    expect(useRefineStore.getState().conversationId).toBeNull();
   });
 
   it("setMessages replaces the restored conversation history", () => {
@@ -426,7 +426,7 @@ describe("useRefineStore", () => {
   it("ending a turn preserves the refine session for follow-up chat messages", () => {
     useRefineStore.setState({
       selectedSkill: makeSkillSummary({ name: "my-skill" }),
-      sessionId: "session-123",
+      conversationId: "conv-123",
       activeAgentId: "refine-my-skill-1",
       isRunning: true,
       messages: [
@@ -440,7 +440,7 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.isRunning).toBe(false);
     expect(state.activeAgentId).toBeNull();
-    expect(state.sessionId).toBe("session-123");
+    expect(state.conversationId).toBe("conv-123");
     expect(state.selectedSkill?.name).toBe("my-skill");
     expect(state.messages).toHaveLength(1);
   });

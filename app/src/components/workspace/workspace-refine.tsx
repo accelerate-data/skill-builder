@@ -19,12 +19,12 @@ import {
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
-  pauseRefineSession,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
   acquireLock,
   releaseLock,
+  cancelAgentRun,
 } from "@/lib/tauri";
 import type { EditableSkill, RefineSessionInfo, RestoredConversationEvent } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
@@ -121,7 +121,7 @@ function hydrateRestoredTranscript(
       .map((event) =>
         normalizeRestoredConversationEvent(
           event,
-          `restored:${session.session_id}:${segmentIndex}`,
+          `restored:${session.conversation_id}:${segmentIndex}`,
         ),
       )
       .filter(
@@ -135,13 +135,13 @@ function hydrateRestoredTranscript(
       );
 
     if (normalizedEvents.length > 0) {
-      const restoredAgentId = `restored:${session.session_id}:${segmentIndex}`;
+      const restoredAgentId = `restored:${session.conversation_id}:${segmentIndex}`;
       agentStore.registerRun(
         restoredAgentId,
         model ?? "openhands",
         skillName,
         "refine",
-        `synthetic:refine:${skillName}:${session.session_id}:restored:${segmentIndex}`,
+        `synthetic:refine:${skillName}:${session.conversation_id}:restored:${segmentIndex}`,
       );
       for (const event of normalizedEvents) {
         agentStore.addConversationEvent(restoredAgentId, event);
@@ -227,14 +227,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     return () => {
       const store = useRefineStore.getState();
       if (store.selectedSkill) {
-        if (store.sessionId) {
-          closeRefineSession(store.sessionId).catch((e) =>
-            console.warn(
-              "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
-              e,
-            ),
-          );
-        }
+        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
+          console.warn(
+            "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
+            e,
+          ),
+        );
         releaseSkillResources(store.selectedSkill.name, "unmount");
         store.clearSession();
       }
@@ -250,8 +248,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.setActiveAgentId(null);
       useAgentStore.getState().clearRuns();
 
-      if (store.sessionId) {
-        closeRefineSession(store.sessionId).catch((e) =>
+      if (store.selectedSkill) {
+        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
           console.warn(
             "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
             e,
@@ -280,7 +278,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       console.log("[workspace-refine] selectSkill: %s", s.name);
       const store = useRefineStore.getState();
 
-      if (store.selectedSkill?.name === s.name && store.sessionId) return;
+      if (store.selectedSkill?.name === s.name && store.conversationId) return;
 
       const prevSkill = store.selectedSkill;
       if (prevSkill && prevSkill.name !== s.name) {
@@ -311,9 +309,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         return;
       }
 
-      const prevSessionId = store.sessionId;
-      if (prevSessionId) {
-        await closeRefineSession(prevSessionId).catch((err) =>
+      if (store.selectedSkill) {
+        await closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((err) =>
           console.warn(
             "[workspace-refine] Failed to close previous session:",
             err,
@@ -336,7 +333,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             s.plugin_slug,
           );
           const nextStore = useRefineStore.getState();
-          nextStore.setSessionId(session.session_id);
+          nextStore.setConversationId(session.conversation_id);
           nextStore.setAvailableAgents(session.available_agents ?? []);
           nextStore.setMessages(
             hydrateRestoredTranscript(session, s.name, selectedModel) ??
@@ -384,8 +381,8 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[]) => {
       const store = useRefineStore.getState();
-      const sessionId = store.sessionId;
-      if (!selectedSkill || !sessionId) return;
+      const conversationId = store.conversationId;
+      if (!selectedSkill || !conversationId) return;
       if (store.isRunning) return;
 
       console.log(
@@ -402,7 +399,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
       try {
         const agentId = await sendRefineMessage(
-          sessionId,
+          selectedSkill.name,
+          selectedSkill.plugin_slug,
+          conversationId,
           text,
           targetFiles,
         );
@@ -414,7 +413,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             selectedModel ?? "openhands",
             selectedSkill.name,
             "refine",
-            `synthetic:refine:${selectedSkill.name}:${sessionId}`,
+            `synthetic:refine:${selectedSkill.name}:${conversationId}`,
           );
 
         store.addAgentTurn(agentId);
@@ -433,14 +432,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   const handleCancel = useCallback(async () => {
     const store = useRefineStore.getState();
-    if (!store.sessionId || !store.isRunning) {
+    if (!selectedSkill || !store.activeAgentId || !store.isRunning) {
       return;
     }
 
-    console.log("[workspace-refine] pause: session=%s", store.sessionId);
+    console.log("[workspace-refine] pause: agent=%s", store.activeAgentId);
 
     try {
-      await pauseRefineSession(store.sessionId);
+      await cancelAgentRun(store.activeAgentId);
     } catch (err) {
       console.error("[workspace-refine] Failed to pause refine session:", err);
       toast.error("Failed to pause current run", {
@@ -453,7 +452,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     // useEffect watches activeRunStatus for a terminal event ("completed",
     // "error", "shutdown") and handles cleanup. This ensures the UI only
     // transitions when the stream has actually stopped.
-  }, []);
+  }, [selectedSkill]);
 
   // --- Watch agent completion ---
   useEffect(() => {

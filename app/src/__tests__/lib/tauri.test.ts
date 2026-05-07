@@ -4,6 +4,7 @@ import {
   checkMarketplaceUpdates,
   checkMarketplaceUrl,
   checkSkillCustomized,
+  cancelAgentRun,
   createPluginFromSkills,
   deleteImportedSkill,
   deletePlugin,
@@ -24,7 +25,6 @@ import {
   removeSkillFromPlugin,
   renameSkill,
   reviewSkillScope,
-  pauseRefineSession,
   sendRefineMessage,
   startRefineSession,
   setPluginUpgradeLock,
@@ -117,20 +117,29 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
       },
     },
     {
-      name: "pauseRefineSession",
-      call: () => pauseRefineSession("session-123"),
-      command: "pause_refine_session",
-      args: { sessionId: "session-123" },
-    },
-    {
       name: "sendRefineMessage",
-      call: () => sendRefineMessage("session-123", "Update this skill", ["SKILL.md"]),
+      call: () =>
+        sendRefineMessage(
+          "demo-skill",
+          "analytics-pack",
+          "conv-123",
+          "Update this skill",
+          ["SKILL.md"],
+        ),
       command: "send_refine_message",
       args: {
-        sessionId: "session-123",
+        skillName: "demo-skill",
+        pluginSlug: "analytics-pack",
+        conversationId: "conv-123",
         userMessage: "Update this skill",
         targetFiles: ["SKILL.md"],
       },
+    },
+    {
+      name: "cancelAgentRun",
+      call: () => cancelAgentRun("agent-123"),
+      command: "cancel_agent_run",
+      args: { agentId: "agent-123" },
     },
     {
       name: "getDashboardSkillNames",

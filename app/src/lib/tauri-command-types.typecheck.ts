@@ -91,14 +91,14 @@ void invokeCommand("resolve_discovery", {
   pluginSlug: null,
 });
 
-// @ts-expect-error refine command requires camelCase sessionId
+// @ts-expect-error refine close requires skillName and pluginSlug
 void invokeCommand("close_refine_session", { session_id: "session-1" });
-
-void invokeCommand("pause_refine_session", { sessionId: "session-1" });
 
 // @ts-expect-error send_refine_message requires targetFiles
 void invokeCommand("send_refine_message", {
-  sessionId: "session-1",
+  skillName: "demo-skill",
+  pluginSlug: "skills",
+  conversationId: "conv-1",
   userMessage: "Update this skill",
   targetFiles: 123,
 });

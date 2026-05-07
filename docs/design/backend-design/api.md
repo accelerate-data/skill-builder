@@ -144,10 +144,10 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | Command | Description |
 |---|---|
 | `get_skill_content_for_refine` | Load skill files into the refine editor |
-| `start_refine_session` | Spawn an OpenHands session with skill content as context |
-| `send_refine_message` | Continue a refine conversation |
-| `pause_refine_session` | Suspend the session without closing it |
-| `close_refine_session` | End session, optionally persist changes |
+| `start_refine_session` | Resolve or prepare the persistent Refine conversation |
+| `send_refine_message` | Dispatch the next Refine turn on that conversation |
+| `cancel_agent_run` | Pause the active live run by `agent_id` |
+| `close_refine_session` | Tear down the local Refine surface/session wrapper |
 | `finalize_refine_run` | Write final summary and close run metrics |
 
 ## Git History

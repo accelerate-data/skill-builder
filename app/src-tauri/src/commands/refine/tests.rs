@@ -620,6 +620,14 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
 
 // ===== build_refine_prompt tests =====
 
+fn default_refine_prompt_context() -> RefinePromptContext<'static> {
+    RefinePromptContext {
+        user_context_block: "",
+        clarifications_json: "{}",
+        decisions_json: "{}",
+    }
+}
+
 #[test]
 fn test_refine_prompt_includes_all_three_paths() {
     let ws = std::env::temp_dir()
@@ -631,7 +639,14 @@ fn test_refine_prompt_includes_all_three_paths() {
         .join("skills")
         .to_string_lossy()
         .to_string();
-    let system_prompt = build_refine_prompt("my-skill", &ws, &skills, "Add metrics section", None);
+    let system_prompt = build_refine_prompt(
+        "my-skill",
+        &ws,
+        &skills,
+        "Add metrics section",
+        None,
+        default_refine_prompt_context(),
+    );
     // build_refine_prompt normalises backslashes to forward slashes
     let ws_fwd = ws.replace('\\', "/");
     let skills_fwd = skills.replace('\\', "/");
@@ -650,7 +665,14 @@ fn test_refine_prompt_includes_all_three_paths() {
 
 #[test]
 fn test_refine_prompt_includes_metadata() {
-    let system_prompt = build_refine_prompt("my-skill", "/ws", "/skills", "Fix overview", None);
+    let system_prompt = build_refine_prompt(
+        "my-skill",
+        "/ws",
+        "/skills",
+        "Fix overview",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(system_prompt.contains("We are refining the skill my-skill"));
     assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
@@ -659,39 +681,88 @@ fn test_refine_prompt_includes_metadata() {
 #[test]
 fn test_refine_prompt_file_targeting() {
     let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
-    let system_prompt =
-        build_refine_prompt("my-skill", "/ws", "/skills", "update these", Some(&files));
-    assert!(system_prompt
-        .contains("IMPORTANT: Only edit these files (relative to skill output directory):"));
-    assert!(system_prompt.contains("SKILL.md"));
-    assert!(system_prompt.contains("references/metrics.md"));
+    let system_prompt = build_refine_prompt(
+        "my-skill",
+        "/ws",
+        "/skills",
+        "update these",
+        Some(&files),
+        default_refine_prompt_context(),
+    );
+    assert!(system_prompt.contains("IMPORTANT: Only edit these files:"));
+    assert!(system_prompt.contains("/skills/default/skills/my-skill/SKILL.md"));
+    assert!(system_prompt.contains("/skills/default/skills/my-skill/references/metrics.md"));
 }
 
 #[test]
 fn test_refine_prompt_no_file_constraint_when_empty() {
-    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit freely", None);
+    let system_prompt =
+        build_refine_prompt("s", "/ws", "/sk", "edit freely", None, default_refine_prompt_context());
     assert!(!system_prompt.contains("Only edit these files"));
 }
 
 #[test]
 fn test_refine_prompt_includes_user_message() {
-    let prompt = build_refine_prompt("s", "/ws", "/sk", "Add SLA metrics to the overview", None);
+    let prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "Add SLA metrics to the overview",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(prompt.contains("Add SLA metrics to the overview"));
 }
 
 #[test]
 fn test_refine_prompt_includes_derived_paths() {
-    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
+    let system_prompt =
+        build_refine_prompt("s", "/ws", "/sk", "edit", None, default_refine_prompt_context());
     assert!(system_prompt.contains("The context directory is:"));
     assert!(system_prompt.contains("The workspace directory is:"));
 }
 
 #[test]
-fn test_refine_prompt_no_inline_user_context() {
-    let system_prompt = build_refine_prompt("s", "/ws", "/sk", "edit", None);
-    assert!(!system_prompt.contains("**Industry**:"));
-    assert!(!system_prompt.contains("**Target Audience**:"));
-    assert!(!system_prompt.contains("**Function**:"));
+fn test_refine_prompt_includes_inline_user_context_clarifications_and_decisions() {
+    let system_prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "edit",
+        None,
+        RefinePromptContext {
+            user_context_block: "## User Context\n**Industry**: Healthcare\n**Function**: Analytics",
+            clarifications_json: r#"{ "sections": [{ "id": "Q1" }] }"#,
+            decisions_json: r#"{ "decisions": [{ "id": "D1" }] }"#,
+        },
+    );
+    assert!(system_prompt.contains("## User Context"));
+    assert!(system_prompt.contains("**Industry**: Healthcare"));
+    assert!(system_prompt.contains(r#"{ "sections": [{ "id": "Q1" }] }"#));
+    assert!(system_prompt.contains(r#"{ "decisions": [{ "id": "D1" }] }"#));
+}
+
+#[test]
+fn test_refine_prompt_no_longer_points_to_user_context_file() {
+    let system_prompt =
+        build_refine_prompt("s", "/ws", "/sk", "edit", None, default_refine_prompt_context());
+    assert!(!system_prompt.contains("user-context.md"));
+}
+
+#[test]
+fn test_refine_prompt_file_targeting_uses_absolute_paths() {
+    let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
+    let prompt = build_refine_prompt(
+        "my-skill",
+        "/ws",
+        "/skills",
+        "update these",
+        Some(&files),
+        default_refine_prompt_context(),
+    );
+    assert!(prompt.contains("IMPORTANT: Only edit these files:"));
+    assert!(prompt.contains("/skills/default/skills/my-skill/SKILL.md"));
+    assert!(prompt.contains("/skills/default/skills/my-skill/references/metrics.md"));
 }
 
 #[test]
@@ -830,33 +901,8 @@ fn test_get_refine_diff_stat_ignores_patch_file_header_lines() {
     assert!(result.stat.contains("1 deletion(s)(-)"));
 }
 
-// ===== build_followup_prompt tests =====
-
 #[test]
-fn test_followup_prompt_is_just_user_message() {
-    let prompt = build_followup_prompt("Add SLA metrics", "/skills", "my-skill", None);
-    assert_eq!(prompt, "Add SLA metrics");
-    assert!(!prompt.contains("command"));
-}
-
-#[test]
-fn test_followup_prompt_file_targeting() {
-    let files = vec!["SKILL.md".to_string(), "references/api.md".to_string()];
-    let prompt = build_followup_prompt("update", "/skills", "my-skill", Some(&files));
-    assert!(prompt.contains("IMPORTANT: Only edit these files:"));
-    assert!(prompt.contains("/default/skills/my-skill/SKILL.md"));
-    assert!(prompt.contains("/default/skills/my-skill/references/api.md"));
-    assert!(prompt.contains("update"));
-}
-
-#[test]
-fn test_followup_prompt_no_file_constraint_when_empty() {
-    let prompt = build_followup_prompt("edit freely", "/sk", "s", None);
-    assert!(!prompt.contains("Only edit these files"));
-}
-
-#[test]
-fn test_prepared_refine_session_uses_initial_prompt_until_first_send_persists_state() {
+fn test_prepared_refine_session_uses_contextual_prompt_on_first_and_later_turns() {
     let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
     let mut session = RefineSession {
         skill_name: "my-skill".to_string(),
@@ -868,50 +914,56 @@ fn test_prepared_refine_session_uses_initial_prompt_until_first_send_persists_st
         head_sha_at_start: None,
     };
 
-    let first_prompt = if session.dispatched_user_turn_count > 0 {
-        build_followup_prompt_with_output_dir("Add SLA metrics", &skill_output_dir, None)
-    } else {
-        build_refine_prompt_with_output_dir(
-            &session.skill_name,
-            "/workspace",
-            &session.plugin_slug,
-            &skill_output_dir,
-            "Add SLA metrics",
-            None,
-        )
-    };
+    let first_prompt = build_refine_prompt_with_output_dir(RefinePromptRequest {
+        skill_name: &session.skill_name,
+        workspace_path: "/workspace",
+        plugin_slug: &session.plugin_slug,
+        skill_output_dir: &skill_output_dir,
+        user_message: "Add SLA metrics",
+        target_files: None,
+        context: RefinePromptContext {
+            user_context_block: "## User Context\n**Industry**: Healthcare",
+            clarifications_json: r#"{ "sections": [{ "id": "Q1" }] }"#,
+            decisions_json: r#"{ "decisions": [{ "id": "D1" }] }"#,
+        },
+    });
     assert!(
         first_prompt.contains("We are refining the skill my-skill"),
-        "prepared sessions should still use the full initial prompt before first send"
+        "prepared sessions should still use the contextual prompt before first send"
     );
+    assert!(first_prompt.contains("## User Context"));
+    assert!(first_prompt.contains(r#"{ "sections": [{ "id": "Q1" }] }"#));
+    assert!(first_prompt.contains(r#"{ "decisions": [{ "id": "D1" }] }"#));
 
     session.conversation_id = Some("conv-456".to_string());
     session.current_agent_id = Some("agent-456".to_string());
     session.dispatched_user_turn_count = 1;
 
-    let followup_prompt = if session.dispatched_user_turn_count > 0 {
-        build_followup_prompt_with_output_dir("Tighten the overview", &skill_output_dir, None)
-    } else {
-        build_refine_prompt_with_output_dir(
-            &session.skill_name,
-            "/workspace",
-            &session.plugin_slug,
-            &skill_output_dir,
-            "Tighten the overview",
-            None,
-        )
-    };
+    let later_prompt = build_refine_prompt_with_output_dir(RefinePromptRequest {
+        skill_name: &session.skill_name,
+        workspace_path: "/workspace",
+        plugin_slug: &session.plugin_slug,
+        skill_output_dir: &skill_output_dir,
+        user_message: "Tighten the overview",
+        target_files: None,
+        context: RefinePromptContext {
+            user_context_block: "## User Context\n**Industry**: Healthcare",
+            clarifications_json: r#"{ "sections": [{ "id": "Q1" }] }"#,
+            decisions_json: r#"{ "decisions": [{ "id": "D1" }] }"#,
+        },
+    });
 
     assert_eq!(session.conversation_id.as_deref(), Some("conv-456"));
     assert_eq!(session.current_agent_id.as_deref(), Some("agent-456"));
     assert_eq!(session.dispatched_user_turn_count, 1);
-    assert_eq!(followup_prompt, "Tighten the overview");
+    assert!(later_prompt.contains("Tighten the overview"));
+    assert!(later_prompt.contains("## User Context"));
 }
 
 #[test]
-fn test_prepared_refine_session_routes_by_dispatch_flag_not_conversation_id() {
+fn test_prepared_refine_session_does_not_change_prompt_shape_after_dispatch() {
     let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
-    let session = RefineSession {
+    let mut session = RefineSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -921,29 +973,42 @@ fn test_prepared_refine_session_routes_by_dispatch_flag_not_conversation_id() {
         head_sha_at_start: None,
     };
 
-    let prompt = if session.dispatched_user_turn_count > 0 {
-        build_followup_prompt_with_output_dir("Tighten the overview", &skill_output_dir, None)
-    } else {
-        build_refine_prompt_with_output_dir(
-            &session.skill_name,
-            "/workspace",
-            &session.plugin_slug,
-            &skill_output_dir,
-            "Tighten the overview",
-            None,
-        )
-    };
+    let before_dispatch = build_refine_prompt_with_output_dir(RefinePromptRequest {
+        skill_name: &session.skill_name,
+        workspace_path: "/workspace",
+        plugin_slug: &session.plugin_slug,
+        skill_output_dir: &skill_output_dir,
+        user_message: "Tighten the overview",
+        target_files: None,
+        context: RefinePromptContext {
+            user_context_block: "## User Context",
+            clarifications_json: "{}",
+            decisions_json: "{}",
+        },
+    });
+    session.dispatched_user_turn_count = 1;
+    let after_dispatch = build_refine_prompt_with_output_dir(RefinePromptRequest {
+        skill_name: &session.skill_name,
+        workspace_path: "/workspace",
+        plugin_slug: &session.plugin_slug,
+        skill_output_dir: &skill_output_dir,
+        user_message: "Tighten the overview",
+        target_files: None,
+        context: RefinePromptContext {
+            user_context_block: "## User Context",
+            clarifications_json: "{}",
+            decisions_json: "{}",
+        },
+    });
 
     assert_eq!(
         session.conversation_id.as_deref(),
         Some("prepared-conversation")
     );
     assert_eq!(session.current_agent_id.as_deref(), Some("prepared-agent"));
-    assert!(
-        prompt.contains("We are refining the skill my-skill"),
-        "prepared conversation ids must not switch refine into followup mode before the first dispatched turn"
-    );
-    assert_ne!(prompt, "Tighten the overview");
+    assert_eq!(before_dispatch, after_dispatch);
+    assert!(after_dispatch.contains("We are refining the skill my-skill"));
+    assert!(after_dispatch.contains("## User Context"));
 }
 
 #[test]
@@ -1671,7 +1736,14 @@ fn test_refine_session_holds_conversation_and_agent_ids() {
 
 #[test]
 fn test_refine_initial_prompt_has_no_claude_code_routing() {
-    let prompt = build_refine_prompt("my-skill", "/ws", "/sk", "edit", None);
+    let prompt = build_refine_prompt(
+        "my-skill",
+        "/ws",
+        "/sk",
+        "edit",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(
         !prompt.contains("AskUserQuestion"),
         "OpenHands prompt must not reference AskUserQuestion: {}",
@@ -1691,7 +1763,14 @@ fn test_refine_initial_prompt_has_no_claude_code_routing() {
 
 #[test]
 fn test_refine_initial_prompt_includes_eval_feedback_guidance() {
-    let prompt = build_refine_prompt("my-skill", "/ws", "/sk", "edit", None);
+    let prompt = build_refine_prompt(
+        "my-skill",
+        "/ws",
+        "/sk",
+        "edit",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(
         prompt.contains("eval failure feedback"),
         "OpenHands prompt should describe how to handle eval feedback: {}",

@@ -188,7 +188,7 @@ export interface RestoredConversationEvent {
 }
 
 export interface RefineSessionInfo {
-  session_id: string
+  conversation_id: string
   skill_name: string
   created_at: string
   /** Agent names discovered from allowed refine plugins (e.g. "skill-creator:rewrite-skill"). */

@@ -286,7 +286,7 @@ describe("AppLayout", () => {
     });
     useRefineStore.setState({
       isRunning: true,
-      sessionId: "session-refine-1",
+      activeAgentId: "refine-agent-1",
     });
 
     render(<AppLayout />);
@@ -299,8 +299,8 @@ describe("AppLayout", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("pause_refine_session", {
-        sessionId: "session-refine-1",
+      expect(mockInvoke).toHaveBeenCalledWith("cancel_agent_run", {
+        agentId: "refine-agent-1",
       });
     });
     expect(mockInvoke).toHaveBeenCalledTimes(1);
@@ -356,10 +356,7 @@ describe("AppLayout", () => {
     await waitFor(() => {
       expect(cancelEval).toHaveBeenCalledTimes(1);
     });
-    expect(mockInvoke).not.toHaveBeenCalledWith(
-      "pause_refine_session",
-      expect.anything(),
-    );
+    expect(mockInvoke).not.toHaveBeenCalledWith("cancel_agent_run", expect.anything());
   });
 
   it("renders content after auto-applying notification-only reconciliation", async () => {
