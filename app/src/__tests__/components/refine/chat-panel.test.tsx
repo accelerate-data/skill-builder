@@ -11,6 +11,10 @@ const inputBarState = vi.hoisted(() => ({
   props: null as null | Record<string, unknown>,
 }));
 
+const agentStoreState = vi.hoisted(() => ({
+  runs: {} as Record<string, { status: "running" | "completed" | "error" | "shutdown" }>,
+}));
+
 vi.mock("@/components/refine/chat-message-list", () => ({
   ChatMessageList: ({ messages }: { messages: RefineMessage[] }) => {
     messageListState.messages = messages;
@@ -36,6 +40,11 @@ vi.mock("@/components/refine/chat-input-bar", () => ({
   },
 }));
 
+vi.mock("@/stores/agent-store", () => ({
+  useAgentStore: vi.fn((selector: (s: typeof agentStoreState) => unknown) =>
+    selector(agentStoreState)),
+}));
+
 const defaultProps = {
   onSend: vi.fn(),
   onCancel: vi.fn(),
@@ -55,11 +64,13 @@ describe("ChatPanel", () => {
     defaultProps.onCancel.mockReset();
     messageListState.messages = [];
     inputBarState.props = null;
+    agentStoreState.runs = {};
     useRefineStore.setState({
       messages: [],
       sessionExhausted: false,
       pendingInitialMessage: null,
       gitDiff: null,
+      activeAgentId: null,
     });
   });
 
@@ -95,6 +106,19 @@ describe("ChatPanel", () => {
       availableFiles: defaultProps.availableFiles,
       prefilledValue: undefined,
     });
+  });
+
+  it("does not render a duplicate running lifecycle chip in the refine header", () => {
+    useRefineStore.setState({
+      activeAgentId: "agent-1",
+    });
+    agentStoreState.runs = {
+      "agent-1": { status: "running" },
+    };
+
+    renderPanel({ isRunning: true });
+
+    expect(screen.queryByTestId("refine-lifecycle-chip")).not.toBeInTheDocument();
   });
 
   it("blocks input and shows the scope warning when scope is blocked", () => {

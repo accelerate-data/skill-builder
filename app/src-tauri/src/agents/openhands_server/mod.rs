@@ -841,10 +841,25 @@ pub async fn openhands_send_message(
 }
 
 pub fn pause_openhands_session(agent_id: &str) -> bool {
-    cancel_registry()
-        .remove(agent_id)
-        .map(|(_, cancel)| cancel.send(()).is_ok())
-        .unwrap_or(false)
+    let mut handle = match cancel_registry().get_mut(agent_id) {
+        Some(handle) => handle,
+        None => return false,
+    };
+
+    if handle.pause_requested {
+        return true;
+    }
+
+    let Some(cancel) = handle.sender.take() else {
+        handle.pause_requested = true;
+        return true;
+    };
+
+    let sent = cancel.send(()).is_ok();
+    if sent {
+        handle.pause_requested = true;
+    }
+    sent
 }
 
 pub async fn run_throwaway_openhands_session(
@@ -1589,7 +1604,12 @@ fn openhands_conversation_state_error_detail(
         .to_string()
 }
 
-type OpenHandsCancelRegistry = DashMap<String, tokio::sync::oneshot::Sender<()>>;
+struct OpenHandsCancelHandle {
+    sender: Option<tokio::sync::oneshot::Sender<()>>,
+    pause_requested: bool,
+}
+
+type OpenHandsCancelRegistry = DashMap<String, OpenHandsCancelHandle>;
 type OpenHandsTaskRegistry = DashMap<String, tokio::task::AbortHandle>;
 
 fn cancel_registry() -> &'static OpenHandsCancelRegistry {
@@ -1604,9 +1624,17 @@ fn task_registry() -> &'static OpenHandsTaskRegistry {
 
 fn register_cancel(agent_id: &str, cancel: tokio::sync::oneshot::Sender<()>) -> Result<(), String> {
     if let Some((_, previous)) = cancel_registry().remove(agent_id) {
-        let _ = previous.send(());
+        if let Some(sender) = previous.sender {
+            let _ = sender.send(());
+        }
     }
-    cancel_registry().insert(agent_id.to_string(), cancel);
+    cancel_registry().insert(
+        agent_id.to_string(),
+        OpenHandsCancelHandle {
+            sender: Some(cancel),
+            pause_requested: false,
+        },
+    );
     Ok(())
 }
 
@@ -2495,7 +2523,7 @@ mod tests {
     }
 
     #[test]
-    fn cancellation_registry_signals_and_clears_active_agent() {
+    fn pause_registry_signals_once_and_stays_registered_until_unregistered() {
         let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
         let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
 
@@ -2503,6 +2531,9 @@ mod tests {
 
         assert!(pause_openhands_session(&agent_id));
         assert!(cancel_rx.try_recv().is_ok());
+        assert!(pause_openhands_session(&agent_id));
+
+        unregister_cancel(&agent_id);
         assert!(!pause_openhands_session(&agent_id));
     }
 
