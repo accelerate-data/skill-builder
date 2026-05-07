@@ -7,6 +7,7 @@ import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cac
 import type { DisplayItem } from "@/lib/display-types";
 import type { RefineQuestionPrompt } from "@/stores/refine-store";
 import {
+  getReasoningText,
   isTerminalConversationStatus,
   normalizeConversationEventMessage,
   normalizeConversationStateMessage,
@@ -192,10 +193,14 @@ export async function initAgentStream() {
       if (message.type === "conversation_event") {
         const conversationEvent = normalizeConversationEventMessage(message);
         if (conversationEvent) {
+          const reasoningText = getReasoningText(conversationEvent);
           console.debug(
-            "[use-agent-stream] event=conversation_event agent_id=%s event_class=%s",
+            "[use-agent-stream] event=conversation_event agent_id=%s event_class=%s tool_call_id=%s parent_tool_call_id=%s reasoning_len=%d",
             agent_id,
             conversationEvent.eventClass,
+            conversationEvent.toolCallId ?? "none",
+            conversationEvent.parentToolCallId ?? "none",
+            reasoningText?.length ?? 0,
           );
           agentStore.addConversationEvent(agent_id, conversationEvent);
           return;

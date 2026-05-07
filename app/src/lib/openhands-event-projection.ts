@@ -18,6 +18,7 @@ import {
   getErrorText,
   getMessageText,
   getObservationText,
+  getReasoningText,
   getToolCallId,
   getToolInput,
   getToolName,
@@ -164,6 +165,17 @@ function projectMessageEvent(
   const source =
     typeof event.event.source === "string" ? event.event.source : undefined;
   const text = getMessageText(event) ?? "";
+  const reasoning = getReasoningText(event);
+
+  if (reasoning) {
+    console.debug(
+      "[openhands-projection] message_event_with_reasoning event_class=%s source=%s reasoning_len=%d projected_type=%s",
+      event.eventClass,
+      source ?? "unknown",
+      reasoning.length,
+      source === "user" ? "tool_call(task_sent)" : "output",
+    );
+  }
 
   if (source === "user") {
     return {
@@ -693,6 +705,16 @@ export function projectConversationEvent(
   event: OpenHandsConversationEvent,
   pending: PendingActions,
 ): ProjectionResult {
+  const reasoning = getReasoningText(event);
+  if (reasoning) {
+    console.debug(
+      "[openhands-projection] event_with_reasoning event_class=%s tool_call_id=%s parent_tool_call_id=%s reasoning_len=%d",
+      event.eventClass,
+      event.toolCallId ?? "none",
+      event.parentToolCallId ?? "none",
+      reasoning.length,
+    );
+  }
   switch (event.eventClass) {
     case "MessageEvent":
       return projectMessageEvent(event);

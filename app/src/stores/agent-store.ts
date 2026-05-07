@@ -536,6 +536,13 @@ export const useAgentStore = create<AgentState>((set) => ({
   addConversationEvent: (agentId, event) =>
     set((state) => {
       const parentToolCallId = getParentToolCallId(event);
+      console.debug(
+        "[agent-store] event=conversation_event_received agent_id=%s event_class=%s tool_call_id=%s parent_tool_call_id=%s",
+        agentId,
+        event.eventClass,
+        event.toolCallId ?? "none",
+        parentToolCallId ?? "none",
+      );
       const run = state.runs[agentId];
       if (!run) {
         console.debug(
@@ -548,6 +555,13 @@ export const useAgentStore = create<AgentState>((set) => ({
         let nextDisplayItems: DisplayItem[] = [];
         if (parentToolCallId) {
           for (const item of projection.add) {
+            console.warn(
+              "[agent-store] event=subagent_child_queued_without_run agent_id=%s parent_tool_call_id=%s item_type=%s item_id=%s",
+              agentId,
+              parentToolCallId,
+              item.type,
+              item.id,
+            );
             nextPendingSubagentItems[parentToolCallId] = [
               ...(nextPendingSubagentItems[parentToolCallId] ?? []),
               {
@@ -619,11 +633,25 @@ export const useAgentStore = create<AgentState>((set) => ({
               nestedItem,
             );
             if (maybeNested === nextDisplayItems) {
+              console.warn(
+                "[agent-store] event=subagent_child_queued agent_id=%s parent_tool_call_id=%s item_type=%s item_id=%s",
+                agentId,
+                parentToolCallId,
+                item.type,
+                item.id,
+              );
               nextPendingSubagentItems[parentToolCallId] = [
                 ...(nextPendingSubagentItems[parentToolCallId] ?? []),
                 nestedItem,
               ];
             } else {
+              console.debug(
+                "[agent-store] event=subagent_child_attached agent_id=%s parent_tool_call_id=%s item_type=%s item_id=%s",
+                agentId,
+                parentToolCallId,
+                item.type,
+                item.id,
+              );
               nextDisplayItems = maybeNested;
             }
           }
@@ -636,6 +664,18 @@ export const useAgentStore = create<AgentState>((set) => ({
         nextDisplayItems,
         nextPendingSubagentItems,
       );
+      if (
+        Object.keys(nextPendingSubagentItems).length > 0 ||
+        Object.keys(flushed.remaining).length > 0
+      ) {
+        console.debug(
+          "[agent-store] event=subagent_flush agent_id=%s queued_before=%d queued_after=%d display_items=%d",
+          agentId,
+          Object.keys(nextPendingSubagentItems).length,
+          Object.keys(flushed.remaining).length,
+          flushed.items.length,
+        );
+      }
       nextDisplayItems = flushed.items;
       nextPendingSubagentItems = flushed.remaining;
 

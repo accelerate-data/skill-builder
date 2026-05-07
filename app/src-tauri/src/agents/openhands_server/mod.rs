@@ -335,6 +335,15 @@ fn collect_live_child_subagent_events(
 ) -> Result<Vec<serde_json::Value>, String> {
     let children = list_persisted_subagent_conversations(root)?;
     let mut emitted = Vec::new();
+    log::info!(
+        "[openhands-agent-server:{}] live_subagent_scan root={} launch_count={} child_count={} known_links={} emitted_keys={}",
+        agent_id,
+        root.display(),
+        launches.len(),
+        children.len(),
+        state.parent_tool_call_by_child_conversation.len(),
+        state.emitted_child_event_keys.len()
+    );
 
     for child in children {
         let parent_tool_call_id = if let Some(existing) = state
@@ -342,6 +351,12 @@ fn collect_live_child_subagent_events(
             .get(&child.conversation_id)
             .cloned()
         {
+            log::info!(
+                "[openhands-agent-server:{}] live_subagent_scan reuse_link child_conversation={} parent_tool_call_id={}",
+                agent_id,
+                child.conversation_id,
+                existing
+            );
             existing
         } else {
             let matched = launches
@@ -356,11 +371,26 @@ fn collect_live_child_subagent_events(
                 })
                 .map(|launch| launch.tool_call_id.clone());
             let Some(matched) = matched else {
+                log::info!(
+                    "[openhands-agent-server:{}] live_subagent_scan no_match child_conversation={} first_prompt_len={} child_first_event_ts={}",
+                    agent_id,
+                    child.conversation_id,
+                    child.first_prompt.len(),
+                    child.first_event_timestamp_ms
+                );
                 continue;
             };
             state
                 .parent_tool_call_by_child_conversation
                 .insert(child.conversation_id.clone(), matched.clone());
+            log::info!(
+                "[openhands-agent-server:{}] live_subagent_scan matched child_conversation={} parent_tool_call_id={} first_prompt_len={} event_count={}",
+                agent_id,
+                child.conversation_id,
+                matched,
+                child.first_prompt.len(),
+                child.events.len()
+            );
             matched
         };
 
@@ -380,6 +410,15 @@ fn collect_live_child_subagent_events(
             let normalized = normalize_server_event(agent_id, &child.conversation_id, &linked_child);
             if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
             {
+                log::info!(
+                    "[openhands-agent-server:{}] live_subagent_emit child_conversation={} parent_tool_call_id={} event_class={} tool_call_id={} raw_kind={}",
+                    agent_id,
+                    child.conversation_id,
+                    parent_tool_call_id,
+                    normalized.get("event_class").and_then(|value| value.as_str()).unwrap_or("unknown"),
+                    normalized.get("tool_call_id").map(|value| value.to_string()).unwrap_or_else(|| "null".to_string()),
+                    linked_child.get("kind").and_then(|value| value.as_str()).unwrap_or("unknown")
+                );
                 emitted.push(normalized);
             }
         }
@@ -445,7 +484,19 @@ fn record_subagent_launch(
         log::warn!("failed to lock subagent launches for parent conversation stream");
         return;
     };
+    let before = guard.len();
     maybe_record_subagent_launch(raw, &mut guard);
+    if guard.len() > before {
+        if let Some(last) = guard.values().last() {
+            log::info!(
+                "[openhands-agent-server] recorded_subagent_launch tool_call_id={} prompt_len={} started_at_ms={} launch_count={}",
+                last.tool_call_id,
+                last.prompt.len(),
+                last.started_at_ms,
+                guard.len()
+            );
+        }
+    }
 }
 
 pub async fn dispatch_openhands_one_shot(
