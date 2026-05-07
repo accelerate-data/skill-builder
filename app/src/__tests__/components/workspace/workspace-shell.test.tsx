@@ -82,13 +82,11 @@ const mockUseScenarios = vi.fn();
 const mockUseScenario = vi.fn();
 const mockUseCreateScenario = vi.fn();
 const mockUseSaveScenario = vi.fn();
-const mockUseSuggestScenario = vi.fn();
+const mockUseDefineEvalScenario = vi.fn();
 const mockUseDeleteScenario = vi.fn();
 const mockListEvalRuns = vi.fn();
 const mockReadEvalRun = vi.fn();
 const mockRunEvalWorkbench = vi.fn();
-const mockSuggestDescriptionCandidates = vi.fn();
-const mockApplyDescriptionCandidate = vi.fn();
 const mockBuildRefineImprovementBrief = vi.fn();
 
 vi.mock("@/lib/queries/eval-scenarios", () => ({
@@ -96,7 +94,7 @@ vi.mock("@/lib/queries/eval-scenarios", () => ({
   useScenario: (...args: unknown[]) => mockUseScenario(...args),
   useCreateScenario: (...args: unknown[]) => mockUseCreateScenario(...args),
   useSaveScenario: (...args: unknown[]) => mockUseSaveScenario(...args),
-  useSuggestScenario: (...args: unknown[]) => mockUseSuggestScenario(...args),
+  useDefineEvalScenario: (...args: unknown[]) => mockUseDefineEvalScenario(...args),
   useDeleteScenario: (...args: unknown[]) => mockUseDeleteScenario(...args),
 }));
 
@@ -110,10 +108,6 @@ vi.mock("@/lib/eval-workbench", async () => {
     listEvalRuns: (...args: unknown[]) => mockListEvalRuns(...args),
     readEvalRun: (...args: unknown[]) => mockReadEvalRun(...args),
     runEvalWorkbench: (...args: unknown[]) => mockRunEvalWorkbench(...args),
-    suggestDescriptionCandidates: (...args: unknown[]) =>
-      mockSuggestDescriptionCandidates(...args),
-    applyDescriptionCandidate: (...args: unknown[]) =>
-      mockApplyDescriptionCandidate(...args),
     buildRefineImprovementBrief: (...args: unknown[]) =>
       mockBuildRefineImprovementBrief(...args),
   };
@@ -245,7 +239,7 @@ describe("WorkspaceShell", () => {
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
     });
-    mockUseSuggestScenario.mockReset().mockReturnValue({
+    mockUseDefineEvalScenario.mockReset().mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
     });
@@ -256,19 +250,6 @@ describe("WorkspaceShell", () => {
     mockListEvalRuns.mockReset().mockResolvedValue([runSummary]);
     mockReadEvalRun.mockReset().mockResolvedValue(runSummary);
     mockRunEvalWorkbench.mockReset().mockResolvedValue(runSummary);
-    mockSuggestDescriptionCandidates.mockReset().mockResolvedValue([
-      {
-        id: "candidate-1",
-        runId: "draft-run",
-        label: "Candidate 1",
-        description: "Use when the user needs invoice reconciliation or payment matching",
-        rationale: "Best routing precision",
-        rank: 1,
-      },
-    ]);
-    mockApplyDescriptionCandidate.mockReset().mockResolvedValue({
-      description: "Use when the user needs invoice reconciliation or payment matching",
-    });
     mockBuildRefineImprovementBrief.mockReset().mockResolvedValue({
       runId: "run-1",
       brief: "Improve assumptions handling",

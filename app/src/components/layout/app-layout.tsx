@@ -16,7 +16,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
-import { cancelRefineTurn, cancelWorkflowStep } from "@/lib/tauri";
+import { pauseRefineSession, cancelWorkflowStep } from "@/lib/tauri";
 import { getEvalsRunning, subscribeEvalsRunning } from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import {
@@ -82,12 +82,12 @@ export function AppLayout() {
         setPanelCollapsed((prev) => !prev);
       }
       if (e.key === "Escape") {
-        // Refine (streaming): cancel via session UUID from RefineSessionManager.
+        // Refine (streaming): pause via session UUID from RefineSessionManager.
         const refineStore = useRefineStore.getState();
         if (refineStore.isRunning && refineStore.sessionId) {
-          cancelRefineTurn(refineStore.sessionId).catch((err) => {
-            console.error("[app-layout] escape: cancel refine failed", err);
-            toast.error(`Failed to cancel agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+          pauseRefineSession(refineStore.sessionId).catch((err) => {
+            console.error("[app-layout] escape: pause refine failed", err);
+            toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
           });
           return;
         }
@@ -143,7 +143,7 @@ export function AppLayout() {
     }
     useRefineStore.getState().clearSession();
     useAgentStore.getState().clearRuns();
-    toast.info("Agent cancelled — skill switched");
+    toast.info("Agent paused — skill switched");
     setSelectedWorkspaceSkillName(pendingSkillSwitch);
     const tab = pendingSkillSwitchTabRef.current;
     setPendingSkillSwitch(null);

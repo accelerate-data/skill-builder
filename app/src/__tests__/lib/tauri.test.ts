@@ -9,7 +9,6 @@ import {
   deletePlugin,
   deleteSkill,
   exportSkillAsFile,
-  generateSuggestions,
   getDashboardSkillNames,
   importMarketplacePluginToLibrary,
   importMarketplaceToLibrary,
@@ -25,6 +24,9 @@ import {
   removeSkillFromPlugin,
   renameSkill,
   reviewSkillScope,
+  pauseRefineSession,
+  sendRefineMessage,
+  startRefineSession,
   setPluginUpgradeLock,
   updateSkillMetadata,
 } from "@/lib/tauri";
@@ -93,22 +95,6 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
       args: { skillName: "demo-skill", pluginSlug: "analytics-pack", destPath: "/tmp/demo.md" },
     },
     {
-      name: "generateSuggestions",
-      call: () => generateSuggestions("demo-skill", "Summarize revenue data"),
-      command: "generate_suggestions",
-      args: {
-        skillName: "demo-skill",
-        purpose: "Summarize revenue data",
-        industry: null,
-        functionRole: null,
-        domain: null,
-        scope: null,
-        audience: null,
-        challenges: null,
-        fields: null,
-      },
-    },
-    {
       name: "reviewSkillScope",
       call: () => reviewSkillScope("demo-skill", "description", "purpose", null, null),
       command: "review_skill_scope",
@@ -118,6 +104,32 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
         purpose: "purpose",
         contextQuestions: null,
         industry: null,
+      },
+    },
+    {
+      name: "startRefineSession",
+      call: () => startRefineSession("demo-skill", "/tmp/workspace", "analytics-pack"),
+      command: "start_refine_session",
+      args: {
+        skillName: "demo-skill",
+        pluginSlug: "analytics-pack",
+        workspacePath: "/tmp/workspace",
+      },
+    },
+    {
+      name: "pauseRefineSession",
+      call: () => pauseRefineSession("session-123"),
+      command: "pause_refine_session",
+      args: { sessionId: "session-123" },
+    },
+    {
+      name: "sendRefineMessage",
+      call: () => sendRefineMessage("session-123", "Update this skill", ["SKILL.md"]),
+      command: "send_refine_message",
+      args: {
+        sessionId: "session-123",
+        userMessage: "Update this skill",
+        targetFiles: ["SKILL.md"],
       },
     },
     {

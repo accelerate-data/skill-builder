@@ -14,6 +14,7 @@ pub struct OpenHandsOneShotRequest {
     pub max_turns: u32,
     pub user_message_suffix: Option<String>,
     pub system_message_suffix: Option<String>,
+    #[allow(dead_code)]
     pub task_kind: Option<String>,
     pub plugin_slug: String,
     pub skill_name: Option<String>,
@@ -47,6 +48,10 @@ impl OpenHandsOneShotRequest {
             workflow_session_id: config.workflow_session_id.clone(),
             usage_session_id: config.usage_session_id.clone(),
         })
+    }
+
+    pub fn runtime_run_dir(&self) -> &Path {
+        Path::new(&self.workspace_skill_dir)
     }
 }
 
@@ -183,9 +188,14 @@ pub struct StartConversationRequest {
 }
 
 impl StartConversationRequest {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn from_one_shot(request: &OpenHandsOneShotRequest) -> Self {
+        Self::from_runtime_run_dir(request, request.runtime_run_dir())
+    }
+
+    pub fn from_runtime_run_dir(request: &OpenHandsOneShotRequest, runtime_run_dir: &Path) -> Self {
         Self {
-            workspace: LocalWorkspace::new(request.workspace_skill_dir.clone()),
+            workspace: LocalWorkspace::new(runtime_run_dir.to_string_lossy().into_owned()),
             initial_message: SendMessageRequest {
                 role: "user".to_string(),
                 content: vec![TextContent {
@@ -219,18 +229,18 @@ impl StartConversationRequest {
                 // agent_context.skills, so it doesn't need to be listed here.
                 include_default_tools: vec!["FinishTool".to_string(), "ThinkTool".to_string()],
                 agent_context: {
-                    let skills = discover_agentskills(Path::new(&request.workspace_skill_dir));
+                    let skills = discover_agentskills(runtime_run_dir);
                     if skills.is_empty() {
                         log::warn!(
                             "[openhands-agent-server] no AgentSkills found under {}/.agents/skills/ \
                              — InvokeSkillTool will not auto-attach",
-                            request.workspace_skill_dir
+                            runtime_run_dir.display()
                         );
                     } else {
                         log::info!(
                             "[openhands-agent-server] attaching {} AgentSkill(s) from {}/.agents/skills/: {}",
                             skills.len(),
-                            request.workspace_skill_dir,
+                            runtime_run_dir.display(),
                             skills
                                 .iter()
                                 .map(|s| s.name.as_str())

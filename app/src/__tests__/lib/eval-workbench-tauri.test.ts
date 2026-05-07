@@ -10,7 +10,7 @@ import {
   readEvalRun,
   runEvalWorkbench,
   saveScenario,
-  suggestScenario,
+  defineEvalScenario,
 } from "@/lib/eval-workbench";
 
 describe("Eval Workbench Tauri wrappers", () => {
@@ -89,7 +89,7 @@ describe("Eval Workbench Tauri wrappers", () => {
       createScenario("skills", "forecast-skill", "performance"),
       listEvalRuns("skills", "forecast-skill", "performance", 20, "Package"),
       readEvalRun("run-1"),
-      suggestScenario("skills", "forecast-skill", "Regression"),
+      defineEvalScenario("skills", "forecast-skill", "Regression"),
       buildRefineImprovementBrief("run-1"),
       deleteScenario("skills", "forecast-skill", "Regression"),
     ]);
@@ -107,7 +107,7 @@ describe("Eval Workbench Tauri wrappers", () => {
       scenarioName: "Package",
     });
     expect(mockInvoke).toHaveBeenCalledWith("read_eval_run", { runId: "run-1" });
-    expect(mockInvoke).toHaveBeenCalledWith("suggest_scenario", {
+    expect(mockInvoke).toHaveBeenCalledWith("define_eval_scenario", {
       pluginSlug: "skills",
       skillName: "forecast-skill",
       scenarioName: "Regression",

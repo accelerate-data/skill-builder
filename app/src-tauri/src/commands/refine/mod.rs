@@ -186,7 +186,7 @@ pub struct RefineSession {
     /// turn so the agent retains full edit history.
     pub conversation_id: Option<String>,
     /// agent_id of the most recently dispatched turn. Set every time
-    /// `send_refine_message` runs; `cancel_refine_turn` and
+    /// `send_refine_message` runs; `pause_refine_session` and
     /// `close_refine_session` use it to signal `cancel_openhands_one_shot`.
     /// The cancel registry itself ignores stale agent_ids, so the backend
     /// does not actively clear this field — the frontend tracks live turn
@@ -247,7 +247,7 @@ pub async fn start_refine_session(
         return Err(msg);
     }
 
-    let saved_conversation_id = {
+    let mut saved_conversation_id = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
     };
@@ -270,6 +270,14 @@ pub async fn start_refine_session(
         }),
         None => Vec::new(),
     };
+    if saved_conversation_id.is_some() && restored_messages.is_empty() {
+        log::info!(
+            "[start_refine_session] saved conversation for skill={} plugin={} is no longer readable; starting a fresh session",
+            skill_name,
+            plugin_slug
+        );
+        saved_conversation_id = None;
+    }
 
     let mut map = sessions.0.lock().map_err(|e| {
         log::error!(
@@ -331,32 +339,21 @@ pub async fn start_refine_session(
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// Turn 1 (session has no conversation_id): creates a new OpenHands
-/// conversation seeded with the full refine prompt, runs it, and stores
-/// the conversation_id on the session.
-///
-/// Turn N (session has a conversation_id): appends the user message as a
-/// follow-up event and re-runs the existing conversation.
+/// The session already carries the selected persistent conversation from
+/// `start_refine_session`. This command only dispatches the next message
+/// turn using that session state.
 ///
 /// Returns the `agent_id` so the frontend can listen for `agent-message` and
 /// `agent-exit` events scoped to this turn.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn send_refine_message(
     session_id: String,
     user_message: String,
-    _plugin_slug: String,
-    workspace_path: String,
     target_files: Option<Vec<String>>,
     sessions: tauri::State<'_, RefineSessionManager>,
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    // workspace_path comes from the frontend invocation but we resolve the
-    // actual runtime workspace server-side. Kept on the IPC signature for
-    // backward compatibility with the existing tauri.ts wrapper.
-    let _ = workspace_path;
-
     let (skill_name, plugin_slug, conversation_id) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(
@@ -432,13 +429,18 @@ pub async fn send_refine_message(
         chrono::Utc::now().timestamp_millis()
     );
 
-    let returned_conversation_id = crate::agents::openhands_server::dispatch_openhands_refine_turn(
-        &app,
-        &agent_id,
-        config,
-        conversation_id,
-    )
-    .await?;
+    let returned_conversation_id = if let Some(existing_conversation_id) = conversation_id {
+        crate::agents::openhands_server::openhands_send_message(
+            &app,
+            &agent_id,
+            config,
+            existing_conversation_id,
+        )
+        .await?
+    } else {
+        crate::agents::openhands_server::start_openhands_session(&app, &agent_id, config, None)
+            .await?
+    };
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
@@ -491,12 +493,12 @@ pub async fn close_refine_session(
     Ok(())
 }
 
-// ─── cancel_refine_turn ──────────────────────────────────────────────────────
+// ─── pause_refine_session ───────────────────────────────────────────────────
 
-/// Cancel the in-flight refine turn (if any). The session and conversation
+/// Pause the in-flight refine turn (if any). The session and conversation
 /// stay alive — the next `send_refine_message` resumes on the same conversation.
 #[tauri::command]
-pub async fn cancel_refine_turn(
+pub async fn pause_refine_session(
     session_id: String,
     sessions: tauri::State<'_, RefineSessionManager>,
 ) -> Result<(), String> {
@@ -509,15 +511,15 @@ pub async fn cancel_refine_turn(
     };
 
     let Some(agent_id) = agent_id else {
-        log::debug!("[cancel_refine_turn] no active turn — noop");
+        log::debug!("[pause_refine_session] no active turn — noop");
         return Ok(());
     };
 
-    log::info!("[cancel_refine_turn] cancelling agent_id={}", agent_id);
+    log::info!("[pause_refine_session] pausing agent_id={}", agent_id);
     let cancelled = crate::agents::openhands_server::cancel_openhands_one_shot(&agent_id);
     if !cancelled {
         log::warn!(
-            "[cancel_refine_turn] no cancel handle registered for agent_id={}",
+            "[pause_refine_session] no cancel handle registered for agent_id={}",
             agent_id
         );
     }

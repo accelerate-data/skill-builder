@@ -19,7 +19,7 @@ import {
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
-  cancelRefineTurn,
+  pauseRefineSession,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
@@ -278,7 +278,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     async (text: string, targetFiles?: string[]) => {
       const store = useRefineStore.getState();
       const sessionId = store.sessionId;
-      if (!selectedSkill || !workspacePath || !sessionId) return;
+      if (!selectedSkill || !sessionId) return;
       if (store.isRunning) return;
 
       console.log(
@@ -297,8 +297,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         const agentId = await sendRefineMessage(
           sessionId,
           text,
-          workspacePath,
-          selectedSkill.plugin_slug,
           targetFiles,
         );
 
@@ -323,7 +321,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         });
       }
     },
-    [selectedSkill, workspacePath, selectedModel],
+    [selectedSkill, selectedModel],
   );
 
   const handleCancel = useCallback(async () => {
@@ -332,16 +330,16 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       return;
     }
 
-    console.log("[workspace-refine] cancel: session=%s", store.sessionId);
+    console.log("[workspace-refine] pause: session=%s", store.sessionId);
 
     try {
-      await cancelRefineTurn(store.sessionId);
+      await pauseRefineSession(store.sessionId);
     } catch (err) {
-      console.error("[workspace-refine] Failed to cancel refine turn:", err);
-      toast.error("Failed to cancel current run", {
+      console.error("[workspace-refine] Failed to pause refine session:", err);
+      toast.error("Failed to pause current run", {
         duration: Infinity,
         cause: err,
-        context: { operation: "workspace_refine_cancel" },
+        context: { operation: "workspace_refine_pause" },
       });
     }
     // Do NOT optimistically clear running state here. The agent completion

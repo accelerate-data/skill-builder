@@ -489,10 +489,12 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
         Some("workflow.answer_evaluator")
     );
     assert_eq!(config.allowed_tools, Some(vec!["file_editor".to_string()]));
+    assert_eq!(config.skill_name.as_deref(), Some("sales-analytics"));
     assert!(
         config.required_plugins.is_none(),
         "OpenHands answer evaluation should rely on workspace .agents skills"
     );
+    assert!(config.step_id.is_none());
 }
 
 #[test]

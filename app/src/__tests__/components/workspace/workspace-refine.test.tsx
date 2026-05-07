@@ -15,7 +15,7 @@ const tauriMocks = vi.hoisted(() => ({
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
-  cancelRefineTurn: vi.fn().mockResolvedValue(undefined),
+  pauseRefineSession: vi.fn().mockResolvedValue(undefined),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
 }));
 
@@ -258,7 +258,7 @@ describe("WorkspaceRefine", () => {
     );
   });
 
-  it("calls cancelRefineTurn when Escape is pressed during a running session", async () => {
+  it("calls pauseRefineSession when Escape is pressed during a running session", async () => {
     const skill = makeSkill("my-skill");
     refineStoreState.sessionId = "session-esc";
     refineStoreState.selectedSkill = skill;
@@ -272,10 +272,10 @@ describe("WorkspaceRefine", () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     });
 
-    expect(tauriMocks.cancelRefineTurn).toHaveBeenCalledWith("session-esc");
+    expect(tauriMocks.pauseRefineSession).toHaveBeenCalledWith("session-esc");
   });
 
-  it("does not call cancelRefineTurn when Escape is pressed while idle", async () => {
+  it("does not call pauseRefineSession when Escape is pressed while idle", async () => {
     const skill = makeSkill("my-skill");
     refineStoreState.sessionId = "session-idle";
     refineStoreState.selectedSkill = skill;
@@ -289,7 +289,7 @@ describe("WorkspaceRefine", () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     });
 
-    expect(tauriMocks.cancelRefineTurn).not.toHaveBeenCalled();
+    expect(tauriMocks.pauseRefineSession).not.toHaveBeenCalled();
   });
 
   it("calls closeRefineSession on unmount", async () => {

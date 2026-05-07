@@ -15,7 +15,7 @@ export const logFrontend = (level: "info" | "warn" | "error" | "debug", message:
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
-export type { FieldSuggestions, ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
+export type { ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
 
 // --- Settings ---
 
@@ -85,30 +85,6 @@ export const exportSkillAsFile = (
   pluginSlug: string,
   destPath: string,
 ) => invokeCommand("export_skill_as_file", { skillName, pluginSlug, destPath });
-
-export const generateSuggestions = (
-  skillName: string,
-  purpose: string,
-  opts?: {
-    industry?: string | null;
-    functionRole?: string | null;
-    domain?: string;
-    scope?: string;
-    audience?: string;
-    challenges?: string;
-    fields?: string[];
-  },
-): Promise<TauriCommandResult<"generate_suggestions">> => invokeCommand("generate_suggestions", {
-  skillName,
-  purpose,
-  industry: opts?.industry ?? null,
-  functionRole: opts?.functionRole ?? null,
-  domain: opts?.domain ?? null,
-  scope: opts?.scope ?? null,
-  audience: opts?.audience ?? null,
-  challenges: opts?.challenges ?? null,
-  fields: opts?.fields ?? null,
-});
 
 export const reviewSkillScope = (
   skillName: string,
@@ -446,8 +422,8 @@ export const startRefineSession = (skillName: string, workspacePath: string, plu
 export const closeRefineSession = (sessionId: string) =>
   invokeCommand("close_refine_session", { sessionId })
 
-export const cancelRefineTurn = (sessionId: string) =>
-  invokeCommand("cancel_refine_turn", { sessionId })
+export const pauseRefineSession = (sessionId: string) =>
+  invokeCommand("pause_refine_session", { sessionId })
 
 export const cancelAgentRun = (skillName: string, agentId: string) =>
   invokeCommand("cancel_agent_run", { skillName, agentId })
@@ -458,10 +434,8 @@ export const cancelWorkflowStep = (agentId: string) =>
 export const sendRefineMessage = (
   sessionId: string,
   userMessage: string,
-  workspacePath: string,
-  pluginSlug: string,
   targetFiles?: string[],
-) => invokeCommand("send_refine_message", { sessionId, userMessage, pluginSlug, workspacePath, targetFiles: targetFiles ?? null })
+) => invokeCommand("send_refine_message", { sessionId, userMessage, targetFiles: targetFiles ?? null })
 
 export const finalizeRefineRun = (
   skillName: string,

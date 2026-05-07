@@ -11,7 +11,7 @@ import {
   useSaveScenario,
   useScenario,
   useScenarios,
-  useSuggestScenario,
+  useDefineEvalScenario,
 } from "@/lib/queries/eval-scenarios";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { WorkspaceEvals } from "./workspace-evals";
@@ -48,7 +48,7 @@ export function WorkspaceEvalWorkbench({
   const scenariosQuery = useScenarios(skillName, pluginSlug);
   const createScenarioMutation = useCreateScenario(skillName, pluginSlug);
   const saveScenarioMutation = useSaveScenario(skillName, pluginSlug);
-  const suggestScenarioMutation = useSuggestScenario(skillName, pluginSlug);
+  const defineEvalScenarioMutation = useDefineEvalScenario(skillName, pluginSlug);
   const deleteScenarioMutation = useDeleteScenario(skillName, pluginSlug);
   const scenarios = scenariosQuery.data ?? [];
   const selectedScenarioQuery = useScenario(
@@ -96,8 +96,8 @@ export function WorkspaceEvalWorkbench({
     return createdScenario;
   }
 
-  async function handleSuggestScenario(scenarioName: string) {
-    const savedScenario = await suggestScenarioMutation.mutateAsync({ scenarioName });
+  async function handleDefineEvalScenario(scenarioName: string) {
+    const savedScenario = await defineEvalScenarioMutation.mutateAsync({ scenarioName });
     setSelectedScenarioName(savedScenario.name);
     return savedScenario;
   }
@@ -220,12 +220,12 @@ export function WorkspaceEvalWorkbench({
           onStartNewScenario={handleStartNewScenario}
           onCreateScenario={handleCreateScenario}
           onSaveScenario={handleSaveScenario}
-          onSuggestScenario={handleSuggestScenario}
+          onDefineEvalScenario={handleDefineEvalScenario}
           onDeleteScenario={handleDeleteScenario}
           saveScenarioPending={
             createScenarioMutation.isPending || saveScenarioMutation.isPending
           }
-          suggestScenarioPending={suggestScenarioMutation.isPending}
+          defineEvalScenarioPending={defineEvalScenarioMutation.isPending}
           deleteScenarioPending={deleteScenarioMutation.isPending}
           onNavigateToRefine={onNavigateToRefine}
           onRunningChange={setRunning}

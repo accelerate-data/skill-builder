@@ -39,6 +39,7 @@ pub(crate) struct ScopeReviewSidecarConfigParams<'a> {
     pub skill_name: &'a str,
     pub prompt: &'a str,
     pub workspace_path: &'a str,
+    pub workspace_run_dir: &'a str,
     pub llm: crate::types::WorkflowLlmConfig,
 }
 
@@ -123,13 +124,14 @@ fn scope_review_output_format() -> serde_json::Value {
 pub(crate) fn build_scope_review_sidecar_config(
     params: ScopeReviewSidecarConfigParams<'_>,
 ) -> SidecarConfig {
-    let workspace_dir = params.workspace_path.replace('\\', "/");
+    let workspace_root_dir = params.workspace_path.replace('\\', "/");
+    let workspace_run_dir = params.workspace_run_dir.replace('\\', "/");
 
     crate::agents::sidecar::build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
         prompt: params.prompt.to_string(),
         llm: params.llm,
-        workspace_root_dir: workspace_dir.clone(),
-        workspace_run_dir: workspace_dir,
+        workspace_root_dir,
+        workspace_run_dir,
         agent_name: "skill-creator".to_string(),
         task_kind: Some("scope_review".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
@@ -195,10 +197,24 @@ pub async fn review_skill_scope(
 
     log::debug!("[review_skill_scope] prompt length={}", prompt.len());
 
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
+        std::path::Path::new(&runtime_context.workspace_path),
+        "scope-review",
+        &run_id,
+    );
+    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(&runtime_run_dir))
+        .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
+    std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
+        .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
+    crate::commands::workflow::deploy::ensure_openhands_runtime_dir(&app, &runtime_run_dir)
+        .await?;
+
     let config = build_scope_review_sidecar_config(ScopeReviewSidecarConfigParams {
         skill_name: &skill_name,
         prompt: &prompt,
         workspace_path: &runtime_context.workspace_path,
+        workspace_run_dir: &runtime_run_dir.to_string_lossy(),
         llm: runtime_context.llm,
     });
 
@@ -369,6 +385,7 @@ mod tests {
             skill_name: "forecasting-churned-customers",
             prompt: "rendered prompt",
             workspace_path: "/tmp/skill-builder/workspace",
+            workspace_run_dir: "/tmp/skill-builder/workspace/.openhands/throwaway/scope-review/run-1",
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),
                 api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
@@ -409,7 +426,7 @@ mod tests {
         assert!(json["workspaceSkillDir"]
             .as_str()
             .unwrap()
-            .ends_with("/workspace"));
+            .ends_with("/workspace/.openhands/throwaway/scope-review/run-1"));
         assert_eq!(json["allowedTools"], serde_json::json!(["file_editor"]));
         assert_eq!(json["maxTurns"], 4);
         assert!(json["outputFormat"]["schema"]["required"]

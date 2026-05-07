@@ -63,6 +63,7 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn build_delete_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
         self.request(
             Method::DELETE,
@@ -149,14 +150,6 @@ impl OpenHandsServerClient {
     pub async fn pause_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
         self.http
             .execute(self.build_pause_request(conversation_id)?)
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }
-
-    pub async fn delete_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
-        self.http
-            .execute(self.build_delete_request(conversation_id)?)
             .await?
             .error_for_status()?;
         Ok(())

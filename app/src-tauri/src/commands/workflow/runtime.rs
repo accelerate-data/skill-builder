@@ -32,13 +32,13 @@ use super::step_config::{
 
 // ─── Session management ──────────────────────────────────────────────────────
 
-/// In-memory state for a single workflow one-shot run.
+/// In-memory state for a single workflow turn.
 /// Keyed by agent_id in WorkflowStepRunManager.
 pub struct WorkflowStepRun {
     pub skill_name: String,
 }
 
-/// Manages active workflow step one-shot runs. Registered as Tauri managed state.
+/// Manages active workflow step runs. Registered as Tauri managed state.
 /// Allows `cancel_workflow_step` to look up the skill key for a given agent.
 pub struct WorkflowStepRunManager(pub Arc<Mutex<HashMap<String, WorkflowStepRun>>>);
 
@@ -226,11 +226,37 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
         allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
         max_turns: 20,
         output_format: Some(answer_evaluator_output_format()),
-        skill_name: None,
+        skill_name: Some(skill_name.to_string()),
         step_id: None,
         run_source: Some("gate-eval".to_string()),
         plugin_slug: plugin_slug.to_string(),
     })
+}
+
+async fn dispatch_persistent_skill_turn(
+    app: &tauri::AppHandle,
+    db: &Db,
+    agent_id: &str,
+    config: SidecarConfig,
+) -> Result<String, String> {
+    let request = crate::agents::openhands_server::OpenHandsOneShotRequest::try_from_sidecar_config(
+        &config,
+    )?;
+    let conversation_id = match request.skill_name.as_deref() {
+        Some(skill_name) => {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            crate::db::get_skill_conversation_id(&conn, &request.plugin_slug, skill_name)?
+        }
+        None => None,
+    };
+
+    crate::agents::openhands_server::dispatch_openhands_refine_turn(
+        app,
+        agent_id,
+        config,
+        conversation_id,
+    )
+    .await
 }
 
 const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -321,9 +347,9 @@ fn install_research_materialization_listener(
 
 // ─── run_workflow_step_inner ─────────────────────────────────────────────────
 
-/// Core logic for launching a single workflow step via one-shot execution.
+/// Core logic for launching a single workflow step via a persistent skill turn.
 /// Builds the prompt, constructs the runtime config, and starts the request.
-/// Returns the agent_id, which is also the one-shot request_id.
+/// Returns the agent_id, which is also the OpenHands request_id.
 #[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
@@ -499,7 +525,7 @@ async fn run_workflow_step_inner(
     };
 
     log::debug!(
-        "[run_workflow_step] starting one-shot request agent={} workspace_skill_dir={}",
+        "[run_workflow_step] starting persistent request agent={} workspace_skill_dir={}",
         agent_id,
         config.workspace_skill_dir,
     );
@@ -524,11 +550,11 @@ async fn run_workflow_step_inner(
         );
     }
 
-    let start_result = openhands_server::dispatch_openhands_one_shot(app, &agent_id, config).await;
+    let start_result = dispatch_persistent_skill_turn(app, db, &agent_id, config).await;
 
     start_result.map_err(|e| {
         log::error!(
-            "[run_workflow_step] Failed to start one-shot request for agent={}: {}",
+            "[run_workflow_step] Failed to start persistent request for agent={}: {}",
             agent_id,
             e
         );
@@ -571,7 +597,7 @@ pub async fn run_workflow_step(
         &workspace_path,
     )?;
 
-    // Cancel any stale one-shot workflow requests for this skill before starting a new step.
+    // Cancel any stale workflow requests for this skill before starting a new step.
     let stale_runs: Vec<String> = {
         let map = runs.0.lock().map_err(|e| e.to_string())?;
         map.iter()
@@ -581,7 +607,7 @@ pub async fn run_workflow_step(
     };
     for stale_agent_id in &stale_runs {
         log::info!(
-            "[run_workflow_step] canceling stale one-shot run agent={} before starting step_id={}",
+            "[run_workflow_step] canceling stale workflow run agent={} before starting step_id={}",
             stale_agent_id,
             step_id,
         );
@@ -691,7 +717,7 @@ pub async fn run_workflow_step(
 
 // ─── run_answer_evaluator ────────────────────────────────────────────────────
 
-/// Run the answer-evaluator agent as a one-shot request.
+/// Run the answer-evaluator agent as a persistent skill turn.
 ///
 /// Returns the agent ID for the frontend to subscribe to completion events.
 #[tauri::command]
@@ -761,7 +787,7 @@ pub async fn run_answer_evaluator(
     );
 
     log::debug!(
-        "[run_answer_evaluator] starting one-shot request agent={} workspace_skill_dir={}",
+        "[run_answer_evaluator] starting persistent request agent={} workspace_skill_dir={}",
         agent_id,
         config.workspace_skill_dir,
     );
@@ -778,11 +804,11 @@ pub async fn run_answer_evaluator(
         );
     }
 
-    openhands_server::dispatch_openhands_one_shot(&app, &agent_id, config)
+    dispatch_persistent_skill_turn(&app, db.inner(), &agent_id, config)
         .await
         .map_err(|e| {
             log::error!(
-                "[run_answer_evaluator] Failed to start one-shot request for agent={}: {}",
+                "[run_answer_evaluator] Failed to start persistent request for agent={}: {}",
                 agent_id,
                 e
             );
@@ -795,9 +821,9 @@ pub async fn run_answer_evaluator(
     Ok(agent_id)
 }
 
-/// Cancel a running workflow step one-shot request by agent_id.
+/// Cancel a running workflow step request by agent_id.
 ///
-/// Cancels an active one-shot workflow request. OpenHands requests are killed
+/// Cancels an active workflow request. OpenHands requests are killed
 /// through the direct Rust runner registry.
 #[tauri::command]
 pub async fn cancel_workflow_step(

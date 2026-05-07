@@ -519,7 +519,7 @@ describe("WorkspaceEvals", () => {
 
   it("persists and reloads the selected scenario from the scenario-level suggest action", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockResolvedValue({
+    const onDefineEvalScenario = vi.fn().mockResolvedValue({
       id: "generated-case",
       name: "Regression",
       tags: ["performance"],
@@ -535,7 +535,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -544,7 +544,7 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getByRole("button", { name: /^suggest$/i }));
 
     await waitFor(() =>
-      expect(onSuggestScenario).toHaveBeenCalled(),
+      expect(onDefineEvalScenario).toHaveBeenCalled(),
     );
     expect(await screen.findByDisplayValue("Summarize pipeline risk")).toBeInTheDocument();
     expect(
@@ -568,7 +568,7 @@ describe("WorkspaceEvals", () => {
       shouldTrigger: null,
       expectations: ["Summarizes the main pipeline blockers."],
     });
-    const onSuggestScenario = vi.fn().mockReturnValue(deferredSuggestion.promise);
+    const onDefineEvalScenario = vi.fn().mockReturnValue(deferredSuggestion.promise);
 
     render(
       <WorkspaceEvals
@@ -577,7 +577,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -646,7 +646,7 @@ describe("WorkspaceEvals", () => {
 
   it("surfaces an actionable error when scenario suggestion returns malformed structured output", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockRejectedValue(
+    const onDefineEvalScenario = vi.fn().mockRejectedValue(
       new Error(
         "OpenHands eval structured result was not valid JSON: expected value at line 2 column 1",
       ),
@@ -659,7 +659,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -674,7 +674,7 @@ describe("WorkspaceEvals", () => {
 
   it("shows suggestion failures in the scenario footer status area", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockRejectedValue(
+    const onDefineEvalScenario = vi.fn().mockRejectedValue(
       new Error("missing field `name`"),
     );
 
@@ -685,7 +685,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -699,7 +699,7 @@ describe("WorkspaceEvals", () => {
 
   it("keeps trigger-mode generation separate from performance suggestion", async () => {
     const user = userEvent.setup();
-    const onSuggestScenario = vi.fn().mockResolvedValue({
+    const onDefineEvalScenario = vi.fn().mockResolvedValue({
       id: "case-1",
       name: "Happy Path",
       tags: ["performance"],
@@ -715,7 +715,7 @@ describe("WorkspaceEvals", () => {
         scenario={performanceScenario}
         onStartNewScenario={vi.fn()}
         onSaveScenario={vi.fn()}
-        onSuggestScenario={onSuggestScenario}
+        onDefineEvalScenario={onDefineEvalScenario}
       />,
     );
 
@@ -723,7 +723,7 @@ describe("WorkspaceEvals", () => {
     await user.click(screen.getAllByRole("button", { name: /^suggest$/i })[0]!);
 
     await waitFor(() =>
-      expect(onSuggestScenario).toHaveBeenCalled(),
+      expect(onDefineEvalScenario).toHaveBeenCalled(),
     );
   });
 

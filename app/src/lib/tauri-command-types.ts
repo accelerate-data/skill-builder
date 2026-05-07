@@ -36,15 +36,12 @@ import type {
   WorkflowSessionRecord,
 } from "@/lib/types";
 import type {
-  ApplyDescriptionCandidateResponse,
-  DescriptionCandidate,
   EvalRun,
   EvalWorkbenchMode,
   RefineImprovementBrief,
   RunEvalWorkbenchRequest,
   ScenarioListItem,
   ScenarioDto,
-  SuggestDescriptionCandidatesRequest,
 } from "@/lib/eval-workbench";
 import type {
   ClarificationVerdictUpdate,
@@ -53,17 +50,6 @@ import type {
 } from "@/generated/contracts";
 
 export type NoArgs = Record<string, never>;
-
-export interface FieldSuggestions {
-  description: string;
-  domain: string;
-  audience: string;
-  challenges: string;
-  scope: string;
-  unique_setup: string;
-  agent_mistakes: string;
-  context_questions: string;
-}
 
 export interface ScopeReviewSuggestion {
   name: string;
@@ -183,20 +169,6 @@ export interface TauriCommandMap {
   update_skill_metadata: { args: SkillMetadataArgs; result: void };
   rename_skill: { args: { oldName: string; newName: string; workspacePath: string }; result: void };
   export_skill_as_file: { args: { skillName: string; pluginSlug: string; destPath: string }; result: void };
-  generate_suggestions: {
-    args: {
-      skillName: string;
-      purpose: string;
-      industry: string | null;
-      functionRole: string | null;
-      domain: string | null;
-      scope: string | null;
-      audience: string | null;
-      challenges: string | null;
-      fields: string[] | null;
-    };
-    result: FieldSuggestions;
-  };
   review_skill_scope: {
     args: {
       skillName: string;
@@ -338,15 +310,13 @@ export interface TauriCommandMap {
     result: RefineSessionInfo;
   };
   close_refine_session: { args: { sessionId: string }; result: void };
-  cancel_refine_turn: { args: { sessionId: string }; result: void };
+  pause_refine_session: { args: { sessionId: string }; result: void };
   cancel_agent_run: { args: { skillName: string; agentId: string }; result: void };
   cancel_workflow_step: { args: { agentId: string }; result: void };
   send_refine_message: {
     args: {
       sessionId: string;
       userMessage: string;
-      pluginSlug: string;
-      workspacePath: string;
       targetFiles: string[] | null;
     };
     result: string;
@@ -477,7 +447,7 @@ export interface TauriCommandMap {
     args: { pluginSlug: string; skillName: string };
     result: ScenarioDto[];
   };
-  suggest_scenario: {
+  define_eval_scenario: {
     args: { pluginSlug: string; skillName: string; scenarioName: string };
     result: ScenarioDto;
   };
@@ -502,14 +472,6 @@ export interface TauriCommandMap {
   read_eval_run: {
     args: { runId: string };
     result: EvalRun | null;
-  };
-  suggest_description_candidates: {
-    args: { request: SuggestDescriptionCandidatesRequest };
-    result: DescriptionCandidate[];
-  };
-  apply_description_candidate: {
-    args: { pluginSlug: string; skillName: string; candidateId: string };
-    result: ApplyDescriptionCandidateResponse;
   };
   build_refine_improvement_brief: {
     args: { runId: string };

@@ -132,7 +132,7 @@ const mockResponses: Record<string, unknown> = {
     restored_messages: [],
   },
   send_refine_message: "refine-test-skill-e2e-001",
-  cancel_refine_turn: undefined,
+  pause_refine_session: undefined,
   close_refine_session: undefined,
   list_refinable_skills: [
     {
@@ -276,10 +276,7 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   list_eval_runs: [defaultPerformanceRunSummary],
   read_eval_run: defaultPerformanceRunDetail,
   run_eval_workbench: defaultPerformanceRunSummary,
-  suggest_description_candidates: [],
-  apply_description_candidate: {
-    description: "Use when the user needs invoice reconciliation or payment matching",
-  },
+  define_eval_scenario: defaultPerformanceScenario,
   build_refine_improvement_brief: {
     runId: "run-1",
     brief: "Improve assumptions handling",
