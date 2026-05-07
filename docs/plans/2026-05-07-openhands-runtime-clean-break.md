@@ -10,6 +10,43 @@
 
 ---
 
+## Runtime Contract Decisions
+
+- `conversation_id` is the durable OpenHands conversation identity.
+- `agent_id` is the current live run on top of that conversation.
+- `StartOpenHandsSession` may create or reuse a persistent conversation and
+  returns the active conversation identity for later sends.
+- `OpenHandsSendMessage` starts the next live run on an already-established
+  persistent conversation.
+- `PauseOpenHandsSession(agent_id)` is the canonical pause contract for all UI
+  surfaces. It pauses the current live run without deleting the persistent
+  conversation.
+- `pause_conversation(conversation_id)` remains a private OpenHands transport
+  detail inside the runtime task/client layer.
+- Cancel / Escape means pause, not teardown. The persistent conversation must
+  remain resumable after pause.
+- Local UI running state belongs to the mounted surface. Terminal exit or
+  surface unload must clear that local state after pausing any still-active
+  live run.
+
+## Surface Lifecycle Decisions
+
+- Refine keeps the bottom status bar as the canonical run indicator. The
+  layout-level top-right `Running` badge should be removed from the workspace
+  shell.
+- Repeated pause requests must be idempotent. The runtime must keep the pause
+  handle for the lifetime of the live run rather than removing it on first
+  pause request.
+- While a pause is pending, the run should remain registered as live so later
+  terminal events still clean up correctly.
+- The same pause/unload model applies across all UI surfaces:
+  - Refine
+  - Workflow
+  - Eval Workbench
+  - any future screen with a live OpenHands run
+
+---
+
 ## File Map
 
 **Modify**
@@ -285,29 +322,48 @@ Replace `cancel_refine_turn` naming with `pause_refine_session` across:
 
 This is a clean break. Do not keep compatibility aliases.
 
-- [ ] **Step 4: Keep `close_refine_session` as product cleanup only**
+- [ ] **Step 4: Remove the redundant workspace-level `Running` badge**
+
+Keep the bottom Refine-local status bar as the only visible running indicator
+for Refine. The top-right layout-level badge is redundant and can disagree
+with panel-local state.
+
+- [ ] **Step 5: Make pause idempotent and keep the live-run handle until terminal exit**
+
+Refine pause behavior must:
+
+- leave the pause handle registered for the lifetime of the live run
+- no-op repeated pause / Escape requests cleanly
+- avoid logging misleading "no cancel handle registered" warnings while the run
+  is still active
+- continue to clear local Refine running state on terminal exit
+
+- [ ] **Step 6: Keep `close_refine_session` as product cleanup only**
 
 Ensure close:
 
 - does not delete the persistent OpenHands conversation
 - only tears down product-layer wrapper state
 
-- [ ] **Step 5: Update tests**
+- [ ] **Step 7: Update tests**
 
 Cover at least:
 
 - start handles resume/create centrally
 - send only sends the next message
 - pause maps to active-run stop semantics
+- repeated pause is idempotent while the run is still active
+- the top-right workspace `Running` badge is absent during Refine
 - close does not delete persistent conversation state
 
-- [ ] **Step 6: Run refine verification**
+- [ ] **Step 8: Run refine verification**
 
 Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine
 cd app && npm run test:unit -- workspace-refine
+cd app && npm run test:unit -- app-layout
 cd app && bash tests/run.sh e2e --tag @refine
 ```
 
@@ -315,7 +371,7 @@ Expected:
 
 - PASS for refine Rust tests, frontend tests, and mocked refine E2E coverage
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/mod.rs \
@@ -325,6 +381,72 @@ git add app/src-tauri/src/commands/refine/mod.rs \
   app/src/components/layout/app-layout.tsx
 git commit -m "refactor: simplify refine session ownership"
 ```
+
+---
+
+## Task 3A: Normalize Pause Lifecycle Across All Surfaces
+
+**Files:**
+
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+- Modify: `app/src/components/workspace/workspace-refine.tsx`
+- Modify: `app/src/components/layout/app-layout.tsx`
+- Modify: `app/src/components/workspace/workspace-shell.tsx`
+- Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Test: backend runtime tests plus the affected frontend component tests
+
+- [ ] **Step 1: Make the runtime pause contract canonical**
+
+All product surfaces should route through:
+
+- `PauseOpenHandsSession(agent_id)`
+
+Only the runtime task/client layer may call:
+
+- `pause_conversation(conversation_id)`
+
+- [ ] **Step 2: Keep live-run handles registered until terminal exit**
+
+Do not remove the pause handle on first pause request. Instead:
+
+- mark the run as pause-pending if needed
+- keep the handle alive until terminal exit or unload cleanup completes
+- make repeated pause requests idempotent
+
+- [ ] **Step 3: Apply the same unload contract across all surfaces**
+
+For Refine, Workflow, Eval Workbench, and any future live-run surface:
+
+- if the surface unloads while a run is active, request pause
+- then clear local surface-running state
+- do not delete the persistent conversation/session on unload
+
+- [ ] **Step 4: Update tests**
+
+Cover at least:
+
+- repeated pause requests do not drop the runtime handle early
+- unload clears local running state after pause is requested
+- workflow and eval workbench follow the same pause contract as refine
+
+- [ ] **Step 5: Run verification**
+
+Run:
+
+```bash
+cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::eval_workbench
+cd app && npm run test:unit -- workspace-refine
+cd app && npm run test:unit -- app-layout
+cd app && npm run test:unit -- workspace-eval-workbench
+```
+
+Expected:
+
+- PASS for runtime pause semantics across backend and frontend surfaces
 
 ---
 
