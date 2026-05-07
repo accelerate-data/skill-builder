@@ -314,11 +314,13 @@ export interface TauriCommandMap {
   cancel_workflow_step: { args: { agentId: string }; result: void };
   send_refine_message: {
     args: {
-      skillName: string;
-      pluginSlug: string;
-      conversationId: string;
-      userMessage: string;
-      targetFiles: string[] | null;
+      input: {
+        skillName: string;
+        pluginSlug: string;
+        conversationId: string;
+        userMessage: string;
+        targetFiles: string[] | null;
+      };
     };
     result: string;
   };

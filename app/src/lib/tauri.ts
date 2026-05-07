@@ -435,11 +435,13 @@ export const sendRefineMessage = (
   userMessage: string,
   targetFiles?: string[],
 ) => invokeCommand("send_refine_message", {
-  skillName,
-  pluginSlug,
-  conversationId,
-  userMessage,
-  targetFiles: targetFiles ?? null,
+  input: {
+    skillName,
+    pluginSlug,
+    conversationId,
+    userMessage,
+    targetFiles: targetFiles ?? null,
+  },
 })
 
 export const finalizeRefineRun = (

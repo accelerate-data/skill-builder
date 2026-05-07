@@ -128,11 +128,13 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
         ),
       command: "send_refine_message",
       args: {
-        skillName: "demo-skill",
-        pluginSlug: "analytics-pack",
-        conversationId: "conv-123",
-        userMessage: "Update this skill",
-        targetFiles: ["SKILL.md"],
+        input: {
+          skillName: "demo-skill",
+          pluginSlug: "analytics-pack",
+          conversationId: "conv-123",
+          userMessage: "Update this skill",
+          targetFiles: ["SKILL.md"],
+        },
       },
     },
     {
