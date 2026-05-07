@@ -64,6 +64,11 @@ the design’s persistent-session model.
       `StartOpenHandsSession -> OpenHandsSendMessage`.
 - [ ] Move `build_refine_improvement_brief` onto
       `StartOpenHandsSession -> OpenHandsSendMessage`.
+- [ ] Consolidate duplicated persistent-session orchestration so workflow,
+      eval workbench, and refine do not each own separate resume/send/retry
+      policy.
+- [ ] Reuse one canonical conversation-compatibility contract instead of
+      refine keeping its own matcher alongside the runtime layer.
 
 ### Task B: Finish Throwaway Runtime Isolation
 
@@ -84,6 +89,8 @@ retain artifacts only under `.openhands/throwaway/...`.
 - [ ] Ensure throwaway conversations remain non-resumable from product state
       while still being retained only under throwaway runtime roots for
       debugging.
+- [ ] Move any remaining diagnosis/helper path that still uses
+      `workspace_skill_dir` onto `.openhands/throwaway/...` roots.
 
 ### Task C: Remove Legacy Runtime Residue
 
@@ -104,6 +111,9 @@ that still preserve the old model internally.
 - [ ] Trim compile-time-only helper layering if it no longer improves clarity
       (`OpenHandsSessionKind`, `should_persist_skill_conversation`,
       `require_existing_conversation_id`).
+- [ ] Remove legacy one-shot naming and wrapper residue such as
+      `run_openhands_one_shot`, `dispatch_openhands_one_shot`, and active
+      "one-shot" wording where the clean-break primitive is really throwaway.
 
 ### Task D: Finish Dead-Surface Cleanup
 
@@ -128,6 +138,10 @@ eval description/trigger comparison model.
 - [ ] Trim stale UI props left behind after the description-surface cleanup.
 - [ ] Remove or explicitly contract-test any frontend-only stale command
       surface that is no longer registered in the backend.
+- [ ] Delete stale trigger/comparison helpers and dead helper blocks still
+      compiled into `app/src-tauri/src/commands/eval_workbench/mod.rs`.
+- [ ] Remove stale docs that still advertise removed surfaces such as
+      `generate_suggestions` or the deleted description workbench flow.
 
 ### Task E: Reconcile Runtime Documentation
 
@@ -145,6 +159,8 @@ eval description/trigger comparison model.
       throwaway routing.
 - [ ] Update `repo-map.json` and any affected test/docs indexes after the
       cleanup.
+- [ ] Reconcile eval-workbench metadata and naming in docs if runtime fields
+      such as `run_source` remain operationally meaningful.
 
 ### Task F: Close Test Coverage Gaps
 
@@ -161,12 +177,21 @@ test-coverage gate.
   - unreadable saved conversation clears ID
   - stale in-memory session replacement
   - first send persists `conversation_id` and `current_agent_id`
+- [ ] Add behavior-level Rust coverage for persistent eval turns:
+  - saved conversation reuse
+  - incompatible/missing conversation fallback
+  - timeout causes `pause_openhands_session`
+  - non-target agent events are ignored
+- [ ] Add workflow runtime coverage proving answer evaluator reuses the shared
+      skill conversation intentionally and does not trample workflow/refine
+      ownership.
 - [ ] Add deeper mocked-server coverage for throwaway lifecycle:
   - success
   - timeout
   - prefix-cancel
-- [ ] Add Eval Workbench cancellation coverage proving one-shot runs stop and
-      stop reporting progress.
+- [ ] Add Eval Workbench cancellation coverage proving throwaway runs stop and
+      stop reporting progress, including that late progress events are ignored
+      in the UI.
 - [ ] Add one E2E for the live eval path:
       author scenario -> define/suggest -> run eval -> send to refine.
 - [ ] Keep the deleted description-surface browser coverage replaced by the
@@ -201,16 +226,20 @@ were run after the first implementation pass:
 The highest-signal findings that shaped the remaining work are:
 
 - refine session start still does not establish the OpenHands conversation
-- refine can hard-fail on stale but readable saved conversations
-- answer evaluator currently conflicts with shared skill conversation ownership
-- `define_eval_scenario` and `build_refine_improvement_brief` are still
-  one-shot instead of persistent
-- throwaway eval runtime roots are not isolated consistently
+- duplicated persistent-session orchestration still exists across product
+  modules
+- legacy one-shot naming and wrapper residue still exists in the runtime layer
+- stale Eval Workbench trigger/comparison helpers are still compiled in backend
+  code
+- some throwaway diagnosis/helper paths still need consistent
+  `.openhands/throwaway/...` isolation
 - old eval description/trigger surface cleanup is incomplete across docs,
-  types, and tests
+  contracts, and helper code
+- eval-workbench runs may still be tagged too generically in runtime metadata
 - runtime documentation is still partially out of sync with the code
-- additional Rust and E2E coverage is still needed around refine lifecycle,
-  throwaway lifecycle, and the live eval path
+- additional Rust, integration, and E2E coverage is still needed around
+  persistent eval turns, refine lifecycle, workflow gate reuse, throwaway
+  lifecycle, and the live eval path
 
 ---
 
