@@ -148,13 +148,47 @@ as open work:
   from the live backend run path
 - stale trigger-only Eval Workbench backend DTO fields, scenario tags, and
   validation branches were removed from the remaining backend authoring surface
+- Escape / cancel now dispatches through one global layout-level handler
+  across Refine, Workflow, and Eval Workbench instead of duplicate per-surface
+  listeners
+- Refine no longer owns a second document-level Escape listener, which removes
+  duplicate pause requests for the same live run
+- backend pause observability now logs:
+  - runtime pause signal dispatch
+  - low-level `pause_conversation(...)` request dispatch/result
+  - terminal status after a pause was requested
+- direct regression coverage now exists for:
+  - single-dispatch Escape behavior in Refine, Workflow, and Eval Workbench
+  - Refine not handling Escape locally
+  - pause handle idempotence and lifetime until unregister
 
 ## Pending Work
 
-### Task 1: Final Verification Sweep
+### Task 1: Normalize Pause / Escape Behavior Across All Surfaces
+
+The live refine investigation on 2026-05-07 reopened pause behavior as active
+branch work.
+
+Confirmed live findings:
+
+- some refine runs still report `no active turn — noop` on pause because the
+  product session does not always retain the active `agent_id` correctly
+
+Open work:
+
+- [ ] keep the active run identity available for the full lifetime of the live
+  run so pause cannot noop while a run is already streaming
+- [ ] remove redundant refine-local running UI so the screen has one canonical
+  running indicator
+- [ ] add a regression for the intermittent `no active turn — noop` path once
+  the active-run identity bug is isolated
+- [ ] add a focused UI regression for the remaining running-indicator contract
+  after the final indicator source of truth is confirmed live
+
+### Task 2: Final Verification Sweep
 
 The implementation tasks are complete. Run the full branch verification sweep
-before final merge.
+after the pause/escape follow-up lands.
 
 - [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 - [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml`

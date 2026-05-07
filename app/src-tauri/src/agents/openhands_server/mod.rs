@@ -847,17 +847,29 @@ pub fn pause_openhands_session(agent_id: &str) -> bool {
     };
 
     if handle.pause_requested {
+        log::info!(
+            "[pause_openhands_session] agent_id={} action=already-requested",
+            agent_id
+        );
         return true;
     }
 
     let Some(cancel) = handle.sender.take() else {
         handle.pause_requested = true;
+        log::info!(
+            "[pause_openhands_session] agent_id={} action=awaiting-terminal",
+            agent_id
+        );
         return true;
     };
 
     let sent = cancel.send(()).is_ok();
     if sent {
         handle.pause_requested = true;
+        log::info!(
+            "[pause_openhands_session] agent_id={} action=signal-dispatched",
+            agent_id
+        );
     }
     sent
 }
@@ -1143,10 +1155,20 @@ async fn run_conversation_task_inner(
     while terminal_state.is_none() {
         tokio::select! {
             _ = &mut *cancel_rx, if !cancel_pending => {
+                log::info!(
+                    "[openhands-agent-server:{}] pause_request dispatch conversation_id={}",
+                    task.agent_id,
+                    task.conversation_id
+                );
                 task.client
                     .pause_conversation(&task.conversation_id)
                     .await
                     .map_err(|e| format!("Failed to pause OpenHands Agent Server conversation: {e}"))?;
+                log::info!(
+                    "[openhands-agent-server:{}] pause_request result=ok conversation_id={}",
+                    task.agent_id,
+                    task.conversation_id
+                );
                 // Continue reading the WebSocket — the server will stream back a PauseEvent
                 // which normalize_server_event maps to conversation_state(status="cancelled").
                 cancel_pending = true;
@@ -1247,6 +1269,18 @@ async fn run_conversation_task_inner(
     } else {
         None
     };
+    if cancel_pending {
+        let terminal_status = terminal_state
+            .get("status")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown");
+        log::info!(
+            "[openhands-agent-server:{}] pause_terminal_outcome status={} conversation_id={}",
+            task.agent_id,
+            terminal_status,
+            task.conversation_id
+        );
+    }
     emit_openhands_run_result(
         &task.app,
         &task.agent_id,

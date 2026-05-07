@@ -464,28 +464,11 @@ describe("WorkspaceRefine", () => {
     );
   });
 
-  it("calls pauseRefineSession when Escape is pressed during a running session", async () => {
+  it("does not handle Escape locally; layout owns the global pause shortcut", async () => {
     const skill = makeSkill("my-skill");
     refineStoreState.sessionId = "session-esc";
     refineStoreState.selectedSkill = skill;
     refineStoreState.isRunning = true;
-
-    await act(async () => {
-      renderRefine(skill);
-    });
-
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    });
-
-    expect(tauriMocks.pauseRefineSession).toHaveBeenCalledWith("session-esc");
-  });
-
-  it("does not call pauseRefineSession when Escape is pressed while idle", async () => {
-    const skill = makeSkill("my-skill");
-    refineStoreState.sessionId = "session-idle";
-    refineStoreState.selectedSkill = skill;
-    refineStoreState.isRunning = false;
 
     await act(async () => {
       renderRefine(skill);

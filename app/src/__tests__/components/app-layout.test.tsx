@@ -87,7 +87,13 @@ vi.mock("@/lib/toast", () => ({
 
 // Must import after mocks are set up
 import { AppLayout } from "@/components/layout/app-layout";
+import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import {
+  setEvalsCancelHandler,
+  setEvalsRunning,
+} from "@/lib/eval-running-state";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 const defaultSettings: AppSettings = {
@@ -128,6 +134,10 @@ describe("AppLayout", () => {
   beforeEach(() => {
     resetTauriMocks();
     useSettingsStore.getState().reset();
+    useRefineStore.getState().clearSession();
+    useAgentStore.getState().clearRuns();
+    setEvalsRunning(false);
+    setEvalsCancelHandler(null);
     vi.mocked(toast.info).mockReset();
     vi.mocked(toast.warning).mockReset();
     vi.mocked(toast.success).mockReset();
@@ -267,6 +277,89 @@ describe("AppLayout", () => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
     expect(screen.queryByText("Startup Reconciliation")).not.toBeInTheDocument();
+  });
+
+  it("pauses refine exactly once when Escape is pressed during a refine run", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+    useRefineStore.setState({
+      isRunning: true,
+      sessionId: "session-refine-1",
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    mockInvoke.mockClear();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("pause_refine_session", {
+        sessionId: "session-refine-1",
+      });
+    });
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the active workflow step when Escape is pressed during workflow streaming", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+    useAgentStore.getState().registerRun(
+      "workflow-agent-1",
+      "test-model",
+      "my-skill",
+      "workflow",
+      "parent-1",
+    );
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    mockInvoke.mockClear();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("cancel_workflow_step", {
+        agentId: "workflow-agent-1",
+      });
+    });
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests eval cancellation when Escape is pressed during eval execution", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+    const cancelEval = vi.fn().mockResolvedValue(undefined);
+    setEvalsRunning(true);
+    setEvalsCancelHandler(cancelEval);
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    await waitFor(() => {
+      expect(cancelEval).toHaveBeenCalledTimes(1);
+    });
+    expect(mockInvoke).not.toHaveBeenCalledWith(
+      "pause_refine_session",
+      expect.anything(),
+    );
   });
 
   it("renders content after auto-applying notification-only reconciliation", async () => {

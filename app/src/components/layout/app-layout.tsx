@@ -17,7 +17,11 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import { pauseRefineSession, cancelWorkflowStep } from "@/lib/tauri";
-import { getEvalsRunning, subscribeEvalsRunning } from "@/lib/eval-running-state";
+import {
+  getEvalsRunning,
+  requestEvalsCancel,
+  subscribeEvalsRunning,
+} from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import {
   Dialog,
@@ -100,6 +104,12 @@ export function AppLayout() {
         if (running) {
           cancelWorkflowStep(running.agentId).catch((err) => {
             console.error("[app-layout] escape: cancel workflow step failed", err);
+          });
+          return;
+        }
+        if (getEvalsRunning()) {
+          requestEvalsCancel().catch((err) => {
+            console.error("[app-layout] escape: cancel eval workbench run failed", err);
           });
         }
       }
