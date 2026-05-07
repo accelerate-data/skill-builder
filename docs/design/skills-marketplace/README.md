@@ -1,140 +1,122 @@
-# Skills Marketplace — Design Note
-
-The marketplace is a **one-way import layer**: skills flow in from GitHub repositories, never out. It feeds two destinations:
-
-| | **Settings → Skills** | **Skill Library** |
-|---|---|---|
-| **Purpose** | Skills used by Skill Builder agents to build, refine, and test skills | Domain knowledge — skills users create, import, and refine |
-| **Examples** | `research`, `validate-skill`, `skill-creator` | Sales Pipeline Analytics, dbt Incremental Silver |
-| **After import** | Wired into the agent workspace — active on every agent run | Appears in the dashboard as a completed skill, ready to refine. Download skill file to use with Vibedata.|
-
+---
+functional-specs: [custom-plugin-management]
 ---
 
-## Repo Structure
+# Local Claude Code Marketplace
 
-A marketplace repo has three levels: **registry → plugins → skills**. The catalog at `.claude-plugin/marketplace.json` lists each plugin directory; each plugin directory contains `.claude-plugin/plugin.json` (its name) and a `skills/` subdirectory of skill folders. No catalog = error, never a silent empty result.
+> **Status:** Current
+> **Functional specs:** [`custom-plugin-management`](../../functional/custom-plugin-management/README.md)
 
-The default registry (`hbanerjee74/skills`) shows both common layout patterns — plugins in a subdirectory and a plugin rooted at `./`:
+## Overview
 
-```text
-hbanerjee74/skills/
-  .claude-plugin/
-    marketplace.json          ← catalog
-    plugin.json               ← { "name": "vibedata" }  (root plugin name)
-  plugins/
-    skill-builder/
-      .claude-plugin/
-        plugin.json           ← { "name": "skill-builder" }
-      skills/
-        building-skills/
-          SKILL.md
-    skill-creator/
-      .claude-plugin/
-        plugin.json
-      skills/ ...
-    skill-builder-research/
-      .claude-plugin/
-        plugin.json
-      skills/ ...
-    skill-builder-validate/
-      .claude-plugin/
-        plugin.json
-      skills/ ...
-  skills/                     ← root plugin (vibedata) skills
-    dbt-fabric-patterns/SKILL.md
-    dbt-semantic-layer/SKILL.md
-    dbt-snapshot-scd2/SKILL.md
-    dlt-rest-api-connector/SKILL.md
-    elementary-data-quality/SKILL.md
-    revenue-domain/SKILL.md
-    salesforce-extraction/SKILL.md
-```
+The marketplace is a **local Claude Code plugin registry** that uses the same `.claude-plugin/` manifest format as Claude Code's plugin marketplace. It serves two purposes: (1) auto-discover and catalog locally-created plugins, and (2) import skills from remote GitHub repos that follow the Claude Code plugin marketplace schema. Skills flow one-way into the local Skills Library — they are never published back through this layer.
 
-Its `marketplace.json` (conforms to the [official Claude Code plugin marketplace schema](https://code.claude.com/docs/en/plugin-marketplaces#marketplace-schema)):
+## Local Manifest System
+
+The app maintains a local `marketplace.json` at the skills root (`{skills_path}/.claude-plugin/marketplace.json`). This is the canonical catalog of all plugins on disk, regenerated automatically when plugins are created, deleted, or modified.
+
+### Manifest regeneration
+
+`marketplace_manifest.rs` provides four functions that keep the local catalog in sync:
+
+| Function | Trigger | Purpose |
+|---|---|---|
+| `write_marketplace_json(root)` | Plugin scan | Scans `{root}/` for directories containing `skills/` or `.claude-plugin/plugin.json`, writes the root `marketplace.json` |
+| `regenerate_all_manifests(root)` | After skill/plugin create/delete | Ensures every plugin has a `plugin.json`, then rewrites `marketplace.json` |
+| `ensure_plugin_in_marketplace(root, slug, display_name)` | New plugin created | Appends a plugin entry if not already listed; no-op if present |
+| `read_plugin_display_names(root)` | UI display | Returns a `HashMap<slug, display_name>` from the local catalog |
+
+The local manifest uses the same JSON shape as a remote registry:
 
 ```json
 {
-  "name": "vibedata-skills",
-  "owner": { "name": "hbanerjee74" },
-  "metadata": {
-    "description": "Vibedata Skills Marketplace — practitioner-level data and analytics engineering skills for Claude",
-    "version": "1.0.0"
-  },
+  "name": "skill-builder-local",
+  "owner": { "name": "Skill Builder" },
   "plugins": [
-    { "name": "skill-builder",           "source": "./plugins/skill-builder",           "description": "Multi-agent workflow for creating domain-specific Claude skills" },
-    { "name": "skill-creator",          "source": "./plugins/skill-creator",          "description": "Create, evaluate, and improve skills with iterative testing" },
-    { "name": "skill-builder-research",  "source": "./plugins/skill-builder-research",  "description": "Research skill for dimension scoring and parallel research" },
-    { "name": "skill-builder-validate",  "source": "./plugins/skill-builder-validate",  "description": "Validate skill for quality checking and companion recommendations" },
-    { "name": "vibedata",                "source": "./",                                "description": "Practitioner-level data and analytics engineering skills for Claude" }
+    { "name": "default", "source": "./default", "description": null, "version": null },
+    { "name": "analytics", "source": "./analytics", "description": "Analytics skills", "version": "1.0.0" }
   ]
 }
 ```
 
-`name` becomes the registry's tab label in the browse dialog. Only `metadata.pluginRoot` is recognized by the app — all other `metadata` fields (like `description` and `version` above) are ignored.
+### Plugin layout
 
----
+Every plugin — whether created locally or imported from a registry — follows the same on-disk structure:
 
-## Skill Discovery
+```text
+{skills_path}/
+  .claude-plugin/
+    marketplace.json          ← auto-generated catalog of all plugins
+  default/                    ← default plugin (always present)
+    .claude-plugin/
+      plugin.json             ← { "name": "default" }
+    skills/
+      my-skill/
+        SKILL.md
+  analytics/                  ← custom plugin
+    .claude-plugin/
+      plugin.json             ← { "name": "analytics", "description": "...", "version": "1.0.0" }
+    skills/
+      report-builder/
+        SKILL.md
+      data-modeler/
+        SKILL.md
+```
 
-For each plugin entry in the catalog the app:
+The canonical path resolver is `skill_paths::resolve_skill_dir(root, plugin_slug, skill_name)` — never construct `{root}/{skill_name}` directly. Each skill has its own git repo at the skill directory level.
 
-1. **Resolves `plugin_path`** from `source`:
+## Remote Registry Import
+
+Remote registries are GitHub repos that expose a `.claude-plugin/marketplace.json` catalog. The app treats them as read-only skill sources.
+
+### Registry configuration
+
+Registries are managed in Settings → Marketplace (`marketplace_section.tsx`). Each registry has a name, GitHub URL, and enabled/disabled toggle. State lives in the settings store (`use-marketplace-registries.ts`).
+
+- **Default** — `hbanerjee74/skills`, seeded on first launch, cannot be removed.
+- **Adding** — enter `owner/repo` or `owner/repo#branch`; the app validates by fetching `marketplace.json` via `check_marketplace_url`.
+- **Enabled only** — disabled registries are hidden from the browse dialog but retained in settings.
+
+### Discovery pipeline
+
+The import flow (`commands/github_import/`) follows this sequence:
+
+1. **Validate registry** — `check_marketplace_url` confirms the repo is accessible and `marketplace.json` is valid JSON. Returns the `name` field for display.
+2. **Fetch catalog** — `list_github_skills_inner` downloads `marketplace.json` and the repo tree via GitHub API.
+3. **Resolve plugin paths** — `catalog.rs::resolve_plugin_path` handles three source formats:
    - `"./plugins/skill-builder"` → strip `./` → `plugins/skill-builder`
    - `"./"` → `""` (repo root)
-   - Bare name (no `./`) → prepend `metadata.pluginRoot` if set: `"skill-builder"` + `pluginRoot="plugins"` → `plugins/skill-builder`
+   - Bare name → prepend `metadata.pluginRoot` if set
+4. **Discover skills** — `discover_skills_from_catalog` finds all `{plugin_path}/skills/{skill_name}/SKILL.md` entries (one level deep). Skills without a `name:` frontmatter field are excluded.
+5. **Read plugin names** — fetches each plugin's `.claude-plugin/plugin.json` for display names. Skills are listed as `{plugin_name}:{skill_name}` in the browse dialog.
+6. **Import** — `import_marketplace_to_library` (individual skills) or `import_marketplace_plugin_to_library` (full plugin) downloads files, writes DB rows, commits to per-skill git repos, and regenerates local manifests.
 
-2. **Enumerates skills** — finds all `{plugin_path}/skills/{skill_name}/SKILL.md` paths in the git tree (one level deep only).
+### Import destinations
 
-3. **Validates each `SKILL.md`** — skills with no `name:` frontmatter field are excluded. No directory-name fallback.
+| Destination | DB `skill_source` | Plugin slug | Purpose |
+|---|---|---|---|
+| Individual skill import | `marketplace` | `default` | Quick single-skill import into the default plugin |
+| Full plugin import | `marketplace` | `{slugified_plugin_name}` | Preserves the remote plugin's identity as a local plugin |
 
-4. **Reads the plugin name** from `{plugin_path}/.claude-plugin/plugin.json`. For the root case (`plugin_path = ""`), this is `.claude-plugin/plugin.json`. If absent or missing `name`, plugin name is `null`.
-
-For the default registry:
-
-| `source` | `plugin_path` | Skills at |
-|---|---|---|
-| `"./plugins/skill-builder"` | `plugins/skill-builder` | `plugins/skill-builder/skills/*/SKILL.md` |
-| `"./plugins/skill-creator"` | `plugins/skill-creator` | `plugins/skill-creator/skills/*/SKILL.md` |
-| `"./plugins/skill-builder-research"` | `plugins/skill-builder-research` | `plugins/skill-builder-research/skills/*/SKILL.md` |
-| `"./plugins/skill-builder-validate"` | `plugins/skill-builder-validate` | `plugins/skill-builder-validate/skills/*/SKILL.md` |
-| `"./"` | `""` (root) | `skills/*/SKILL.md` |
-
-Plugin entries with no valid skills are silently skipped. External source types (`github`, `npm`, `pip`, `url`) are skipped with a warning.
-
----
+Both paths write to the `skills` master table and `imported_skills` child table. The `imported_skills` row stores `disk_path`, `version`, `content_hash`, and `marketplace_source_url`. Non-spec fields `model` and `argument_hint` are also stored but scheduled for removal (VU-1173).
 
 ## Skill Naming
 
-**Display** (browse dialog): `{plugin_name}:{skill_name}` — e.g. `vibedata:dbt-fabric-patterns`, `skill-builder:building-skills`. When plugin name is `null`, just `{skill_name}`. Mirrors the Claude Code runtime namespace.
+**Display** (browse dialog): `{plugin_name}:{skill_name}` — e.g. `vibedata:dbt-fabric-patterns`. When plugin name is absent, just `{skill_name}`.
 
-**Storage** (disk and database): plain `skill_name` from frontmatter only — no plugin prefix. Two skills from different plugins with the same `name:` will collide; importing the second overwrites the first.
-
----
-
-## Registry Configuration
-
-Configured in Settings → Marketplace. Each registry has a name, GitHub URL, and enabled/disabled toggle.
-
-- **Default** — `hbanerjee74/skills` (`vibedata-skills`), seeded on first launch, cannot be removed.
-- **Adding** — enter a repo in `owner/repo` or `owner/repo#branch` format; the app fetches `marketplace.json` and uses its `name` field as the display name (falls back to `"{owner}/{repo}"`).
-- **Enabled only** — disabled registries are hidden from the browse dialog but not deleted.
-- **No nesting** — registry → plugins → skills is fixed at three levels. Sub-collections must each be added as a separate registry URL.
-
----
+**Storage** (disk and DB): plain `skill_name` from frontmatter only — no plugin prefix. The plugin boundary is enforced by the directory structure (`{plugin_slug}/skills/{skill_name}/`), not by name mangling.
 
 ## Version Tracking and Updates
 
-At import time the app stores the installed `version` (semver) and a SHA-256 hash of `SKILL.md` as a baseline. On startup it compares each installed skill against the current catalog. The Skill Library and Settings → Skills are checked independently.
+At import time the app stores a SHA-256 hash of `SKILL.md` as a baseline (`set_imported_skill_content_hash`). On startup, `check_marketplace_updates` compares each installed skill against the current remote catalog.
 
-**Customization detection** — if the current hash differs from the baseline, the skill is considered customized and excluded from auto-update.
+**Customization detection** — if the current file hash differs from the baseline, the skill is considered customized and excluded from auto-update (`check_skill_customized` command).
 
 **Auto-update mode** — non-customized skills update silently on startup; a summary toast lists what changed.
 
 **Manual update mode** — a startup notification links to the import dialog for each available update.
 
-**As built:** The startup check failure path logs silently — a persistent error notification is not yet shown. The customization warning dialog before overwriting a modified Settings → Skills skill has its state wired up but the AlertDialog is not rendered.
-
----
+**Known gaps:** The startup check failure path logs silently — no persistent error notification is shown. The customization warning dialog before overwriting a modified skill has its state wired up but the `AlertDialog` is not rendered.
 
 ## Browse Dialog
 
@@ -145,9 +127,7 @@ One tab per enabled registry. Each skill shows its qualified display name and in
 - **Update available** — newer version in catalog
 - **Already installed** — installed, no version to compare
 
-Before importing, the user can edit the skill's metadata. The form pre-populates from the remote `SKILL.md` frontmatter, falling back to the locally-installed fields when upgrading.
-
----
+Before importing, the user can edit the skill's metadata. The form pre-populates from the remote `SKILL.md` frontmatter, falling back to locally-installed fields when upgrading. `metadata_overrides` are passed through to `import_marketplace_to_library` and applied before the DB insert.
 
 ## SKILL.md Frontmatter Reference
 
@@ -170,9 +150,36 @@ disable-model-invocation: false
 | `name` | Yes | Kebab-case. Authoritative skill name — directory name never used as fallback. Missing = skill excluded. |
 | `description` | Yes | Shown in browse dialog; wired into `CLAUDE.md` so agents know when to invoke it. |
 | `version` | Yes | Semver. Defaults to `"1.0.0"` if absent at import time. |
-| `model` | No | Preferred Claude model. Overrides app default on invocation. |
-| `argument-hint` | No | Hint shown when invoking as a slash command. |
+| `model` | No | **App-only** — not in Agent Skills spec. Overrides app default on invocation. Scheduled for removal (VU-1173). |
+| `argument-hint` | No | **App-only** — not in Agent Skills spec. Hint shown when invoking as a slash command. Scheduled for removal (VU-1173). |
 | `user-invocable` | No | Whether the skill can be invoked as a slash command. |
 | `disable-model-invocation` | No | Suppresses model selection UI. |
 
 All other keys are silently ignored. `purpose` is set by import destination, never read from the file.
+
+## Key Source Files
+
+| File | Purpose |
+|---|---|
+| `app/src-tauri/src/marketplace_manifest.rs` | Local manifest CRUD — scan, write, regenerate `marketplace.json` and `plugin.json` |
+| `app/src-tauri/src/commands/github_import/commands.rs` | Tauri commands: `check_marketplace_url`, `list_github_skills`, `import_marketplace_to_library`, `import_marketplace_plugin_to_library`, `check_skill_customized` |
+| `app/src-tauri/src/commands/github_import/catalog.rs` | Pure discovery kernels: `resolve_plugin_path`, `discover_plugins_from_catalog`, `discover_skills_from_catalog` |
+| `app/src-tauri/src/commands/github_import/import.rs` | Download, frontmatter parsing, DB write, git commit/tag per skill |
+| `app/src-tauri/src/commands/github_import/updates.rs` | Startup update check — compares installed skills against remote catalog |
+| `app/src/hooks/use-marketplace-registries.ts` | React hook for registry CRUD, test, and add operations |
+| `app/src/components/settings/marketplace_section.tsx` | Settings → Marketplace UI — registry list, toggle, test, add |
+| `app/plugin-paths.json` | Canonical skill path layout schema |
+
+## Relationship to Existing Design Specs
+
+| Spec | Relationship |
+|---|---|
+| [`backend-design/`](../backend-design/README.md) | Covered — DB schema, `skill_source` discrimination, `imported_skills` table |
+| [`per-skill-git-repos/`](../per-skill-git-repos/README.md) | Covered — per-skill git repos are the unit of version tracking for marketplace imports |
+| [`product-architecture/`](../product-architecture/README.md) | Covered — plugin namespace as first-class boundary, publish unit |
+
+## Open Questions
+
+1. `[design]` The local `marketplace.json` is regenerated on every plugin change. Should this be debounced or batched for bulk operations?
+2. `[design]` Plugin imports from remote registries create a new local plugin with a slugified name. Should there be a conflict resolution flow when a local plugin already has the same slug?
+3. `[design]` The customization warning dialog is wired but not rendered. Should this be completed before the next release?
