@@ -5,7 +5,7 @@
 **Goal:** Finish the remaining Refine-specific cleanup after the OpenHands
 runtime migration.
 
-This plan captured the three remaining Refine follow-ups after the broader
+This plan captured the remaining Refine follow-ups after the broader
 OpenHands runtime migration:
 
 1. Refine carried `sessionId` plumbing instead of collapsing onto the runtime
@@ -15,6 +15,8 @@ OpenHands runtime migration:
 3. Refine split between `refine-initial.txt` and `refine-followup.txt`, and
    the initial prompt was stale because it did not inline DB-backed user
    context, clarifications, and decisions.
+4. Refine still does not visibly surface the dispatched contextual task
+   message the way Workflow does.
 
 ## Current Findings
 
@@ -67,6 +69,25 @@ Agreed prompt contract:
 - every dispatched Refine turn uses the same contextual prompt, including
   resumed turns on an existing conversation
 - the prompt no longer references stale file-based context instructions
+
+### 4. Refine should surface the dispatched contextual task message
+
+Confirmed findings:
+
+- Refine now uses one contextual prompt for every dispatched turn
+- the generated prompt is passed into `send_refine_message(...)`
+- the visible `SystemPromptEvent` row is only the OpenHands runtime setup row
+- unlike Workflow, Refine does not visibly show the dispatched contextual
+  `task_sent` / initial task message in the transcript
+
+Agreed UI contract:
+
+- Refine should match Workflow here
+- the transcript should show:
+  - runtime setup
+  - the actual contextual task message sent to the agent
+  - then tool activity / outputs
+- this should work for both fresh Refine runs and resumed Refine history
 
 ## Implementation Tasks
 
@@ -150,6 +171,32 @@ Acceptance criteria:
 - [x] prompt includes inline clarifications JSON
 - [x] prompt includes inline decisions JSON
 - [x] stale file-based context instruction is removed
+
+### Task 4: Surface the Contextual Task Message Like Workflow
+
+Scope:
+
+- project the dispatched Refine contextual prompt as a visible transcript row
+- keep the runtime setup row separate from the dispatched task row
+- make fresh/live Refine and restored/resumed Refine behave consistently
+- avoid duplicating the plain user bubble and the contextual task row in a
+  confusing way
+
+Expected code areas:
+
+- `app/src/components/workspace/workspace-refine.tsx`
+- `app/src/lib/openhands-event-projection.ts`
+- `app/src/stores/refine-store.ts`
+- `app/src-tauri/src/commands/refine/mod.rs`
+- targeted Refine UI / projection tests
+
+Acceptance criteria:
+
+- [ ] fresh Refine visibly shows the contextual dispatched task message
+- [ ] resumed Refine visibly shows the restored contextual dispatched task row
+- [ ] runtime setup remains a separate row
+- [ ] no duplicate or contradictory first-turn rows appear
+- [ ] tests cover the Refine-vs-Workflow visibility contract
 
 ## Verification
 

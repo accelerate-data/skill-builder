@@ -27,6 +27,12 @@ skill conversation versus a non-resumable throwaway run. The active runtime
 model in this branch is persistent-session preparation plus throwaway runtime
 roots.
 
+Related sub-designs:
+
+- [send-turn-semantics.md](send-turn-semantics.md) — how
+  `OpenHandsSendMessage` must own stream attach, message dispatch, turn-scoped
+  recovery, and visible `task_sent` consistency across Workflow and Refine.
+
 ## Design Scope
 
 **Covers**
