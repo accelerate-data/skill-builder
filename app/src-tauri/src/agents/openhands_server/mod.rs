@@ -195,16 +195,22 @@ struct OpenHandsConversationTask {
     agent_id: String,
     client: OpenHandsServerClient,
     conversation_id: String,
+    prompt: String,
     websocket_url: String,
     session_api_key: String,
     summary_context: OpenHandsRunSummaryContext,
-    /// True when this task is the first attached subscriber to the
-    /// conversation (initial runtime turn or refine). The SDK persists
-    /// SystemPromptEvent + the initial user MessageEvent during conversation
-    /// creation, before our WebSocket attaches, so the live stream alone
-    /// misses those frames. When true the task drains the REST event log
-    /// before reading WS so the chat shows them.
-    backfill_existing_events: bool,
+    /// Event recovery mode for frames that may be persisted before the
+    /// WebSocket subscriber starts consuming. Some turns need full history
+    /// backfill (prepared blank sends), while others need only the delta after
+    /// a pre-send watermark (non-empty SendExistingOnly turns such as Refine).
+    event_recovery: EventRecoveryMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventRecoveryMode {
+    None,
+    FullHistory,
+    Delta,
 }
 
 #[derive(Clone)]
@@ -667,11 +673,54 @@ fn resolve_saved_conversation_outcome(
     }
 }
 
-fn should_backfill_existing_events(
+fn determine_event_recovery_mode(
     selection: OpenHandsConversationSelection,
     prompt: &str,
-) -> bool {
-    selection == OpenHandsConversationSelection::SendExistingOnly && prompt.trim().is_empty()
+) -> EventRecoveryMode {
+    if selection != OpenHandsConversationSelection::SendExistingOnly {
+        return EventRecoveryMode::None;
+    }
+
+    if prompt.trim().is_empty() {
+        EventRecoveryMode::FullHistory
+    } else {
+        EventRecoveryMode::Delta
+    }
+}
+
+fn event_watermark_key(raw: &serde_json::Value) -> Option<String> {
+    if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+        return Some(format!("id:{id}"));
+    }
+
+    serde_json::to_string(raw)
+        .ok()
+        .map(|serialized| format!("raw:{serialized}"))
+}
+
+fn collect_event_watermark_keys(
+    events: &[serde_json::Value],
+) -> std::collections::HashSet<String> {
+    events
+        .iter()
+        .filter_map(event_watermark_key)
+        .collect::<std::collections::HashSet<_>>()
+}
+
+fn filter_events_after_watermark(
+    known_event_keys: Option<&std::collections::HashSet<String>>,
+    events: Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    let Some(known_event_keys) = known_event_keys else {
+        return Vec::new();
+    };
+    events
+        .into_iter()
+        .filter(|raw| {
+            event_watermark_key(raw)
+                .is_none_or(|key| !known_event_keys.contains(&key))
+        })
+        .collect()
 }
 
 fn log_session_resolution(
@@ -1010,9 +1059,7 @@ async fn dispatch_openhands_turn_with_request(
     let config_event = redact_openhands_config_for_log(&config, server.port);
     super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
 
-    let backfill_existing_events =
-        should_backfill_existing_events(selection, request.prompt.as_str());
-    send_user_message(&client, &conversation_id, &request.prompt).await?;
+    let event_recovery = determine_event_recovery_mode(selection, request.prompt.as_str());
 
     let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
     let websocket_url = server.websocket_url(&conversation_id);
@@ -1030,10 +1077,11 @@ async fn dispatch_openhands_turn_with_request(
             agent_id: agent_for_task.clone(),
             client,
             conversation_id: conversation_id_clone,
+            prompt: request.prompt.clone(),
             websocket_url,
             session_api_key,
             summary_context,
-            backfill_existing_events,
+            event_recovery,
         };
         let result = run_conversation_task(task, cancel_rx).await;
         unregister_cancel(&agent_for_task);
@@ -1071,47 +1119,111 @@ async fn run_conversation_task_inner(
         .await
         .map_err(|e| format!("Failed to authenticate OpenHands Agent Server socket: {e}"))?;
 
-    // The SDK emits SystemPromptEvent + the initial user MessageEvent during
-    // POST /api/conversations, before this WS attaches. On a fresh conversation
-    // backfill them via REST so the chat shows system_prompt and task_sent
-    // rows. Multi-turn refine turns N+1 already saw prior turns and use the
-    // live WS only — backfilling there would replay the whole history.
+    // Attach/auth the WebSocket before dispatching the prompt so the normal
+    // send path can surface the task row live. Keep a narrow recovery step for
+    // frames that may still persist before this subscriber consumes them.
     let mut seen_event_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let pending_subagent_launches: Arc<Mutex<HashMap<String, PendingSubagentLaunch>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let mut terminal_state: Option<serde_json::Value> = None;
     let mut socket_error: Option<String> = None;
-    if task.backfill_existing_events {
+
+    let known_event_keys_before_send = if matches!(task.event_recovery, EventRecoveryMode::Delta) {
         match task.client.list_all_events(&task.conversation_id).await {
-            Ok(events) => {
-                for raw in events {
-                    if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
-                        if !seen_event_ids.insert(id.to_string()) {
+            Ok(events) => Some(collect_event_watermark_keys(&events)),
+            Err(error) => {
+                log::warn!(
+                    "[openhands-agent-server:{}] pre-send event watermark failed (live WS only): {}",
+                    task.agent_id,
+                    error
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    send_user_message(&task.client, &task.conversation_id, &task.prompt).await?;
+
+    match task.event_recovery {
+        EventRecoveryMode::None => {}
+        EventRecoveryMode::FullHistory => {
+            match task.client.list_all_events(&task.conversation_id).await {
+                Ok(events) => {
+                    for raw in events {
+                        if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                            if !seen_event_ids.insert(id.to_string()) {
+                                continue;
+                            }
+                        }
+                        record_subagent_launch(&raw, &pending_subagent_launches);
+                        let normalized =
+                            normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
+                        if normalized.get("type").and_then(|value| value.as_str())
+                            == Some("conversation_state")
+                        {
+                            terminal_state = Some(normalized);
                             continue;
                         }
+                        super::events::handle_sidecar_message(
+                            &task.app,
+                            &task.agent_id,
+                            &normalized.to_string(),
+                        );
                     }
-                    record_subagent_launch(&raw, &pending_subagent_launches);
-                    let normalized =
-                        normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
-                    if normalized.get("type").and_then(|value| value.as_str())
-                        == Some("conversation_state")
-                    {
-                        terminal_state = Some(normalized);
-                        continue;
-                    }
-                    super::events::handle_sidecar_message(
-                        &task.app,
-                        &task.agent_id,
-                        &normalized.to_string(),
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
+                        task.agent_id,
+                        e
                     );
                 }
             }
-            Err(e) => {
-                log::warn!(
-                    "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
-                    task.agent_id,
-                    e
+        }
+        EventRecoveryMode::Delta => {
+            if let Some(known_event_keys_before_send) = known_event_keys_before_send.as_ref() {
+                seen_event_ids.extend(
+                    known_event_keys_before_send
+                        .iter()
+                        .filter_map(|key| key.strip_prefix("id:").map(str::to_string)),
                 );
+            }
+            match task.client.list_all_events(&task.conversation_id).await {
+                Ok(events) => {
+                    for raw in filter_events_after_watermark(
+                        known_event_keys_before_send.as_ref(),
+                        events,
+                    ) {
+                        if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                            if !seen_event_ids.insert(id.to_string()) {
+                                continue;
+                            }
+                        }
+                        record_subagent_launch(&raw, &pending_subagent_launches);
+                        let normalized =
+                            normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
+                        if normalized.get("type").and_then(|value| value.as_str())
+                            == Some("conversation_state")
+                        {
+                            terminal_state = Some(normalized);
+                            continue;
+                        }
+                        super::events::handle_sidecar_message(
+                            &task.app,
+                            &task.agent_id,
+                            &normalized.to_string(),
+                        );
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[openhands-agent-server:{}] delta event recovery failed (live WS only): {}",
+                        task.agent_id,
+                        e
+                    );
+                }
             }
         }
     }
@@ -1125,10 +1237,11 @@ async fn run_conversation_task_inner(
             agent_id: task.agent_id.clone(),
             client: task.client.clone(),
             conversation_id: task.conversation_id.clone(),
+            prompt: task.prompt.clone(),
             websocket_url: task.websocket_url.clone(),
             session_api_key: task.session_api_key.clone(),
             summary_context: task.summary_context.clone(),
-            backfill_existing_events: false,
+            event_recovery: EventRecoveryMode::None,
         };
         Some(tokio::spawn(async move {
             stream_live_child_subagent_events(&worker_task, launches, stop).await
@@ -1830,6 +1943,99 @@ mod tests {
         assert!(!seen_event_ids.insert("event-00000".to_string()));
         // A different id must still be processed.
         assert!(seen_event_ids.insert("event-00001".to_string()));
+    }
+
+    #[test]
+    fn delta_recovery_filters_out_pre_send_events_and_keeps_new_task_events() {
+        let known_event_ids = std::collections::HashSet::from([
+            "event-00000".to_string(),
+            "event-00001".to_string(),
+        ]);
+        let events = vec![
+            serde_json::json!({
+                "id": "event-00000",
+                "event_class": "SystemPromptEvent",
+            }),
+            serde_json::json!({
+                "id": "event-00001",
+                "event_class": "MessageEvent",
+                "event": { "source": "user", "message": "older task" }
+            }),
+            serde_json::json!({
+                "id": "event-00002",
+                "event_class": "MessageEvent",
+                "event": { "source": "user", "message": "refine follow-up task" }
+            }),
+        ];
+
+        let recovered = filter_events_after_watermark(Some(&known_event_ids), events);
+
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0]["id"], "event-00002");
+        assert_eq!(recovered[0]["event"]["message"], "refine follow-up task");
+    }
+
+    #[test]
+    fn delta_recovery_skips_backfill_when_pre_send_watermark_is_unavailable() {
+        let events = vec![
+            serde_json::json!({
+                "id": "event-00000",
+                "event_class": "SystemPromptEvent",
+            }),
+            serde_json::json!({
+                "id": "event-00001",
+                "event_class": "MessageEvent",
+                "event": { "source": "user", "message": "older task" }
+            }),
+            serde_json::json!({
+                "id": "event-00002",
+                "event_class": "MessageEvent",
+                "event": { "source": "user", "message": "latest task" }
+            }),
+        ];
+
+        let recovered = filter_events_after_watermark(None, events);
+
+        assert!(recovered.is_empty());
+    }
+
+    #[test]
+    fn delta_recovery_dedupes_pre_send_events_without_ids() {
+        let watermark_events = vec![
+            serde_json::json!({
+                "event_class": "SystemPromptEvent",
+                "timestamp": 1000,
+                "event": {
+                    "system_prompt": { "text": "You are the skill creator." }
+                }
+            }),
+            serde_json::json!({
+                "event_class": "MessageEvent",
+                "timestamp": 1100,
+                "event": {
+                    "source": "user",
+                    "message": "older task"
+                }
+            }),
+        ];
+        let all_events = vec![
+            watermark_events[0].clone(),
+            watermark_events[1].clone(),
+            serde_json::json!({
+                "event_class": "MessageEvent",
+                "timestamp": 1200,
+                "event": {
+                    "source": "user",
+                    "message": "latest task"
+                }
+            }),
+        ];
+
+        let known_event_keys = collect_event_watermark_keys(&watermark_events);
+        let recovered = filter_events_after_watermark(Some(&known_event_keys), all_events);
+
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0]["event"]["message"], "latest task");
     }
 
     #[test]
@@ -2668,22 +2874,34 @@ mod tests {
     }
 
     #[test]
-    fn prepared_session_backfills_history_only_for_blank_send_existing_turns() {
-        assert!(should_backfill_existing_events(
-            OpenHandsConversationSelection::SendExistingOnly,
-            ""
-        ));
-        assert!(should_backfill_existing_events(
-            OpenHandsConversationSelection::SendExistingOnly,
-            "   "
-        ));
-        assert!(!should_backfill_existing_events(
-            OpenHandsConversationSelection::ResumeOrCreate,
-            ""
-        ));
-        assert!(!should_backfill_existing_events(
-            OpenHandsConversationSelection::SendExistingOnly,
-            "Refine this skill"
-        ));
+    fn send_existing_turn_uses_full_history_only_for_blank_prompt_and_delta_for_non_empty() {
+        assert_eq!(
+            determine_event_recovery_mode(
+                OpenHandsConversationSelection::SendExistingOnly,
+                ""
+            ),
+            EventRecoveryMode::FullHistory
+        );
+        assert_eq!(
+            determine_event_recovery_mode(
+                OpenHandsConversationSelection::SendExistingOnly,
+                "   "
+            ),
+            EventRecoveryMode::FullHistory
+        );
+        assert_eq!(
+            determine_event_recovery_mode(
+                OpenHandsConversationSelection::ResumeOrCreate,
+                ""
+            ),
+            EventRecoveryMode::None
+        );
+        assert_eq!(
+            determine_event_recovery_mode(
+                OpenHandsConversationSelection::SendExistingOnly,
+                "Refine this skill"
+            ),
+            EventRecoveryMode::Delta
+        );
     }
 }

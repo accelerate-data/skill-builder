@@ -124,15 +124,7 @@ function hydrateRestoredTranscript(
           `restored:${session.conversation_id}:${segmentIndex}`,
         ),
       )
-      .filter(
-        (event): event is NonNullable<typeof event> =>
-          event !== null &&
-          !(
-            event.eventClass === "MessageEvent" &&
-            typeof event.event.source === "string" &&
-            event.event.source === "user"
-          ),
-      );
+      .filter((event): event is NonNullable<typeof event> => event !== null);
 
     if (normalizedEvents.length > 0) {
       const restoredAgentId = `restored:${session.conversation_id}:${segmentIndex}`;
@@ -170,13 +162,6 @@ function hydrateRestoredTranscript(
       const text = normalized ? getMessageText(normalized) : undefined;
       if (source === "user" && text && text.trim().length > 0) {
         flushAgentSegment(event.timestamp);
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "user",
-          userText: text,
-          timestamp: event.timestamp,
-        });
-        continue;
       }
     }
 
@@ -185,6 +170,10 @@ function hydrateRestoredTranscript(
 
   flushAgentSegment();
   return messages.length > 0 ? messages : null;
+}
+
+function clearRefineAgentRuns(): void {
+  useAgentStore.getState().clearRunsBySource("refine");
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -234,6 +223,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           ),
         );
         releaseSkillResources(store.selectedSkill.name, "unmount");
+        clearRefineAgentRuns();
         store.clearSession();
       }
     };
@@ -246,7 +236,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const store = useRefineStore.getState();
       store.setRunning(false);
       store.setActiveAgentId(null);
-      useAgentStore.getState().clearRuns();
+      clearRefineAgentRuns();
 
       if (store.selectedSkill) {
         closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
@@ -318,6 +308,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         );
       }
 
+      clearRefineAgentRuns();
       store.selectSkill(s);
       store.setLoadingFiles(true);
       // Reset session metrics for the new skill.
@@ -394,7 +385,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       runSkillRef.current = selectedSkill;
       store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
-      store.addUserMessage(text, targetFiles);
       store.setRunning(true);
 
       try {

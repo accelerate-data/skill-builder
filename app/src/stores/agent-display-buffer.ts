@@ -120,6 +120,17 @@ export function clearDisplayItemBuffer(): void {
   _displayItemBuffer.clear();
 }
 
+export function clearDisplayItemBufferForAgents(agentIds: string[]): void {
+  if (agentIds.length === 0) return;
+  for (const agentId of agentIds) {
+    _displayItemBuffer.delete(agentId);
+  }
+  if (_displayItemBuffer.size === 0 && _rafId !== null) {
+    if (typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(_rafId);
+    _rafId = null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Phantom run reaper
 // ---------------------------------------------------------------------------
@@ -164,6 +175,12 @@ export function clearPhantomTimer(agentId: string): void {
 export function clearAllPhantomTimers(): void {
   for (const timer of _phantomTimers.values()) clearTimeout(timer);
   _phantomTimers.clear();
+}
+
+export function clearPhantomTimersForAgents(agentIds: string[]): void {
+  for (const agentId of agentIds) {
+    clearPhantomTimer(agentId);
+  }
 }
 
 /** Visible for testing. */

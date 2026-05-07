@@ -192,11 +192,11 @@ Expected code areas:
 
 Acceptance criteria:
 
-- [ ] fresh Refine visibly shows the contextual dispatched task message
-- [ ] resumed Refine visibly shows the restored contextual dispatched task row
-- [ ] runtime setup remains a separate row
-- [ ] no duplicate or contradictory first-turn rows appear
-- [ ] tests cover the Refine-vs-Workflow visibility contract
+- [x] fresh Refine visibly shows the contextual dispatched task message
+- [x] resumed Refine visibly shows the restored contextual dispatched task row
+- [x] runtime setup remains a separate row
+- [x] no duplicate or contradictory first-turn rows appear
+- [x] tests cover the Refine-vs-Workflow visibility contract
 
 ## Verification
 
@@ -214,5 +214,11 @@ Branch verification after the Refine follow-ups land:
 
 If the event-stream path changes:
 
-- [ ] add any narrower targeted event-stream regression command alongside the
+- [x] add any narrower targeted event-stream regression command alongside the
       full suite above
+      `cd app && npx vitest run src/__tests__/components/refine/agent-turn-inline.test.tsx src/__tests__/components/workspace/workspace-refine.test.tsx src/__tests__/stores/agent-store.test.ts src/__tests__/lib/openhands-event-projection.test.ts`
+      `cargo test --manifest-path app/src-tauri/Cargo.toml delta_recovery_skips_backfill_when_pre_send_watermark_is_unavailable -- --nocapture`
+      `cargo test --manifest-path app/src-tauri/Cargo.toml delta_recovery_dedupes_pre_send_events_without_ids -- --nocapture`
+      `cargo test --manifest-path app/src-tauri/Cargo.toml delta_recovery_filters_out_pre_send_events_and_keeps_new_task_events -- --nocapture`
+      `cargo test --manifest-path app/src-tauri/Cargo.toml send_existing_turn_uses_full_history_only_for_blank_prompt_and_delta_for_non_empty -- --nocapture`
+      `cargo test --manifest-path app/src-tauri/Cargo.toml seen_event_ids_dedupe_drops_duplicate_ids_across_rest_and_ws -- --nocapture`

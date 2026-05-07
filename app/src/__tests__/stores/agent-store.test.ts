@@ -262,6 +262,19 @@ describe("useAgentStore", () => {
     expect(state.activeAgentId).toBeNull();
   });
 
+  it("clearRunsBySource removes only runs for that source", () => {
+    useAgentStore.getState().registerRun("refine-1", "sonnet", "my-skill", "refine");
+    useAgentStore.getState().registerRun("test-1", "opus", "my-skill", "test");
+    useAgentStore.getState().startRun("workflow-1", "haiku");
+
+    useAgentStore.getState().clearRunsBySource("refine");
+
+    const state = useAgentStore.getState();
+    expect(state.runs["refine-1"]).toBeUndefined();
+    expect(state.runs["test-1"]).toBeDefined();
+    expect(state.runs["workflow-1"]).toBeDefined();
+  });
+
   it("setActiveAgent changes the activeAgentId", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
     useAgentStore.getState().startRun("agent-2", "opus");
@@ -377,6 +390,46 @@ describe("useAgentStore", () => {
       toolStatus: "ok",
       toolResult: {
         content: "Read 288 lines from SKILL.md",
+        isError: false,
+      },
+    });
+  });
+
+  it("projects runtime setup and task sent as separate display items for a fresh live run", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const setupEvent = makeConversationEvent(
+      "SystemPromptEvent",
+      {
+        system_prompt: { text: "You are the skill creator." },
+      },
+      1_000,
+    );
+    const taskEvent = makeConversationEvent(
+      "MessageEvent",
+      {
+        source: "user",
+        message: "Current request: tighten the intro",
+      },
+      1_100,
+    );
+
+    useAgentStore.getState().addConversationEvent("agent-1", setupEvent);
+    useAgentStore.getState().addConversationEvent("agent-1", taskEvent);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.displayItems).toHaveLength(2);
+    expect(run.displayItems[0]).toMatchObject({
+      type: "tool_call",
+      toolName: "system_prompt",
+      toolSummary: "Runtime setup",
+    });
+    expect(run.displayItems[1]).toMatchObject({
+      type: "tool_call",
+      toolName: "task_sent",
+      toolSummary: "Task sent",
+      toolResult: {
+        content: "Current request: tighten the intro",
         isError: false,
       },
     });

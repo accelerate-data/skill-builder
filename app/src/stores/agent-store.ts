@@ -6,6 +6,8 @@ import {
   clearDisplayItemBuffer,
   clearPhantomTimer,
   clearAllPhantomTimers,
+  clearDisplayItemBufferForAgents,
+  clearPhantomTimersForAgents,
 } from "./agent-display-buffer";
 
 import type { DisplayItem } from "@/lib/display-types";
@@ -411,6 +413,7 @@ interface AgentState {
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
   clearRuns: () => void;
+  clearRunsBySource: (source: AgentRun["runSource"]) => void;
 }
 
 export const useAgentStore = create<AgentState>((set) => ({
@@ -1073,6 +1076,35 @@ export const useAgentStore = create<AgentState>((set) => ({
       activeAgentId: null,
       pendingTerminal: {},
       pendingMetadata: {},
+    });
+  },
+
+  clearRunsBySource: (source) => {
+    set((state) => {
+      const removedAgentIds = Object.entries(state.runs)
+        .filter(([, run]) => run.runSource === source)
+        .map(([agentId]) => agentId);
+      clearDisplayItemBufferForAgents(removedAgentIds);
+      clearPhantomTimersForAgents(removedAgentIds);
+      const nextRuns = Object.fromEntries(
+        Object.entries(state.runs).filter(([, run]) => run.runSource !== source),
+      );
+      const nextActiveAgentId =
+        state.activeAgentId && nextRuns[state.activeAgentId]
+          ? state.activeAgentId
+          : null;
+      const nextPendingTerminal = Object.fromEntries(
+        Object.entries(state.pendingTerminal).filter(([agentId]) => nextRuns[agentId]),
+      );
+      const nextPendingMetadata = Object.fromEntries(
+        Object.entries(state.pendingMetadata).filter(([agentId]) => nextRuns[agentId]),
+      );
+      return {
+        runs: nextRuns,
+        activeAgentId: nextActiveAgentId,
+        pendingTerminal: nextPendingTerminal,
+        pendingMetadata: nextPendingMetadata,
+      };
     });
   },
 }));

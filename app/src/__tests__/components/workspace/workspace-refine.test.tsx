@@ -85,6 +85,7 @@ vi.mock("@/stores/refine-store", () => ({
 const agentStoreState = vi.hoisted(() => ({
   runs: {} as Record<string, unknown>,
   clearRuns: vi.fn(),
+  clearRunsBySource: vi.fn(),
   registerRun: vi.fn(),
   addConversationEvent: vi.fn(),
   applyConversationState: vi.fn(),
@@ -295,16 +296,23 @@ describe("WorkspaceRefine", () => {
       "refine",
       "synthetic:refine:my-skill:conv-1:restored:0",
     );
-    expect(agentStoreState.addConversationEvent).toHaveBeenCalledTimes(3);
+    expect(agentStoreState.addConversationEvent).toHaveBeenCalledTimes(4);
+    expect(agentStoreState.addConversationEvent).toHaveBeenNthCalledWith(
+      1,
+      "restored:conv-1:0",
+      expect.objectContaining({
+        eventClass: "MessageEvent",
+        event: expect.objectContaining({
+          source: "user",
+          message: "Tighten the intro",
+        }),
+      }),
+    );
     expect(agentStoreState.completeRun).toHaveBeenCalledWith(
       "restored:conv-1:0",
       true,
     );
     expect(refineStoreState.setMessages).toHaveBeenCalledWith([
-      expect.objectContaining({
-        role: "user",
-        userText: "Tighten the intro",
-      }),
       expect.objectContaining({
         role: "agent",
         agentId: "restored:conv-1:0",
@@ -365,14 +373,21 @@ describe("WorkspaceRefine", () => {
       "refine",
       "synthetic:refine:my-skill:conv-1:restored:1",
     );
+    expect(agentStoreState.addConversationEvent).toHaveBeenNthCalledWith(
+      2,
+      "restored:conv-1:1",
+      expect.objectContaining({
+        eventClass: "MessageEvent",
+        event: expect.objectContaining({
+          source: "user",
+          message: "Tighten the intro",
+        }),
+      }),
+    );
     expect(refineStoreState.setMessages).toHaveBeenCalledWith([
       expect.objectContaining({
         role: "agent",
         agentId: "restored:conv-1:0",
-      }),
-      expect.objectContaining({
-        role: "user",
-        userText: "Tighten the intro",
       }),
       expect.objectContaining({
         role: "agent",
@@ -498,6 +513,32 @@ describe("WorkspaceRefine", () => {
       "/workspace",
       "skills",
     );
+    expect(agentStoreState.clearRunsBySource).toHaveBeenCalledWith("refine");
+  });
+
+  it("does not add a duplicate plain user bubble when dispatching a refine turn", async () => {
+    const skill = makeSkill("my-skill");
+    refineStoreState.selectedSkill = skill;
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    refineStoreState.conversationId = "conv-1";
+
+    await act(async () => {
+      screen.getByTestId("chat-panel").click();
+    });
+
+    expect(refineStoreState.addUserMessage).not.toHaveBeenCalled();
+    expect(agentStoreState.registerRun).toHaveBeenCalledWith(
+      "agent-1",
+      "openhands",
+      "my-skill",
+      "refine",
+      "synthetic:refine:my-skill:conv-1",
+    );
+    expect(refineStoreState.addAgentTurn).toHaveBeenCalledWith("agent-1");
   });
 
   it("does not handle Escape locally; layout owns the global pause shortcut", async () => {
@@ -538,6 +579,7 @@ describe("WorkspaceRefine", () => {
       "my-skill",
       "skills",
     );
+    expect(agentStoreState.clearRunsBySource).toHaveBeenCalledWith("refine");
   });
 
 });
