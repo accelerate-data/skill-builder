@@ -2,7 +2,7 @@ pub mod scenarios;
 pub mod types;
 
 use crate::agents::openhands_server::{
-    cancel_openhands_one_shots_with_prefix, run_openhands_one_shot, OpenHandsOneShotRunParams,
+    pause_openhands_session, run_openhands_one_shot, OpenHandsOneShotRunParams,
 };
 use crate::agents::promptfoo_sidecar::process::{
     list_history as list_promptfoo_history, read_history as read_promptfoo_history,
@@ -72,6 +72,7 @@ pub struct EvalWorkbenchRunManager(Arc<Mutex<HashMap<String, EvalWorkbenchRunSta
 #[derive(Default, Clone)]
 struct EvalWorkbenchRunState {
     cancelled: bool,
+    active_agent_ids: HashSet<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -421,9 +422,10 @@ fn load_package_runtime(
     skills_path: &Path,
     plugin_slug: &str,
     skill_name: &str,
-    mode: EvalWorkbenchMode,
+    _mode: EvalWorkbenchMode,
 ) -> Result<EvalPromptSet, String> {
-    let scenarios = load_scenarios_for_mode(skills_path, plugin_slug, skill_name, mode)?;
+    let scenarios =
+        load_scenarios_for_mode(skills_path, plugin_slug, skill_name, EvalWorkbenchMode::Performance)?;
     let mut cases = Vec::with_capacity(scenarios.len());
     for scenario in &scenarios {
         if scenario.prompt.trim().is_empty() {
@@ -432,31 +434,26 @@ fn load_package_runtime(
         if scenario.expectations.is_empty() {
             return Err(format!("Scenario '{}' is missing expectations.", scenario.name));
         }
-        if mode == EvalWorkbenchMode::Trigger && scenario.should_trigger.is_none() {
-            return Err(format!(
-                "Scenario '{}' must declare whether it should trigger.",
-                scenario.name
-            ));
-        }
         cases.push(crate::db::EvalPromptCase {
             id: scenario.id.clone(),
             prompt: scenario.prompt.clone(),
             expected: None,
-            should_trigger: if mode == EvalWorkbenchMode::Trigger {
-                scenario.should_trigger
-            } else {
-                None
-            },
+            should_trigger: None,
             assertions: scenario_expectations_json(scenario),
             sort_order: cases.len() as i64,
         });
     }
 
     Ok(EvalPromptSet {
-        id: format!("package:{}:{}:{}", plugin_slug, skill_name, mode.as_str()),
+        id: format!(
+            "package:{}:{}:{}",
+            plugin_slug,
+            skill_name,
+            EvalWorkbenchMode::Performance.as_str()
+        ),
         plugin_slug: plugin_slug.to_string(),
         skill_name: skill_name.to_string(),
-        mode,
+        mode: EvalWorkbenchMode::Performance,
         name: "Package".to_string(),
         cases,
         created_at: String::new(),
@@ -511,10 +508,42 @@ fn validate_id(label: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_eval_workbench_request(request: &RunEvalWorkbenchRequest) -> Result<(), String> {
+    if request.mode != EvalWorkbenchMode::Performance {
+        return Err("Eval Workbench only supports performance mode".to_string());
+    }
+    Ok(())
+}
+
 fn register_eval_workbench_run(runs: &EvalWorkbenchRunManager, run_id: &str) -> Result<(), String> {
     let mut guard = runs.0.lock().map_err(|e| e.to_string())?;
     guard.insert(run_id.to_string(), EvalWorkbenchRunState::default());
     Ok(())
+}
+
+fn register_eval_workbench_agent_id(
+    runs: &EvalWorkbenchRunManager,
+    run_id: &str,
+    agent_id: &str,
+) -> Result<(), String> {
+    let mut guard = runs.0.lock().map_err(|e| e.to_string())?;
+    let state = guard
+        .get_mut(run_id)
+        .ok_or_else(|| "Eval Workbench run not found".to_string())?;
+    state.active_agent_ids.insert(agent_id.to_string());
+    Ok(())
+}
+
+fn unregister_eval_workbench_agent_id(
+    runs: &EvalWorkbenchRunManager,
+    run_id: &str,
+    agent_id: &str,
+) {
+    if let Ok(mut guard) = runs.0.lock() {
+        if let Some(state) = guard.get_mut(run_id) {
+            state.active_agent_ids.remove(agent_id);
+        }
+    }
 }
 
 fn eval_workbench_agent_prefix(run_id: &str) -> String {
@@ -531,12 +560,27 @@ fn cancel_eval_workbench_run_inner(
     runs: &EvalWorkbenchRunManager,
     run_id: &str,
 ) -> Result<(), String> {
+    cancel_eval_workbench_run_inner_with_pauser(runs, run_id, pause_openhands_session)
+}
+
+fn cancel_eval_workbench_run_inner_with_pauser<F>(
+    runs: &EvalWorkbenchRunManager,
+    run_id: &str,
+    mut pause: F,
+) -> Result<(), String>
+where
+    F: FnMut(&str) -> bool,
+{
     let mut guard = runs.0.lock().map_err(|e| e.to_string())?;
     let state = guard
         .get_mut(run_id)
         .ok_or_else(|| "Eval Workbench run not found".to_string())?;
     state.cancelled = true;
-    let _ = cancel_openhands_one_shots_with_prefix(&eval_workbench_agent_prefix(run_id));
+    let active_agent_ids = std::mem::take(&mut state.active_agent_ids);
+    drop(guard);
+    for agent_id in active_agent_ids {
+        let _ = pause(&agent_id);
+    }
     Ok(())
 }
 
@@ -617,51 +661,15 @@ fn to_sidecar_cases(prompt_set: &EvalPromptSet) -> Result<Vec<EvalCase>, String>
 fn load_sidecar_candidates(
     conn: &rusqlite::Connection,
     prompt_set: &EvalPromptSet,
-    candidate_ids: &[String],
+    _candidate_ids: &[String],
 ) -> Result<Vec<SidecarEvalCandidate>, String> {
-    if prompt_set.mode == EvalWorkbenchMode::Performance {
-        let skill =
-            get_skill_master_in_plugin(conn, &prompt_set.skill_name, &prompt_set.plugin_slug)?
-                .ok_or_else(|| "Skill not found for performance run".to_string())?;
-        return Ok(vec![SidecarEvalCandidate {
-            id: CURRENT_SKILL_CANDIDATE_ID.to_string(),
-            label: "Current skill".to_string(),
-            description: skill.description,
-        }]);
-    }
-
     let skill = get_skill_master_in_plugin(conn, &prompt_set.skill_name, &prompt_set.plugin_slug)?
-        .ok_or_else(|| "Skill not found for trigger run".to_string())?;
-    let mut seen = HashSet::new();
-    let mut candidates = vec![SidecarEvalCandidate {
+        .ok_or_else(|| "Skill not found for performance run".to_string())?;
+    Ok(vec![SidecarEvalCandidate {
         id: CURRENT_SKILL_CANDIDATE_ID.to_string(),
-        label: "Baseline".to_string(),
+        label: "Current skill".to_string(),
         description: skill.description,
-    }];
-    for candidate_id in candidate_ids {
-        if !seen.insert(candidate_id.clone()) {
-            continue;
-        }
-        let candidate = read_owned_description_candidate(
-            conn,
-            candidate_id,
-            &prompt_set.plugin_slug,
-            &prompt_set.skill_name,
-            Some(&prompt_set.name),
-            Some(prompt_set.mode),
-        )?;
-        candidates.push(SidecarEvalCandidate {
-            id: candidate.id,
-            label: candidate.label,
-            description: Some(candidate.description),
-        });
-    }
-    if candidates.len() == 1 {
-        return Err(
-            "Trigger comparisons require at least one generated description candidate".to_string(),
-        );
-    }
-    Ok(candidates)
+    }])
 }
 
 fn read_owned_description_candidate(
@@ -1375,56 +1383,6 @@ fn build_performance_sidecar_config(
     })
 }
 
-fn write_trigger_stub_skill(
-    workspace_skill_dir: &Path,
-    skill_name: &str,
-    description: &str,
-    trigger_marker: &str,
-) -> Result<(), String> {
-    let skill_dir = workspace_skill_dir
-        .join(".agents")
-        .join("skills")
-        .join(skill_name);
-    std::fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
-    let description_block = if description.trim().is_empty() {
-        "  ".to_string()
-    } else {
-        description
-            .lines()
-            .map(|line| format!("  {line}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    let stub = format!(
-        "---\nname: {skill_name}\ndescription: |\n{description_block}\nversion: candidate\n---\nWhen this skill is invoked, respond with exactly `{trigger_marker}` and nothing else.\n"
-    );
-    std::fs::write(skill_dir.join("SKILL.md"), stub).map_err(|e| e.to_string())
-}
-
-fn build_trigger_sidecar_config(
-    prompt_set: &EvalPromptSet,
-    prompt: &str,
-    runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-    workspace_skill_dir: &Path,
-) -> crate::agents::sidecar::SidecarConfig {
-    build_openhands_one_shot_config(OpenHandsOneShotConfigParams {
-        prompt: prompt.to_string(),
-        llm: runtime_ctx.llm.clone(),
-        workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
-        workspace_run_dir: workspace_skill_dir.to_string_lossy().replace('\\', "/"),
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("eval_workbench.trigger".to_string()),
-        user_message_suffix: None,
-        allowed_tools: vec![],
-        max_turns: 12,
-        output_format: None,
-        skill_name: Some(prompt_set.skill_name.clone()),
-        step_id: Some(-12),
-        run_source: Some("test".to_string()),
-        plugin_slug: prompt_set.plugin_slug.clone(),
-    })
-}
-
 fn build_eval_diagnosis_sidecar_config(
     prompt_set: &EvalPromptSet,
     prompt: &str,
@@ -1708,6 +1666,7 @@ async fn generate_description_candidates(
             app,
             OpenHandsOneShotRunParams {
                 agent_id_prefix: format!("{}-candidate", prompt_set.skill_name),
+                agent_id: None,
                 config,
                 timeout: std::time::Duration::from_secs(90),
             },
@@ -1834,6 +1793,13 @@ async fn execute_performance_cases(
 
     for (index, test_case) in cases.iter().enumerate() {
         ensure_eval_workbench_not_cancelled(runs, run_id)?;
+        let agent_id = format!(
+            "{}-performance-{}-{}",
+            eval_workbench_agent_prefix(run_id),
+            prompt_set.skill_name,
+            uuid::Uuid::new_v4()
+        );
+        register_eval_workbench_agent_id(runs, run_id, &agent_id)?;
         let config = build_performance_sidecar_config(prompt_set, &test_case.prompt, runtime_ctx);
         let run = run_openhands_one_shot(
             app,
@@ -1843,11 +1809,14 @@ async fn execute_performance_cases(
                     eval_workbench_agent_prefix(run_id),
                     prompt_set.skill_name
                 ),
+                agent_id: Some(agent_id.clone()),
                 config,
                 timeout: std::time::Duration::from_secs(90),
             },
         )
-        .await?;
+        .await;
+        unregister_eval_workbench_agent_id(runs, run_id, &agent_id);
+        let run = run?;
         ensure_eval_workbench_not_cancelled(runs, run_id)?;
         let response_text = parse_openhands_response_text(&run.conversation_state)?;
         executions.push(EvalExecution {
@@ -1869,91 +1838,6 @@ async fn execute_performance_cases(
     }
 
     Ok(executions)
-}
-
-async fn execute_trigger_cases(
-    app: &tauri::AppHandle,
-    run_id: &str,
-    runs: &EvalWorkbenchRunManager,
-    prompt_set: &EvalPromptSet,
-    cases: &[EvalCase],
-    candidates: &[SidecarEvalCandidate],
-    runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-) -> Result<Vec<EvalExecution>, String> {
-    let temp_root = PathBuf::from(&runtime_ctx.workspace_path)
-        .join(".eval-workbench")
-        .join(format!("trigger-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&temp_root).map_err(|e| e.to_string())?;
-
-    let result = async {
-        let mut executions = Vec::with_capacity(cases.len() * candidates.len());
-        let total = (cases.len() * candidates.len()) as u32;
-        let mut completed = 0u32;
-        for candidate in candidates {
-            let candidate_dir = temp_root.join(&candidate.id);
-            for test_case in cases {
-                ensure_eval_workbench_not_cancelled(runs, run_id)?;
-                let trigger_marker = format!(
-                    "__EVAL_WORKBENCH_TRIGGER__{}__{}__",
-                    candidate.id, test_case.id
-                );
-                write_trigger_stub_skill(
-                    &candidate_dir,
-                    &prompt_set.skill_name,
-                    candidate.description.as_deref().unwrap_or(""),
-                    &trigger_marker,
-                )?;
-
-                let config = build_trigger_sidecar_config(
-                    prompt_set,
-                    &test_case.prompt,
-                    runtime_ctx,
-                    &candidate_dir,
-                );
-                let run = run_openhands_one_shot(
-                    app,
-                    OpenHandsOneShotRunParams {
-                        agent_id_prefix: format!(
-                            "{}-trigger-{}",
-                            eval_workbench_agent_prefix(run_id),
-                            prompt_set.skill_name
-                        ),
-                        config,
-                        timeout: std::time::Duration::from_secs(60),
-                    },
-                )
-                .await?;
-                ensure_eval_workbench_not_cancelled(runs, run_id)?;
-                let response_text = parse_openhands_response_text(&run.conversation_state)?;
-                executions.push(EvalExecution {
-                    case_id: test_case.id.clone(),
-                    candidate_id: candidate.id.clone(),
-                    output: serde_json::json!({
-                        "mode": "trigger",
-                        "invokedTargetSkill": response_text.contains(&trigger_marker),
-                        "responseText": response_text,
-                    }),
-                });
-                completed += 1;
-                emit_eval_workbench_progress(
-                    app,
-                    run_id,
-                    "trigger",
-                    completed,
-                    total,
-                    format!(
-                        "Completed trigger case {} for {}",
-                        test_case.id, candidate.label
-                    ),
-                );
-            }
-        }
-        Ok(executions)
-    }
-    .await;
-
-    let _ = std::fs::remove_dir_all(&temp_root);
-    result
 }
 
 #[tauri::command]
@@ -2099,6 +1983,7 @@ pub async fn suggest_scenario(
         &app,
         OpenHandsOneShotRunParams {
             agent_id_prefix: format!("{}-scenario-suggest", skill_name),
+            agent_id: None,
             config,
             timeout: std::time::Duration::from_secs(90),
         },
@@ -2122,16 +2007,7 @@ pub async fn run_eval_workbench(
     validate_id("Run id", &request.run_id)?;
     validate_plugin_slug(&request.plugin_slug)?;
     validate_skill_name(&request.skill_name)?;
-    if request.mode == EvalWorkbenchMode::Trigger
-        && request
-            .scenario_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
-    {
-        return Err("Scenario name cannot be empty".to_string());
-    }
+    validate_eval_workbench_request(&request)?;
     {
         if request.candidate_ids.iter().any(|id| id.trim().is_empty()) {
             return Err("Candidate ids cannot be empty".to_string());
@@ -2142,49 +2018,16 @@ pub async fn run_eval_workbench(
 
     let preparation = || -> Result<_, String> {
         let skills_path = resolve_skills_path(&db)?;
-        let mut conn = db.0.lock().map_err(|e| e.to_string())?;
-        let prompt_set = match request.mode {
-            EvalWorkbenchMode::Performance => load_package_runtime(
-                Path::new(&skills_path),
-                &request.plugin_slug,
-                &request.skill_name,
-                request.mode,
-            )?,
-            EvalWorkbenchMode::Trigger => load_scenario_runtime(
-                &mut conn,
-                Path::new(&skills_path),
-                &request.plugin_slug,
-                &request.skill_name,
-                request
-                    .scenario_name
-                    .as_deref()
-                    .ok_or_else(|| "Scenario name cannot be empty".to_string())?,
-                request.mode,
-            )?,
-        };
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let prompt_set = load_package_runtime(
+            Path::new(&skills_path),
+            &request.plugin_slug,
+            &request.skill_name,
+            request.mode,
+        )?;
         let sidecar_candidates =
             load_sidecar_candidates(&conn, &prompt_set, &request.candidate_ids)?;
-        let persisted_candidates = if prompt_set.mode == EvalWorkbenchMode::Trigger {
-            request
-                .candidate_ids
-                .iter()
-                .cloned()
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .map(|candidate_id| {
-                    read_owned_description_candidate(
-                        &conn,
-                        &candidate_id,
-                        &prompt_set.plugin_slug,
-                        &prompt_set.skill_name,
-                        Some(&prompt_set.name),
-                        Some(prompt_set.mode),
-                    )
-                })
-                .collect::<Result<Vec<_>, _>>()?
-        } else {
-            Vec::new()
-        };
+        let persisted_candidates = Vec::new();
         let sidecar_cases = to_sidecar_cases(&prompt_set)?;
 
         Ok((
@@ -2240,31 +2083,16 @@ pub async fn run_eval_workbench(
             persisted_candidates,
         },
         |prompt_set, sidecar_cases, sidecar_candidates| async move {
-            match prompt_set.mode {
-                EvalWorkbenchMode::Performance => {
-                    execute_performance_cases(
-                        &app_for_execute,
-                        &run_id_for_execute,
-                        &run_manager_for_execute,
-                        &prompt_set,
-                        &sidecar_cases,
-                        &runtime_ctx,
-                    )
-                    .await
-                }
-                EvalWorkbenchMode::Trigger => {
-                    execute_trigger_cases(
-                        &app_for_execute,
-                        &run_id_for_execute,
-                        &run_manager_for_execute,
-                        &prompt_set,
-                        &sidecar_cases,
-                        &sidecar_candidates,
-                        &runtime_ctx,
-                    )
-                    .await
-                }
-            }
+            let _ = sidecar_candidates;
+            execute_performance_cases(
+                &app_for_execute,
+                &run_id_for_execute,
+                &run_manager_for_execute,
+                &prompt_set,
+                &sidecar_cases,
+                &runtime_ctx,
+            )
+            .await
         },
         |sidecar_request| async move { run_promptfoo_eval(&app_for_eval, &sidecar_request).await },
     )
@@ -2508,6 +2336,7 @@ pub async fn build_refine_improvement_brief(
         &app,
         OpenHandsOneShotRunParams {
             agent_id_prefix: format!("{}-diagnosis", prompt_set.skill_name),
+            agent_id: None,
             config,
             timeout: std::time::Duration::from_secs(90),
         },
@@ -2690,12 +2519,6 @@ mod tests {
             updated_at: "2026-05-06T00:00:00Z".to_string(),
         };
         let output_format = serde_json::json!({"type":"json_schema","schema":{"type":"object"}});
-        let trigger_workspace =
-            crate::skill_paths::workspace_skill_dir(
-                Path::new(&runtime_ctx.workspace_path),
-                &prompt_set.plugin_slug,
-                &prompt_set.skill_name,
-            );
         let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
 
         let configs = vec![
@@ -2707,7 +2530,6 @@ mod tests {
                 &runtime_ctx,
             ),
             build_performance_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
-            build_trigger_sidecar_config(&prompt_set, "prompt", &runtime_ctx, &trigger_workspace),
             build_eval_diagnosis_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
             build_description_candidate_sidecar_config(&prompt_set, "prompt", &runtime_ctx),
         ];
@@ -2768,6 +2590,59 @@ mod tests {
         let err = validate_prompt_set_input(&input).unwrap_err();
 
         assert!(err.contains("at least one expectation"));
+    }
+
+    #[test]
+    fn cancel_eval_workbench_run_pauses_exact_active_agent_ids() {
+        let runs = EvalWorkbenchRunManager::default();
+        register_eval_workbench_run(&runs, "run-1").unwrap();
+        {
+            let mut guard = runs.0.lock().unwrap();
+            let state = guard.get_mut("run-1").unwrap();
+            state
+                .active_agent_ids
+                .insert("eval-workbench-run-1-case-a".to_string());
+            state
+                .active_agent_ids
+                .insert("eval-workbench-run-1-case-b".to_string());
+        }
+
+        let mut paused_ids = Vec::new();
+        cancel_eval_workbench_run_inner_with_pauser(&runs, "run-1", |agent_id| {
+            paused_ids.push(agent_id.to_string());
+            true
+        })
+        .unwrap();
+
+        paused_ids.sort();
+        assert_eq!(
+            paused_ids,
+            vec![
+                "eval-workbench-run-1-case-a".to_string(),
+                "eval-workbench-run-1-case-b".to_string()
+            ]
+        );
+
+        let guard = runs.0.lock().unwrap();
+        let state = guard.get("run-1").unwrap();
+        assert!(state.cancelled);
+        assert!(state.active_agent_ids.is_empty());
+    }
+
+    #[test]
+    fn run_eval_workbench_rejects_trigger_mode_requests() {
+        let request = RunEvalWorkbenchRequest {
+            run_id: "run-1".to_string(),
+            plugin_slug: "skills".to_string(),
+            skill_name: "forecast".to_string(),
+            scenario_name: Some("Scenario".to_string()),
+            mode: EvalWorkbenchMode::Trigger,
+            candidate_ids: vec!["current-skill".to_string()],
+        };
+
+        let err = validate_eval_workbench_request(&request).unwrap_err();
+
+        assert!(err.contains("performance mode"));
     }
 
     #[test]

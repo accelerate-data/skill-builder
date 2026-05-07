@@ -206,6 +206,7 @@ pub async fn review_skill_scope(
         &app,
         OpenHandsOneShotRunParams {
             agent_id_prefix: format!("{}-scope-review", skill_name),
+            agent_id: None,
             config,
             timeout: std::time::Duration::from_secs(90),
         },
