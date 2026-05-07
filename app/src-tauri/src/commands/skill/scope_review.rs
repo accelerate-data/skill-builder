@@ -1,6 +1,4 @@
-use crate::agents::openhands_server::{
-    self, OpenHandsThrowawayRunParams,
-};
+use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
 use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, SidecarConfig};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
@@ -205,12 +203,13 @@ pub async fn review_skill_scope(
         "scope-review",
         &run_id,
     );
-    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(&runtime_run_dir))
-        .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
+    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
+        &runtime_run_dir,
+    ))
+    .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
     std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
-    crate::commands::workflow::deploy::ensure_openhands_runtime_dir(&app, &runtime_run_dir)
-        .await?;
+    crate::commands::workflow::deploy::ensure_openhands_runtime_dir(&app, &runtime_run_dir).await?;
 
     let config = build_scope_review_sidecar_config(ScopeReviewSidecarConfigParams {
         skill_name: &skill_name,
@@ -386,7 +385,8 @@ mod tests {
             skill_name: "forecasting-churned-customers",
             prompt: "rendered prompt",
             workspace_path: "/tmp/skill-builder/workspace",
-            workspace_run_dir: "/tmp/skill-builder/workspace/.openhands/throwaway/scope-review/run-1",
+            workspace_run_dir:
+                "/tmp/skill-builder/workspace/.openhands/throwaway/scope-review/run-1",
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),
                 api_key: Some(crate::types::SecretString::new("sk-test".to_string())),

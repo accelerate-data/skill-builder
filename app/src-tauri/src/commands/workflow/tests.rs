@@ -554,8 +554,14 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
         answer_evaluator_request.user_message_suffix,
         workflow_request.user_message_suffix
     );
-    assert_ne!(answer_evaluator_request.task_kind, workflow_request.task_kind);
-    assert_ne!(answer_evaluator_request.run_source, workflow_request.run_source);
+    assert_ne!(
+        answer_evaluator_request.task_kind,
+        workflow_request.task_kind
+    );
+    assert_ne!(
+        answer_evaluator_request.run_source,
+        workflow_request.run_source
+    );
     assert_ne!(answer_evaluator_request.step_id, workflow_request.step_id);
 }
 

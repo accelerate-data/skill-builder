@@ -1448,8 +1448,7 @@ pub(crate) fn repair_plugin_ownership_schema(conn: &Connection) -> Result<(), ru
                     "workflow_sessions",
                     "document_skills",
                 ] {
-                    let sql =
-                        format!("UPDATE {table} SET skill_id = ?1 WHERE skill_id = ?2");
+                    let sql = format!("UPDATE {table} SET skill_id = ?1 WHERE skill_id = ?2");
                     conn.execute(&sql, rusqlite::params![canonical_skill_id, legacy_skill_id])?;
                 }
                 conn.execute(
