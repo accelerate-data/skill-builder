@@ -10,40 +10,208 @@
 
 ---
 
-## Runtime Contract Decisions
+## Status Update
 
-- `conversation_id` is the durable OpenHands conversation identity.
-- `agent_id` is the current live run on top of that conversation.
-- `StartOpenHandsSession` may create or reuse a persistent conversation and
-  returns the active conversation identity for later sends.
-- `OpenHandsSendMessage` starts the next live run on an already-established
-  persistent conversation.
-- `PauseOpenHandsSession(agent_id)` is the canonical pause contract for all UI
-  surfaces. It pauses the current live run without deleting the persistent
-  conversation.
-- `pause_conversation(conversation_id)` remains a private OpenHands transport
-  detail inside the runtime task/client layer.
-- Cancel / Escape means pause, not teardown. The persistent conversation must
-  remain resumable after pause.
-- Local UI running state belongs to the mounted surface. Terminal exit or
-  surface unload must clear that local state after pausing any still-active
-  live run.
+This plan started as the implementation checklist for the first clean-break
+pass. That pass has landed on branch `feature/openhands-runtime-clean-break`,
+and an independent multi-lane review has now been folded back into this plan.
 
-## Surface Lifecycle Decisions
+The plan below is therefore split into:
 
-- Refine keeps the bottom status bar as the canonical run indicator. The
-  layout-level top-right `Running` badge should be removed from the workspace
-  shell.
-- Repeated pause requests must be idempotent. The runtime must keep the pause
-  handle for the lifetime of the live run rather than removing it on first
-  pause request.
-- While a pause is pending, the run should remain registered as live so later
-  terminal events still clean up correctly.
-- The same pause/unload model applies across all UI surfaces:
-  - Refine
-  - Workflow
-  - Eval Workbench
-  - any future screen with a live OpenHands run
+- work already completed in the first pass
+- remaining follow-up work required to finish the clean break
+
+Do not treat the original unchecked boxes below as the source of truth for
+current branch status. Use the updated task list in the **Remaining Work**
+section.
+
+## Completed In First Pass
+
+- Added explicit runtime primitive entrypoints in
+  `app/src-tauri/src/agents/openhands_server/mod.rs`.
+- Added throwaway runtime path helpers in
+  `app/src-tauri/src/skill_paths.rs`.
+- Made the Agent Server runtime-root aware through the configured
+  conversations root.
+- Renamed `suggest_scenario` to `define_eval_scenario` across the live surface.
+- Removed the dead `generate_suggestions` backend path.
+- Removed the old `workspace-description` surface from the live UI.
+- Renamed refine stop semantics to `pause_refine_session`.
+- Ran the local validation set captured in
+  [2026-05-07-openhands-runtime-clean-break-followup-todo.md](./2026-05-07-openhands-runtime-clean-break-followup-todo.md).
+
+## Remaining Work
+
+### Task A: Finish Persistent Session Ownership
+
+**Goal:** Align refine, workflow gate evaluation, and eval-definition flows with
+the design’s persistent-session model.
+
+**Files**
+
+- `app/src-tauri/src/commands/refine/mod.rs`
+- `app/src-tauri/src/commands/workflow/runtime.rs`
+- `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- related tests in `app/src-tauri/src/commands/refine/tests.rs`
+
+- [ ] Make `start_refine_session` establish the persistent OpenHands session
+      instead of deferring actual session start to `send_refine_message`.
+- [ ] Fix refine resume behavior when a saved conversation is readable but
+      incompatible with the current request shape.
+- [ ] Rework `run_answer_evaluator` so it does not overwrite or conflict with
+      the main skill conversation used by workflow and refine.
+- [ ] Move `define_eval_scenario` onto
+      `StartOpenHandsSession -> OpenHandsSendMessage`.
+- [ ] Move `build_refine_improvement_brief` onto
+      `StartOpenHandsSession -> OpenHandsSendMessage`.
+
+### Task B: Finish Throwaway Runtime Isolation
+
+**Goal:** Ensure throwaway runs use isolated runtime roots consistently and
+retain artifacts only under `.openhands/throwaway/...`.
+
+**Files**
+
+- `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- `app/src-tauri/src/skill_paths.rs`
+- `app/src-tauri/src/agents/openhands_server/mod.rs`
+
+- [ ] Move eval throwaway execution and diagnosis onto isolated
+      `.openhands/throwaway/...` runtime roots instead of skill workspace
+      directories.
+- [ ] Verify scope review, eval execution, and any other throwaway commands all
+      follow the same runtime-root policy.
+- [ ] Ensure throwaway conversations remain non-resumable from product state
+      while still being retained only under throwaway runtime roots for
+      debugging.
+
+### Task C: Remove Legacy Runtime Residue
+
+**Goal:** Finish the clean break by removing alias helpers and stale routing
+that still preserve the old model internally.
+
+**Files**
+
+- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- `app/src-tauri/src/commands/workflow/runtime.rs`
+
+- [ ] Replace remaining legacy runtime aliases/usages with direct clean-break
+      primitives.
+- [ ] Remove or simplify wrappers like `dispatch_openhands_refine_turn` and
+      `run_refine_conversation_task` if they no longer add behavior.
+- [ ] Replace workflow cancellation’s `cancel_openhands_one_shot` routing with
+      direct pause semantics.
+- [ ] Trim compile-time-only helper layering if it no longer improves clarity
+      (`OpenHandsSessionKind`, `should_persist_skill_conversation`,
+      `require_existing_conversation_id`).
+
+### Task D: Finish Dead-Surface Cleanup
+
+**Goal:** Remove remaining stale types, docs, tests, and contracts from the old
+eval description/trigger comparison model.
+
+**Files**
+
+- `app/src/lib/eval-workbench.ts`
+- `app/src/lib/tauri-command-types.ts`
+- `app/src/lib/tauri-command-types.typecheck.ts`
+- `docs/design/backend-design/api.md`
+- `tests/evals/assertions/tauri-command-contract.test.js`
+- any remaining trigger/comparison-only helpers and tests
+
+- [ ] Remove or reconcile stale `generate_scenarios` surface.
+- [ ] Remove lingering `descriptionCandidates` / trigger-era shared contracts
+      that are no longer part of the live one-tab eval workbench.
+- [ ] Remove stale docs/tests/assertions that still reference removed commands
+      such as `suggest_description_candidates` and
+      `apply_description_candidate`.
+- [ ] Trim stale UI props left behind after the description-surface cleanup.
+- [ ] Remove or explicitly contract-test any frontend-only stale command
+      surface that is no longer registered in the backend.
+
+### Task E: Reconcile Runtime Documentation
+
+**Goal:** Make the runtime design doc match the actual implemented behavior.
+
+**Files**
+
+- `docs/design/openhands-runtime-model/README.md`
+- `repo-map.json`
+- `TEST_MAP.md` only if test mapping changes materially
+
+- [ ] Update the runtime model doc so throwaway retention semantics match the
+      code.
+- [ ] Update the runtime model doc so eval flows match the real persistent vs
+      throwaway routing.
+- [ ] Update `repo-map.json` and any affected test/docs indexes after the
+      cleanup.
+
+### Task F: Close Test Coverage Gaps
+
+**Goal:** Add the missing regression coverage found by the independent
+test-coverage gate.
+
+**Files**
+
+- `app/src-tauri/src/commands/refine/tests.rs`
+- `app/src-tauri/src/agents/openhands_server/mod.rs` tests
+- Eval Workbench tests and E2E coverage
+
+- [ ] Add Rust coverage for refine session lifecycle branches:
+  - unreadable saved conversation clears ID
+  - stale in-memory session replacement
+  - first send persists `conversation_id` and `current_agent_id`
+- [ ] Add deeper mocked-server coverage for throwaway lifecycle:
+  - success
+  - timeout
+  - prefix-cancel
+- [ ] Add Eval Workbench cancellation coverage proving one-shot runs stop and
+      stop reporting progress.
+- [ ] Add one E2E for the live eval path:
+      author scenario -> define/suggest -> run eval -> send to refine.
+- [ ] Keep the deleted description-surface browser coverage replaced by the
+      live-path E2E rather than by stale trigger/comparison tests.
+
+### Task G: Final Regression And Quality Gates
+
+**Goal:** Re-run the clean-break verification after the follow-up work lands.
+
+- [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
+- [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml`
+- [ ] `cd app && npx tsc --noEmit`
+- [ ] `cd app && npm run test:unit`
+- [ ] `cd app && npm run test:repo-map`
+- [ ] `cd app && bash tests/run.sh e2e --tag @workflow`
+- [ ] `cd app && bash tests/run.sh e2e --tag @refine`
+- [ ] `cd app && bash tests/run.sh e2e --tag @evals`
+- [ ] `markdownlint docs/design/openhands-runtime-model/README.md docs/plans/2026-05-07-openhands-runtime-clean-break.md`
+
+## Review Findings Integrated
+
+The remaining-work tasks above incorporate the independent review lanes that
+were run after the first implementation pass:
+
+- design alignment review
+- plan audit review
+- code review gate
+- simplification review gate
+- test coverage review gate
+- acceptance-criteria review gate
+
+The highest-signal findings that shaped the remaining work are:
+
+- refine session start still does not establish the OpenHands conversation
+- refine can hard-fail on stale but readable saved conversations
+- answer evaluator currently conflicts with shared skill conversation ownership
+- `define_eval_scenario` and `build_refine_improvement_brief` are still
+  one-shot instead of persistent
+- throwaway eval runtime roots are not isolated consistently
+- old eval description/trigger surface cleanup is incomplete across docs,
+  types, and tests
+- runtime documentation is still partially out of sync with the code
+- additional Rust and E2E coverage is still needed around refine lifecycle,
+  throwaway lifecycle, and the live eval path
 
 ---
 
@@ -117,6 +285,11 @@
   Update only if command/test mappings actually change.
 
 ---
+
+## Archived Original Implementation Checklist
+
+The sections below are preserved as the original first-pass implementation
+checklist. They are retained for history only.
 
 ## Task 1: Add Canonical Runtime Primitives
 
@@ -322,48 +495,29 @@ Replace `cancel_refine_turn` naming with `pause_refine_session` across:
 
 This is a clean break. Do not keep compatibility aliases.
 
-- [ ] **Step 4: Remove the redundant workspace-level `Running` badge**
-
-Keep the bottom Refine-local status bar as the only visible running indicator
-for Refine. The top-right layout-level badge is redundant and can disagree
-with panel-local state.
-
-- [ ] **Step 5: Make pause idempotent and keep the live-run handle until terminal exit**
-
-Refine pause behavior must:
-
-- leave the pause handle registered for the lifetime of the live run
-- no-op repeated pause / Escape requests cleanly
-- avoid logging misleading "no cancel handle registered" warnings while the run
-  is still active
-- continue to clear local Refine running state on terminal exit
-
-- [ ] **Step 6: Keep `close_refine_session` as product cleanup only**
+- [ ] **Step 4: Keep `close_refine_session` as product cleanup only**
 
 Ensure close:
 
 - does not delete the persistent OpenHands conversation
 - only tears down product-layer wrapper state
 
-- [ ] **Step 7: Update tests**
+- [ ] **Step 5: Update tests**
 
 Cover at least:
 
 - start handles resume/create centrally
 - send only sends the next message
 - pause maps to active-run stop semantics
-- repeated pause is idempotent while the run is still active
-- the top-right workspace `Running` badge is absent during Refine
 - close does not delete persistent conversation state
 
-- [ ] **Step 8: Run refine verification**
+- [ ] **Step 6: Run refine verification**
 
 Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine
 cd app && npm run test:unit -- workspace-refine
-cd app && npm run test:unit -- app-layout
 cd app && bash tests/run.sh e2e --tag @refine
 ```
 
@@ -371,7 +525,7 @@ Expected:
 
 - PASS for refine Rust tests, frontend tests, and mocked refine E2E coverage
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/mod.rs \
@@ -381,72 +535,6 @@ git add app/src-tauri/src/commands/refine/mod.rs \
   app/src/components/layout/app-layout.tsx
 git commit -m "refactor: simplify refine session ownership"
 ```
-
----
-
-## Task 3A: Normalize Pause Lifecycle Across All Surfaces
-
-**Files:**
-
-- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
-- Modify: `app/src/components/workspace/workspace-refine.tsx`
-- Modify: `app/src/components/layout/app-layout.tsx`
-- Modify: `app/src/components/workspace/workspace-shell.tsx`
-- Modify: `app/src/components/workspace/workspace-eval-workbench.tsx`
-- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
-- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
-- Test: backend runtime tests plus the affected frontend component tests
-
-- [ ] **Step 1: Make the runtime pause contract canonical**
-
-All product surfaces should route through:
-
-- `PauseOpenHandsSession(agent_id)`
-
-Only the runtime task/client layer may call:
-
-- `pause_conversation(conversation_id)`
-
-- [ ] **Step 2: Keep live-run handles registered until terminal exit**
-
-Do not remove the pause handle on first pause request. Instead:
-
-- mark the run as pause-pending if needed
-- keep the handle alive until terminal exit or unload cleanup completes
-- make repeated pause requests idempotent
-
-- [ ] **Step 3: Apply the same unload contract across all surfaces**
-
-For Refine, Workflow, Eval Workbench, and any future live-run surface:
-
-- if the surface unloads while a run is active, request pause
-- then clear local surface-running state
-- do not delete the persistent conversation/session on unload
-
-- [ ] **Step 4: Update tests**
-
-Cover at least:
-
-- repeated pause requests do not drop the runtime handle early
-- unload clears local running state after pause is requested
-- workflow and eval workbench follow the same pause contract as refine
-
-- [ ] **Step 5: Run verification**
-
-Run:
-
-```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
-cargo test --manifest-path app/src-tauri/Cargo.toml commands::eval_workbench
-cd app && npm run test:unit -- workspace-refine
-cd app && npm run test:unit -- app-layout
-cd app && npm run test:unit -- workspace-eval-workbench
-```
-
-Expected:
-
-- PASS for runtime pause semantics across backend and frontend surfaces
 
 ---
 
