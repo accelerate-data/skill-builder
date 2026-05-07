@@ -37,6 +37,8 @@ Accepted into the remaining work:
   chat messages
 - remaining runtime-layer `OneShot` naming should be removed
 - stale trigger-mode Eval Workbench backend code should be deleted
+- pause/cancel semantics should be normalized so every product surface routes
+  through the same runtime pause primitive
 
 Explicitly not treated as active blockers:
 
@@ -48,6 +50,65 @@ Explicitly not treated as active blockers:
 - throwaway runtime isolation doubts
   Current branch already routes scope review and eval execution through
   `.openhands/throwaway/...` runtime roots.
+
+## Pause Contract
+
+These are the agreed runtime-layer pause decisions for this branch.
+
+1. Product/UI surfaces should only call product commands that resolve to the
+   runtime pause primitive.
+
+Current product surfaces:
+
+- Refine UI calls `pause_refine_session(session_id)` in
+  `app/src/components/workspace/workspace-refine.tsx`
+- Workflow UI calls `cancel_workflow_step(agent_id)` in
+  `app/src/components/layout/app-layout.tsx`
+- Eval Workbench UI calls `cancel_eval_workbench_run(run_id)` in
+  `app/src/components/workspace/eval-workbench/use-run-history.ts`
+
+1. The single runtime pause primitive should be:
+
+- `pause_openhands_session(agent_id)`
+
+Current runtime implementation:
+
+- `pause_openhands_session(agent_id)` in
+  `app/src-tauri/src/agents/openhands_server/mod.rs`
+
+1. The low-level OpenHands server transport call should remain private:
+
+- `pause_conversation(conversation_id)`
+
+Current transport implementation:
+
+- `pause_conversation(conversation_id)` in
+  `app/src-tauri/src/agents/openhands_server/client.rs`
+- it performs `POST /api/conversations/{conversation_id}/pause`
+
+1. The runtime task, not the UI, owns the actual pause request and terminal
+   cleanup.
+
+Current behavior:
+
+- product commands signal the active OpenHands run by `agent_id`
+- the running OpenHands task receives that signal and calls
+  `pause_conversation(conversation_id)`
+- the task keeps reading the stream until the terminal pause/cancel state
+  arrives, then emits final lifecycle events and cleans up registry state
+
+1. Prefix-based cancellation is not part of the desired end state.
+
+Current exception:
+
+- Eval Workbench still uses `cancel_openhands_runs_with_prefix(...)` from
+  `cancel_eval_workbench_run_inner(...)`
+
+Target end state:
+
+- no product surface should depend on prefix-based OpenHands cancellation
+- Eval Workbench should track exact active `agent_id`s per logical run and
+  pause those exact runs through `pause_openhands_session(agent_id)`
 
 ## Audited Complete
 
@@ -146,7 +207,34 @@ This is now misleading because the same request/config contract is used for:
 - [ ] Update affected tests, helper names, and comments so the branch no longer
       advertises the pre-clean-break contract internally.
 
-### Task 3: Delete Stale Trigger-Mode Eval Backend Paths
+### Task 3: Normalize Pause Semantics Across All Surfaces
+
+**Why this is still open**
+
+Refine and workflow already route through `pause_openhands_session(agent_id)`,
+but Eval Workbench still uses a prefix-based runtime helper instead of exact
+run identity.
+
+Code evidence:
+
+- refine backend uses `pause_openhands_session(...)` in
+  `app/src-tauri/src/commands/refine/mod.rs`
+- workflow backend uses `pause_openhands_session(...)` in
+  `app/src-tauri/src/commands/workflow/runtime.rs`
+- eval workbench backend still uses
+  `cancel_openhands_runs_with_prefix(...)` in
+  `app/src-tauri/src/commands/eval_workbench/mod.rs`
+
+- [ ] Remove `cancel_openhands_runs_with_prefix(...)` from the runtime layer.
+- [ ] Update Eval Workbench run state to track exact active OpenHands
+      `agent_id`s per logical `run_id`.
+- [ ] Route Eval Workbench cancellation through
+      `pause_openhands_session(agent_id)` for each active run instead of
+      prefix matching.
+- [ ] Keep `pause_conversation(conversation_id)` private to the OpenHands
+      server client / runtime-task layer only.
+
+### Task 4: Delete Stale Trigger-Mode Eval Backend Paths
 
 **Why this is still open**
 
@@ -167,9 +255,9 @@ Current examples on this branch:
 - [ ] Re-run the affected eval-workbench backend and frontend tests after the
       trigger cleanup.
 
-### Task 4: Final Verification Sweep
+### Task 5: Final Verification Sweep
 
-Run this after Tasks 1-3 land.
+Run this after Tasks 1-4 land.
 
 - [ ] `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings`
 - [ ] `cargo test --manifest-path app/src-tauri/Cargo.toml`
