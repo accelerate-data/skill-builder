@@ -68,17 +68,17 @@ describe("parseSidecarConfig", () => {
     expect(result.requiredPlugins).toEqual(["computer", "bash"]);
   });
 
-  it("accepts explicit one-shot mode", () => {
+  it("accepts explicit throwaway mode", () => {
     const result = parseSidecarConfig({
       prompt: "hello",
       apiKey: "key",
       workspaceRootDir: TEST_CWD,
       workspaceSkillDir: TEST_CWD,
       pluginSlug: "demo",
-      mode: "one-shot",
+      mode: "throwaway",
     });
 
-    expect(result.mode).toBe("one-shot");
+    expect(result.mode).toBe("throwaway");
   });
 
   it("accepts scope review task metadata for OpenHands requests", () => {
@@ -88,7 +88,7 @@ describe("parseSidecarConfig", () => {
       workspaceRootDir: TEST_CWD,
       workspaceSkillDir: TEST_CWD,
       pluginSlug: "demo",
-      mode: "one-shot",
+      mode: "throwaway",
       agentName: "skill-creator",
       taskKind: "scope_review",
       userMessageSuffix: "Follow the current user message exactly.",

@@ -404,7 +404,7 @@ pub fn run() {
             commands::eval_workbench::create_scenario,
             commands::eval_workbench::save_scenario,
             commands::eval_workbench::delete_scenario,
-            commands::eval_workbench::suggest_scenario,
+            commands::eval_workbench::define_eval_scenario,
 
             commands::documents::list_documents,
             commands::documents::list_skills_for_documents,

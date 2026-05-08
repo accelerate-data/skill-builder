@@ -196,7 +196,7 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
             id TEXT PRIMARY KEY,
             plugin_slug TEXT NOT NULL,
             skill_name TEXT NOT NULL,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             name TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -207,7 +207,6 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
             prompt_set_id TEXT NOT NULL REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
             prompt TEXT NOT NULL,
             expected TEXT,
-            should_trigger INTEGER,
             assertions_json TEXT NOT NULL,
             sort_order INTEGER NOT NULL
         );
@@ -215,7 +214,7 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
         CREATE TABLE IF NOT EXISTS eval_runs (
             id TEXT PRIMARY KEY,
             prompt_set_id TEXT NOT NULL REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             status TEXT NOT NULL,
             summary_json TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -268,7 +267,7 @@ pub(super) fn run_eval_workbench_scenario_identity_migration(
             plugin_slug TEXT NOT NULL,
             skill_name TEXT NOT NULL,
             scenario_name TEXT NOT NULL,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             status TEXT NOT NULL,
             summary_json TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -333,9 +332,8 @@ pub(super) fn run_scenarios_migration(conn: &Connection) -> Result<(), rusqlite:
             plugin_slug TEXT NOT NULL,
             skill_name TEXT NOT NULL,
             name TEXT NOT NULL,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             prompt TEXT NOT NULL DEFAULT '',
-            should_trigger INTEGER,
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -352,15 +350,14 @@ pub(super) fn run_scenarios_migration(conn: &Connection) -> Result<(), rusqlite:
         CREATE INDEX IF NOT EXISTS idx_assertions_scenario ON assertions(scenario_id, sort_order);
 
         -- Migrate data from old tables
-        INSERT INTO scenarios (id, plugin_slug, skill_name, name, mode, prompt, should_trigger, sort_order, created_at, updated_at)
+        INSERT INTO scenarios (id, plugin_slug, skill_name, name, mode, prompt, sort_order, created_at, updated_at)
         SELECT
             ps.id,
             ps.plugin_slug,
             ps.skill_name,
             ps.name,
-            ps.mode,
+            'performance',
             COALESCE(pc.prompt, ''),
-            pc.should_trigger,
             pc.sort_order,
             ps.created_at,
             ps.updated_at

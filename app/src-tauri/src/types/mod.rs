@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn test_sidecar_config_serde() {
         let config = crate::agents::sidecar::SidecarConfig {
-            mode: Some("one-shot".to_string()),
+            mode: None,
             prompt: "test prompt".to_string(),
             system_prompt: None,
             model: Some("sonnet".to_string()),

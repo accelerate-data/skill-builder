@@ -1,5 +1,7 @@
 use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
-use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, SidecarConfig};
+use crate::agents::sidecar::{
+    OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, SidecarConfig,
+};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 
@@ -132,6 +134,7 @@ pub(crate) fn build_scope_review_sidecar_config(
         llm: params.llm,
         workspace_root_dir,
         workspace_run_dir,
+        mode: Some(OpenHandsRuntimeMode::Throwaway),
         agent_name: "skill-creator".to_string(),
         task_kind: Some("scope_review".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
@@ -405,7 +408,7 @@ mod tests {
         });
 
         let json = serde_json::to_value(&config).unwrap();
-        assert_eq!(json["mode"], "one-shot");
+        assert_eq!(json["mode"], "throwaway");
         assert_eq!(json["agentName"], "skill-creator");
         assert_eq!(json["taskKind"], "scope_review");
         assert_eq!(

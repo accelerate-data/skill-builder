@@ -187,6 +187,7 @@ fn build_skill_creator_workflow_sidecar_config(
             llm,
             workspace_root_dir,
             workspace_run_dir,
+            mode: None,
             agent_name: "skill-creator".to_string(),
             task_kind: Some(task_kind.to_string()),
             user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
@@ -220,6 +221,7 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
         llm,
         workspace_root_dir,
         workspace_run_dir,
+        mode: None,
         agent_name: "skill-creator".to_string(),
         task_kind: Some("workflow.answer_evaluator".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
@@ -238,7 +240,17 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: SidecarConfig,
 ) -> Result<String, String> {
-    crate::agents::openhands_server::start_openhands_session(app, agent_id, config, None).await
+    let conversation_id =
+        crate::agents::openhands_server::prepare_openhands_session(app, config.clone(), None)
+            .await?;
+    crate::agents::openhands_server::openhands_send_message(
+        app,
+        agent_id,
+        config,
+        conversation_id.clone(),
+    )
+    .await?;
+    Ok(conversation_id)
 }
 
 const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(

@@ -149,6 +149,7 @@ pub struct OpenHandsRuntimeConfigParams {
     pub llm: crate::types::WorkflowLlmConfig,
     pub workspace_root_dir: String,
     pub workspace_run_dir: String,
+    pub mode: Option<OpenHandsRuntimeMode>,
     pub agent_name: String,
     pub task_kind: Option<String>,
     pub user_message_suffix: Option<String>,
@@ -161,6 +162,19 @@ pub struct OpenHandsRuntimeConfigParams {
     pub plugin_slug: String,
 }
 
+#[derive(Clone, Copy)]
+pub enum OpenHandsRuntimeMode {
+    Throwaway,
+}
+
+impl OpenHandsRuntimeMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Throwaway => "throwaway",
+        }
+    }
+}
+
 /// Build the backend-owned OpenHands runtime request.
 ///
 /// Feature commands supply only agent/task details. Initialized workspace and
@@ -170,7 +184,7 @@ pub fn build_openhands_runtime_config(params: OpenHandsRuntimeConfigParams) -> S
     let system_message_suffix =
         (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix);
     SidecarConfig {
-        mode: Some("one-shot".to_string()),
+        mode: params.mode.map(|mode| mode.as_str().to_string()),
         prompt: params.prompt,
         system_prompt: None,
         model: None,
@@ -210,7 +224,7 @@ mod tests {
     #[test]
     fn test_sidecar_config_serialization() {
         let config = SidecarConfig {
-            mode: Some("one-shot".to_string()),
+            mode: None,
             prompt: "Analyze this codebase".to_string(),
             system_prompt: None,
             model: Some("sonnet".to_string()),
@@ -252,7 +266,7 @@ mod tests {
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
         assert_eq!(parsed["model"], "sonnet");
         assert_eq!(parsed["modelBaseUrl"], "https://models.example.com/v1");
-        assert_eq!(parsed["mode"], "one-shot");
+        assert!(parsed.get("mode").is_none());
         assert_eq!(parsed["agentName"], "research-entities");
         // betas is None + skip_serializing_if — should be absent
         assert!(parsed.get("betas").is_none());
@@ -399,7 +413,7 @@ mod tests {
     #[test]
     fn test_scope_review_config_serializes_user_suffix_and_task_kind() {
         let config = SidecarConfig {
-            mode: Some("one-shot".to_string()),
+            mode: Some("throwaway".to_string()),
             prompt: "review scope".to_string(),
             system_prompt: None,
             model: None,
@@ -488,6 +502,7 @@ mod tests {
             },
             workspace_root_dir: "/tmp/workspace".to_string(),
             workspace_run_dir: "/tmp/workspace".to_string(),
+            mode: None,
             agent_name: "answer-evaluator".to_string(),
             task_kind: Some("workflow.answer_evaluator".to_string()),
             user_message_suffix: None,

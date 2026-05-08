@@ -272,6 +272,7 @@ fn build_refine_openhands_config(
         llm,
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_run_dir: workspace_skill_dir,
+        mode: None,
         agent_name: "skill-creator".to_string(),
         task_kind: Some("refine".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),

@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: OpenHands-native worker for one-shot and conversational skill-building tasks.
+description: OpenHands-native worker for throwaway and conversational skill-building tasks.
 tools:
   - file_editor
   - terminal

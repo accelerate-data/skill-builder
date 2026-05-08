@@ -1,15 +1,15 @@
 pub mod scenarios;
 pub mod types;
 
-use crate::agents::openhands_server::{
-    run_openhands_one_shot, OpenHandsOneShotRunParams,
-};
+use crate::agents::openhands_server;
+use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
-use crate::db::{Db, EvalWorkbenchMode};
+use crate::db::Db;
 use serde_json::Value;
 use std::path::Path;
+use tauri::Listener;
 pub use types::{ScenarioDto, ScenarioSummaryDto};
 
 const SUGGEST_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
@@ -28,10 +28,6 @@ fn validate_plugin_slug(plugin_slug: &str) -> Result<(), String> {
         return Err("Plugin slug must not contain '..'".to_string());
     }
     Ok(())
-}
-
-fn parse_optional_mode(mode: Option<String>) -> Result<Option<EvalWorkbenchMode>, String> {
-    mode.as_deref().map(EvalWorkbenchMode::parse).transpose()
 }
 
 fn parse_scenario_tags(tags: &[String]) -> Result<Vec<scenarios::ScenarioTag>, String> {
@@ -95,16 +91,6 @@ fn scenario_summary_to_dto(summary: scenarios::ScenarioSummary) -> ScenarioSumma
     }
 }
 
-fn scenario_expectations_json(scenario: &scenarios::Scenario) -> Value {
-    Value::Array(
-        scenario
-            .expectations
-            .iter()
-            .map(|expectation| Value::String(expectation.clone()))
-            .collect(),
-    )
-}
-
 fn persist_scenario_file(
     eval_dir: &std::path::Path,
     scenario: &scenarios::Scenario,
@@ -146,14 +132,8 @@ fn persist_scenario_file(
     Ok(())
 }
 
-fn next_default_scenario_name(
-    eval_dir: &std::path::Path,
-    mode: EvalWorkbenchMode,
-) -> Result<String, String> {
-    let prefix = match mode {
-        EvalWorkbenchMode::Performance => "Performance",
-        EvalWorkbenchMode::Trigger => "Trigger",
-    };
+fn next_default_scenario_name(eval_dir: &std::path::Path) -> Result<String, String> {
+    let prefix = "Performance";
     let existing = scenarios::list_scenarios(eval_dir)?;
     let mut index = 1;
     loop {
@@ -166,35 +146,6 @@ fn next_default_scenario_name(
             return Err("Could not find an unused default scenario name".to_string());
         }
     }
-}
-
-fn load_scenarios_for_mode(
-    eval_dir: &std::path::Path,
-    mode: EvalWorkbenchMode,
-) -> Result<Vec<scenarios::Scenario>, String> {
-    scenarios::list_scenarios(eval_dir).map(|summaries| {
-        summaries
-            .into_iter()
-            .filter_map(|summary| scenarios::load_scenario(eval_dir, &summary.name).ok().flatten())
-            .filter(|scenario| {
-                scenario.tags.iter().any(|tag| tag.matches_mode(mode))
-            })
-            .collect()
-    })
-}
-
-fn load_package_runtime(
-    eval_dir: &std::path::Path,
-    mode: EvalWorkbenchMode,
-) -> Result<scenarios::Scenario, String> {
-    let scenarios = load_scenarios_for_mode(eval_dir, mode)?;
-    if scenarios.is_empty() {
-        return Err(format!(
-            "No {mode} scenarios found. Create at least one scenario before running evaluation.",
-            mode = mode.as_str()
-        ));
-    }
-    Ok(scenarios.into_iter().next().unwrap())
 }
 
 fn suggested_scenario_output_format() -> Value {
@@ -254,14 +205,6 @@ fn load_define_eval_scenario_context(
     (clarifications, decisions)
 }
 
-fn parse_openhands_response_text(state: &serde_json::Value) -> Result<String, String> {
-    state
-        .get("response_text")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Missing response_text in OpenHands state".to_string())
-}
-
 fn parse_openhands_structured_output(state: &serde_json::Value) -> Result<Value, String> {
     state
         .get("structured_output")
@@ -274,6 +217,52 @@ fn clean_openhands_structured_result_text(text: &str) -> &str {
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim()
+}
+
+fn parse_target_conversation_state(
+    payload: &str,
+    target_agent_id: &str,
+) -> Option<serde_json::Value> {
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+        return None;
+    }
+
+    let message = value.get("message")?;
+    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    match message.get("status").and_then(|v| v.as_str()) {
+        Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
+        _ => None,
+    }
+}
+
+async fn run_persistent_eval_turn(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    config: crate::agents::sidecar::SidecarConfig,
+    timeout: std::time::Duration,
+) -> Result<serde_json::Value, String> {
+    let conversation_id = openhands_server::prepare_openhands_session(app, config.clone(), None)
+        .await?;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    let target_agent_id = agent_id.to_string();
+    let tx_message = tx.clone();
+    let message_listener = app.listen("agent-message", move |event: tauri::Event| {
+        if let Some(state) = parse_target_conversation_state(event.payload(), &target_agent_id) {
+            let _ = tx_message.send(state);
+        }
+    });
+
+    openhands_server::openhands_send_message(app, agent_id, config, conversation_id).await?;
+
+    let result = tokio::time::timeout(timeout, rx.recv())
+        .await
+        .map_err(|_| "Timed out waiting for eval scenario definition result".to_string())?;
+    app.unlisten(message_listener);
+    result.ok_or_else(|| "Eval scenario definition listener closed unexpectedly".to_string())
 }
 
 fn parse_suggested_scenario_response(
@@ -313,7 +302,6 @@ fn parse_suggested_scenario_response(
         name,
         tags: existing_scenario.tags.clone(),
         prompt,
-        should_trigger: existing_scenario.should_trigger,
         expectations,
     })
 }
@@ -332,24 +320,23 @@ fn build_generation_sidecar_config(
     )
     .to_string_lossy()
     .replace('\\', "/");
-    crate::agents::sidecar::build_openhands_one_shot_config(
-        crate::agents::sidecar::OpenHandsOneShotConfigParams {
-            prompt: prompt.to_string(),
-            llm: runtime_ctx.llm.clone(),
-            workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
-            workspace_run_dir: workspace_skill_dir,
-            agent_name: "skill-creator".to_string(),
-            task_kind: Some("scenario-suggest".to_string()),
-            user_message_suffix: None,
-            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-            max_turns: 10,
-            output_format: Some(output_format),
-            skill_name: Some(skill_name.to_string()),
-            step_id: Some(-11),
-            run_source: Some("scenario-suggest".to_string()),
-            plugin_slug: plugin_slug.to_string(),
-        }
-    )
+    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+        prompt: prompt.to_string(),
+        llm: runtime_ctx.llm.clone(),
+        workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
+        workspace_run_dir: workspace_skill_dir,
+        mode: None,
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some("scenario-suggest".to_string()),
+        user_message_suffix: None,
+        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+        max_turns: 10,
+        output_format: Some(output_format),
+        skill_name: Some(skill_name.to_string()),
+        step_id: Some(-11),
+        run_source: Some("test".to_string()),
+        plugin_slug: plugin_slug.to_string(),
+    })
 }
 
 #[tauri::command]
@@ -388,7 +375,7 @@ pub fn load_scenario(
 pub fn create_scenario(
     plugin_slug: String,
     skill_name: String,
-    mode: EvalWorkbenchMode,
+    _mode: types::EvalWorkbenchMode,
     db: tauri::State<'_, Db>,
 ) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
@@ -396,9 +383,6 @@ pub fn create_scenario(
     let skills_path = resolve_skills_path(&db)?;
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    if mode != EvalWorkbenchMode::Performance {
-        return Err("Eval Workbench only supports performance mode".to_string());
-    }
     let name = next_default_scenario_name(&eval_dir)?;
     let scenario = scenarios::Scenario {
         id: format!("case-{}", uuid::Uuid::new_v4().simple()),
@@ -472,7 +456,7 @@ pub async fn define_eval_scenario(
     };
     let runtime_ctx = read_initialized_runtime_context(&db)?;
     ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    let prompt = build_define_eval_scenario_prompt(
+    let prompt = build_suggest_scenario_prompt(
         &skill_name,
         &existing_scenario,
         &skill_files,

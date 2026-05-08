@@ -7,22 +7,19 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum EvalWorkbenchMode {
     Performance,
-    Trigger,
 }
 
 impl EvalWorkbenchMode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Performance => "performance",
-            Self::Trigger => "trigger",
         }
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "performance" => Ok(Self::Performance),
-            "trigger" => Ok(Self::Trigger),
-            _ => Err("mode must be 'performance' or 'trigger'".to_string()),
+            _ => Err("mode must be 'performance'".to_string()),
         }
     }
 }
@@ -36,7 +33,6 @@ pub struct Scenario {
     pub name: String,
     pub mode: EvalWorkbenchMode,
     pub prompt: String,
-    pub should_trigger: Option<bool>,
     pub sort_order: i64,
     pub created_at: String,
     pub updated_at: String,
@@ -52,20 +48,11 @@ pub struct SaveScenario {
     pub name: String,
     pub mode: EvalWorkbenchMode,
     pub prompt: String,
-    pub should_trigger: Option<bool>,
     pub assertions: Vec<String>,
 }
 
 fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-}
-
-fn bool_to_i64(value: bool) -> i64 {
-    if value {
-        1
-    } else {
-        0
-    }
 }
 
 pub fn save_scenario(conn: &mut Connection, input: SaveScenario) -> Result<Scenario, String> {
@@ -75,15 +62,14 @@ pub fn save_scenario(conn: &mut Connection, input: SaveScenario) -> Result<Scena
 
     tx.execute(
         "INSERT INTO scenarios (
-            id, plugin_slug, skill_name, name, mode, prompt, should_trigger, sort_order, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+            id, plugin_slug, skill_name, name, mode, prompt, sort_order, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
         ON CONFLICT(id) DO UPDATE SET
             plugin_slug = excluded.plugin_slug,
             skill_name = excluded.skill_name,
             name = excluded.name,
             mode = excluded.mode,
             prompt = excluded.prompt,
-            should_trigger = excluded.should_trigger,
             sort_order = excluded.sort_order,
             updated_at = excluded.updated_at",
         params![
@@ -93,7 +79,6 @@ pub fn save_scenario(conn: &mut Connection, input: SaveScenario) -> Result<Scena
             input.name,
             input.mode.as_str(),
             input.prompt,
-            input.should_trigger.map(bool_to_i64),
             0i64,
             timestamp,
         ],
@@ -133,7 +118,7 @@ pub fn list_scenarios(
 ) -> Result<Vec<Scenario>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, plugin_slug, skill_name, name, mode, prompt, should_trigger, sort_order, created_at, updated_at
+            "SELECT id, plugin_slug, skill_name, name, mode, prompt, sort_order, created_at, updated_at
              FROM scenarios
              WHERE plugin_slug = ?1 AND skill_name = ?2
              ORDER BY sort_order ASC, name ASC",
@@ -143,7 +128,6 @@ pub fn list_scenarios(
     let rows = stmt
         .query_map(params![plugin_slug, skill_name], |row| {
             let mode_str: String = row.get(4)?;
-            let should_trigger: Option<i64> = row.get(6)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -151,10 +135,9 @@ pub fn list_scenarios(
                 row.get::<_, String>(3)?,
                 mode_str,
                 row.get::<_, String>(5)?,
-                should_trigger,
-                row.get::<_, i64>(7)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, String>(7)?,
                 row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -164,7 +147,7 @@ pub fn list_scenarios(
     drop(stmt);
 
     let mut scenarios = Vec::with_capacity(rows.len());
-    for (id, pslug, sname, name, mode_str, prompt, should_trigger, sort_order, created_at, updated_at) in rows
+    for (id, pslug, sname, name, mode_str, prompt, sort_order, created_at, updated_at) in rows
     {
         let assertions = read_assertions(conn, &id)?;
         scenarios.push(Scenario {
@@ -174,7 +157,6 @@ pub fn list_scenarios(
             name,
             mode: EvalWorkbenchMode::parse(&mode_str)?,
             prompt,
-            should_trigger: should_trigger.map(|v| v != 0),
             sort_order,
             created_at,
             updated_at,
@@ -210,7 +192,7 @@ pub fn read_scenario(
 ) -> Result<Option<Scenario>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, plugin_slug, skill_name, name, mode, prompt, should_trigger, sort_order, created_at, updated_at
+            "SELECT id, plugin_slug, skill_name, name, mode, prompt, sort_order, created_at, updated_at
              FROM scenarios
              WHERE plugin_slug = ?1 AND skill_name = ?2 AND name = ?3",
         )
@@ -222,7 +204,6 @@ pub fn read_scenario(
     };
 
     let mode_str: String = row.get(4).map_err(|e| e.to_string())?;
-    let should_trigger: Option<i64> = row.get(6).map_err(|e| e.to_string())?;
     let id: String = row.get(0).map_err(|e| e.to_string())?;
     let assertions = read_assertions(conn, &id)?;
 
@@ -233,10 +214,9 @@ pub fn read_scenario(
         name: row.get(3).map_err(|e| e.to_string())?,
         mode: EvalWorkbenchMode::parse(&mode_str)?,
         prompt: row.get(5).map_err(|e| e.to_string())?,
-        should_trigger: should_trigger.map(|v| v != 0),
-        sort_order: row.get(7).map_err(|e| e.to_string())?,
-        created_at: row.get(8).map_err(|e| e.to_string())?,
-        updated_at: row.get(9).map_err(|e| e.to_string())?,
+        sort_order: row.get(6).map_err(|e| e.to_string())?,
+        created_at: row.get(7).map_err(|e| e.to_string())?,
+        updated_at: row.get(8).map_err(|e| e.to_string())?,
         assertions,
     }))
 }
@@ -271,7 +251,6 @@ mod tests {
         name: &str,
         mode: EvalWorkbenchMode,
         prompt: &str,
-        should_trigger: Option<bool>,
         assertions: Vec<&str>,
     ) -> SaveScenario {
         SaveScenario {
@@ -281,7 +260,6 @@ mod tests {
             name: name.to_string(),
             mode,
             prompt: prompt.to_string(),
-            should_trigger,
             assertions: assertions.into_iter().map(String::from).collect(),
         }
     }
@@ -295,7 +273,6 @@ mod tests {
             "Smoke",
             EvalWorkbenchMode::Performance,
             "Summarize revenue",
-            None,
             vec!["Explains the forecast assumptions."],
         );
         let saved = save_scenario(&mut conn, input).unwrap();
@@ -310,7 +287,6 @@ mod tests {
         assert_eq!(read.name, "Smoke");
         assert_eq!(read.mode, EvalWorkbenchMode::Performance);
         assert_eq!(read.prompt, "Summarize revenue");
-        assert_eq!(read.should_trigger, None);
         assert_eq!(read.assertions, vec!["Explains the forecast assumptions."]);
     }
 
@@ -325,7 +301,6 @@ mod tests {
                 "Scenario A",
                 EvalWorkbenchMode::Performance,
                 "Prompt A",
-                None,
                 vec!["A1"],
             ),
         )
@@ -336,9 +311,8 @@ mod tests {
                 "skills",
                 "forecast",
                 "Scenario B",
-                EvalWorkbenchMode::Trigger,
+                EvalWorkbenchMode::Performance,
                 "Prompt B",
-                Some(true),
                 vec!["B1", "B2"],
             ),
         )
@@ -351,7 +325,6 @@ mod tests {
                 "Scenario C",
                 EvalWorkbenchMode::Performance,
                 "Prompt C",
-                None,
                 vec!["C1"],
             ),
         )
@@ -373,7 +346,6 @@ mod tests {
             "Update me",
             EvalWorkbenchMode::Performance,
             "Original prompt",
-            None,
             vec!["old assertion"],
         );
         let saved = save_scenario(&mut conn, input).unwrap();
@@ -387,7 +359,6 @@ mod tests {
                 name: "Update me".to_string(),
                 mode: EvalWorkbenchMode::Performance,
                 prompt: "Updated prompt".to_string(),
-                should_trigger: None,
                 assertions: vec!["new assertion 1".to_string(), "new assertion 2".to_string()],
             },
         )
@@ -411,7 +382,6 @@ mod tests {
             "Delete me",
             EvalWorkbenchMode::Performance,
             "Prompt",
-            None,
             vec!["assertion 1", "assertion 2"],
         );
         save_scenario(&mut conn, input).unwrap();
@@ -434,26 +404,23 @@ mod tests {
     }
 
     #[test]
-    fn saves_trigger_scenario_with_should_trigger() {
+    fn saves_performance_scenario_without_trigger_metadata() {
         let mut conn = test_db();
         let input = save_scenario_input(
             "skills",
             "forecast",
-            "Trigger smoke",
-            EvalWorkbenchMode::Trigger,
+            "Scenario smoke",
+            EvalWorkbenchMode::Performance,
             "Forecast revenue",
-            Some(true),
-            vec!["Triggers correctly"],
+            vec!["Explains the forecast"],
         );
         let saved = save_scenario(&mut conn, input).unwrap();
 
-        assert_eq!(saved.mode, EvalWorkbenchMode::Trigger);
-        assert_eq!(saved.should_trigger, Some(true));
+        assert_eq!(saved.mode, EvalWorkbenchMode::Performance);
 
-        let read = read_scenario(&conn, "skills", "forecast", "Trigger smoke")
+        let read = read_scenario(&conn, "skills", "forecast", "Scenario smoke")
             .unwrap()
             .unwrap();
-        assert_eq!(read.should_trigger, Some(true));
-        assert_eq!(read.assertions, vec!["Triggers correctly"]);
+        assert_eq!(read.assertions, vec!["Explains the forecast"]);
     }
 }

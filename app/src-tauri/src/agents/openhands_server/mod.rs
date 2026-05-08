@@ -876,26 +876,6 @@ async fn prepare_openhands_session_internal(
     Ok(conversation_id)
 }
 
-pub async fn start_openhands_session(
-    app: &tauri::AppHandle,
-    agent_id: &str,
-    config: SidecarConfig,
-    conversation_id: Option<String>,
-) -> Result<String, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
-    let conversation_id = prepare_openhands_session(app, config.clone(), conversation_id).await?;
-    dispatch_openhands_turn_with_request(
-        app,
-        agent_id,
-        config,
-        request.clone(),
-        Some(conversation_id.clone()),
-        OpenHandsConversationSelection::SendExistingOnly,
-    )
-    .await?;
-    Ok(conversation_id)
-}
-
 pub async fn openhands_send_message(
     app: &tauri::AppHandle,
     agent_id: &str,

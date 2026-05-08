@@ -11,7 +11,7 @@ const PERFORMANCE_SCENARIO = {
   id: "case-1",
   name: "Regression",
   prompt: "Forecast next quarter revenue for the west region pipeline.",
-  expectations: ["Explains the forecast assumptions."],
+  assertions: ["Explains the forecast assumptions."],
 };
 
 const AUTHORED_SCENARIO = {
@@ -23,35 +23,7 @@ const AUTHORED_SCENARIO = {
 const DEFINITIVE_SCENARIO = {
   ...AUTHORED_SCENARIO,
   prompt: "Forecast next quarter revenue for the west region pipeline.",
-  expectations: ["Explains the forecast assumptions."],
-};
-
-const PERFORMANCE_RUN_SUMMARY = {
-  id: "run-1",
-  scenarioName: "Regression",
-  mode: "performance" as const,
-  status: "completed",
-  summary: { passed: 1, total: 1 },
-  createdAt: "2026-05-04T00:00:00Z",
-  completedAt: "2026-05-04T00:05:00Z",
-  results: [],
-  descriptionCandidates: [],
-};
-
-const PERFORMANCE_RUN_DETAIL = {
-  ...PERFORMANCE_RUN_SUMMARY,
-  results: [
-    {
-      id: "result-1",
-      runId: "run-1",
-      caseId: "case-1",
-      candidateId: "current-skill",
-      passed: false,
-      score: 0.25,
-      output: {},
-      reason: "Missed assumptions section",
-    },
-  ],
+  assertions: ["Explains the forecast assumptions."],
 };
 
 async function navigateToEvalWorkbench(
@@ -71,7 +43,7 @@ async function navigateToEvalWorkbench(
 }
 
 test.describe("Eval Workbench", { tag: "@evals" }, () => {
-  test("authors a scenario, defines it, evaluates it, and sends the result to Refine", async ({
+  test("authors a scenario and defines it with the scenario suggestion flow", async ({
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
@@ -79,98 +51,48 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
       load_scenario: AUTHORED_SCENARIO,
       create_scenario: AUTHORED_SCENARIO,
       define_eval_scenario: DEFINITIVE_SCENARIO,
-      list_eval_runs: [],
-      run_eval_workbench: PERFORMANCE_RUN_SUMMARY,
-      read_eval_run: PERFORMANCE_RUN_DETAIL,
-      build_refine_improvement_brief: {
-        runId: "run-1",
-        brief: "Improve assumptions handling",
-      },
     });
-    await trackInvokes(page, [
-      "create_scenario",
-      "define_eval_scenario",
-      "run_eval_workbench",
-      "build_refine_improvement_brief",
-    ]);
+    await trackInvokes(page, ["create_scenario", "define_eval_scenario"]);
 
     await expect(page.getByRole("heading", { name: "Scenarios" })).toBeVisible();
     await expect(page.getByText("Regression")).toBeVisible();
     await page.getByRole("button", { name: "New scenario" }).click();
     await expect(await getTrackedInvokeCount(page, "create_scenario")).toBe(1);
     await expect(page.getByLabel("User prompt")).toHaveValue(AUTHORED_SCENARIO.prompt);
+    await expect(page.locator("textarea").nth(1)).toHaveValue(
+      "Explains the forecast assumptions.",
+    );
 
     await page.getByRole("button", { name: /^suggest$/i }).click();
     await expect(await getTrackedInvokeCount(page, "define_eval_scenario")).toBe(1);
     await expect(page.getByLabel("User prompt")).toHaveValue(DEFINITIVE_SCENARIO.prompt);
-
-    await page.getByRole("button", { name: "Evaluate" }).click();
-
-    await expect(page.getByText("Missed assumptions section")).toBeVisible();
-    await expect(await getTrackedInvokeCount(page, "run_eval_workbench")).toBe(1);
-    const runCalls = await getTrackedInvokes(page, "run_eval_workbench");
-    expect(runCalls[0]?.args).toMatchObject({
-      request: {
-        candidateIds: ["current-skill"],
-      },
-    });
-
-    await page.getByRole("button", { name: "Send to Refine" }).click();
-
-    await expect(await getTrackedInvokeCount(page, "build_refine_improvement_brief")).toBe(1);
-    const refineCalls = await getTrackedInvokes(
-      page,
-      "build_refine_improvement_brief",
+    await expect(page.locator("textarea").nth(1)).toHaveValue(
+      "Explains the forecast assumptions.",
     );
-    expect(refineCalls[0]?.args).toMatchObject({
-      runId: "run-1",
-    });
-    await expect(page.getByTestId("refine-chat-input")).toBeVisible();
-    await expect(page.getByTestId("refine-chat-input")).toContainText(
-      "Improve assumptions handling",
-    );
+    await expect(page.getByRole("button", { name: "Evaluate" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Send to Refine" })).toHaveCount(0);
   });
 
-  test("evaluates the package and sends the failure brief to Refine", async ({
+  test("loads and deletes an existing scenario from the scenario-only workbench", async ({
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
       list_scenarios: [{ name: PERFORMANCE_SCENARIO.name }],
       load_scenario: PERFORMANCE_SCENARIO,
-      list_eval_runs: [PERFORMANCE_RUN_SUMMARY],
-      read_eval_run: PERFORMANCE_RUN_DETAIL,
-      run_eval_workbench: PERFORMANCE_RUN_SUMMARY,
-      build_refine_improvement_brief: {
-        runId: "run-1",
-        brief: "Improve assumptions handling",
-      },
+      delete_scenario: undefined,
     });
-    await trackInvokes(page, [
-      "run_eval_workbench",
-      "build_refine_improvement_brief",
-    ]);
+    await trackInvokes(page, ["delete_scenario"]);
     await page.getByRole("button", { name: "Regression" }).click();
 
-    await page.getByRole("button", { name: "Evaluate" }).click();
-
-    await expect(page.getByText("Missed assumptions section")).toBeVisible();
-    await expect(await getTrackedInvokeCount(page, "run_eval_workbench")).toBe(1);
-    const runCalls = await getTrackedInvokes(page, "run_eval_workbench");
-    expect(runCalls[0]?.args).toMatchObject({
-      request: {
-        candidateIds: ["current-skill"],
-      },
-    });
-
-    await page.getByRole("button", { name: "Send to Refine" }).click();
-
-    await expect(await getTrackedInvokeCount(page, "build_refine_improvement_brief")).toBe(1);
-    const refineCalls = await getTrackedInvokes(
-      page,
-      "build_refine_improvement_brief",
+    await expect(page.getByLabel("User prompt")).toHaveValue(PERFORMANCE_SCENARIO.prompt);
+    await expect(page.locator("textarea").nth(1)).toHaveValue(
+      "Explains the forecast assumptions.",
     );
-    expect(refineCalls[0]?.args).toMatchObject({
-      runId: "run-1",
+    await page.getByRole("button", { name: /delete scenario/i }).click();
+    await expect(await getTrackedInvokeCount(page, "delete_scenario")).toBe(1);
+    const deleteCalls = await getTrackedInvokes(page, "delete_scenario");
+    expect(deleteCalls[0]?.args).toMatchObject({
+      scenarioName: "Regression",
     });
   });
 });

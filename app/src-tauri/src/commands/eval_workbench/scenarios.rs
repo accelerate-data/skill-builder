@@ -9,15 +9,6 @@ pub enum ScenarioTag {
     Performance,
 }
 
-impl ScenarioTag {
-    pub fn matches_mode(&self, mode: crate::db::EvalWorkbenchMode) -> bool {
-        matches!(
-            (self, mode),
-            (Self::Performance, crate::db::EvalWorkbenchMode::Performance)
-        )
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scenario {
     pub id: String,
@@ -321,7 +312,6 @@ mod tests {
         scenario.tags = vec![ScenarioTag::Performance];
 
         validate_scenario(&scenario).unwrap();
-        assert!(scenario.tags[0].matches_mode(crate::db::EvalWorkbenchMode::Performance));
-        assert!(!scenario.tags[0].matches_mode(crate::db::EvalWorkbenchMode::Trigger));
+        assert_eq!(scenario.tags, vec![ScenarioTag::Performance]);
     }
 }

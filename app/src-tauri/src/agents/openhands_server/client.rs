@@ -254,7 +254,7 @@ mod tests {
 
     fn base_config(workspace_root_dir: &str, workspace_skill_dir: &str) -> SidecarConfig {
         SidecarConfig {
-            mode: Some("one-shot".to_string()),
+            mode: None,
             prompt: "Build the skill".to_string(),
             system_prompt: None,
             model: None,

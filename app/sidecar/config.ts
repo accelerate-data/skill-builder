@@ -15,7 +15,7 @@ export interface OpenHandsLlmConfig {
 }
 
 export interface SidecarConfig {
-  mode?: "one-shot" | "streaming";
+  mode?: "throwaway" | "streaming";
   prompt: string;
   systemPrompt?: string;
   taskKind?: string;
@@ -189,7 +189,7 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptString(c, "persistenceDir");
 
   // Optional enum fields
-  assertOptStringIn(c, "mode", ["one-shot", "streaming"]);
+  assertOptStringIn(c, "mode", ["throwaway", "streaming"]);
   assertOptStringIn(c, "permissionMode", ["default", "acceptEdits", "bypassPermissions", "plan"]);
   assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
   if (c.llm !== undefined) {

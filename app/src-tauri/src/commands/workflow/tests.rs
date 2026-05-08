@@ -303,7 +303,7 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(vec![
@@ -422,7 +422,7 @@ fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
         config.task_kind.as_deref(),
         Some("workflow.detailed_research")
     );
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(vec![
@@ -822,7 +822,7 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
         config.task_kind.as_deref(),
         Some("workflow.confirm_decisions")
     );
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(confirm_decisions_workflow_tools())
@@ -927,7 +927,7 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
         config.task_kind.as_deref(),
         Some("workflow.skill_generation")
     );
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(skill_generation_workflow_tools())
