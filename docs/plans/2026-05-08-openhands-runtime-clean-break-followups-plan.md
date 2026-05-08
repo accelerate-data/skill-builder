@@ -104,10 +104,9 @@ follow-up list for the independent-agent findings and simplifier review.
 - [x] Remove workflow-page lock ownership from
       `app/src/hooks/use-workflow-session.ts` so Workflow no longer acquires
       or releases locks independently of selected-skill lifecycle.
-- [ ] Add tests that prove:
-      - selecting a skill acquires the lock
-      - switching away releases the previous lock
-      - app shutdown releases the active lock
+- [x] Add tests that prove selecting a skill acquires the lock.
+- [x] Add tests that prove switching away releases the previous lock.
+- [ ] Add tests that prove app shutdown releases the active lock.
 
 ### B. Transcript / Event Replay On Refine Reopen
 
@@ -124,11 +123,11 @@ follow-up list for the independent-agent findings and simplifier review.
 - [x] Replay the setup/runtime row and the contextual dispatched task row when
       reopening Refine, so restored sessions visibly match the intended Refine
       transcript contract.
-- [ ] Add tests that prove:
-      - resumed Refine restores transcript/messages/events
-      - resumed Refine does not send a fresh bootstrap-style first turn
-      - transcript visibility matches the documented Refine-vs-Workflow
-        contract
+- [x] Add tests that prove resumed Refine restores transcript/messages/events.
+- [x] Add tests that prove resumed Refine does not send a fresh
+      bootstrap-style first turn.
+- [x] Add tests that prove transcript visibility matches the documented
+      Refine-vs-Workflow contract.
 
 ### C. Canonical Session Ownership And Bootstrap Cleanup
 
@@ -148,9 +147,8 @@ follow-up list for the independent-agent findings and simplifier review.
       - replaying restored transcript state
 - [x] Remove the duplicate bootstrap/hydration sequence currently present in
       `app/src/components/layout/app-layout.tsx`.
-- [ ] Simplify `app/src/pages/workflow.tsx` by removing the current fallback
-      merge/reconstruction logic for session restart once there is one
-      canonical selected-skill source of truth.
+- [x] Remove workflow-specific restart fallback logic so workflow restart
+      relies only on canonical selected-skill session ownership.
 
 ### D. Backend Runtime / Session Plumbing Cleanup
 
@@ -171,8 +169,6 @@ follow-up list for the independent-agent findings and simplifier review.
 - [x] Reset/redo now clear persisted conversation state and recreate a fresh
       selected-skill OpenHands session instead of trying to reuse the deleted
       conversation.
-- [ ] Remove special-case restart behavior that only exists because canonical
-      selection/session ownership is still split.
 - [ ] Strengthen reset/redo tests so they verify the real fresh-conversation
       restart contract end to end, not only helper invocation.
 
@@ -180,18 +176,20 @@ follow-up list for the independent-agent findings and simplifier review.
 
 - [ ] Add direct backend tests for
       `select_skill_openhands_session` in
-      `app/src-tauri/src/commands/skill_session.rs` covering:
-      - saved-conversation reuse
-      - stale-session eviction
-      - pause-time cleanup / session removal
-- [ ] Add direct backend tests for `pause_openhands_session` side effects in
-      the same module.
-- [ ] Replace or supplement current mocked helper assertions in:
+      `app/src-tauri/src/commands/skill_session.rs` covering
+      saved-conversation reuse.
+- [x] Add direct backend tests for stale-session eviction in
+      `app/src-tauri/src/commands/skill_session.rs`.
+- [x] Add direct backend tests for in-memory session-removal side effects in
+      `app/src-tauri/src/commands/skill_session.rs`.
+- [ ] Add direct command-level backend tests for `pause_openhands_session`
+      side effects in the same module.
+- [x] Replace or supplement current mocked helper assertions in:
       - `app/src/__tests__/pages/workflow.test.tsx`
       - `app/src/__tests__/components/skill-list-panel.test.tsx`
       so the real restart helper/store hydration behavior is verified.
-- [ ] Add backend or integration coverage for shutdown behavior after the
-      selected-skill lifecycle refactor.
+- [ ] Add coverage that app shutdown releases selected-skill lock/session
+      state, not just that `graceful_shutdown` is invoked.
 
 ### G. Repo Metadata / Docs Follow-Through
 
@@ -210,13 +208,13 @@ This todo explicitly covers all outstanding findings:
 
 - [x] prior skill lock not released on skill switch
 - [x] resumed Refine loses transcript / resets first-turn semantics
-- [ ] `skill_session` command layer lacks direct tests
 - [ ] reset/redo tests mock away the real restart contract
 - [x] documented Refine visibility / replay contract still unmet
 - [x] `repo-map.json` stale after structural/runtime changes
 - [x] duplicated frontend bootstrap logic
 - [x] split ownership between layout and Refine
-- [ ] awkward workflow restart fallback logic
+- [x] workflow restart now relies only on the canonical selected-skill
+      session owner
 - [x] duplicated backend refine-runtime setup plumbing
 
 Run:

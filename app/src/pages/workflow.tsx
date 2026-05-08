@@ -244,26 +244,7 @@ export default function WorkflowPage() {
 
   const restartSelectedSkillSession = useCallback(async () => {
     const restartSkill =
-      refineSelectedSkill?.name === skillName
-        ? refineSelectedSkill
-        : currentSkill
-          ? {
-              name: currentSkill.name,
-              plugin_slug: currentSkill.plugin_slug,
-              skill_source: currentSkill.skill_source ?? null,
-              purpose: currentSkill.purpose ?? null,
-              description: currentSkill.description ?? null,
-              tags: currentSkill.tags ?? [],
-              intake_json: currentSkill.intake_json ?? null,
-              version: currentSkill.version ?? null,
-              model: currentSkill.model ?? null,
-              argumentHint: currentSkill.argumentHint ?? null,
-              userInvocable: currentSkill.userInvocable ?? null,
-              disableModelInvocation: currentSkill.disableModelInvocation ?? null,
-              status: currentSkill.status ?? null,
-              current_step: currentSkill.current_step ?? null,
-            }
-          : null;
+      refineSelectedSkill?.name === skillName ? refineSelectedSkill : null;
 
     if (!workspacePath || !restartSkill) {
       throw new Error(
@@ -271,7 +252,7 @@ export default function WorkflowPage() {
       );
     }
     await restartSkillOpenHandsSession(restartSkill, workspacePath);
-  }, [currentSkill, refineSelectedSkill, skillName, workspacePath]);
+  }, [refineSelectedSkill, skillName, workspacePath]);
 
   // 4. State machine — step transitions, agent orchestration, gate evaluation
   const {
