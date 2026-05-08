@@ -927,6 +927,35 @@ pub fn pause_openhands_session(agent_id: &str) -> bool {
     sent
 }
 
+pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
+    let mut found = pause_openhands_session(agent_id);
+
+    if task_registry().contains_key(agent_id) {
+        found = true;
+    }
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        let task_present = task_registry().contains_key(agent_id);
+        let cancel_present = cancel_registry().contains_key(agent_id);
+        if !task_present && !cancel_present {
+            return found;
+        }
+
+        if Instant::now() >= deadline {
+            if let Some((_, handle)) = task_registry().remove(agent_id) {
+                handle.abort();
+                found = true;
+            }
+            unregister_cancel(agent_id);
+            unregister_task_handle(agent_id);
+            return found;
+        }
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
 pub async fn run_throwaway_openhands_session(
     app: &tauri::AppHandle,
     params: OpenHandsThrowawayRunParams,
@@ -2773,6 +2802,32 @@ mod tests {
 
         unregister_cancel(&agent_id);
         assert!(!pause_openhands_session(&agent_id));
+    }
+
+    #[tokio::test]
+    async fn terminate_openhands_session_forces_registry_cleanup_after_timeout() {
+        let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
+        let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+        register_cancel(&agent_id, cancel_tx).unwrap();
+
+        let handle = tokio::spawn(async move {
+            let _ = tokio::time::sleep(Duration::from_secs(30)).await;
+        });
+        register_task_handle(&agent_id, &handle);
+
+        assert!(
+            terminate_openhands_session(&agent_id, Duration::from_millis(10)).await,
+            "terminate should report that a live session was present"
+        );
+        assert!(cancel_rx.try_recv().is_ok(), "cancel signal should be sent");
+        assert!(
+            !cancel_registry().contains_key(&agent_id),
+            "cancel registry entry should be removed"
+        );
+        assert!(
+            !task_registry().contains_key(&agent_id),
+            "task registry entry should be removed"
+        );
     }
 
     #[test]

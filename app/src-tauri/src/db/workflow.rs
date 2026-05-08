@@ -217,6 +217,13 @@ pub fn delete_workflow_run(
     )
     .map_err(|e| e.to_string())?;
 
+    // Preserve historical usage/session records when the canonical skills row is removed.
+    conn.execute(
+        "UPDATE workflow_sessions SET skill_id = NULL WHERE skill_id = ?1",
+        rusqlite::params![s_id],
+    )
+    .map_err(|e| e.to_string())?;
+
     conn.execute(
         "DELETE FROM workflow_runs WHERE skill_name = ?1",
         [skill_name],
@@ -340,6 +347,21 @@ pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Stri
         .execute(
             "UPDATE workflow_sessions SET ended_at = datetime('now') || 'Z' WHERE pid = ?1 AND ended_at IS NULL",
             rusqlite::params![pid as i64],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count as u32)
+}
+
+pub fn end_active_workflow_sessions_for_skill(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<u32, String> {
+    let count = conn
+        .execute(
+            "UPDATE workflow_sessions
+             SET ended_at = datetime('now') || 'Z'
+             WHERE skill_name = ?1 AND ended_at IS NULL",
+            rusqlite::params![skill_name],
         )
         .map_err(|e| e.to_string())?;
     Ok(count as u32)

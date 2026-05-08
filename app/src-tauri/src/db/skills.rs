@@ -232,9 +232,19 @@ pub fn save_skill_conversation_id(
     conversation_id: &str,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO skill_conversations (plugin_slug, skill_name, conversation_id, updated_at)
-         VALUES (?1, ?2, ?3, datetime('now') || 'Z')
+        "INSERT INTO skill_conversations (skill_id, plugin_slug, skill_name, conversation_id, updated_at)
+         VALUES (
+             (
+                 SELECT s.id
+                 FROM skills s
+                 JOIN plugins p ON p.id = s.plugin_id
+                 WHERE p.slug = ?1 AND s.name = ?2
+                 LIMIT 1
+             ),
+             ?1, ?2, ?3, datetime('now') || 'Z'
+         )
          ON CONFLICT(plugin_slug, skill_name) DO UPDATE SET
+             skill_id = excluded.skill_id,
              conversation_id = excluded.conversation_id,
              updated_at = excluded.updated_at",
         rusqlite::params![plugin_slug, skill_name, conversation_id],
@@ -507,12 +517,7 @@ pub fn delete_skill_in_plugin(
 ) -> Result<(), String> {
     log::info!("delete_skill: name={}", name);
     conn.execute(
-        "UPDATE skills
-         SET deleted_at = CASE
-               WHEN deleted_at IS NULL OR deleted_at = '' THEN datetime('now') || 'Z'
-               ELSE deleted_at
-             END,
-             updated_at = datetime('now')
+        "DELETE FROM skills
          WHERE name = ?1
            AND plugin_id = COALESCE((SELECT id FROM plugins WHERE slug = ?2), -1)",
         rusqlite::params![name, plugin_slug],

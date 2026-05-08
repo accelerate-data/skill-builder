@@ -1,3 +1,5 @@
+use crate::commands::refine::RefineSessionManager;
+use crate::commands::workflow::runtime::WorkflowStepRunManager;
 use crate::db::Db;
 use crate::skill_paths::{
     ensure_nested_skill_dir, resolve_existing_skill_dir, resolve_existing_workspace_skill_dir,
@@ -6,6 +8,7 @@ use crate::skill_paths::{
 use crate::types::SkillSummary;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 #[tauri::command]
 pub fn list_skills(
@@ -231,13 +234,18 @@ pub fn create_skill(
     let author_login = settings.as_ref().and_then(|s| s.github_user_login.clone());
     let author_avatar = settings.as_ref().and_then(|s| s.github_user_avatar.clone());
 
-    create_skill_filesystem_inner(&workspace_path, &name, skills_path.as_deref())?;
-
     {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[create_skill] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
+        let overwrite_orphaned = should_overwrite_orphaned_skill_dirs(Some(&conn), &name)?;
+        create_skill_filesystem_inner_with_policy(
+            &workspace_path,
+            &name,
+            skills_path.as_deref(),
+            overwrite_orphaned,
+        )?;
         create_skill_db_records_inner(
             &conn,
             &name,
@@ -279,7 +287,13 @@ pub(crate) fn create_skill_inner(
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)?;
-    create_skill_filesystem_inner(workspace_path, name, skills_path)?;
+    let overwrite_orphaned = should_overwrite_orphaned_skill_dirs(conn, name)?;
+    create_skill_filesystem_inner_with_policy(
+        workspace_path,
+        name,
+        skills_path,
+        overwrite_orphaned,
+    )?;
     if let Some(conn) = conn {
         create_skill_db_records_inner(
             conn,
@@ -301,10 +315,20 @@ pub(crate) fn create_skill_inner(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub(crate) fn create_skill_filesystem_inner(
     workspace_path: &str,
     name: &str,
     skills_path: Option<&str>,
+) -> Result<(), String> {
+    create_skill_filesystem_inner_with_policy(workspace_path, name, skills_path, false)
+}
+
+fn create_skill_filesystem_inner_with_policy(
+    workspace_path: &str,
+    name: &str,
+    skills_path: Option<&str>,
+    overwrite_orphaned: bool,
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)
         .map_err(|_| "Invalid skill path: path traversal not allowed".to_string())?;
@@ -314,11 +338,25 @@ pub(crate) fn create_skill_filesystem_inner(
     let workspace_skill_dir =
         crate::skill_paths::workspace_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
     if workspace_skill_dir.exists() {
-        return Err(format!(
-            "Skill '{}' already exists in workspace directory ({})",
-            name,
-            workspace_skill_dir.display()
-        ));
+        if overwrite_orphaned {
+            fs::remove_dir_all(&workspace_skill_dir).map_err(|e| {
+                format!(
+                    "Failed to remove stale workspace directory for '{}': {}",
+                    name, e
+                )
+            })?;
+            log::warn!(
+                "[create_skill] removed stale workspace dir before recreate skill={} path={}",
+                name,
+                workspace_skill_dir.display()
+            );
+        } else {
+            return Err(format!(
+                "Skill '{}' already exists in workspace directory ({})",
+                name,
+                workspace_skill_dir.display()
+            ));
+        }
     }
 
     // Check for collision in skills_path (skill output directory).
@@ -327,11 +365,25 @@ pub(crate) fn create_skill_filesystem_inner(
         let skill_output =
             crate::skill_paths::resolve_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
         if skill_output.exists() {
-            return Err(format!(
-                "Skill '{}' already exists in skills output directory ({})",
-                name,
-                skill_output.display()
-            ));
+            if overwrite_orphaned {
+                fs::remove_dir_all(&skill_output).map_err(|e| {
+                    format!(
+                        "Failed to remove stale skills output directory for '{}': {}",
+                        name, e
+                    )
+                })?;
+                log::warn!(
+                    "[create_skill] removed stale output dir before recreate skill={} path={}",
+                    name,
+                    skill_output.display()
+                );
+            } else {
+                return Err(format!(
+                    "Skill '{}' already exists in skills output directory ({})",
+                    name,
+                    skill_output.display()
+                ));
+            }
         }
     }
 
@@ -345,6 +397,16 @@ pub(crate) fn create_skill_filesystem_inner(
     }
 
     Ok(())
+}
+
+fn should_overwrite_orphaned_skill_dirs(
+    conn: Option<&rusqlite::Connection>,
+    name: &str,
+) -> Result<bool, String> {
+    let Some(conn) = conn else {
+        return Ok(false);
+    };
+    Ok(crate::db::get_skill_master_any_plugin(conn, name)?.is_none())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -468,10 +530,12 @@ fn post_create_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plu
 }
 
 #[tauri::command]
-pub fn delete_skill(
+pub async fn delete_skill(
     workspace_path: String,
     name: String,
     db: tauri::State<'_, Db>,
+    workflow_runs: tauri::State<'_, WorkflowStepRunManager>,
+    refine_sessions: tauri::State<'_, RefineSessionManager>,
 ) -> Result<(), String> {
     log::info!("[delete_skill] name={}", name);
     let (skills_path, plugin_slug) = {
@@ -493,6 +557,46 @@ pub fn delete_skill(
     if skills_path.is_none() {
         log::warn!(
             "[delete_skill] skills_path not configured; skipping filesystem cleanup for '{}'",
+            name
+        );
+    }
+
+    let shutdown_plan = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!(
+                "[delete_skill] Failed to acquire DB lock during runtime shutdown: {}",
+                e
+            );
+            e.to_string()
+        })?;
+        prepare_skill_runtime_shutdown_inner(
+            &conn,
+            &name,
+            &plugin_slug,
+            &workflow_runs,
+            &refine_sessions,
+        )?
+    };
+
+    for agent_id in &shutdown_plan.agent_ids {
+        let stopped = crate::agents::openhands_server::terminate_openhands_session(
+            agent_id,
+            Duration::from_secs(2),
+        )
+        .await;
+        log::info!(
+            "[delete_skill] quiesce runtime skill={} agent={} stopped={} ended_workflow_sessions={}",
+            name,
+            agent_id,
+            stopped,
+            shutdown_plan.ended_workflow_sessions
+        );
+    }
+
+    if shutdown_plan.agent_ids.is_empty() && shutdown_plan.ended_workflow_sessions > 0 {
+        log::info!(
+            "[delete_skill] ended {} active workflow session(s) for skill={} before deletion",
+            shutdown_plan.ended_workflow_sessions,
             name
         );
     }
@@ -607,6 +711,58 @@ fn post_delete_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plu
             );
         }
     }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct SkillRuntimeShutdownPlan {
+    pub agent_ids: Vec<String>,
+    pub ended_workflow_sessions: u32,
+}
+
+pub(crate) fn prepare_skill_runtime_shutdown_inner(
+    conn: &rusqlite::Connection,
+    name: &str,
+    plugin_slug: &str,
+    workflow_runs: &WorkflowStepRunManager,
+    refine_sessions: &RefineSessionManager,
+) -> Result<SkillRuntimeShutdownPlan, String> {
+    let mut agent_ids = Vec::new();
+
+    {
+        let mut map = workflow_runs.0.lock().map_err(|e| e.to_string())?;
+        let stale_runs: Vec<String> = map
+            .iter()
+            .filter(|(_, run)| run.skill_name == name)
+            .map(|(agent_id, _)| agent_id.clone())
+            .collect();
+        for agent_id in &stale_runs {
+            map.remove(agent_id);
+        }
+        agent_ids.extend(stale_runs);
+    }
+
+    {
+        let mut map = refine_sessions.0.lock().map_err(|e| e.to_string())?;
+        let stale_sessions: Vec<String> = map
+            .iter()
+            .filter(|(_, session)| session.skill_name == name && session.plugin_slug == plugin_slug)
+            .map(|(session_key, _)| session_key.clone())
+            .collect();
+        for session_key in stale_sessions {
+            if let Some(session) = map.remove(&session_key) {
+                if let Some(agent_id) = session.current_agent_id {
+                    agent_ids.push(agent_id);
+                }
+            }
+        }
+    }
+
+    let ended_workflow_sessions = crate::db::end_active_workflow_sessions_for_skill(conn, name)?;
+
+    Ok(SkillRuntimeShutdownPlan {
+        agent_ids,
+        ended_workflow_sessions,
+    })
 }
 
 pub(crate) fn delete_skill_db_records_inner(

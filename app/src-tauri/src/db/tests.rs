@@ -73,6 +73,93 @@ fn test_migration_is_idempotent() {
 }
 
 #[test]
+fn test_skill_hard_delete_cleanup_migration_purges_soft_deleted_rows() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    conn.pragma_update(None, "foreign_keys", false).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 49 {
+            break;
+        }
+        migrate_fn(&conn).unwrap();
+        mark_migration_applied(&conn, version).unwrap();
+    }
+    repair_skills_table_schema(&conn).unwrap();
+    run_marketplace_source_url_migration(&conn).unwrap();
+    repair_plugin_ownership_schema(&conn).unwrap();
+    conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+    let plugin_id = ensure_default_plugin(&conn).unwrap();
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, plugin_id, purpose, deleted_at)
+         VALUES ('old-soft-skill', 'skill-builder', ?1, 'domain', datetime('now') || 'Z')",
+        rusqlite::params![plugin_id],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO skill_conversations (plugin_slug, skill_name, conversation_id)
+         VALUES (?1, ?2, ?3)",
+        rusqlite::params![
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            "old-soft-skill",
+            "conv-old"
+        ],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO clarifications (skill_id, version, title, created_at, updated_at)
+         VALUES (?1, '1', 'Old', 1, 1)",
+        rusqlite::params!["old-soft-skill"],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO decisions (skill_id, version, created_at, updated_at)
+         VALUES (?1, '1', 1, 1)",
+        rusqlite::params!["old-soft-skill"],
+    )
+    .unwrap();
+
+    run_skill_hard_delete_cleanup_migration(&conn).unwrap();
+
+    let skill_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'old-soft-skill'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(skill_count, 0, "soft-deleted skills should be purged");
+
+    let conversation_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM skill_conversations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        conversation_count, 0,
+        "stale skill_conversations should be purged"
+    );
+
+    let clarifications_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM clarifications", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        clarifications_count, 0,
+        "stale clarifications should be purged"
+    );
+
+    let decisions_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM decisions", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(decisions_count, 0, "stale decisions should be purged");
+
+    assert!(table_has_column(&conn, "skill_conversations", "skill_id").unwrap());
+    assert!(table_has_column(&conn, "clarifications", "skill_master_id").unwrap());
+    assert!(table_has_column(&conn, "decisions", "skill_master_id").unwrap());
+}
+
+#[test]
 fn test_openhands_settings_migration_does_not_backfill_legacy_model() {
     // Migration 43 is a no-op reserved slot. Verify that legacy JSON blobs with
     // anthropic_api_key / preferred_model are silently dropped and model_settings
@@ -156,7 +243,7 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
     for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
         if version == 38 {
             super::mark_migration_applied(&conn, version).unwrap();
-            continue;
+            break;
         }
         migrate_fn(&conn).unwrap();
         super::mark_migration_applied(&conn, version).unwrap();
@@ -618,14 +705,12 @@ fn test_list_all_skills_returns_ordered_by_name() {
 }
 
 #[test]
-fn test_delete_skill_soft_deletes_from_master() {
+fn test_delete_skill_hard_deletes_from_master() {
     let conn = create_test_db();
     upsert_skill(&conn, "to-delete", "marketplace", "domain").unwrap();
     assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_some());
 
     delete_skill(&conn, "to-delete").unwrap();
-    // Row remains for historical joins but is hidden from active skill lists.
-    // get_skill_master_id now filters deleted rows, so verify existence via raw SQL.
     let row_exists: bool = conn
         .query_row(
             "SELECT COUNT(*) > 0 FROM skills WHERE name = 'to-delete'",
@@ -634,20 +719,11 @@ fn test_delete_skill_soft_deletes_from_master() {
         )
         .unwrap();
     assert!(
-        row_exists,
-        "soft-deleted row should still exist in the table"
+        !row_exists,
+        "deleted row should be removed from the skills table"
     );
     let listed = list_all_skills(&conn).unwrap();
     assert!(!listed.iter().any(|s| s.name == "to-delete"));
-
-    let deleted_at: Option<String> = conn
-        .query_row(
-            "SELECT deleted_at FROM skills WHERE name = 'to-delete'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert!(deleted_at.is_some());
 }
 
 #[test]
@@ -743,16 +819,15 @@ fn test_redo_workflow_moves_non_default_plugin_skill_to_default_plugin() {
 }
 
 #[test]
-fn test_delete_workflow_run_soft_deletes_skills_master() {
+fn test_delete_workflow_run_hard_deletes_skills_master() {
     let conn = create_test_db();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
     assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
 
     delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
-    // Workflow state is removed while the skills master row is soft-deleted.
+    // Workflow state is removed and the canonical skills row is deleted.
     assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
-    // get_skill_master_id now filters deleted rows; verify existence via raw SQL.
     let row_exists: bool = conn
         .query_row(
             "SELECT COUNT(*) > 0 FROM skills WHERE name = 'my-skill'",
@@ -761,8 +836,8 @@ fn test_delete_workflow_run_soft_deletes_skills_master() {
         )
         .unwrap();
     assert!(
-        row_exists,
-        "soft-deleted row should still exist in the table"
+        !row_exists,
+        "delete_workflow_run should remove the skills row"
     );
     let listed = list_all_skills(&conn).unwrap();
     assert!(!listed.iter().any(|s| s.name == "my-skill"));
@@ -2579,6 +2654,45 @@ fn test_end_all_sessions_for_pid() {
 }
 
 #[test]
+fn test_end_active_workflow_sessions_for_skill() {
+    let conn = create_test_db();
+    create_workflow_session(&conn, "sess-1", "skill-a", 100).unwrap();
+    create_workflow_session(&conn, "sess-2", "skill-a", 200).unwrap();
+    create_workflow_session(&conn, "sess-3", "skill-b", 100).unwrap();
+    end_workflow_session(&conn, "sess-2").unwrap();
+
+    let count = end_active_workflow_sessions_for_skill(&conn, "skill-a").unwrap();
+    assert_eq!(count, 1);
+
+    let ended_a1: Option<String> = conn
+        .query_row(
+            "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(ended_a1.is_some());
+
+    let ended_a2: Option<String> = conn
+        .query_row(
+            "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-2'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(ended_a2.is_some());
+
+    let ended_b: Option<String> = conn
+        .query_row(
+            "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-3'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(ended_b.is_none());
+}
+
+#[test]
 fn test_reconcile_orphaned_sessions_dead_pid() {
     let conn = create_test_db();
     // PID 99999999 is dead
@@ -2627,7 +2741,7 @@ fn test_delete_workflow_run_non_default_plugin() {
 
     // Workflow run should be gone
     assert!(get_workflow_run(&conn, "mkt-skill-del").unwrap().is_none());
-    // Skill master row should be soft-deleted
+    // Skill master row should be removed
     let row_exists: bool = conn
         .query_row(
             "SELECT COUNT(*) > 0 FROM skills WHERE name = 'mkt-skill-del'",
@@ -2636,14 +2750,11 @@ fn test_delete_workflow_run_non_default_plugin() {
         )
         .unwrap();
     assert!(
-        row_exists,
-        "soft-deleted row should still exist in the table"
+        !row_exists,
+        "delete_workflow_run should remove the skills row"
     );
     let listed = list_all_skills(&conn).unwrap();
-    assert!(
-        !listed.iter().any(|s| s.name == "mkt-skill-del"),
-        "soft-deleted skill should not appear in active list"
-    );
+    assert!(!listed.iter().any(|s| s.name == "mkt-skill-del"));
 }
 
 #[test]
@@ -4244,9 +4355,9 @@ fn test_workflow_runs_has_no_metadata_columns() {
     }
 }
 
-/// VU-984: soft-deleted skills must not appear in imported skills listing.
+/// Imported listings must reflect hard deletion from the canonical skills table.
 #[test]
-fn test_list_imported_skills_excludes_soft_deleted() {
+fn test_list_imported_skills_excludes_deleted_skills() {
     let conn = create_test_db();
     ensure_plugin(
         &conn,
@@ -4283,25 +4394,25 @@ fn test_list_imported_skills_excludes_soft_deleted() {
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
 
-    // Before soft-delete: skill appears in listing
+    // Before delete: skill appears in listing
     let before = list_imported_skills_filtered(&conn, None).unwrap();
-    assert_eq!(before.len(), 1, "skill should appear before soft-delete");
+    assert_eq!(before.len(), 1, "skill should appear before delete");
 
-    // Soft-delete the skills master row
+    // Delete the canonical skills row
     delete_skill_in_plugin(&conn, "soft-del-skill", "mkt-plugin").unwrap();
 
-    // After soft-delete: skill must NOT appear in listing
+    // After delete: skill must NOT appear in listing
     let after = list_imported_skills_filtered(&conn, None).unwrap();
     assert!(
         after.is_empty(),
-        "soft-deleted skill must not appear in imported skills listing"
+        "deleted skill must not appear in imported skills listing"
     );
 
     // Also verify get_imported_skill_by_id excludes it
     let by_id = get_imported_skill_by_id(&conn, "mkt-soft-del").unwrap();
     assert!(
         by_id.is_none(),
-        "soft-deleted skill must not be returned by get_imported_skill_by_id"
+        "deleted skill must not be returned by get_imported_skill_by_id"
     );
 }
 
@@ -4334,6 +4445,16 @@ fn test_acquire_lock_works_for_marketplace_skill() {
 #[test]
 fn test_skill_conversation_round_trip_by_plugin_and_skill() {
     let conn = create_test_db();
+    upsert_skill(&conn, "analyzing-bookings", "skill-builder", "domain").unwrap();
+    ensure_plugin(&conn, "skills", "Skills", "synthetic", None, None, false).unwrap();
+    upsert_skill_in_plugin(
+        &conn,
+        "analyzing-bookings",
+        "skill-builder",
+        "domain",
+        "skills",
+    )
+    .unwrap();
 
     save_skill_conversation_id(&conn, "default", "analyzing-bookings", "conv-123").unwrap();
     assert_eq!(

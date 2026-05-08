@@ -677,48 +677,7 @@ pub fn reconcile_on_startup(
                 .exists()
         };
 
-        // Pass A: restore incorrectly soft-deleted skills that have a dir
-        {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT s.name, p.slug \
-                     FROM skills s JOIN plugins p ON s.plugin_id = p.id \
-                     WHERE COALESCE(s.deleted_at, '') != ''",
-                )
-                .map_err(|e| e.to_string())?;
-            let soft_deleted: Vec<(String, String)> = stmt
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-                .map_err(|e| e.to_string())?
-                .filter_map(|r| r.ok())
-                .collect();
-            for (name, plugin_slug) in &soft_deleted {
-                if skill_dir_exists(plugin_slug, name) {
-                    log::info!(
-                        "[reconcile] restoring '{}' in plugin '{}': directory found in skills_path",
-                        name,
-                        plugin_slug
-                    );
-                    // Use NULL (not '') so all active-check idioms agree.
-                    // Scope by plugin_id to avoid touching same-named skills in other plugins.
-                    if let Err(e) = conn.execute(
-                        "UPDATE skills \
-                         SET deleted_at = NULL, updated_at = datetime('now') \
-                         WHERE name = ?1 \
-                           AND plugin_id = (SELECT id FROM plugins WHERE slug = ?2 LIMIT 1)",
-                        rusqlite::params![name, plugin_slug],
-                    ) {
-                        log::warn!("[reconcile] failed to restore '{}': {}", name, e);
-                    } else {
-                        phase_notifs.push(format!(
-                            "'{}' restored — directory found in skills_path",
-                            name
-                        ));
-                    }
-                }
-            }
-        }
-
-        // Pass B: soft-delete active skills (builder or imported) with no directory in skills_path.
+        // Pass A: hard-delete active skills (builder or imported) with no directory in skills_path.
         // Skip in-progress skill-builder skills — they don't have a skills_path dir until
         // the workflow completes and deploys SKILL.md.
         let all_active = crate::db::list_all_skills(conn)?;
@@ -737,20 +696,15 @@ pub fn reconcile_on_startup(
                 }
             }
             log::info!(
-                "[reconcile] soft-deleting '{}' in plugin '{}': no directory in skills_path",
+                "[reconcile] deleting '{}' in plugin '{}': no directory in skills_path",
                 skill.name,
                 skill.plugin_slug
             );
-            // Scope by plugin_id to avoid touching same-named skills in other plugins.
             if let Err(e) = conn.execute(
-                "UPDATE skills \
-                 SET deleted_at = datetime('now') || 'Z', updated_at = datetime('now') \
-                 WHERE name = ?1 \
-                   AND plugin_id = (SELECT id FROM plugins WHERE slug = ?2 LIMIT 1) \
-                   AND COALESCE(deleted_at, '') = ''",
-                rusqlite::params![&skill.name, &skill.plugin_slug],
+                "DELETE FROM skills WHERE id = ?1",
+                rusqlite::params![skill.id],
             ) {
-                log::warn!("[reconcile] failed to soft-delete '{}': {}", skill.name, e);
+                log::warn!("[reconcile] failed to delete '{}': {}", skill.name, e);
             } else {
                 phase_notifs.push(format!(
                     "'{}' removed — no directory found in skills_path",
