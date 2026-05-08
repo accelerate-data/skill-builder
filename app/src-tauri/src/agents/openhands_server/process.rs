@@ -1,14 +1,17 @@
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
+use std::{collections::VecDeque};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::Mutex as AsyncMutex;
 
 pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.19.1";
 pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
 const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
+const STDERR_TAIL_MAX_LINES: usize = 200;
 
 /// Path to the uv binary bundled with the app, if present.
 /// `None` (outer) means not yet initialized.
@@ -61,6 +64,7 @@ pub struct OpenHandsAgentServerHandle {
     pub port: u16,
     pub session_api_key: String,
     pub conversations_path: String,
+    pub stderr_tail: Arc<AsyncMutex<VecDeque<String>>>,
 }
 
 impl OpenHandsAgentServerHandle {
@@ -143,6 +147,7 @@ pub struct OpenHandsAgentServerProcess {
     pub port: u16,
     pub session_api_key: String,
     pub _command: OpenHandsServerCommand,
+    stderr_tail: Arc<AsyncMutex<VecDeque<String>>>,
     _runtime_dir: tempfile::TempDir,
     _child: tokio::process::Child,
 }
@@ -199,11 +204,12 @@ pub async fn ensure_agent_server(
     }
 
     let process = OpenHandsAgentServerProcess::start(timeout, runtime_run_dir).await?;
-    let handle = OpenHandsAgentServerHandle {
-        port: process.port,
-        session_api_key: process.session_api_key.clone(),
-        conversations_path,
-    };
+        let handle = OpenHandsAgentServerHandle {
+            port: process.port,
+            session_api_key: process.session_api_key.clone(),
+            conversations_path,
+            stderr_tail: Arc::clone(&process.stderr_tail),
+        };
     *registry = Some(ManagedOpenHandsAgentServer {
         handle: handle.clone(),
         process,
@@ -260,18 +266,24 @@ impl OpenHandsAgentServerProcess {
             conversations_path_str
         );
         let stderr_secrets = vec![session_api_key.clone()];
+        let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(
+            STDERR_TAIL_MAX_LINES,
+        )));
         let mut child = tokio_command
             .spawn()
             .map_err(|e| format!("Failed to spawn OpenHands Agent Server: {e}"))?;
         if let Some(stderr) = child.stderr.take() {
+            let stderr_tail_for_task = Arc::clone(&stderr_tail);
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 loop {
                     match lines.next_line().await {
                         Ok(Some(line)) if !line.trim().is_empty() => {
+                            let redacted = redact_stderr(&line, &stderr_secrets);
+                            push_stderr_tail_line(&stderr_tail_for_task, &redacted).await;
                             log::debug!(
                                 "[openhands-agent-server] {}",
-                                redact_stderr(&line, &stderr_secrets)
+                                redacted
                             );
                         }
                         Ok(Some(_)) => {}
@@ -288,6 +300,7 @@ impl OpenHandsAgentServerProcess {
             port,
             session_api_key,
             _command: command,
+            stderr_tail,
             _runtime_dir: runtime_dir,
             _child: child,
         };
@@ -328,6 +341,63 @@ impl OpenHandsAgentServerProcess {
             .await
             .map_err(|e| format!("Failed to wait for OpenHands Agent Server shutdown: {e}"))?;
         Ok(())
+    }
+}
+
+async fn push_stderr_tail_line(buffer: &Arc<AsyncMutex<VecDeque<String>>>, line: &str) {
+    let mut guard = buffer.lock().await;
+    if guard.len() == STDERR_TAIL_MAX_LINES {
+        guard.pop_front();
+    }
+    guard.push_back(line.to_string());
+}
+
+pub async fn stderr_tail_snapshot(buffer: &Arc<AsyncMutex<VecDeque<String>>>) -> Vec<String> {
+    buffer.lock().await.iter().cloned().collect()
+}
+
+pub fn extract_terminal_error_from_stderr(lines: &[String]) -> Option<String> {
+    if lines.is_empty() {
+        return None;
+    }
+
+    let joined = lines
+        .iter()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let collapsed = joined.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    if collapsed.is_empty() {
+        return None;
+    }
+
+    extract_from_joined_stderr(&collapsed, "OpenAIException - ")
+        .or_else(|| extract_from_joined_stderr(&collapsed, "Error from provider "))
+        .or_else(|| extract_from_joined_stderr(&collapsed, "ConversationRunError: "))
+}
+
+fn extract_from_joined_stderr(collapsed: &str, marker: &str) -> Option<String> {
+    let start = collapsed.find(marker)?;
+    let tail = &collapsed[start..];
+    let end_markers = [
+        " Conversation logs are stored at:",
+        " To help debug this issue,",
+        " [05/",
+        " ╭",
+        " ╰",
+    ];
+    let end = end_markers
+        .iter()
+        .filter_map(|marker| tail.find(marker))
+        .min()
+        .unwrap_or(tail.len());
+    let candidate = tail[..end].trim();
+    if candidate.is_empty() {
+        None
+    } else {
+        Some(candidate.to_string())
     }
 }
 
@@ -432,6 +502,24 @@ mod tests {
         assert_eq!(
             redacted,
             "failed with [REDACTED] and [REDACTED]; [REDACTED] again"
+        );
+    }
+
+    #[test]
+    fn extract_terminal_error_from_stderr_recovers_wrapped_openai_exception() {
+        let lines = vec![
+            "ConversationRunError:".to_string(),
+            "Conversation run failed for id=abc123:".to_string(),
+            "litellm.AuthenticationError:".to_string(),
+            "AuthenticationError:".to_string(),
+            "OpenAIException - Model".to_string(),
+            "glm-5-free not supported".to_string(),
+            "Conversation logs are stored at:".to_string(),
+        ];
+
+        assert_eq!(
+            extract_terminal_error_from_stderr(&lines).as_deref(),
+            Some("OpenAIException - Model glm-5-free not supported")
         );
     }
 

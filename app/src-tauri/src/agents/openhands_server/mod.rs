@@ -20,7 +20,7 @@ pub use types::{OpenHandsRuntimeRequest, StartConversationRequest};
 
 use self::client::OpenHandsServerClient;
 use self::events::normalize_server_event;
-use self::process::ensure_agent_server;
+use self::process::{ensure_agent_server, extract_terminal_error_from_stderr, stderr_tail_snapshot};
 use crate::agents::sidecar::SidecarConfig;
 use crate::db::Db;
 use std::collections::{HashMap, HashSet};
@@ -201,6 +201,7 @@ struct OpenHandsConversationTask {
     websocket_url: String,
     session_api_key: String,
     summary_context: OpenHandsRunSummaryContext,
+    stderr_tail: Arc<tokio::sync::Mutex<std::collections::VecDeque<String>>>,
     /// Event recovery mode for frames that may be persisted before the
     /// WebSocket subscriber starts consuming. Some turns need full history
     /// backfill (prepared blank sends), while others need only the delta after
@@ -1126,6 +1127,7 @@ async fn dispatch_openhands_turn_with_request(
             websocket_url,
             session_api_key,
             summary_context,
+            stderr_tail: server.stderr_tail.clone(),
             event_recovery,
         };
         let result = run_conversation_task(task, cancel_rx).await;
@@ -1288,6 +1290,7 @@ async fn run_conversation_task_inner(
             websocket_url: task.websocket_url.clone(),
             session_api_key: task.session_api_key.clone(),
             summary_context: task.summary_context.clone(),
+            stderr_tail: task.stderr_tail.clone(),
             event_recovery: EventRecoveryMode::None,
         };
         Some(tokio::spawn(async move {
@@ -1393,7 +1396,7 @@ async fn run_conversation_task_inner(
         }
     }
 
-    let terminal_state = match terminal_state {
+    let mut terminal_state = match terminal_state {
         Some(state) if terminal_state_needs_final_response(&state) => {
             match fetch_final_response_state(
                 &task.client,
@@ -1415,6 +1418,8 @@ async fn run_conversation_task_inner(
         None if cancel_pending => build_cancelled_state(&task.agent_id, &task.conversation_id),
         None => recover_terminal_state_after_socket_failure(task, socket_error.as_deref()).await,
     };
+
+    enrich_terminal_state_error_detail(&mut terminal_state, &task.stderr_tail).await;
 
     let terminal_error = if terminal_state
         .get("status")
@@ -1455,6 +1460,34 @@ async fn run_conversation_task_inner(
         terminal_error,
     );
     Ok(())
+}
+
+async fn enrich_terminal_state_error_detail(
+    terminal_state: &mut serde_json::Value,
+    stderr_tail: &Arc<tokio::sync::Mutex<std::collections::VecDeque<String>>>,
+) {
+    let status = terminal_state
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    if status == "completed" || status == "cancelled" || status == "canceled" {
+        return;
+    }
+    let existing = terminal_state
+        .get("error_detail")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|detail| !detail.is_empty());
+    if existing.is_some() {
+        return;
+    }
+    let stderr_lines = stderr_tail_snapshot(stderr_tail).await;
+    let Some(detail) = extract_terminal_error_from_stderr(&stderr_lines) else {
+        return;
+    };
+    if let Some(object) = terminal_state.as_object_mut() {
+        object.insert("error_detail".to_string(), serde_json::Value::String(detail));
+    }
 }
 
 async fn recover_terminal_state_after_socket_failure(
@@ -1971,6 +2004,33 @@ mod tests {
         assert_eq!(recovered["status"], "completed");
         assert_eq!(recovered["agent_id"], "agent-1");
         assert_eq!(recovered["conversation_id"], "conversation-1");
+    }
+
+    #[tokio::test]
+    async fn generic_terminal_error_is_enriched_from_agent_server_stderr() {
+        let stderr_tail = Arc::new(tokio::sync::Mutex::new(
+            std::collections::VecDeque::from(vec![
+                "ConversationRunError:".to_string(),
+                "Conversation run failed for id=abc123:".to_string(),
+                "OpenAIException - Model".to_string(),
+                "glm-5-free not supported".to_string(),
+                "Conversation logs are stored at:".to_string(),
+            ]),
+        ));
+        let mut state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "error",
+            "error_detail": null,
+            "result_text": null,
+            "structured_output": null
+        });
+
+        enrich_terminal_state_error_detail(&mut state, &stderr_tail).await;
+
+        assert_eq!(
+            state.get("error_detail").and_then(|v| v.as_str()),
+            Some("OpenAIException - Model glm-5-free not supported")
+        );
     }
 
     #[test]
