@@ -63,18 +63,12 @@ fn resolve_path_template(template: &str, vars: &[(&str, &str)]) -> PathBuf {
     PathBuf::from(resolved)
 }
 
-pub fn skill_tag_prefix(plugin_slug: &str, skill_name: &str) -> String {
-    resolve_template(
-        &paths().tag_prefix,
-        &[("plugin_slug", plugin_slug), ("skill_name", skill_name)],
-    )
+pub fn skill_tag_prefix(_plugin_slug: &str, _skill_name: &str) -> String {
+    paths().tag_prefix.clone()
 }
 
-pub fn skill_tag_glob(plugin_slug: &str, skill_name: &str) -> String {
-    resolve_template(
-        &paths().tag_glob,
-        &[("plugin_slug", plugin_slug), ("skill_name", skill_name)],
-    )
+pub fn skill_tag_glob(_plugin_slug: &str, _skill_name: &str) -> String {
+    paths().tag_glob.clone()
 }
 
 // --- Skill location types ---
@@ -453,25 +447,19 @@ mod tag_format_tests {
     use super::*;
 
     #[test]
-    fn skill_tag_prefix_includes_plugin_skills_path() {
-        assert_eq!(
-            skill_tag_prefix("my-plugin", "my-skill"),
-            "my-plugin/skills/my-skill/v"
-        );
+    fn skill_tag_prefix_is_plain_v() {
+        assert_eq!(skill_tag_prefix("my-plugin", "my-skill"), "v");
     }
 
     #[test]
-    fn skill_tag_glob_includes_plugin_skills_path() {
-        assert_eq!(
-            skill_tag_glob("any-plugin", "any-skill"),
-            "any-plugin/skills/any-skill/*"
-        );
+    fn skill_tag_glob_is_plain_v_star() {
+        assert_eq!(skill_tag_glob("any-plugin", "any-skill"), "v*");
     }
 
     #[test]
     fn test_skill_version_tag_name_returns_v_prefixed() {
         let name = crate::git::skill_version_tag_name("my-plugin", "my-skill", "1.0.0");
-        assert_eq!(name, "my-plugin/skills/my-skill/v1.0.0");
+        assert_eq!(name, "v1.0.0");
     }
 }
 
