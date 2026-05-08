@@ -38,6 +38,11 @@ import { formatProviderModelId } from "@/lib/models";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
 
+interface PendingTerminalEvent {
+  status: PendingTerminalStatus;
+  errorDetail?: string;
+}
+
 function patchDisplayItemById(
   items: DisplayItem[],
   targetId: string,
@@ -199,16 +204,20 @@ function drainPendingMetadata(agentId: string) {
   }
 }
 
-function queuePendingTerminal(agentId: string, status: PendingTerminalStatus) {
+function queuePendingTerminal(
+  agentId: string,
+  status: PendingTerminalStatus,
+  errorDetail?: string,
+) {
   const state = useAgentStore.getState();
   const existing = state.pendingTerminal[agentId];
   // Preserve the most informative terminal state. A later completed/error
   // event should overwrite an earlier shutdown fallback.
-  if (!existing || existing === "shutdown") {
+  if (!existing || existing.status === "shutdown") {
     useAgentStore.setState({
       pendingTerminal: {
         ...state.pendingTerminal,
-        [agentId]: status,
+        [agentId]: { status, errorDetail },
       },
     });
     console.warn(
@@ -230,13 +239,19 @@ function drainPendingTerminal(agentId: string) {
   console.log(
     "[agent-store] event=terminal_replayed operation=drain_pending_terminal agent_id=%s status=%s",
     agentId,
-    pending,
+    pending.status,
   );
-  if (pending === "shutdown") {
+  if (pending.status === "shutdown") {
     useAgentStore.getState().shutdownRun(agentId);
     return;
   }
-  useAgentStore.getState().completeRun(agentId, pending === "completed");
+  useAgentStore
+    .getState()
+    .completeRun(
+      agentId,
+      pending.status === "completed",
+      pending.errorDetail,
+    );
 }
 
 export function resetAgentStoreInternals() {
@@ -375,7 +390,7 @@ interface AgentState {
   runs: Record<string, AgentRun>;
   activeAgentId: string | null;
   /** Pending terminal statuses for runs not yet registered */
-  pendingTerminal: Record<string, PendingTerminalStatus>;
+  pendingTerminal: Record<string, PendingTerminalEvent>;
   /** Pending metadata events for runs not yet registered */
   pendingMetadata: Record<string, PendingAgentEvent[]>;
   startRun: (agentId: string, model: string) => void;
@@ -1004,7 +1019,11 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Flush any buffered display items so they are visible in the final run state
     flushDisplayItems();
     if (!useAgentStore.getState().runs[agentId]) {
-      queuePendingTerminal(agentId, success ? "completed" : "error");
+      queuePendingTerminal(
+        agentId,
+        success ? "completed" : "error",
+        errorDetail,
+      );
       return;
     }
 

@@ -165,6 +165,20 @@ describe("useAgentStore", () => {
     expect(run.status).toBe("completed");
   });
 
+  it("replays queued error detail when agent-exit arrives before registration", () => {
+    useAgentStore
+      .getState()
+      .completeRun("late-error-agent", false, "Model glm-5-free not supported");
+    expect(useAgentStore.getState().runs["late-error-agent"]).toBeUndefined();
+
+    useAgentStore
+      .getState()
+      .registerRun("late-error-agent", "sonnet", "my-skill", "refine");
+    const run = useAgentStore.getState().runs["late-error-agent"];
+    expect(run.status).toBe("error");
+    expect(run.resultErrors).toEqual(["Model glm-5-free not supported"]);
+  });
+
   it("replays queued shutdown when shutdown event arrives before registration", () => {
     useAgentStore.getState().shutdownRun("late-shutdown");
     expect(useAgentStore.getState().runs["late-shutdown"]).toBeUndefined();
