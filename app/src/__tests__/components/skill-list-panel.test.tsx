@@ -736,6 +736,29 @@ describe("SkillListPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
   });
 
+  it("continue building prepares the workflow skill before navigation", async () => {
+    const user = userEvent.setup();
+    const onPrepareWorkflowSkill = vi.fn().mockResolvedValue(undefined);
+    const skill = makeBuilderSkill({ name: "resume-builder", current_step: "Step 1" });
+    setBuilderSkills([skill]);
+
+    renderWithSkillQueries(
+      <SkillListPanel onPrepareWorkflowSkill={onPrepareWorkflowSkill} />,
+    );
+
+    await openSkillMenu("resume-builder", user);
+    const continueItem = screen.getByRole("menuitem", { name: "Continue Building" });
+
+    await user.click(continueItem);
+
+    expect(onPrepareWorkflowSkill).toHaveBeenCalledWith("resume-builder");
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/skill/$skillName",
+      params: { skillName: "resume-builder" },
+      state: { autoStart: true },
+    });
+  });
+
   it("does not navigate when clicking the running skill itself", () => {
     const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "running-skill", current_step: "Step 2" });

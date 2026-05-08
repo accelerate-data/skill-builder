@@ -50,6 +50,7 @@ import {
 
 export interface SkillListPanelProps {
   onSelectSkill?: (name: string, tab?: string) => void;
+  onPrepareWorkflowSkill?: (name: string) => Promise<void> | void;
   onCreateSkill?: () => void;
   onCollapse?: () => void;
   className?: string;
@@ -57,6 +58,7 @@ export interface SkillListPanelProps {
 
 export function SkillListPanel({
   onSelectSkill,
+  onPrepareWorkflowSkill,
   onCreateSkill,
   onCollapse,
   className,
@@ -164,6 +166,7 @@ export function SkillListPanel({
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
       setRedoTarget(null);
+      await onPrepareWorkflowSkill?.(skillName);
       navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
@@ -197,10 +200,11 @@ export function SkillListPanel({
     navigate({ to: "/skill/$skillName", params: { skillName } });
   }
 
-  function handleContinueBuilding(skillName: string) {
+  async function handleContinueBuilding(skillName: string) {
     console.log("event=skill_continue skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
     setSelectedSkill(skillName);
+    await onPrepareWorkflowSkill?.(skillName);
     navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
   }
 

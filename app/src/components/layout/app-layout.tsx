@@ -156,6 +156,25 @@ export function AppLayout() {
       : toEditableSkill(selectedSkillData)
     : null;
 
+  const bootstrapSelectedSkillSession = useCallback(
+    async (skill: EditableSkill) => {
+      if (!workspacePath) {
+        throw new Error("Workspace path is not configured");
+      }
+      const session = await selectSkillOpenHandsSession(
+        skill.name,
+        workspacePath,
+        skill.plugin_slug,
+      );
+      const store = useRefineStore.getState();
+      store.setSelectedSkill(skill);
+      store.setConversationId(session.conversation_id || null);
+      store.setAvailableAgents(session.available_agents ?? []);
+      store.setMessages([]);
+    },
+    [workspacePath],
+  );
+
   const cleanupCurrentSelectedSkill = useCallback(async () => {
     const refineStore = useRefineStore.getState();
     if (runningWorkflow) {
@@ -175,6 +194,42 @@ export function AppLayout() {
     refineStore.selectSkill(null);
     useAgentStore.getState().clearRuns();
   }, [runningWorkflow, selectedSkillData]);
+
+  const prepareWorkflowSkill = useCallback(
+    async (name: string) => {
+      const targetBuilderSkill = builderSkills.find(
+        (skill) =>
+          skill.skill_source === "skill-builder" &&
+          (skill.library_key ?? skill.name) === name,
+      );
+      const targetImportedSkill = importedSkills.find(
+        (skill) => (skill.library_key ?? `imported:${skill.skill_id}`) === name,
+      );
+      const targetSkill = targetBuilderSkill ?? targetImportedSkill ?? null;
+      if (!targetSkill) {
+        throw new Error(`Skill '${name}' is not available`);
+      }
+      const editableSkill =
+        "name" in targetSkill
+          ? (targetSkill as EditableSkill)
+          : toEditableSkill(targetSkill);
+
+      if (name !== selectedWorkspaceSkillName) {
+        await cleanupCurrentSelectedSkill();
+        setSelectedWorkspaceSkillName(name);
+      }
+
+      await bootstrapSelectedSkillSession(editableSkill);
+    },
+    [
+      bootstrapSelectedSkillSession,
+      builderSkills,
+      cleanupCurrentSelectedSkill,
+      importedSkills,
+      selectedWorkspaceSkillName,
+      setSelectedWorkspaceSkillName,
+    ],
+  );
 
   const handleSelectSkill = useCallback(
     (name: string, tab?: string) => {
@@ -225,6 +280,15 @@ export function AppLayout() {
 
   useEffect(() => {
     if (!workspacePath || !editableSelectedSkill) {
+      return;
+    }
+    const existingRefineSkill = useRefineStore.getState().selectedSkill;
+    const existingConversationId = useRefineStore.getState().conversationId;
+    if (
+      existingRefineSkill?.name === editableSelectedSkill.name &&
+      existingRefineSkill.plugin_slug === editableSelectedSkill.plugin_slug &&
+      existingConversationId
+    ) {
       return;
     }
     let cancelled = false;
@@ -296,6 +360,7 @@ export function AppLayout() {
           >
             <SkillListPanel
               onSelectSkill={handleSelectSkill}
+              onPrepareWorkflowSkill={prepareWorkflowSkill}
               onCollapse={() => setPanelCollapsed(true)}
             />
             {agentRunning && (
