@@ -133,9 +133,6 @@ export interface SkillSummary {
   source?: string | null
   description?: string | null
   version?: string | null
-  model?: string | null
-  /** camelCase to match Rust serde rename: `#[serde(rename = "argumentHint")]`. ImportedSkill uses snake_case because its Rust struct has no rename. */
-  argumentHint?: string | null
   /** camelCase to match Rust serde rename. */
   userInvocable?: boolean | null
   /** camelCase to match Rust serde rename. */
@@ -382,8 +379,6 @@ export interface ImportedSkill {
   is_bundled: boolean
   purpose: string | null
   version: string | null
-  model: string | null
-  argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
   /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
@@ -418,8 +413,6 @@ export interface EditableSkill {
   tags: string[]
   intake_json: string | null
   version?: string | null
-  model?: string | null
-  argumentHint?: string | null
   userInvocable?: boolean | null
   disableModelInvocation?: boolean | null
   status: string | null
@@ -437,8 +430,6 @@ export function toEditableSkill(skill: ImportedSkill): EditableSkill {
     tags: [],
     intake_json: null,
     version: skill.version ?? null,
-    model: skill.model ?? null,
-    argumentHint: skill.argument_hint ?? null,
     userInvocable: skill.user_invocable ?? null,
     disableModelInvocation: skill.disable_model_invocation ?? null,
     status: null,
@@ -461,8 +452,6 @@ export interface AvailableSkill {
   description: string | null
   purpose: string | null
   version: string | null
-  model: string | null
-  argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
 }
@@ -481,7 +470,6 @@ export interface SkillMetadataOverride {
   description: string
   purpose?: string | null
   version?: string | null
-  argument_hint?: string | null
   user_invocable?: boolean | null
   disable_model_invocation?: boolean | null
 }
@@ -505,8 +493,6 @@ export interface SkillFileMeta {
   name: string | null
   description: string | null
   version: string | null
-  model: string | null
-  argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
 }

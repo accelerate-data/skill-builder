@@ -36,8 +36,6 @@ const skill: SkillSummary = {
   author_avatar: null,
   intake_json: null,
   source: null,
-  model: null,
-  argumentHint: null,
   userInvocable: null,
   disableModelInvocation: null,
 };

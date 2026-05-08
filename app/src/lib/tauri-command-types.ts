@@ -132,8 +132,6 @@ type SkillMetadataArgs = {
   intakeJson: string | null;
   description: string | null;
   version: string | null;
-  model: string | null;
-  argumentHint: string | null;
   userInvocable: boolean | null;
   disableModelInvocation: boolean | null;
 };
@@ -400,8 +398,6 @@ export interface TauriCommandMap {
       name: string;
       description: string;
       version: string;
-      model: string | null;
-      argumentHint: string | null;
       userInvocable: boolean | null;
       disableModelInvocation: boolean | null;
     };
@@ -416,8 +412,6 @@ export interface TauriCommandMap {
       intakeJson: string | null;
       description: string | null;
       version: string | null;
-      model: string | null;
-      argumentHint: string | null;
       userInvocable: boolean | null;
       disableModelInvocation: boolean | null;
     };

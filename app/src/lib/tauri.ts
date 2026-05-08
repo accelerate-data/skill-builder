@@ -56,8 +56,6 @@ export const updateSkillMetadata = (
   intakeJson: string | null,
   description?: string | null,
   version?: string | null,
-  model?: string | null,
-  argumentHint?: string | null,
   userInvocable?: boolean | null,
   disableModelInvocation?: boolean | null,
 ) => invokeCommand("update_skill_metadata", {
@@ -68,8 +66,6 @@ export const updateSkillMetadata = (
   intakeJson,
   description: description ?? null,
   version: version ?? null,
-  model: model ?? null,
-  argumentHint: argumentHint ?? null,
   userInvocable: userInvocable ?? null,
   disableModelInvocation: disableModelInvocation ?? null,
 });
@@ -547,8 +543,6 @@ export const importSkillFromFile = (params: {
   name: string
   description: string
   version: string
-  model?: string | null
-  argumentHint?: string | null
   userInvocable?: boolean | null
   disableModelInvocation?: boolean | null
 }): Promise<string> =>
@@ -557,8 +551,6 @@ export const importSkillFromFile = (params: {
     name: params.name,
     description: params.description,
     version: params.version,
-    model: params.model ?? null,
-    argumentHint: params.argumentHint ?? null,
     userInvocable: params.userInvocable ?? null,
     disableModelInvocation: params.disableModelInvocation ?? null,
   })
@@ -573,8 +565,6 @@ export const createSkill = (params: {
   intakeJson?: string | null;
   description?: string | null;
   version?: string | null;
-  model?: string | null;
-  argumentHint?: string | null;
   userInvocable?: boolean | null;
   disableModelInvocation?: boolean | null;
 }) => invokeCommand("create_skill", {
@@ -585,8 +575,6 @@ export const createSkill = (params: {
   intakeJson: params.intakeJson ?? null,
   description: params.description ?? null,
   version: params.version ?? null,
-  model: params.model ?? null,
-  argumentHint: params.argumentHint ?? null,
   userInvocable: params.userInvocable ?? null,
   disableModelInvocation: params.disableModelInvocation ?? null,
 });
