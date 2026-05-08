@@ -176,6 +176,7 @@ vi.mock("@/stores/settings-store", () => ({
 }));
 
 describe("useWorkflowStateMachine", () => {
+  const mockRestartOpenHandsSession = vi.fn(() => Promise.resolve());
   const defaultOptions = {
     skillName: "test-skill",
     workspacePath: "/workspace",
@@ -193,6 +194,7 @@ describe("useWorkflowStateMachine", () => {
     purpose: null,
     clarificationsData: null,
     stepConfigs: STEP_CONFIGS,
+    restartOpenHandsSession: mockRestartOpenHandsSession,
   };
 
   beforeEach(() => {
@@ -208,6 +210,7 @@ describe("useWorkflowStateMachine", () => {
       gateLoading: false,
       disabledSteps: [],
     };
+    mockRestartOpenHandsSession.mockClear();
     mockSettingsState.modelSettings.model = "test-settings-model";
   });
 
@@ -289,6 +292,7 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       0,
     );
+    expect(mockRestartOpenHandsSession).toHaveBeenCalled();
     expect(mockResetToStep).toHaveBeenCalledWith(0);
   });
 

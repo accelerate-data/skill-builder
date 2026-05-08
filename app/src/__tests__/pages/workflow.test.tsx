@@ -63,6 +63,9 @@ vi.mock("@/lib/tauri", () => ({
     Promise.resolve(command === "get_clarifications" ? null : undefined),
   ),
 }));
+vi.mock("@/lib/skill-openhands-session", () => ({
+  restartSkillOpenHandsSession: vi.fn(() => Promise.resolve()),
+}));
 
 // Mock ClarificationsEditor — renders a simple div with testid and
 // exposes onChange/onContinue via buttons so tests can trigger them.
@@ -99,6 +102,7 @@ vi.mock("@/components/step-complete", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
+import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import {
   getWorkflowState,
   saveWorkflowState,
@@ -1825,6 +1829,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     vi.mocked(runWorkflowStep).mockClear();
     vi.mocked(resetWorkflowStep).mockClear();
     vi.mocked(endWorkflowSession).mockClear();
+    vi.mocked(restartSkillOpenHandsSession).mockClear();
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
 
     // Tests in this block set reviewMode=false (Update mode). Signal autoStart so the
@@ -2390,6 +2395,7 @@ describe("step reset behavior regressions", () => {
       "test-skill",
       0,
     );
+    expect(vi.mocked(restartSkillOpenHandsSession)).toHaveBeenCalled();
 
     // Step 0 is no longer completed (auto-start fires so it becomes in_progress)
     expect(useWorkflowStore.getState().steps[0].status).not.toBe("completed");

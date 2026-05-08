@@ -183,6 +183,8 @@ interface UseWorkflowStateMachineOptions {
   purpose: string | null;
   /** Step configurations for all steps */
   stepConfigs: Record<number, StepConfig>;
+  /** Recreate the selected skill's OpenHands session after reset clears conversation state. */
+  restartOpenHandsSession: () => Promise<void>;
 }
 
 /**
@@ -203,6 +205,7 @@ export function useWorkflowStateMachine({
   errorHasArtifacts: _errorHasArtifacts,
   purpose,
   stepConfigs,
+  restartOpenHandsSession,
 }: UseWorkflowStateMachineOptions) {
   // Store actions (individual selectors to avoid new object reference on every render)
   const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
@@ -878,6 +881,7 @@ export function useWorkflowStateMachine({
     if (workspacePath) {
       try {
         await resetWorkflowStep(workspacePath, skillName, stepId);
+        await restartOpenHandsSession();
       } catch {
         // best-effort
       }

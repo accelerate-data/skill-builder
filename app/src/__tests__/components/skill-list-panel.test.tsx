@@ -38,9 +38,13 @@ vi.mock("@/lib/tauri", () => ({
   moveSkillToPlugin: vi.fn(),
   removeSkillFromPlugin: vi.fn(),
 }));
+vi.mock("@/lib/skill-openhands-session", () => ({
+  restartSkillOpenHandsSession: vi.fn(() => Promise.resolve()),
+}));
 
 import { SkillListPanel } from "@/components/skill-list-panel";
 import { listImportedSkills, listSkills, removeSkillFromPlugin, resetWorkflowStep } from "@/lib/tauri";
+import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -790,12 +794,11 @@ describe("SkillListPanel", () => {
 
   it("redo re-activates the workflow skill after reset before navigation", async () => {
     const user = userEvent.setup();
-    const onActivateSkill = vi.fn().mockResolvedValue(undefined);
     const skill = makeBuilderSkill({ name: "redo-builder", status: "completed" });
     setBuilderSkills([skill]);
     vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
 
-    renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
+    renderWithSkillQueries(<SkillListPanel />);
 
     await openSkillMenu("redo-builder", user);
     await user.click(screen.getByRole("menuitem", { name: "Redo workflow" }));
@@ -804,7 +807,13 @@ describe("SkillListPanel", () => {
     await waitFor(() => {
       expect(resetWorkflowStep).toHaveBeenCalledWith(expect.any(String), "redo-builder", 0);
     });
-    expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:redo-builder");
+    expect(restartSkillOpenHandsSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "redo-builder",
+        plugin_slug: "skills",
+      }),
+      expect.any(String),
+    );
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/skill/$skillName",
       params: { skillName: "redo-builder" },

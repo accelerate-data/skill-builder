@@ -36,6 +36,7 @@ import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useRefineStore } from "@/stores/refine-store";
 import {
   getDisabledSteps,
   navigateBackToStepDb,
@@ -49,6 +50,7 @@ import { useBuilderSkillsQuery } from "@/lib/queries/skills";
 import { useClarifications } from "@/lib/queries/clarifications";
 import type { ClarificationsDto, ClarificationQuestionDto } from "@/generated/contracts";
 import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
+import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 
 // ─── ClarificationsDto → ClarificationsFile mapper ───────────────────────────
 
@@ -179,6 +181,7 @@ export default function WorkflowPage() {
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const refineSelectedSkill = useRefineStore((s) => s.selectedSkill);
   const activeRunDisplayItemCount = useAgentStore((s) =>
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );
@@ -239,6 +242,46 @@ export default function WorkflowPage() {
     steps,
   });
 
+  const restartSelectedSkillSession = useCallback(async () => {
+    if (!workspacePath) return;
+    const effectivePluginSlug =
+      pluginSlug ?? refineSelectedSkill?.plugin_slug ?? "default";
+    await restartSkillOpenHandsSession(
+      {
+        name: skillName,
+        plugin_slug: effectivePluginSlug,
+        skill_source:
+          currentSkill?.skill_source ??
+          refineSelectedSkill?.skill_source ??
+          "skill-builder",
+        purpose: currentSkill?.purpose ?? refineSelectedSkill?.purpose ?? null,
+        description:
+          currentSkill?.description ?? refineSelectedSkill?.description ?? null,
+        tags: currentSkill?.tags ?? refineSelectedSkill?.tags ?? [],
+        intake_json:
+          currentSkill?.intake_json ?? refineSelectedSkill?.intake_json ?? null,
+        version: currentSkill?.version ?? refineSelectedSkill?.version ?? null,
+        model: currentSkill?.model ?? refineSelectedSkill?.model ?? null,
+        argumentHint:
+          currentSkill?.argumentHint ??
+          refineSelectedSkill?.argumentHint ??
+          null,
+        userInvocable:
+          currentSkill?.userInvocable ??
+          refineSelectedSkill?.userInvocable ??
+          null,
+        disableModelInvocation:
+          currentSkill?.disableModelInvocation ??
+          refineSelectedSkill?.disableModelInvocation ??
+          null,
+        status: currentSkill?.status ?? refineSelectedSkill?.status ?? null,
+        current_step:
+          currentSkill?.current_step ?? refineSelectedSkill?.current_step ?? null,
+      },
+      workspacePath,
+    );
+  }, [currentSkill, pluginSlug, refineSelectedSkill, skillName, workspacePath]);
+
   // 4. State machine — step transitions, agent orchestration, gate evaluation
   const {
     pendingStepSwitch,
@@ -265,6 +308,7 @@ export default function WorkflowPage() {
     errorHasArtifacts,
     purpose,
     stepConfigs: STEP_CONFIGS,
+    restartOpenHandsSession: restartSelectedSkillSession,
   });
 
   // Local callback: abandon agent and switch to a different step.
@@ -492,17 +536,20 @@ export default function WorkflowPage() {
         onReset={() => {
           if (resetTarget !== null) {
             teardownWorkflowSession({ logPrefix: "workflow", clearSessionId: true });
-            if (resetTarget === 0) {
-              resetToStep(0);
-            } else {
-              navigateBackToStep(resetTarget);
-            }
-            if (skillName) {
-              getDisabledSteps(skillName)
-                .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
-                .catch(() => { /* non-fatal */ });
-            }
-            setResetTarget(null);
+            void (async () => {
+              await restartSelectedSkillSession();
+              if (resetTarget === 0) {
+                resetToStep(0);
+              } else {
+                navigateBackToStep(resetTarget);
+              }
+              if (skillName) {
+                getDisabledSteps(skillName)
+                  .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
+                  .catch(() => { /* non-fatal */ });
+              }
+              setResetTarget(null);
+            })();
           }
         }}
       />

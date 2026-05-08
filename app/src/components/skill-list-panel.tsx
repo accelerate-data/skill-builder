@@ -39,6 +39,7 @@ import {
   removeSkillFromPlugin,
   resetWorkflowStep,
 } from "@/lib/tauri";
+import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import type { SkillFileMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -161,12 +162,23 @@ export function SkillListPanel({
     if (!workspacePath) return;
     try {
       await resetWorkflowStep(workspacePath, skill.name, 0);
+      await restartSkillOpenHandsSession(
+        {
+          name: skill.name,
+          plugin_slug: skill.pluginSlug,
+          skill_source: skill.source,
+          description: skill.description,
+          purpose: skill.purpose,
+          status: skill.status,
+          current_step: skill.currentStep,
+        },
+        workspacePath,
+      );
       console.log("event=skill_redo skill=%s", skill.name);
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
       localStorage.setItem("last-selected-skill", skill.key);
       setSelectedSkill(skill.key);
-      await onActivateSkill?.(skill.key);
       setRedoTarget(null);
       navigate({
         to: "/skill/$skillName",
