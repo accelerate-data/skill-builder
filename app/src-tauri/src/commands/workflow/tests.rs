@@ -16,12 +16,13 @@ use super::prompt::{
 use super::runtime::{
     build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
     build_workflow_detailed_research_sidecar_config, build_workflow_generate_skill_sidecar_config,
-    build_workflow_research_sidecar_config,
+    build_workflow_research_sidecar_config, dispatch_persistent_skill_turn_with_runtime,
 };
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     skill_generation_workflow_tools, workflow_output_format_for_step,
 };
+use std::sync::{Arc, Mutex};
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -220,6 +221,51 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 }
 
 #[test]
+fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() {
+    let config = build_workflow_research_sidecar_config(
+        "lead-conversion",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("session-1".to_string()),
+    );
+    let events = Arc::new(Mutex::new(Vec::<String>::new()));
+    let send_events = Arc::clone(&events);
+    let expected_prompt = config.prompt.clone();
+    let expected_prompt_for_send = expected_prompt;
+    let existing_conversation_id = "conversation-123".to_string();
+
+    let conversation_id = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(dispatch_persistent_skill_turn_with_runtime(
+            "agent-1",
+            config.clone(),
+            existing_conversation_id.clone(),
+            move |agent_id, send_config, conversation_id| {
+                let send_events = Arc::clone(&send_events);
+                let expected_prompt = expected_prompt_for_send.clone();
+                let agent_id = agent_id.to_string();
+                async move {
+                    send_events
+                        .lock()
+                        .unwrap()
+                        .push(format!("send:{agent_id}:{conversation_id}"));
+                    assert_eq!(send_config.prompt, expected_prompt);
+                    Ok(())
+                }
+            },
+        ))
+        .unwrap();
+
+    assert_eq!(conversation_id, "conversation-123");
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        ["send:agent-1:conversation-123"]
+    );
+}
+
+#[test]
 fn research_prompt_renders_app_owned_openhands_task_context() {
     let prompt = build_step0_prompt(
         "lead-conversion",
@@ -303,7 +349,7 @@ fn research_sidecar_config_uses_skill_creator_openhands_contract() {
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(vec![
@@ -422,7 +468,7 @@ fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
         config.task_kind.as_deref(),
         Some("workflow.detailed_research")
     );
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(vec![
@@ -822,7 +868,7 @@ fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
         config.task_kind.as_deref(),
         Some("workflow.confirm_decisions")
     );
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(confirm_decisions_workflow_tools())
@@ -927,7 +973,7 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
         config.task_kind.as_deref(),
         Some("workflow.skill_generation")
     );
-    assert_eq!(config.mode.as_deref(), Some("one-shot"));
+    assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
         Some(skill_generation_workflow_tools())

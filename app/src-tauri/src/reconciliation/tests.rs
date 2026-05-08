@@ -10,9 +10,10 @@ use std::path::Path;
 /// current_step >= 1 and asserts that the skill is NOT reset by the consistency
 /// check.
 fn insert_stub_clarifications(conn: &rusqlite::Connection, skill_id: &str) {
+    crate::db::upsert_skill(conn, skill_id, "skill-builder", "domain").unwrap();
     conn.execute(
-        "INSERT INTO clarifications (skill_id, version, title, created_at, updated_at)
-         VALUES (?1, '1', 'Test Skill', 0, 0)",
+        "INSERT INTO clarifications (skill_id, skill_master_id, version, title, created_at, updated_at)
+         VALUES (?1, (SELECT id FROM skills WHERE name = ?1 LIMIT 1), '1', 'Test Skill', 0, 0)",
         rusqlite::params![skill_id],
     )
     .unwrap();
@@ -24,9 +25,10 @@ fn insert_stub_clarifications(conn: &rusqlite::Connection, skill_id: &str) {
 /// current_step >= 3 and asserts that the skill is NOT reset by the consistency
 /// check.
 fn insert_stub_decisions(conn: &rusqlite::Connection, skill_id: &str) {
+    crate::db::upsert_skill(conn, skill_id, "skill-builder", "domain").unwrap();
     conn.execute(
-        "INSERT INTO decisions (skill_id, version, created_at, updated_at)
-         VALUES (?1, '1', 0, 0)",
+        "INSERT INTO decisions (skill_id, skill_master_id, version, created_at, updated_at)
+         VALUES (?1, (SELECT id FROM skills WHERE name = ?1 LIMIT 1), '1', 0, 0)",
         rusqlite::params![skill_id],
     )
     .unwrap();
@@ -2508,76 +2510,6 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
         result2.discovered_skills.is_empty(),
         "cross-plugin skill must not reappear on second startup: {:?}",
         result2.discovered_skills
-    );
-}
-
-/// VU-984: Phase 1e Pass A must restore marketplace skills whose directory exists,
-/// not just skill-builder skills.
-#[test]
-fn test_phase1e_restores_marketplace_skills() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().to_str().unwrap();
-    let skills_path = skills_tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    // Create a marketplace plugin with a skill
-    crate::db::ensure_plugin(
-        &conn,
-        "mkt-restore",
-        "Marketplace Restore",
-        "marketplace",
-        None,
-        None,
-        false,
-    )
-    .unwrap();
-    crate::db::upsert_skill_in_plugin(&conn, "mkt-skill", "marketplace", "domain", "mkt-restore")
-        .unwrap();
-
-    // Create the skill directory on disk (canonical layout: {plugin_slug}/skills/{skill_name}/SKILL.md)
-    let skill_dir = skills_tmp
-        .path()
-        .join("mkt-restore")
-        .join("skills")
-        .join("mkt-skill");
-    std::fs::create_dir_all(&skill_dir).unwrap();
-    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: mkt-skill\n---\n").unwrap();
-
-    // Soft-delete the skill (simulating an incorrect Phase 1e Pass B from a prior version)
-    conn.execute(
-        "UPDATE skills SET deleted_at = datetime('now') || 'Z' WHERE name = 'mkt-skill'",
-        [],
-    )
-    .unwrap();
-
-    // Verify the skill is soft-deleted
-    let deleted_at: Option<String> = conn
-        .query_row(
-            "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
-    assert!(
-        deleted_at.is_some(),
-        "precondition: skill should be soft-deleted"
-    );
-
-    // Run reconciliation — Phase 1e Pass A should restore it
-    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-
-    // Skill should be restored (deleted_at = NULL)
-    let after: Option<String> = conn
-        .query_row(
-            "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
-    assert!(
-        after.is_none(),
-        "Phase 1e Pass A should restore marketplace skill with directory on disk"
     );
 }
 

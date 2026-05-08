@@ -51,7 +51,22 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (46, run_eval_workbench_scenario_identity_migration),
     (47, run_skill_conversations_migration),
     (48, run_scenarios_migration),
+    (49, run_skill_hard_delete_cleanup_migration),
 ];
+
+pub(super) fn table_has_column(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+) -> Result<bool, rusqlite::Error> {
+    let pragma = format!("PRAGMA table_info({table})");
+    conn.prepare(&pragma)?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .try_fold(false, |found, name| {
+            let matches = name? == column;
+            Ok(found || matches)
+        })
+}
 
 pub(super) fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -196,7 +211,7 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
             id TEXT PRIMARY KEY,
             plugin_slug TEXT NOT NULL,
             skill_name TEXT NOT NULL,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             name TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -207,7 +222,6 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
             prompt_set_id TEXT NOT NULL REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
             prompt TEXT NOT NULL,
             expected TEXT,
-            should_trigger INTEGER,
             assertions_json TEXT NOT NULL,
             sort_order INTEGER NOT NULL
         );
@@ -215,7 +229,7 @@ pub(super) fn run_eval_workbench_migration(conn: &Connection) -> Result<(), rusq
         CREATE TABLE IF NOT EXISTS eval_runs (
             id TEXT PRIMARY KEY,
             prompt_set_id TEXT NOT NULL REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             status TEXT NOT NULL,
             summary_json TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -268,7 +282,7 @@ pub(super) fn run_eval_workbench_scenario_identity_migration(
             plugin_slug TEXT NOT NULL,
             skill_name TEXT NOT NULL,
             scenario_name TEXT NOT NULL,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             status TEXT NOT NULL,
             summary_json TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -333,9 +347,8 @@ pub(super) fn run_scenarios_migration(conn: &Connection) -> Result<(), rusqlite:
             plugin_slug TEXT NOT NULL,
             skill_name TEXT NOT NULL,
             name TEXT NOT NULL,
-            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            mode TEXT NOT NULL CHECK (mode IN ('performance')),
             prompt TEXT NOT NULL DEFAULT '',
-            should_trigger INTEGER,
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -352,15 +365,14 @@ pub(super) fn run_scenarios_migration(conn: &Connection) -> Result<(), rusqlite:
         CREATE INDEX IF NOT EXISTS idx_assertions_scenario ON assertions(scenario_id, sort_order);
 
         -- Migrate data from old tables
-        INSERT INTO scenarios (id, plugin_slug, skill_name, name, mode, prompt, should_trigger, sort_order, created_at, updated_at)
+        INSERT INTO scenarios (id, plugin_slug, skill_name, name, mode, prompt, sort_order, created_at, updated_at)
         SELECT
             ps.id,
             ps.plugin_slug,
             ps.skill_name,
             ps.name,
-            ps.mode,
+            'performance',
             COALESCE(pc.prompt, ''),
-            pc.should_trigger,
             pc.sort_order,
             ps.created_at,
             ps.updated_at
@@ -530,6 +542,210 @@ pub(super) fn run_plugin_ownership_migration(conn: &Connection) -> Result<(), ru
 
     log::info!("migration 38: added first-class plugin ownership");
     Ok(())
+}
+
+pub(super) fn run_skill_hard_delete_cleanup_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+
+    let result = (|| -> Result<(), rusqlite::Error> {
+        conn.execute(
+            "DELETE FROM skill_conversations
+             WHERE EXISTS (
+                 SELECT 1
+                 FROM skills s
+                 JOIN plugins p ON p.id = s.plugin_id
+                 WHERE p.slug = skill_conversations.plugin_slug
+                   AND s.name = skill_conversations.skill_name
+                   AND COALESCE(s.deleted_at, '') != ''
+             )",
+            [],
+        )?;
+        conn.execute(
+            "DELETE FROM clarifications
+             WHERE skill_id IN (
+                 SELECT name FROM skills WHERE COALESCE(deleted_at, '') != ''
+             )",
+            [],
+        )?;
+        conn.execute(
+            "DELETE FROM decisions
+             WHERE skill_id IN (
+                 SELECT name FROM skills WHERE COALESCE(deleted_at, '') != ''
+             )",
+            [],
+        )?;
+        conn.execute(
+            "DELETE FROM skills WHERE COALESCE(deleted_at, '') != ''",
+            [],
+        )?;
+
+        if !table_has_column(conn, "skill_conversations", "skill_id")? {
+            conn.execute_batch(
+                "CREATE TABLE skill_conversations_new (
+                    skill_id INTEGER NOT NULL UNIQUE REFERENCES skills(id) ON DELETE CASCADE,
+                    plugin_slug TEXT NOT NULL,
+                    skill_name TEXT NOT NULL,
+                    conversation_id TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+                    PRIMARY KEY (plugin_slug, skill_name)
+                );
+
+                INSERT INTO skill_conversations_new (skill_id, plugin_slug, skill_name, conversation_id, updated_at)
+                SELECT
+                    s.id,
+                    sc.plugin_slug,
+                    sc.skill_name,
+                    sc.conversation_id,
+                    sc.updated_at
+                FROM skill_conversations sc
+                JOIN plugins p ON p.slug = sc.plugin_slug
+                JOIN skills s ON s.plugin_id = p.id AND s.name = sc.skill_name;
+
+                DROP TABLE skill_conversations;
+                ALTER TABLE skill_conversations_new RENAME TO skill_conversations;
+
+                CREATE INDEX idx_skill_conversations_skill
+                    ON skill_conversations(skill_name, plugin_slug);",
+            )?;
+        }
+
+        if !table_has_column(conn, "clarifications", "skill_master_id")? {
+            conn.execute_batch(
+                "CREATE TABLE clarifications_new (
+                    skill_id                  TEXT PRIMARY KEY,
+                    skill_master_id           INTEGER NOT NULL UNIQUE REFERENCES skills(id) ON DELETE CASCADE,
+                    version                   TEXT NOT NULL,
+                    refinement_count          INTEGER NOT NULL DEFAULT 0,
+                    must_answer_count         INTEGER NOT NULL DEFAULT 0,
+                    question_count            INTEGER NOT NULL DEFAULT 0,
+                    section_count             INTEGER NOT NULL DEFAULT 0,
+                    title                     TEXT NOT NULL,
+                    scope_recommendation      INTEGER,
+                    scope_reason              TEXT,
+                    scope_next_action         TEXT,
+                    error_code                TEXT,
+                    error_message             TEXT,
+                    warning_code              TEXT,
+                    warning_message           TEXT,
+                    eval_verdict              TEXT,
+                    eval_reasoning            TEXT,
+                    eval_at                   INTEGER,
+                    eval_answered_count       INTEGER,
+                    eval_empty_count          INTEGER,
+                    eval_vague_count          INTEGER,
+                    eval_contradictory_count  INTEGER,
+                    created_at                INTEGER NOT NULL,
+                    updated_at                INTEGER NOT NULL
+                );
+
+                INSERT INTO clarifications_new (
+                    skill_id, skill_master_id, version, refinement_count, must_answer_count,
+                    question_count, section_count, title, scope_recommendation, scope_reason,
+                    scope_next_action, error_code, error_message, warning_code, warning_message,
+                    eval_verdict, eval_reasoning, eval_at, eval_answered_count, eval_empty_count,
+                    eval_vague_count, eval_contradictory_count, created_at, updated_at
+                )
+                SELECT
+                    c.skill_id,
+                    (
+                        SELECT s.id
+                        FROM skills s
+                        WHERE s.name = c.skill_id
+                        LIMIT 1
+                    ),
+                    c.version,
+                    c.refinement_count,
+                    c.must_answer_count,
+                    c.question_count,
+                    c.section_count,
+                    c.title,
+                    c.scope_recommendation,
+                    c.scope_reason,
+                    c.scope_next_action,
+                    c.error_code,
+                    c.error_message,
+                    c.warning_code,
+                    c.warning_message,
+                    c.eval_verdict,
+                    c.eval_reasoning,
+                    c.eval_at,
+                    c.eval_answered_count,
+                    c.eval_empty_count,
+                    c.eval_vague_count,
+                    c.eval_contradictory_count,
+                    c.created_at,
+                    c.updated_at
+                FROM clarifications c
+                WHERE EXISTS (
+                    SELECT 1 FROM skills s WHERE s.name = c.skill_id
+                );
+
+                DROP TABLE clarifications;
+                ALTER TABLE clarifications_new RENAME TO clarifications;",
+            )?;
+        }
+
+        if !table_has_column(conn, "decisions", "skill_master_id")? {
+            conn.execute_batch(
+                "CREATE TABLE decisions_new (
+                    skill_id                   TEXT PRIMARY KEY,
+                    skill_master_id            INTEGER NOT NULL UNIQUE REFERENCES skills(id) ON DELETE CASCADE,
+                    version                    TEXT NOT NULL,
+                    round                      INTEGER NOT NULL DEFAULT 0,
+                    decision_count             INTEGER NOT NULL DEFAULT 0,
+                    conflicts_resolved         INTEGER NOT NULL DEFAULT 0,
+                    contradictory_inputs_state TEXT,
+                    scope_recommendation       INTEGER,
+                    created_at                 INTEGER NOT NULL,
+                    updated_at                 INTEGER NOT NULL
+                );
+
+                INSERT INTO decisions_new (
+                    skill_id, skill_master_id, version, round, decision_count,
+                    conflicts_resolved, contradictory_inputs_state, scope_recommendation,
+                    created_at, updated_at
+                )
+                SELECT
+                    d.skill_id,
+                    (
+                        SELECT s.id
+                        FROM skills s
+                        WHERE s.name = d.skill_id
+                        LIMIT 1
+                    ),
+                    d.version,
+                    d.round,
+                    d.decision_count,
+                    d.conflicts_resolved,
+                    d.contradictory_inputs_state,
+                    d.scope_recommendation,
+                    d.created_at,
+                    d.updated_at
+                FROM decisions d
+                WHERE EXISTS (
+                    SELECT 1 FROM skills s WHERE s.name = d.skill_id
+                );
+
+                DROP TABLE decisions;
+                ALTER TABLE decisions_new RENAME TO decisions;
+
+                CREATE INDEX IF NOT EXISTS idx_decision_items_skill
+                    ON decision_items(skill_id);",
+            )?;
+        }
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT"),
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
 }
 
 pub(super) fn run_add_skill_type_migration(conn: &Connection) -> Result<(), rusqlite::Error> {

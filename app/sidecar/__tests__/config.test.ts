@@ -68,17 +68,17 @@ describe("parseSidecarConfig", () => {
     expect(result.requiredPlugins).toEqual(["computer", "bash"]);
   });
 
-  it("accepts explicit one-shot mode", () => {
+  it("accepts explicit throwaway mode", () => {
     const result = parseSidecarConfig({
       prompt: "hello",
       apiKey: "key",
       workspaceRootDir: TEST_CWD,
       workspaceSkillDir: TEST_CWD,
       pluginSlug: "demo",
-      mode: "one-shot",
+      mode: "throwaway",
     });
 
-    expect(result.mode).toBe("one-shot");
+    expect(result.mode).toBe("throwaway");
   });
 
   it("accepts scope review task metadata for OpenHands requests", () => {
@@ -88,7 +88,7 @@ describe("parseSidecarConfig", () => {
       workspaceRootDir: TEST_CWD,
       workspaceSkillDir: TEST_CWD,
       pluginSlug: "demo",
-      mode: "one-shot",
+      mode: "throwaway",
       agentName: "skill-creator",
       taskKind: "scope_review",
       userMessageSuffix: "Follow the current user message exactly.",
@@ -211,6 +211,18 @@ describe("parseSidecarConfig", () => {
 
       parseSidecarConfig({ prompt: "hello", apiKey: "key", workspaceRootDir: TEST_CWD, workspaceSkillDir: TEST_CWD, runSource: "deploy" })
     ).toThrow("runSource must be one of");
+  });
+
+  it("accepts scenario-suggest as a valid runSource", () => {
+    const result = parseSidecarConfig({
+      prompt: "hello",
+      apiKey: "key",
+      workspaceRootDir: TEST_CWD,
+      workspaceSkillDir: TEST_CWD,
+      runSource: "scenario-suggest",
+    });
+
+    expect(result.runSource).toBe("scenario-suggest");
   });
 
   it("throws when stepId is not a number", () => {

@@ -165,6 +165,50 @@ describe("useAgentStore", () => {
     expect(run.status).toBe("completed");
   });
 
+  it("replays queued error detail when agent-exit arrives before registration", () => {
+    useAgentStore
+      .getState()
+      .completeRun("late-error-agent", false, "Model glm-5-free not supported");
+    expect(useAgentStore.getState().runs["late-error-agent"]).toBeUndefined();
+
+    useAgentStore
+      .getState()
+      .registerRun("late-error-agent", "sonnet", "my-skill", "refine");
+    const run = useAgentStore.getState().runs["late-error-agent"];
+    expect(run.status).toBe("error");
+    expect(run.resultErrors).toEqual(["Model glm-5-free not supported"]);
+  });
+
+  it("enriches an already-terminal error run when agent-exit arrives after conversation_state", () => {
+    useAgentStore
+      .getState()
+      .registerRun("terminal-error-agent", "sonnet", "my-skill", "refine");
+
+    useAgentStore.getState().applyConversationState("terminal-error-agent", {
+      type: "conversation_state",
+      runtime: "openhands",
+      agentId: "terminal-error-agent",
+      status: "error",
+      timestamp: Date.now(),
+    });
+
+    expect(
+      useAgentStore.getState().runs["terminal-error-agent"].resultErrors,
+    ).toBeUndefined();
+
+    useAgentStore
+      .getState()
+      .completeRun(
+        "terminal-error-agent",
+        false,
+        "Model glm-5-free not supported",
+      );
+
+    expect(
+      useAgentStore.getState().runs["terminal-error-agent"].resultErrors,
+    ).toEqual(["Model glm-5-free not supported"]);
+  });
+
   it("replays queued shutdown when shutdown event arrives before registration", () => {
     useAgentStore.getState().shutdownRun("late-shutdown");
     expect(useAgentStore.getState().runs["late-shutdown"]).toBeUndefined();

@@ -160,6 +160,14 @@ fn opt_int_to_bool(v: Option<i64>) -> Option<bool> {
     v.map(|n| n != 0)
 }
 
+fn resolve_skill_master_id(conn: &Connection, skill_name: &str) -> Result<i64, rusqlite::Error> {
+    conn.query_row(
+        "SELECT id FROM skills WHERE name = ?1 LIMIT 1",
+        rusqlite::params![skill_name],
+        |row| row.get(0),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Clarifications CRUD
 // ---------------------------------------------------------------------------
@@ -200,15 +208,16 @@ pub fn upsert_clarifications(
     // Parent row: INSERT OR REPLACE keeps the schema simple (PK is skill_id).
     tx.execute(
         "INSERT INTO clarifications (
-            skill_id, version, refinement_count, must_answer_count, question_count,
+            skill_id, skill_master_id, version, refinement_count, must_answer_count, question_count,
             section_count, title, scope_recommendation, scope_reason, scope_next_action,
             error_code, error_message, warning_code, warning_message,
             eval_verdict, eval_reasoning, eval_at,
             eval_answered_count, eval_empty_count, eval_vague_count, eval_contradictory_count,
             created_at, updated_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)
         ON CONFLICT(skill_id) DO UPDATE SET
+            skill_master_id = excluded.skill_master_id,
             version = excluded.version,
             refinement_count = excluded.refinement_count,
             must_answer_count = excluded.must_answer_count,
@@ -232,6 +241,7 @@ pub fn upsert_clarifications(
             updated_at = excluded.updated_at",
         rusqlite::params![
             skill_id,
+            resolve_skill_master_id(tx, skill_id)?,
             record.version,
             record.refinement_count,
             record.must_answer_count,
@@ -640,11 +650,12 @@ pub fn upsert_decisions(
 
     tx.execute(
         "INSERT INTO decisions (
-            skill_id, version, round, decision_count, conflicts_resolved,
+            skill_id, skill_master_id, version, round, decision_count, conflicts_resolved,
             contradictory_inputs_state, scope_recommendation, created_at, updated_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
         ON CONFLICT(skill_id) DO UPDATE SET
+            skill_master_id = excluded.skill_master_id,
             version = excluded.version,
             round = excluded.round,
             decision_count = excluded.decision_count,
@@ -654,6 +665,7 @@ pub fn upsert_decisions(
             updated_at = excluded.updated_at",
         rusqlite::params![
             skill_id,
+            resolve_skill_master_id(tx, skill_id)?,
             record.version,
             record.round,
             record.decision_count,

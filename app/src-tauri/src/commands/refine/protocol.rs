@@ -3,11 +3,11 @@ use std::path::Path;
 use crate::skill_paths::resolve_skill_dir;
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
+pub(crate) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(super) fn ensure_skill_workspace_dir(
+pub(crate) fn ensure_skill_workspace_dir(
     workspace_path: &str,
     plugin_slug: &str,
     skill_name: &str,
@@ -51,9 +51,7 @@ pub(super) struct RefinePromptRequest<'a> {
     pub context: RefinePromptContext<'a>,
 }
 
-pub(super) fn build_refine_prompt_with_output_dir(
-    request: RefinePromptRequest<'_>,
-) -> String {
+pub(super) fn build_refine_prompt_with_output_dir(request: RefinePromptRequest<'_>) -> String {
     let RefinePromptRequest {
         skill_name,
         workspace_path,
@@ -76,7 +74,8 @@ pub(super) fn build_refine_prompt_with_output_dir(
     let target_files_clause = match target_files {
         Some(files) if !files.is_empty() => format!(
             "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
-            files.iter()
+            files
+                .iter()
                 .map(|file| format!("{}/{}", skill_output_str, file))
                 .collect::<Vec<_>>()
                 .join(", ")

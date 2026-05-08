@@ -39,7 +39,6 @@ describe("eval scenario queries", () => {
       name: "Smoke",
       tags: ["performance"],
       prompt: "Summarize pipeline risk",
-      shouldTrigger: null,
       expectations: [],
     });
 
@@ -60,7 +59,6 @@ describe("eval scenario queries", () => {
         name: "Smoke",
         tags: ["performance"],
         prompt: "Summarize pipeline risk",
-        shouldTrigger: null,
         expectations: [],
       },
       previousScenarioName: "Regression",

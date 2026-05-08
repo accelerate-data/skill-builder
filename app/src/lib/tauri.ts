@@ -14,7 +14,7 @@ export const logFrontend = (level: "info" | "warn" | "error" | "debug", message:
   invokeCommand("log_frontend", { level, message }).catch(() => {});
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
+export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, RefineDispatchResult, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
 export type { ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
 
 // --- Settings ---
@@ -416,11 +416,23 @@ export const getSkillContentAtPath = (path: string) =>
 export const getSkillContentForRefine = (skillName: string, workspacePath: string, pluginSlug: string) =>
   invokeCommand("get_skill_content_for_refine", { skillName, workspacePath, pluginSlug })
 
-export const startRefineSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("start_refine_session", { skillName, pluginSlug, workspacePath })
+export const selectSkillOpenHandsSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invokeCommand("select_skill_openhands_session", { skillName, pluginSlug, workspacePath })
 
-export const closeRefineSession = (skillName: string, pluginSlug: string) =>
-  invokeCommand("close_refine_session", { skillName, pluginSlug })
+export const pauseOpenHandsSession = (
+  skillName: string,
+  pluginSlug: string,
+  conversationId: string,
+  agentId?: string | null,
+) =>
+  invokeCommand("pause_openhands_session", {
+    input: {
+      skillName,
+      pluginSlug,
+      conversationId,
+      agentId: agentId ?? null,
+    },
+  })
 
 export const cancelAgentRun = (agentId: string) =>
   invokeCommand("cancel_agent_run", { agentId })
@@ -431,7 +443,7 @@ export const cancelWorkflowStep = (agentId: string) =>
 export const sendRefineMessage = (
   skillName: string,
   pluginSlug: string,
-  conversationId: string,
+  conversationId: string | null,
   userMessage: string,
   targetFiles?: string[],
 ) => invokeCommand("send_refine_message", {

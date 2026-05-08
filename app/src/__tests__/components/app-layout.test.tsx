@@ -42,7 +42,16 @@ vi.mock("@/components/layout/sidebar", () => ({
 }));
 
 vi.mock("@/components/skill-list-panel", () => ({
-  SkillListPanel: () => <div data-testid="skill-list-panel">SkillListPanel</div>,
+  SkillListPanel: ({
+    onSelectSkill,
+  }: {
+    onSelectSkill?: (name: string, tab?: string) => void;
+  }) => (
+    <div data-testid="skill-list-panel">
+      <button onClick={() => onSelectSkill?.("sales-skill", "refine")}>Select sales</button>
+      <button onClick={() => onSelectSkill?.("finance-skill", "refine")}>Select finance</button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/close-guard", () => ({
@@ -90,6 +99,7 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useSkillStore } from "@/stores/skill-store";
 import {
   setEvalsCancelHandler,
   setEvalsRunning,
@@ -136,6 +146,7 @@ describe("AppLayout", () => {
     useSettingsStore.getState().reset();
     useRefineStore.getState().clearSession();
     useAgentStore.getState().clearRuns();
+    useSkillStore.getState().setActiveSkill(null);
     setEvalsRunning(false);
     setEvalsCancelHandler(null);
     vi.mocked(toast.info).mockReset();
@@ -379,6 +390,194 @@ describe("AppLayout", () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup", { apply: true });
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+  });
+
+  it("bootstraps an OpenHands session for the selected skill", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            name: "sales-skill",
+            current_step: null,
+            status: "completed",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            model: null,
+            argumentHint: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "acquire_lock") return Promise.resolve(undefined);
+      if (cmd === "select_skill_openhands_session") {
+        return Promise.resolve({
+          conversation_id: "conv-sales",
+          skill_name: "sales-skill",
+          created_at: new Date().toISOString(),
+          available_agents: ["skill-creator"],
+          restored_messages: [],
+          restored_transcript_events: [],
+        });
+      }
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+
+    useSkillStore.getState().setActiveSkill("sales-skill");
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
+        skillName: "sales-skill",
+      });
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillName: "sales-skill",
+        pluginSlug: "skills",
+        workspacePath: "/home/user/workspace",
+      });
+    });
+
+    expect(useRefineStore.getState().conversationId).toBe("conv-sales");
+  });
+
+  it("pauses the current skill conversation before switching skills", async () => {
+    const skills = [
+      {
+        name: "sales-skill",
+        current_step: null,
+        status: "completed",
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        description: null,
+        version: null,
+        model: null,
+        argumentHint: null,
+        userInvocable: null,
+        disableModelInvocation: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      {
+        name: "finance-skill",
+        current_step: null,
+        status: "completed",
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        description: null,
+        version: null,
+        model: null,
+        argumentHint: null,
+        userInvocable: null,
+        disableModelInvocation: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+    ];
+
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") return Promise.resolve(skills);
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "acquire_lock") return Promise.resolve(undefined);
+      if (cmd === "select_skill_openhands_session") {
+        return Promise.resolve({
+          conversation_id:
+            args?.skillName === "sales-skill" ? "conv-current" : "conv-next",
+          skill_name:
+            typeof args?.skillName === "string" ? args.skillName : "finance-skill",
+          created_at: new Date().toISOString(),
+          available_agents: ["skill-creator"],
+          restored_messages: [],
+          restored_transcript_events: [],
+        });
+      }
+      if (cmd === "pause_openhands_session") return Promise.resolve(undefined);
+      if (cmd === "release_lock") return Promise.resolve(undefined);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+    });
+
+    useSkillStore.getState().setActiveSkill("sales-skill");
+    useRefineStore.setState({
+      selectedSkill: {
+        name: "sales-skill",
+        status: "completed",
+        current_step: null,
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      conversationId: "conv-current",
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("skill-list-panel")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Select finance"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("pause_openhands_session", {
+        input: {
+          skillName: "sales-skill",
+          pluginSlug: "skills",
+          conversationId: "conv-current",
+          agentId: null,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("release_lock", {
+        skillName: "sales-skill",
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
+        skillName: "finance-skill",
+      });
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillName: "finance-skill",
+        pluginSlug: "skills",
+        workspacePath: "/home/user/workspace",
+      });
     });
   });
 

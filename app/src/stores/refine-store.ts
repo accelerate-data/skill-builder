@@ -33,6 +33,7 @@ export interface RefineMessage {
   role: RefineMessageRole;
   agentId?: string; // set for "agent" role — links to agent-store run
   agentText?: string; // restored agent text when rehydrating persisted history
+  hideTaskSent?: boolean;
   userText?: string; // set for "user" role
   targetFiles?: string[]; // files targeted with @mentions
   toolUseId?: string;
@@ -80,6 +81,7 @@ interface RefineState {
   // Actions
   setRefinableSkills: (skills: EditableSkill[]) => void;
   setLoadingSkills: (v: boolean) => void;
+  setSelectedSkill: (skill: EditableSkill | null) => void;
   selectSkill: (skill: EditableSkill | null) => void;
   setSkillFiles: (files: SkillFile[]) => void;
   setLoadingFiles: (v: boolean) => void;
@@ -148,6 +150,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setPendingInitialMessage: (msg) => set({ pendingInitialMessage: msg }),
   setRefinableSkills: (skills) => set({ refinableSkills: skills }),
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
+  setSelectedSkill: (skill) => set({ selectedSkill: skill }),
 
   selectSkill: (skill) => set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
 

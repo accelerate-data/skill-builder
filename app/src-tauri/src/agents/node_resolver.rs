@@ -1,62 +1,18 @@
-use std::fmt;
-
 use tokio::process::Command;
 
-/// Result of Node.js binary resolution: the path and where it was found.
+/// Result of Node.js binary resolution and where it was found.
 pub struct NodeResolution {
-    pub path: String,
     pub source: String,
     pub version: Option<String>,
     pub meets_minimum: bool,
 }
 
-/// Structured error from `resolve_node_binary_for_preflight()` so callers can
-/// pattern-match instead of parsing error strings.
-#[derive(Debug)]
-pub(crate) enum NodeBinaryError {
-    NotFound,
-    Incompatible { version: String },
-}
-
-impl fmt::Display for NodeBinaryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotFound => write!(
-                f,
-                "Node.js not found. Please install Node.js 18+ from https://nodejs.org"
-            ),
-            Self::Incompatible { version } => write!(
-                f,
-                "Node.js {} is not compatible. This app requires Node.js 18+.",
-                version
-            ),
-        }
-    }
-}
-
 /// Resolve the system Node.js binary (18+ required).
 ///
-/// Returns `NodeResolution` with full metadata (path, source, version, meets_minimum).
+/// Returns `NodeResolution` with full metadata (source, version, meets_minimum).
 /// Used by `check_node` and `check_startup_deps` commands that need rich status info.
 pub async fn resolve_node_binary(_app_handle: &tauri::AppHandle) -> Result<NodeResolution, String> {
     resolve_system_node().await
-}
-
-/// Internal: resolve Node.js binary path for `preflight_check()`.
-///
-/// Returns `Ok(path)` if a compatible Node.js (18+) is found.
-/// Returns `NodeBinaryError::Incompatible` if Node is found but below v18.
-/// Returns `NodeBinaryError::NotFound` if Node is not found at all.
-pub(crate) async fn resolve_node_binary_for_preflight(
-    app_handle: &tauri::AppHandle,
-) -> Result<String, NodeBinaryError> {
-    match resolve_node_binary(app_handle).await {
-        Ok(resolution) if resolution.meets_minimum => Ok(resolution.path),
-        Ok(resolution) => Err(NodeBinaryError::Incompatible {
-            version: resolution.version.unwrap_or_else(|| "unknown".to_string()),
-        }),
-        Err(_) => Err(NodeBinaryError::NotFound),
-    }
 }
 
 /// System Node.js discovery: searches PATH and well-known locations, validates version 18+.
@@ -97,16 +53,13 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
         if let Ok(out) = output {
             if out.status.success() {
                 let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                let path_str = candidate.to_string_lossy().to_string();
-
                 if first_available.is_none() {
-                    first_available = Some((path_str.clone(), version.clone()));
+                    first_available = Some((String::from("system"), version.clone()));
                 }
 
                 if is_node_compatible(&version) {
-                    log::info!("Using system Node.js {} at {}", version, path_str);
+                    log::info!("Using system Node.js {}", version);
                     return Ok(NodeResolution {
-                        path: path_str,
                         source: "system".to_string(),
                         version: Some(version),
                         meets_minimum: true,
@@ -118,10 +71,9 @@ async fn resolve_system_node() -> Result<NodeResolution, String> {
 
     // Found a Node but it doesn't meet version requirements -- still return it
     // (check_node and check_startup_deps callers want a best-effort path to report the mismatch)
-    if let Some((path, version)) = first_available {
+    if let Some((source, version)) = first_available {
         return Ok(NodeResolution {
-            path,
-            source: "system".to_string(),
+            source,
             version: Some(version),
             meets_minimum: false,
         });

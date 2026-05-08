@@ -3,20 +3,13 @@ pub mod diff;
 pub mod output;
 pub(crate) mod protocol;
 
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Mutex;
-use std::time::Duration;
-
 use serde::Deserialize;
+use std::path::Path;
 
-use crate::agents::openhands_server::client::OpenHandsServerClient;
-use crate::agents::openhands_server::process::ensure_agent_server;
 use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
-use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
-use crate::types::{ConversationMessage, RefineSessionInfo, RestoredConversationEvent};
+use crate::types::RefineDispatchResult;
 
 use protocol::*;
 
@@ -29,6 +22,9 @@ const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
 /// (skill_generation) since refine has the same shape: edit skill files,
 /// run optional tools, summarize.
 const REFINE_MAX_TURNS_PER_TURN: u32 = 500;
+
+pub(crate) use crate::commands::skill_session::refine_session_key;
+pub use crate::commands::skill_session::{RefineSession, RefineSessionManager};
 
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
@@ -128,7 +124,9 @@ fn extract_timestamp_ms(raw: &serde_json::Value) -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
-fn extract_conversation_messages(events: &[serde_json::Value]) -> Vec<ConversationMessage> {
+pub(crate) fn extract_conversation_messages(
+    events: &[serde_json::Value],
+) -> Vec<crate::types::ConversationMessage> {
     events
         .iter()
         .filter(|raw| event_class(raw) == Some("MessageEvent"))
@@ -139,7 +137,7 @@ fn extract_conversation_messages(events: &[serde_json::Value]) -> Vec<Conversati
                 _ => return None,
             };
             let content = extract_message_text(raw)?;
-            Some(ConversationMessage {
+            Some(crate::types::ConversationMessage {
                 role: role.to_string(),
                 content,
             })
@@ -147,14 +145,14 @@ fn extract_conversation_messages(events: &[serde_json::Value]) -> Vec<Conversati
         .collect()
 }
 
-fn extract_restored_conversation_events(
+pub(crate) fn extract_restored_conversation_events(
     events: &[serde_json::Value],
-) -> Vec<RestoredConversationEvent> {
+) -> Vec<crate::types::RestoredConversationEvent> {
     events
         .iter()
         .filter_map(|raw| {
             let event_class = event_class(raw)?;
-            Some(RestoredConversationEvent {
+            Some(crate::types::RestoredConversationEvent {
                 event_class: event_class.to_string(),
                 event: raw.clone(),
                 timestamp: extract_timestamp_ms(raw),
@@ -165,29 +163,9 @@ fn extract_restored_conversation_events(
         .collect()
 }
 
-fn extract_restored_conversation_events_from_normalized(
-    events: &[serde_json::Value],
-) -> Vec<RestoredConversationEvent> {
-    events
-        .iter()
-        .filter(|raw| {
-            raw.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
-        })
-        .filter_map(|raw| {
-            let event_class = raw.get("event_class").and_then(|value| value.as_str())?;
-            let event = raw.get("event")?.clone();
-            Some(RestoredConversationEvent {
-                event_class: event_class.to_string(),
-                event,
-                timestamp: extract_timestamp_ms(raw),
-                tool_call_id: extract_tool_call_id(raw),
-                parent_tool_call_id: extract_parent_tool_call_id(raw),
-            })
-        })
-        .collect()
-}
-
-fn restored_conversation_user_turn_count(events: &[RestoredConversationEvent]) -> usize {
+pub(crate) fn restored_conversation_user_turn_count(
+    events: &[crate::types::RestoredConversationEvent],
+) -> usize {
     events
         .iter()
         .filter(|event| {
@@ -202,60 +180,7 @@ fn restored_conversation_user_turn_count(events: &[RestoredConversationEvent]) -
         .count()
 }
 
-async fn load_saved_refine_conversation(
-    workspace_path: &str,
-    plugin_slug: &str,
-    skill_name: &str,
-    conversation_id: &str,
-) -> Result<
-    Option<(
-        serde_json::Value,
-        Vec<RestoredConversationEvent>,
-        Vec<ConversationMessage>,
-    )>,
-    String,
-> {
-    let workspace_skill_dir =
-        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let server = ensure_agent_server(Duration::from_secs(60), &workspace_skill_dir).await?;
-    let client = OpenHandsServerClient::new(
-        server
-            .base_url()
-            .parse()
-            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
-        Some(server.session_api_key),
-    );
-    let Some(conversation) = client
-        .get_conversation(conversation_id)
-        .await
-        .map_err(|e| format!("Failed to load OpenHands conversation: {e}"))?
-    else {
-        return Ok(None);
-    };
-    let events = client
-        .list_all_events(conversation_id)
-        .await
-        .map_err(|e| format!("Failed to list OpenHands conversation events: {e}"))?;
-    let mut restored_events = extract_restored_conversation_events(&events);
-    let restored_child_events =
-        crate::agents::openhands_server::load_linked_persisted_subagent_conversation_events(
-            workspace_path,
-            conversation_id,
-            &events,
-        )?;
-    restored_events.extend(extract_restored_conversation_events_from_normalized(
-        &restored_child_events,
-    ));
-    restored_events.sort_by_key(|event| event.timestamp);
-
-    Ok(Some((
-        conversation,
-        restored_events,
-        extract_conversation_messages(&events),
-    )))
-}
-
-fn build_refine_openhands_config(
+pub(crate) fn build_refine_openhands_config(
     skill_name: &str,
     plugin_slug: &str,
     prompt: &str,
@@ -272,6 +197,7 @@ fn build_refine_openhands_config(
         llm,
         workspace_root_dir: workspace_path.replace('\\', "/"),
         workspace_run_dir: workspace_skill_dir,
+        mode: None,
         agent_name: "skill-creator".to_string(),
         task_kind: Some("refine".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
@@ -283,6 +209,22 @@ fn build_refine_openhands_config(
         run_source: Some("refine".to_string()),
         plugin_slug: plugin_slug.to_string(),
     })
+}
+
+pub(crate) async fn ensure_refine_runtime_ready(
+    app: &tauri::AppHandle,
+    db: &crate::db::Db,
+    skill_name: &str,
+    plugin_slug: &str,
+) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
+    crate::commands::workflow::ensure_workspace_prompts(app, &runtime_ctx.workspace_path).await?;
+    crate::commands::refine::protocol::ensure_skill_workspace_dir(
+        &runtime_ctx.workspace_path,
+        plugin_slug,
+        skill_name,
+    );
+    Ok(runtime_ctx)
 }
 
 fn load_refine_prompt_context(
@@ -349,327 +291,75 @@ fn load_refine_prompt_context(
     Ok((user_context_block, clarifications_json, decisions_json))
 }
 
-// ─── Session management ──────────────────────────────────────────────────────
-
-/// In-memory state for a single refine session.
-///
-/// Created by `start_refine_session`, used by `send_refine_message`.
-/// The OpenHands conversation is hydrated from the DB when available and
-/// otherwise created on the first message, then reused for every subsequent
-/// turn so the agent retains full edit history.
-pub struct RefineSession {
-    pub skill_name: String,
-    pub plugin_slug: String,
-    #[allow(dead_code)]
-    pub usage_session_id: String,
-    /// OpenHands conversation id for this session. Loaded from the DB on
-    /// session start when a prior conversation exists; otherwise populated by
-    /// the first `send_refine_message` call and reused for every subsequent
-    /// turn so the agent retains full edit history.
-    pub conversation_id: Option<String>,
-    /// agent_id of the most recently dispatched turn. Set every time
-    /// `send_refine_message` runs; `close_refine_session` uses it to signal
-    /// the active OpenHands run during surface teardown.
-    /// The cancel registry itself ignores stale agent_ids, so the backend
-    /// does not actively clear this field — the frontend tracks live turn
-    /// status via the `agent-message` and `agent-exit` event stream.
-    pub current_agent_id: Option<String>,
-    /// Count of persisted or newly dispatched user turns in this session's
-    /// OpenHands conversation. Resume logic uses this to reconstruct transcript
-    /// state and to distinguish an untouched prepared session from a session
-    /// that has already sent at least one user turn.
-    pub dispatched_user_turn_count: usize,
-    /// HEAD SHA of the skills repo when the session started.
-    /// Used by `finalize_refine_run` to detect whether the agent actually committed.
-    pub head_sha_at_start: Option<String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RefineConversationDispatchPlan {
+    ReuseExisting(String),
 }
 
-fn refine_session_key(skill_name: &str, plugin_slug: &str) -> String {
-    format!("{}::{}", plugin_slug, skill_name)
-}
-
-/// Manages active refine sessions. Registered as Tauri managed state.
-/// Keyed by agent_id, using a `Mutex<HashMap>`.
-///
-/// ## Concurrency rule
-/// Only one refine session per skill_name is allowed at a time.
-/// `start_refine_session` must check this before creating a new session.
-pub struct RefineSessionManager(pub Mutex<HashMap<String, RefineSession>>);
-
-impl RefineSessionManager {
-    pub fn new() -> Self {
-        Self(Mutex::new(HashMap::new()))
-    }
-}
-
-// ─── start_refine_session ────────────────────────────────────────────────────
-
-/// Initialize a refine session for a skill.
-///
-/// This selects or creates the persistent OpenHands conversation to reuse for
-/// the refine session and restores message history when possible. The actual
-/// refine turn is still dispatched per-message in `send_refine_message`.
-#[tauri::command]
-pub async fn start_refine_session(
-    app: tauri::AppHandle,
-    skill_name: String,
-    plugin_slug: String,
-    _workspace_path: String,
-    sessions: tauri::State<'_, RefineSessionManager>,
-    db: tauri::State<'_, Db>,
-) -> Result<RefineSessionInfo, String> {
-    log::info!(
-        "[start_refine_session] skill={} plugin={}",
-        skill_name,
-        plugin_slug
-    );
-    validate_skill_name(&skill_name)?;
-
-    let skills_path = resolve_skills_path(&db).map_err(|e| {
-        log::error!(
-            "[start_refine_session] failed to resolve skills path: {}",
-            e
-        );
-        e
-    })?;
-
-    let skill_md =
-        resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?.join("SKILL.md");
-    if !skill_md.exists() {
-        let msg = format!("SKILL.md not found at {}", skill_md.display());
-        log::error!("[start_refine_session] {}", msg);
-        return Err(msg);
-    }
-
-    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
-    crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &plugin_slug, &skill_name);
-
-    let session_config = build_refine_openhands_config(
-        &skill_name,
-        &plugin_slug,
-        "",
-        &runtime_ctx.workspace_path,
-        runtime_ctx.llm.clone(),
-    );
-    let session_request =
-        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_sidecar_config(
-            &session_config,
-        )?;
-
-    let mut saved_conversation_id = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
-    };
-    let mut restored_messages = Vec::new();
-    let mut restored_transcript_events = Vec::new();
-    let mut clear_saved_conversation = false;
-    if let Some(conversation_id) = saved_conversation_id.clone() {
-        match load_saved_refine_conversation(
-            &runtime_ctx.workspace_path,
-            &plugin_slug,
-            &skill_name,
-            &conversation_id,
-        )
-        .await
-        {
-            Ok(Some((conversation, transcript_events, messages))) => {
-                if crate::agents::openhands_server::conversation_matches_request(
-                    &conversation,
-                    &session_request,
-                ) {
-                    restored_transcript_events = transcript_events;
-                    restored_messages = messages;
-                } else {
-                    log::info!(
-                        "[start_refine_session] saved conversation for skill={} plugin={} no longer matches the refine runtime contract; starting a fresh session",
-                        skill_name,
-                        plugin_slug
-                    );
-                    saved_conversation_id = None;
-                    clear_saved_conversation = true;
-                }
-            }
-            Ok(None) => {
-                log::info!(
-                    "[start_refine_session] saved conversation for skill={} plugin={} was not found; starting a fresh session",
-                    skill_name,
-                    plugin_slug
-                );
-                saved_conversation_id = None;
-                clear_saved_conversation = true;
-            }
-            Err(error) => {
-                log::warn!(
-                    "[start_refine_session] failed to restore conversation history for skill={} plugin={}: {}",
-                    skill_name,
-                    plugin_slug,
-                    error
-                );
-                saved_conversation_id = None;
-                clear_saved_conversation = true;
-            }
+fn normalize_conversation_id(value: Option<String>) -> Option<String> {
+    value.and_then(|candidate| {
+        let trimmed = candidate.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
         }
-    }
-    if clear_saved_conversation {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::clear_skill_conversation_id(&conn, &plugin_slug, &skill_name)?;
-    }
-    let mut prepared_fresh_conversation = false;
-    if saved_conversation_id.is_none() {
-        let (user_context_block, clarifications_json, decisions_json) =
-            load_refine_prompt_context(&db, &skill_name, &runtime_ctx.workspace_path)?;
-        let initial_prompt = build_refine_prompt_with_output_dir(RefinePromptRequest {
-            skill_name: &skill_name,
-            workspace_path: &runtime_ctx.workspace_path,
-            plugin_slug: &plugin_slug,
-            skill_output_dir: &resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?,
-            user_message: "",
-            target_files: None,
-            context: RefinePromptContext {
-                user_context_block: &user_context_block,
-                clarifications_json: &clarifications_json,
-                decisions_json: &decisions_json,
-            },
-        });
-        let session_config = build_refine_openhands_config(
-            &skill_name,
-            &plugin_slug,
-            &initial_prompt,
-            &runtime_ctx.workspace_path,
-            runtime_ctx.llm.clone(),
-        );
-        saved_conversation_id = Some(
-            crate::agents::openhands_server::prepare_openhands_session_with_initial_message(
-                &app,
-                session_config,
-                None,
-            )
-            .await?,
-        );
-        prepared_fresh_conversation = true;
-    }
-
-    if prepared_fresh_conversation && restored_transcript_events.is_empty() {
-        if let Some(conversation_id) = saved_conversation_id.clone() {
-            match load_saved_refine_conversation(
-                &runtime_ctx.workspace_path,
-                &plugin_slug,
-                &skill_name,
-                &conversation_id,
-            )
-            .await
-            {
-                Ok(Some((_conversation, transcript_events, messages))) => {
-                    restored_transcript_events = transcript_events;
-                    restored_messages = messages;
-                }
-                Ok(None) => {
-                    log::warn!(
-                        "[start_refine_session] prepared conversation for skill={} plugin={} was not found during immediate restore",
-                        skill_name,
-                        plugin_slug
-                    );
-                }
-                Err(error) => {
-                    log::warn!(
-                        "[start_refine_session] failed to restore freshly prepared conversation for skill={} plugin={}: {}",
-                        skill_name,
-                        plugin_slug,
-                        error
-                    );
-                }
-            }
-        }
-    }
-
-    let mut map = sessions.0.lock().map_err(|e| {
-        log::error!(
-            "[start_refine_session] failed to acquire session lock: {}",
-            e
-        );
-        e.to_string()
-    })?;
-
-    let session_key = refine_session_key(&skill_name, &plugin_slug);
-    if let Some(stale_id) = map
-        .iter()
-        .find(|(_, s)| s.skill_name == skill_name && s.plugin_slug == plugin_slug)
-        .map(|(id, _)| id.clone())
-    {
-        log::info!(
-            "[start_refine_session] removing stale session for skill '{}' before restart",
-            skill_name
-        );
-        map.remove(&stale_id);
-    }
-
-    let created_at = chrono::Utc::now().to_rfc3339();
-    log::debug!(
-        "[start_refine_session] creating session [REDACTED] for skill '{}'",
-        skill_name
-    );
-
-    let head_sha_at_start = git2::Repository::open(Path::new(&skills_path))
-        .ok()
-        .and_then(|repo| {
-            let head = repo.head().ok()?;
-            let commit = head.peel_to_commit().ok()?;
-            Some(commit.id().to_string())
-        });
-
-    map.insert(
-        session_key,
-        RefineSession {
-            skill_name: skill_name.clone(),
-            plugin_slug: plugin_slug.clone(),
-            usage_session_id: new_refine_usage_session_id(&skill_name),
-            conversation_id: saved_conversation_id.clone(),
-            current_agent_id: None,
-            dispatched_user_turn_count: restored_conversation_user_turn_count(
-                &restored_transcript_events,
-            ),
-            head_sha_at_start,
-        },
-    );
-
-    Ok(RefineSessionInfo {
-        conversation_id: saved_conversation_id.unwrap_or_default(),
-        skill_name,
-        created_at,
-        available_agents: vec!["skill-creator".to_string()],
-        restored_messages,
-        restored_transcript_events,
     })
+}
+
+fn plan_refine_conversation_dispatch(
+    session: &RefineSession,
+    requested_conversation_id: Option<String>,
+) -> Result<RefineConversationDispatchPlan, String> {
+    let requested_conversation_id = normalize_conversation_id(requested_conversation_id);
+
+    let active_conversation_id = session.conversation_id.clone().ok_or_else(|| {
+        format!(
+            "Refine session for skill '{}' plugin '{}' has no active conversation",
+            session.skill_name, session.plugin_slug
+        )
+    })?;
+
+    if let Some(requested_conversation_id) = requested_conversation_id {
+        if requested_conversation_id != active_conversation_id {
+            return Err(format!(
+                "Refine conversation mismatch for skill '{}' plugin '{}'",
+                session.skill_name, session.plugin_slug
+            ));
+        }
+    }
+
+    Ok(RefineConversationDispatchPlan::ReuseExisting(
+        active_conversation_id,
+    ))
 }
 
 // ─── send_refine_message ─────────────────────────────────────────────────────
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// The session already carries a prepared persistent conversation from
-/// `start_refine_session`. This command only dispatches the next message turn
-/// using that session state.
+/// The selected skill already owns a persistent OpenHands conversation.
+/// This command only dispatches the next user turn into that conversation.
 ///
-/// Returns the `agent_id` so the frontend can listen for `agent-message` and
-/// `agent-exit` events scoped to this turn.
+/// Returns both the `agent_id` and the active `conversation_id` so the
+/// frontend can keep its Refine session store aligned with the backend.
 #[tauri::command]
 pub async fn send_refine_message(
     input: SendRefineMessageInput,
     sessions: tauri::State<'_, RefineSessionManager>,
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
-) -> Result<String, String> {
+) -> Result<RefineDispatchResult, String> {
     let SendRefineMessageInput {
         skill_name,
         plugin_slug,
         conversation_id,
         user_message,
-        target_files: _target_files,
+        target_files,
     } = input;
 
     let session_key = refine_session_key(&skill_name, &plugin_slug);
-    {
+    let (is_first_turn, dispatch_plan) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(
                 "[send_refine_message] failed to acquire session lock: {}",
@@ -687,35 +377,37 @@ pub async fn send_refine_message(
             log::error!("[send_refine_message] {}", msg);
             msg
         })?;
-        if session.conversation_id.as_deref() != Some(conversation_id.as_str()) {
-            return Err(format!(
-                "Refine conversation mismatch for skill '{}' plugin '{}'",
-                skill_name, plugin_slug
-            ));
-        }
-    }
+        let dispatch_plan = plan_refine_conversation_dispatch(session, conversation_id)?;
+        (session.dispatched_user_turn_count == 0, dispatch_plan)
+    };
 
-    log::info!(
-        "[send_refine_message] skill={} plugin={} conversation_id={}",
-        skill_name,
-        plugin_slug,
-        conversation_id
-    );
+    let runtime_ctx = ensure_refine_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
 
-    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
-
-    // Deploy bundled OpenHands agents and AgentSkills into the workspace so the
-    // Agent Server can resolve the skill-creator agent and its skills. Workflow
-    // runs do this on every dispatch; refine must too — the call is cached
-    // per-session so repeated turns are cheap.
-    crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-
-    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &plugin_slug, &skill_name);
+    let prompt = if is_first_turn {
+        let skills_path = resolve_skills_path(&db)?;
+        let (user_context_block, clarifications_json, decisions_json) =
+            load_refine_prompt_context(&db, &skill_name, &runtime_ctx.workspace_path)?;
+        build_refine_prompt_with_output_dir(RefinePromptRequest {
+            skill_name: &skill_name,
+            workspace_path: &runtime_ctx.workspace_path,
+            plugin_slug: &plugin_slug,
+            skill_output_dir: &resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?,
+            user_message: &user_message,
+            target_files: target_files.as_deref(),
+            context: RefinePromptContext {
+                user_context_block: &user_context_block,
+                clarifications_json: &clarifications_json,
+                decisions_json: &decisions_json,
+            },
+        })
+    } else {
+        user_message.clone()
+    };
 
     let config = build_refine_openhands_config(
         &skill_name,
         &plugin_slug,
-        &user_message,
+        &prompt,
         &runtime_ctx.workspace_path,
         runtime_ctx.llm.clone(),
     );
@@ -725,66 +417,44 @@ pub async fn send_refine_message(
         chrono::Utc::now().timestamp_millis()
     );
 
-    let returned_conversation_id = crate::agents::openhands_server::openhands_send_message(
+    let RefineConversationDispatchPlan::ReuseExisting(active_conversation_id) = dispatch_plan;
+
+    log::info!(
+        "[send_refine_message] skill={} plugin={} conversation_id={}",
+        skill_name,
+        plugin_slug,
+        active_conversation_id
+    );
+
+    let expected_conversation_id = active_conversation_id.clone();
+    let returned_conversation_id = crate::agents::openhands_server::send_openhands_message(
         &app,
         &agent_id,
         config,
-        conversation_id,
+        active_conversation_id,
     )
     .await?;
+
+    if returned_conversation_id != expected_conversation_id {
+        return Err(format!(
+            "Refine conversation changed unexpectedly for skill '{}' plugin '{}'",
+            skill_name, plugin_slug
+        ));
+    }
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
         if let Some(session) = map.get_mut(&session_key) {
-            session.conversation_id = Some(returned_conversation_id);
+            session.conversation_id = Some(returned_conversation_id.clone());
             session.current_agent_id = Some(agent_id.clone());
             session.dispatched_user_turn_count += 1;
         }
     }
 
-    Ok(agent_id)
-}
-
-// ─── close_refine_session ────────────────────────────────────────────────────
-
-/// Close a refine session: cancel any in-flight turn, then remove the
-/// in-memory session wrapper. The persisted OpenHands conversation remains
-/// available for resume.
-#[tauri::command]
-pub async fn close_refine_session(
-    skill_name: String,
-    plugin_slug: String,
-    sessions: tauri::State<'_, RefineSessionManager>,
-) -> Result<(), String> {
-    log::info!("[close_refine_session] session=[REDACTED]");
-    let session_key = refine_session_key(&skill_name, &plugin_slug);
-
-    let removed = {
-        let mut map = sessions.0.lock().map_err(|e| {
-            log::error!(
-                "[close_refine_session] failed to acquire session lock: {}",
-                e
-            );
-            e.to_string()
-        })?;
-        map.remove(&session_key)
-    };
-
-    let Some(session) = removed else {
-        log::debug!("[close_refine_session] session [REDACTED] not found (already closed)");
-        return Ok(());
-    };
-
-    if let Some(agent_id) = session.current_agent_id.as_ref() {
-        let cancelled = crate::agents::openhands_server::pause_openhands_session(agent_id);
-        log::debug!(
-            "[close_refine_session] pause_openhands_session agent={} result={}",
-            agent_id,
-            cancelled
-        );
-    }
-
-    Ok(())
+    Ok(RefineDispatchResult {
+        agent_id,
+        conversation_id: returned_conversation_id,
+    })
 }
 
 /// Cancel an active OpenHands agent run by agent_id.
@@ -808,7 +478,7 @@ mod tests;
 pub struct SendRefineMessageInput {
     pub skill_name: String,
     pub plugin_slug: String,
-    pub conversation_id: String,
+    pub conversation_id: Option<String>,
     pub user_message: String,
     pub target_files: Option<Vec<String>>,
 }

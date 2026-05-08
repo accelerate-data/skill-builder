@@ -187,6 +187,7 @@ fn build_skill_creator_workflow_sidecar_config(
             llm,
             workspace_root_dir,
             workspace_run_dir,
+            mode: None,
             agent_name: "skill-creator".to_string(),
             task_kind: Some(task_kind.to_string()),
             user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
@@ -220,6 +221,7 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
         llm,
         workspace_root_dir,
         workspace_run_dir,
+        mode: None,
         agent_name: "skill-creator".to_string(),
         task_kind: Some("workflow.answer_evaluator".to_string()),
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
@@ -238,7 +240,54 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: SidecarConfig,
 ) -> Result<String, String> {
-    crate::agents::openhands_server::start_openhands_session(app, agent_id, config, None).await
+    let skill_name = config.skill_name.clone().ok_or_else(|| {
+        "Workflow OpenHands config missing skill_name for selected conversation lookup".to_string()
+    })?;
+    let conversation_id = {
+        let db = app.state::<Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_conversation_id(&conn, &config.plugin_slug, &skill_name)?
+    }
+    .ok_or_else(|| {
+        format!(
+            "No active OpenHands conversation for workflow skill '{}' plugin '{}'",
+            skill_name, config.plugin_slug
+        )
+    })?;
+
+    dispatch_persistent_skill_turn_with_runtime(
+        agent_id,
+        config,
+        conversation_id,
+        |agent_id, config, conversation_id| {
+            let agent_id = agent_id.to_string();
+            Box::pin(async move {
+                crate::agents::openhands_server::openhands_send_message(
+                    app,
+                    &agent_id,
+                    config,
+                    conversation_id,
+                )
+                .await
+                .map(|_| ())
+            })
+        },
+    )
+    .await
+}
+
+pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<Send, SendFuture>(
+    agent_id: &str,
+    config: SidecarConfig,
+    conversation_id: String,
+    send: Send,
+) -> Result<String, String>
+where
+    Send: FnOnce(&str, SidecarConfig, String) -> SendFuture,
+    SendFuture: std::future::Future<Output = Result<(), String>>,
+{
+    send(agent_id, config, conversation_id.clone()).await?;
+    Ok(conversation_id)
 }
 
 const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(

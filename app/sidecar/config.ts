@@ -15,7 +15,7 @@ export interface OpenHandsLlmConfig {
 }
 
 export interface SidecarConfig {
-  mode?: "one-shot" | "streaming";
+  mode?: "throwaway" | "streaming";
   prompt: string;
   systemPrompt?: string;
   taskKind?: string;
@@ -52,7 +52,7 @@ export interface SidecarConfig {
   /** Synthetic usage session ID (for non-workflow runs). */
   usageSessionId?: string;
   /** Run source for persistence attribution. */
-  runSource?: "workflow" | "refine" | "test" | "gate-eval";
+  runSource?: "workflow" | "refine" | "test" | "gate-eval" | "scenario-suggest";
   /** Plugin slug for the skill (from plugin-paths.json: {root}/{plugin_slug}/{skill_name}).
    * Threaded through to run_result so persistence handlers can resolve the correct skill dir. */
   pluginSlug: string;
@@ -189,9 +189,9 @@ export function parseSidecarConfig(raw: unknown): SidecarConfig {
   assertOptString(c, "persistenceDir");
 
   // Optional enum fields
-  assertOptStringIn(c, "mode", ["one-shot", "streaming"]);
+  assertOptStringIn(c, "mode", ["throwaway", "streaming"]);
   assertOptStringIn(c, "permissionMode", ["default", "acceptEdits", "bypassPermissions", "plan"]);
-  assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval"]);
+  assertOptStringIn(c, "runSource", ["workflow", "refine", "test", "gate-eval", "scenario-suggest"]);
   if (c.llm !== undefined) {
     assertOpenHandsLlmConfig(c.llm);
   }

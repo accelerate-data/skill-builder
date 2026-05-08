@@ -2,6 +2,8 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
+import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
+import { useRefineStore } from "@/stores/refine-store";
 
 vi.mock("@/lib/toast", () => ({
   toast: {
@@ -26,6 +28,9 @@ const mockGetDisabledSteps = vi.fn((..._args: unknown[]) =>
   Promise.resolve([] as number[]),
 );
 const mockResetWorkflowStep = vi.fn((..._args: unknown[]) => Promise.resolve());
+const mockSelectSkillOpenHandsSession = vi.fn((..._args: unknown[]) =>
+  Promise.resolve(),
+);
 const mockMaterializeWorkflowStepOutput = vi.fn((..._args: unknown[]) =>
   Promise.resolve(),
 );
@@ -77,6 +82,9 @@ vi.mock("@/lib/tauri", () => ({
   logGateDecision: vi.fn((...args) => mockLogGateDecision(...args)),
   getContextFileContent: vi.fn((...args) => mockGetContextFileContent(...args)),
   logFrontend: vi.fn((...args) => mockLogFrontend(...args)),
+  selectSkillOpenHandsSession: vi.fn((...args) =>
+    mockSelectSkillOpenHandsSession(...args),
+  ),
 }));
 
 vi.mock("@/lib/models", () => ({
@@ -116,6 +124,7 @@ let mockWorkflowState = {
 
 const mockSetActiveAgent = vi.fn();
 const mockClearRuns = vi.fn();
+const mockClearRunsBySource = vi.fn();
 const mockAgentStartRun = vi.fn();
 const mockSettingsState = vi.hoisted(() => ({
   modelSettings: {
@@ -150,6 +159,7 @@ vi.mock("@/stores/agent-store", () => ({
         runs: mockRuns,
         setActiveAgent: mockSetActiveAgent,
         clearRuns: mockClearRuns,
+        clearRunsBySource: mockClearRunsBySource,
         startRun: mockAgentStartRun,
       };
       return selector ? selector(state) : state;
@@ -159,6 +169,7 @@ vi.mock("@/stores/agent-store", () => ({
         runs: mockRuns,
         setActiveAgent: mockSetActiveAgent,
         clearRuns: mockClearRuns,
+        clearRunsBySource: mockClearRunsBySource,
         startRun: mockAgentStartRun,
         activeAgentId: mockActiveAgentId,
       })),
@@ -176,6 +187,7 @@ vi.mock("@/stores/settings-store", () => ({
 }));
 
 describe("useWorkflowStateMachine", () => {
+  const mockRestartOpenHandsSession = vi.fn(() => Promise.resolve());
   const defaultOptions = {
     skillName: "test-skill",
     workspacePath: "/workspace",
@@ -193,12 +205,14 @@ describe("useWorkflowStateMachine", () => {
     purpose: null,
     clarificationsData: null,
     stepConfigs: STEP_CONFIGS,
+    restartOpenHandsSession: mockRestartOpenHandsSession,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockActiveAgentId = null;
     mockRuns = {};
+    useRefineStore.getState().clearSession();
     mockWorkflowState = {
       ...mockWorkflowState,
       workflowSessionId: null,
@@ -208,6 +222,7 @@ describe("useWorkflowStateMachine", () => {
       gateLoading: false,
       disabledSteps: [],
     };
+    mockRestartOpenHandsSession.mockClear();
     mockSettingsState.modelSettings.model = "test-settings-model";
   });
 
@@ -289,7 +304,72 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       0,
     );
+    expect(mockRestartOpenHandsSession).toHaveBeenCalled();
     expect(mockResetToStep).toHaveBeenCalledWith(0);
+  });
+
+  it("performStepReset recreates and hydrates the selected skill session through the real restart helper", async () => {
+    mockSelectSkillOpenHandsSession.mockResolvedValueOnce({
+      conversation_id: "conv-reset-123",
+      skill_name: "test-skill",
+      created_at: new Date().toISOString(),
+      available_agents: ["skill-creator"],
+      restored_messages: [
+        { role: "user", content: "Resume from reset" },
+        { role: "agent", content: "Ready to restart." },
+      ],
+      restored_transcript_events: [],
+    });
+
+    const { result } = renderHook(() =>
+      useWorkflowStateMachine({
+        ...defaultOptions,
+        restartOpenHandsSession: () =>
+          restartSkillOpenHandsSession(
+            {
+              name: "test-skill",
+              plugin_slug: "default",
+              skill_source: "skill-builder",
+              purpose: null,
+              description: null,
+              tags: [],
+              intake_json: null,
+              version: null,
+              model: null,
+              argumentHint: null,
+              userInvocable: null,
+              disableModelInvocation: null,
+              status: null,
+              current_step: null,
+            },
+            "/workspace",
+          ),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.performStepReset(0);
+    });
+
+    expect(mockResetWorkflowStep).toHaveBeenCalledWith(
+      "/workspace",
+      "test-skill",
+      0,
+    );
+    expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(
+      "test-skill",
+      "/workspace",
+      "default",
+    );
+
+    const refine = useRefineStore.getState();
+    expect(refine.conversationId).toBe("conv-reset-123");
+    expect(refine.selectedSkill?.name).toBe("test-skill");
+    expect(refine.messages).toHaveLength(2);
+    expect(refine.messages.map((message) => message.role)).toEqual([
+      "user",
+      "agent",
+    ]);
   });
 
   it("performStepReset auto-starts the agent immediately after reset", async () => {

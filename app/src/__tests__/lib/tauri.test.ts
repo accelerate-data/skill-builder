@@ -21,12 +21,13 @@ import {
   listSkills,
   moveSkillToPlugin,
   parseGitHubUrl,
+  pauseOpenHandsSession,
   parseSkillFile,
   removeSkillFromPlugin,
   renameSkill,
   reviewSkillScope,
   sendRefineMessage,
-  startRefineSession,
+  selectSkillOpenHandsSession,
   setPluginUpgradeLock,
   updateSkillMetadata,
 } from "@/lib/tauri";
@@ -107,9 +108,9 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
       },
     },
     {
-      name: "startRefineSession",
-      call: () => startRefineSession("demo-skill", "/tmp/workspace", "analytics-pack"),
-      command: "start_refine_session",
+      name: "selectSkillOpenHandsSession",
+      call: () => selectSkillOpenHandsSession("demo-skill", "/tmp/workspace", "analytics-pack"),
+      command: "select_skill_openhands_session",
       args: {
         skillName: "demo-skill",
         pluginSlug: "analytics-pack",
@@ -134,6 +135,25 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
           conversationId: "conv-123",
           userMessage: "Update this skill",
           targetFiles: ["SKILL.md"],
+        },
+      },
+    },
+    {
+      name: "pauseOpenHandsSession",
+      call: () =>
+        pauseOpenHandsSession(
+          "demo-skill",
+          "analytics-pack",
+          "conv-123",
+          "agent-123",
+        ),
+      command: "pause_openhands_session",
+      args: {
+        input: {
+          skillName: "demo-skill",
+          pluginSlug: "analytics-pack",
+          conversationId: "conv-123",
+          agentId: "agent-123",
         },
       },
     },

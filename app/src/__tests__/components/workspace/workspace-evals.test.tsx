@@ -131,7 +131,7 @@ describe("WorkspaceEvals", () => {
 
     expect(screen.getByText(/no scenarios yet/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /new scenario/i }));
-    expect(onCreateScenario).toHaveBeenCalledWith("performance");
+    expect(onCreateScenario).toHaveBeenCalledWith();
   });
 
   it("shows no scenarios message when hasScenarios is false", () => {

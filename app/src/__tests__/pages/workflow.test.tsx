@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { mockListen, mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
@@ -63,6 +64,9 @@ vi.mock("@/lib/tauri", () => ({
     Promise.resolve(command === "get_clarifications" ? null : undefined),
   ),
 }));
+vi.mock("@/lib/skill-openhands-session", () => ({
+  restartSkillOpenHandsSession: vi.fn(() => Promise.resolve()),
+}));
 
 // Mock ClarificationsEditor — renders a simple div with testid and
 // exposes onChange/onContinue via buttons so tests can trigger them.
@@ -99,6 +103,7 @@ vi.mock("@/components/step-complete", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
+import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import {
   getWorkflowState,
   saveWorkflowState,
@@ -192,6 +197,22 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
 // every test starts with a clean slate regardless of describe-level setup order.
 beforeEach(() => {
   mockLocation.state = {};
+  useRefineStore.getState().selectSkill({
+    name: "test-skill",
+    plugin_slug: "default",
+    skill_source: "skill-builder",
+    purpose: null,
+    description: null,
+    tags: [],
+    intake_json: null,
+    version: null,
+    model: null,
+    argumentHint: null,
+    userInvocable: null,
+    disableModelInvocation: null,
+    status: null,
+    current_step: null,
+  });
 });
 
 describe("WorkflowPage — agent completion lifecycle", () => {
@@ -199,6 +220,22 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
+    useRefineStore.getState().selectSkill({
+      name: "test-skill",
+      plugin_slug: "default",
+      skill_source: "skill-builder",
+      purpose: null,
+      description: null,
+      tags: [],
+      intake_json: null,
+      version: null,
+      model: null,
+      argumentHint: null,
+      userInvocable: null,
+      disableModelInvocation: null,
+      status: null,
+      current_step: null,
+    });
     useSettingsStore.getState().reset();
 
     // Hydrate settings so workflow handlers don't bail
@@ -230,6 +267,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
+    useRefineStore.getState().selectSkill(null);
     useSettingsStore.getState().reset();
   });
 
@@ -483,7 +521,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
-  it("releases lock on unmount even when not running", async () => {
+  it("cleans up workflow session on unmount even when not running", async () => {
     vi.mocked(endWorkflowSession).mockClear();
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -497,10 +535,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       unmount();
     });
 
-    // Session should still be cleaned up (no sidecar pool involved)
+    // Session cleanup should remain safe even when no agent is running.
     const sessionId = useWorkflowStore.getState().workflowSessionId;
-    // releaseLock is called via useWorkflowSession
-    // We verify endWorkflowSession may be called if a session exists
+    // The workflow page no longer owns skill-lock lifecycle directly.
+    // We only verify teardown remains non-throwing here.
     expect(unmount).not.toThrow();
   });
 
@@ -1825,6 +1863,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     vi.mocked(runWorkflowStep).mockClear();
     vi.mocked(resetWorkflowStep).mockClear();
     vi.mocked(endWorkflowSession).mockClear();
+    vi.mocked(restartSkillOpenHandsSession).mockClear();
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
 
     // Tests in this block set reviewMode=false (Update mode). Signal autoStart so the
@@ -2390,6 +2429,7 @@ describe("step reset behavior regressions", () => {
       "test-skill",
       0,
     );
+    expect(vi.mocked(restartSkillOpenHandsSession)).toHaveBeenCalled();
 
     // Step 0 is no longer completed (auto-start fires so it becomes in_progress)
     expect(useWorkflowStore.getState().steps[0].status).not.toBe("completed");
@@ -3920,7 +3960,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(updates.some((u) => u.question_id === "Q3" && u.verdict === "not_answered" && u.reason === null)).toBe(true);
   });
 
-  it("gate verdict updates: skips invokeCommand when all verdicts are clear (empty per_question)", async () => {
+  it("gate verdict updates: persists clear verdicts when all answers are clear", async () => {
     const evaluation = {
       verdict: "sufficient",
       answered_count: 2,
@@ -3971,11 +4011,20 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       expect(useWorkflowStore.getState().currentStep).toBe(1);
     });
 
-    // No verdicts to persist — update_clarification_verdicts should NOT be called
-    const verdictCalls = vi.mocked(invokeCommand).mock.calls.filter(
+    await waitFor(() => {
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
+    });
+
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
       ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    expect(verdictCalls).toHaveLength(0);
+    const updates = (verdictCall?.[1] as { skillId: string; updates: Array<{ question_id: string; verdict: string; reason: string | null }> })?.updates;
+
+    expect(updates).toEqual([
+      { question_id: "Q1", verdict: "clear", reason: null },
+      { question_id: "Q2", verdict: "clear", reason: null },
+    ]);
   });
 });
 

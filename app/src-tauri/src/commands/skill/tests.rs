@@ -1,10 +1,12 @@
 use super::crud::{
     create_skill_db_records_inner, create_skill_filesystem_inner, create_skill_inner,
     delete_skill_db_records_inner, delete_skill_filesystem_inner, delete_skill_inner,
-    list_refinable_skills_inner, list_skills_inner,
+    list_refinable_skills_inner, list_skills_inner, prepare_skill_runtime_shutdown_inner,
 };
 use super::metadata::{is_valid_kebab, rename_skill_inner};
+use crate::commands::skill_session::{RefineSession, RefineSessionManager};
 use crate::commands::test_utils::create_test_db;
+use crate::commands::workflow::runtime::{WorkflowStepRun, WorkflowStepRunManager};
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use rusqlite::Connection;
 use std::fs;
@@ -336,6 +338,102 @@ fn test_delete_skill_db_phase_does_not_delete_filesystem_dirs() {
         .is_none());
     assert!(flat_skill(workspace_path, "delete-db-only").exists());
     assert!(nested_skill(skills_path, "delete-db-only").exists());
+}
+
+#[test]
+fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() {
+    let conn = create_test_db();
+    crate::db::save_workflow_run(&conn, "active-skill", 0, "pending", "domain").unwrap();
+    crate::db::create_workflow_session(&conn, "sess-active", "active-skill", 4321).unwrap();
+    crate::db::create_workflow_session(&conn, "sess-other", "other-skill", 4321).unwrap();
+
+    let workflow_runs = WorkflowStepRunManager::new();
+    {
+        let mut map = workflow_runs.0.lock().unwrap();
+        map.insert(
+            "workflow-agent".to_string(),
+            WorkflowStepRun {
+                skill_name: "active-skill".to_string(),
+            },
+        );
+        map.insert(
+            "other-agent".to_string(),
+            WorkflowStepRun {
+                skill_name: "other-skill".to_string(),
+            },
+        );
+    }
+
+    let refine_sessions = RefineSessionManager::new();
+    {
+        let mut map = refine_sessions.0.lock().unwrap();
+        map.insert(
+            "skill-builder::active-skill".to_string(),
+            RefineSession {
+                skill_name: "active-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+                usage_session_id: "usage-1".to_string(),
+                conversation_id: Some("conversation-1".to_string()),
+                current_agent_id: Some("refine-agent".to_string()),
+                dispatched_user_turn_count: 0,
+                head_sha_at_start: None,
+            },
+        );
+        map.insert(
+            "skill-builder::other-skill".to_string(),
+            RefineSession {
+                skill_name: "other-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+                usage_session_id: "usage-2".to_string(),
+                conversation_id: Some("conversation-2".to_string()),
+                current_agent_id: Some("other-refine-agent".to_string()),
+                dispatched_user_turn_count: 0,
+                head_sha_at_start: None,
+            },
+        );
+    }
+
+    let plan = prepare_skill_runtime_shutdown_inner(
+        &conn,
+        "active-skill",
+        DEFAULT_PLUGIN_SLUG,
+        &workflow_runs,
+        &refine_sessions,
+    )
+    .unwrap();
+
+    assert_eq!(plan.ended_workflow_sessions, 1);
+    assert_eq!(plan.agent_ids.len(), 2);
+    assert!(plan.agent_ids.contains(&"workflow-agent".to_string()));
+    assert!(plan.agent_ids.contains(&"refine-agent".to_string()));
+
+    let workflow_map = workflow_runs.0.lock().unwrap();
+    assert!(!workflow_map.contains_key("workflow-agent"));
+    assert!(workflow_map.contains_key("other-agent"));
+    drop(workflow_map);
+
+    let refine_map = refine_sessions.0.lock().unwrap();
+    assert!(!refine_map.contains_key("skill-builder::active-skill"));
+    assert!(refine_map.contains_key("skill-builder::other-skill"));
+    drop(refine_map);
+
+    let ended_active: Option<String> = conn
+        .query_row(
+            "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-active'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(ended_active.is_some());
+
+    let ended_other: Option<String> = conn
+        .query_row(
+            "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-other'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(ended_other.is_none());
 }
 
 #[test]
@@ -812,18 +910,15 @@ fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
     )
     .unwrap();
 
-    // skills master row is soft-deleted (deleted_at set), imported_skills row is removed
-    let deleted_at: Option<String> = conn
+    // skills master row is removed and imported_skills row is removed
+    let skill_count: i64 = conn
         .query_row(
-            "SELECT deleted_at FROM skills WHERE name = 'mkt-skill'",
+            "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'",
             [],
             |r| r.get(0),
         )
         .unwrap();
-    assert!(
-        deleted_at.as_deref().is_some_and(|v| !v.is_empty()),
-        "skills master row should be soft-deleted",
-    );
+    assert_eq!(skill_count, 0, "skills master row should be deleted");
 
     let imported_after: i64 = conn
         .query_row(
@@ -886,18 +981,15 @@ fn test_delete_skill_inner_skill_builder_routes_to_workflow_path() {
     let wf_after = crate::db::get_workflow_run(&conn, "builder-skill").unwrap();
     assert!(wf_after.is_none(), "workflow_run should be deleted");
 
-    // skills master row should be soft-deleted
-    let deleted_at: Option<String> = conn
+    // skills master row should be deleted
+    let skill_count: i64 = conn
         .query_row(
-            "SELECT deleted_at FROM skills WHERE name = 'builder-skill'",
+            "SELECT COUNT(*) FROM skills WHERE name = 'builder-skill'",
             [],
             |r| r.get(0),
         )
         .unwrap();
-    assert!(
-        deleted_at.as_deref().is_some_and(|v| !v.is_empty()),
-        "skills master row should be soft-deleted",
-    );
+    assert_eq!(skill_count, 0, "skills master row should be deleted");
 }
 
 #[test]
@@ -1035,6 +1127,102 @@ fn test_create_skill_collision_in_skills_path() {
         "Error should mention 'skills output directory': {}",
         err
     );
+}
+
+#[test]
+fn test_create_skill_recreates_stale_workspace_dir_when_db_row_missing() {
+    let dir = tempdir().unwrap();
+    let workspace = dir.path().to_str().unwrap();
+    let skills_dir = tempdir().unwrap();
+    let skills_path = skills_dir.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    let stale_workspace = flat_skill(workspace, "stale-skill");
+    fs::create_dir_all(stale_workspace.join("conversations")).unwrap();
+    fs::write(
+        stale_workspace.join("conversations").join("leftover.txt"),
+        "stale",
+    )
+    .unwrap();
+
+    create_skill_inner(
+        workspace,
+        "stale-skill",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert!(flat_skill(workspace, "stale-skill").exists());
+    assert!(
+        !flat_skill(workspace, "stale-skill")
+            .join("conversations")
+            .join("leftover.txt")
+            .exists(),
+        "stale workspace contents should be replaced"
+    );
+    assert!(crate::db::get_workflow_run(&conn, "stale-skill")
+        .unwrap()
+        .is_some());
+}
+
+#[test]
+fn test_create_skill_recreates_stale_output_dir_when_db_row_missing() {
+    let dir = tempdir().unwrap();
+    let workspace = dir.path().to_str().unwrap();
+    let skills_dir = tempdir().unwrap();
+    let skills_path = skills_dir.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    let stale_output = nested_skill(skills_path, "stale-output");
+    fs::create_dir_all(stale_output.join("conversations")).unwrap();
+    fs::write(stale_output.join("SKILL.md"), "stale").unwrap();
+
+    create_skill_inner(
+        workspace,
+        "stale-output",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert!(nested_skill(skills_path, "stale-output").exists());
+    assert!(
+        nested_skill(skills_path, "stale-output")
+            .join("references")
+            .is_dir(),
+        "fresh output layout should be recreated"
+    );
+    let skill_md = nested_skill(skills_path, "stale-output").join("SKILL.md");
+    assert!(
+        !skill_md.exists(),
+        "stale output contents should be replaced by a fresh directory scaffold"
+    );
+    assert!(crate::db::get_workflow_run(&conn, "stale-output")
+        .unwrap()
+        .is_some());
 }
 
 #[test]

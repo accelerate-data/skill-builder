@@ -123,11 +123,12 @@ On each app launch, `reconcile_on_startup` runs before the dashboard loads. See 
 ### Refine session lifecycle
 
 1. `get_skill_content_for_refine` loads current skill files into the editor.
-2. `start_refine_session` selects or prepares the persistent OpenHands conversation and returns its `conversation_id`. Conversation state is persisted in `skill_conversations`.
-3. `send_refine_message` dispatches the next turn on that conversation and returns the current live-run `agent_id`.
-4. `cancel_agent_run` pauses the current live run without discarding the persistent conversation.
-5. `close_refine_session` tears down the local Refine surface state while leaving the saved conversation resumable.
-6. `finalize_refine_run` writes the final summary and closes out the run metrics.
+2. `select_skill_openhands_session` activates the selected skill's persistent OpenHands conversation, restoring compatible history and returning the current `conversation_id`. Conversation state is persisted in `skill_conversations`.
+3. `send_refine_message` dispatches the next turn on the selected persistent conversation and returns the current live-run `agent_id`.
+4. `pause_openhands_session` pauses the selected skill's current live run during switch-away cleanup without discarding the persistent conversation.
+5. `cancel_agent_run` cancels an in-flight refine run by `agent_id` when the user explicitly stops the active turn.
+6. `graceful_shutdown` releases selected-skill locks and workflow sessions, then shuts down the cached OpenHands Agent Server on app exit.
+7. `finalize_refine_run` writes the final summary and closes out the run metrics.
 
 ---
 
@@ -140,9 +141,12 @@ The primary agent runtime is the **OpenHands Agent Server**, a Python service ma
 **Request dispatch**:
 
 - throwaway OpenHands session dispatch — fires a single bounded workflow-step run and streams results back.
-- `dispatch_openhands_refine_turn` — sends one refine message turn within a persistent conversation.
+- selected-skill bootstrap — activates the selected skill's persistent OpenHands conversation before Workflow or Refine sends the next turn.
+- `dispatch_openhands_refine_turn` — sends one refine message turn within the selected skill's persistent conversation.
 
-**Conversation persistence**: The Agent Server stores per-conversation state on disk under a runtime directory. `skill_conversations` maps `(plugin_slug, skill_name)` to conversation IDs so sessions survive app restarts.
+**Conversation persistence**: The Agent Server stores per-conversation state on disk under a skill-scoped runtime directory. `skill_conversations` maps `(plugin_slug, skill_name)` to conversation IDs so selected-skill sessions survive app restarts. When the selected skill changes, the cached Agent Server may be restarted with a different `OH_CONVERSATIONS_PATH` so it points at that skill's persistent conversations root.
+
+**Persistence secret**: OpenHands persistence encryption uses a stable workspace-level secret file at `{workspace}/.openhands/secret.key`. Rust loads that file into `OH_SECRET_KEY` on every Agent Server start so saved conversations remain decryptable across restarts. `SESSION_API_KEY` remains per-process and is not used as the persistence key.
 
 **Event streaming**: The Agent Server emits structured events over HTTP. Rust's `events.rs` translates them into Tauri events and forwards them to the frontend in real time using the same event contract (`AgentEvent` tagged union) used by all runtimes.
 
@@ -150,7 +154,7 @@ The primary agent runtime is the **OpenHands Agent Server**, a Python service ma
 
 **Eval Workbench**: The **Promptfoo sidecar** (`agents/promptfoo_sidecar/`) is a separate process used only for Eval Workbench runs. It is managed independently of the Agent Server.
 
-**Graceful shutdown**: `graceful_shutdown` terminates all active agent processes with a configurable timeout before the app exits. `cancel_agent_run` cancels a specific in-flight run.
+**Graceful shutdown**: `graceful_shutdown` releases selected-skill locks, ends workflow sessions for the current instance, then shuts down the OpenHands Agent Server with a bounded graceful-wait window before falling back to forced termination. `cancel_agent_run` cancels a specific in-flight run.
 
 ---
 

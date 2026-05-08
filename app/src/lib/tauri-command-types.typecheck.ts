@@ -91,8 +91,8 @@ void invokeCommand("resolve_discovery", {
   pluginSlug: null,
 });
 
-// @ts-expect-error refine close requires skillName and pluginSlug
-void invokeCommand("close_refine_session", { session_id: "session-1" });
+// @ts-expect-error selected-skill bootstrap requires skillName, pluginSlug, and workspacePath
+void invokeCommand("select_skill_openhands_session", { session_id: "session-1" });
 
 // @ts-expect-error send_refine_message requires targetFiles
 void invokeCommand("send_refine_message", {
@@ -134,7 +134,6 @@ void invokeCommand("load_scenario", {
 void invokeCommand("create_scenario", {
   pluginSlug: "skills",
   skillName: "demo",
-  mode: "performance",
 });
 
 void invokeCommand("save_scenario", {
@@ -149,5 +148,3 @@ void invokeCommand("define_eval_scenario", {
   skillName: "demo",
   scenarioName: "Regression",
 });
-
-

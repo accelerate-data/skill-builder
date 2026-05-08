@@ -296,7 +296,7 @@ pub fn run() {
             Ok(())
         })
         .manage(CloseGuardState::default())
-        .manage(commands::refine::RefineSessionManager::new())
+        .manage(commands::skill_session::RefineSessionManager::new())
         .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
 
         .invoke_handler(tauri::generate_handler![
@@ -390,10 +390,10 @@ pub fn run() {
             commands::git::get_skill_files_at_sha,
             commands::refine::content::get_skill_content_at_path,
             commands::refine::content::get_skill_content_for_refine,
-            commands::refine::start_refine_session,
+            commands::skill_session::select_skill_openhands_session,
             commands::refine::send_refine_message,
+            commands::skill_session::pause_openhands_session,
             commands::refine::cancel_agent_run,
-            commands::refine::close_refine_session,
             commands::refine::output::finalize_refine_run,
             commands::refine::output::clean_benchmark_snapshot,
             commands::workflow::evaluation::read_latest_benchmark,
@@ -404,7 +404,7 @@ pub fn run() {
             commands::eval_workbench::create_scenario,
             commands::eval_workbench::save_scenario,
             commands::eval_workbench::delete_scenario,
-            commands::eval_workbench::suggest_scenario,
+            commands::eval_workbench::define_eval_scenario,
 
             commands::documents::list_documents,
             commands::documents::list_skills_for_documents,

@@ -13,39 +13,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineMessage, SkillFile } from "@/stores/refine-store";
+import type { SkillFile } from "@/stores/refine-store";
 import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
   getSkillContentForRefine,
-  startRefineSession,
   sendRefineMessage,
-  closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
-  acquireLock,
-  releaseLock,
   cancelAgentRun,
 } from "@/lib/tauri";
-import type { EditableSkill, RefineSessionInfo, RestoredConversationEvent } from "@/lib/types";
+import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
-import {
-  getMessageText,
-  normalizeConversationEventMessage,
-} from "@/lib/openhands-conversation-events";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { initAgentStream } from "@/hooks/use-agent-stream";
 
 interface WorkspaceRefineProps {
   skill: EditableSkill;
-}
-
-/** Fire-and-forget: release skill lock and shut down persistent sidecar. */
-function releaseSkillResources(skillName: string, reason: string): void {
-  releaseLock(skillName).catch((e) =>
-    console.warn("[workspace-refine] non-fatal: op=releaseLock err=%s", e),
-  );
-  console.log("[workspace-refine] releaseLock: %s (%s)", skillName, reason);
 }
 
 /** Load skill files from disk, returning null on failure. */
@@ -73,112 +57,6 @@ async function loadSkillFiles(
   }
 }
 
-function mapRestoredMessages(
-  restoredMessages: Array<{ role: string; content: string }> | null | undefined,
-): RefineMessage[] {
-  return (restoredMessages ?? [])
-    .filter((message) => message.content.trim().length > 0)
-    .map((message) => ({
-      id: crypto.randomUUID(),
-      role: message.role === "user" ? "user" : "agent",
-      userText: message.role === "user" ? message.content : undefined,
-      agentText: message.role === "user" ? undefined : message.content,
-      timestamp: Date.now(),
-    }));
-}
-
-function normalizeRestoredConversationEvent(
-  event: RestoredConversationEvent,
-  agentId: string,
-) {
-  return normalizeConversationEventMessage({
-    type: "conversation_event",
-    runtime: "openhands",
-    agent_id: agentId,
-    event_class: event.event_class,
-    event: event.event,
-    timestamp: event.timestamp,
-    tool_call_id: event.tool_call_id ?? undefined,
-    parent_tool_call_id: event.parent_tool_call_id ?? undefined,
-  });
-}
-
-function hydrateRestoredTranscript(
-  session: RefineSessionInfo,
-  skillName: string,
-  model: string | null,
-): RefineMessage[] | null {
-  const transcript = session.restored_transcript_events ?? [];
-  if (transcript.length === 0) return null;
-
-  const agentStore = useAgentStore.getState();
-  const messages: RefineMessage[] = [];
-  let segmentIndex = 0;
-  let pendingAgentEvents: RestoredConversationEvent[] = [];
-
-  const flushAgentSegment = (timestampFallback?: number) => {
-    const normalizedEvents = pendingAgentEvents
-      .map((event) =>
-        normalizeRestoredConversationEvent(
-          event,
-          `restored:${session.conversation_id}:${segmentIndex}`,
-        ),
-      )
-      .filter((event): event is NonNullable<typeof event> => event !== null);
-
-    if (normalizedEvents.length > 0) {
-      const restoredAgentId = `restored:${session.conversation_id}:${segmentIndex}`;
-      agentStore.registerRun(
-        restoredAgentId,
-        model ?? "openhands",
-        skillName,
-        "refine",
-        `synthetic:refine:${skillName}:${session.conversation_id}:restored:${segmentIndex}`,
-      );
-      for (const event of normalizedEvents) {
-        agentStore.addConversationEvent(restoredAgentId, event);
-      }
-      agentStore.completeRun(restoredAgentId, true);
-      messages.push({
-        id: crypto.randomUUID(),
-        role: "agent",
-        agentId: restoredAgentId,
-        timestamp:
-          normalizedEvents[normalizedEvents.length - 1]?.timestamp ??
-          timestampFallback ??
-          Date.now(),
-      });
-      segmentIndex += 1;
-    }
-
-    pendingAgentEvents = [];
-  };
-
-  for (const event of transcript) {
-    if (event.event_class === "MessageEvent") {
-      const normalized = normalizeRestoredConversationEvent(event, "restored:probe");
-      const source =
-        typeof event.event.source === "string" ? event.event.source : undefined;
-      const text = normalized ? getMessageText(normalized) : undefined;
-      if (source === "user" && text && text.trim().length > 0) {
-        flushAgentSegment(event.timestamp);
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "user",
-          userText: text,
-          timestamp: event.timestamp,
-        });
-        continue;
-      }
-    }
-
-    pendingAgentEvents.push(event);
-  }
-
-  flushAgentSegment();
-  return messages.length > 0 ? messages : null;
-}
-
 function clearRefineAgentRuns(): void {
   useAgentStore.getState().clearRunsBySource("refine");
 }
@@ -192,6 +70,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
+  const activeSkill = selectedSkill ?? skill;
 
   const activeRunStatus = useAgentStore((s) =>
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
@@ -210,30 +89,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   // user switches skills while an agent is running.
   const runSkillRef = useRef<EditableSkill | null>(null);
 
-  const scopeBlocked = useScopeBlocked(selectedSkill, "refine");
+  const scopeBlocked = useScopeBlocked(activeSkill, "refine");
 
   const extractStructuredResultPayload = useCallback((agentId: string) => {
     const run = useAgentStore.getState().runs[agentId];
     return extractStructuredResultFromDisplayItems(run?.displayItems);
   }, []);
 
-  // Release skill lock on unmount
   useEffect(() => {
     void initAgentStream();
-    return () => {
-      const store = useRefineStore.getState();
-      if (store.selectedSkill) {
-        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
-          console.warn(
-            "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
-            e,
-          ),
-        );
-        releaseSkillResources(store.selectedSkill.name, "unmount");
-        clearRefineAgentRuns();
-        store.clearSession();
-      }
-    };
   }, []);
 
   // Navigation guard
@@ -244,21 +108,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.setRunning(false);
       store.setActiveAgentId(null);
       clearRefineAgentRuns();
-
-      if (store.selectedSkill) {
-        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
-          console.warn(
-            "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
-            e,
-          ),
-        );
-      }
-
-      if (store.selectedSkill) {
-        releaseSkillResources(store.selectedSkill.name, "navigation");
-      }
-
-      store.clearSession();
       proceed();
     },
   });
@@ -269,149 +118,93 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   );
   const availableAgents = useRefineStore((s) => s.availableAgents);
 
-  // --- Select skill on mount ---
-  const handleSelectSkill = useCallback(
-    async (s: EditableSkill) => {
-      console.log("[workspace-refine] selectSkill: %s", s.name);
-      const store = useRefineStore.getState();
+  useEffect(() => {
+    const store = useRefineStore.getState();
+    if (!workspacePath) return;
+    if (
+      store.selectedSkill?.name === skill.name &&
+      store.selectedSkill.plugin_slug === skill.plugin_slug &&
+      store.skillFiles.length > 0
+    ) {
+      return;
+    }
 
-      if (store.selectedSkill?.name === s.name && store.conversationId) return;
-
-      const prevSkill = store.selectedSkill;
-      if (prevSkill && prevSkill.name !== s.name) {
-        await releaseLock(prevSkill.name).catch((e) =>
-          console.warn(
-            "[workspace-refine] non-fatal: op=releaseLock err=%s",
-            e,
-          ),
-        );
-      }
-
-      try {
-        await acquireLock(s.name);
-        console.log("[workspace-refine] acquireLock: %s", s.name);
-      } catch (err) {
-        console.error("[workspace-refine] acquireLock failed: %s", s.name, err);
-        toast.error(
-          `Cannot open Refine: ${err instanceof Error ? err.message : String(err)}`,
-          {
-            duration: Infinity,
-            cause: err,
-            context: {
-              operation: "workspace_refine_acquire_lock",
-              skillName: s.name,
-            },
-          },
-        );
-        return;
-      }
-
-      if (store.selectedSkill) {
-        await closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((err) =>
-          console.warn(
-            "[workspace-refine] Failed to close previous session:",
-            err,
-          ),
-        );
-      }
-
-      clearRefineAgentRuns();
-      store.selectSkill(s);
-      store.setLoadingFiles(true);
-      // Reset session metrics for the new skill.
-      setSessionTurns(0);
-      setSessionTokens(0);
-      setSessionCost(0);
-
-      if (workspacePath) {
-        try {
-          const session = await startRefineSession(
-            s.name,
-            workspacePath,
-            s.plugin_slug,
-          );
-          const nextStore = useRefineStore.getState();
-          nextStore.setConversationId(session.conversation_id);
-          nextStore.setAvailableAgents(session.available_agents ?? []);
-          nextStore.setMessages(
-            hydrateRestoredTranscript(session, s.name, selectedModel) ??
-              mapRestoredMessages(session.restored_messages),
-          );
-        } catch (err) {
-          console.error(
-            "[workspace-refine] Failed to start refine session:",
-            err,
-          );
-          toast.error("Failed to start refine session", { duration: Infinity });
-          store.setLoadingFiles(false);
-          return;
-        }
-
-        const files = await loadSkillFiles(
-          workspacePath,
-          s.name,
-          s.plugin_slug,
-        );
-        if (files) {
-          store.setSkillFiles(files);
-          store.setGitDiff(null);
-          if (files.length > 0) {
-            store.setActiveFileTab(files[0].filename);
-          }
-        } else {
+    let cancelled = false;
+    store.setLoadingFiles(true);
+    setSessionTurns(0);
+    setSessionTokens(0);
+    setSessionCost(0);
+    void loadSkillFiles(workspacePath, skill.name, skill.plugin_slug)
+      .then((files) => {
+        if (cancelled) return;
+        if (!files) {
           store.setLoadingFiles(false);
           toast.error("Could not load skill files", { duration: Infinity });
+          return;
         }
-      } else {
+        store.setSkillFiles(files);
+        store.setGitDiff(null);
+        if (files.length > 0) {
+          store.setActiveFileTab(files[0].filename);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
         store.setLoadingFiles(false);
-      }
-    },
-    [selectedModel, workspacePath],
-  );
+        toast.error(error instanceof Error ? error.message : String(error), {
+          duration: Infinity,
+        });
+      });
 
-  useEffect(() => {
-    handleSelectSkill(skill);
-    // Run once per skill identity — re-run only if skill.name changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skill.name]);
+    return () => {
+      cancelled = true;
+    };
+  }, [skill.name, skill.plugin_slug, workspacePath]);
 
   // --- Send a message ---
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[]) => {
       const store = useRefineStore.getState();
       const conversationId = store.conversationId;
-      if (!selectedSkill || !conversationId) return;
+      if (!activeSkill) return;
       if (store.isRunning) return;
+      if (!conversationId) {
+        const message = `Refine session for '${activeSkill.name}' has no active conversation`;
+        console.error("[workspace-refine] %s", message);
+        toast.error(message, { duration: Infinity });
+        return;
+      }
 
       console.log(
         "[workspace-refine] send: skill=%s files=%s",
-        selectedSkill.name,
+        activeSkill.name,
         targetFiles?.join(",") ?? "all",
       );
 
-      runSkillRef.current = selectedSkill;
+      runSkillRef.current = activeSkill;
       store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
       store.setRunning(true);
       store.addUserMessage(text, targetFiles);
 
       try {
-        const agentId = await sendRefineMessage(
-          selectedSkill.name,
-          selectedSkill.plugin_slug,
+        const dispatch = await sendRefineMessage(
+          activeSkill.name,
+          activeSkill.plugin_slug,
           conversationId,
           text,
           targetFiles,
         );
+        const { agent_id: agentId } = dispatch;
 
         useAgentStore
           .getState()
           .registerRun(
             agentId,
             selectedModel ?? "openhands",
-            selectedSkill.name,
+            activeSkill.name,
             "refine",
-            `synthetic:refine:${selectedSkill.name}:${conversationId}`,
+            `synthetic:refine:${activeSkill.name}:${conversationId}`,
           );
 
         store.addAgentTurn(agentId);
@@ -431,12 +224,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         });
       }
     },
-    [selectedSkill, selectedModel],
+    [activeSkill, selectedModel],
   );
 
   const handleCancel = useCallback(async () => {
     const store = useRefineStore.getState();
-    if (!selectedSkill || !store.activeAgentId || !store.isRunning) {
+    if (!activeSkill || !store.activeAgentId || !store.isRunning) {
       return;
     }
 
@@ -456,7 +249,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     // useEffect watches activeRunStatus for a terminal event ("completed",
     // "error", "shutdown") and handles cleanup. This ensures the UI only
     // transitions when the stream has actually stopped.
-  }, [selectedSkill]);
+  }, [activeSkill]);
 
   // --- Watch agent completion ---
   useEffect(() => {
@@ -494,7 +287,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       setSessionCost((prev) => prev + runCost);
     }
 
-    const completionSkill = runSkillRef.current ?? selectedSkill;
+    const completionSkill = runSkillRef.current ?? activeSkill;
 
     const complete = async () => {
       const store = useRefineStore.getState();
@@ -578,7 +371,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     activeAgentId,
     activeRunStatus,
     workspacePath,
-    selectedSkill,
+    activeSkill,
     extractStructuredResultPayload,
     handleSend,
   ]);
@@ -614,17 +407,17 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   const dotStyle = isRunning
     ? { background: "var(--color-pacific)" }
-    : selectedSkill
+    : activeSkill
       ? { background: "var(--color-seafoam)" }
       : undefined;
   const dotClass = isRunning
     ? "animate-pulse"
-    : selectedSkill
+    : activeSkill
       ? ""
       : "bg-zinc-500";
   const statusLabel = isRunning
     ? "running..."
-    : selectedSkill
+    : activeSkill
       ? "ready"
       : "loading...";
   return (
@@ -634,7 +427,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           onSend={handleSend}
           onCancel={handleCancel}
           isRunning={isRunning}
-          hasSkill={!!selectedSkill}
+          hasSkill={!!activeSkill}
           availableFiles={availableFiles}
           availableAgents={availableAgents}
           scopeBlocked={scopeBlocked}
@@ -650,11 +443,11 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           />
           <span className="text-xs text-muted-foreground">{statusLabel}</span>
         </div>
-        {selectedSkill && (
+        {activeSkill && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="text-xs text-muted-foreground">
-              {selectedSkill.name}
+              {activeSkill.name}
             </span>
           </>
         )}

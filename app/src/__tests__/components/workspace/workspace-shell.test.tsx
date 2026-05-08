@@ -67,18 +67,12 @@ vi.mock("@/hooks/use-agent-stream", () => ({}));
 vi.mock("@/lib/tauri", () => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),
   releaseLock: vi.fn().mockResolvedValue(undefined),
-  startRefineSession: vi.fn().mockResolvedValue({
-    conversation_id: "test-conversation",
-    skill_name: "test-skill",
-    created_at: new Date().toISOString(),
-    available_agents: ["skill-creator"],
-    restored_messages: [],
-    restored_transcript_events: [],
-  }),
-  closeRefineSession: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
-  sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
+  sendRefineMessage: vi.fn().mockResolvedValue({
+    agent_id: "agent-1",
+    conversation_id: "conv-1",
+  }),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
   getSkillHistory: vi.fn().mockResolvedValue([]),
   readLatestBenchmark: vi.fn().mockResolvedValue(null),
@@ -415,11 +409,7 @@ describe("WorkspaceShell", () => {
     await screen.findByText("Regression");
     await user.click(screen.getByRole("button", { name: /new scenario/i }));
 
-    await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith({
-        mode: "performance",
-      }),
-    );
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith());
   });
 
   it("does not render a scenario editor until the user expands or creates a scenario", async () => {

@@ -1,25 +1,25 @@
+import type { ReactNode } from "react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
-import { MoreHorizontal } from "lucide-react";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import type { UnifiedSkill, SkillMenuState } from "@/hooks/use-unified-skills";
 
 export interface SkillContextMenuProps {
   skill: UnifiedSkill;
   menuState: SkillMenuState;
-  onReview: (name: string) => void;
-  onRedo: (name: string) => void;
-  onOverview: (key: string) => void;
-  onEval: (key: string) => void;
-  onRefine: (key: string) => void;
-  onContinueBuilding: (name: string) => void;
+  children: ReactNode;
+  onReview: (skill: UnifiedSkill) => void | Promise<void>;
+  onRedo: (skill: UnifiedSkill) => void;
+  onOverview: (key: string) => void | Promise<void>;
+  onEval: (key: string) => void | Promise<void>;
+  onRefine: (key: string) => void | Promise<void>;
+  onContinueBuilding: (skill: UnifiedSkill) => void | Promise<void>;
   onRestore: (name: string, pluginSlug: string) => void;
   onDelete: (skill: UnifiedSkill) => void;
   onCreatePlugin: (skill: UnifiedSkill) => void;
@@ -32,6 +32,7 @@ export interface SkillContextMenuProps {
 export function SkillContextMenu({
   skill,
   menuState,
+  children,
   onReview,
   onRedo,
   onOverview,
@@ -47,103 +48,93 @@ export function SkillContextMenu({
   pluginOptions,
 }: SkillContextMenuProps) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="size-5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-          aria-label="More actions"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <MoreHorizontal className="size-3" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent alignOffset={-4} onClick={(e) => e.stopPropagation()}>
         {menuState.isComplete ? (
           <>
             {menuState.isBuilder && (
-              <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
+              <ContextMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
                 WORKFLOW
-              </DropdownMenuLabel>
+              </ContextMenuLabel>
             )}
             {menuState.isBuilder && (
-              <DropdownMenuItem onSelect={() => onReview(skill.name)}>
+              <ContextMenuItem onSelect={() => onReview(skill)}>
                 Review
-              </DropdownMenuItem>
+              </ContextMenuItem>
             )}
             {menuState.isBuilder && (
-              <DropdownMenuItem onSelect={() => onRedo(skill.name)}>
+              <ContextMenuItem onSelect={() => onRedo(skill)}>
                 Redo workflow
-              </DropdownMenuItem>
+              </ContextMenuItem>
             )}
-            {menuState.isBuilder && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
+            {menuState.isBuilder && <ContextMenuSeparator />}
+            <ContextMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
               SKILL
-            </DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => onOverview(skill.key)}>
+            </ContextMenuLabel>
+            <ContextMenuItem onSelect={() => onOverview(skill.key)}>
               Overview
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onEval(skill.key)}>
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onEval(skill.key)}>
               Eval Workbench
-            </DropdownMenuItem>
+            </ContextMenuItem>
             {menuState.showsLifecycleActions && (
-              <DropdownMenuItem onSelect={() => onRefine(skill.key)}>
+              <ContextMenuItem onSelect={() => onRefine(skill.key)}>
                 Refine
-              </DropdownMenuItem>
+              </ContextMenuItem>
             )}
             {menuState.showsLifecycleActions && (
-              <DropdownMenuItem onSelect={() => onRestore(skill.name, skill.pluginSlug)}>
+              <ContextMenuItem onSelect={() => onRestore(skill.name, skill.pluginSlug)}>
                 Restore version
-              </DropdownMenuItem>
+              </ContextMenuItem>
             )}
             {skill.source !== "marketplace" && (
-              <DropdownMenuItem onSelect={() => onExport(skill)}>
+              <ContextMenuItem onSelect={() => onExport(skill)}>
                 Export as .skill
-              </DropdownMenuItem>
+              </ContextMenuItem>
             )}
             {skill.source !== "marketplace" && (
               <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
+                <ContextMenuSeparator />
+                <ContextMenuLabel className="px-2 pt-1 pb-0 text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">
                   PLUGIN
-                </DropdownMenuLabel>
-                <DropdownMenuGroup>
+                </ContextMenuLabel>
+                <ContextMenuGroup>
                   {skill.isDefaultPlugin ? (
-                    <DropdownMenuItem onSelect={() => onCreatePlugin(skill)}>
+                    <ContextMenuItem onSelect={() => onCreatePlugin(skill)}>
                       Create plugin
-                    </DropdownMenuItem>
+                    </ContextMenuItem>
                   ) : (
-                    <DropdownMenuItem onSelect={() => onRemoveFromPlugin(skill)}>
+                    <ContextMenuItem onSelect={() => onRemoveFromPlugin(skill)}>
                       Remove from plugin
-                    </DropdownMenuItem>
+                    </ContextMenuItem>
                   )}
                   {pluginOptions.some(([slug]) => slug !== skill.pluginSlug) && (
-                    <DropdownMenuItem onSelect={() => onMoveToPlugin(skill)}>
+                    <ContextMenuItem onSelect={() => onMoveToPlugin(skill)}>
                       Move to plugin
-                    </DropdownMenuItem>
+                    </ContextMenuItem>
                   )}
-                </DropdownMenuGroup>
+                </ContextMenuGroup>
               </>
             )}
           </>
         ) : (
-          <DropdownMenuItem onSelect={() => onContinueBuilding(skill.name)}>
+          <ContextMenuItem onSelect={() => onContinueBuilding(skill)}>
             Continue Building
-          </DropdownMenuItem>
+          </ContextMenuItem>
         )}
         {skill.isDefaultPlugin && (
           <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
+            <ContextMenuSeparator />
+            <ContextMenuItem
               onSelect={() => onDelete(skill)}
-              className="text-destructive focus:text-destructive"
+              variant="destructive"
             >
               Delete
-            </DropdownMenuItem>
+            </ContextMenuItem>
           </>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

@@ -197,6 +197,11 @@ export interface RefineSessionInfo {
   restored_transcript_events: RestoredConversationEvent[]
 }
 
+export interface RefineDispatchResult {
+  agent_id: string
+  conversation_id: string
+}
+
 
 export interface NodeStatus {
   available: boolean

@@ -1,5 +1,3 @@
-pub type EvalWorkbenchMode = crate::db::EvalWorkbenchMode;
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScenarioDto {
@@ -8,7 +6,7 @@ pub struct ScenarioDto {
     #[serde(default)]
     pub tags: Vec<String>,
     pub prompt: String,
-    pub expectations: Vec<String>,
+    pub assertions: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

@@ -1,5 +1,5 @@
 /**
- * Shared Eval Workbench performance-mode helpers for E2E tests.
+ * Shared Eval Workbench helpers for the scenario-only workbench E2E tests.
  */
 import type { Page } from "@playwright/test";
 import { waitForAppReady } from "./app-helpers";
@@ -43,7 +43,7 @@ export const EVALS_OVERRIDES: Record<string, unknown> = {
 };
 
 /**
- * Navigate to Eval Workbench performance mode with test-skill selected.
+ * Navigate to Eval Workbench with test-skill selected.
  */
 export async function navigateToEvalsTab(
   page: Page,
@@ -65,11 +65,7 @@ export async function navigateToEvalsTab(
   await workbenchTab.waitFor({ timeout: 10_000 });
   await workbenchTab.click();
 
-  const performanceTab = page.getByRole("tab", { name: "Performance" });
-  await performanceTab.waitFor({ timeout: 10_000 });
-  await performanceTab.click();
-
-  await page.getByRole("heading", { name: "Eval Workbench" }).waitFor({
+  await page.getByRole("heading", { name: "Scenarios" }).waitFor({
     timeout: 10_000,
   });
 }

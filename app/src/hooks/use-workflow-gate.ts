@@ -175,12 +175,12 @@ export function useWorkflowGate({
         // so the clarifications editor reflects the evaluator feedback.
         try {
           const updates = (evaluation.per_question ?? [])
-          .filter((q) => q.verdict && q.verdict !== "clear")
-          .map((q) => ({
-            question_id: q.question_id,
-            verdict: q.verdict ?? null,
-            reason: q.reason ?? null,
-          }));
+            .filter((q) => q.verdict)
+            .map((q) => ({
+              question_id: q.question_id,
+              verdict: q.verdict ?? null,
+              reason: q.reason ?? null,
+            }));
           if (updates.length > 0) {
             await invokeCommand("update_clarification_verdicts", {
               skillId: skillName,

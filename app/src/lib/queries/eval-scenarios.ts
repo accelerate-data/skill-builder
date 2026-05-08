@@ -6,7 +6,6 @@ import {
   loadScenario,
   listScenarios,
   saveScenario,
-  type EvalWorkbenchMode,
   type ScenarioDto,
 } from "@/lib/eval-workbench";
 
@@ -23,10 +22,6 @@ export const evalScenarioKeys = {
 type SaveScenarioMutationInput = {
   scenario: ScenarioDto;
   previousScenarioName?: string | null;
-};
-
-type CreateScenarioMutationInput = {
-  mode: EvalWorkbenchMode;
 };
 
 type DeleteScenarioMutationInput = {
@@ -95,8 +90,7 @@ export function useCreateScenario(skillName: string | null, pluginSlug: string) 
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ mode }: CreateScenarioMutationInput) =>
-      createScenario(pluginSlug, skillName!, mode),
+    mutationFn: () => createScenario(pluginSlug, skillName!),
     onSuccess: (createdScenario) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),

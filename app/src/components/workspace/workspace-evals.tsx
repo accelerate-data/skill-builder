@@ -20,7 +20,7 @@ interface WorkspaceEvalsProps {
   hasScenarios?: boolean;
   scenarioLoading?: boolean;
   onStartNewScenario: () => void;
-  onCreateScenario?: (mode: "performance") => Promise<ScenarioDto>;
+  onCreateScenario?: () => Promise<ScenarioDto>;
   onSaveScenario: (
     scenario: ScenarioDto,
     options?: { previousScenarioName?: string | null },
@@ -49,9 +49,7 @@ export function WorkspaceEvals({
   headerContent,
 }: WorkspaceEvalsProps) {
   const [suggestingScenario, setSuggestingScenario] = useState(false);
-  const [draft, setDraft] = useState<SaveScenario>(() =>
-    createDraftScenario("performance"),
-  );
+  const [draft, setDraft] = useState<SaveScenario>(() => createDraftScenario());
   const [actionError, setActionError] = useState<string | null>(null);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model);
   const skillName = "name" in skill ? skill.name : skill.skill_name;
@@ -65,7 +63,7 @@ export function WorkspaceEvals({
     if (scenario) {
       setDraft(scenarioToDraft(scenario));
     } else {
-      setDraft(createDraftScenario("performance"));
+      setDraft(createDraftScenario());
     }
     setActionError(null);
   }, [scenario]);
@@ -111,7 +109,7 @@ export function WorkspaceEvals({
     if (!onCreateScenario) return;
     setActionError(null);
     try {
-      await onCreateScenario("performance");
+      await onCreateScenario();
     } catch (err) {
       setActionError(getErrorMessage(err));
     }

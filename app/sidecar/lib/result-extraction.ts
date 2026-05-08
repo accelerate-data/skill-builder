@@ -22,7 +22,7 @@ export function extractResultMarkdown(structuredOutput: unknown): string | undef
  * Extracts a JSON value from runtime text output.
  *
  * Coding-agent runtimes do not all support provider-native structured output.
- * The one-shot boundary therefore accepts JSON returned as plain text, including
+ * The throwaway boundary therefore accepts JSON returned as plain text, including
  * fenced JSON preceded by short narration. Validation stays in the typed Rust
  * workflow materializers.
  */

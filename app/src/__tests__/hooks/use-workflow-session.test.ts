@@ -2,23 +2,13 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 
-const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => mockNavigate,
   useBlocker: vi.fn().mockReturnValue({ proceed: vi.fn(), reset: vi.fn(), status: "idle" }),
 }));
 
-const mockAcquireLock = vi.fn((_arg?: unknown) => Promise.resolve());
-const mockReleaseLock = vi.fn((_arg?: unknown) => Promise.resolve());
 const mockEndWorkflowSession = vi.fn((_arg?: unknown) => Promise.resolve());
 vi.mock("@/lib/tauri", () => ({
-  acquireLock: (skillName: string) => mockAcquireLock(skillName),
-  releaseLock: (skillName: string) => mockReleaseLock(skillName),
   endWorkflowSession: (sessionId: string) => mockEndWorkflowSession(sessionId),
-}));
-
-vi.mock("@/lib/toast", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
 const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture } = vi.hoisted(() => {
@@ -109,20 +99,6 @@ describe("useWorkflowSession", () => {
     mockWorkflowStoreMock.mockImplementation(() => mockWorkflowState);
   });
 
-  it("acquires lock on mount", async () => {
-    renderHook(() => useWorkflowSession(defaultOptions));
-
-    await waitFor(() => {
-      expect(mockAcquireLock).toHaveBeenCalledWith("test-skill");
-    });
-  });
-
-  it("releases lock on unmount", () => {
-    const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
-    unmount();
-    expect(mockReleaseLock).toHaveBeenCalledWith("test-skill");
-  });
-
   it("ends workflow session with UUID on unmount", () => {
     const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
     unmount();
@@ -139,16 +115,6 @@ describe("useWorkflowSession", () => {
   it("returns blockerStatus from useLeaveGuard", () => {
     const { result } = renderHook(() => useWorkflowSession(defaultOptions));
     expect(result.current.blockerStatus).toBe("idle");
-  });
-
-  it("navigates to / if lock fails", async () => {
-    mockAcquireLock.mockRejectedValueOnce(new Error("lock failed"));
-
-    renderHook(() => useWorkflowSession(defaultOptions));
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: "/", search: { tab: undefined } });
-    });
   });
 
   it("onLeave runs all cleanup steps and calls proceed", async () => {
@@ -179,8 +145,6 @@ describe("useWorkflowSession", () => {
     expect(mockClearRuns).toHaveBeenCalled();
     // Session ended
     expect(mockEndWorkflowSession).toHaveBeenCalledWith(sessionId);
-    // Lock released
-    expect(mockReleaseLock).toHaveBeenCalledWith("test-skill");
     // Navigation allowed to proceed
     expect(proceed).toHaveBeenCalled();
   });

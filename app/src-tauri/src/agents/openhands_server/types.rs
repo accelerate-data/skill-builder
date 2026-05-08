@@ -175,8 +175,8 @@ pub struct OpenHandsAgent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartConversationRequest {
     pub workspace: LocalWorkspace,
-    #[serde(rename = "initial_message")]
-    pub initial_message: SendMessageRequest,
+    #[serde(rename = "initial_message", skip_serializing_if = "Option::is_none")]
+    pub initial_message: Option<SendMessageRequest>,
     #[serde(rename = "max_iterations")]
     pub max_iterations: u32,
     #[serde(rename = "stuck_detection")]
@@ -190,20 +190,31 @@ pub struct StartConversationRequest {
 impl StartConversationRequest {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn from_runtime_request(request: &OpenHandsRuntimeRequest) -> Self {
-        Self::from_runtime_run_dir(request, request.runtime_run_dir())
+        Self::from_runtime_request_with_initial_message(request, true)
     }
 
-    pub fn from_runtime_run_dir(request: &OpenHandsRuntimeRequest, runtime_run_dir: &Path) -> Self {
+    pub fn from_runtime_request_with_initial_message(
+        request: &OpenHandsRuntimeRequest,
+        include_initial_message: bool,
+    ) -> Self {
+        Self::from_runtime_run_dir(request, request.runtime_run_dir(), include_initial_message)
+    }
+
+    pub fn from_runtime_run_dir(
+        request: &OpenHandsRuntimeRequest,
+        runtime_run_dir: &Path,
+        include_initial_message: bool,
+    ) -> Self {
         Self {
             workspace: LocalWorkspace::new(runtime_run_dir.to_string_lossy().into_owned()),
-            initial_message: SendMessageRequest {
+            initial_message: include_initial_message.then(|| SendMessageRequest {
                 role: "user".to_string(),
                 content: vec![TextContent {
                     content_type: "text".to_string(),
                     text: request.prompt.clone(),
                 }],
                 run: false,
-            },
+            }),
             max_iterations: request.max_turns,
             stuck_detection: true,
             confirmation_policy: NeverConfirmPolicy::default(),
@@ -338,7 +349,10 @@ fn openhands_llm_json(llm: &crate::types::WorkflowLlmConfig) -> serde_json::Valu
 
 fn openhands_litellm_model(model: &str, base_url: Option<&str>) -> String {
     if base_url.is_some() {
-        if let Some(model_name) = model.strip_prefix("opencode-go/") {
+        if let Some(model_name) = model
+            .strip_prefix("opencode-go/")
+            .or_else(|| model.strip_prefix("opencode/"))
+        {
             return format!("openai/{model_name}");
         }
     }

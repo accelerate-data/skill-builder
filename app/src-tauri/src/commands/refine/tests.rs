@@ -7,6 +7,7 @@ use super::protocol::*;
 use super::*;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::types::ConversationMessage;
 use tempfile::tempdir;
 
 fn default_skill_dir(root: &std::path::Path, skill_name: &str) -> std::path::PathBuf {
@@ -704,8 +705,14 @@ fn test_refine_prompt_file_targeting() {
 
 #[test]
 fn test_refine_prompt_no_file_constraint_when_empty() {
-    let system_prompt =
-        build_refine_prompt("s", "/ws", "/sk", "edit freely", None, default_refine_prompt_context());
+    let system_prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "edit freely",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(!system_prompt.contains("Only edit these files"));
 }
 
@@ -724,8 +731,14 @@ fn test_refine_prompt_includes_user_message() {
 
 #[test]
 fn test_refine_prompt_includes_derived_paths() {
-    let system_prompt =
-        build_refine_prompt("s", "/ws", "/sk", "edit", None, default_refine_prompt_context());
+    let system_prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "edit",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
     assert!(!system_prompt.contains("The context directory is:"));
@@ -740,7 +753,8 @@ fn test_refine_prompt_includes_inline_user_context_clarifications_and_decisions(
         "edit",
         None,
         RefinePromptContext {
-            user_context_block: "## User Context\n**Industry**: Healthcare\n**Function**: Analytics",
+            user_context_block:
+                "## User Context\n**Industry**: Healthcare\n**Function**: Analytics",
             clarifications_json: r#"{ "sections": [{ "id": "Q1" }] }"#,
             decisions_json: r#"{ "decisions": [{ "id": "D1" }] }"#,
         },
@@ -753,8 +767,14 @@ fn test_refine_prompt_includes_inline_user_context_clarifications_and_decisions(
 
 #[test]
 fn test_refine_prompt_no_longer_points_to_user_context_file() {
-    let system_prompt =
-        build_refine_prompt("s", "/ws", "/sk", "edit", None, default_refine_prompt_context());
+    let system_prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "edit",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(!system_prompt.contains("user-context.md"));
 }
 
@@ -994,6 +1014,78 @@ fn test_prepared_refine_session_switches_away_from_contextual_prompt_after_dispa
     assert!(before_dispatch.contains("We are refining the skill my-skill"));
     assert!(before_dispatch.contains("## User Context"));
     assert_eq!(after_dispatch, "Tighten the overview");
+}
+
+#[test]
+fn test_plan_refine_conversation_dispatch_reuses_saved_conversation() {
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("saved-conv".to_string()),
+        current_agent_id: None,
+        dispatched_user_turn_count: 0,
+        head_sha_at_start: None,
+    };
+
+    let plan = plan_refine_conversation_dispatch(&session, None).unwrap();
+    assert_eq!(
+        plan,
+        RefineConversationDispatchPlan::ReuseExisting("saved-conv".to_string())
+    );
+}
+
+#[test]
+fn test_plan_refine_conversation_dispatch_requires_existing_conversation() {
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: None,
+        current_agent_id: None,
+        dispatched_user_turn_count: 0,
+        head_sha_at_start: None,
+    };
+
+    let error = plan_refine_conversation_dispatch(&session, Some("".to_string())).unwrap_err();
+    assert!(error.contains("has no active conversation"));
+}
+
+#[test]
+fn test_plan_refine_conversation_dispatch_reuses_existing_conversation_after_first_turn() {
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("active-conv".to_string()),
+        current_agent_id: Some("agent-1".to_string()),
+        dispatched_user_turn_count: 2,
+        head_sha_at_start: None,
+    };
+
+    let plan =
+        plan_refine_conversation_dispatch(&session, Some("active-conv".to_string())).unwrap();
+    assert_eq!(
+        plan,
+        RefineConversationDispatchPlan::ReuseExisting("active-conv".to_string())
+    );
+}
+
+#[test]
+fn test_plan_refine_conversation_dispatch_rejects_mismatched_conversation_after_first_turn() {
+    let session = RefineSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-1".to_string(),
+        conversation_id: Some("active-conv".to_string()),
+        current_agent_id: Some("agent-1".to_string()),
+        dispatched_user_turn_count: 2,
+        head_sha_at_start: None,
+    };
+
+    let error =
+        plan_refine_conversation_dispatch(&session, Some("other-conv".to_string())).unwrap_err();
+    assert!(error.contains("Refine conversation mismatch"));
 }
 
 #[test]

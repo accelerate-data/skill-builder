@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type {
-  EvalWorkbenchMode,
-  ScenarioDto,
-} from "@/lib/eval-workbench";
+import type { ScenarioDto } from "@/lib/eval-workbench";
 import { getErrorMessage } from "@/lib/eval-workbench";
 import {
   useCreateScenario,
@@ -80,8 +77,8 @@ export function WorkspaceEvalWorkbench({
     return savedScenario;
   }
 
-  async function handleCreateScenario(mode: EvalWorkbenchMode) {
-    const createdScenario = await createScenarioMutation.mutateAsync({ mode });
+  async function handleCreateScenario() {
+    const createdScenario = await createScenarioMutation.mutateAsync();
     setSelectedScenarioName(createdScenario.name);
     return createdScenario;
   }
@@ -114,7 +111,7 @@ export function WorkspaceEvalWorkbench({
           size="sm"
           variant="outline"
           disabled={createScenarioMutation.isPending}
-          onClick={() => void handleCreateScenario("performance")}
+          onClick={() => void handleCreateScenario()}
         >
           New scenario
         </Button>

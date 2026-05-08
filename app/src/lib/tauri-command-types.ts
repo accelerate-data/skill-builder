@@ -21,6 +21,7 @@ import type {
   ResearchStepOutput,
   ReconciliationResult,
   RefineFinalizeResult,
+  RefineDispatchResult,
   RefineSessionInfo,
   SkillCommit,
   SkillFileContent,
@@ -36,7 +37,6 @@ import type {
   WorkflowSessionRecord,
 } from "@/lib/types";
 import type {
-  EvalWorkbenchMode,
   ScenarioListItem,
   ScenarioDto,
 } from "@/lib/eval-workbench";
@@ -302,11 +302,21 @@ export interface TauriCommandMap {
     args: { skillName: string; workspacePath: string; pluginSlug: string };
     result: SkillFileContent[];
   };
-  start_refine_session: {
+  select_skill_openhands_session: {
     args: { skillName: string; pluginSlug: string; workspacePath: string };
     result: RefineSessionInfo;
   };
-  close_refine_session: { args: { skillName: string; pluginSlug: string }; result: void };
+  pause_openhands_session: {
+    args: {
+      input: {
+        skillName: string;
+        pluginSlug: string;
+        conversationId: string;
+        agentId: string | null;
+      };
+    };
+    result: void;
+  };
   cancel_agent_run: { args: { agentId: string }; result: void };
   cancel_workflow_step: { args: { agentId: string }; result: void };
   send_refine_message: {
@@ -314,12 +324,12 @@ export interface TauriCommandMap {
       input: {
         skillName: string;
         pluginSlug: string;
-        conversationId: string;
+        conversationId: string | null;
         userMessage: string;
         targetFiles: string[] | null;
       };
     };
-    result: string;
+    result: RefineDispatchResult;
   };
   finalize_refine_run: {
     args: {
@@ -427,7 +437,7 @@ export interface TauriCommandMap {
     result: ScenarioDto | null;
   };
   create_scenario: {
-    args: { pluginSlug: string; skillName: string; mode: EvalWorkbenchMode };
+    args: { pluginSlug: string; skillName: string };
     result: ScenarioDto;
   };
   save_scenario: {
