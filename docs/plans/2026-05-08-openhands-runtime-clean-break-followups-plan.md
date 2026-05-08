@@ -169,8 +169,9 @@ follow-up list for the independent-agent findings and simplifier review.
 - [x] Reset/redo now clear persisted conversation state and recreate a fresh
       selected-skill OpenHands session instead of trying to reuse the deleted
       conversation.
-- [ ] Strengthen reset/redo tests so they verify the real fresh-conversation
-      restart contract end to end, not only helper invocation.
+- [ ] Strengthen workflow reset tests so they verify the real
+      fresh-conversation restart contract end to end, not only helper
+      invocation.
 
 ### F. Test Coverage Gaps
 
@@ -199,7 +200,7 @@ follow-up list for the independent-agent findings and simplifier review.
 - [x] Update `repo-map.json` descriptions to remove stale `one-shot`
       terminology and align with the throwaway/runtime naming used by the
       branch.
-- [ ] Verify the runtime design docs and Refine follow-up docs still match the
+- [x] Verify the runtime design docs and Refine follow-up docs still match the
       final implemented ownership and replay behavior.
 
 ### Coverage Check
@@ -208,7 +209,7 @@ This todo explicitly covers all outstanding findings:
 
 - [x] prior skill lock not released on skill switch
 - [x] resumed Refine loses transcript / resets first-turn semantics
-- [ ] reset/redo tests mock away the real restart contract
+- [ ] workflow reset tests still mock away the real restart contract
 - [x] documented Refine visibility / replay contract still unmet
 - [x] `repo-map.json` stale after structural/runtime changes
 - [x] duplicated frontend bootstrap logic
