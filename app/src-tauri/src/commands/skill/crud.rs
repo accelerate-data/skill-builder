@@ -90,8 +90,6 @@ pub(crate) fn list_skills_inner(
                         skill_source: Some(master.skill_source.clone()),
                         description: master.description.clone(),
                         version: master.version.clone(),
-                        model: master.model.clone(),
-                        argument_hint: master.argument_hint.clone(),
                         user_invocable: master.user_invocable,
                         disable_model_invocation: master.disable_model_invocation,
                         plugin_slug: Some(master.plugin_slug.clone()),
@@ -120,8 +118,6 @@ pub(crate) fn list_skills_inner(
                 skill_source: Some(master.skill_source.clone()),
                 description: master.description.clone(),
                 version: master.version.clone(),
-                model: master.model.clone(),
-                argument_hint: master.argument_hint.clone(),
                 user_invocable: master.user_invocable,
                 disable_model_invocation: master.disable_model_invocation,
                 plugin_slug: Some(master.plugin_slug.clone()),
@@ -199,8 +195,6 @@ pub fn create_skill(
     intake_json: Option<String>,
     description: Option<String>,
     version: Option<String>,
-    model: Option<String>,
-    argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
     db: tauri::State<'_, Db>,
@@ -256,8 +250,6 @@ pub fn create_skill(
             intake_json.as_deref(),
             description.as_deref(),
             version.as_deref(),
-            model.as_deref(),
-            argument_hint.as_deref(),
             user_invocable,
             disable_model_invocation,
         )?;
@@ -281,8 +273,6 @@ pub(crate) fn create_skill_inner(
     intake_json: Option<&str>,
     description: Option<&str>,
     version: Option<&str>,
-    model: Option<&str>,
-    argument_hint: Option<&str>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
@@ -305,8 +295,6 @@ pub(crate) fn create_skill_inner(
             intake_json,
             description,
             version,
-            model,
-            argument_hint,
             user_invocable,
             disable_model_invocation,
         )?;
@@ -420,8 +408,6 @@ pub(crate) fn create_skill_db_records_inner(
     intake_json: Option<&str>,
     description: Option<&str>,
     version: Option<&str>,
-    model: Option<&str>,
-    argument_hint: Option<&str>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
@@ -466,8 +452,6 @@ pub(crate) fn create_skill_db_records_inner(
 
         if description.is_some()
             || version.is_some()
-            || model.is_some()
-            || argument_hint.is_some()
             || user_invocable.is_some()
             || disable_model_invocation.is_some()
         {
@@ -476,8 +460,6 @@ pub(crate) fn create_skill_db_records_inner(
                 name,
                 description,
                 version,
-                model,
-                argument_hint,
                 user_invocable,
                 disable_model_invocation,
             )

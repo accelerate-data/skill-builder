@@ -6,8 +6,8 @@ use std::collections::HashMap;
 /// Map a row from the standard skills+plugins join into a SkillMasterRow.
 /// Column order must match the SELECT used in list_all_skills, get_skill_master_*:
 ///   s.id, s.name, s.skill_source, p.id, p.slug, p.display_name, p.is_default,
-///   s.purpose, s.created_at, s.updated_at, s.description, s.version, s.model,
-///   s.argument_hint, s.user_invocable, s.disable_model_invocation
+///   s.purpose, s.created_at, s.updated_at, s.description, s.version,
+///   s.user_invocable, s.disable_model_invocation
 fn map_skill_master_row(row: &rusqlite::Row) -> rusqlite::Result<SkillMasterRow> {
     Ok(SkillMasterRow {
         id: row.get(0)?,
@@ -22,10 +22,8 @@ fn map_skill_master_row(row: &rusqlite::Row) -> rusqlite::Result<SkillMasterRow>
         updated_at: row.get(9)?,
         description: row.get(10)?,
         version: row.get(11)?,
-        model: row.get(12)?,
-        argument_hint: row.get(13)?,
-        user_invocable: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
-        disable_model_invocation: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
+        user_invocable: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+        disable_model_invocation: row.get::<_, Option<i32>>(13)?.map(|v| v != 0),
     })
 }
 
@@ -415,7 +413,7 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
             "SELECT s.id, s.name, s.skill_source,
                     p.id, p.slug, p.display_name, p.is_default,
                     s.purpose, s.created_at, s.updated_at,
-                    s.description, s.version, s.model, s.argument_hint, s.user_invocable, s.disable_model_invocation
+                    s.description, s.version, s.user_invocable, s.disable_model_invocation
              FROM skills s
              JOIN plugins p ON p.id = s.plugin_id
              WHERE COALESCE(s.deleted_at, '') = ''
@@ -457,7 +455,7 @@ pub fn get_skill_master_any_plugin(
             "SELECT s.id, s.name, s.skill_source,
                     p.id, p.slug, p.display_name, p.is_default,
                     s.purpose, s.created_at, s.updated_at,
-                    s.description, s.version, s.model, s.argument_hint, s.user_invocable, s.disable_model_invocation
+                    s.description, s.version, s.user_invocable, s.disable_model_invocation
              FROM skills s
              JOIN plugins p ON p.id = s.plugin_id
              WHERE s.name = ?1 AND COALESCE(s.deleted_at, '') = ''
@@ -484,7 +482,7 @@ pub fn get_skill_master_in_plugin(
             "SELECT s.id, s.name, s.skill_source,
                     p.id, p.slug, p.display_name, p.is_default,
                     s.purpose, s.created_at, s.updated_at,
-                    s.description, s.version, s.model, s.argument_hint, s.user_invocable, s.disable_model_invocation
+                    s.description, s.version, s.user_invocable, s.disable_model_invocation
              FROM skills s
              JOIN plugins p ON p.id = s.plugin_id
              WHERE s.name = ?1 AND p.slug = ?2 AND COALESCE(s.deleted_at, '') = ''",
@@ -601,8 +599,6 @@ pub fn set_skill_behaviour(
     skill_name: &str,
     description: Option<&str>,
     version: Option<&str>,
-    model: Option<&str>,
-    argument_hint: Option<&str>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
@@ -615,18 +611,14 @@ pub fn set_skill_behaviour(
         "UPDATE skills SET
             description = COALESCE(?2, description),
             version = COALESCE(?3, version),
-            model = COALESCE(?4, model),
-            argument_hint = COALESCE(?5, argument_hint),
-            user_invocable = COALESCE(?6, user_invocable),
-            disable_model_invocation = COALESCE(?7, disable_model_invocation),
+            user_invocable = COALESCE(?4, user_invocable),
+            disable_model_invocation = COALESCE(?5, disable_model_invocation),
             updated_at = datetime('now')
          WHERE name = ?1",
         rusqlite::params![
             skill_name,
             description,
             version,
-            model,
-            argument_hint,
             user_invocable_i,
             disable_model_invocation_i,
         ],
@@ -644,8 +636,6 @@ pub fn set_skill_behaviour_in_plugin(
     plugin_slug: &str,
     description: Option<&str>,
     version: Option<&str>,
-    model: Option<&str>,
-    argument_hint: Option<&str>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
@@ -657,10 +647,8 @@ pub fn set_skill_behaviour_in_plugin(
         "UPDATE skills SET
             description = COALESCE(?3, description),
             version = COALESCE(?4, version),
-            model = COALESCE(?5, model),
-            argument_hint = COALESCE(?6, argument_hint),
-            user_invocable = COALESCE(?7, user_invocable),
-            disable_model_invocation = COALESCE(?8, disable_model_invocation),
+            user_invocable = COALESCE(?5, user_invocable),
+            disable_model_invocation = COALESCE(?6, disable_model_invocation),
             updated_at = datetime('now')
          WHERE name = ?1
            AND plugin_id = (SELECT id FROM plugins WHERE slug = ?2)",
@@ -669,8 +657,6 @@ pub fn set_skill_behaviour_in_plugin(
             plugin_slug,
             description,
             version,
-            model,
-            argument_hint,
             user_invocable_i,
             disable_model_invocation_i,
         ],

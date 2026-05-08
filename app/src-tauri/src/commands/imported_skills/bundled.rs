@@ -194,10 +194,9 @@ pub(crate) fn seed_bundled_skills(
         })?;
 
         log::info!(
-            "seed_bundled_skills: seeded '{}' (version={} model={} user_invocable={} disable_model_invocation={})",
+            "seed_bundled_skills: seeded '{}' (version={} user_invocable={} disable_model_invocation={})",
             skill_name,
             fm.version.as_deref().unwrap_or("-"),
-            fm.model.as_deref().unwrap_or("-"),
             fm.user_invocable.map_or("-".to_string(), |v| v.to_string()),
             fm.disable_model_invocation.map_or("-".to_string(), |v| v.to_string()),
         );

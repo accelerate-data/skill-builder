@@ -9,8 +9,6 @@ pub(crate) struct Frontmatter {
     pub description: Option<String>,
     pub version: Option<String>,
     pub author: Option<String>,
-    pub model: Option<String>,
-    pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
     pub has_metadata_version: bool,
@@ -78,8 +76,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     let mut description = None;
     let mut version = None;
     let mut author = None;
-    let mut model = None;
-    let mut argument_hint = None;
     let mut user_invocable: Option<bool> = None;
     let mut disable_model_invocation: Option<bool> = None;
     let mut metadata_version = None;
@@ -146,10 +142,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             version = Some(clean_scalar(val));
         } else if let Some(val) = trimmed_line.strip_prefix("author:") {
             author = Some(clean_scalar(val));
-        } else if let Some(val) = trimmed_line.strip_prefix("model:") {
-            model = Some(clean_scalar(val));
-        } else if let Some(val) = trimmed_line.strip_prefix("argument-hint:") {
-            argument_hint = Some(clean_scalar(val));
         } else if let Some(val) = trimmed_line.strip_prefix("user-invocable:") {
             user_invocable = Some(parse_bool(val));
         } else if let Some(val) = trimmed_line.strip_prefix("disable-model-invocation:") {
@@ -176,8 +168,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         description: trim_opt(description),
         version: trim_opt(metadata_version).or_else(|| trim_opt(version)),
         author: trim_opt(metadata_author).or_else(|| trim_opt(author)),
-        model: trim_opt(model),
-        argument_hint: trim_opt(argument_hint),
         user_invocable,
         disable_model_invocation,
         has_metadata_version,
@@ -314,8 +304,6 @@ pub(crate) fn render_frontmatter_yaml(frontmatter: &Frontmatter) -> String {
 
     add_field("name", &frontmatter.name);
     add_field("description", &frontmatter.description);
-    add_field("model", &frontmatter.model);
-    add_field("argument-hint", &frontmatter.argument_hint);
     if let Some(user_invocable) = frontmatter.user_invocable {
         yaml.push_str(&format!("user-invocable: {}\n", user_invocable));
     }
@@ -362,7 +350,6 @@ mod tests {
         assert!(fm.description.is_none());
         assert!(fm.version.is_none());
         assert!(fm.author.is_none());
-        assert!(fm.model.is_none());
         assert!(fm.user_invocable.is_none());
     }
 

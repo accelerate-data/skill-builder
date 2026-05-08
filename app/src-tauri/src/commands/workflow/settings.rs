@@ -15,8 +15,6 @@ pub(crate) struct WorkflowSettings {
     pub intake_json: Option<String>,
     pub description: Option<String>,
     pub version: Option<String>,
-    pub skill_model: Option<String>,
-    pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
     /// Applicable reference documents for this skill (scope=all or skill-specific).
@@ -132,8 +130,6 @@ pub(crate) fn read_workflow_settings(
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
     let description = master_row.as_ref().and_then(|m| m.description.clone());
     let version = master_row.as_ref().and_then(|m| m.version.clone());
-    let skill_model = master_row.as_ref().and_then(|m| m.model.clone());
-    let argument_hint = master_row.as_ref().and_then(|m| m.argument_hint.clone());
     let user_invocable = master_row.as_ref().and_then(|m| m.user_invocable);
     let disable_model_invocation = master_row.as_ref().and_then(|m| m.disable_model_invocation);
     let tags = crate::db::get_tags_for_skills(&conn, &[skill_name.to_string()])
@@ -170,8 +166,6 @@ pub(crate) fn read_workflow_settings(
         intake_json,
         description,
         version,
-        skill_model,
-        argument_hint,
         user_invocable,
         disable_model_invocation,
         documents,

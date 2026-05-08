@@ -150,8 +150,6 @@ pub(crate) fn discover_skills_from_catalog(
                     description: plugin.description.clone(),
                     purpose: Some("general-purpose".to_string()),
                     version: None,
-                    model: None,
-                    argument_hint: None,
                     user_invocable: None,
                     disable_model_invocation: None,
                 });

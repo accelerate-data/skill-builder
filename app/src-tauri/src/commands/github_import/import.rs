@@ -14,12 +14,6 @@ pub(crate) fn merge_imported_fields(skill: &mut ImportedSkill, existing: &Import
     if skill.description.is_none() {
         skill.description = existing.description.clone();
     }
-    if skill.model.is_none() {
-        skill.model = existing.model.clone();
-    }
-    if skill.argument_hint.is_none() {
-        skill.argument_hint = existing.argument_hint.clone();
-    }
     if skill.user_invocable.is_none() {
         skill.user_invocable = existing.user_invocable;
     }
@@ -194,7 +188,6 @@ pub(crate) async fn import_single_skill(
         fm.name = ov.name.clone().or(fm.name);
         fm.description = ov.description.clone().or(fm.description);
         fm.version = ov.version.clone().or(fm.version);
-        fm.argument_hint = ov.argument_hint.clone().or(fm.argument_hint);
         fm.user_invocable = ov.user_invocable.or(fm.user_invocable);
         fm.disable_model_invocation = ov.disable_model_invocation.or(fm.disable_model_invocation);
         log::debug!(
@@ -374,8 +367,6 @@ pub(crate) async fn import_single_skill(
         description: fm.description,
         purpose: override_purpose,
         version: fm.version,
-        model: fm.model,
-        argument_hint: fm.argument_hint,
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
         marketplace_source_url: None,

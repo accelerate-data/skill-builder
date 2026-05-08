@@ -211,8 +211,6 @@ fn backfill_missing_skill_versions(
             Some(&normalized.version),
             None,
             None,
-            None,
-            None,
         )?;
         conn.execute(
             "UPDATE imported_skills SET version = ?2 WHERE skill_name = ?1",
