@@ -139,15 +139,16 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | `create_workflow_session` | Start a refine or workflow session |
 | `end_workflow_session` | Close a session |
 
-## Refine
+## Selected Skill And Refine
 
 | Command | Description |
 |---|---|
 | `get_skill_content_for_refine` | Load skill files into the refine editor |
-| `start_refine_session` | Resolve or prepare the persistent Refine conversation |
+| `select_skill_openhands_session` | Activate the selected skill's persistent OpenHands conversation and return restored session state |
 | `send_refine_message` | Dispatch the next Refine turn on that conversation |
 | `cancel_agent_run` | Pause the active live run by `agent_id` |
-| `close_refine_session` | Tear down the local Refine surface/session wrapper |
+| `pause_openhands_session` | Pause the selected skill's current live run during switch-away cleanup without discarding the persistent conversation |
+| `graceful_shutdown` | Release selected-skill locks and workflow sessions, then shut down the cached OpenHands Agent Server |
 | `finalize_refine_run` | Write final summary and close run metrics |
 
 ## Git History
