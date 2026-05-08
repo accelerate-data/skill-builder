@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { useSkillStore } from "@/stores/skill-store";
@@ -497,30 +497,34 @@ describe("SkillListPanel", () => {
 
   // ── Row click routing ─────────────────────────────────────────────────────
 
-  it("navigates to /skill/$skillName when clicking a never-started skill", () => {
+  it("navigates to /skill/$skillName when clicking a never-started skill", async () => {
     const skill = makeBuilderSkill({ name: "new-workflow" });
     setBuilderSkills([skill]);
 
     renderWithSkillQueries(<SkillListPanel />);
     fireEvent.click(screen.getByText("new-workflow").closest('[role="button"]')!);
 
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "new-workflow" },
-    });
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/skill/$skillName",
+        params: { skillName: "new-workflow" },
+      }),
+    );
   });
 
-  it("navigates to /skill/$skillName when clicking a step-1 skill", () => {
+  it("navigates to /skill/$skillName when clicking a step-1 skill", async () => {
     const skill = makeBuilderSkill({ name: "step1-nav", current_step: "Step 1" });
     setBuilderSkills([skill]);
 
     renderWithSkillQueries(<SkillListPanel />);
     fireEvent.click(screen.getByText("step1-nav").closest('[role="button"]')!);
 
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "step1-nav" },
-    });
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/skill/$skillName",
+        params: { skillName: "step1-nav" },
+      }),
+    );
   });
 
   it("calls onSelectSkill when clicking a completed skill", () => {
@@ -638,6 +642,22 @@ describe("SkillListPanel", () => {
     });
   });
 
+  it("activates the clicked skill before opening the actions menu", async () => {
+    const user = userEvent.setup();
+    const onActivateSkill = vi.fn().mockResolvedValue(undefined);
+    const skill = makeBuilderSkill({ name: "menu-activate", status: "completed" });
+    setBuilderSkills([skill]);
+
+    renderWithSkillQueries(
+      <SkillListPanel onActivateSkill={onActivateSkill} />,
+    );
+
+    await openSkillMenu("menu-activate", user);
+
+    expect(onActivateSkill).toHaveBeenCalledWith("menu-activate");
+    expect(screen.getByRole("menuitem", { name: "Review" })).toBeInTheDocument();
+  });
+
   it("does not show Review menu item for imported skills", async () => {
     const user = userEvent.setup();
     const skill = makeImportedSkill({ skill_name: "imported-no-review" });
@@ -736,14 +756,14 @@ describe("SkillListPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
   });
 
-  it("continue building prepares the workflow skill before navigation", async () => {
+  it("continue building activates the workflow skill before navigation", async () => {
     const user = userEvent.setup();
-    const onPrepareWorkflowSkill = vi.fn().mockResolvedValue(undefined);
+    const onActivateSkill = vi.fn().mockResolvedValue(undefined);
     const skill = makeBuilderSkill({ name: "resume-builder", current_step: "Step 1" });
     setBuilderSkills([skill]);
 
     renderWithSkillQueries(
-      <SkillListPanel onPrepareWorkflowSkill={onPrepareWorkflowSkill} />,
+      <SkillListPanel onActivateSkill={onActivateSkill} />,
     );
 
     await openSkillMenu("resume-builder", user);
@@ -751,7 +771,7 @@ describe("SkillListPanel", () => {
 
     await user.click(continueItem);
 
-    expect(onPrepareWorkflowSkill).toHaveBeenCalledWith("resume-builder");
+    expect(onActivateSkill).toHaveBeenCalledWith("resume-builder");
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/skill/$skillName",
       params: { skillName: "resume-builder" },

@@ -16,13 +16,14 @@ export interface SkillRowProps {
   isLocked: boolean;
   isRunning: boolean;
   showPluginHeader: boolean;
-  onRowClick: (skill: UnifiedSkill) => void;
-  onReview: (name: string) => void;
+  onRowClick: (skill: UnifiedSkill) => void | Promise<void>;
+  onActivateSkill: (name: string) => void | Promise<void>;
+  onReview: (name: string) => void | Promise<void>;
   onRedo: (name: string) => void;
-  onOverview: (key: string) => void;
-  onEval: (key: string) => void;
-  onRefine: (key: string) => void;
-  onContinueBuilding: (name: string) => void;
+  onOverview: (key: string) => void | Promise<void>;
+  onEval: (key: string) => void | Promise<void>;
+  onRefine: (key: string) => void | Promise<void>;
+  onContinueBuilding: (name: string) => void | Promise<void>;
   onRestore: (name: string, pluginSlug: string) => void;
   onDelete: (skill: UnifiedSkill) => void;
   onCreatePlugin: (skill: UnifiedSkill) => void;
@@ -53,6 +54,7 @@ export function SkillRow({
   isRunning,
   showPluginHeader,
   onRowClick,
+  onActivateSkill,
   onReview,
   onRedo,
   onOverview,
@@ -148,6 +150,7 @@ export function SkillRow({
           <SkillContextMenu
             skill={skill}
             menuState={menuState}
+            onActivateSkill={onActivateSkill}
             onReview={onReview}
             onRedo={onRedo}
             onOverview={onOverview}

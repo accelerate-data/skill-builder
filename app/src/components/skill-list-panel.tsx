@@ -49,8 +49,8 @@ import {
 } from "@/lib/queries/skills";
 
 export interface SkillListPanelProps {
-  onSelectSkill?: (name: string, tab?: string) => void;
-  onPrepareWorkflowSkill?: (name: string) => Promise<void> | void;
+  onSelectSkill?: (name: string, tab?: string) => Promise<void> | void;
+  onActivateSkill?: (name: string) => Promise<void> | void;
   onCreateSkill?: () => void;
   onCollapse?: () => void;
   className?: string;
@@ -58,7 +58,7 @@ export interface SkillListPanelProps {
 
 export function SkillListPanel({
   onSelectSkill,
-  onPrepareWorkflowSkill,
+  onActivateSkill,
   onCreateSkill,
   onCollapse,
   className,
@@ -133,7 +133,7 @@ export function SkillListPanel({
     [unifiedSkills],
   );
 
-  function handleRowClick(skill: UnifiedSkill) {
+  async function handleRowClick(skill: UnifiedSkill) {
     // All other rows are locked while a workflow or refine agent runs
     if (runningSkillName && skill.name !== runningSkillName) return;
     // Running skill is also a no-op
@@ -142,12 +142,12 @@ export function SkillListPanel({
     if (externalLockedSkills.has(skill.name)) return;
 
     console.log("event=skill_selected skill=%s", skill.name);
-    localStorage.setItem("last-selected-skill", skill.key);
-    setSelectedSkill(skill.key);
-
     if (isSkillComplete(skill) || skill.source !== "builder") {
-      onSelectSkill?.(skill.key);
+      await onSelectSkill?.(skill.key);
     } else {
+      localStorage.setItem("last-selected-skill", skill.key);
+      setSelectedSkill(skill.key);
+      await onActivateSkill?.(skill.key);
       // Row click always opens in Review mode — auto-start is only for explicit actions
       // (SkillDialog create, Continue Building, Redo) which pass state: { autoStart: true }.
       navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
@@ -166,7 +166,7 @@ export function SkillListPanel({
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
       setRedoTarget(null);
-      await onPrepareWorkflowSkill?.(skillName);
+      await onActivateSkill?.(skillName);
       navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
@@ -174,29 +174,26 @@ export function SkillListPanel({
     }
   }
 
-  function handleOverview(skillKey: string) {
+  async function handleOverview(skillKey: string) {
     console.log("event=skill_overview skill=%s", skillKey);
-    localStorage.setItem("last-selected-skill", skillKey);
-    setSelectedSkill(skillKey);
-    onSelectSkill?.(skillKey, "overview");
+    await onSelectSkill?.(skillKey, "overview");
   }
 
-  function handleEval(skillKey: string) {
+  async function handleEval(skillKey: string) {
     console.log("event=skill_eval skill=%s", skillKey);
-    localStorage.setItem("last-selected-skill", skillKey);
-    setSelectedSkill(skillKey);
-    onSelectSkill?.(skillKey, "evals");
+    await onSelectSkill?.(skillKey, "evals");
   }
 
-  function handleRefine(skillKey: string) {
+  async function handleRefine(skillKey: string) {
     console.log("event=skill_refine skill=%s", skillKey);
-    onSelectSkill?.(skillKey, "refine");
+    await onSelectSkill?.(skillKey, "refine");
   }
 
-  function handleReview(skillName: string) {
+  async function handleReview(skillName: string) {
     console.log("event=skill_review skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
     setSelectedSkill(skillName);
+    await onActivateSkill?.(skillName);
     navigate({ to: "/skill/$skillName", params: { skillName } });
   }
 
@@ -204,7 +201,7 @@ export function SkillListPanel({
     console.log("event=skill_continue skill=%s", skillName);
     localStorage.setItem("last-selected-skill", skillName);
     setSelectedSkill(skillName);
-    await onPrepareWorkflowSkill?.(skillName);
+    await onActivateSkill?.(skillName);
     navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
   }
 
@@ -380,6 +377,7 @@ export function SkillListPanel({
               isRunning={isRunning}
               showPluginHeader={showPluginHeader}
               onRowClick={handleRowClick}
+              onActivateSkill={(name) => onActivateSkill?.(name)}
               onReview={handleReview}
               onRedo={handleRedo}
               onOverview={handleOverview}

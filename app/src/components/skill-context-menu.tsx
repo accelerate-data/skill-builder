@@ -1,3 +1,4 @@
+import { useState, type MouseEvent } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,12 +15,13 @@ import type { UnifiedSkill, SkillMenuState } from "@/hooks/use-unified-skills";
 export interface SkillContextMenuProps {
   skill: UnifiedSkill;
   menuState: SkillMenuState;
-  onReview: (name: string) => void;
+  onActivateSkill: (name: string) => void | Promise<void>;
+  onReview: (name: string) => void | Promise<void>;
   onRedo: (name: string) => void;
-  onOverview: (key: string) => void;
-  onEval: (key: string) => void;
-  onRefine: (key: string) => void;
-  onContinueBuilding: (name: string) => void;
+  onOverview: (key: string) => void | Promise<void>;
+  onEval: (key: string) => void | Promise<void>;
+  onRefine: (key: string) => void | Promise<void>;
+  onContinueBuilding: (name: string) => void | Promise<void>;
   onRestore: (name: string, pluginSlug: string) => void;
   onDelete: (skill: UnifiedSkill) => void;
   onCreatePlugin: (skill: UnifiedSkill) => void;
@@ -32,6 +34,7 @@ export interface SkillContextMenuProps {
 export function SkillContextMenu({
   skill,
   menuState,
+  onActivateSkill,
   onReview,
   onRedo,
   onOverview,
@@ -46,15 +49,38 @@ export function SkillContextMenu({
   onExport,
   pluginOptions,
 }: SkillContextMenuProps) {
+  const [open, setOpen] = useState(false);
+  const [activating, setActivating] = useState(false);
+
+  async function handleMenuOpen() {
+    setActivating(true);
+    try {
+      await onActivateSkill(skill.key);
+      setOpen(true);
+    } finally {
+      setActivating(false);
+    }
+  }
+
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setOpen(false);
+          return;
+        }
+        void handleMenuOpen();
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon-xs"
           className="size-5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
           aria-label="More actions"
-          onClick={(e) => e.stopPropagation()}
+          aria-busy={activating}
+          onClick={(e: MouseEvent<HTMLButtonElement>) => e.stopPropagation()}
         >
           <MoreHorizontal className="size-3" />
         </Button>
