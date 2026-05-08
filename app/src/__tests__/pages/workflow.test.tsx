@@ -3920,7 +3920,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(updates.some((u) => u.question_id === "Q3" && u.verdict === "not_answered" && u.reason === null)).toBe(true);
   });
 
-  it("gate verdict updates: skips invokeCommand when all verdicts are clear (empty per_question)", async () => {
+  it("gate verdict updates: persists clear verdicts when all answers are clear", async () => {
     const evaluation = {
       verdict: "sufficient",
       answered_count: 2,
@@ -3971,11 +3971,20 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       expect(useWorkflowStore.getState().currentStep).toBe(1);
     });
 
-    // No verdicts to persist — update_clarification_verdicts should NOT be called
-    const verdictCalls = vi.mocked(invokeCommand).mock.calls.filter(
+    await waitFor(() => {
+      const calls = vi.mocked(invokeCommand).mock.calls;
+      expect(calls.some(([cmd]) => cmd === "update_clarification_verdicts")).toBe(true);
+    });
+
+    const verdictCall = vi.mocked(invokeCommand).mock.calls.find(
       ([cmd]) => cmd === "update_clarification_verdicts",
     );
-    expect(verdictCalls).toHaveLength(0);
+    const updates = (verdictCall?.[1] as { skillId: string; updates: Array<{ question_id: string; verdict: string; reason: string | null }> })?.updates;
+
+    expect(updates).toEqual([
+      { question_id: "Q1", verdict: "clear", reason: null },
+      { question_id: "Q2", verdict: "clear", reason: null },
+    ]);
   });
 });
 
