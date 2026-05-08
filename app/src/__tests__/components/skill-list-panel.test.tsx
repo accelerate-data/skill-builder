@@ -98,8 +98,10 @@ function makeImportedSkill(
 
 async function openSkillMenu(skillName: string, user: ReturnType<typeof userEvent.setup>) {
   const row = screen.getByText(skillName).closest('[role="button"]')!;
-  const moreBtn = row.querySelector('[aria-label="More actions"]')!;
-  await user.click(moreBtn);
+  if (row.getAttribute("aria-selected") !== "true") {
+    await user.click(row);
+  }
+  await user.pointer({ keys: "[MouseRight]", target: row });
 }
 
 let builderSkillResults: SkillSummary[] = [];
@@ -453,9 +455,7 @@ describe("SkillListPanel", () => {
 
     const skillBRow = screen.getByText("locked-skill-b").closest('[role="button"]');
     expect(skillBRow?.className).toMatch(/cursor-not-allowed/);
-    // Locked row shows the Lock icon (no "More actions" button inside it)
-    const moreBtn = skillBRow?.querySelector('[aria-label="More actions"]');
-    expect(moreBtn).toBeNull();
+    expect(screen.queryByLabelText("More actions")).not.toBeInTheDocument();
   });
 
   // ── Default selection ─────────────────────────────────────────────────────
@@ -642,20 +642,22 @@ describe("SkillListPanel", () => {
     });
   });
 
-  it("activates the clicked skill before opening the actions menu", async () => {
+  it("shows the actions menu only for the selected skill", async () => {
     const user = userEvent.setup();
-    const onActivateSkill = vi.fn().mockResolvedValue(undefined);
-    const skill = makeBuilderSkill({ name: "menu-activate", status: "completed" });
-    setBuilderSkills([skill]);
+    const selectedSkill = makeBuilderSkill({ name: "selected-skill", status: "completed" });
+    const unselectedSkill = makeBuilderSkill({ name: "unselected-skill", status: "completed" });
+    setBuilderSkills([selectedSkill, unselectedSkill]);
+    useSkillStore.setState({ activeSkill: "selected-skill" });
 
-    renderWithSkillQueries(
-      <SkillListPanel onActivateSkill={onActivateSkill} />,
-    );
+    renderWithSkillQueries(<SkillListPanel />);
 
-    await openSkillMenu("menu-activate", user);
-
-    expect(onActivateSkill).toHaveBeenCalledWith("menu-activate");
+    await openSkillMenu("selected-skill", user);
     expect(screen.getByRole("menuitem", { name: "Review" })).toBeInTheDocument();
+    expect(
+      screen
+        .getByText("unselected-skill")
+        .closest('[data-slot="context-menu-trigger"]'),
+    ).toBeNull();
   });
 
   it("does not show Review menu item for imported skills", async () => {
@@ -691,7 +693,7 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass("text-destructive");
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveAttribute("data-variant", "destructive");
   });
 
   it("shows the lifecycle section for imported skills without workflow-only actions", async () => {

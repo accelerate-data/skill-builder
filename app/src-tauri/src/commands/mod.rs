@@ -14,6 +14,7 @@ pub mod refine;
 pub mod settings;
 pub mod sidecar_lifecycle;
 pub mod skill;
+pub mod skill_session;
 #[cfg(test)]
 pub mod test_utils;
 pub mod usage;

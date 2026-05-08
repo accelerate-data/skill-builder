@@ -1,4 +1,4 @@
-use crate::commands::refine::RefineSessionManager;
+use crate::commands::skill_session::RefineSessionManager;
 use crate::commands::workflow::runtime::WorkflowStepRunManager;
 use crate::db::Db;
 use crate::skill_paths::{

@@ -17,7 +17,6 @@ export interface SkillRowProps {
   isRunning: boolean;
   showPluginHeader: boolean;
   onRowClick: (skill: UnifiedSkill) => void | Promise<void>;
-  onActivateSkill: (name: string) => void | Promise<void>;
   onReview: (name: string) => void | Promise<void>;
   onRedo: (name: string) => void;
   onOverview: (key: string) => void | Promise<void>;
@@ -54,7 +53,6 @@ export function SkillRow({
   isRunning,
   showPluginHeader,
   onRowClick,
-  onActivateSkill,
   onReview,
   onRedo,
   onOverview,
@@ -75,6 +73,52 @@ export function SkillRow({
     ? (PURPOSE_SHORT_LABELS[skill.purpose as Purpose] ?? skill.purpose)
     : null;
   const menuState = getSkillMenuState(skill);
+
+  const rowContent = (
+    <div
+      role="button"
+      tabIndex={isLocked ? -1 : 0}
+      aria-selected={isSelected}
+      className={cn(
+        "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
+        isSelected && "border-l-2 bg-muted/60 pl-[10px]",
+        !isSelected && "border-l-2 border-l-transparent",
+        !isSelected && !isLocked && "hover:bg-accent/50",
+        isLocked && "cursor-not-allowed opacity-[0.45]",
+      )}
+      style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
+      onClick={() => onRowClick(skill)}
+      onKeyDown={(e) => {
+        if (!isLocked && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onRowClick(skill);
+        }
+      }}
+    >
+      <div
+        className={cn("size-2 shrink-0 rounded-full", dot.className)}
+        style={dot.style}
+        aria-label={`status-dot-${skill.key}`}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-base font-medium">{skill.name}</span>
+        {purposeLabel && (
+          <span className="truncate text-[13px] text-muted-foreground">
+            {purposeLabel}
+          </span>
+        )}
+      </div>
+
+      {skill.lastModified && (
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">
+          {formatRelativeDate(skill.lastModified)}
+        </span>
+      )}
+
+      {isLocked && <Lock className="size-[10px] shrink-0 text-muted-foreground" />}
+    </div>
+  );
 
   return (
     <div>
@@ -99,74 +143,29 @@ export function SkillRow({
           )}
         </div>
       )}
-      <div
-        role="button"
-        tabIndex={isLocked ? -1 : 0}
-        aria-selected={isSelected}
-        className={cn(
-          "group flex h-[46px] cursor-pointer items-center gap-2 px-3 transition-colors",
-          isSelected && "border-l-2 bg-muted/60 pl-[10px]",
-          !isSelected && "border-l-2 border-l-transparent",
-          !isSelected && !isLocked && "hover:bg-accent/50",
-          isLocked && "cursor-not-allowed opacity-[0.45]",
-        )}
-        style={isSelected ? { borderLeftColor: "var(--color-pacific)" } : undefined}
-        onClick={() => onRowClick(skill)}
-        onKeyDown={(e) => {
-          if (!isLocked && (e.key === "Enter" || e.key === " ")) {
-            e.preventDefault();
-            onRowClick(skill);
-          }
-        }}
-      >
-        {/* Status dot */}
-        <div
-          className={cn("size-2 shrink-0 rounded-full", dot.className)}
-          style={dot.style}
-          aria-label={`status-dot-${skill.key}`}
-        />
-
-        {/* Name + purpose */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-base font-medium">{skill.name}</span>
-          {purposeLabel && (
-            <span className="truncate text-[13px] text-muted-foreground">
-              {purposeLabel}
-            </span>
-          )}
-        </div>
-
-        {/* Timestamp */}
-        {skill.lastModified && (
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">
-            {formatRelativeDate(skill.lastModified)}
-          </span>
-        )}
-
-        {/* More button / Lock icon */}
-        {isLocked ? (
-          <Lock className="size-[10px] shrink-0 text-muted-foreground" />
-        ) : (
-          <SkillContextMenu
-            skill={skill}
-            menuState={menuState}
-            onActivateSkill={onActivateSkill}
-            onReview={onReview}
-            onRedo={onRedo}
-            onOverview={onOverview}
-            onEval={onEval}
-            onRefine={onRefine}
-            onContinueBuilding={onContinueBuilding}
-            onRestore={onRestore}
-            onDelete={onDelete}
-            onCreatePlugin={onCreatePlugin}
-            onMoveToPlugin={onMoveToPlugin}
-            onRemoveFromPlugin={onRemoveFromPlugin}
-            onExport={onExport}
-            pluginOptions={pluginOptions}
-          />
-        )}
-      </div>
+      {isSelected && !isLocked ? (
+        <SkillContextMenu
+          skill={skill}
+          menuState={menuState}
+          onReview={onReview}
+          onRedo={onRedo}
+          onOverview={onOverview}
+          onEval={onEval}
+          onRefine={onRefine}
+          onContinueBuilding={onContinueBuilding}
+          onRestore={onRestore}
+          onDelete={onDelete}
+          onCreatePlugin={onCreatePlugin}
+          onMoveToPlugin={onMoveToPlugin}
+          onRemoveFromPlugin={onRemoveFromPlugin}
+          onExport={onExport}
+          pluginOptions={pluginOptions}
+        >
+          {rowContent}
+        </SkillContextMenu>
+      ) : (
+        rowContent
+      )}
     </div>
   );
 }

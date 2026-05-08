@@ -276,10 +276,7 @@ async fn dispatch_persistent_skill_turn(
     .await
 }
 
-pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<
-    Send,
-    SendFuture,
->(
+pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<Send, SendFuture>(
     agent_id: &str,
     config: SidecarConfig,
     conversation_id: String,

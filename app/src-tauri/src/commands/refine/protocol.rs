@@ -3,11 +3,11 @@ use std::path::Path;
 use crate::skill_paths::resolve_skill_dir;
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-pub(super) fn new_refine_usage_session_id(skill_name: &str) -> String {
+pub(crate) fn new_refine_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(super) fn ensure_skill_workspace_dir(
+pub(crate) fn ensure_skill_workspace_dir(
     workspace_path: &str,
     plugin_slug: &str,
     skill_name: &str,

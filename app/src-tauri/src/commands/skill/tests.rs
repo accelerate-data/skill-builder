@@ -4,7 +4,7 @@ use super::crud::{
     list_refinable_skills_inner, list_skills_inner, prepare_skill_runtime_shutdown_inner,
 };
 use super::metadata::{is_valid_kebab, rename_skill_inner};
-use crate::commands::refine::{RefineSession, RefineSessionManager};
+use crate::commands::skill_session::{RefineSession, RefineSessionManager};
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::runtime::{WorkflowStepRun, WorkflowStepRunManager};
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;

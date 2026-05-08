@@ -147,7 +147,6 @@ export function SkillListPanel({
     } else {
       localStorage.setItem("last-selected-skill", skill.key);
       setSelectedSkill(skill.key);
-      await onActivateSkill?.(skill.key);
       // Row click always opens in Review mode — auto-start is only for explicit actions
       // (SkillDialog create, Continue Building, Redo) which pass state: { autoStart: true }.
       navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
@@ -166,7 +165,6 @@ export function SkillListPanel({
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
       setRedoTarget(null);
-      await onActivateSkill?.(skillName);
       navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
@@ -377,7 +375,6 @@ export function SkillListPanel({
               isRunning={isRunning}
               showPluginHeader={showPluginHeader}
               onRowClick={handleRowClick}
-              onActivateSkill={(name) => onActivateSkill?.(name)}
               onReview={handleReview}
               onRedo={handleRedo}
               onOverview={handleOverview}
