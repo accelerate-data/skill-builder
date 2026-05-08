@@ -25,13 +25,24 @@ pub async fn graceful_shutdown(
                 );
                 log::info!("[graceful_shutdown] locks released, sessions ended");
             }
+
+            crate::agents::openhands_server::process::shutdown_agent_server()
+                .await
+                .map_err(|e| format!("OpenHands Agent Server shutdown failed: {e}"))?;
+            log::info!("[graceful_shutdown] OpenHands Agent Server shutdown complete");
+
+            Ok::<(), String>(())
         })
         .await;
 
     match shutdown_result {
-        Ok(()) => {
+        Ok(Ok(())) => {
             log::info!("[graceful_shutdown] complete");
             Ok(())
+        }
+        Ok(Err(error)) => {
+            log::warn!("[graceful_shutdown] failed: {error}");
+            Err(error)
         }
         Err(_) => {
             log::warn!("[graceful_shutdown] timed out after {}s", TIMEOUT_SECS,);

@@ -1,3 +1,7 @@
+#[cfg(unix)]
+use nix::sys::signal::{kill, Signal};
+#[cfg(unix)]
+use nix::unistd::Pid;
 use std::collections::VecDeque;
 use std::fs;
 use std::net::TcpListener;
@@ -12,8 +16,15 @@ pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.19.1
 pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
 const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
+const SHUTDOWN_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const STDERR_TAIL_MAX_LINES: usize = 200;
 const OPENHANDS_SECRET_FILENAME: &str = "secret.key";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShutdownOutcome {
+    Graceful,
+    Forced,
+}
 
 /// Path to the uv binary bundled with the app, if present.
 /// `None` (outer) means not yet initialized.
@@ -188,6 +199,10 @@ impl OpenHandsServerCommand {
             .env("TMPDIR", "/tmp")
             .env("TMP", "/tmp")
             .env("TEMP", "/tmp");
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
         command
     }
 }
@@ -403,8 +418,44 @@ impl OpenHandsAgentServerProcess {
     }
 
     pub async fn shutdown(&mut self) -> Result<(), String> {
+        self.shutdown_with_outcome().await.map(|_| ())
+    }
+
+    async fn shutdown_with_outcome(&mut self) -> Result<ShutdownOutcome, String> {
         if let Ok(Some(_)) = self._child.try_wait() {
-            return Ok(());
+            return Ok(ShutdownOutcome::Graceful);
+        }
+        #[cfg(unix)]
+        if let Some(pid) = self._child.id() {
+            let process_group = -(pid as i32);
+            log::info!(
+                "[openhands-agent-server] shutting down process group {} with SIGTERM",
+                process_group
+            );
+            kill(Pid::from_raw(process_group), Signal::SIGTERM).map_err(|e| {
+                format!("Failed to signal OpenHands Agent Server process group: {e}")
+            })?;
+
+            let deadline = Instant::now() + SHUTDOWN_WAIT_TIMEOUT;
+            loop {
+                if let Ok(Some(_)) = self._child.try_wait() {
+                    return Ok(ShutdownOutcome::Graceful);
+                }
+                if Instant::now() >= deadline {
+                    log::warn!(
+                        "[openhands-agent-server] process group {} did not exit after SIGTERM; forcing kill",
+                        process_group
+                    );
+                    kill(Pid::from_raw(process_group), Signal::SIGKILL).map_err(|e| {
+                        format!("Failed to force-kill OpenHands Agent Server process group: {e}")
+                    })?;
+                    self._child.wait().await.map_err(|e| {
+                        format!("Failed to wait for OpenHands Agent Server shutdown: {e}")
+                    })?;
+                    return Ok(ShutdownOutcome::Forced);
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
         }
         self._child
             .start_kill()
@@ -413,7 +464,7 @@ impl OpenHandsAgentServerProcess {
             .wait()
             .await
             .map_err(|e| format!("Failed to wait for OpenHands Agent Server shutdown: {e}"))?;
-        Ok(())
+        Ok(ShutdownOutcome::Forced)
     }
 }
 
@@ -700,6 +751,30 @@ mod tests {
                 .expect("secret file")
                 .trim(),
             first
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn live_openhands_server_shutdown_prefers_sigterm() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let runtime_run_dir = tmp.path().join("default/skills/petstore-sales");
+        fs::create_dir_all(&runtime_run_dir).expect("runtime dir");
+
+        let mut process =
+            OpenHandsAgentServerProcess::start(Duration::from_secs(60), &runtime_run_dir)
+                .await
+                .expect("start OpenHands server");
+
+        let outcome = process
+            .shutdown_with_outcome()
+            .await
+            .expect("shutdown OpenHands server");
+
+        assert_eq!(
+            outcome,
+            ShutdownOutcome::Graceful,
+            "expected OpenHands server to exit via SIGTERM before SIGKILL fallback"
         );
     }
 }
