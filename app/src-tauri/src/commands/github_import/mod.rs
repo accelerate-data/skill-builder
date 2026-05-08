@@ -41,8 +41,6 @@ mod tests {
             description: None,
             purpose: None,
             version: version.map(str::to_string),
-            model: None,
-            argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
         }

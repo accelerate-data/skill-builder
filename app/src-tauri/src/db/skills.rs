@@ -1062,8 +1062,6 @@ mod tests {
             None,
             None,
             None,
-            None,
-            None,
         )
         .unwrap();
         set_skill_behaviour_in_plugin(
@@ -1071,8 +1069,6 @@ mod tests {
             "my-skill",
             &target_slug,
             Some("target description"),
-            None,
-            None,
             None,
             None,
             None,
