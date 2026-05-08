@@ -1,5 +1,12 @@
 use crate::db::Db;
 use crate::{CloseGuardState, InstanceInfo};
+use rusqlite::Connection;
+
+fn release_instance_runtime_state(conn: &Connection, instance: &InstanceInfo) -> Result<(), String> {
+    let _ = crate::db::release_all_instance_locks(conn, &instance.id)?;
+    let _ = crate::commands::workflow_lifecycle::shutdown_sessions_for_pid(conn, instance.pid)?;
+    Ok(())
+}
 
 /// Graceful shutdown: release locks, end sessions, then exit.
 /// Called by the close-guard when the user confirms closing with agents running.
@@ -18,11 +25,7 @@ pub async fn graceful_shutdown(
         tokio::time::timeout(std::time::Duration::from_secs(TIMEOUT_SECS), async {
             // Release all skill locks and end workflow sessions for this instance
             if let Ok(conn) = db.0.lock() {
-                let _ = crate::db::release_all_instance_locks(&conn, &instance.id);
-                let _ = crate::commands::workflow_lifecycle::shutdown_sessions_for_pid(
-                    &conn,
-                    instance.pid,
-                );
+                let _ = release_instance_runtime_state(&conn, &instance);
                 log::info!("[graceful_shutdown] locks released, sessions ended");
             }
 
@@ -58,4 +61,79 @@ pub async fn graceful_shutdown(
 pub fn allow_app_exit(close_guard: tauri::State<'_, CloseGuardState>) {
     log::info!("[allow_app_exit] marked");
     close_guard.allow_exit();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::release_instance_runtime_state;
+    use crate::commands::test_utils::create_test_db;
+    use crate::db::{acquire_skill_lock, create_workflow_session};
+    use crate::InstanceInfo;
+
+    #[test]
+    fn release_instance_runtime_state_releases_locks_and_ends_sessions_for_instance() {
+        let conn = create_test_db();
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, plugin_id)
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+            rusqlite::params!["skill-a", crate::skill_paths::DEFAULT_PLUGIN_SLUG],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, plugin_id)
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+            rusqlite::params!["skill-b", crate::skill_paths::DEFAULT_PLUGIN_SLUG],
+        )
+        .unwrap();
+
+        acquire_skill_lock(&conn, "skill-a", "instance-a", 4242).unwrap();
+        acquire_skill_lock(&conn, "skill-b", "instance-b", 5151).unwrap();
+        create_workflow_session(&conn, "sess-a", "skill-a", 4242).unwrap();
+        create_workflow_session(&conn, "sess-b", "skill-b", 5151).unwrap();
+
+        release_instance_runtime_state(
+            &conn,
+            &InstanceInfo {
+                id: "instance-a".to_string(),
+                pid: 4242,
+            },
+        )
+        .unwrap();
+
+        let remaining_lock_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skill_locks WHERE instance_id = 'instance-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining_lock_count, 0);
+
+        let other_lock_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skill_locks WHERE instance_id = 'instance-b'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(other_lock_count, 1);
+
+        let ended_at_a: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at_a.is_some());
+
+        let ended_at_b: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-b'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at_b.is_none());
+    }
 }

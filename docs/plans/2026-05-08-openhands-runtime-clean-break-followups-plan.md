@@ -106,7 +106,7 @@ follow-up list for the independent-agent findings and simplifier review.
       or releases locks independently of selected-skill lifecycle.
 - [x] Add tests that prove selecting a skill acquires the lock.
 - [x] Add tests that prove switching away releases the previous lock.
-- [ ] Add tests that prove app shutdown releases the active lock.
+- [x] Add tests that prove app shutdown releases the active lock.
 
 ### B. Transcript / Event Replay On Refine Reopen
 
@@ -169,7 +169,7 @@ follow-up list for the independent-agent findings and simplifier review.
 - [x] Reset/redo now clear persisted conversation state and recreate a fresh
       selected-skill OpenHands session instead of trying to reuse the deleted
       conversation.
-- [ ] Strengthen workflow reset tests so they verify the real
+- [x] Strengthen workflow reset tests so they verify the real
       fresh-conversation restart contract end to end, not only helper
       invocation.
 
@@ -189,7 +189,7 @@ follow-up list for the independent-agent findings and simplifier review.
       - `app/src/__tests__/pages/workflow.test.tsx`
       - `app/src/__tests__/components/skill-list-panel.test.tsx`
       so the real restart helper/store hydration behavior is verified.
-- [ ] Add coverage that app shutdown releases selected-skill lock/session
+- [x] Add coverage that app shutdown releases selected-skill lock/session
       state, not just that `graceful_shutdown` is invoked.
 
 ### G. Repo Metadata / Docs Follow-Through
@@ -209,7 +209,7 @@ This todo explicitly covers all outstanding findings:
 
 - [x] prior skill lock not released on skill switch
 - [x] resumed Refine loses transcript / resets first-turn semantics
-- [ ] workflow reset tests still mock away the real restart contract
+- [x] workflow reset tests still mock away the real restart contract
 - [x] documented Refine visibility / replay contract still unmet
 - [x] `repo-map.json` stale after structural/runtime changes
 - [x] duplicated frontend bootstrap logic
