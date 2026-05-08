@@ -164,6 +164,9 @@ export function SkillListPanel({
       console.log("event=skill_redo skill=%s", skillName);
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
+      localStorage.setItem("last-selected-skill", skillName);
+      setSelectedSkill(skillName);
+      await onActivateSkill?.(skillName);
       setRedoTarget(null);
       navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
     } catch (err) {

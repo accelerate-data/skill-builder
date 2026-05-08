@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 import { createTestQueryClient } from "@/test/query-test-utils";
 import { queryKeys } from "@/lib/queries/query-keys";
@@ -39,7 +40,7 @@ vi.mock("@/lib/tauri", () => ({
 }));
 
 import { SkillListPanel } from "@/components/skill-list-panel";
-import { listImportedSkills, listSkills, removeSkillFromPlugin } from "@/lib/tauri";
+import { listImportedSkills, listSkills, removeSkillFromPlugin, resetWorkflowStep } from "@/lib/tauri";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,8 @@ function setImportedSkills(skills: ImportedSkill[]) {
 
 function renderWithSkillQueries(ui: React.ReactElement) {
   const queryClient = createTestQueryClient();
-  queryClient.setQueryData(queryKeys.skills.builder(null, null), builderSkillResults);
+  const workspacePath = useSettingsStore.getState().workspacePath ?? null;
+  queryClient.setQueryData(queryKeys.skills.builder(workspacePath, null), builderSkillResults);
   queryClient.setQueryData(queryKeys.skills.imported(), importedSkillResults);
 
   return render(
@@ -161,6 +163,7 @@ describe("SkillListPanel", () => {
       lockedSkills: new Set(),
       latestVersion: null,
     });
+    useSettingsStore.setState({ workspacePath: "/tmp/workspace" });
     useAgentStore.getState().clearRuns();
     mockNavigate.mockClear();
     localStorage.clear();
@@ -777,6 +780,30 @@ describe("SkillListPanel", () => {
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/skill/$skillName",
       params: { skillName: "resume-builder" },
+      state: { autoStart: true },
+    });
+  });
+
+  it("redo re-activates the workflow skill after reset before navigation", async () => {
+    const user = userEvent.setup();
+    const onActivateSkill = vi.fn().mockResolvedValue(undefined);
+    const skill = makeBuilderSkill({ name: "redo-builder", status: "completed" });
+    setBuilderSkills([skill]);
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
+
+    await openSkillMenu("redo-builder", user);
+    await user.click(screen.getByRole("menuitem", { name: "Redo workflow" }));
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+
+    await waitFor(() => {
+      expect(resetWorkflowStep).toHaveBeenCalledWith(expect.any(String), "redo-builder", 0);
+    });
+    expect(onActivateSkill).toHaveBeenCalledWith("redo-builder");
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/skill/$skillName",
+      params: { skillName: "redo-builder" },
       state: { autoStart: true },
     });
   });
