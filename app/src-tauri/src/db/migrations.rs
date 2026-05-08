@@ -52,6 +52,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (47, run_skill_conversations_migration),
     (48, run_scenarios_migration),
     (49, run_skill_hard_delete_cleanup_migration),
+    (50, run_drop_model_argument_hint_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2593,5 +2594,16 @@ pub(super) fn run_workflow_artifact_tables_migration(
             ON decision_items(skill_id);",
     )?;
     log::info!("migration 44: created workflow artifact tables (clarifications + decisions)");
+    Ok(())
+}
+
+fn run_drop_model_argument_hint_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    log::info!("migration 50: dropping model and argument_hint columns from skills and imported_skills");
+    conn.execute_batch(
+        "ALTER TABLE skills DROP COLUMN model;
+         ALTER TABLE skills DROP COLUMN argument_hint;
+         ALTER TABLE imported_skills DROP COLUMN model;
+         ALTER TABLE imported_skills DROP COLUMN argument_hint;"
+    )?;
     Ok(())
 }
