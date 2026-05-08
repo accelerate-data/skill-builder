@@ -415,11 +415,7 @@ describe("WorkspaceShell", () => {
     await screen.findByText("Regression");
     await user.click(screen.getByRole("button", { name: /new scenario/i }));
 
-    await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith({
-        mode: "performance",
-      }),
-    );
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith());
   });
 
   it("does not render a scenario editor until the user expands or creates a scenario", async () => {

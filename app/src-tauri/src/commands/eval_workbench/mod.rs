@@ -2,14 +2,16 @@ pub mod scenarios;
 pub mod types;
 
 use crate::agents::openhands_server;
-use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
+use crate::agents::openhands_server::OpenHandsThrowawayRunParams;
+use crate::agents::sidecar::{
+    build_openhands_runtime_config, OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
+};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::Db;
 use serde_json::Value;
 use std::path::Path;
-use tauri::Listener;
 pub use types::{ScenarioDto, ScenarioSummaryDto};
 
 const SUGGEST_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
@@ -68,7 +70,7 @@ fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
         name: dto.name,
         tags,
         prompt: dto.prompt,
-        expectations: dto.expectations,
+        expectations: dto.assertions,
     };
     scenarios::validate_scenario(&scenario)?;
     Ok(scenario)
@@ -80,7 +82,7 @@ fn scenario_to_dto(scenario: scenarios::Scenario) -> ScenarioDto {
         name: scenario.name,
         tags: scenario_tag_strings(&scenario.tags),
         prompt: scenario.prompt,
-        expectations: scenario.expectations,
+        assertions: scenario.expectations,
     }
 }
 
@@ -219,52 +221,6 @@ fn clean_openhands_structured_result_text(text: &str) -> &str {
         .trim()
 }
 
-fn parse_target_conversation_state(
-    payload: &str,
-    target_agent_id: &str,
-) -> Option<serde_json::Value> {
-    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
-    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
-        return None;
-    }
-
-    let message = value.get("message")?;
-    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
-        return None;
-    }
-
-    match message.get("status").and_then(|v| v.as_str()) {
-        Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
-        _ => None,
-    }
-}
-
-async fn run_persistent_eval_turn(
-    app: &tauri::AppHandle,
-    agent_id: &str,
-    config: crate::agents::sidecar::SidecarConfig,
-    timeout: std::time::Duration,
-) -> Result<serde_json::Value, String> {
-    let conversation_id = openhands_server::prepare_openhands_session(app, config.clone(), None)
-        .await?;
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
-    let target_agent_id = agent_id.to_string();
-    let tx_message = tx.clone();
-    let message_listener = app.listen("agent-message", move |event: tauri::Event| {
-        if let Some(state) = parse_target_conversation_state(event.payload(), &target_agent_id) {
-            let _ = tx_message.send(state);
-        }
-    });
-
-    openhands_server::openhands_send_message(app, agent_id, config, conversation_id).await?;
-
-    let result = tokio::time::timeout(timeout, rx.recv())
-        .await
-        .map_err(|_| "Timed out waiting for eval scenario definition result".to_string())?;
-    app.unlisten(message_listener);
-    result.ok_or_else(|| "Eval scenario definition listener closed unexpectedly".to_string())
-}
-
 fn parse_suggested_scenario_response(
     state: &serde_json::Value,
     existing_scenario: &scenarios::Scenario,
@@ -310,22 +266,17 @@ fn build_generation_sidecar_config(
     plugin_slug: &str,
     skill_name: &str,
     prompt: &str,
+    workspace_root_dir: &str,
+    workspace_run_dir: &str,
     output_format: Value,
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
 ) -> crate::agents::sidecar::SidecarConfig {
-    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
-        std::path::Path::new(&runtime_ctx.workspace_path),
-        plugin_slug,
-        skill_name,
-    )
-    .to_string_lossy()
-    .replace('\\', "/");
     build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
-        workspace_root_dir: runtime_ctx.workspace_path.replace('\\', "/"),
-        workspace_run_dir: workspace_skill_dir,
-        mode: None,
+        workspace_root_dir: workspace_root_dir.replace('\\', "/"),
+        workspace_run_dir: workspace_run_dir.replace('\\', "/"),
+        mode: Some(OpenHandsRuntimeMode::Throwaway),
         agent_name: "skill-creator".to_string(),
         task_kind: Some("scenario-suggest".to_string()),
         user_message_suffix: None,
@@ -334,9 +285,51 @@ fn build_generation_sidecar_config(
         output_format: Some(output_format),
         skill_name: Some(skill_name.to_string()),
         step_id: Some(-11),
-        run_source: Some("test".to_string()),
+        run_source: Some("scenario-suggest".to_string()),
         plugin_slug: plugin_slug.to_string(),
     })
+}
+
+async fn run_define_eval_scenario_throwaway_turn<EnsureRuntimeDir, EnsureRuntimeDirFuture, RunTurn, RunTurnFuture>(
+    plugin_slug: &str,
+    skill_name: &str,
+    prompt: &str,
+    runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
+    ensure_runtime_dir: EnsureRuntimeDir,
+    run_turn: RunTurn,
+) -> Result<openhands_server::OpenHandsThrowawayRun, String>
+where
+    EnsureRuntimeDir: FnOnce(&std::path::Path) -> EnsureRuntimeDirFuture,
+    EnsureRuntimeDirFuture: std::future::Future<Output = Result<(), String>>,
+    RunTurn: FnOnce(OpenHandsThrowawayRunParams) -> RunTurnFuture,
+    RunTurnFuture: std::future::Future<Output = Result<openhands_server::OpenHandsThrowawayRun, String>>,
+{
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
+        std::path::Path::new(&runtime_ctx.workspace_path),
+        "eval-workbench",
+        &run_id,
+    );
+    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(&runtime_run_dir))
+        .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
+    std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
+        .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
+    ensure_runtime_dir(&runtime_run_dir).await?;
+    let config = build_generation_sidecar_config(
+        plugin_slug,
+        skill_name,
+        prompt,
+        &runtime_ctx.workspace_path,
+        &runtime_run_dir.to_string_lossy(),
+        suggested_scenario_output_format(),
+        runtime_ctx,
+    );
+    run_turn(OpenHandsThrowawayRunParams {
+        agent_id: format!("{skill_name}-scenario-suggest-{}", uuid::Uuid::new_v4()),
+        config,
+        timeout: std::time::Duration::from_secs(90),
+    })
+    .await
 }
 
 #[tauri::command]
@@ -375,7 +368,6 @@ pub fn load_scenario(
 pub fn create_scenario(
     plugin_slug: String,
     skill_name: String,
-    _mode: types::EvalWorkbenchMode,
     db: tauri::State<'_, Db>,
 ) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
@@ -463,22 +455,97 @@ pub async fn define_eval_scenario(
         &clarifications_json,
         &decisions_json,
     );
-    let config = build_generation_sidecar_config(
+    let run = run_define_eval_scenario_throwaway_turn(
         &plugin_slug,
         &skill_name,
         &prompt,
-        suggested_scenario_output_format(),
         &runtime_ctx,
-    );
-    let run = run_persistent_eval_turn(
-        &app,
-        &format!("{skill_name}-scenario-suggest"),
-        config,
-        std::time::Duration::from_secs(90),
+        |runtime_run_dir| {
+            let runtime_run_dir = runtime_run_dir.to_path_buf();
+            let app = app.clone();
+            async move {
+                crate::commands::workflow::deploy::ensure_openhands_runtime_dir(
+                    &app,
+                    &runtime_run_dir,
+                )
+                .await
+            }
+        },
+        |params| {
+            let app = app.clone();
+            async move { openhands_server::run_throwaway_openhands_session(&app, params).await }
+        },
     )
     .await?;
 
-    let suggested_scenario = parse_suggested_scenario_response(&run, &existing_scenario)?;
+    let suggested_scenario =
+        parse_suggested_scenario_response(&run.conversation_state, &existing_scenario)?;
     persist_scenario_file(&eval_dir, &suggested_scenario, Some(&scenario_name))?;
     Ok(scenario_to_dto(suggested_scenario))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agents::openhands_server::OpenHandsThrowawayRun;
+    use crate::commands::workflow::settings::InitializedRuntimeContext;
+
+    #[test]
+    fn define_eval_scenario_uses_throwaway_runtime_path() {
+        let workspace = tempfile::tempdir().unwrap();
+        let runtime_ctx = InitializedRuntimeContext {
+            workspace_path: workspace.path().to_string_lossy().into_owned(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "gpt-4.1".to_string(),
+                api_key: Some(crate::types::SecretString::new("test-key".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: None,
+            },
+        };
+
+        let result = tokio::runtime::Runtime::new().unwrap().block_on(
+            run_define_eval_scenario_throwaway_turn(
+                "default",
+                "lead-conversion",
+                "prompt",
+                &runtime_ctx,
+                |runtime_run_dir| {
+                    let runtime_run_dir = runtime_run_dir.to_path_buf();
+                    async move {
+                        assert!(runtime_run_dir.exists());
+                        assert!(crate::skill_paths::throwaway_conversations_dir(&runtime_run_dir).is_dir());
+                        assert!(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir).is_dir());
+                        Ok(())
+                    }
+                },
+                |params| async move {
+                    assert!(params.agent_id.contains("lead-conversion-scenario-suggest-"));
+                    assert_eq!(params.config.mode.as_deref(), Some("throwaway"));
+                    assert_eq!(params.config.task_kind.as_deref(), Some("scenario-suggest"));
+                    assert!(params
+                        .config
+                        .workspace_skill_dir
+                        .contains("/.openhands/throwaway/eval-workbench/"));
+                    Ok(OpenHandsThrowawayRun {
+                        conversation_state: serde_json::json!({
+                            "structured_output": {
+                                "result": "{\"name\":\"Performance 1\",\"prompt\":\"Prompt\",\"expectations\":[\"assertion\"]}"
+                            }
+                        }),
+                    })
+                },
+            ),
+        );
+
+        assert!(result.is_ok());
+    }
 }

@@ -1,6 +1,5 @@
 import { invokeCommand } from "@/lib/tauri";
 
-export type EvalWorkbenchMode = "performance";
 export type ScenarioTag = "performance";
 
 export interface Scenario {
@@ -46,12 +45,10 @@ export const loadScenario = (
 export const createScenario = (
   pluginSlug: string,
   skillName: string,
-  mode: EvalWorkbenchMode,
 ) =>
   invokeCommand("create_scenario", {
     pluginSlug,
     skillName,
-    mode,
   });
 
 export const saveScenario = (
@@ -84,12 +81,7 @@ export const defineEvalScenario = (
     scenarioName,
   });
 
-export function createDraftScenario(
-  _mode: EvalWorkbenchMode = "performance",
-  _pluginSlug = "",
-  _skillName = "",
-  name = "",
-): SaveScenario {
+export function createDraftScenario(name = ""): SaveScenario {
   return {
     id: `case-${crypto.randomUUID().slice(0, 8)}`,
     name,
@@ -97,14 +89,6 @@ export function createDraftScenario(
     assertions: [],
     tags: ["performance"],
   };
-}
-
-export function scenarioSupportsMode(
-  scenario: Pick<Scenario, "tags">,
-  mode: EvalWorkbenchMode,
-): boolean {
-  const tags = scenario.tags ?? ["performance"];
-  return tags.includes(mode);
 }
 
 export function scenarioToDraft(scenario: Scenario): SaveScenario {
@@ -133,26 +117,17 @@ export function normalizeScenario(draft: SaveScenario): SaveScenario {
   };
 }
 
-export function validateScenario(
-  draft: SaveScenario,
-  mode?: EvalWorkbenchMode,
-): string | null {
+export function validateScenario(draft: SaveScenario): string | null {
   if (!draft.name.trim()) {
     return "Scenario name is required.";
   }
   if (!Array.isArray(draft.assertions)) {
     return "Assertions must be an array.";
   }
-  if (mode && !scenarioSupportsMode(draft, mode)) {
-    return `This scenario is not tagged for ${mode} mode.`;
-  }
   return null;
 }
 
-export function validateScenarioForEvaluation(
-  draft: SaveScenario,
-  mode?: EvalWorkbenchMode,
-): string | null {
+export function validateScenarioForEvaluation(draft: SaveScenario): string | null {
   if (!draft.prompt.trim()) {
     return "Scenario prompt is required.";
   }
@@ -162,9 +137,6 @@ export function validateScenarioForEvaluation(
       .length === 0
   ) {
     return "Performance scenarios need at least one assertion.";
-  }
-  if (mode && !scenarioSupportsMode(draft, mode)) {
-    return `This scenario is not tagged for ${mode} mode.`;
   }
   return null;
 }

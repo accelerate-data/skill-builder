@@ -240,16 +240,45 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: SidecarConfig,
 ) -> Result<String, String> {
-    let conversation_id =
-        crate::agents::openhands_server::prepare_openhands_session(app, config.clone(), None)
-            .await?;
-    crate::agents::openhands_server::openhands_send_message(
-        app,
+    dispatch_persistent_skill_turn_with_runtime(
         agent_id,
         config,
-        conversation_id.clone(),
+        |config| Box::pin(crate::agents::openhands_server::prepare_openhands_session(
+            app,
+            config,
+            None,
+        )),
+        |agent_id, config, conversation_id| {
+            let agent_id = agent_id.to_string();
+            Box::pin(async move {
+                crate::agents::openhands_server::openhands_send_message(
+                    app,
+                    &agent_id,
+                    config,
+                    conversation_id,
+                )
+                .await
+                .map(|_| ())
+            })
+        },
     )
-    .await?;
+    .await
+}
+
+pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<Prepare, PrepareFuture, Send, SendFuture>(
+    agent_id: &str,
+    config: SidecarConfig,
+    prepare: Prepare,
+    send: Send,
+) -> Result<String, String>
+where
+    Prepare: FnOnce(SidecarConfig) -> PrepareFuture,
+    PrepareFuture: std::future::Future<Output = Result<String, String>>,
+    Send: FnOnce(&str, SidecarConfig, String) -> SendFuture,
+    SendFuture: std::future::Future<Output = Result<(), String>>,
+{
+    let conversation_id = prepare(config.clone()).await?;
+    send(agent_id, config, conversation_id.clone()).await?;
     Ok(conversation_id)
 }
 

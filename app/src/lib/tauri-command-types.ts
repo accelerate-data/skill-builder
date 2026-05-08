@@ -36,7 +36,6 @@ import type {
   WorkflowSessionRecord,
 } from "@/lib/types";
 import type {
-  EvalWorkbenchMode,
   ScenarioListItem,
   ScenarioDto,
 } from "@/lib/eval-workbench";
@@ -427,7 +426,7 @@ export interface TauriCommandMap {
     result: ScenarioDto | null;
   };
   create_scenario: {
-    args: { pluginSlug: string; skillName: string; mode: EvalWorkbenchMode };
+    args: { pluginSlug: string; skillName: string };
     result: ScenarioDto;
   };
   save_scenario: {

@@ -128,10 +128,7 @@ pub fn write_scenario_file(path: &Path, scenario: &Scenario) -> Result<(), Strin
 fn read_all_scenarios_with_paths(eval_dir: &Path) -> Result<Vec<(PathBuf, Scenario)>, String> {
     let mut scenarios = Vec::new();
     for path in scenario_file_entries(eval_dir)? {
-        let scenario = match read_scenario_file(&path) {
-            Ok(scenario) => scenario,
-            Err(_) => continue,
-        };
+        let scenario = read_scenario_file(&path)?;
         scenarios.push((path, scenario));
     }
 
@@ -157,10 +154,7 @@ fn find_matching_scenarios(
 ) -> Result<Vec<(PathBuf, Scenario)>, String> {
     let mut matches = Vec::new();
     for path in scenario_file_entries(eval_dir)? {
-        let scenario = match read_scenario_file(&path) {
-            Ok(scenario) => scenario,
-            Err(_) => continue,
-        };
+        let scenario = read_scenario_file(&path)?;
         if scenario.name == scenario_name {
             matches.push((path, scenario));
         }
@@ -313,5 +307,25 @@ mod tests {
 
         validate_scenario(&scenario).unwrap();
         assert_eq!(scenario.tags, vec![ScenarioTag::Performance]);
+    }
+
+    #[test]
+    fn surfaces_unsupported_legacy_trigger_tags() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("legacy-trigger.yaml"),
+            r#"id: case-1
+name: Legacy trigger
+tags:
+  - trigger
+prompt: Trigger on renewal
+expectations:
+  - Mentions renewal window
+"#,
+        )
+        .unwrap();
+
+        let error = list_scenarios(tmp.path()).unwrap_err();
+        assert!(error.contains("trigger"));
     }
 }

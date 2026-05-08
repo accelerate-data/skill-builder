@@ -213,6 +213,18 @@ describe("parseSidecarConfig", () => {
     ).toThrow("runSource must be one of");
   });
 
+  it("accepts scenario-suggest as a valid runSource", () => {
+    const result = parseSidecarConfig({
+      prompt: "hello",
+      apiKey: "key",
+      workspaceRootDir: TEST_CWD,
+      workspaceSkillDir: TEST_CWD,
+      runSource: "scenario-suggest",
+    });
+
+    expect(result.runSource).toBe("scenario-suggest");
+  });
+
   it("throws when stepId is not a number", () => {
     expect(() =>
 

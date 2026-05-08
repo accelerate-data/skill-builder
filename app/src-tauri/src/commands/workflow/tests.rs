@@ -16,12 +16,13 @@ use super::prompt::{
 use super::runtime::{
     build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
     build_workflow_detailed_research_sidecar_config, build_workflow_generate_skill_sidecar_config,
-    build_workflow_research_sidecar_config,
+    build_workflow_research_sidecar_config, dispatch_persistent_skill_turn_with_runtime,
 };
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     skill_generation_workflow_tools, workflow_output_format_for_step,
 };
+use std::sync::{Arc, Mutex};
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -217,6 +218,60 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
     assert!(agent.contains("Step 2 Confirm Decisions"));
     assert!(agent.contains("Step 3 Generate Skill"));
     assert!(agent.contains("Each step produces a specific"));
+}
+
+#[test]
+fn workflow_persistent_turn_dispatch_uses_prepare_then_send_shared_runtime_path() {
+    let config = build_workflow_research_sidecar_config(
+        "lead-conversion",
+        "prompt",
+        "/tmp/workspace",
+        DEFAULT_PLUGIN_SLUG,
+        test_workflow_llm_config(),
+        Some("session-1".to_string()),
+    );
+    let events = Arc::new(Mutex::new(Vec::<String>::new()));
+    let prepare_events = Arc::clone(&events);
+    let send_events = Arc::clone(&events);
+    let expected_prompt = config.prompt.clone();
+    let expected_prompt_for_prepare = expected_prompt.clone();
+    let expected_prompt_for_send = expected_prompt;
+
+    let conversation_id = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(dispatch_persistent_skill_turn_with_runtime(
+            "agent-1",
+            config.clone(),
+            move |prepare_config| {
+                let prepare_events = Arc::clone(&prepare_events);
+                let expected_prompt = expected_prompt_for_prepare.clone();
+                async move {
+                    assert_eq!(prepare_config.prompt, expected_prompt);
+                    prepare_events.lock().unwrap().push("prepare".to_string());
+                    Ok("conversation-123".to_string())
+                }
+            },
+            move |agent_id, send_config, conversation_id| {
+                let send_events = Arc::clone(&send_events);
+                let expected_prompt = expected_prompt_for_send.clone();
+                let agent_id = agent_id.to_string();
+                async move {
+                    send_events
+                        .lock()
+                        .unwrap()
+                        .push(format!("send:{agent_id}:{conversation_id}"));
+                    assert_eq!(send_config.prompt, expected_prompt);
+                    Ok(())
+                }
+            },
+        ))
+        .unwrap();
+
+    assert_eq!(conversation_id, "conversation-123");
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        ["prepare", "send:agent-1:conversation-123"]
+    );
 }
 
 #[test]

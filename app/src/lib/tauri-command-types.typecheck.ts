@@ -134,7 +134,6 @@ void invokeCommand("load_scenario", {
 void invokeCommand("create_scenario", {
   pluginSlug: "skills",
   skillName: "demo",
-  mode: "performance",
 });
 
 void invokeCommand("save_scenario", {
@@ -149,5 +148,4 @@ void invokeCommand("define_eval_scenario", {
   skillName: "demo",
   scenarioName: "Regression",
 });
-
 

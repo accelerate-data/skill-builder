@@ -358,6 +358,90 @@ fn test_eval_workbench_scenario_identity_migration_recovers_from_stale_eval_runs
 }
 
 #[test]
+fn test_scenarios_migration_flattens_legacy_trigger_rows_to_performance() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE eval_prompt_sets (
+            id TEXT PRIMARY KEY,
+            plugin_slug TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            name TEXT NOT NULL,
+            mode TEXT NOT NULL CHECK (mode IN ('performance', 'trigger')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE eval_prompt_cases (
+            id TEXT PRIMARY KEY,
+            prompt_set_id TEXT NOT NULL REFERENCES eval_prompt_sets(id) ON DELETE CASCADE,
+            prompt TEXT NOT NULL,
+            should_trigger INTEGER,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            assertions_json TEXT NOT NULL
+        );",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO eval_prompt_sets (id, plugin_slug, skill_name, name, mode, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![
+            "prompt-set-1",
+            "skills",
+            "forecast",
+            "Legacy trigger",
+            "trigger",
+            "2026-05-08T00:00:00Z",
+            "2026-05-08T00:00:00Z",
+        ],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO eval_prompt_cases (id, prompt_set_id, prompt, should_trigger, sort_order, assertions_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            "case-1",
+            "prompt-set-1",
+            "Trigger on contract expiration",
+            1,
+            0,
+            "[\"Mentions missing renewal window\"]",
+        ],
+    )
+    .unwrap();
+
+    run_scenarios_migration(&conn).unwrap();
+
+    let migrated_mode: String = conn
+        .query_row("SELECT mode FROM scenarios WHERE id = 'prompt-set-1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let migrated_prompt: String = conn
+        .query_row("SELECT prompt FROM scenarios WHERE id = 'prompt-set-1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let migrated_assertion: String = conn
+        .query_row(
+            "SELECT assertion FROM assertions WHERE scenario_id = 'prompt-set-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let has_should_trigger_column = conn
+        .prepare("PRAGMA table_info(scenarios)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|column| column == "should_trigger");
+
+    assert_eq!(migrated_mode, "performance");
+    assert_eq!(migrated_prompt, "Trigger on contract expiration");
+    assert_eq!(migrated_assertion, "Mentions missing renewal window");
+    assert!(!has_should_trigger_column);
+}
+
+#[test]
 fn test_workflow_run_crud() {
     let conn = create_test_db();
     save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();

@@ -60,10 +60,10 @@ Related sub-designs:
 |---|---|
 | Model OpenHands around sessions, not ad hoc helpers. | OpenHands is conversation-backed in both persistent and throwaway cases. The product should name the actual lifecycle boundary. |
 | Keep two explicit layers: product commands and runtime primitives. | Frontend surfaces should call product-specific commands; only the backend should speak in raw OpenHands session terms. |
-| Use four backend -> OpenHands primitives. | The runtime only needs `StartOpenHandsSession`, `OpenHandsSendMessage`, `PauseOpenHandsSession`, and `RunThrowawayOpenHandsSession`. Everything else is product orchestration. |
-| Persistent session reuse now covers workflow, refine, and skill-bound eval authoring/diagnosis flows. | The branch routes workflow steps, answer evaluation, scenario definition, and refine-brief generation through the saved skill conversation model. |
-| Throwaway sessions are reserved for bounded execution tasks. | Scope validation and eval execution run as non-resumable tasks whose runtime artifacts stay outside normal product conversation state. |
-| The live Eval Workbench surface is currently performance-first. | The frontend exposes performance scenarios and performance eval runs; trigger-mode storage and execution code still exists below the live UI. |
+| Use four backend -> OpenHands primitives. | The runtime only needs persistent session preparation, `OpenHandsSendMessage`, `PauseOpenHandsSession`, and `RunThrowawayOpenHandsSession`. Everything else is product orchestration. |
+| Persistent session reuse covers workflow and refine only. | Workflow steps and refine chat reuse the saved skill conversation. Eval scenario definition is a bounded throwaway task so it does not overwrite the product conversation slot. |
+| Throwaway sessions are reserved for bounded execution tasks. | Scope validation and eval scenario definition run as non-resumable tasks whose runtime artifacts stay outside normal product conversation state. |
+| The live Eval Workbench surface is performance-only end to end. | The frontend, backend model, and migration path all flatten legacy trigger-mode data to performance scenarios. |
 | Rust owns Agent Server lifecycle and workspace selection. | The backend already owns persistence, filesystem policy, event delivery, logging, and cancellation. |
 | The frontend never calls OpenHands-shaped APIs directly. | Product APIs stay stable even if the runtime implementation changes. |
 | `skill-creator.md` is always sent through `system_message_suffix`. | The main agent should preserve the default OpenHands system prompt while deterministically appending Skill Builder's stable instructions. |
@@ -87,8 +87,6 @@ Examples:
 - `close_refine_session`
 - `review_skill_scope`
 - `define_eval_scenario`
-- `build_refine_improvement_brief`
-- `run_eval_workbench`
 
 Each command is responsible for:
 
@@ -104,7 +102,7 @@ This is the **backend -> OpenHands** contract.
 
 | Primitive | Purpose |
 |---|---|
-| `StartOpenHandsSession` | Create or resume a persistent OpenHands conversation for a skill-scoped session. |
+| Session preparation | Create or resume a persistent OpenHands conversation for a skill-scoped session. |
 | `OpenHandsSendMessage` | Append a user message to an existing persistent conversation and run it. |
 | `PauseOpenHandsSession` | Pause active execution on a persistent conversation without deleting it. |
 | `RunThrowawayOpenHandsSession` | Create a bounded conversation, run it to completion, collect the result, and keep it outside resumable product state. |
@@ -114,7 +112,7 @@ Workflow step numbers, Refine UI state, or Eval Workbench entities.
 
 Rules:
 
-- `StartOpenHandsSession` owns resume-or-create behavior.
+- persistent session preparation owns resume-or-create behavior.
 - `OpenHandsSendMessage` sends the next turn into an already-established
   persistent session.
 - `PauseOpenHandsSession` is only for explicit user stop/cancel during an
@@ -151,8 +149,7 @@ The frontend should stay product-oriented:
 - Refine calls `start_refine_session`, `send_refine_message`,
   `pause_refine_session`, and `close_refine_session`.
 - Create Skill calls `review_skill_scope`.
-- Eval Workbench calls eval scenario definition, eval execution, and
-  refine-brief generation commands.
+- Eval Workbench calls scenario definition commands.
 
 The frontend should not need to know whether a surface reuses a persistent
 session or uses a throwaway one.
@@ -182,7 +179,7 @@ skill-bound conversation.
 
 ```text
 open or resume session
-  -> StartOpenHandsSession
+  -> persistent session preparation
 
 normal product turn
   -> OpenHandsSendMessage
@@ -279,14 +276,15 @@ The current branch implements the split like this:
 - `start_refine_session` validates saved refine conversation state, restores
   history when compatible, clears stale saved ids, and prepares a new
   persistent OpenHands conversation up front when none exists
-- Eval Workbench scenario definition and refine-brief generation use a
-  product-layer persistent-turn helper built on top of
-  `start_openhands_session(...)` and `openhands_send_message(...)`
-- scope review and live eval execution use isolated
+- Eval Workbench scenario definition uses isolated
+  `.openhands/throwaway/eval-workbench/...` runtime roots and does not save a
+  resumable product conversation id
+- scope review uses isolated
   `.openhands/throwaway/...` runtime roots and do not save resumable product
   conversation ids
-- the frontend currently exposes performance scenarios and performance eval
-  execution only; trigger-mode runtime/data paths remain below the live UI
+- the frontend and backend both expose performance-only scenario authoring; old
+  trigger-mode database rows are flattened during migration and unsupported
+  legacy scenario files now fail loudly instead of disappearing silently
 
 ### Agent Server Ownership
 
@@ -338,20 +336,18 @@ The default tool policy for OpenHands requests lives in the child doc:
 
 | Product surface | Product command | OpenHands primitive mapping | Notes |
 |---|---|---|---|
-| Workflow step execution | `run_workflow_step` | `StartOpenHandsSession` -> `OpenHandsSendMessage` | Step-oriented UI, but should reuse one persistent skill conversation |
-| Workflow gate evaluation | `run_answer_evaluator` | `StartOpenHandsSession` -> `OpenHandsSendMessage` | Part of the same workflow conversation, not a disposable side run |
-| Refine session start | `start_refine_session` | Persistent session preparation for `StartOpenHandsSession` | Restores compatible history, clears stale saved ids, and prepares the persistent OpenHands conversation before the first send |
+| Workflow step execution | `run_workflow_step` | session preparation -> `OpenHandsSendMessage` | Step-oriented UI, but should reuse one persistent skill conversation |
+| Workflow gate evaluation | `run_answer_evaluator` | session preparation -> `OpenHandsSendMessage` | Part of the same workflow conversation, not a disposable side run |
+| Refine session start | `start_refine_session` | persistent session preparation | Restores compatible history, clears stale saved ids, and prepares the persistent OpenHands conversation before the first send |
 | Refine chat turn | `send_refine_message` | `OpenHandsSendMessage` | Sends the next user turn into the prepared session |
 | Refine stop | `cancel_agent_run` | `PauseOpenHandsSession` | Explicit user stop on the current live run |
-| Eval scenario definition | `define_eval_scenario` | Product helper over `StartOpenHandsSession` / `OpenHandsSendMessage` | Skill-bound scenario definition accumulates on the saved skill conversation |
-| Eval-to-refine brief | `build_refine_improvement_brief` | Product helper over `StartOpenHandsSession` / `OpenHandsSendMessage` | Skill-bound diagnosis reuses the saved skill conversation |
 
 ### Throwaway surfaces
 
 | Product surface | Product command | OpenHands primitive mapping | Notes |
 |---|---|---|---|
 | Create Skill scope validation | `review_skill_scope` | `RunThrowawayOpenHandsSession` | Bounded validation run, no later reply path |
-| Eval execution | `run_eval_workbench` | `RunThrowawayOpenHandsSession` plus Promptfoo sidecar orchestration | The live UI currently runs performance-mode evals in isolated `.openhands/throwaway/eval-workbench/...` runtime roots; trigger-mode execution code still exists below the UI |
+| Eval scenario definition | `define_eval_scenario` | `RunThrowawayOpenHandsSession` | Bounded scenario-authoring assist run that must not overwrite the saved skill conversation |
 
 ### Product-only wrapper commands
 
