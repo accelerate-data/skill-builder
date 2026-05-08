@@ -3,4 +3,4 @@
 # pinned in src/agents/openhands_server/process.rs and must be kept in sync
 # manually when Dependabot opens a PR.
 openhands-agent-server==1.21.0
-openhands-tools==1.21.0
+openhands-tools==1.21.1
