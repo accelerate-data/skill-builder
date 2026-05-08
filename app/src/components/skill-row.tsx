@@ -17,12 +17,12 @@ export interface SkillRowProps {
   isRunning: boolean;
   showPluginHeader: boolean;
   onRowClick: (skill: UnifiedSkill) => void | Promise<void>;
-  onReview: (name: string) => void | Promise<void>;
-  onRedo: (name: string) => void;
+  onReview: (skill: UnifiedSkill) => void | Promise<void>;
+  onRedo: (skill: UnifiedSkill) => void;
   onOverview: (key: string) => void | Promise<void>;
   onEval: (key: string) => void | Promise<void>;
   onRefine: (key: string) => void | Promise<void>;
-  onContinueBuilding: (name: string) => void | Promise<void>;
+  onContinueBuilding: (skill: UnifiedSkill) => void | Promise<void>;
   onRestore: (name: string, pluginSlug: string) => void;
   onDelete: (skill: UnifiedSkill) => void;
   onCreatePlugin: (skill: UnifiedSkill) => void;

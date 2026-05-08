@@ -153,25 +153,29 @@ export function SkillListPanel({
     }
   }
 
-  function handleRedo(skillName: string) {
-    setRedoTarget(skillName);
+  function handleRedo(skill: UnifiedSkill) {
+    setRedoTarget(skill.key);
   }
 
-  async function confirmRedo(skillName: string) {
+  async function confirmRedo(skill: UnifiedSkill) {
     if (!workspacePath) return;
     try {
-      await resetWorkflowStep(workspacePath, skillName, 0);
-      console.log("event=skill_redo skill=%s", skillName);
+      await resetWorkflowStep(workspacePath, skill.name, 0);
+      console.log("event=skill_redo skill=%s", skill.name);
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
-      localStorage.setItem("last-selected-skill", skillName);
-      setSelectedSkill(skillName);
-      await onActivateSkill?.(skillName);
+      localStorage.setItem("last-selected-skill", skill.key);
+      setSelectedSkill(skill.key);
+      await onActivateSkill?.(skill.key);
       setRedoTarget(null);
-      navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
+      navigate({
+        to: "/skill/$skillName",
+        params: { skillName: skill.name },
+        state: { autoStart: true },
+      });
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
-      console.error("event=skill_redo_failed skill=%s error=%s", skillName, err);
+      console.error("event=skill_redo_failed skill=%s error=%s", skill.name, err);
     }
   }
 
@@ -190,20 +194,24 @@ export function SkillListPanel({
     await onSelectSkill?.(skillKey, "refine");
   }
 
-  async function handleReview(skillName: string) {
-    console.log("event=skill_review skill=%s", skillName);
-    localStorage.setItem("last-selected-skill", skillName);
-    setSelectedSkill(skillName);
-    await onActivateSkill?.(skillName);
-    navigate({ to: "/skill/$skillName", params: { skillName } });
+  async function handleReview(skill: UnifiedSkill) {
+    console.log("event=skill_review skill=%s", skill.name);
+    localStorage.setItem("last-selected-skill", skill.key);
+    setSelectedSkill(skill.key);
+    await onActivateSkill?.(skill.key);
+    navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
   }
 
-  async function handleContinueBuilding(skillName: string) {
-    console.log("event=skill_continue skill=%s", skillName);
-    localStorage.setItem("last-selected-skill", skillName);
-    setSelectedSkill(skillName);
-    await onActivateSkill?.(skillName);
-    navigate({ to: "/skill/$skillName", params: { skillName }, state: { autoStart: true } });
+  async function handleContinueBuilding(skill: UnifiedSkill) {
+    console.log("event=skill_continue skill=%s", skill.name);
+    localStorage.setItem("last-selected-skill", skill.key);
+    setSelectedSkill(skill.key);
+    await onActivateSkill?.(skill.key);
+    navigate({
+      to: "/skill/$skillName",
+      params: { skillName: skill.name },
+      state: { autoStart: true },
+    });
   }
 
   function handleDelete(skill: UnifiedSkill) {
@@ -434,7 +442,15 @@ export function SkillListPanel({
             <Button variant="ghost" onClick={() => setRedoTarget(null)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={() => { if (redoTarget) confirmRedo(redoTarget); }}
+              onClick={() => {
+                if (!redoTarget) return;
+                const skill = unifiedSkills.find((candidate) => candidate.key === redoTarget);
+                if (!skill) {
+                  toast.error(`Failed to reset workflow: Skill '${redoTarget}' is not available`);
+                  return;
+                }
+                void confirmRedo(skill);
+              }}
             >
               Redo
             </Button>

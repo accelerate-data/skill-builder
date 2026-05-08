@@ -14,12 +14,12 @@ export interface SkillContextMenuProps {
   skill: UnifiedSkill;
   menuState: SkillMenuState;
   children: ReactNode;
-  onReview: (name: string) => void | Promise<void>;
-  onRedo: (name: string) => void;
+  onReview: (skill: UnifiedSkill) => void | Promise<void>;
+  onRedo: (skill: UnifiedSkill) => void;
   onOverview: (key: string) => void | Promise<void>;
   onEval: (key: string) => void | Promise<void>;
   onRefine: (key: string) => void | Promise<void>;
-  onContinueBuilding: (name: string) => void | Promise<void>;
+  onContinueBuilding: (skill: UnifiedSkill) => void | Promise<void>;
   onRestore: (name: string, pluginSlug: string) => void;
   onDelete: (skill: UnifiedSkill) => void;
   onCreatePlugin: (skill: UnifiedSkill) => void;
@@ -59,12 +59,12 @@ export function SkillContextMenu({
               </ContextMenuLabel>
             )}
             {menuState.isBuilder && (
-              <ContextMenuItem onSelect={() => onReview(skill.name)}>
+              <ContextMenuItem onSelect={() => onReview(skill)}>
                 Review
               </ContextMenuItem>
             )}
             {menuState.isBuilder && (
-              <ContextMenuItem onSelect={() => onRedo(skill.name)}>
+              <ContextMenuItem onSelect={() => onRedo(skill)}>
                 Redo workflow
               </ContextMenuItem>
             )}
@@ -119,7 +119,7 @@ export function SkillContextMenu({
             )}
           </>
         ) : (
-          <ContextMenuItem onSelect={() => onContinueBuilding(skill.name)}>
+          <ContextMenuItem onSelect={() => onContinueBuilding(skill)}>
             Continue Building
           </ContextMenuItem>
         )}

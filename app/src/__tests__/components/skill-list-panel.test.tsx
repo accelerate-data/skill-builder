@@ -47,7 +47,7 @@ import { listImportedSkills, listSkills, removeSkillFromPlugin, resetWorkflowSte
 function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
   const base: SkillSummary = {
     name: overrides.name,
-    library_key: overrides.name,
+    library_key: `skill-builder:skills:${overrides.name}`,
     current_step: null,
     status: null,
     last_modified: new Date(Date.now() - 3600_000).toISOString(), // 1h ago
@@ -69,6 +69,10 @@ function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): 
     is_default_plugin: true,
   };
   return { ...base, ...overrides };
+}
+
+function builderKey(name: string) {
+  return `skill-builder:skills:${name}`;
 }
 
 function makeImportedSkill(
@@ -239,7 +243,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-new-skill");
+    const dot = screen.getByLabelText(`status-dot-${builderKey("new-skill")}`);
     expect(dot.className).toMatch(/bg-destructive/);
   });
 
@@ -249,7 +253,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-step1-skill");
+    const dot = screen.getByLabelText(`status-dot-${builderKey("step1-skill")}`);
     expect(dot.className).toMatch(/bg-amber-/);
   });
 
@@ -259,7 +263,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-step2-skill");
+    const dot = screen.getByLabelText(`status-dot-${builderKey("step2-skill")}`);
     expect(dot.className).toMatch(/bg-amber-/);
   });
 
@@ -269,7 +273,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-done-skill");
+    const dot = screen.getByLabelText(`status-dot-${builderKey("done-skill")}`);
     expect(dot.style.backgroundColor).toBe("var(--color-seafoam)");
   });
 
@@ -380,7 +384,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-running-skill");
+    const dot = screen.getByLabelText(`status-dot-${builderKey("running-skill")}`);
     expect(dot.className).toMatch(/animate-dot-pulse/);
   });
 
@@ -390,7 +394,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-idle-skill");
+    const dot = screen.getByLabelText(`status-dot-${builderKey("idle-skill")}`);
     expect(dot.className).not.toMatch(/animate-dot-pulse/);
   });
 
@@ -465,7 +469,7 @@ describe("SkillListPanel", () => {
 
   it("selects last-selected-skill from localStorage on mount", () => {
     setBuilderSkills([recentBuilder, olderBuilder]);
-    localStorage.setItem("last-selected-skill", "older-skill");
+    localStorage.setItem("last-selected-skill", builderKey("older-skill"));
 
     renderWithSkillQueries(<SkillListPanel />);
 
@@ -538,7 +542,7 @@ describe("SkillListPanel", () => {
     renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("done-skill").closest('[role="button"]')!);
 
-    expect(onSelectSkill).toHaveBeenCalledWith("done-skill");
+    expect(onSelectSkill).toHaveBeenCalledWith(builderKey("done-skill"));
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -650,7 +654,7 @@ describe("SkillListPanel", () => {
     const selectedSkill = makeBuilderSkill({ name: "selected-skill", status: "completed" });
     const unselectedSkill = makeBuilderSkill({ name: "unselected-skill", status: "completed" });
     setBuilderSkills([selectedSkill, unselectedSkill]);
-    useSkillStore.setState({ activeSkill: "selected-skill" });
+    useSkillStore.setState({ activeSkill: builderKey("selected-skill") });
 
     renderWithSkillQueries(<SkillListPanel />);
 
@@ -776,7 +780,7 @@ describe("SkillListPanel", () => {
 
     await user.click(continueItem);
 
-    expect(onActivateSkill).toHaveBeenCalledWith("resume-builder");
+    expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:resume-builder");
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/skill/$skillName",
       params: { skillName: "resume-builder" },
@@ -800,7 +804,7 @@ describe("SkillListPanel", () => {
     await waitFor(() => {
       expect(resetWorkflowStep).toHaveBeenCalledWith(expect.any(String), "redo-builder", 0);
     });
-    expect(onActivateSkill).toHaveBeenCalledWith("redo-builder");
+    expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:redo-builder");
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/skill/$skillName",
       params: { skillName: "redo-builder" },
