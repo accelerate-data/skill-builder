@@ -221,7 +221,7 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 }
 
 #[test]
-fn workflow_persistent_turn_dispatch_uses_prepare_then_send_shared_runtime_path() {
+fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() {
     let config = build_workflow_research_sidecar_config(
         "lead-conversion",
         "prompt",
@@ -231,26 +231,17 @@ fn workflow_persistent_turn_dispatch_uses_prepare_then_send_shared_runtime_path(
         Some("session-1".to_string()),
     );
     let events = Arc::new(Mutex::new(Vec::<String>::new()));
-    let prepare_events = Arc::clone(&events);
     let send_events = Arc::clone(&events);
     let expected_prompt = config.prompt.clone();
-    let expected_prompt_for_prepare = expected_prompt.clone();
     let expected_prompt_for_send = expected_prompt;
+    let existing_conversation_id = "conversation-123".to_string();
 
     let conversation_id = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(dispatch_persistent_skill_turn_with_runtime(
             "agent-1",
             config.clone(),
-            move |prepare_config| {
-                let prepare_events = Arc::clone(&prepare_events);
-                let expected_prompt = expected_prompt_for_prepare.clone();
-                async move {
-                    assert_eq!(prepare_config.prompt, expected_prompt);
-                    prepare_events.lock().unwrap().push("prepare".to_string());
-                    Ok("conversation-123".to_string())
-                }
-            },
+            existing_conversation_id.clone(),
             move |agent_id, send_config, conversation_id| {
                 let send_events = Arc::clone(&send_events);
                 let expected_prompt = expected_prompt_for_send.clone();
@@ -270,7 +261,7 @@ fn workflow_persistent_turn_dispatch_uses_prepare_then_send_shared_runtime_path(
     assert_eq!(conversation_id, "conversation-123");
     assert_eq!(
         events.lock().unwrap().as_slice(),
-        ["prepare", "send:agent-1:conversation-123"]
+        ["send:agent-1:conversation-123"]
     );
 }
 

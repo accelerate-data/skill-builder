@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 
-pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.19.1";
-pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
+pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.21.0";
+pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.21.0";
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
 const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
 const SHUTDOWN_WAIT_TIMEOUT: Duration = Duration::from_secs(5);

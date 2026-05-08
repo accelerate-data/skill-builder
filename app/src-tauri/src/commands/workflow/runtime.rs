@@ -240,14 +240,25 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: SidecarConfig,
 ) -> Result<String, String> {
+    let skill_name = config.skill_name.clone().ok_or_else(|| {
+        "Workflow OpenHands config missing skill_name for selected conversation lookup".to_string()
+    })?;
+    let conversation_id = {
+        let db = app.state::<Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_conversation_id(&conn, &config.plugin_slug, &skill_name)?
+    }
+    .ok_or_else(|| {
+        format!(
+            "No active OpenHands conversation for workflow skill '{}' plugin '{}'",
+            skill_name, config.plugin_slug
+        )
+    })?;
+
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,
         config,
-        |config| {
-            Box::pin(crate::agents::openhands_server::prepare_openhands_session(
-                app, config, None,
-            ))
-        },
+        conversation_id,
         |agent_id, config, conversation_id| {
             let agent_id = agent_id.to_string();
             Box::pin(async move {
@@ -266,23 +277,18 @@ async fn dispatch_persistent_skill_turn(
 }
 
 pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<
-    Prepare,
-    PrepareFuture,
     Send,
     SendFuture,
 >(
     agent_id: &str,
     config: SidecarConfig,
-    prepare: Prepare,
+    conversation_id: String,
     send: Send,
 ) -> Result<String, String>
 where
-    Prepare: FnOnce(SidecarConfig) -> PrepareFuture,
-    PrepareFuture: std::future::Future<Output = Result<String, String>>,
     Send: FnOnce(&str, SidecarConfig, String) -> SendFuture,
     SendFuture: std::future::Future<Output = Result<(), String>>,
 {
-    let conversation_id = prepare(config.clone()).await?;
     send(agent_id, config, conversation_id.clone()).await?;
     Ok(conversation_id)
 }

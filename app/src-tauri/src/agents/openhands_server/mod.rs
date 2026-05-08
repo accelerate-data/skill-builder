@@ -866,22 +866,6 @@ pub async fn start_openhands_session(
     config: SidecarConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
-    prepare_openhands_session_internal(app, config, conversation_id).await
-}
-
-pub async fn prepare_openhands_session(
-    app: &tauri::AppHandle,
-    config: SidecarConfig,
-    conversation_id: Option<String>,
-) -> Result<String, String> {
-    start_openhands_session(app, config, conversation_id).await
-}
-
-async fn prepare_openhands_session_internal(
-    app: &tauri::AppHandle,
-    config: SidecarConfig,
-    conversation_id: Option<String>,
-) -> Result<String, String> {
     let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
     let conversation_id = resolve_openhands_conversation_id(
         app,
