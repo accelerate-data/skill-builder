@@ -23,9 +23,16 @@ Skill Builder integrates with OpenHands through two layers:
 The key model is that OpenHands always operates on a conversation-backed
 session. The important product distinction is whether Skill Builder keeps the
 conversation alive for future user-visible turns or treats it as a persistent
-skill conversation versus a non-resumable throwaway run. The active runtime
-model in this branch is persistent-session preparation plus throwaway runtime
-roots.
+skill conversation versus a non-resumable throwaway run.
+
+The active runtime model in this branch is in transition:
+
+- Workflow still uses the eager persistent-session preparation contract.
+- Refine now uses a lazy persistent-session contract:
+  - UI load only ensures the per-skill Agent Server is running.
+  - The first user message performs resume-or-create for the durable
+    `conversation_id`.
+  - Later user messages reuse the established conversation.
 
 Related sub-designs:
 
@@ -69,6 +76,7 @@ Related sub-designs:
 | `skill-creator.md` is always sent through `system_message_suffix`. | The main agent should preserve the default OpenHands system prompt while deterministically appending Skill Builder's stable instructions. |
 | `skill-creator-user-suffix.txt` remains app-owned and additive. | Per-message invariants are a backend control surface and should not be embedded in task prompts. |
 | Tool exposure is runtime-owned and centrally defined. | Prevent per-surface tool drift and keep product commands focused on task semantics. |
+| Refine uses lazy persistent-session startup. | Per-skill Agent Server restarts can temporarily hide durable conversations behind OpenHands lease state. Deferring resume-or-create until the first send keeps page bootstrap reliable while preserving durable resume semantics. |
 
 ## Core Concepts
 
@@ -102,7 +110,8 @@ This is the **backend -> OpenHands** contract.
 
 | Primitive | Purpose |
 |---|---|
-| Session preparation | Create or resume a persistent OpenHands conversation for a skill-scoped session. |
+| Ensure server | Make sure the per-skill OpenHands Agent Server is running for the target runtime root. |
+| Session start | Create or resume a persistent OpenHands conversation for a skill-scoped session. |
 | `OpenHandsSendMessage` | Append a user message to an existing persistent conversation and run it. |
 | `PauseOpenHandsSession` | Pause active execution on a persistent conversation without deleting it. |
 | `RunThrowawayOpenHandsSession` | Create a bounded conversation, run it to completion, collect the result, and keep it outside resumable product state. |
@@ -112,7 +121,9 @@ Workflow step numbers, Refine UI state, or Eval Workbench entities.
 
 Rules:
 
-- persistent session preparation owns resume-or-create behavior.
+- ensure-server is conversation-free. It must not call
+  `GET /api/conversations/:id` or create a conversation shell.
+- persistent session start owns resume-or-create behavior.
 - `OpenHandsSendMessage` sends the next turn into an already-established
   persistent session.
 - `PauseOpenHandsSession` is only for explicit user stop/cancel during an
@@ -178,8 +189,11 @@ Use a persistent session when the product wants later turns to reuse the same
 skill-bound conversation.
 
 ```text
+ensure server
+  -> no conversation lookup
+
 open or resume session
-  -> persistent session preparation
+  -> persistent session start
 
 normal product turn
   -> OpenHandsSendMessage
@@ -197,6 +211,26 @@ Properties:
 - prior context is intentionally preserved
 - completed turns do not require an explicit pause
 - app stores the current `conversation_id`
+
+### Refine Bootstrap Failure Seam
+
+The VU-1175 follow-up work exposed a failure mode in the eager Refine startup
+path:
+
+1. Refine stored a durable `conversation_id` in the app DB.
+2. Skill switch restarted the per-skill OpenHands Agent Server because
+   `OH_CONVERSATIONS_PATH` is skill-scoped.
+3. Abrupt server shutdown left OpenHands lease state behind for some saved
+   conversations.
+4. The next `start_refine_session` eagerly called `GET /api/conversations/:id`.
+5. OpenHands returned `404` for a durable on-disk conversation that had been
+   skipped on startup because of the lease.
+6. Refine treated that as "saved conversation not found" and created a fresh
+   conversation before the user even sent a message.
+
+The lazy Refine contract removes that failure from page bootstrap. A missed
+resume is now isolated to the first send path, where the runtime can still
+fall back to creating a new conversation if the saved id cannot be resumed.
 
 ### Throwaway Session
 

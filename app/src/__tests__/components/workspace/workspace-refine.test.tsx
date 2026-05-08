@@ -15,7 +15,10 @@ const tauriMocks = vi.hoisted(() => ({
   }),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
-  sendRefineMessage: vi.fn().mockResolvedValue("agent-1"),
+  sendRefineMessage: vi.fn().mockResolvedValue({
+    agent_id: "agent-1",
+    conversation_id: "conv-1",
+  }),
   cancelAgentRun: vi.fn().mockResolvedValue(undefined),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
 }));

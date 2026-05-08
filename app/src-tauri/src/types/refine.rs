@@ -30,6 +30,12 @@ pub struct RefineFinalizeResult {
     pub commit_sha: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineDispatchResult {
+    pub agent_id: String,
+    pub conversation_id: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RefineSessionInfo {
     pub conversation_id: String,

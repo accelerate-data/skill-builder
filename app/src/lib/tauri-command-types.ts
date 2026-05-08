@@ -21,6 +21,7 @@ import type {
   ResearchStepOutput,
   ReconciliationResult,
   RefineFinalizeResult,
+  RefineDispatchResult,
   RefineSessionInfo,
   SkillCommit,
   SkillFileContent,
@@ -313,12 +314,12 @@ export interface TauriCommandMap {
       input: {
         skillName: string;
         pluginSlug: string;
-        conversationId: string;
+        conversationId: string | null;
         userMessage: string;
         targetFiles: string[] | null;
       };
     };
-    result: string;
+    result: RefineDispatchResult;
   };
   finalize_refine_run: {
     args: {

@@ -20,7 +20,10 @@ pub use types::{OpenHandsRuntimeRequest, StartConversationRequest};
 
 use self::client::OpenHandsServerClient;
 use self::events::normalize_server_event;
-use self::process::{ensure_agent_server, extract_terminal_error_from_stderr, stderr_tail_snapshot};
+use self::process::{
+    ensure_agent_server as ensure_agent_server_process, extract_terminal_error_from_stderr,
+    stderr_tail_snapshot,
+};
 use crate::agents::sidecar::SidecarConfig;
 use crate::db::Db;
 use std::collections::{HashMap, HashSet};
@@ -519,6 +522,7 @@ fn collect_live_child_subagent_events(
     Ok(emitted)
 }
 
+#[allow(dead_code)]
 pub(crate) fn load_linked_persisted_subagent_conversation_events(
     workspace_path: &str,
     conversation_id: &str,
@@ -789,7 +793,8 @@ async fn resolve_openhands_conversation_id(
     selection: OpenHandsConversationSelection,
     include_initial_message_on_create: bool,
 ) -> Result<String, String> {
-    let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -849,12 +854,27 @@ async fn resolve_openhands_conversation_id(
     }
 }
 
-pub async fn prepare_openhands_session(
+pub async fn ensure_openhands_server(config: &SidecarConfig) -> Result<(), String> {
+    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(config)?;
+    ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir())
+        .await
+        .map(|_| ())
+}
+
+pub async fn start_openhands_session(
     app: &tauri::AppHandle,
     config: SidecarConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
     prepare_openhands_session_internal(app, config, conversation_id).await
+}
+
+pub async fn prepare_openhands_session(
+    app: &tauri::AppHandle,
+    config: SidecarConfig,
+    conversation_id: Option<String>,
+) -> Result<String, String> {
+    start_openhands_session(app, config, conversation_id).await
 }
 
 async fn prepare_openhands_session_internal(
@@ -875,7 +895,7 @@ async fn prepare_openhands_session_internal(
     Ok(conversation_id)
 }
 
-pub async fn openhands_send_message(
+pub async fn send_openhands_message(
     app: &tauri::AppHandle,
     agent_id: &str,
     config: SidecarConfig,
@@ -892,6 +912,15 @@ pub async fn openhands_send_message(
         PromptDelivery::ViaSendEvent,
     )
     .await
+}
+
+pub async fn openhands_send_message(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    config: SidecarConfig,
+    conversation_id: String,
+) -> Result<String, String> {
+    send_openhands_message(app, agent_id, config, conversation_id).await
 }
 
 pub fn pause_openhands_session(agent_id: &str) -> bool {
@@ -1092,7 +1121,8 @@ async fn dispatch_openhands_turn_with_request(
         ),
     )
     .await?;
-    let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
         server
             .base_url()

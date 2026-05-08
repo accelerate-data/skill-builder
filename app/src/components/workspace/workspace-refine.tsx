@@ -331,7 +331,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             s.plugin_slug,
           );
           const nextStore = useRefineStore.getState();
-          nextStore.setConversationId(session.conversation_id);
+          nextStore.setConversationId(session.conversation_id || null);
           nextStore.setAvailableAgents(session.available_agents ?? []);
           nextStore.setMessages(
             hydrateRestoredTranscript(session, s.name, selectedModel) ??
@@ -380,7 +380,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     async (text: string, targetFiles?: string[]) => {
       const store = useRefineStore.getState();
       const conversationId = store.conversationId;
-      if (!selectedSkill || !conversationId) return;
+      if (!selectedSkill) return;
       if (store.isRunning) return;
 
       console.log(
@@ -396,13 +396,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.addUserMessage(text, targetFiles);
 
       try {
-        const agentId = await sendRefineMessage(
+        const dispatch = await sendRefineMessage(
           selectedSkill.name,
           selectedSkill.plugin_slug,
           conversationId,
           text,
           targetFiles,
         );
+        const { agent_id: agentId, conversation_id: nextConversationId } = dispatch;
+        store.setConversationId(nextConversationId);
 
         useAgentStore
           .getState()
@@ -411,7 +413,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
             selectedModel ?? "openhands",
             selectedSkill.name,
             "refine",
-            `synthetic:refine:${selectedSkill.name}:${conversationId}`,
+            `synthetic:refine:${selectedSkill.name}:${nextConversationId}`,
           );
 
         store.addAgentTurn(agentId);
