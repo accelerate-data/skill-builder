@@ -49,7 +49,6 @@ pub(super) fn resolve_skill_output_dir(
     ))
 }
 
-#[cfg(test)]
 fn event_class(raw: &serde_json::Value) -> Option<&str> {
     raw.get("event_class")
         .or_else(|| raw.get("eventClass"))
@@ -58,7 +57,6 @@ fn event_class(raw: &serde_json::Value) -> Option<&str> {
         .and_then(|value| value.as_str())
 }
 
-#[cfg(test)]
 fn first_string<'a>(
     values: impl IntoIterator<Item = Option<&'a serde_json::Value>>,
 ) -> Option<&'a str> {
@@ -69,7 +67,6 @@ fn first_string<'a>(
         .filter(|text| !text.trim().is_empty())
 }
 
-#[cfg(test)]
 fn extract_message_text(raw: &serde_json::Value) -> Option<String> {
     let llm_message = raw.get("llm_message");
     first_string([
@@ -84,7 +81,6 @@ fn extract_message_text(raw: &serde_json::Value) -> Option<String> {
     .map(str::to_string)
 }
 
-#[cfg(test)]
 fn extract_tool_call_id(raw: &serde_json::Value) -> Option<String> {
     first_string([
         raw.get("tool_call_id"),
@@ -99,7 +95,6 @@ fn extract_tool_call_id(raw: &serde_json::Value) -> Option<String> {
     .map(str::to_string)
 }
 
-#[cfg(test)]
 fn extract_parent_tool_call_id(raw: &serde_json::Value) -> Option<String> {
     first_string([
         raw.get("parent_tool_call_id"),
@@ -112,7 +107,6 @@ fn extract_parent_tool_call_id(raw: &serde_json::Value) -> Option<String> {
     .map(str::to_string)
 }
 
-#[cfg(test)]
 fn extract_timestamp_ms(raw: &serde_json::Value) -> i64 {
     if let Some(timestamp) = raw.get("timestamp") {
         if let Some(value) = timestamp.as_i64() {
@@ -130,8 +124,7 @@ fn extract_timestamp_ms(raw: &serde_json::Value) -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
-#[cfg(test)]
-fn extract_conversation_messages(
+pub(crate) fn extract_conversation_messages(
     events: &[serde_json::Value],
 ) -> Vec<crate::types::ConversationMessage> {
     events
@@ -152,8 +145,7 @@ fn extract_conversation_messages(
         .collect()
 }
 
-#[cfg(test)]
-fn extract_restored_conversation_events(
+pub(crate) fn extract_restored_conversation_events(
     events: &[serde_json::Value],
 ) -> Vec<crate::types::RestoredConversationEvent> {
     events
@@ -171,8 +163,7 @@ fn extract_restored_conversation_events(
         .collect()
 }
 
-#[cfg(test)]
-fn restored_conversation_user_turn_count(
+pub(crate) fn restored_conversation_user_turn_count(
     events: &[crate::types::RestoredConversationEvent],
 ) -> usize {
     events
@@ -218,6 +209,22 @@ pub(crate) fn build_refine_openhands_config(
         run_source: Some("refine".to_string()),
         plugin_slug: plugin_slug.to_string(),
     })
+}
+
+pub(crate) async fn ensure_refine_runtime_ready(
+    app: &tauri::AppHandle,
+    db: &crate::db::Db,
+    skill_name: &str,
+    plugin_slug: &str,
+) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
+    crate::commands::workflow::ensure_workspace_prompts(app, &runtime_ctx.workspace_path).await?;
+    crate::commands::refine::protocol::ensure_skill_workspace_dir(
+        &runtime_ctx.workspace_path,
+        plugin_slug,
+        skill_name,
+    );
+    Ok(runtime_ctx)
 }
 
 fn load_refine_prompt_context(
@@ -374,19 +381,7 @@ pub async fn send_refine_message(
         (session.dispatched_user_turn_count == 0, dispatch_plan)
     };
 
-    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
-
-    // Deploy bundled OpenHands agents and AgentSkills into the workspace so the
-    // Agent Server can resolve the skill-creator agent and its skills. Workflow
-    // runs do this on every dispatch; refine must too — the call is cached
-    // per-session so repeated turns are cheap.
-    crate::commands::workflow::ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-
-    crate::commands::refine::protocol::ensure_skill_workspace_dir(
-        &runtime_ctx.workspace_path,
-        &plugin_slug,
-        &skill_name,
-    );
+    let runtime_ctx = ensure_refine_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
 
     let prompt = if is_first_turn {
         let skills_path = resolve_skills_path(&db)?;

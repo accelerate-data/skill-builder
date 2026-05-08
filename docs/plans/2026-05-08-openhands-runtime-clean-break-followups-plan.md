@@ -49,7 +49,7 @@ Only the post-clarifications cleanup todo below should be treated as active.
       one-shot naming in the active code paths.
 - [x] Sidecar/runtime naming has been normalized to `throwaway` in the active
       runtime builders.
-- [ ] `repo-map.json` still needs stale one-shot wording removed.
+- [x] `repo-map.json` stale one-shot wording was removed.
 
 ### Completed: Persistent-Session Orchestration Tightening
 
@@ -90,17 +90,20 @@ follow-up list for the independent-agent findings and simplifier review.
 
 ### A. Skill Lock Ownership And Release
 
-- [ ] Move skill-lock ownership to the same layout/session layer that owns
+- [x] Move skill-lock ownership to the same layout/session layer that owns
       selected-skill OpenHands lifecycle.
-- [ ] On skill selection: acquire the selected skill lock before the surface
+- [x] On skill selection: acquire the selected skill lock before the surface
       becomes active.
-- [ ] On skill deselection / skill switch: pause the selected skill OpenHands
+- [x] On skill deselection / skill switch: pause the selected skill OpenHands
       session and release that skill lock in the same cleanup path.
-- [ ] On app shutdown: pause the selected skill OpenHands session and release
+- [x] On app shutdown: pause the selected skill OpenHands session and release
       the selected skill lock.
-- [ ] Remove any remaining lock-ownership behavior from
+- [x] Remove any remaining lock-ownership behavior from
       `app/src/components/workspace/workspace-refine.tsx` so Refine is only a
       surface over the selected skill, not a lifecycle owner.
+- [x] Remove workflow-page lock ownership from
+      `app/src/hooks/use-workflow-session.ts` so Workflow no longer acquires
+      or releases locks independently of selected-skill lifecycle.
 - [ ] Add tests that prove:
       - selecting a skill acquires the lock
       - switching away releases the previous lock
@@ -108,17 +111,17 @@ follow-up list for the independent-agent findings and simplifier review.
 
 ### B. Transcript / Event Replay On Refine Reopen
 
-- [ ] Stop discarding restore data in
+- [x] Stop discarding restore data in
       `app/src-tauri/src/commands/skill_session.rs`.
-- [ ] Return real `restored_messages`, `restored_transcript_events`, and the
+- [x] Return real `restored_messages`, `restored_transcript_events`, and the
       correct dispatched-turn state when resuming an existing Refine
       conversation.
-- [ ] On frontend bootstrap, hydrate restored transcript/messages into the
+- [x] On frontend bootstrap, hydrate restored transcript/messages into the
       Refine UI instead of clearing them unconditionally.
-- [ ] Preserve resumed-session semantics so reopen does not reset the session
+- [x] Preserve resumed-session semantics so reopen does not reset the session
       to first-turn behavior or rebuild an initialization-style prompt for an
       existing thread.
-- [ ] Replay the setup/runtime row and the contextual dispatched task row when
+- [x] Replay the setup/runtime row and the contextual dispatched task row when
       reopening Refine, so restored sessions visibly match the intended Refine
       transcript contract.
 - [ ] Add tests that prove:
@@ -129,19 +132,21 @@ follow-up list for the independent-agent findings and simplifier review.
 
 ### C. Canonical Session Ownership And Bootstrap Cleanup
 
-- [ ] Make layout the only owner of selected-skill lifecycle:
+- [x] Make layout the only owner of selected-skill lifecycle:
       - selected skill identity
       - lock lifecycle
       - OpenHands bootstrap/resume
       - pause on deselect
-- [ ] Remove split ownership between `app-layout.tsx` and
+- [x] Remove split ownership between `app-layout.tsx` and
       `workspace-refine.tsx`.
-- [ ] Collapse duplicated frontend bootstrap logic so there is one canonical
+- [x] Remove split ownership between layout-level selected-skill lifecycle and
+      `app/src/hooks/use-workflow-session.ts`.
+- [x] Collapse duplicated frontend bootstrap logic so there is one canonical
       helper for:
       - bootstrapping a selected skill session
       - hydrating the refine store
       - replaying restored transcript state
-- [ ] Remove the duplicate bootstrap/hydration sequence currently present in
+- [x] Remove the duplicate bootstrap/hydration sequence currently present in
       `app/src/components/layout/app-layout.tsx`.
 - [ ] Simplify `app/src/pages/workflow.tsx` by removing the current fallback
       merge/reconstruction logic for session restart once there is one
@@ -149,13 +154,13 @@ follow-up list for the independent-agent findings and simplifier review.
 
 ### D. Backend Runtime / Session Plumbing Cleanup
 
-- [ ] Remove duplicated refine-runtime setup plumbing between
+- [x] Remove duplicated refine-runtime setup plumbing between
       `app/src-tauri/src/commands/skill_session.rs` and
       `app/src-tauri/src/commands/refine/mod.rs`.
-- [ ] Extract one shared internal helper for runtime/session preparation so the
+- [x] Extract one shared internal helper for runtime/session preparation so the
       skill-session command layer and refine-specific send path do not rebuild
       the same setup independently.
-- [ ] Keep the public boundary clear:
+- [x] Keep the public boundary clear:
       - global selected-skill/session commands own selection bootstrap and
         pause
       - refine owns refine-specific send/content behavior
@@ -190,10 +195,10 @@ follow-up list for the independent-agent findings and simplifier review.
 
 ### G. Repo Metadata / Docs Follow-Through
 
-- [ ] Update `repo-map.json` to include:
+- [x] Update `repo-map.json` to include:
       - `app/src-tauri/src/commands/skill_session.rs`
       - `app/src/lib/skill-openhands-session.ts`
-- [ ] Update `repo-map.json` descriptions to remove stale `one-shot`
+- [x] Update `repo-map.json` descriptions to remove stale `one-shot`
       terminology and align with the throwaway/runtime naming used by the
       branch.
 - [ ] Verify the runtime design docs and Refine follow-up docs still match the
@@ -203,16 +208,16 @@ follow-up list for the independent-agent findings and simplifier review.
 
 This todo explicitly covers all outstanding findings:
 
-- [ ] prior skill lock not released on skill switch
-- [ ] resumed Refine loses transcript / resets first-turn semantics
+- [x] prior skill lock not released on skill switch
+- [x] resumed Refine loses transcript / resets first-turn semantics
 - [ ] `skill_session` command layer lacks direct tests
 - [ ] reset/redo tests mock away the real restart contract
-- [ ] documented Refine visibility / replay contract still unmet
-- [ ] `repo-map.json` stale after structural/runtime changes
-- [ ] duplicated frontend bootstrap logic
-- [ ] split ownership between layout and Refine
+- [x] documented Refine visibility / replay contract still unmet
+- [x] `repo-map.json` stale after structural/runtime changes
+- [x] duplicated frontend bootstrap logic
+- [x] split ownership between layout and Refine
 - [ ] awkward workflow restart fallback logic
-- [ ] duplicated backend refine-runtime setup plumbing
+- [x] duplicated backend refine-runtime setup plumbing
 
 Run:
 

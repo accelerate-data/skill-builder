@@ -1,12 +1,6 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { useLeaveGuard } from "./use-leave-guard";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
-import {
-  acquireLock,
-  releaseLock,
-} from "@/lib/tauri";
-import { toast } from "@/lib/toast";
 
 interface UseWorkflowSessionOptions {
   /** Skill name from route params */
@@ -22,11 +16,10 @@ interface UseWorkflowSessionOptions {
 }
 
 /**
- * Manages the skill lock lifecycle and session cleanup for the workflow page.
+ * Manages workflow-session cleanup for the workflow page.
  * Integrates with useLeaveGuard to handle navigation blocking and cleanup.
  *
  * Responsibilities:
- * - Acquire skill lock on mount, release on unmount
  * - Provide onLeave callback for navigation/window close cleanup
  * - Track unsaved changes for blocking
  * - End workflow session and clean up sidecar on leave
@@ -36,7 +29,6 @@ export function useWorkflowSession({
   shouldBlock,
   hasUnsavedChanges,
 }: UseWorkflowSessionOptions) {
-  const navigate = useNavigate();
   const hasUnsavedChangesRef = useRef(false);
   const sessionCleanedUpRef = useRef(false);
 
@@ -44,27 +36,6 @@ export function useWorkflowSession({
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
   }, [hasUnsavedChanges]);
-
-  // Acquire lock when entering workflow, release when leaving
-  useEffect(() => {
-    let mounted = true;
-
-    acquireLock(skillName).catch((err) => {
-      if (mounted) {
-        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, {
-          cause: err,
-          context: { operation: "workflow_acquire_lock", skillName },
-        });
-        navigate({ to: "/", search: { tab: undefined } });
-      }
-    });
-
-    return () => {
-      mounted = false;
-      // Fire-and-forget: release lock on unmount (unless navigating away via blocker)
-      releaseLock(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=releaseLock err=%s", e));
-    };
-  }, [skillName, navigate]);
 
   // Cleanup on unmount (e.g., test unmount, browser close, etc.)
   // Skipped if onLeave already ran cleanup to avoid double IPC calls.
@@ -86,10 +57,6 @@ export function useWorkflowSession({
         logPrefix: "use-workflow-session",
         clearSessionId: true,
       });
-
-      // Fire-and-forget: release skill lock before leaving
-      releaseLock(skillName).catch((e) => console.warn("[use-workflow-session] non-fatal: op=releaseLock err=%s", e));
-
       proceed();
     },
   });

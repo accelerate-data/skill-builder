@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SkillContextMenu } from "@/components/skill-context-menu";
 import type { UnifiedSkill, SkillMenuState } from "@/hooks/use-unified-skills";
@@ -49,42 +49,40 @@ function renderMenu(skill: UnifiedSkill, menuState: SkillMenuState, onExport = v
       onRemoveFromPlugin={vi.fn()}
       onExport={onExport}
       pluginOptions={[]}
-    />,
+    >
+      <div data-testid="skill-row">{skill.name}</div>
+    </SkillContextMenu>,
   );
 }
 
 describe("SkillContextMenu", () => {
   it("shows Export as .skill for a complete builder skill", async () => {
-    const user = userEvent.setup();
     renderMenu(makeSkill(), makeMenuState());
-    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.contextMenu(screen.getByTestId("skill-row"));
     expect(screen.getByText("Export as .skill")).toBeInTheDocument();
   });
 
   it("shows Export as .skill for a complete imported skill", async () => {
-    const user = userEvent.setup();
     renderMenu(
       makeSkill({ source: "imported", importedSkillId: "imp-123" }),
       makeMenuState({ isBuilder: false, showsLifecycleActions: false }),
     );
-    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.contextMenu(screen.getByTestId("skill-row"));
     expect(screen.getByText("Export as .skill")).toBeInTheDocument();
   });
 
   it("does not show Export as .skill for a marketplace skill", async () => {
-    const user = userEvent.setup();
     renderMenu(
       makeSkill({ source: "marketplace", isDefaultPlugin: false }),
       makeMenuState({ isBuilder: false, showsLifecycleActions: false }),
     );
-    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.contextMenu(screen.getByTestId("skill-row"));
     expect(screen.queryByText("Export as .skill")).not.toBeInTheDocument();
   });
 
   it("does not show Export as .skill for an incomplete skill", async () => {
-    const user = userEvent.setup();
     renderMenu(makeSkill(), makeMenuState({ isComplete: false }));
-    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.contextMenu(screen.getByTestId("skill-row"));
     expect(screen.queryByText("Export as .skill")).not.toBeInTheDocument();
   });
 
@@ -93,7 +91,7 @@ describe("SkillContextMenu", () => {
     const onExport = vi.fn();
     const skill = makeSkill();
     renderMenu(skill, makeMenuState(), onExport);
-    await user.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.contextMenu(screen.getByTestId("skill-row"));
     await user.click(screen.getByText("Export as .skill"));
     expect(onExport).toHaveBeenCalledWith(skill);
   });

@@ -33,6 +33,7 @@ export interface RefineMessage {
   role: RefineMessageRole;
   agentId?: string; // set for "agent" role — links to agent-store run
   agentText?: string; // restored agent text when rehydrating persisted history
+  hideTaskSent?: boolean;
   userText?: string; // set for "user" role
   targetFiles?: string[]; // files targeted with @mentions
   toolUseId?: string;

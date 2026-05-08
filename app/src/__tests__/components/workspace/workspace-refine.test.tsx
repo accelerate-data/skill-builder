@@ -220,7 +220,7 @@ describe("WorkspaceRefine", () => {
       "/workspace",
       "skills",
     );
-    expect(agentStoreState.clearRunsBySource).toHaveBeenCalledWith("refine");
+    expect(refineStoreState.setSkillFiles).toHaveBeenCalled();
   });
 
   it("adds a plain user bubble when dispatching a refine turn", async () => {

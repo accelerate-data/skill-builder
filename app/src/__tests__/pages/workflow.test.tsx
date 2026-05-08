@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { mockListen, mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
@@ -196,6 +197,22 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
 // every test starts with a clean slate regardless of describe-level setup order.
 beforeEach(() => {
   mockLocation.state = {};
+  useRefineStore.getState().selectSkill({
+    name: "test-skill",
+    plugin_slug: "default",
+    skill_source: "skill-builder",
+    purpose: null,
+    description: null,
+    tags: [],
+    intake_json: null,
+    version: null,
+    model: null,
+    argumentHint: null,
+    userInvocable: null,
+    disableModelInvocation: null,
+    status: null,
+    current_step: null,
+  });
 });
 
 describe("WorkflowPage — agent completion lifecycle", () => {
@@ -203,6 +220,22 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
+    useRefineStore.getState().selectSkill({
+      name: "test-skill",
+      plugin_slug: "default",
+      skill_source: "skill-builder",
+      purpose: null,
+      description: null,
+      tags: [],
+      intake_json: null,
+      version: null,
+      model: null,
+      argumentHint: null,
+      userInvocable: null,
+      disableModelInvocation: null,
+      status: null,
+      current_step: null,
+    });
     useSettingsStore.getState().reset();
 
     // Hydrate settings so workflow handlers don't bail
@@ -234,6 +267,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
+    useRefineStore.getState().selectSkill(null);
     useSettingsStore.getState().reset();
   });
 
@@ -487,7 +521,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
-  it("releases lock on unmount even when not running", async () => {
+  it("cleans up workflow session on unmount even when not running", async () => {
     vi.mocked(endWorkflowSession).mockClear();
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -501,10 +535,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       unmount();
     });
 
-    // Session should still be cleaned up (no sidecar pool involved)
+    // Session cleanup should remain safe even when no agent is running.
     const sessionId = useWorkflowStore.getState().workflowSessionId;
-    // releaseLock is called via useWorkflowSession
-    // We verify endWorkflowSession may be called if a session exists
+    // The workflow page no longer owns skill-lock lifecycle directly.
+    // We only verify teardown remains non-throwing here.
     expect(unmount).not.toThrow();
   });
 

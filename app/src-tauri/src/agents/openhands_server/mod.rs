@@ -879,6 +879,26 @@ pub async fn start_openhands_session(
     Ok(conversation_id)
 }
 
+pub async fn list_openhands_conversation_events(
+    config: &SidecarConfig,
+    conversation_id: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(config)?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
+    let client = OpenHandsServerClient::new(
+        server.base_url().parse::<reqwest::Url>().map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "parse OpenHands Agent Server base URL",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?,
+        Some(server.session_api_key),
+    );
+    client.list_all_events(conversation_id).await
+}
+
 pub async fn send_openhands_message(
     app: &tauri::AppHandle,
     agent_id: &str,

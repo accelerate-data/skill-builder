@@ -187,7 +187,7 @@ export default function WorkflowPage() {
   );
   const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
   const currentSkill = builderSkills.find((sk) => sk.name === skillName);
-  const pluginSlug = currentSkill?.plugin_slug;
+  const pluginSlug = currentSkill?.plugin_slug ?? refineSelectedSkill?.plugin_slug;
   const skillLibraryKey = currentSkill?.library_key;
 
   const stepConfig = STEP_CONFIGS[currentStep];
@@ -230,7 +230,7 @@ export default function WorkflowPage() {
     dbClarificationsData,
   });
 
-  // 3. Session — lock lifecycle and navigation blocking
+  // 3. Session cleanup and navigation blocking
   const { blockerStatus, handleNavStay, handleNavLeave } = useWorkflowSession({
     skillName,
     shouldBlock: () => {
@@ -243,44 +243,35 @@ export default function WorkflowPage() {
   });
 
   const restartSelectedSkillSession = useCallback(async () => {
-    if (!workspacePath) return;
-    const effectivePluginSlug =
-      pluginSlug ?? refineSelectedSkill?.plugin_slug ?? "default";
-    await restartSkillOpenHandsSession(
-      {
-        name: skillName,
-        plugin_slug: effectivePluginSlug,
-        skill_source:
-          currentSkill?.skill_source ??
-          refineSelectedSkill?.skill_source ??
-          "skill-builder",
-        purpose: currentSkill?.purpose ?? refineSelectedSkill?.purpose ?? null,
-        description:
-          currentSkill?.description ?? refineSelectedSkill?.description ?? null,
-        tags: currentSkill?.tags ?? refineSelectedSkill?.tags ?? [],
-        intake_json:
-          currentSkill?.intake_json ?? refineSelectedSkill?.intake_json ?? null,
-        version: currentSkill?.version ?? refineSelectedSkill?.version ?? null,
-        model: currentSkill?.model ?? refineSelectedSkill?.model ?? null,
-        argumentHint:
-          currentSkill?.argumentHint ??
-          refineSelectedSkill?.argumentHint ??
-          null,
-        userInvocable:
-          currentSkill?.userInvocable ??
-          refineSelectedSkill?.userInvocable ??
-          null,
-        disableModelInvocation:
-          currentSkill?.disableModelInvocation ??
-          refineSelectedSkill?.disableModelInvocation ??
-          null,
-        status: currentSkill?.status ?? refineSelectedSkill?.status ?? null,
-        current_step:
-          currentSkill?.current_step ?? refineSelectedSkill?.current_step ?? null,
-      },
-      workspacePath,
-    );
-  }, [currentSkill, pluginSlug, refineSelectedSkill, skillName, workspacePath]);
+    const restartSkill =
+      refineSelectedSkill?.name === skillName
+        ? refineSelectedSkill
+        : currentSkill
+          ? {
+              name: currentSkill.name,
+              plugin_slug: currentSkill.plugin_slug,
+              skill_source: currentSkill.skill_source ?? null,
+              purpose: currentSkill.purpose ?? null,
+              description: currentSkill.description ?? null,
+              tags: currentSkill.tags ?? [],
+              intake_json: currentSkill.intake_json ?? null,
+              version: currentSkill.version ?? null,
+              model: currentSkill.model ?? null,
+              argumentHint: currentSkill.argumentHint ?? null,
+              userInvocable: currentSkill.userInvocable ?? null,
+              disableModelInvocation: currentSkill.disableModelInvocation ?? null,
+              status: currentSkill.status ?? null,
+              current_step: currentSkill.current_step ?? null,
+            }
+          : null;
+
+    if (!workspacePath || !restartSkill) {
+      throw new Error(
+        `No active selected skill session is available for workflow skill '${skillName}'`,
+      );
+    }
+    await restartSkillOpenHandsSession(restartSkill, workspacePath);
+  }, [currentSkill, refineSelectedSkill, skillName, workspacePath]);
 
   // 4. State machine — step transitions, agent orchestration, gate evaluation
   const {

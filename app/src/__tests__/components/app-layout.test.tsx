@@ -423,6 +423,7 @@ describe("AppLayout", () => {
         ]);
       }
       if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "acquire_lock") return Promise.resolve(undefined);
       if (cmd === "select_skill_openhands_session") {
         return Promise.resolve({
           conversation_id: "conv-sales",
@@ -441,6 +442,9 @@ describe("AppLayout", () => {
     render(<AppLayout />);
 
     await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
+        skillName: "sales-skill",
+      });
       expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
         skillName: "sales-skill",
         pluginSlug: "skills",
@@ -502,6 +506,7 @@ describe("AppLayout", () => {
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") return Promise.resolve(skills);
       if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "acquire_lock") return Promise.resolve(undefined);
       if (cmd === "select_skill_openhands_session") {
         return Promise.resolve({
           conversation_id:
@@ -515,6 +520,7 @@ describe("AppLayout", () => {
         });
       }
       if (cmd === "pause_openhands_session") return Promise.resolve(undefined);
+      if (cmd === "release_lock") return Promise.resolve(undefined);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
@@ -558,6 +564,15 @@ describe("AppLayout", () => {
     });
 
     await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("release_lock", {
+        skillName: "sales-skill",
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
+        skillName: "finance-skill",
+      });
       expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
         skillName: "finance-skill",
         pluginSlug: "skills",

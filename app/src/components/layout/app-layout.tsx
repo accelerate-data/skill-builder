@@ -17,10 +17,12 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import {
+  acquireLock,
   cancelAgentRun,
   cancelWorkflowStep,
   pauseOpenHandsSession,
   selectSkillOpenHandsSession,
+  releaseLock,
 } from "@/lib/tauri";
 import {
   getEvalsRunning,
@@ -29,6 +31,7 @@ import {
 } from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import { toEditableSkill, type EditableSkill } from "@/lib/types";
+import { hydrateSelectedSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import {
   Dialog,
   DialogContent,
@@ -161,16 +164,18 @@ export function AppLayout() {
       if (!workspacePath) {
         throw new Error("Workspace path is not configured");
       }
-      const session = await selectSkillOpenHandsSession(
-        skill.name,
-        workspacePath,
-        skill.plugin_slug,
-      );
-      const store = useRefineStore.getState();
-      store.setSelectedSkill(skill);
-      store.setConversationId(session.conversation_id || null);
-      store.setAvailableAgents(session.available_agents ?? []);
-      store.setMessages([]);
+      await acquireLock(skill.name);
+      try {
+        const session = await selectSkillOpenHandsSession(
+          skill.name,
+          workspacePath,
+          skill.plugin_slug,
+        );
+        hydrateSelectedSkillOpenHandsSession(skill, session);
+      } catch (error) {
+        await releaseLock(skill.name).catch(() => {});
+        throw error;
+      }
     },
     [workspacePath],
   );
@@ -190,6 +195,13 @@ export function AppLayout() {
         refineStore.conversationId,
         refineStore.activeAgentId,
       );
+    }
+    if (selectedSkillData) {
+      await releaseLock(
+        "name" in selectedSkillData ? selectedSkillData.name : selectedSkillData.skill_name,
+      ).catch((error) => {
+        console.warn("[app-layout] release lock failed", error);
+      });
     }
     refineStore.selectSkill(null);
     useAgentStore.getState().clearRuns();
@@ -301,17 +313,8 @@ export function AppLayout() {
     }
     let cancelled = false;
     void (async () => {
-      const session = await selectSkillOpenHandsSession(
-        editableSelectedSkill.name,
-        workspacePath,
-        editableSelectedSkill.plugin_slug,
-      );
       if (cancelled) return;
-      const store = useRefineStore.getState();
-      store.setSelectedSkill(editableSelectedSkill);
-      store.setConversationId(session.conversation_id || null);
-      store.setAvailableAgents(session.available_agents ?? []);
-      store.setMessages([]);
+      await bootstrapSelectedSkillSession(editableSelectedSkill);
     })().catch((err) => {
       console.error("[app-layout] failed to bootstrap selected skill session", err);
       toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });
@@ -319,7 +322,7 @@ export function AppLayout() {
     return () => {
       cancelled = true;
     };
-  }, [editableSelectedSkill, workspacePath]);
+  }, [bootstrapSelectedSkillSession, editableSelectedSkill, workspacePath]);
 
   const ready = settingsLoaded && reconciled && nodeReady && ackDone;
 
