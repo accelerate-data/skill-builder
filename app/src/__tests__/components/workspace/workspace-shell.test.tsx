@@ -75,6 +75,7 @@ vi.mock("@/lib/tauri", () => ({
     restored_messages: [],
     restored_transcript_events: [],
   }),
+  pauseOpenHandsSession: vi.fn().mockResolvedValue(undefined),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),

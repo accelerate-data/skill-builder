@@ -1,9 +1,9 @@
+use std::collections::VecDeque;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
-use std::{collections::VecDeque};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -204,12 +204,12 @@ pub async fn ensure_agent_server(
     }
 
     let process = OpenHandsAgentServerProcess::start(timeout, runtime_run_dir).await?;
-        let handle = OpenHandsAgentServerHandle {
-            port: process.port,
-            session_api_key: process.session_api_key.clone(),
-            conversations_path,
-            stderr_tail: Arc::clone(&process.stderr_tail),
-        };
+    let handle = OpenHandsAgentServerHandle {
+        port: process.port,
+        session_api_key: process.session_api_key.clone(),
+        conversations_path,
+        stderr_tail: Arc::clone(&process.stderr_tail),
+    };
     *registry = Some(ManagedOpenHandsAgentServer {
         handle: handle.clone(),
         process,
@@ -281,10 +281,7 @@ impl OpenHandsAgentServerProcess {
                         Ok(Some(line)) if !line.trim().is_empty() => {
                             let redacted = redact_stderr(&line, &stderr_secrets);
                             push_stderr_tail_line(&stderr_tail_for_task, &redacted).await;
-                            log::debug!(
-                                "[openhands-agent-server] {}",
-                                redacted
-                            );
+                            log::debug!("[openhands-agent-server] {}", redacted);
                         }
                         Ok(Some(_)) => {}
                         Ok(None) => break,

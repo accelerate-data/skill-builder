@@ -106,6 +106,7 @@ const mockResponses: Record<string, unknown> = {
     restored_transcript_events: [],
   },
   send_refine_message: "refine-test-skill-e2e-001",
+  pause_openhands_session: undefined,
   close_refine_session: undefined,
   list_refinable_skills: [
     {

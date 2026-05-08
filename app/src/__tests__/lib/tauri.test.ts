@@ -21,6 +21,7 @@ import {
   listSkills,
   moveSkillToPlugin,
   parseGitHubUrl,
+  pauseOpenHandsSession,
   parseSkillFile,
   removeSkillFromPlugin,
   renameSkill,
@@ -134,6 +135,25 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
           conversationId: "conv-123",
           userMessage: "Update this skill",
           targetFiles: ["SKILL.md"],
+        },
+      },
+    },
+    {
+      name: "pauseOpenHandsSession",
+      call: () =>
+        pauseOpenHandsSession(
+          "demo-skill",
+          "analytics-pack",
+          "conv-123",
+          "agent-123",
+        ),
+      command: "pause_openhands_session",
+      args: {
+        input: {
+          skillName: "demo-skill",
+          pluginSlug: "analytics-pack",
+          conversationId: "conv-123",
+          agentId: "agent-123",
         },
       },
     },

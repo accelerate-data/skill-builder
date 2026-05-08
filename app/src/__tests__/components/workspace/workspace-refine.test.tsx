@@ -13,6 +13,7 @@ const tauriMocks = vi.hoisted(() => ({
     restored_messages: [],
     restored_transcript_events: [],
   }),
+  pauseOpenHandsSession: vi.fn().mockResolvedValue(undefined),
   closeRefineSession: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue({
@@ -517,6 +518,12 @@ describe("WorkspaceRefine", () => {
       rerender!(<WorkspaceRefine skill={skill2} />);
     });
 
+    expect(tauriMocks.pauseOpenHandsSession).toHaveBeenCalledWith(
+      "skill-a",
+      "skills",
+      "conv-1",
+      null,
+    );
     expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith("skill-a", "skills");
     expect(tauriMocks.startRefineSession).toHaveBeenCalledWith(
       "skill-b",
@@ -588,6 +595,12 @@ describe("WorkspaceRefine", () => {
       unmount!();
     });
 
+    expect(tauriMocks.pauseOpenHandsSession).toHaveBeenCalledWith(
+      "my-skill",
+      "skills",
+      "conv-unmount",
+      null,
+    );
     expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith(
       "my-skill",
       "skills",

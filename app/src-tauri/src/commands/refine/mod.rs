@@ -544,7 +544,7 @@ pub async fn send_refine_message(
                 "No refine session found. Active sessions ({}): [{}]",
                 map.len(),
                 active.join(", ")
-                );
+            );
             log::error!("[send_refine_message] {}", msg);
             msg
         })?;
@@ -674,14 +674,67 @@ pub async fn close_refine_session(
         return Ok(());
     };
 
-    if let Some(agent_id) = session.current_agent_id.as_ref() {
-        let cancelled = crate::agents::openhands_server::pause_openhands_session(agent_id);
-        log::debug!(
-            "[close_refine_session] pause_openhands_session agent={} result={}",
-            agent_id,
-            cancelled
-        );
+    log::debug!(
+        "[close_refine_session] removed wrapper skill={} plugin={} conversation_present={} agent_present={}",
+        session.skill_name,
+        session.plugin_slug,
+        session.conversation_id.is_some(),
+        session.current_agent_id.is_some()
+    );
+
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PauseOpenHandsSessionInput {
+    pub skill_name: String,
+    pub plugin_slug: String,
+    pub conversation_id: String,
+    pub agent_id: Option<String>,
+}
+
+#[tauri::command]
+pub async fn pause_openhands_session(
+    input: PauseOpenHandsSessionInput,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let PauseOpenHandsSessionInput {
+        skill_name,
+        plugin_slug,
+        conversation_id,
+        agent_id,
+    } = input;
+
+    if conversation_id.trim().is_empty() {
+        return Err("pause_openhands_session requires a non-empty conversation_id".to_string());
     }
+
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
+    ensure_skill_workspace_dir(&runtime_ctx.workspace_path, &plugin_slug, &skill_name);
+
+    let config = build_refine_openhands_config(
+        &skill_name,
+        &plugin_slug,
+        "",
+        &runtime_ctx.workspace_path,
+        runtime_ctx.llm.clone(),
+    );
+
+    let local_closed = crate::agents::openhands_server::pause_openhands_conversation(
+        config,
+        &conversation_id,
+        agent_id.as_deref(),
+    )
+    .await?;
+
+    log::info!(
+        "[pause_openhands_session] skill={} plugin={} conversation_id={} local_closed={}",
+        skill_name,
+        plugin_slug,
+        conversation_id,
+        local_closed
+    );
 
     Ok(())
 }

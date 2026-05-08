@@ -19,6 +19,7 @@ import {
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
+  pauseOpenHandsSession,
   closeRefineSession,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
@@ -183,6 +184,22 @@ function clearRefineAgentRuns(): void {
   useAgentStore.getState().clearRunsBySource("refine");
 }
 
+async function pauseThenCloseRefineSession(
+  skill: EditableSkill,
+  conversationId: string | null,
+  agentId: string | null,
+): Promise<void> {
+  if (conversationId) {
+    await pauseOpenHandsSession(
+      skill.name,
+      skill.plugin_slug,
+      conversationId,
+      agentId,
+    );
+  }
+  await closeRefineSession(skill.name, skill.plugin_slug);
+}
+
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model);
@@ -223,9 +240,13 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     return () => {
       const store = useRefineStore.getState();
       if (store.selectedSkill) {
-        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
-          console.warn(
-            "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
+        pauseThenCloseRefineSession(
+          store.selectedSkill,
+          store.conversationId,
+          store.activeAgentId,
+        ).catch((e) =>
+          console.error(
+            "[workspace-refine] op=pauseThenCloseRefineSession err=%s",
             e,
           ),
         );
@@ -241,25 +262,34 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     shouldBlock: () => useRefineStore.getState().isRunning,
     onLeave: (proceed) => {
       const store = useRefineStore.getState();
-      store.setRunning(false);
-      store.setActiveAgentId(null);
-      clearRefineAgentRuns();
+      void (async () => {
+        try {
+          if (store.selectedSkill) {
+            await pauseThenCloseRefineSession(
+              store.selectedSkill,
+              store.conversationId,
+              store.activeAgentId,
+            );
+            releaseSkillResources(store.selectedSkill.name, "navigation");
+          }
 
-      if (store.selectedSkill) {
-        closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((e) =>
-          console.warn(
-            "[workspace-refine] non-fatal: op=closeRefineSession err=%s",
+          store.setRunning(false);
+          store.setActiveAgentId(null);
+          clearRefineAgentRuns();
+          store.clearSession();
+          proceed();
+        } catch (e) {
+          console.error(
+            "[workspace-refine] op=pauseThenCloseRefineSession err=%s",
             e,
-          ),
-        );
-      }
-
-      if (store.selectedSkill) {
-        releaseSkillResources(store.selectedSkill.name, "navigation");
-      }
-
-      store.clearSession();
-      proceed();
+          );
+          toast.error(e instanceof Error ? e.message : String(e), {
+            duration: Infinity,
+            cause: e,
+            context: { operation: "workspace_refine_pause_on_leave" },
+          });
+        }
+      })();
     },
   });
 
@@ -307,12 +337,25 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       }
 
       if (store.selectedSkill) {
-        await closeRefineSession(store.selectedSkill.name, store.selectedSkill.plugin_slug).catch((err) =>
-          console.warn(
-            "[workspace-refine] Failed to close previous session:",
+        try {
+          await pauseThenCloseRefineSession(
+            store.selectedSkill,
+            store.conversationId,
+            store.activeAgentId,
+          );
+        } catch (err) {
+          console.error(
+            "[workspace-refine] Failed to pause/close previous session:",
             err,
-          ),
-        );
+          );
+          toast.error(err instanceof Error ? err.message : String(err), {
+            duration: Infinity,
+            cause: err,
+            context: { operation: "workspace_refine_pause_before_skill_switch" },
+          });
+          store.setLoadingFiles(false);
+          return;
+        }
       }
 
       clearRefineAgentRuns();

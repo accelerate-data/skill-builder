@@ -306,6 +306,17 @@ export interface TauriCommandMap {
     args: { skillName: string; pluginSlug: string; workspacePath: string };
     result: RefineSessionInfo;
   };
+  pause_openhands_session: {
+    args: {
+      input: {
+        skillName: string;
+        pluginSlug: string;
+        conversationId: string;
+        agentId: string | null;
+      };
+    };
+    result: void;
+  };
   close_refine_session: { args: { skillName: string; pluginSlug: string }; result: void };
   cancel_agent_run: { args: { agentId: string }; result: void };
   cancel_workflow_step: { args: { agentId: string }; result: void };

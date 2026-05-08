@@ -923,6 +923,24 @@ pub async fn openhands_send_message(
     send_openhands_message(app, agent_id, config, conversation_id).await
 }
 
+fn close_local_openhands_run(agent_id: &str) -> bool {
+    let mut found = false;
+
+    if let Some((_, previous)) = cancel_registry().remove(agent_id) {
+        found = true;
+        if let Some(sender) = previous.sender {
+            let _ = sender.send(());
+        }
+    }
+
+    if let Some((_, handle)) = task_registry().remove(agent_id) {
+        handle.abort();
+        found = true;
+    }
+
+    found
+}
+
 pub fn pause_openhands_session(agent_id: &str) -> bool {
     let mut handle = match cancel_registry().get_mut(agent_id) {
         Some(handle) => handle,
@@ -955,6 +973,40 @@ pub fn pause_openhands_session(agent_id: &str) -> bool {
         );
     }
     sent
+}
+
+pub async fn pause_openhands_conversation(
+    config: SidecarConfig,
+    conversation_id: &str,
+    agent_id: Option<&str>,
+) -> Result<bool, String> {
+    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
+    let client = OpenHandsServerClient::new(
+        server.base_url().parse::<reqwest::Url>().map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "parse OpenHands Agent Server base URL",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?,
+        Some(server.session_api_key),
+    );
+
+    client
+        .pause_conversation(conversation_id)
+        .await
+        .map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "pause OpenHands Agent Server conversation",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?;
+
+    let local_closed = agent_id.is_some_and(close_local_openhands_run);
+    Ok(local_closed)
 }
 
 pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
@@ -1068,7 +1120,12 @@ pub async fn run_throwaway_openhands_session(
         Ok(Ok(())) => {}
         Ok(Err(error)) => return Err(error),
         Err(_) => {
-            let _ = pause_openhands_session(&agent_id);
+            if !pause_openhands_session(&agent_id) {
+                log::warn!(
+                    "[openhands-agent-server] throwaway_run_timeout agent_id={} cleanup=pause-not-found",
+                    agent_id
+                );
+            }
             return Err("OpenHands throwaway run timed out".to_string());
         }
     };
@@ -1096,7 +1153,14 @@ async fn run_conversation_task(
     let result = run_conversation_task_inner(&task, &mut cancel_rx).await;
 
     if result.is_err() {
-        let _ = task.client.pause_conversation(&task.conversation_id).await;
+        if let Err(error) = task.client.pause_conversation(&task.conversation_id).await {
+            log::error!(
+                "[openhands-agent-server:{}] cleanup_pause_failed conversation_id={} error={}",
+                task.agent_id,
+                task.conversation_id,
+                error
+            );
+        }
     }
     result
 }
@@ -1516,7 +1580,10 @@ async fn enrich_terminal_state_error_detail(
         return;
     };
     if let Some(object) = terminal_state.as_object_mut() {
-        object.insert("error_detail".to_string(), serde_json::Value::String(detail));
+        object.insert(
+            "error_detail".to_string(),
+            serde_json::Value::String(detail),
+        );
     }
 }
 
@@ -2038,15 +2105,15 @@ mod tests {
 
     #[tokio::test]
     async fn generic_terminal_error_is_enriched_from_agent_server_stderr() {
-        let stderr_tail = Arc::new(tokio::sync::Mutex::new(
-            std::collections::VecDeque::from(vec![
+        let stderr_tail = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
+            vec![
                 "ConversationRunError:".to_string(),
                 "Conversation run failed for id=abc123:".to_string(),
                 "OpenAIException - Model".to_string(),
                 "glm-5-free not supported".to_string(),
                 "Conversation logs are stored at:".to_string(),
-            ]),
-        ));
+            ],
+        )));
         let mut state = serde_json::json!({
             "type": "conversation_state",
             "status": "error",

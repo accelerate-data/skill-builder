@@ -1,5 +1,5 @@
 use super::types::StartConversationRequest;
-use reqwest::{Method, Request, StatusCode, Url};
+use reqwest::{Method, Request, Response, StatusCode, Url};
 
 #[derive(Debug, Clone)]
 pub struct OpenHandsServerClient {
@@ -9,6 +9,10 @@ pub struct OpenHandsServerClient {
 }
 
 impl OpenHandsServerClient {
+    fn request_error(error: reqwest::Error) -> String {
+        format!("failed to build OpenHands API request: {error}")
+    }
+
     pub fn new(base_url: Url, session_api_key: Option<String>) -> Self {
         Self {
             http: reqwest::Client::new(),
@@ -112,46 +116,45 @@ impl OpenHandsServerClient {
     pub async fn create_conversation(
         &self,
         request: &StartConversationRequest,
-    ) -> Result<serde_json::Value, reqwest::Error> {
-        self.http
-            .execute(self.build_create_conversation_request(request)?)
-            .await?
-            .error_for_status()?
-            .json()
-            .await
+    ) -> Result<serde_json::Value, String> {
+        let request = self
+            .build_create_conversation_request(request)
+            .map_err(Self::request_error)?;
+        self.execute_json(request).await
     }
 
-    pub async fn run_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
-        let response = self
-            .http
-            .execute(self.build_run_request(conversation_id)?)
-            .await?;
+    pub async fn run_conversation(&self, conversation_id: &str) -> Result<(), String> {
+        let request = self
+            .build_run_request(conversation_id)
+            .map_err(Self::request_error)?;
+        let response = self.execute(request).await?;
         if response.status() == StatusCode::CONFLICT {
             return Ok(());
         }
-        response.error_for_status()?;
+        Self::ensure_success(response).await?;
         Ok(())
     }
 
     pub async fn get_conversation(
         &self,
         conversation_id: &str,
-    ) -> Result<Option<serde_json::Value>, reqwest::Error> {
-        let response = self
-            .http
-            .execute(self.build_get_conversation_request(conversation_id)?)
-            .await?;
+    ) -> Result<Option<serde_json::Value>, String> {
+        let request = self
+            .build_get_conversation_request(conversation_id)
+            .map_err(Self::request_error)?;
+        let response = self.execute(request).await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        Ok(Some(response.error_for_status()?.json().await?))
+        Ok(Some(Self::json_success(response).await?))
     }
 
-    pub async fn pause_conversation(&self, conversation_id: &str) -> Result<(), reqwest::Error> {
-        self.http
-            .execute(self.build_pause_request(conversation_id)?)
-            .await?
-            .error_for_status()?;
+    pub async fn pause_conversation(&self, conversation_id: &str) -> Result<(), String> {
+        let request = self
+            .build_pause_request(conversation_id)
+            .map_err(Self::request_error)?;
+        let response = self.execute(request).await?;
+        Self::ensure_success(response).await?;
         Ok(())
     }
 
@@ -159,24 +162,23 @@ impl OpenHandsServerClient {
         &self,
         conversation_id: &str,
         event: serde_json::Value,
-    ) -> Result<(), reqwest::Error> {
-        self.http
-            .execute(self.build_send_event_request(conversation_id, event)?)
-            .await?
-            .error_for_status()?;
+    ) -> Result<(), String> {
+        let request = self
+            .build_send_event_request(conversation_id, event)
+            .map_err(Self::request_error)?;
+        let response = self.execute(request).await?;
+        Self::ensure_success(response).await?;
         Ok(())
     }
 
     pub async fn agent_final_response(
         &self,
         conversation_id: &str,
-    ) -> Result<serde_json::Value, reqwest::Error> {
-        self.http
-            .execute(self.build_agent_final_response_request(conversation_id)?)
-            .await?
-            .error_for_status()?
-            .json()
-            .await
+    ) -> Result<serde_json::Value, String> {
+        let request = self
+            .build_agent_final_response_request(conversation_id)
+            .map_err(Self::request_error)?;
+        self.execute_json(request).await
     }
 
     /// Fetch every persisted event for the conversation in chronological order.
@@ -189,7 +191,7 @@ impl OpenHandsServerClient {
     pub async fn list_all_events(
         &self,
         conversation_id: &str,
-    ) -> Result<Vec<serde_json::Value>, reqwest::Error> {
+    ) -> Result<Vec<serde_json::Value>, String> {
         // Hard cap on pages so a buggy server cursor that never returns
         // null cannot hang the WS-attach phase. 10 pages × 100 events =
         // 1000 events, far above what the SDK emits between
@@ -200,17 +202,11 @@ impl OpenHandsServerClient {
         let mut events = Vec::new();
         let mut page_id: Option<String> = None;
         for page in 0..MAX_BACKFILL_PAGES {
-            let response = self
-                .http
-                .execute(self.build_search_events_request(
-                    conversation_id,
-                    page_id.as_deref(),
-                    100,
-                )?)
-                .await?
-                .error_for_status()?
-                .json::<serde_json::Value>()
-                .await?;
+            let request = self
+                .build_search_events_request(conversation_id, page_id.as_deref(), 100)
+                .map_err(Self::request_error)?;
+            let response = self.execute(request).await?;
+            let response = Self::json_success(response).await?;
             if let Some(items) = response.get("items").and_then(|value| value.as_array()) {
                 events.reserve(items.len());
                 events.extend(items.iter().cloned());
@@ -243,6 +239,45 @@ impl OpenHandsServerClient {
             None => builder,
         }
     }
+
+    async fn execute(&self, request: Request) -> Result<Response, String> {
+        self.http
+            .execute(request)
+            .await
+            .map_err(|e| format!("request failed: {e}"))
+    }
+
+    async fn execute_json(&self, request: Request) -> Result<serde_json::Value, String> {
+        let response = self.execute(request).await?;
+        Self::json_success(response).await
+    }
+
+    async fn json_success(response: Response) -> Result<serde_json::Value, String> {
+        let response = Self::ensure_success(response).await?;
+        response
+            .json()
+            .await
+            .map_err(|e| format!("failed to decode OpenHands API response body: {e}"))
+    }
+
+    async fn ensure_success(response: Response) -> Result<Response, String> {
+        let status = response.status();
+        if status.is_success() {
+            return Ok(response);
+        }
+
+        let body = response.text().await.map_err(|e| {
+            format!("OpenHands API returned {status} and the response body could not be read: {e}")
+        })?;
+        let body = body.trim();
+        if body.is_empty() {
+            Err(format!(
+                "OpenHands API returned {status} with an empty response body"
+            ))
+        } else {
+            Err(format!("OpenHands API returned {status}: {body}"))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -251,6 +286,8 @@ mod tests {
     use super::*;
     use crate::agents::sidecar::SidecarConfig;
     use crate::types::{SecretString, WorkflowLlmConfig};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     fn base_config(workspace_root_dir: &str, workspace_skill_dir: &str) -> SidecarConfig {
         SidecarConfig {
@@ -527,5 +564,33 @@ mod tests {
         let query = next.url().query().unwrap_or_default();
         assert!(query.contains("limit=50"), "query was {query}");
         assert!(query.contains("page_id=page-2"), "query was {query}");
+    }
+
+    #[tokio::test]
+    async fn pause_conversation_surfaces_status_and_body_for_api_errors() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).await.unwrap();
+            stream
+                .write_all(
+                    b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 12\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\npause failed",
+                )
+                .await
+                .unwrap();
+        });
+
+        let client = OpenHandsServerClient::new(
+            format!("http://{addr}").parse().unwrap(),
+            Some("session-key".to_string()),
+        );
+
+        let error = client.pause_conversation("conv-1").await.unwrap_err();
+        assert!(error.contains("500 Internal Server Error"), "{error}");
+        assert!(error.contains("pause failed"), "{error}");
+
+        server.await.unwrap();
     }
 }
