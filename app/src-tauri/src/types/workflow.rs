@@ -65,10 +65,6 @@ pub struct SkillMasterRow {
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub argument_hint: Option<String>,
-    #[serde(default)]
     pub user_invocable: Option<bool>,
     #[serde(default)]
     pub disable_model_invocation: Option<bool>,
