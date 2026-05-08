@@ -46,14 +46,14 @@ Confirmed findings:
 - persisted Refine conversations do contain `SystemPromptEvent`
 - resume hydration code already restores transcript events and can build a
   setup segment before the first user message
-- a fresh Refine conversation is now immediately reloaded after preparation so
-  the setup/runtime row is available before the first user send
+- fresh Refine sessions are still prepared as persistent conversation shells,
+  but `start_refine_session` does not reload the prepared conversation
+  transcript before the first user send
 
 Implemented result:
 
-- resumed Refine history shows the setup block through transcript hydration
-- fresh Refine sessions surface setup-only transcript rows immediately after
-  `start_refine_session`
+- resumed Refine sessions surface setup/runtime rows through transcript
+  hydration
 - users no longer need to inspect raw conversation files to confirm setup
 
 ### 3. Refine should use one contextual prompt, not initial/follow-up split
@@ -66,28 +66,31 @@ Confirmed findings:
 
 Agreed prompt contract:
 
-- every dispatched Refine turn uses the same contextual prompt, including
-  resumed turns on an existing conversation
+- only the first dispatched Refine turn uses the full contextual prompt
+- later turns on the same conversation send the plain follow-up user message
 - the prompt no longer references stale file-based context instructions
 
 ### 4. Refine should surface the dispatched contextual task message
 
 Confirmed findings:
 
-- Refine now uses one contextual prompt for every dispatched turn
-- the generated prompt is passed into `send_refine_message(...)`
+- Refine now sends the contextual prompt only on the first dispatched turn
+- later follow-up turns send the plain user message on the same conversation
+- the generated first-turn prompt is passed into `send_refine_message(...)`
 - the visible `SystemPromptEvent` row is only the OpenHands runtime setup row
 - unlike Workflow, Refine does not visibly show the dispatched contextual
   `task_sent` / initial task message in the transcript
 
 Agreed UI contract:
 
-- Refine should match Workflow here
+- Refine should match Workflow here for the first dispatched task
 - the transcript should show:
   - runtime setup
   - the actual contextual task message sent to the agent
   - then tool activity / outputs
-- this should work for both fresh Refine runs and resumed Refine history
+- fresh Refine runs already do this
+- resumed Refine history still restores the initial dispatched task as a plain
+  user bubble rather than a `task_sent` row
 
 ## Implementation Tasks
 
@@ -142,7 +145,7 @@ Expected code areas:
 Acceptance criteria:
 
 - [x] resumed Refine conversations visibly show the restored setup/runtime row
-- [x] fresh Refine runs visibly show the live setup/runtime row
+- [ ] fresh Refine runs visibly show the live setup/runtime row
 - [x] no duplicate setup rows appear for the same run
 
 ### Task 3: Collapse Refine to One Contextual Prompt
@@ -150,7 +153,8 @@ Acceptance criteria:
 Scope:
 
 - remove the split between `refine-initial.txt` and `refine-followup.txt`
-- send the same contextual Refine prompt for every dispatched turn
+- send the contextual Refine prompt only for the first dispatched turn
+- send plain follow-up user messages for later turns on the same conversation
 - inline DB-backed user context, clarifications, and decisions into the prompt
 - stop referencing stale `user-context.md` instructions
 
@@ -165,8 +169,9 @@ Expected code areas:
 
 Acceptance criteria:
 
-- [x] Refine uses one contextual prompt contract on first turn and resumed
-      turns
+- [x] Refine uses the contextual prompt on the first dispatched turn
+- [x] Refine sends plain follow-up messages on later turns in the same
+      conversation
 - [x] prompt includes inline user context
 - [x] prompt includes inline clarifications JSON
 - [x] prompt includes inline decisions JSON
@@ -193,10 +198,10 @@ Expected code areas:
 Acceptance criteria:
 
 - [x] fresh Refine visibly shows the contextual dispatched task message
-- [x] resumed Refine visibly shows the restored contextual dispatched task row
+- [ ] resumed Refine visibly shows the restored contextual dispatched task row
 - [x] runtime setup remains a separate row
 - [x] no duplicate or contradictory first-turn rows appear
-- [x] tests cover the Refine-vs-Workflow visibility contract
+- [ ] tests cover the full Refine-vs-Workflow visibility contract
 
 ## Verification
 
