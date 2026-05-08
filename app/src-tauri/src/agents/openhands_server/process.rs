@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::fs;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -12,6 +13,7 @@ pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.19.1";
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
 const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
 const STDERR_TAIL_MAX_LINES: usize = 200;
+const OPENHANDS_SECRET_FILENAME: &str = "secret.key";
 
 /// Path to the uv binary bundled with the app, if present.
 /// `None` (outer) means not yet initialized.
@@ -49,14 +51,86 @@ pub(crate) fn compute_conversations_path(runtime_run_dir: &Path) -> PathBuf {
 fn apply_session_env(
     cmd: &mut tokio::process::Command,
     session_api_key: &str,
+    openhands_secret_key: &str,
     conversations_path: Option<&str>,
 ) {
     cmd.env("SESSION_API_KEY", session_api_key)
         .env("OH_SESSION_API_KEYS_0", session_api_key)
-        .env("OH_SECRET_KEY", session_api_key);
+        .env("OH_SECRET_KEY", openhands_secret_key);
     if let Some(p) = conversations_path {
         cmd.env("OH_CONVERSATIONS_PATH", p);
     }
+}
+
+fn workspace_root_for_runtime_run_dir(runtime_run_dir: &Path) -> Option<PathBuf> {
+    for ancestor in runtime_run_dir.ancestors() {
+        let Some(name) = ancestor.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if name == ".openhands" {
+            return ancestor.parent().map(Path::to_path_buf);
+        }
+        if name == "skills" {
+            return ancestor
+                .parent()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf);
+        }
+    }
+    None
+}
+
+fn openhands_secret_path(runtime_run_dir: &Path) -> Result<PathBuf, String> {
+    let workspace_root = workspace_root_for_runtime_run_dir(runtime_run_dir).ok_or_else(|| {
+        format!(
+            "Failed to determine workspace root from OpenHands runtime dir {}",
+            runtime_run_dir.display()
+        )
+    })?;
+    Ok(workspace_root
+        .join(".openhands")
+        .join(OPENHANDS_SECRET_FILENAME))
+}
+
+fn read_or_create_openhands_secret(runtime_run_dir: &Path) -> Result<String, String> {
+    let secret_path = openhands_secret_path(runtime_run_dir)?;
+    if let Ok(existing) = fs::read_to_string(&secret_path) {
+        let trimmed = existing.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+
+    let secret_parent = secret_path.parent().ok_or_else(|| {
+        format!(
+            "Failed to resolve OpenHands secret directory for {}",
+            secret_path.display()
+        )
+    })?;
+    fs::create_dir_all(secret_parent).map_err(|e| {
+        format!(
+            "Failed to create OpenHands secret directory {}: {e}",
+            secret_parent.display()
+        )
+    })?;
+
+    let secret = uuid::Uuid::new_v4().simple().to_string();
+    fs::write(&secret_path, format!("{secret}\n")).map_err(|e| {
+        format!(
+            "Failed to write OpenHands secret file {}: {e}",
+            secret_path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600));
+    }
+    log::info!(
+        "[openhands-agent-server] created stable OpenHands secret at {}",
+        secret_path.display()
+    );
+    Ok(secret)
 }
 
 #[derive(Debug, Clone)]
@@ -246,6 +320,7 @@ impl OpenHandsAgentServerProcess {
     async fn start_once(timeout: Duration, runtime_run_dir: &Path) -> Result<Self, String> {
         let port = select_random_local_port()?;
         let session_api_key = uuid::Uuid::new_v4().to_string();
+        let openhands_secret_key = read_or_create_openhands_secret(runtime_run_dir)?;
         let command = OpenHandsServerCommand::new(port);
         let runtime_dir = tempfile::Builder::new()
             .prefix("openhands-agent-server-")
@@ -259,13 +334,14 @@ impl OpenHandsAgentServerProcess {
         apply_session_env(
             &mut tokio_command,
             &session_api_key,
+            &openhands_secret_key,
             Some(&conversations_path_str),
         );
         log::info!(
             "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
             conversations_path_str
         );
-        let stderr_secrets = vec![session_api_key.clone()];
+        let stderr_secrets = vec![session_api_key.clone(), openhands_secret_key];
         let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(
             STDERR_TAIL_MAX_LINES,
         )));
@@ -545,7 +621,12 @@ mod tests {
     #[test]
     fn apply_session_env_sets_conversations_path_when_present() {
         let mut cmd = tokio::process::Command::new("/usr/bin/true");
-        apply_session_env(&mut cmd, "session-key-123", Some("/tmp/test/conversations"));
+        apply_session_env(
+            &mut cmd,
+            "session-key-123",
+            "stable-secret-456",
+            Some("/tmp/test/conversations"),
+        );
         let envs: Vec<(String, String)> = cmd
             .as_std()
             .get_envs()
@@ -560,12 +641,18 @@ mod tests {
             "expected OH_CONVERSATIONS_PATH env var; got {:?}",
             envs
         );
+        assert!(
+            envs.iter()
+                .any(|(k, v)| k == "OH_SECRET_KEY" && v == "stable-secret-456"),
+            "expected OH_SECRET_KEY env var; got {:?}",
+            envs
+        );
     }
 
     #[test]
     fn apply_session_env_omits_conversations_path_when_none() {
         let mut cmd = tokio::process::Command::new("/usr/bin/true");
-        apply_session_env(&mut cmd, "k", None);
+        apply_session_env(&mut cmd, "k", "s", None);
         let has_it = cmd
             .as_std()
             .get_envs()
@@ -573,6 +660,46 @@ mod tests {
         assert!(
             !has_it,
             "OH_CONVERSATIONS_PATH should be absent when path is None"
+        );
+    }
+
+    #[test]
+    fn workspace_root_for_runtime_run_dir_resolves_skill_workspace_root() {
+        let root = workspace_root_for_runtime_run_dir(Path::new(
+            "/tmp/workspace/default/skills/petstore-sales",
+        ))
+        .expect("workspace root");
+        assert_eq!(root, PathBuf::from("/tmp/workspace"));
+    }
+
+    #[test]
+    fn workspace_root_for_runtime_run_dir_resolves_throwaway_workspace_root() {
+        let root = workspace_root_for_runtime_run_dir(Path::new(
+            "/tmp/workspace/.openhands/throwaway/scope-review/run-1",
+        ))
+        .expect("workspace root");
+        assert_eq!(root, PathBuf::from("/tmp/workspace"));
+    }
+
+    #[test]
+    fn read_or_create_openhands_secret_uses_stable_workspace_root_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let runtime_run_dir = tmp.path().join("default/skills/petstore-sales");
+        fs::create_dir_all(&runtime_run_dir).expect("runtime dir");
+
+        let first = read_or_create_openhands_secret(&runtime_run_dir).expect("first secret");
+        let second = read_or_create_openhands_secret(&runtime_run_dir).expect("second secret");
+        assert_eq!(first, second);
+
+        let secret_path = tmp
+            .path()
+            .join(".openhands")
+            .join(OPENHANDS_SECRET_FILENAME);
+        assert_eq!(
+            fs::read_to_string(&secret_path)
+                .expect("secret file")
+                .trim(),
+            first
         );
     }
 }
