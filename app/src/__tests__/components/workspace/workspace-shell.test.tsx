@@ -67,16 +67,6 @@ vi.mock("@/hooks/use-agent-stream", () => ({}));
 vi.mock("@/lib/tauri", () => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),
   releaseLock: vi.fn().mockResolvedValue(undefined),
-  startRefineSession: vi.fn().mockResolvedValue({
-    conversation_id: "test-conversation",
-    skill_name: "test-skill",
-    created_at: new Date().toISOString(),
-    available_agents: ["skill-creator"],
-    restored_messages: [],
-    restored_transcript_events: [],
-  }),
-  pauseOpenHandsSession: vi.fn().mockResolvedValue(undefined),
-  closeRefineSession: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue({

@@ -97,7 +97,7 @@ const mockResponses: Record<string, unknown> = {
   create_workflow_session: undefined,
   get_locked_skills: [],
   // Refine page
-  start_refine_session: {
+  select_skill_openhands_session: {
     conversation_id: "e2e-refine-conversation-001",
     skill_name: "test-skill",
     created_at: new Date().toISOString(),
@@ -105,9 +105,11 @@ const mockResponses: Record<string, unknown> = {
     restored_messages: [],
     restored_transcript_events: [],
   },
-  send_refine_message: "refine-test-skill-e2e-001",
+  send_refine_message: {
+    agent_id: "refine-test-skill-e2e-001",
+    conversation_id: "e2e-refine-conversation-001",
+  },
   pause_openhands_session: undefined,
-  close_refine_session: undefined,
   list_refinable_skills: [
     {
       name: "test-skill",

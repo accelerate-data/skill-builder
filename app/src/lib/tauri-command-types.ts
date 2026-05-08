@@ -302,7 +302,7 @@ export interface TauriCommandMap {
     args: { skillName: string; workspacePath: string; pluginSlug: string };
     result: SkillFileContent[];
   };
-  start_refine_session: {
+  select_skill_openhands_session: {
     args: { skillName: string; pluginSlug: string; workspacePath: string };
     result: RefineSessionInfo;
   };
@@ -317,7 +317,6 @@ export interface TauriCommandMap {
     };
     result: void;
   };
-  close_refine_session: { args: { skillName: string; pluginSlug: string }; result: void };
   cancel_agent_run: { args: { agentId: string }; result: void };
   cancel_workflow_step: { args: { agentId: string }; result: void };
   send_refine_message: {

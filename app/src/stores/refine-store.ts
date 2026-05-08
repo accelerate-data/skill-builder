@@ -80,6 +80,7 @@ interface RefineState {
   // Actions
   setRefinableSkills: (skills: EditableSkill[]) => void;
   setLoadingSkills: (v: boolean) => void;
+  setSelectedSkill: (skill: EditableSkill | null) => void;
   selectSkill: (skill: EditableSkill | null) => void;
   setSkillFiles: (files: SkillFile[]) => void;
   setLoadingFiles: (v: boolean) => void;
@@ -148,6 +149,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setPendingInitialMessage: (msg) => set({ pendingInitialMessage: msg }),
   setRefinableSkills: (skills) => set({ refinableSkills: skills }),
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
+  setSelectedSkill: (skill) => set({ selectedSkill: skill }),
 
   selectSkill: (skill) => set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
 

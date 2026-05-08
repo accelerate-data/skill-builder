@@ -27,7 +27,7 @@ import {
   renameSkill,
   reviewSkillScope,
   sendRefineMessage,
-  startRefineSession,
+  selectSkillOpenHandsSession,
   setPluginUpgradeLock,
   updateSkillMetadata,
 } from "@/lib/tauri";
@@ -108,9 +108,9 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
       },
     },
     {
-      name: "startRefineSession",
-      call: () => startRefineSession("demo-skill", "/tmp/workspace", "analytics-pack"),
-      command: "start_refine_session",
+      name: "selectSkillOpenHandsSession",
+      call: () => selectSkillOpenHandsSession("demo-skill", "/tmp/workspace", "analytics-pack"),
+      command: "select_skill_openhands_session",
       args: {
         skillName: "demo-skill",
         pluginSlug: "analytics-pack",

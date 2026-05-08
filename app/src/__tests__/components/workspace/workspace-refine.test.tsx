@@ -2,19 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { WorkspaceRefine } from "@/components/workspace/workspace-refine";
 import type { SkillSummary } from "@/lib/types";
+import { toast } from "@/lib/toast";
 
 // --- Tauri mock ---
 const tauriMocks = vi.hoisted(() => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),
   releaseLock: vi.fn().mockResolvedValue(undefined),
-  startRefineSession: vi.fn().mockResolvedValue({
-    conversation_id: "conv-1",
-    available_agents: [],
-    restored_messages: [],
-    restored_transcript_events: [],
-  }),
-  pauseOpenHandsSession: vi.fn().mockResolvedValue(undefined),
-  closeRefineSession: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
   sendRefineMessage: vi.fn().mockResolvedValue({
     agent_id: "agent-1",
@@ -61,6 +54,7 @@ const refineStoreState = vi.hoisted(() => ({
   activeAgentId: null as string | null,
   conversationId: null as string | null,
   sessionExhausted: false,
+  setSelectedSkill: vi.fn(),
   selectSkill: vi.fn(),
   setLoadingFiles: vi.fn(),
   setSkillFiles: vi.fn(),
@@ -196,309 +190,17 @@ describe("WorkspaceRefine", () => {
     expect(screen.queryByTestId("skill-picker")).not.toBeInTheDocument();
   });
 
-  it("calls startRefineSession on mount with the skill name", async () => {
+  it("does not bootstrap an OpenHands session on mount", async () => {
     const skill = makeSkill("my-skill");
     await act(async () => {
       renderRefine(skill);
     });
 
     expect(agentStreamMocks.initAgentStream).toHaveBeenCalled();
-    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith(
-      "my-skill",
-      "/workspace",
-      "skills",
-    );
+    expect(tauriMocks.sendRefineMessage).not.toHaveBeenCalled();
   });
 
-  it("hydrates restored messages from the resumed refine session", async () => {
-    const skill = makeSkill("my-skill");
-    tauriMocks.startRefineSession.mockResolvedValueOnce({
-      conversation_id: "conv-1",
-      available_agents: ["skill-creator"],
-      restored_messages: [
-        { role: "user", content: "Tighten the intro" },
-        { role: "agent", content: "Updated the intro section." },
-      ],
-    });
-
-    await act(async () => {
-      renderRefine(skill);
-    });
-
-    expect(refineStoreState.setMessages).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "user",
-          userText: "Tighten the intro",
-        }),
-        expect.objectContaining({
-          role: "agent",
-          agentText: "Updated the intro section.",
-        }),
-      ]),
-    );
-  });
-
-  it("hydrates resumed transcript events into user and restored agent messages", async () => {
-    const skill = makeSkill("my-skill");
-    tauriMocks.startRefineSession.mockResolvedValueOnce({
-      conversation_id: "conv-1",
-      available_agents: ["skill-creator"],
-      restored_messages: [],
-      restored_transcript_events: [
-        {
-          event_class: "MessageEvent",
-          timestamp: 1710000000000,
-          event: {
-            source: "user",
-            message: "Tighten the intro",
-          },
-        },
-        {
-          event_class: "ActionEvent",
-          timestamp: 1710000001000,
-          tool_call_id: "tool-1",
-          event: {
-            action: {
-              tool: "terminal",
-              arguments: { command: "npm test" },
-              tool_call_id: "tool-1",
-            },
-            llm_response_id: "resp-1",
-          },
-        },
-        {
-          event_class: "ObservationEvent",
-          timestamp: 1710000002000,
-          tool_call_id: "tool-1",
-          event: {
-            observation: {
-              content: "Tests passed",
-              tool_call_id: "tool-1",
-            },
-          },
-        },
-        {
-          event_class: "MessageEvent",
-          timestamp: 1710000003000,
-          event: {
-            source: "agent",
-            message: "Updated the intro and verified it.",
-          },
-        },
-      ],
-    });
-
-    await act(async () => {
-      renderRefine(skill);
-    });
-
-    expect(agentStoreState.registerRun).toHaveBeenCalledWith(
-      "restored:conv-1:0",
-      "openhands",
-      "my-skill",
-      "refine",
-      "synthetic:refine:my-skill:conv-1:restored:0",
-    );
-    expect(agentStoreState.addConversationEvent).toHaveBeenCalledTimes(3);
-    expect(agentStoreState.addConversationEvent).not.toHaveBeenCalledWith(
-      "restored:conv-1:0",
-      expect.objectContaining({
-        eventClass: "MessageEvent",
-        event: expect.objectContaining({
-          source: "user",
-          message: "Tighten the intro",
-        }),
-      }),
-    );
-    expect(agentStoreState.completeRun).toHaveBeenCalledWith(
-      "restored:conv-1:0",
-      true,
-    );
-    expect(refineStoreState.setMessages).toHaveBeenCalledWith([
-      expect.objectContaining({
-        role: "user",
-        userText: "Tighten the intro",
-      }),
-      expect.objectContaining({
-        role: "agent",
-        agentId: "restored:conv-1:0",
-      }),
-    ]);
-  });
-
-  it("restores setup events before the first user turn", async () => {
-    const skill = makeSkill("my-skill");
-    tauriMocks.startRefineSession.mockResolvedValueOnce({
-      conversation_id: "conv-1",
-      available_agents: ["skill-creator"],
-      restored_messages: [],
-      restored_transcript_events: [
-        {
-          event_class: "SystemPromptEvent",
-          timestamp: 1710000000000,
-          event: {
-            system_prompt: { text: "You are the skill creator." },
-          },
-        },
-        {
-          event_class: "MessageEvent",
-          timestamp: 1710000001000,
-          event: {
-            source: "user",
-            message: "Tighten the intro",
-          },
-        },
-        {
-          event_class: "MessageEvent",
-          timestamp: 1710000002000,
-          event: {
-            source: "agent",
-            message: "Updated the intro section.",
-          },
-        },
-      ],
-    });
-
-    await act(async () => {
-      renderRefine(skill);
-    });
-
-    expect(agentStoreState.registerRun).toHaveBeenNthCalledWith(
-      1,
-      "restored:conv-1:0",
-      "openhands",
-      "my-skill",
-      "refine",
-      "synthetic:refine:my-skill:conv-1:restored:0",
-    );
-    expect(agentStoreState.registerRun).toHaveBeenNthCalledWith(
-      2,
-      "restored:conv-1:1",
-      "openhands",
-      "my-skill",
-      "refine",
-      "synthetic:refine:my-skill:conv-1:restored:1",
-    );
-    expect(agentStoreState.addConversationEvent).toHaveBeenNthCalledWith(
-      2,
-      "restored:conv-1:1",
-      expect.objectContaining({
-        eventClass: "MessageEvent",
-        event: expect.objectContaining({
-          source: "agent",
-          message: "Updated the intro section.",
-        }),
-      }),
-    );
-    expect(refineStoreState.setMessages).toHaveBeenCalledWith([
-      expect.objectContaining({
-        role: "agent",
-        agentId: "restored:conv-1:0",
-      }),
-      expect.objectContaining({
-        role: "user",
-        userText: "Tighten the intro",
-      }),
-      expect.objectContaining({
-        role: "agent",
-        agentId: "restored:conv-1:1",
-      }),
-    ]);
-  });
-
-  it("restores setup-only transcript events into an initial agent turn", async () => {
-    const skill = makeSkill("my-skill");
-    tauriMocks.startRefineSession.mockResolvedValueOnce({
-      conversation_id: "conv-1",
-      available_agents: ["skill-creator"],
-      restored_messages: [],
-      restored_transcript_events: [
-        {
-          event_class: "SystemPromptEvent",
-          timestamp: 1710000000000,
-          event: {
-            system_prompt: { text: "You are the skill creator." },
-          },
-        },
-      ],
-    });
-
-    await act(async () => {
-      renderRefine(skill);
-    });
-
-    expect(agentStoreState.registerRun).toHaveBeenCalledWith(
-      "restored:conv-1:0",
-      "openhands",
-      "my-skill",
-      "refine",
-      "synthetic:refine:my-skill:conv-1:restored:0",
-    );
-    expect(refineStoreState.setMessages).toHaveBeenCalledWith([
-      expect.objectContaining({
-        role: "agent",
-        agentId: "restored:conv-1:0",
-      }),
-    ]);
-  });
-
-  it("passes restored child subagent events through with parent tool links", async () => {
-    const skill = makeSkill("my-skill");
-    tauriMocks.startRefineSession.mockResolvedValueOnce({
-      conversation_id: "conv-1",
-      available_agents: ["skill-creator"],
-      restored_messages: [],
-      restored_transcript_events: [
-        {
-          event_class: "MessageEvent",
-          timestamp: 1710000000000,
-          event: {
-            source: "user",
-            message: "Find the MRR rationale",
-          },
-        },
-        {
-          event_class: "ActionEvent",
-          timestamp: 1710000001000,
-          tool_call_id: "parent-task-1",
-          event: {
-            tool_name: "task",
-            action: {
-              prompt: "Find the MRR rationale",
-            },
-          },
-        },
-        {
-          event_class: "ActionEvent",
-          timestamp: 1710000002000,
-          tool_call_id: "child-tool-1",
-          parent_tool_call_id: "parent-task-1",
-          event: {
-            tool_name: "terminal",
-            action: {
-              tool_call_id: "child-tool-1",
-              command: "rg MRR conversations",
-            },
-          },
-        },
-      ],
-    });
-
-    await act(async () => {
-      renderRefine(skill);
-    });
-
-    expect(agentStoreState.addConversationEvent).toHaveBeenCalledWith(
-      "restored:conv-1:0",
-      expect.objectContaining({
-        toolCallId: "child-tool-1",
-        parentToolCallId: "parent-task-1",
-      }),
-    );
-  });
-
-  it("calls closeRefineSession and startRefineSession when skill prop changes", async () => {
+  it("loads skill files when the skill prop changes", async () => {
     const skill1 = makeSkill("skill-a");
     const skill2 = makeSkill("skill-b");
 
@@ -507,25 +209,13 @@ describe("WorkspaceRefine", () => {
       ({ rerender } = renderRefine(skill1));
     });
 
-    // Simulate an active session for skill-a
-    refineStoreState.conversationId = "conv-1";
-    refineStoreState.selectedSkill = skill1;
-
-    tauriMocks.closeRefineSession.mockClear();
-    tauriMocks.startRefineSession.mockClear();
+    tauriMocks.getSkillContentForRefine.mockClear();
 
     await act(async () => {
       rerender!(<WorkspaceRefine skill={skill2} />);
     });
 
-    expect(tauriMocks.pauseOpenHandsSession).toHaveBeenCalledWith(
-      "skill-a",
-      "skills",
-      "conv-1",
-      null,
-    );
-    expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith("skill-a", "skills");
-    expect(tauriMocks.startRefineSession).toHaveBeenCalledWith(
+    expect(tauriMocks.getSkillContentForRefine).toHaveBeenCalledWith(
       "skill-b",
       "/workspace",
       "skills",
@@ -561,6 +251,26 @@ describe("WorkspaceRefine", () => {
     expect(refineStoreState.addAgentTurn).toHaveBeenCalledWith("agent-1");
   });
 
+  it("fails loudly when the selected skill has no conversation id", async () => {
+    const skill = makeSkill("my-skill");
+    refineStoreState.selectedSkill = skill;
+    refineStoreState.conversationId = null;
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    await act(async () => {
+      screen.getByTestId("chat-panel").click();
+    });
+
+    expect(tauriMocks.sendRefineMessage).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Refine session for 'my-skill' has no active conversation",
+      { duration: Infinity },
+    );
+  });
+
   it("does not handle Escape locally; layout owns the global pause shortcut", async () => {
     const skill = makeSkill("my-skill");
     refineStoreState.conversationId = "conv-esc";
@@ -579,7 +289,7 @@ describe("WorkspaceRefine", () => {
     expect(tauriMocks.cancelAgentRun).not.toHaveBeenCalled();
   });
 
-  it("calls closeRefineSession on unmount", async () => {
+  it("does not pause or close OpenHands on unmount", async () => {
     const skill = makeSkill("my-skill");
     refineStoreState.conversationId = "conv-unmount";
     refineStoreState.selectedSkill = skill;
@@ -589,23 +299,11 @@ describe("WorkspaceRefine", () => {
       ({ unmount } = renderRefine(skill));
     });
 
-    tauriMocks.closeRefineSession.mockClear();
-
     await act(async () => {
       unmount!();
     });
 
-    expect(tauriMocks.pauseOpenHandsSession).toHaveBeenCalledWith(
-      "my-skill",
-      "skills",
-      "conv-unmount",
-      null,
-    );
-    expect(tauriMocks.closeRefineSession).toHaveBeenCalledWith(
-      "my-skill",
-      "skills",
-    );
-    expect(agentStoreState.clearRunsBySource).toHaveBeenCalledWith("refine");
+    expect(tauriMocks.sendRefineMessage).not.toHaveBeenCalled();
   });
 
 });

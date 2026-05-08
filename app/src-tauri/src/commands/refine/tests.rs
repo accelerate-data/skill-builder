@@ -1017,7 +1017,7 @@ fn test_prepared_refine_session_switches_away_from_contextual_prompt_after_dispa
 }
 
 #[test]
-fn test_plan_refine_conversation_dispatch_starts_with_saved_conversation_on_first_turn() {
+fn test_plan_refine_conversation_dispatch_reuses_saved_conversation() {
     let session = RefineSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
@@ -1031,12 +1031,12 @@ fn test_plan_refine_conversation_dispatch_starts_with_saved_conversation_on_firs
     let plan = plan_refine_conversation_dispatch(&session, None).unwrap();
     assert_eq!(
         plan,
-        RefineConversationDispatchPlan::StartOrResume(Some("saved-conv".to_string()))
+        RefineConversationDispatchPlan::ReuseExisting("saved-conv".to_string())
     );
 }
 
 #[test]
-fn test_plan_refine_conversation_dispatch_starts_without_conversation_on_first_turn() {
+fn test_plan_refine_conversation_dispatch_requires_existing_conversation() {
     let session = RefineSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
@@ -1047,8 +1047,8 @@ fn test_plan_refine_conversation_dispatch_starts_without_conversation_on_first_t
         head_sha_at_start: None,
     };
 
-    let plan = plan_refine_conversation_dispatch(&session, Some("".to_string())).unwrap();
-    assert_eq!(plan, RefineConversationDispatchPlan::StartOrResume(None));
+    let error = plan_refine_conversation_dispatch(&session, Some("".to_string())).unwrap_err();
+    assert!(error.contains("has no active conversation"));
 }
 
 #[test]

@@ -416,8 +416,8 @@ export const getSkillContentAtPath = (path: string) =>
 export const getSkillContentForRefine = (skillName: string, workspacePath: string, pluginSlug: string) =>
   invokeCommand("get_skill_content_for_refine", { skillName, workspacePath, pluginSlug })
 
-export const startRefineSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("start_refine_session", { skillName, pluginSlug, workspacePath })
+export const selectSkillOpenHandsSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invokeCommand("select_skill_openhands_session", { skillName, pluginSlug, workspacePath })
 
 export const pauseOpenHandsSession = (
   skillName: string,
@@ -433,9 +433,6 @@ export const pauseOpenHandsSession = (
       agentId: agentId ?? null,
     },
   })
-
-export const closeRefineSession = (skillName: string, pluginSlug: string) =>
-  invokeCommand("close_refine_session", { skillName, pluginSlug })
 
 export const cancelAgentRun = (agentId: string) =>
   invokeCommand("cancel_agent_run", { agentId })
