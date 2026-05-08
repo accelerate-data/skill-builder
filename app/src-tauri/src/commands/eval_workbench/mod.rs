@@ -290,7 +290,12 @@ fn build_generation_sidecar_config(
     })
 }
 
-async fn run_define_eval_scenario_throwaway_turn<EnsureRuntimeDir, EnsureRuntimeDirFuture, RunTurn, RunTurnFuture>(
+async fn run_define_eval_scenario_throwaway_turn<
+    EnsureRuntimeDir,
+    EnsureRuntimeDirFuture,
+    RunTurn,
+    RunTurnFuture,
+>(
     plugin_slug: &str,
     skill_name: &str,
     prompt: &str,
@@ -302,7 +307,8 @@ where
     EnsureRuntimeDir: FnOnce(&std::path::Path) -> EnsureRuntimeDirFuture,
     EnsureRuntimeDirFuture: std::future::Future<Output = Result<(), String>>,
     RunTurn: FnOnce(OpenHandsThrowawayRunParams) -> RunTurnFuture,
-    RunTurnFuture: std::future::Future<Output = Result<openhands_server::OpenHandsThrowawayRun, String>>,
+    RunTurnFuture:
+        std::future::Future<Output = Result<openhands_server::OpenHandsThrowawayRun, String>>,
 {
     let run_id = uuid::Uuid::new_v4().to_string();
     let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
@@ -310,8 +316,10 @@ where
         "eval-workbench",
         &run_id,
     );
-    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(&runtime_run_dir))
-        .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
+    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
+        &runtime_run_dir,
+    ))
+    .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
     std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
     ensure_runtime_dir(&runtime_run_dir).await?;

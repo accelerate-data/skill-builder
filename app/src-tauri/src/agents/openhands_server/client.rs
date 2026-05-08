@@ -341,10 +341,21 @@ mod tests {
     }
 
     #[test]
-    fn conversation_payload_marks_opencode_go_models_as_openai_compatible_for_litellm() {
+    fn persistent_session_create_payload_omits_initial_message() {
+        let config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
+        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let payload =
+            StartConversationRequest::from_runtime_request_with_initial_message(&request, false);
+        let json = serde_json::to_value(payload).unwrap();
+
+        assert!(json.get("initial_message").is_none());
+    }
+
+    #[test]
+    fn conversation_payload_marks_opencode_zen_models_as_openai_compatible_for_litellm() {
         let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
         let llm = config.llm.as_mut().unwrap();
-        llm.model = "opencode-go/minimax-m2.7".to_string();
+        llm.model = "opencode/minimax-m2.7".to_string();
         llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
 
         let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
@@ -356,6 +367,20 @@ mod tests {
             json["agent"]["llm"]["base_url"],
             "https://opencode.ai/zen/go/v1"
         );
+    }
+
+    #[test]
+    fn conversation_payload_keeps_legacy_opencode_go_models_openai_compatible() {
+        let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
+        let llm = config.llm.as_mut().unwrap();
+        llm.model = "opencode-go/minimax-m2.7".to_string();
+        llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
+
+        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let payload = StartConversationRequest::from_runtime_request(&request);
+        let json = serde_json::to_value(payload).unwrap();
+
+        assert_eq!(json["agent"]["llm"]["model"], "openai/minimax-m2.7");
     }
 
     #[test]

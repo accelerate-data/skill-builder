@@ -2,9 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Complete the remaining OpenHands clean-break follow-up work by removing stale trigger-mode residue, normalizing remaining throwaway naming drift, and tightening persistent-session orchestration around one canonical persistent-turn runtime path.
+**Goal:** Complete the remaining OpenHands clean-break follow-up work by removing stale trigger-mode residue, normalizing remaining throwaway naming drift, and repairing the runtime session semantics so persistent create/resume and throwaway execution behave as distinct, coherent surfaces.
 
-**Architecture:** Keep the product-layer commands (`start_refine_session`, workflow step commands, eval workbench commands) intact, but simplify the runtime beneath them. The runtime should expose clear persistent-session and throwaway-session semantics, while the eval workbench and sidecar contracts stop carrying dead trigger-mode and one-shot terminology. Refine should keep explicit up-front prepare/resume semantics, but the actual persistent turn execution path should be unified beneath refine and workflow.
+**Architecture:** Keep the product-layer commands (`start_refine_session`, workflow step commands, eval workbench commands) intact, but simplify the runtime beneath them. The runtime should expose two explicit surfaces:
+- persistent session: create or resume a real conversation without mutating the caller's initial prompt semantics, then append later turns through a shared send path
+- throwaway session: create a fresh throwaway runtime directory and a fresh conversation with the real initial prompt, run once, return terminal state, and never consult saved persistent conversation ids
+
+Refine should keep explicit up-front prepare/resume semantics, but the runtime must stop erasing initial prompts during session creation and must stop leaking persistent bootstrap behavior into throwaway callers.
 
 **Tech Stack:** Rust (Tauri commands, runtime helpers, SQLite), TypeScript/React (typed Tauri wrappers and eval workbench UI contracts), Vitest, cargo test, Playwright E2E tags, markdownlint.
 
@@ -15,13 +19,20 @@
 ### Runtime and orchestration
 
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+  - Repair the shared session bootstrap contract so create/resume never silently strips the caller's initial prompt.
   - Extract or consolidate the canonical persistent-turn execution helper used by refine/workflow send paths.
+  - Split throwaway execution from persistent conversation resolution so throwaway runs never consult saved skill conversation ids.
   - Keep `prepare_openhands_session*`, `openhands_send_message`, `pause_openhands_session`, and `run_throwaway_openhands_session` as the durable runtime surface.
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
   - Keep up-front session preparation in `start_refine_session`.
+  - Stop persisting a synthetic blank bootstrap turn for fresh refine sessions.
   - Move send-time orchestration onto the shared persistent-turn path.
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
   - Route workflow persistent turns through the same canonical runtime send path used by refine.
+  - Stop depending on prompt stripping during session preparation.
+- Modify: `app/src-tauri/src/commands/api_validation.rs`
+  - Keep the settings model test on the throwaway surface.
+  - Make it rely on the repaired throwaway semantics instead of the persistent bootstrap path.
 - Modify: `app/src-tauri/src/commands/skill/scope_review.rs`
   - Confirm throwaway naming is used consistently in scope review config and call sites.
 
@@ -33,6 +44,7 @@
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
   - Stop importing or calling `run_openhands_one_shot` / `OpenHandsOneShotRunParams`.
   - Move scenario-suggestion / eval-generation paths to throwaway naming.
+  - Confirm eval never re-enters persistent saved-conversation resolution through the throwaway wrapper.
 - Modify: `app/src-tauri/src/types/mod.rs`
   - Keep any shared config defaults aligned with the renamed runtime terminology if needed.
 
@@ -57,6 +69,7 @@
 
 - Modify: `app/src-tauri/src/commands/refine/tests.rs`
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+- Modify: `app/src-tauri/src/commands/api_validation.rs` test module
 - Modify: `app/src-tauri/src/db/eval_workbench.rs` test module
 - Modify: `app/src/__tests__/lib/eval-workbench-tauri.test.ts`
 - Modify: `app/src/__tests__/lib/runtime-api-contract.test.ts`
@@ -85,6 +98,30 @@ This plan explicitly covers all three requested issue areas:
    - unify refine/workflow send-time orchestration beneath one canonical persistent-turn helper
    - tighten runtime layering without reintroducing a synthetic product/session abstraction
 
+## Session-Semantics Defects This Plan Must Eliminate
+
+The implementation must explicitly fix these five live defects:
+
+1. **Persistent create/resume strips the initial prompt**
+   - `prepare_openhands_session` currently creates new conversations through a path that clears the initial prompt.
+   - This breaks the semantics of session creation and muddies resume behavior.
+
+2. **Throwaway execution reuses persistent bootstrap behavior**
+   - `run_throwaway_openhands_session` currently enters the runtime as `ResumeOrCreate`, so it inherits persistent conversation bootstrap logic.
+   - Throwaway must create a fresh conversation with the real initial prompt.
+
+3. **Workflow depends on prepare+send split to deliver the first real prompt**
+   - The workflow surface currently works only because the shared runtime clears the create-time prompt and later appends the real turn.
+   - Workflow must not depend on prompt stripping.
+
+4. **Refine persists a synthetic blank bootstrap turn**
+   - Fresh refine sessions currently store a fabricated initial prompt generated from `user_message: \"\"`.
+   - Refine should either create a real initial prompt intentionally or resume without manufacturing a blank turn.
+
+5. **Eval and settings throwaway callers inherit the broken throwaway wrapper**
+   - Eval workbench scenario suggestion and the settings model test both rely on `run_throwaway_openhands_session`.
+   - Once repaired, throwaway callers must never consult saved persistent conversation ids and must preserve their real first prompt.
+
 ## Task 1: Write Contract Coverage Tests First
 
 **Files:**
@@ -96,16 +133,18 @@ This plan explicitly covers all three requested issue areas:
 - [ ] **Step 1: Add a failing Rust test for the persistent-turn helper shape**
 
 Add or update tests so they assert:
-- refine still prepares a conversation during `start_refine_session`
-- workflow persistent turns do not depend on a separate product-only send path
+- persistent create/resume does not clear the initial prompt for a newly created conversation
+- throwaway execution preserves the initial prompt and does not attempt saved-conversation reuse
+- refine still prepares a conversation during `start_refine_session`, but does not persist a synthetic blank bootstrap turn
+- workflow persistent turns do not depend on a separate product-only send path to compensate for a stripped create-time prompt
 - the runtime layer exposes the persistent-turn path through `openhands_send_message` rather than duplicated orchestration
 
 ```rust
 #[test]
-fn workflow_and_refine_share_persistent_turn_runtime_path_contract() {
-    // Assert against the common helper entry point or shared resolution/send policy
-    // after extraction so future drift is caught in one place.
-}
+fn persistent_create_preserves_initial_prompt_contract() {}
+
+#[test]
+fn throwaway_run_uses_fresh_conversation_with_real_initial_prompt() {}
 ```
 
 - [ ] **Step 2: Add failing frontend contract assertions for performance-only eval workbench**
@@ -113,6 +152,7 @@ fn workflow_and_refine_share_persistent_turn_runtime_path_contract() {
 Extend the contract tests so they assert:
 - no trigger-mode command or frontend mode remains in the live eval workbench contract
 - eval workbench uses throwaway runtime naming at its backend boundary
+- the settings model-test command remains a throwaway runtime caller rather than a config-only validator
 
 ```ts
 it("keeps eval workbench performance-only with no trigger contract", () => {
@@ -140,6 +180,7 @@ Expected:
 git add \
   app/src-tauri/src/commands/refine/tests.rs \
   app/src-tauri/src/commands/workflow/tests.rs \
+  app/src-tauri/src/commands/api_validation.rs \
   app/src/__tests__/lib/runtime-api-contract.test.ts \
   app/src/__tests__/lib/eval-workbench-tauri.test.ts
 git commit -m "test: codify clean-break follow-up contracts"
@@ -321,11 +362,22 @@ git commit -m "refactor: rename remaining one-shot runtime helpers"
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/api_validation.rs`
 - Modify: `app/src-tauri/src/commands/refine/tests.rs`
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+- Modify: `app/src-tauri/src/commands/api_validation.rs` test module
 - Modify: `docs/design/openhands-runtime-model/send-turn-semantics.md`
 
-- [ ] **Step 1: Extract the shared persistent-turn execution helper**
+- [ ] **Step 1: Repair the core create/resume and throwaway session semantics**
+
+Adjust the runtime contract so:
+- persistent create/resume never clears the caller's initial prompt implicitly
+- throwaway execution always creates a fresh conversation with the real first prompt
+- throwaway execution never enters saved persistent conversation resolution
+
+If a blank-prepare path is still needed anywhere, make it an explicitly different internal API rather than the default behavior of `prepare_openhands_session`.
+
+- [ ] **Step 2: Extract the shared persistent-turn execution helper**
 
 Create or consolidate one internal helper that owns:
 - existing conversation validation
@@ -349,56 +401,69 @@ async fn run_persistent_turn(
 
 The exact name can differ, but there should be one canonical path.
 
-- [ ] **Step 2: Keep refine bootstrap explicit, but route sends through the canonical helper**
+- [ ] **Step 3: Keep refine bootstrap explicit, but stop persisting a blank synthetic bootstrap turn**
 
 Refine should continue to:
 - prepare/resume up front in `start_refine_session`
 - store the prepared conversation id in the session state
 
-But `send_refine_message` should no longer own bespoke persistent-turn orchestration beyond product-specific prompt/session validation.
+But it should not create a fresh conversation from a prompt built with `user_message: ""` unless that prompt is intentionally the real first message. `send_refine_message` should no longer own bespoke persistent-turn orchestration beyond product-specific prompt/session validation.
 
-- [ ] **Step 3: Route workflow persistent turns through the same canonical helper**
+- [ ] **Step 4: Route workflow persistent turns through the same canonical helper without relying on prompt stripping**
 
 Workflow can keep its product-specific command shape, but the actual send/observe path should delegate to the same runtime helper used by refine sends.
 
-- [ ] **Step 4: Add regression tests for the shared orchestration contract**
+- [ ] **Step 5: Keep eval workbench and settings on the repaired throwaway surface**
+
+After the runtime fix:
+- eval scenario suggestion must still run from `{workspace}/.openhands/throwaway/{surface}/{run_id}/`
+- settings model test must still run from a throwaway runtime dir
+- neither surface may consult or mutate saved persistent conversation ids
+
+- [ ] **Step 6: Add regression tests for the shared orchestration contract**
 
 Cover at least:
-- refine preserves explicit prepare/resume semantics
+- refine preserves explicit prepare/resume semantics without a fabricated blank first turn
 - workflow still dispatches correctly
 - both flows use the same runtime send semantics
+- throwaway callers preserve their initial prompt and stay isolated from saved persistent conversation ids
 - conversation compatibility mismatches still fail loudly
 
 Example focused assertions:
 
 ```rust
 #[test]
-fn refine_bootstraps_but_runtime_send_path_is_shared() {}
+fn refine_bootstraps_without_synthetic_blank_turn() {}
 
 #[test]
 fn workflow_persistent_turn_uses_shared_runtime_send_path() {}
+
+#[test]
+fn settings_model_test_uses_isolated_throwaway_runtime_contract() {}
 ```
 
-- [ ] **Step 5: Run focused runtime tests**
+- [ ] **Step 7: Run focused runtime tests**
 
 Run:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::api_validation
 cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server
 ```
 
 Expected:
 - runtime/refine/workflow tests all pass
 
-- [ ] **Step 6: Commit the orchestration tightening**
+- [ ] **Step 8: Commit the orchestration tightening**
 
 ```bash
 git add \
   app/src-tauri/src/agents/openhands_server/mod.rs \
   app/src-tauri/src/commands/refine/mod.rs \
   app/src-tauri/src/commands/workflow/runtime.rs \
+  app/src-tauri/src/commands/api_validation.rs \
   app/src-tauri/src/commands/refine/tests.rs \
   app/src-tauri/src/commands/workflow/tests.rs \
   docs/design/openhands-runtime-model/send-turn-semantics.md
@@ -490,10 +555,11 @@ git commit -m "chore: finalize clean-break runtime follow-ups"
   - trigger-mode residue removal is covered in Task 2
   - throwaway naming cleanup is covered in Task 3
   - persistent-session orchestration tightening is covered in Task 4
+  - all five identified session-semantics defects are explicitly called out and assigned to Task 4 coverage
 - Placeholder scan:
   - no `TBD` / `TODO` placeholders remain
   - each workstream has explicit files, commands, and commit checkpoints
 - Type consistency:
   - runtime naming is expressed as persistent vs throwaway
   - refine keeps explicit prepare semantics
-  - shared send-path unification is scoped to send-time orchestration, not bootstrap
+  - shared send-path unification is scoped to send-time orchestration, while bootstrap semantics are repaired explicitly instead of being left implicit

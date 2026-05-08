@@ -243,11 +243,11 @@ async fn dispatch_persistent_skill_turn(
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,
         config,
-        |config| Box::pin(crate::agents::openhands_server::prepare_openhands_session(
-            app,
-            config,
-            None,
-        )),
+        |config| {
+            Box::pin(crate::agents::openhands_server::prepare_openhands_session(
+                app, config, None,
+            ))
+        },
         |agent_id, config, conversation_id| {
             let agent_id = agent_id.to_string();
             Box::pin(async move {
@@ -265,7 +265,12 @@ async fn dispatch_persistent_skill_turn(
     .await
 }
 
-pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<Prepare, PrepareFuture, Send, SendFuture>(
+pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<
+    Prepare,
+    PrepareFuture,
+    Send,
+    SendFuture,
+>(
     agent_id: &str,
     config: SidecarConfig,
     prepare: Prepare,

@@ -1,10 +1,179 @@
+use std::time::Duration;
+
+use tauri::State;
+
+use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
+use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, SidecarConfig};
+use crate::commands::workflow::deploy::ensure_openhands_runtime_dir;
+use crate::db::Db;
 use crate::types::ModelSettings;
 
+const MODEL_CONNECTION_TEST_PROMPT: &str = "Reply with exactly OK and nothing else.";
+const MODEL_CONNECTION_TEST_SURFACE: &str = "model-connection-test";
+const MODEL_CONNECTION_TEST_TIMEOUT_SECS: u64 = 45;
+
 #[tauri::command]
-pub async fn test_model_connection(settings: ModelSettings) -> Result<bool, String> {
+pub async fn test_model_connection(
+    app: tauri::AppHandle,
+    db: State<'_, Db>,
+    settings: ModelSettings,
+) -> Result<bool, String> {
     log::info!("[test_model_connection]");
-    settings
-        .selected_workflow_llm()
-        .map(|_| true)
-        .map_err(|err| err.to_string())
+
+    let llm = settings.selected_workflow_llm()?;
+    let workspace_path = read_initialized_workspace_path(&db)?;
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
+        std::path::Path::new(&workspace_path),
+        MODEL_CONNECTION_TEST_SURFACE,
+        &run_id,
+    );
+
+    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
+        &runtime_run_dir,
+    ))
+    .map_err(|e| format!("Failed to create model-test conversations dir: {e}"))?;
+    std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
+        .map_err(|e| format!("Failed to create model-test logs dir: {e}"))?;
+    ensure_openhands_runtime_dir(&app, &runtime_run_dir).await?;
+
+    let timeout = Duration::from_secs(
+        u64::from(
+            llm.timeout_seconds
+                .unwrap_or(MODEL_CONNECTION_TEST_TIMEOUT_SECS as u32),
+        )
+        .clamp(5, MODEL_CONNECTION_TEST_TIMEOUT_SECS),
+    );
+    let config = build_model_connection_test_config(&workspace_path, &runtime_run_dir, llm);
+    let run = openhands_server::run_throwaway_openhands_session(
+        &app,
+        OpenHandsThrowawayRunParams {
+            agent_id: format!("model-connection-test-{}", uuid::Uuid::new_v4()),
+            config,
+            timeout,
+        },
+    )
+    .await?;
+
+    ensure_model_connection_succeeded(&run.conversation_state)?;
+    Ok(true)
+}
+
+fn read_initialized_workspace_path(db: &Db) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
+    let workspace_path = settings
+        .workspace_path
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Workspace path not configured".to_string())?;
+    if !std::path::Path::new(&workspace_path).is_dir() {
+        return Err(format!(
+            "Workspace not initialized: {}. Restart Skill Builder to initialize the workspace.",
+            workspace_path
+        ));
+    }
+    let workspace = std::path::Path::new(&workspace_path);
+    let skill_creator_agent =
+        crate::skill_paths::workspace_agent_files_dir(workspace).join("skill-creator.md");
+    let skills_dir = crate::skill_paths::workspace_agent_skills_dir(workspace);
+    if !skill_creator_agent.is_file() || !skills_dir.is_dir() {
+        return Err(format!(
+            "Workspace runtime artifacts are not initialized for {}. Restart Skill Builder to initialize the workspace.",
+            workspace_path
+        ));
+    }
+    Ok(workspace_path)
+}
+
+fn build_model_connection_test_config(
+    workspace_path: &str,
+    runtime_run_dir: &std::path::Path,
+    llm: crate::types::WorkflowLlmConfig,
+) -> SidecarConfig {
+    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+        prompt: MODEL_CONNECTION_TEST_PROMPT.to_string(),
+        llm,
+        workspace_root_dir: workspace_path.replace('\\', "/"),
+        workspace_run_dir: runtime_run_dir.to_string_lossy().replace('\\', "/"),
+        mode: Some(OpenHandsRuntimeMode::Throwaway),
+        agent_name: "settings-model-test".to_string(),
+        task_kind: Some("settings.model_connection_test".to_string()),
+        user_message_suffix: None,
+        allowed_tools: Vec::new(),
+        max_turns: 1,
+        output_format: None,
+        skill_name: None,
+        step_id: Some(-40),
+        run_source: Some("test".to_string()),
+        plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+    })
+}
+
+fn ensure_model_connection_succeeded(state: &serde_json::Value) -> Result<(), String> {
+    if state.get("type").and_then(|value| value.as_str()) != Some("conversation_state") {
+        return Err("Model test did not return an OpenHands conversation_state".to_string());
+    }
+
+    match state.get("status").and_then(|value| value.as_str()) {
+        Some("completed") => Ok(()),
+        Some("error") | Some("cancelled") => Err(extract_terminal_error_detail(state)
+            .unwrap_or_else(|| "OpenHands model test failed".to_string())),
+        Some(status) => Err(format!(
+            "OpenHands model test did not reach a completed state: {status}"
+        )),
+        None => Err("Model test conversation_state missing status".to_string()),
+    }
+}
+
+fn extract_terminal_error_detail(state: &serde_json::Value) -> Option<String> {
+    [
+        "/error_detail",
+        "/errorDetail",
+        "/result_text",
+        "/resultText",
+        "/last_error",
+        "/lastError",
+    ]
+    .into_iter()
+    .find_map(|pointer| {
+        state
+            .pointer(pointer)
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_connection_uses_terminal_error_detail() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "error",
+            "error_detail": "Subscription quota exceeded.",
+        });
+
+        let err = ensure_model_connection_succeeded(&state).unwrap_err();
+        assert_eq!(err, "Subscription quota exceeded.");
+    }
+
+    #[test]
+    fn model_connection_requires_completed_terminal_state() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "running",
+        });
+
+        let err = ensure_model_connection_succeeded(&state).unwrap_err();
+        assert_eq!(
+            err,
+            "OpenHands model test did not reach a completed state: running"
+        );
+    }
 }

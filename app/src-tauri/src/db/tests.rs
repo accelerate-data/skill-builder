@@ -411,14 +411,18 @@ fn test_scenarios_migration_flattens_legacy_trigger_rows_to_performance() {
     run_scenarios_migration(&conn).unwrap();
 
     let migrated_mode: String = conn
-        .query_row("SELECT mode FROM scenarios WHERE id = 'prompt-set-1'", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT mode FROM scenarios WHERE id = 'prompt-set-1'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     let migrated_prompt: String = conn
-        .query_row("SELECT prompt FROM scenarios WHERE id = 'prompt-set-1'", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT prompt FROM scenarios WHERE id = 'prompt-set-1'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     let migrated_assertion: String = conn
         .query_row(

@@ -704,8 +704,14 @@ fn test_refine_prompt_file_targeting() {
 
 #[test]
 fn test_refine_prompt_no_file_constraint_when_empty() {
-    let system_prompt =
-        build_refine_prompt("s", "/ws", "/sk", "edit freely", None, default_refine_prompt_context());
+    let system_prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "edit freely",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(!system_prompt.contains("Only edit these files"));
 }
 
@@ -724,8 +730,14 @@ fn test_refine_prompt_includes_user_message() {
 
 #[test]
 fn test_refine_prompt_includes_derived_paths() {
-    let system_prompt =
-        build_refine_prompt("s", "/ws", "/sk", "edit", None, default_refine_prompt_context());
+    let system_prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "edit",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
     assert!(!system_prompt.contains("The context directory is:"));
@@ -740,7 +752,8 @@ fn test_refine_prompt_includes_inline_user_context_clarifications_and_decisions(
         "edit",
         None,
         RefinePromptContext {
-            user_context_block: "## User Context\n**Industry**: Healthcare\n**Function**: Analytics",
+            user_context_block:
+                "## User Context\n**Industry**: Healthcare\n**Function**: Analytics",
             clarifications_json: r#"{ "sections": [{ "id": "Q1" }] }"#,
             decisions_json: r#"{ "decisions": [{ "id": "D1" }] }"#,
         },
@@ -753,8 +766,14 @@ fn test_refine_prompt_includes_inline_user_context_clarifications_and_decisions(
 
 #[test]
 fn test_refine_prompt_no_longer_points_to_user_context_file() {
-    let system_prompt =
-        build_refine_prompt("s", "/ws", "/sk", "edit", None, default_refine_prompt_context());
+    let system_prompt = build_refine_prompt(
+        "s",
+        "/ws",
+        "/sk",
+        "edit",
+        None,
+        default_refine_prompt_context(),
+    );
     assert!(!system_prompt.contains("user-context.md"));
 }
 

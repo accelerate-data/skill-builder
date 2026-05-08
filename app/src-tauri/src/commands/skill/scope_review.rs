@@ -1,7 +1,5 @@
 use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
-use crate::agents::sidecar::{
-    OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, SidecarConfig,
-};
+use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, SidecarConfig};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 

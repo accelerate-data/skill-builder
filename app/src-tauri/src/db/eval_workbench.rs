@@ -96,12 +96,7 @@ pub fn save_scenario(conn: &mut Connection, input: SaveScenario) -> Result<Scena
         tx.execute(
             "INSERT INTO assertions (id, scenario_id, assertion, sort_order)
              VALUES (?1, ?2, ?3, ?4)",
-            params![
-                assertion_id,
-                scenario_id,
-                assertion,
-                index as i64,
-            ],
+            params![assertion_id, scenario_id, assertion, index as i64,],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -147,8 +142,7 @@ pub fn list_scenarios(
     drop(stmt);
 
     let mut scenarios = Vec::with_capacity(rows.len());
-    for (id, pslug, sname, name, mode_str, prompt, sort_order, created_at, updated_at) in rows
-    {
+    for (id, pslug, sname, name, mode_str, prompt, sort_order, created_at, updated_at) in rows {
         let assertions = read_assertions(conn, &id)?;
         scenarios.push(Scenario {
             id,
@@ -198,7 +192,9 @@ pub fn read_scenario(
         )
         .map_err(|e| e.to_string())?;
 
-    let mut rows = stmt.query(params![plugin_slug, skill_name, name]).map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query(params![plugin_slug, skill_name, name])
+        .map_err(|e| e.to_string())?;
     let Some(row) = rows.next().map_err(|e| e.to_string())? else {
         return Ok(None);
     };
@@ -365,7 +361,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(updated.prompt, "Updated prompt");
-        assert_eq!(updated.assertions, vec!["new assertion 1", "new assertion 2"]);
+        assert_eq!(
+            updated.assertions,
+            vec!["new assertion 1", "new assertion 2"]
+        );
 
         let read = read_scenario(&conn, "skills", "forecast", "Update me")
             .unwrap()

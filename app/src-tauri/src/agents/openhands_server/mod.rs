@@ -149,6 +149,7 @@ pub(crate) fn conversation_matches_request(
 enum OpenHandsConversationSelection {
     ResumeOrCreate,
     SendExistingOnly,
+    CreateFresh,
 }
 
 enum OpenHandsRuntimeEvent {
@@ -196,6 +197,7 @@ struct OpenHandsConversationTask {
     client: OpenHandsServerClient,
     conversation_id: String,
     prompt: String,
+    prompt_delivery: PromptDelivery,
     websocket_url: String,
     session_api_key: String,
     summary_context: OpenHandsRunSummaryContext,
@@ -204,6 +206,12 @@ struct OpenHandsConversationTask {
     /// backfill (prepared blank sends), while others need only the delta after
     /// a pre-send watermark (non-empty SendExistingOnly turns such as Refine).
     event_recovery: EventRecoveryMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptDelivery {
+    ViaSendEvent,
+    IncludedInConversationCreate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -602,17 +610,6 @@ fn record_subagent_launch(
     }
 }
 
-fn session_init_request(
-    request: &OpenHandsRuntimeRequest,
-    preserve_initial_prompt: bool,
-) -> OpenHandsRuntimeRequest {
-    let mut session_request = request.clone();
-    if !preserve_initial_prompt {
-        session_request.prompt.clear();
-    }
-    session_request
-}
-
 fn resolve_saved_conversation_outcome(
     saved_conversation_id: Option<&str>,
     selection: OpenHandsConversationSelection,
@@ -666,6 +663,11 @@ fn resolve_saved_conversation_outcome(
                 reason: OpenHandsSessionCreateReason::New,
             }
         }
+        (_, OpenHandsConversationSelection::CreateFresh, _) => {
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::New,
+            }
+        }
         (None, OpenHandsConversationSelection::SendExistingOnly, None) => {
             OpenHandsConversationResolution::Error(
                 OpenHandsRuntimeError::MissingExistingConversation,
@@ -703,9 +705,7 @@ fn event_watermark_key(raw: &serde_json::Value) -> Option<String> {
         .map(|serialized| format!("raw:{serialized}"))
 }
 
-fn collect_event_watermark_keys(
-    events: &[serde_json::Value],
-) -> std::collections::HashSet<String> {
+fn collect_event_watermark_keys(events: &[serde_json::Value]) -> std::collections::HashSet<String> {
     events
         .iter()
         .filter_map(event_watermark_key)
@@ -721,10 +721,7 @@ fn filter_events_after_watermark(
     };
     events
         .into_iter()
-        .filter(|raw| {
-            event_watermark_key(raw)
-                .is_none_or(|key| !known_event_keys.contains(&key))
-        })
+        .filter(|raw| event_watermark_key(raw).is_none_or(|key| !known_event_keys.contains(&key)))
         .collect()
 }
 
@@ -764,13 +761,15 @@ fn log_session_resolution(
 async fn create_prepared_conversation_for_request(
     client: &OpenHandsServerClient,
     request: &OpenHandsRuntimeRequest,
-    preserve_initial_prompt: bool,
+    include_initial_message: bool,
 ) -> Result<String, String> {
-    let session_request = session_init_request(request, preserve_initial_prompt);
     let conversation = client
-        .create_conversation(&StartConversationRequest::from_runtime_request(
-            &session_request,
-        ))
+        .create_conversation(
+            &StartConversationRequest::from_runtime_request_with_initial_message(
+                request,
+                include_initial_message,
+            ),
+        )
         .await
         .map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -787,7 +786,7 @@ async fn resolve_openhands_conversation_id(
     request: &OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
-    preserve_initial_prompt: bool,
+    include_initial_message_on_create: bool,
 ) -> Result<String, String> {
     let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
@@ -801,7 +800,10 @@ async fn resolve_openhands_conversation_id(
         Some(server.session_api_key),
     );
 
-    let saved_conversation_id = if let Some(conversation_id) = conversation_id {
+    let saved_conversation_id = if matches!(selection, OpenHandsConversationSelection::CreateFresh)
+    {
+        conversation_id
+    } else if let Some(conversation_id) = conversation_id {
         Some(conversation_id)
     } else {
         load_saved_skill_conversation_id(app, request)?
@@ -835,7 +837,12 @@ async fn resolve_openhands_conversation_id(
     match resolution {
         OpenHandsConversationResolution::Reuse { conversation_id } => Ok(conversation_id),
         OpenHandsConversationResolution::Create { .. } => {
-            create_prepared_conversation_for_request(&client, request, preserve_initial_prompt).await
+            create_prepared_conversation_for_request(
+                &client,
+                request,
+                include_initial_message_on_create,
+            )
+            .await
         }
         OpenHandsConversationResolution::Error(error) => Err(error.to_string()),
     }
@@ -846,22 +853,13 @@ pub async fn prepare_openhands_session(
     config: SidecarConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
-    prepare_openhands_session_internal(app, config, conversation_id, false).await
-}
-
-pub async fn prepare_openhands_session_with_initial_message(
-    app: &tauri::AppHandle,
-    config: SidecarConfig,
-    conversation_id: Option<String>,
-) -> Result<String, String> {
-    prepare_openhands_session_internal(app, config, conversation_id, true).await
+    prepare_openhands_session_internal(app, config, conversation_id).await
 }
 
 async fn prepare_openhands_session_internal(
     app: &tauri::AppHandle,
     config: SidecarConfig,
     conversation_id: Option<String>,
-    preserve_initial_prompt: bool,
 ) -> Result<String, String> {
     let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
     let conversation_id = resolve_openhands_conversation_id(
@@ -869,7 +867,7 @@ async fn prepare_openhands_session_internal(
         &request,
         conversation_id,
         OpenHandsConversationSelection::ResumeOrCreate,
-        preserve_initial_prompt,
+        false,
     )
     .await?;
     save_skill_conversation_id(app, &request, &conversation_id)?;
@@ -890,6 +888,7 @@ pub async fn openhands_send_message(
         request,
         Some(conversation_id),
         OpenHandsConversationSelection::SendExistingOnly,
+        PromptDelivery::ViaSendEvent,
     )
     .await
 }
@@ -971,7 +970,8 @@ pub async fn run_throwaway_openhands_session(
         config,
         request,
         None,
-        OpenHandsConversationSelection::ResumeOrCreate,
+        OpenHandsConversationSelection::CreateFresh,
+        PromptDelivery::IncludedInConversationCreate,
     )
     .await
     .inspect_err(|_| {
@@ -1049,9 +1049,19 @@ async fn dispatch_openhands_turn_with_request(
     request: OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
+    prompt_delivery: PromptDelivery,
 ) -> Result<String, String> {
-    let conversation_id =
-        resolve_openhands_conversation_id(app, &request, conversation_id, selection, false).await?;
+    let conversation_id = resolve_openhands_conversation_id(
+        app,
+        &request,
+        conversation_id,
+        selection,
+        matches!(
+            prompt_delivery,
+            PromptDelivery::IncludedInConversationCreate
+        ),
+    )
+    .await?;
     let server = ensure_agent_server(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
         server
@@ -1083,6 +1093,7 @@ async fn dispatch_openhands_turn_with_request(
             client,
             conversation_id: conversation_id_clone,
             prompt: request.prompt.clone(),
+            prompt_delivery,
             websocket_url,
             session_api_key,
             summary_context,
@@ -1149,7 +1160,9 @@ async fn run_conversation_task_inner(
         None
     };
 
-    send_user_message(&task.client, &task.conversation_id, &task.prompt).await?;
+    if matches!(task.prompt_delivery, PromptDelivery::ViaSendEvent) {
+        send_user_message(&task.client, &task.conversation_id, &task.prompt).await?;
+    }
 
     match task.event_recovery {
         EventRecoveryMode::None => {}
@@ -1197,10 +1210,9 @@ async fn run_conversation_task_inner(
             }
             match task.client.list_all_events(&task.conversation_id).await {
                 Ok(events) => {
-                    for raw in filter_events_after_watermark(
-                        known_event_keys_before_send.as_ref(),
-                        events,
-                    ) {
+                    for raw in
+                        filter_events_after_watermark(known_event_keys_before_send.as_ref(), events)
+                    {
                         if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
                             if !seen_event_ids.insert(id.to_string()) {
                                 continue;
@@ -1243,6 +1255,7 @@ async fn run_conversation_task_inner(
             client: task.client.clone(),
             conversation_id: task.conversation_id.clone(),
             prompt: task.prompt.clone(),
+            prompt_delivery: task.prompt_delivery,
             websocket_url: task.websocket_url.clone(),
             session_api_key: task.session_api_key.clone(),
             summary_context: task.summary_context.clone(),
@@ -2165,7 +2178,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_session_init_request_clears_prompt_but_keeps_resume_contract() {
+    fn persistent_session_create_preserves_prompt_and_keeps_resume_contract() {
         let request = OpenHandsRuntimeRequest {
             prompt: "Generate the skill package".to_string(),
             llm: crate::types::WorkflowLlmConfig {
@@ -2203,38 +2216,18 @@ mod tests {
             usage_session_id: None,
         };
 
-        let session_request = session_init_request(&request, false);
         let existing_conversation = serde_json::json!({
             "agent": {
                 "agent_context": {
-                    "system_message_suffix": session_request.system_message_suffix,
-                    "user_message_suffix": session_request.user_message_suffix,
+                    "system_message_suffix": request.system_message_suffix,
+                    "user_message_suffix": request.user_message_suffix,
                 }
             }
         });
 
-        assert_eq!(session_request.prompt, "");
-        assert_eq!(session_request.allowed_tools, request.allowed_tools);
-        assert_eq!(session_request.max_turns, request.max_turns);
-        assert_eq!(
-            session_request.workspace_root_dir,
-            request.workspace_root_dir
-        );
-        assert_eq!(
-            session_request.workspace_skill_dir,
-            request.workspace_skill_dir
-        );
-        assert_eq!(session_request.plugin_slug, request.plugin_slug);
-        assert_eq!(session_request.skill_name, request.skill_name);
-        assert_eq!(session_request.task_kind, request.task_kind);
-        assert_eq!(session_request.run_source, request.run_source);
-        assert_eq!(
-            session_request.workflow_session_id,
-            request.workflow_session_id
-        );
         assert!(
-            conversation_matches_request(&existing_conversation, &session_request),
-            "prepared-session creation must keep the suffix contract needed to resume the same persistent skill conversation"
+            conversation_matches_request(&existing_conversation, &request),
+            "persistent session creation must keep the suffix contract needed to resume the same persistent skill conversation"
         );
     }
 
@@ -2847,6 +2840,22 @@ mod tests {
     }
 
     #[test]
+    fn resolve_saved_conversation_outcome_always_creates_fresh_for_throwaway_runs() {
+        let outcome = resolve_saved_conversation_outcome(
+            Some("conversation-1"),
+            OpenHandsConversationSelection::CreateFresh,
+            Some(SavedConversationStatus::Compatible),
+        );
+
+        assert_eq!(
+            outcome,
+            OpenHandsConversationResolution::Create {
+                reason: OpenHandsSessionCreateReason::New
+            }
+        );
+    }
+
+    #[test]
     fn resolve_saved_conversation_outcome_errors_when_send_requires_existing_conversation() {
         let outcome = resolve_saved_conversation_outcome(
             None,
@@ -2881,24 +2890,15 @@ mod tests {
     #[test]
     fn send_existing_turn_uses_full_history_only_for_blank_prompt_and_delta_for_non_empty() {
         assert_eq!(
-            determine_event_recovery_mode(
-                OpenHandsConversationSelection::SendExistingOnly,
-                ""
-            ),
+            determine_event_recovery_mode(OpenHandsConversationSelection::SendExistingOnly, ""),
             EventRecoveryMode::FullHistory
         );
         assert_eq!(
-            determine_event_recovery_mode(
-                OpenHandsConversationSelection::SendExistingOnly,
-                "   "
-            ),
+            determine_event_recovery_mode(OpenHandsConversationSelection::SendExistingOnly, "   "),
             EventRecoveryMode::FullHistory
         );
         assert_eq!(
-            determine_event_recovery_mode(
-                OpenHandsConversationSelection::ResumeOrCreate,
-                ""
-            ),
+            determine_event_recovery_mode(OpenHandsConversationSelection::ResumeOrCreate, ""),
             EventRecoveryMode::None
         );
         assert_eq!(
@@ -2911,43 +2911,13 @@ mod tests {
     }
 
     #[test]
-    fn session_init_request_clears_prompt_only_when_requested() {
-        let request = OpenHandsRuntimeRequest {
-            prompt: "We are refining the skill".to_string(),
-            llm: crate::types::WorkflowLlmConfig {
-                model: "anthropic/claude-sonnet-4-5".to_string(),
-                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
-                base_url: None,
-                api_version: None,
-                temperature: None,
-                max_output_tokens: None,
-                timeout_seconds: None,
-                num_retries: None,
-                reasoning_effort: None,
-                extra_headers: None,
-                input_cost_per_token: None,
-                output_cost_per_token: None,
-                usage_id: None,
-            },
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
-            allowed_tools: vec![],
-            max_turns: 20,
-            user_message_suffix: None,
-            system_message_suffix: None,
-            task_kind: Some("refine".to_string()),
-            plugin_slug: "default".to_string(),
-            skill_name: Some("my-skill".to_string()),
-            step_id: Some(-10),
-            run_source: Some("refine".to_string()),
-            workflow_session_id: None,
-            usage_session_id: None,
-        };
-
-        assert_eq!(session_init_request(&request, false).prompt, "");
+    fn throwaway_runs_do_not_request_history_recovery() {
         assert_eq!(
-            session_init_request(&request, true).prompt,
-            "We are refining the skill"
+            determine_event_recovery_mode(
+                OpenHandsConversationSelection::CreateFresh,
+                "Suggest a scenario"
+            ),
+            EventRecoveryMode::None
         );
     }
 }
