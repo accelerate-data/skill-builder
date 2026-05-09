@@ -47,6 +47,7 @@
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-log": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2",
+    "@testing-library/dom": "^10.4.1",
     "@tiptap/extension-mention": "^3.22.5",
     "@tiptap/extension-placeholder": "^3.22.4",
     "@tiptap/pm": "^3.21.0",
