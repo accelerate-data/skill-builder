@@ -4304,3 +4304,46 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     );
   });
 });
+
+describe("WorkflowPage — loading shimmer", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      modelSettings: { model: "sonnet", api_key: "sk-test" },
+    });
+    mockNavigate.mockReset();
+    mockBlocker.status = "idle";
+    mockLocation.state = {};
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useRefineStore.getState().selectSkill(null);
+    useSettingsStore.getState().reset();
+  });
+
+  it("renders WorkflowLoadingSkeleton before persistence data loads", () => {
+    vi.mocked(getWorkflowState).mockImplementation(() => new Promise(() => {}));
+
+    render(<WorkflowPage />);
+
+    expect(screen.getByTestId("workflow-loading-skeleton")).toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-sidebar")).not.toBeInTheDocument();
+  });
+
+  it("renders workflow content (not skeleton) after persistence data loads", async () => {
+    vi.mocked(getWorkflowState).mockRejectedValue(new Error("not found"));
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("workflow-loading-skeleton")).not.toBeInTheDocument();
+      expect(screen.getByTestId("workflow-sidebar")).toBeInTheDocument();
+    });
+  });
+});

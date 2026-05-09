@@ -20,7 +20,6 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import {
   acquireLock,
-  cancelAgentRun,
   pauseOpenHandsSession,
   selectSkillOpenHandsSession,
   releaseLock,
@@ -106,10 +105,16 @@ export function AppLayout() {
       if (e.key === "Escape") {
         // Refine: check if running and not already stopping
         const refineStore = useRefineStore.getState();
-        if (refineStore.isRunning && refineStore.activeAgentId && !refineStore.isStopping) {
+        if (refineStore.isRunning && refineStore.activeAgentId && !refineStore.isStopping &&
+            refineStore.conversationId && refineStore.selectedSkill) {
           refineStore.setStopping(true);
-          cancelAgentRun(refineStore.activeAgentId).catch((err) => {
-            console.error("[app-layout] escape: cancel refine run failed", err);
+          pauseOpenHandsSession(
+            refineStore.selectedSkill.name,
+            refineStore.selectedSkill.plugin_slug,
+            refineStore.conversationId,
+            refineStore.activeAgentId,
+          ).catch((err) => {
+            console.error("[app-layout] escape: pause refine conversation failed", err);
             toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
             refineStore.setStopping(false);
           });
