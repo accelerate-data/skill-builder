@@ -27,6 +27,7 @@ interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
   skillType: "builder" | "imported" | "marketplace";
   initialTab?: string;
+  className?: string;
 }
 
 function normalizeWorkspaceTab(tab?: string | null): "overview" | "refine" | "evals" {
@@ -39,7 +40,7 @@ function normalizeWorkspaceTab(tab?: string | null): "overview" | "refine" | "ev
   return "overview";
 }
 
-export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
+export function WorkspaceShell({ skill, skillType, initialTab, className }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useState(() => normalizeWorkspaceTab(initialTab));
   const [pendingTab, setPendingTab] = useState<"overview" | "refine" | "evals" | null>(null);
   const workbenchRunningRef = useRef(false);
@@ -141,7 +142,7 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
   }, [isBuilderSkill, workspacePath, skill]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className={`flex h-full flex-col ${className ?? ""}`}>
       {/* 48px header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
         <span className="truncate text-sm font-semibold">{skillName}</span>

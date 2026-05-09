@@ -42,6 +42,7 @@ export function useWorkflowPersistence({
   autoStart = false,
 }: UseWorkflowPersistenceOptions) {
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Get store actions
   const initWorkflow = useWorkflowStore((state) => state.initWorkflow);
@@ -84,6 +85,7 @@ export function useWorkflowPersistence({
     ])
       .then(([state, disabled]) => {
         if (cancelled) return;
+        setIsLoaded(true);
 
         // Initialize workflow with purpose from saved state.
         // Pass initialReviewMode=false for sidebar navigation to suppress wasToggle auto-start.
@@ -103,7 +105,10 @@ export function useWorkflowPersistence({
         loadWorkflowState(completedIds, state.run.current_step);
       })
       .catch(() => {
-        if (!cancelled) setHydrated(true);
+        if (!cancelled) {
+          setIsLoaded(true);
+          setHydrated(true);
+        }
       })
       .finally(() => {
         // If autoStart was requested, switch to Update mode after hydration so the
@@ -206,5 +211,6 @@ export function useWorkflowPersistence({
 
   return {
     errorHasArtifacts,
+    isLoaded,
   };
 }

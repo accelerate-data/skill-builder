@@ -44,6 +44,7 @@ import {
 } from "@/lib/tauri";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 import { useWorkflowPersistence } from "@/hooks/use-workflow-persistence";
+import { WorkflowLoadingSkeleton } from "@/components/workflow-loading-skeleton";
 import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
@@ -194,7 +195,7 @@ export default function WorkflowPage() {
   const stepConfig = STEP_CONFIGS[currentStep];
 
   // 1. Persistence — initializes hydrated state, tracks error artifacts
-  const { errorHasArtifacts } = useWorkflowPersistence({
+  const { errorHasArtifacts, isLoaded } = useWorkflowPersistence({
     skillName,
     skillsPath,
     stepConfig,
@@ -445,6 +446,10 @@ export default function WorkflowPage() {
     return "You have unsaved edits that will be lost if you leave.";
   };
 
+  if (!isLoaded) {
+    return <WorkflowLoadingSkeleton />;
+  }
+
   return (
     <>
       {/* Navigation guard dialog */}
@@ -619,7 +624,7 @@ export default function WorkflowPage() {
             <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
               activeAgentId ? "" : "p-4"
             }`}>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in duration-200">
                 {renderContent()}
               </div>
             </div>
