@@ -21,8 +21,8 @@ export default function WorkspaceRoutePage() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
-  const { data: importedSkills = [] } = useImportedSkillsQuery();
+  const { data: builderSkills = [], isPending: builderPending } = useBuilderSkillsQuery(workspacePath);
+  const { data: importedSkills = [], isPending: importedPending } = useImportedSkillsQuery();
 
   const selectedBuilderSkill = builderSkills.find(
     (s) => s.skill_source === "skill-builder" && (s.library_key ?? s.name) === skillName,
@@ -38,6 +38,14 @@ export default function WorkspaceRoutePage() {
     : selectedImportedSkill?.marketplace_source_url
       ? "marketplace"
       : "imported";
+
+  if (builderPending || importedPending) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
 
   const handleNavigateSurface = useCallback(
     (surface: WorkspaceSurface) => {
