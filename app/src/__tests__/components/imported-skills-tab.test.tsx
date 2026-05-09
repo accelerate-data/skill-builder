@@ -95,7 +95,7 @@ function setupMocks(plugins: LibraryPlugin[] = samplePlugins) {
     if (cmd === "get_settings") return Promise.resolve(defaultSettings);
     if (cmd === "list_plugins") return Promise.resolve(plugins);
     if (cmd === "delete_plugin") return Promise.resolve(undefined);
-    if (cmd === "parse_skill_file") return Promise.resolve({ name: "test-skill", description: "desc", version: "1.0.0", model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null });
+    if (cmd === "parse_skill_file") return Promise.resolve({ name: "test-skill", description: "desc", version: "1.0.0", user_invocable: null, disable_model_invocation: null });
     return Promise.reject(new Error(`Unmocked command: ${cmd}`));
   });
 }

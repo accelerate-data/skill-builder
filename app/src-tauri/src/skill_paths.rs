@@ -74,6 +74,7 @@ pub fn skill_tag_prefix(_plugin_slug: &str, _skill_name: &str) -> String {
 pub fn skill_tag_glob(_plugin_slug: &str, _skill_name: &str) -> String {
     paths().tag_glob.clone()
 }
+}
 
 // --- Skill location types ---
 

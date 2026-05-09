@@ -208,8 +208,6 @@ describe("SkillDialog (edit mode)", () => {
         intakeJson: null,
         description: "A skill for managing sales pipelines",
         version: null,
-        model: null,
-        argumentHint: null,
         userInvocable: true,
         disableModelInvocation: false,
       });

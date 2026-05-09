@@ -2783,8 +2783,6 @@ fn test_delete_imported_skill_by_name_non_default_plugin() {
         description: None,
         purpose: Some("domain".to_string()),
         version: None,
-
-
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -3237,8 +3235,6 @@ fn test_imported_skills_extended_migration_is_idempotent() {
     let expected_cols = [
         "skill_type",
         "version",
-
-
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3347,8 +3343,6 @@ fn test_list_active_skills() {
         is_bundled: false,
         description: None,
         version: None,
-
-
         user_invocable: None,
         disable_model_invocation: None,
         purpose: None,
@@ -3370,8 +3364,6 @@ fn test_list_active_skills() {
         is_bundled: false,
         description: None,
         version: None,
-
-
         user_invocable: None,
         disable_model_invocation: None,
         purpose: None,
@@ -3393,8 +3385,6 @@ fn test_list_active_skills() {
         is_bundled: false,
         description: None,
         version: None,
-
-
         user_invocable: None,
         disable_model_invocation: None,
         purpose: None,
@@ -3430,8 +3420,6 @@ fn test_delete_imported_skill_by_name() {
         description: None,
         purpose: Some("domain".to_string()),
         version: None,
-
-
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -3990,8 +3978,6 @@ fn test_get_imported_skill_by_id() {
         description: None,
         purpose: None,
         version: None,
-
-
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -4026,8 +4012,6 @@ fn test_delete_imported_skill_by_skill_id() {
         description: None,
         purpose: None,
         version: None,
-
-
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -4328,8 +4312,6 @@ fn test_workflow_runs_has_no_metadata_columns() {
     let banned = [
         "description",
         "version",
-
-
         "user_invocable",
         "disable_model_invocation",
     ];

@@ -185,11 +185,10 @@ pub fn get_workflow_state(
 ///
 /// This command intentionally accepts ONLY execution-state fields: `current_step`,
 /// `status`, `purpose`, and `step_statuses`. Skill metadata fields
-/// (description, version, model, argument_hint, user_invocable,
-/// disable_model_invocation) are **NOT** parameters here — they are owned
-/// exclusively by the `skills` master table and must be written via
-/// `set_skill_behaviour`. The underlying `workflow_runs` table no longer
-/// contains these columns (dropped in migration 35), so even if a caller
+/// (description, version, user_invocable, disable_model_invocation) are **NOT**
+/// parameters here — they are owned exclusively by the `skills` master table and
+/// must be written via `set_skill_behaviour`. The underlying `workflow_runs` table
+/// no longer contains these columns (dropped in migration 35), so even if a caller
 /// attempted to pass stale metadata values there is no column to receive them.
 ///
 /// Reads of skill metadata for agent execution go through `read_workflow_settings`

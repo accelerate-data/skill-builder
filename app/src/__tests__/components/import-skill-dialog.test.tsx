@@ -34,8 +34,6 @@ const SAMPLE_META: SkillFileMeta = {
   name: "my-skill",
   description: "Does something useful",
   version: "2.1.0",
-  model: "claude-sonnet-4-6",
-  argument_hint: "[target-org]",
   user_invocable: true,
   disable_model_invocation: false,
 };
