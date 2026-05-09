@@ -159,7 +159,6 @@ export function WorkspaceEvals({
             <PromptSetEditor
               draft={draft}
               onChange={setDraft}
-              onNew={onCreateScenario ? handleCreateScenario : undefined}
               onGenerate={onGenerateEvalScenarioAssertions ? handleGenerate : undefined}
               onDelete={onDeleteScenario ? handleDelete : undefined}
               generateDisabled={generateEvalScenarioAssertionsPending}
@@ -167,7 +166,6 @@ export function WorkspaceEvals({
               showDelete={true}
               showGenerate={Boolean(onGenerateEvalScenarioAssertions)}
               generateBusy={generatingScenario || generateEvalScenarioAssertionsPending}
-              showNew={Boolean(onCreateScenario)}
               footerStatus={
                 actionError
                   ? { tone: "error", message: actionError }

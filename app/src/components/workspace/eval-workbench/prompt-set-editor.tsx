@@ -8,7 +8,6 @@ import { type SaveScenario } from "@/lib/eval-workbench";
 interface PromptSetEditorProps {
   draft: SaveScenario;
   onChange: (draft: SaveScenario) => void;
-  onNew?: () => void;
   onGenerate?: () => void;
   onDelete?: () => void;
   generateDisabled?: boolean;
@@ -16,7 +15,6 @@ interface PromptSetEditorProps {
   showDelete?: boolean;
   showGenerate?: boolean;
   generateBusy?: boolean;
-  showNew?: boolean;
   footerStatus?: {
     tone: "running" | "error";
     message: string;
@@ -26,7 +24,6 @@ interface PromptSetEditorProps {
 export function PromptSetEditor({
   draft,
   onChange,
-  onNew,
   onGenerate,
   onDelete,
   generateDisabled = false,
@@ -34,7 +31,6 @@ export function PromptSetEditor({
   showDelete = false,
   showGenerate = true,
   generateBusy = false,
-  showNew = true,
   footerStatus = null,
 }: PromptSetEditorProps) {
   function updateAssertions(nextAssertions: string[]) {
@@ -72,11 +68,6 @@ export function PromptSetEditor({
             >
               <Sparkles className="mr-1 size-3.5" />
               {generateBusy ? "Generating..." : "Generate scenario and assertions"}
-            </Button>
-          ) : null}
-          {showNew && onNew ? (
-            <Button size="sm" variant="outline" onClick={onNew}>
-              New scenario
             </Button>
           ) : null}
         </div>
