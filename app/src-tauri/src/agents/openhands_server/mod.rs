@@ -14,6 +14,7 @@ use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use tauri::{Emitter, Listener, Manager};
 use thiserror::Error;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::Message;
 
 pub use types::{OpenHandsRuntimeRequest, StartConversationRequest};
@@ -1467,6 +1468,18 @@ async fn run_conversation_task_inner(
                         break;
                     }
                 };
+                // A server restart (e.g. skill switch) sends CloseFrame{ code: Restart }
+                // before tungstenite returns None. Treat it as cancelled so we skip the
+                // recovery HTTP poll, which would fail against the now-dead server.
+                if matches!(&message, Message::Close(Some(f)) if f.code == CloseCode::Restart) {
+                    log::debug!(
+                        "[openhands-agent-server:{}] server_restart_close conversation_id={} action=cancel_pending",
+                        task.agent_id,
+                        task.conversation_id
+                    );
+                    cancel_pending = true;
+                    break;
+                }
                 if !message.is_text() {
                     continue;
                 }
@@ -1678,6 +1691,12 @@ fn build_socket_closed_state(
     conversation_id: &str,
     error_detail: &str,
 ) -> serde_json::Value {
+    log::error!(
+        "[openhands-agent-server:{}] socket_closed_terminal_state conversation_id={} error={}",
+        agent_id,
+        conversation_id,
+        error_detail
+    );
     serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
