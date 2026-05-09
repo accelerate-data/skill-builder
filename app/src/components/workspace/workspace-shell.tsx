@@ -23,35 +23,27 @@ import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
 import { toEditableSkill } from "@/lib/types";
 import { useBuilderSkillsQuery } from "@/lib/queries/skills";
 
+export type WorkspaceSurface = "overview" | "refine" | "evals";
+
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
   skillType: "builder" | "imported" | "marketplace";
-  initialTab?: string;
+  initialSurface?: WorkspaceSurface;
+  onNavigateSurface?: (surface: WorkspaceSurface) => void;
   className?: string;
 }
 
-function normalizeWorkspaceTab(tab?: string | null): "overview" | "refine" | "evals" {
-  if (tab === "refine") {
-    return "refine";
-  }
-  if (tab === "evals" || tab === "description") {
-    return "evals";
-  }
-  return "overview";
-}
-
-export function WorkspaceShell({ skill, skillType, initialTab, className }: WorkspaceShellProps) {
-  const [activeTab, setActiveTab] = useState(() => normalizeWorkspaceTab(initialTab));
-  const [pendingTab, setPendingTab] = useState<"overview" | "refine" | "evals" | null>(null);
+export function WorkspaceShell({ skill, skillType, initialSurface = "overview", onNavigateSurface, className }: WorkspaceShellProps) {
+  const [activeTab, setActiveTab] = useState<WorkspaceSurface>(initialSurface);
+  const [pendingTab, setPendingTab] = useState<WorkspaceSurface | null>(null);
   const workbenchRunningRef = useRef(false);
 
   useEffect(() => {
-    setActiveTab(normalizeWorkspaceTab(initialTab));
-  }, [initialTab]);
+    setActiveTab(initialSurface);
+  }, [initialSurface]);
 
   const handleTabChange = useCallback((value: string) => {
-    const nextTab = normalizeWorkspaceTab(value);
-    // Guard: block switching away from Refine while agent is running
+    const nextTab = value as WorkspaceSurface;
     if (activeTab === "refine" && nextTab !== "refine") {
       const refineRunning = useRefineStore.getState().isRunning;
       if (refineRunning) {
@@ -64,12 +56,11 @@ export function WorkspaceShell({ skill, skillType, initialTab, className }: Work
       return;
     }
     setActiveTab(nextTab);
-  }, [activeTab]);
+    onNavigateSurface?.(nextTab);
+  }, [activeTab, onNavigateSurface]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
 
-  // Reset file viewer state whenever the active skill changes so the file viewer
-  // re-reads from disk rather than showing the previous skill's content.
   useEffect(() => {
     const store = useRefineStore.getState();
     store.setSkillFiles([]);
@@ -91,9 +82,10 @@ export function WorkspaceShell({ skill, skillType, initialTab, className }: Work
         }
       }
       setActiveTab(pendingTab);
+      onNavigateSurface?.(pendingTab);
       setPendingTab(null);
     }
-  }, [pendingTab, activeTab]);
+  }, [pendingTab, activeTab, onNavigateSurface]);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
@@ -106,7 +98,6 @@ export function WorkspaceShell({ skill, skillType, initialTab, className }: Work
       return;
     }
 
-    // Load skill files if not already loaded (e.g. opening from Overview tab).
     if (store.skillFiles.length === 0) {
       try {
         let contents: Awaited<ReturnType<typeof getSkillContentForRefine>>;
@@ -143,7 +134,6 @@ export function WorkspaceShell({ skill, skillType, initialTab, className }: Work
 
   return (
     <div className={`flex h-full flex-col ${className ?? ""}`}>
-      {/* 48px header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
         <span className="truncate text-sm font-semibold">{skillName}</span>
         {(isBuilderSkill || "disk_path" in skill) && (
@@ -161,7 +151,6 @@ export function WorkspaceShell({ skill, skillType, initialTab, className }: Work
         )}
       </div>
 
-      {/* Tabs + overlay container */}
       <div className="relative min-h-0 flex-1">
         <Tabs
           value={activeTab}
@@ -193,7 +182,7 @@ export function WorkspaceShell({ skill, skillType, initialTab, className }: Work
               key={"name" in skill ? skill.name : skill.skill_name}
               skill={skill}
               workspacePath={workspacePath}
-              onNavigateToRefine={() => setActiveTab("refine")}
+              onNavigateToRefine={() => handleTabChange("refine")}
               onRunningChange={(running) => {
                 workbenchRunningRef.current = running;
               }}
