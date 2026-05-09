@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "@/lib/toast";
 import { useLeaveGuard } from "./use-leave-guard";
-import { teardownWorkflowSession } from "@/lib/workflow-teardown";
-import { invokeCommand } from "@/lib/tauri";
+import { leaveCurrentSkill } from "@/lib/active-skill-transition";
 
 interface UseWorkflowSessionOptions {
   /** Skill name from route params */
@@ -46,13 +45,9 @@ export function useWorkflowSession({
     return () => {
       if (sessionCleanedUpRef.current) return;
       sessionCleanedUpRef.current = true;
-      teardownWorkflowSession({
-        logPrefix: "use-workflow-session",
-        onEndSessionError: (err) => {
-          toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
-        },
+      void leaveCurrentSkill().catch((err) => {
+        toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
       });
-      void invokeCommand("stop_openhands_server", {});
     };
   }, [skillName]);
 
@@ -61,15 +56,11 @@ export function useWorkflowSession({
     shouldBlock: () => shouldBlock(),
     onLeave: (proceed) => {
       sessionCleanedUpRef.current = true;
-      teardownWorkflowSession({
-        logPrefix: "use-workflow-session",
-        clearSessionId: true,
-        onEndSessionError: (err) => {
+      void leaveCurrentSkill()
+        .then(() => proceed())
+        .catch((err) => {
           toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
-        },
-      });
-      void invokeCommand("stop_openhands_server", {});
-      proceed();
+        });
     },
   });
 

@@ -20,8 +20,8 @@ import {
   sendRefineMessage,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
-  invokeCommand,
 } from "@/lib/tauri";
+import { leaveCurrentSkill } from "@/lib/active-skill-transition";
 import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
@@ -56,10 +56,6 @@ async function loadSkillFiles(
     console.error("[workspace-refine] Failed to load skill files:", err);
     return null;
   }
-}
-
-function clearRefineAgentRuns(): void {
-  useAgentStore.getState().clearRunsBySource("refine");
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -105,12 +101,13 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
     shouldBlock: () => useRefineStore.getState().isRunning,
     onLeave: (proceed) => {
-      const store = useRefineStore.getState();
-      store.setRunning(false);
-      store.setActiveAgentId(null);
-      clearRefineAgentRuns();
-      void invokeCommand("stop_openhands_server", {});
-      proceed();
+      void leaveCurrentSkill()
+        .then(() => proceed())
+        .catch((err) => {
+          toast.error(err instanceof Error ? err.message : String(err), {
+            duration: Infinity,
+          });
+        });
     },
   });
 

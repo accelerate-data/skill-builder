@@ -430,6 +430,9 @@ export const pauseOpenHandsSession = (
     },
   })
 
+export const stopOpenHandsServer = () =>
+  invokeCommand("stop_openhands_server", {})
+
 export const sendRefineMessage = (
   skillName: string,
   pluginSlug: string,

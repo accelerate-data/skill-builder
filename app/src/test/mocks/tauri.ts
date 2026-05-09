@@ -13,6 +13,10 @@ const defaultInvokeImpl = (cmd: string) => {
     return Promise.resolve([]);
   }
 
+  if (cmd === "release_lock" || cmd === "stop_openhands_server") {
+    return Promise.resolve(undefined);
+  }
+
   if (cmd === "get_clarifications") {
     return Promise.resolve(null);
   }

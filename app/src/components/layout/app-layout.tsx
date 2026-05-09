@@ -19,10 +19,7 @@ import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import {
-  acquireLock,
   pauseOpenHandsSession,
-  selectSkillOpenHandsSession,
-  releaseLock,
 } from "@/lib/tauri";
 import {
   getEvalsRunning,
@@ -33,8 +30,8 @@ import {
 } from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import { toEditableSkill, type EditableSkill } from "@/lib/types";
-import { hydrateSelectedSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import { getSkillSurface } from "@/lib/skill-routing";
+import { enterSkill, leaveCurrentSkill } from "@/lib/active-skill-transition";
 import {
   Dialog,
   DialogContent,
@@ -198,57 +195,6 @@ export function AppLayout() {
     [navigate],
   );
 
-  const bootstrapSelectedSkillSession = useCallback(
-    async (skill: EditableSkill) => {
-      if (!workspacePath) {
-        throw new Error("Workspace path is not configured");
-      }
-      await acquireLock(skill.name);
-      try {
-        const session = await selectSkillOpenHandsSession(
-          skill.name,
-          workspacePath,
-          skill.plugin_slug,
-        );
-        hydrateSelectedSkillOpenHandsSession(skill, session);
-      } catch (error) {
-        await releaseLock(skill.name).catch(() => {});
-        throw error;
-      }
-    },
-    [workspacePath],
-  );
-
-  const cleanupCurrentSelectedSkill = useCallback(async () => {
-    const refineStore = useRefineStore.getState();
-    const workflowStore = useWorkflowStore.getState();
-    const agentIdToClose = runningWorkflow?.agentId ?? refineStore.activeAgentId;
-    if (getEvalsRunning()) {
-      await requestEvalsCancel();
-      setEvalsStopping(false);
-    }
-    if (selectedSkillData && refineStore.conversationId) {
-      await pauseOpenHandsSession(
-        "name" in selectedSkillData ? selectedSkillData.name : selectedSkillData.skill_name,
-        selectedSkillData.plugin_slug,
-        refineStore.conversationId,
-        agentIdToClose,
-      );
-    }
-    if (runningWorkflow) {
-      workflowStore.setStopping(false);
-    }
-    if (selectedSkillData) {
-      await releaseLock(
-        "name" in selectedSkillData ? selectedSkillData.name : selectedSkillData.skill_name,
-      ).catch((error) => {
-        console.warn("[app-layout] release lock failed", error);
-      });
-    }
-    refineStore.selectSkill(null);
-    useAgentStore.getState().clearRuns();
-  }, [runningWorkflow, selectedSkillData]);
-
   const activateSkill = useCallback(
     async (name: string) => {
       const targetBuilderSkill = builderSkills.find(
@@ -278,13 +224,19 @@ export function AppLayout() {
       }
 
       if (name !== selectedWorkspaceSkillName) {
-        await cleanupCurrentSelectedSkill();
-        setSelectedWorkspaceSkillName(null);
-        setSelectedWorkspaceSkillName(name);
+        if (getEvalsRunning()) {
+          await requestEvalsCancel();
+          setEvalsStopping(false);
+        }
+        await leaveCurrentSkill();
       }
 
       try {
-        await bootstrapSelectedSkillSession(editableSkill);
+        if (!workspacePath) {
+          throw new Error("Workspace path is not configured");
+        }
+        setSelectedWorkspaceSkillName(name);
+        await enterSkill(editableSkill, workspacePath);
         navigateToSkillSurface(editableSkill);
       } catch (err) {
         setSelectedWorkspaceSkillName(null);
@@ -292,13 +244,12 @@ export function AppLayout() {
       }
     },
     [
-      bootstrapSelectedSkillSession,
       builderSkills,
-      cleanupCurrentSelectedSkill,
       importedSkills,
       navigateToSkillSurface,
       selectedWorkspaceSkillName,
       setSelectedWorkspaceSkillName,
+      workspacePath,
     ],
   );
 
