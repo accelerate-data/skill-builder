@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::sync::Mutex as AsyncMutex;
 
 pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.21.0";
@@ -393,6 +393,7 @@ impl OpenHandsAgentServerProcess {
             "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
             conversations_path_str
         );
+        let log_file = open_server_log_file(runtime_run_dir).await;
         let stderr_secrets = vec![session_api_key.clone(), openhands_secret_key];
         let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(
             STDERR_TAIL_MAX_LINES,
@@ -404,12 +405,18 @@ impl OpenHandsAgentServerProcess {
             let stderr_tail_for_task = Arc::clone(&stderr_tail);
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
+                let mut log_writer = log_file;
                 loop {
                     match lines.next_line().await {
                         Ok(Some(line)) if !line.trim().is_empty() => {
                             let redacted = redact_stderr(&line, &stderr_secrets);
                             push_stderr_tail_line(&stderr_tail_for_task, &redacted).await;
                             log_stderr_line(&redacted);
+                            if let Some(writer) = &mut log_writer {
+                                let _ = writer.write_all(redacted.as_bytes()).await;
+                                let _ = writer.write_all(b"\n").await;
+                                let _ = writer.flush().await;
+                            }
                         }
                         Ok(Some(_)) => {}
                         Ok(None) => break,
@@ -502,6 +509,40 @@ impl OpenHandsAgentServerProcess {
             .await
             .map_err(|e| format!("Failed to wait for OpenHands Agent Server shutdown: {e}"))?;
         Ok(ShutdownOutcome::Forced)
+    }
+}
+
+/// Opens a timestamped log file for a server instance under `{runtime_run_dir}/logs/`.
+/// Best-effort: returns `None` on any IO error rather than failing the server start.
+async fn open_server_log_file(runtime_run_dir: &Path) -> Option<BufWriter<tokio::fs::File>> {
+    let logs_dir = runtime_run_dir.join("logs");
+    if let Err(e) = tokio::fs::create_dir_all(&logs_dir).await {
+        log::warn!(
+            "[openhands-agent-server] could not create log dir {}: {e}",
+            logs_dir.display()
+        );
+        return None;
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let log_path = logs_dir.join(format!("openhands-server-{ts}.log"));
+    match tokio::fs::File::create(&log_path).await {
+        Ok(file) => {
+            log::debug!(
+                "[openhands-agent-server] writing server logs to {}",
+                log_path.display()
+            );
+            Some(BufWriter::new(file))
+        }
+        Err(e) => {
+            log::warn!(
+                "[openhands-agent-server] could not open log file {}: {e}",
+                log_path.display()
+            );
+            None
+        }
     }
 }
 
