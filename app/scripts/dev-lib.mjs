@@ -11,8 +11,21 @@ export function ensureDevPrerequisites(
   } = {},
 ) {
   const requiredAppDependency = join(root, 'node_modules', '@tanstack', 'react-query');
-  if (!existsSync(requiredAppDependency)) {
-    log('\x1b[36m[dev]\x1b[0m Installing missing app dependencies');
+  let needsInstall = !existsSync(requiredAppDependency);
+
+  if (!needsInstall) {
+    try {
+      execSync('npm ls --depth=0', {
+        stdio: 'ignore',
+        cwd: root,
+      });
+    } catch {
+      needsInstall = true;
+    }
+  }
+
+  if (needsInstall) {
+    log('\x1b[36m[dev]\x1b[0m Installing or repairing app dependencies');
     execSync('npm install', {
       stdio: 'inherit',
       cwd: root,

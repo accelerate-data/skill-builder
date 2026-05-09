@@ -37,5 +37,36 @@ test('skips install when app dependencies already exist', () => {
     log: () => {},
   });
 
-  assert.deepEqual(commands, []);
+  assert.deepEqual(commands, [
+    {
+      command: 'npm ls --depth=0',
+      options: { stdio: 'ignore', cwd: '/repo/app' },
+    },
+  ]);
+});
+
+test('installs app dependencies when the installed tree is invalid', () => {
+  const commands = [];
+
+  ensureDevPrerequisites('/repo/app', {
+    existsSync: () => true,
+    execSync: (command, options) => {
+      commands.push({ command, options });
+      if (command === 'npm ls --depth=0') {
+        throw new Error('invalid dependency tree');
+      }
+    },
+    log: () => {},
+  });
+
+  assert.deepEqual(commands, [
+    {
+      command: 'npm ls --depth=0',
+      options: { stdio: 'ignore', cwd: '/repo/app' },
+    },
+    {
+      command: 'npm install',
+      options: { stdio: 'inherit', cwd: '/repo/app' },
+    },
+  ]);
 });
