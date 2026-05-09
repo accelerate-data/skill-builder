@@ -1629,6 +1629,10 @@ pub(super) fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqli
     // so we only backfill from imported_skills for marketplace/imported skills.
     // Note: model and argument_hint were dropped in migration 50 and are no longer backfilled.
     if added_any {
+        // Ensure imported_skills has the extended columns before we try to read from them.
+        // run_imported_skills_extended_migration is idempotent and safe to call here.
+        run_imported_skills_extended_migration(conn)?;
+
         conn.execute_batch(
             "UPDATE skills
              SET

@@ -107,12 +107,12 @@ export function SkillListPanel({
   useEffect(() => {
     if (unifiedSkills.length === 0 || selectedSkill) return;
     const stored = localStorage.getItem("last-selected-skill");
-    if (stored && unifiedSkills.some((s) => s.key === stored)) {
-      setSelectedSkill(stored);
-    } else if (unifiedSkills.length > 0) {
-      setSelectedSkill(unifiedSkills[0].key);
-    }
-  }, [selectedSkill, setSelectedSkill, unifiedSkills]);
+    const key = stored && unifiedSkills.some((s) => s.key === stored)
+      ? stored
+      : unifiedSkills[0].key;
+    setSelectedSkill(key);
+    void onActivateSkill?.(key);
+  }, [onActivateSkill, selectedSkill, setSelectedSkill, unifiedSkills]);
 
   const runningAgent = Object.values(runs).find(
     (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),
@@ -144,6 +144,8 @@ export function SkillListPanel({
 
     console.log("event=skill_selected skill=%s", skill.name);
     if (isSkillComplete(skill) || skill.source !== "builder") {
+      localStorage.setItem("last-selected-skill", skill.key);
+      setSelectedSkill(skill.key);
       await onSelectSkill?.(skill.key);
     } else {
       localStorage.setItem("last-selected-skill", skill.key);

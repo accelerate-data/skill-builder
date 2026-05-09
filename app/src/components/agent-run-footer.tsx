@@ -18,26 +18,26 @@ interface AgentRunFooterProps {
 
 export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
-  const workflowIsInitializing = useWorkflowStore((s) => s.isInitializing);
+  const workflowIsRunning = useWorkflowStore((s) => s.isRunning);
   const workflowIsStopping = useWorkflowStore((s) => s.isStopping);
   const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
 
   const displayStatus: DisplayStatus | null = run
-    ? getDisplayStatus(run.status, getAgentActivityCount(run), workflowIsInitializing)
+    ? getDisplayStatus(run.status, getAgentActivityCount(run))
     : null;
 
-  // Map stopping state to footer status
+  // Map workflow run state to footer status.
+  // "running" wins if the agent has started producing output OR the workflow store
+  // confirms the step is active. "idle" only when both are absent.
   const footerStatus: FooterDisplayStatus = workflowIsStopping
     ? "stopping"
-    : displayStatus === "initializing"
-      ? "initializing"
-      : displayStatus === "error"
-        ? "error"
-        : displayStatus === "completed"
-          ? "completed"
-          : run?.status === "running"
-            ? "running"
-            : "idle";
+    : displayStatus === "error"
+      ? "error"
+      : displayStatus === "completed"
+        ? "completed"
+        : displayStatus === "running" || (run?.status === "running" && workflowIsRunning)
+          ? "running"
+          : "idle";
 
   // Force re-render every second while running or initializing so elapsed time updates
   const [, setTick] = useState(0);
@@ -49,11 +49,7 @@ export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
 
   if (!run || !footerStatus) return null;
 
-  // Elapsed time origin: during initialization, prefer initStartTime from workflow store
-  const elapsedOrigin =
-    footerStatus === "initializing" && workflowInitStartTime
-      ? workflowInitStartTime
-      : run.startTime;
+  const elapsedOrigin = workflowInitStartTime ?? run.startTime;
 
   const elapsed = run.endTime ? run.endTime - elapsedOrigin : Date.now() - elapsedOrigin;
 

@@ -166,12 +166,6 @@ export function AppLayout() {
       : "imported";
   const showWorkspace = selectedSkillData !== null && pathname === "/";
 
-  const editableSelectedSkill: EditableSkill | null = selectedSkillData
-    ? "name" in selectedSkillData
-      ? (selectedSkillData as EditableSkill)
-      : toEditableSkill(selectedSkillData)
-    : null;
-
   const bootstrapSelectedSkillSession = useCallback(
     async (skill: EditableSkill) => {
       if (!workspacePath) {
@@ -314,31 +308,6 @@ export function AppLayout() {
     });
   }, [activateSkill, navigate, pendingSkillSwitch]);
 
-  useEffect(() => {
-    if (!workspacePath || !editableSelectedSkill) {
-      return;
-    }
-    const existingRefineSkill = useRefineStore.getState().selectedSkill;
-    const existingConversationId = useRefineStore.getState().conversationId;
-    if (
-      existingRefineSkill?.name === editableSelectedSkill.name &&
-      existingRefineSkill.plugin_slug === editableSelectedSkill.plugin_slug &&
-      existingConversationId
-    ) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      if (cancelled) return;
-      await bootstrapSelectedSkillSession(editableSelectedSkill);
-    })().catch((err) => {
-      console.error("[app-layout] failed to bootstrap selected skill session", err);
-      toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [bootstrapSelectedSkillSession, editableSelectedSkill, workspacePath]);
 
   const ready = settingsLoaded && reconciled && nodeReady && ackDone;
 
