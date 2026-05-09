@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { toast } from "@/lib/toast";
 import { useLeaveGuard } from "./use-leave-guard";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
 
@@ -44,7 +45,12 @@ export function useWorkflowSession({
     return () => {
       if (sessionCleanedUpRef.current) return;
       sessionCleanedUpRef.current = true;
-      teardownWorkflowSession({ logPrefix: "use-workflow-session" });
+      teardownWorkflowSession({
+        logPrefix: "use-workflow-session",
+        onEndSessionError: (err) => {
+          toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+        },
+      });
     };
   }, [skillName]);
 
@@ -56,6 +62,9 @@ export function useWorkflowSession({
       teardownWorkflowSession({
         logPrefix: "use-workflow-session",
         clearSessionId: true,
+        onEndSessionError: (err) => {
+          toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+        },
       });
       proceed();
     },

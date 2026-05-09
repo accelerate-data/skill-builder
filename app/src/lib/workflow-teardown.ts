@@ -5,11 +5,13 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 interface TeardownWorkflowSessionOptions {
   logPrefix: string;
   clearSessionId?: boolean;
+  onEndSessionError?: (err: unknown) => void;
 }
 
 export function teardownWorkflowSession({
   logPrefix,
   clearSessionId = false,
+  onEndSessionError,
 }: TeardownWorkflowSessionOptions) {
   const store = useWorkflowStore.getState();
   const { currentStep, steps, workflowSessionId } = store;
@@ -29,6 +31,7 @@ export function teardownWorkflowSession({
 
   endWorkflowSession(workflowSessionId).catch((e) => {
     console.warn(`[${logPrefix}] non-fatal: op=endWorkflowSession err=%s`, e);
+    onEndSessionError?.(e);
   });
 
   if (clearSessionId) {

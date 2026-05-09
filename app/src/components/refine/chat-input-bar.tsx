@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SendHorizontal, X, Bot, FileText, HelpCircle } from "lucide-react";
+import { SendHorizontal, X, Bot, FileText, HelpCircle, Square } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Mention from "@tiptap/extension-mention";
@@ -258,20 +258,22 @@ function extractFromEditor(editor: ReturnType<typeof useEditor>): {
 
 interface ChatInputBarProps {
   onSend: (text: string, targetFiles?: string[]) => void;
+  onCancel?: () => void;
   waitingForQuestion?: boolean;
   availableFiles: string[];
   availableAgents: string[];
   prefilledValue?: string;
-  disabled?: boolean;
+  isRunning?: boolean;
 }
 
 export function ChatInputBar({
   onSend,
+  onCancel,
   waitingForQuestion = false,
   availableFiles,
   availableAgents,
   prefilledValue,
-  disabled = false,
+  isRunning = false,
 }: ChatInputBarProps) {
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -431,17 +433,31 @@ export function ChatInputBar({
         <div className="refine-editor relative flex-1 rounded-md border bg-transparent transition-colors focus-within:ring-1 focus-within:ring-ring">
           <EditorContent editor={editor} />
         </div>
-        <Button
-          data-testid="refine-send-button"
-          size="icon"
-          type="button"
-          onClick={handleSend}
-          disabled={disabled || !editor?.getText().trim()}
-          aria-label="Send refine message"
-          title="Send refine message"
-        >
-          <SendHorizontal className="size-4" />
-        </Button>
+        {isRunning && onCancel ? (
+          <Button
+            data-testid="refine-cancel-button"
+            size="icon"
+            type="button"
+            onClick={onCancel}
+            variant="ghost"
+            aria-label="Cancel"
+            title="Cancel"
+          >
+            <Square className="size-4" />
+          </Button>
+        ) : (
+          <Button
+            data-testid="refine-send-button"
+            size="icon"
+            type="button"
+            onClick={handleSend}
+            disabled={isRunning || !editor?.getText().trim()}
+            aria-label="Send refine message"
+            title="Send refine message"
+          >
+            <SendHorizontal className="size-4" />
+          </Button>
+        )}
       </div>
     </div>
   );

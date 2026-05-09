@@ -7,6 +7,8 @@ import { ChatInputBar } from "./chat-input-bar";
 
 interface ChatPanelProps {
   onSend: (text: string, targetFiles?: string[]) => void;
+  onCancel?: () => void;
+  isRunning?: boolean;
   hasSkill: boolean;
   availableFiles: string[];
   availableAgents: string[];
@@ -16,6 +18,8 @@ interface ChatPanelProps {
 
 export function ChatPanel({
   onSend,
+  onCancel,
+  isRunning = false,
   hasSkill,
   availableFiles,
   availableAgents,
@@ -65,11 +69,12 @@ export function ChatPanel({
       )}
       <ChatInputBar
         onSend={onSend}
+        onCancel={onCancel}
         waitingForQuestion={waitingForQuestion}
         availableFiles={availableFiles}
         availableAgents={availableAgents}
         prefilledValue={pendingInitialMessage ?? undefined}
-        disabled={isBlocked}
+        isRunning={isRunning || isBlocked}
       />
     </div>
   );
