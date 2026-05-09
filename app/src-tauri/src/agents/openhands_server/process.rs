@@ -253,6 +253,35 @@ fn agent_server_registry() -> &'static OpenHandsAgentServerRegistry {
     REGISTRY.get_or_init(|| tokio::sync::Mutex::new(None))
 }
 
+/// Remove `owner_lease.json` files left behind by a killed server process.
+///
+/// OpenHands conversation leases have a 45-second TTL. When the server is
+/// killed before running its async teardown, leases stay on disk and the
+/// next server instance skips loading those conversations — returning 404
+/// for every resumed conversation ID. This is safe to call only after the
+/// previous process has exited.
+fn release_stale_conversation_leases(conversations_path: &Path) {
+    let Ok(entries) = std::fs::read_dir(conversations_path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let lease_file = entry.path().join("owner_lease.json");
+        if !lease_file.exists() {
+            continue;
+        }
+        match std::fs::remove_file(&lease_file) {
+            Ok(()) => log::debug!(
+                "[openhands-agent-server] released stale conversation lease {}",
+                lease_file.display()
+            ),
+            Err(e) => log::warn!(
+                "[openhands-agent-server] failed to release stale conversation lease {}: {e}",
+                lease_file.display()
+            ),
+        }
+    }
+}
+
 pub async fn ensure_agent_server(
     timeout: Duration,
     runtime_run_dir: &Path,
@@ -291,6 +320,14 @@ pub async fn ensure_agent_server(
         let _ = server.process.shutdown().await;
         *registry = None;
     }
+
+    // The OpenHands lease system gives each conversation a 45-second TTL lease
+    // tied to the server instance that created it. If the previous server was
+    // killed (SIGTERM without clean async teardown), leases are left on disk and
+    // the new server skips loading those conversations during startup, returning
+    // 404 for any resumed conversation. Clear stale leases after confirming the
+    // old process is dead so the fresh server loads all persisted conversations.
+    release_stale_conversation_leases(Path::new(&conversations_path));
 
     let process = OpenHandsAgentServerProcess::start(timeout, runtime_run_dir).await?;
     let handle = OpenHandsAgentServerHandle {
@@ -798,5 +835,32 @@ mod tests {
             ShutdownOutcome::Graceful,
             "expected OpenHands server to exit via SIGTERM before SIGKILL fallback"
         );
+    }
+
+    #[test]
+    fn release_stale_conversation_leases_removes_lease_files_and_ignores_missing_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let conversations = tmp.path().join("conversations");
+        fs::create_dir_all(&conversations).unwrap();
+
+        // Conversation with a stale lease
+        let conv1 = conversations.join("aaaa-0001");
+        fs::create_dir_all(&conv1).unwrap();
+        fs::write(conv1.join("owner_lease.json"), r#"{"owner":"old","expires_at":9999999999.0}"#).unwrap();
+        fs::write(conv1.join("meta.json"), "{}").unwrap();
+
+        // Conversation without a lease (should not be touched)
+        let conv2 = conversations.join("bbbb-0002");
+        fs::create_dir_all(&conv2).unwrap();
+        fs::write(conv2.join("meta.json"), "{}").unwrap();
+
+        release_stale_conversation_leases(&conversations);
+
+        assert!(!conv1.join("owner_lease.json").exists(), "stale lease should be removed");
+        assert!(conv1.join("meta.json").exists(), "meta.json should remain");
+        assert!(conv2.join("meta.json").exists(), "conversation without lease should be untouched");
+
+        // Calling on a non-existent path should not panic
+        release_stale_conversation_leases(Path::new("/tmp/does-not-exist-999999999"));
     }
 }
