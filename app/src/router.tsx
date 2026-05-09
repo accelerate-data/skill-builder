@@ -5,20 +5,18 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppLayout } from "./components/layout/app-layout";
-import DashboardPage from "./pages/dashboard";
+import HomePage from "./pages/home";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
+import WorkspaceRoutePage from "./pages/workspace-route";
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
 
-const dashboardRoute = createRoute({
+const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: DashboardPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    tab: typeof search.tab === "string" ? search.tab : undefined,
-  }),
+  component: HomePage,
 });
 
 const settingsRoute = createRoute({
@@ -29,8 +27,29 @@ const settingsRoute = createRoute({
 
 const workflowRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/skill/$skillName",
+  path: "/workflow/$skillName",
   component: WorkflowPage,
+});
+
+const workspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workspace/$skillName",
+  component: WorkspaceRoutePage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: typeof search.tab === "string" ? search.tab : undefined,
+  }),
+});
+
+const workspaceRefineRoute = createRoute({
+  getParentRoute: () => workspaceRoute,
+  path: "/refine",
+  component: WorkspaceRoutePage,
+});
+
+const workspaceEvalsRoute = createRoute({
+  getParentRoute: () => workspaceRoute,
+  path: "/evals",
+  component: WorkspaceRoutePage,
 });
 
 const skillsRedirectRoute = createRoute({
@@ -41,20 +60,14 @@ const skillsRedirectRoute = createRoute({
   },
 });
 
-const refineRedirectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/refine",
-  beforeLoad: () => {
-    throw redirect({ to: "/", search: { tab: "refine" } });
-  },
-});
-
 const routeTree = rootRoute.addChildren([
-  dashboardRoute,
+  homeRoute,
   settingsRoute,
-  skillsRedirectRoute,
   workflowRoute,
-  refineRedirectRoute,
+  workspaceRoute,
+  workspaceRefineRoute,
+  workspaceEvalsRoute,
+  skillsRedirectRoute,
 ]);
 
 export const router = createRouter({ routeTree });

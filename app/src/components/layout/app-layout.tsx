@@ -93,7 +93,7 @@ export function AppLayout() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "1") {
         e.preventDefault();
-        navigate({ to: "/", search: { tab: undefined } });
+        navigate({ to: "/" });
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault();
@@ -187,9 +187,9 @@ export function AppLayout() {
   const navigateToSkillSurface = useCallback(
     (skill: EditableSkill, tab?: string) => {
       if (getSkillSurface(skill) === "workflow") {
-        navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
+        navigate({ to: "/workflow/$skillName", params: { skillName: skill.name } });
       } else {
-        navigate({ to: "/", search: { tab: tab ?? undefined } });
+        navigate({ to: "/workspace/$skillName", params: { skillName: skill.name }, search: { tab: tab ?? undefined } });
       }
     },
     [navigate],
@@ -311,7 +311,6 @@ export function AppLayout() {
     void (async () => {
       await activateSkill(nextSkill);
       toast.info("Agent paused — skill switched");
-      navigate({ to: "/", search: { tab: tab ?? undefined } });
     })().catch((err) => {
       console.error("[app-layout] skill switch cleanup failed", err);
       toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });

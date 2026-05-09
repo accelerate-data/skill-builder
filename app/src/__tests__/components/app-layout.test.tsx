@@ -1116,7 +1116,7 @@ describe("AppLayout", () => {
       });
     };
 
-    it("navigates to '/' when the pre-selected skill has status 'completed'", async () => {
+    it("navigates to '/workspace/$skillName' when the pre-selected skill has status 'completed'", async () => {
       setupMock({ status: "completed" });
       render(<AppLayout />);
 
@@ -1124,11 +1124,15 @@ describe("AppLayout", () => {
       await userEvent.click(screen.getByText("Startup activate sales"));
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith({ to: "/", search: { tab: undefined } });
+        expect(mockNavigate).toHaveBeenCalledWith({
+          to: "/workspace/$skillName",
+          params: { skillName: "sales-skill" },
+          search: { tab: undefined },
+        });
       });
     });
 
-    it("navigates to '/skill/$skillName' when the pre-selected skill has status 'in_progress'", async () => {
+    it("navigates to '/workflow/$skillName' when the pre-selected skill has status 'in_progress'", async () => {
       setupMock({ status: "in_progress" });
       render(<AppLayout />);
 
@@ -1137,7 +1141,7 @@ describe("AppLayout", () => {
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith({
-          to: "/skill/$skillName",
+          to: "/workflow/$skillName",
           params: { skillName: "sales-skill" },
         });
       });
