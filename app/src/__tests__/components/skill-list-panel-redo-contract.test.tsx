@@ -139,10 +139,6 @@ describe("SkillListPanel redo restart contract", () => {
     expect(refine.messages[0]?.role).toBe("user");
     expect(refine.messages[1]?.role).toBe("agent");
 
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "redo-builder" },
-      state: { autoStart: true },
-    });
+    // Navigation is handled by AppLayout via onActivateSkill callback
   });
 });

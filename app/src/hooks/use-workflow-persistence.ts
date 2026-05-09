@@ -62,6 +62,7 @@ export function useWorkflowPersistence({
     // Without the else branch, re-navigating to a skill previously opened with autoStart=true
     // would leave reviewMode=false on a plain row-click (no autoStart).
     if (store.skillName === skillName && store.hydrated) {
+      setIsLoaded(true);
       store.setReviewMode(!autoStart);
       return;
     }

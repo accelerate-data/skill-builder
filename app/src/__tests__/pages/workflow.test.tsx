@@ -237,6 +237,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Hydrate settings so workflow handlers don't bail
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
       modelSettings: {
         model: "sonnet",
         api_key: "sk-test",
@@ -255,6 +256,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Clear module-level tauri mock call records so tests don't leak
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
 
     // Reset location state so tests don't accidentally inherit autoStart
     mockLocation.state = {};
@@ -442,7 +444,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).not.toHaveBeenCalled();
   });
 
-  it("reverts step to pending on unmount when running", async () => {
+  it("does not revert step on unmount when running (route coordinator owns exits)", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -451,16 +453,16 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     const { unmount } = render(<WorkflowPage />);
 
-    // Unmount triggers cleanup (simulates navigating away)
+    // Unmount does NOT trigger cleanup — route transitions own skill exits
     act(() => {
       unmount();
     });
 
-    // isRunning should be cleared immediately
-    expect(useWorkflowStore.getState().isRunning).toBe(false);
+    // isRunning remains true (route coordinator handles cleanup)
+    expect(useWorkflowStore.getState().isRunning).toBe(true);
 
-    // Step should be reverted to pending (not stuck at in_progress)
-    expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+    // Step remains in_progress (not reverted)
+    expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
   });
 
   it("does not revert step on unmount when not running", async () => {
@@ -479,7 +481,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
   });
 
-  it("calls endWorkflowSession on unmount when running", async () => {
+  it("does not call endWorkflowSession on unmount (route coordinator owns exits)", async () => {
     vi.mocked(endWorkflowSession).mockClear();
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -487,7 +489,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
     useAgentStore.getState().startRun("agent-1", "sonnet");
-    const sessionId = useWorkflowStore.getState().workflowSessionId;
 
     const { unmount } = render(<WorkflowPage />);
 
@@ -495,18 +496,16 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       unmount();
     });
 
-    // endWorkflowSession should be called (legacy runtime-pool cleanup removed)
-    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+    // endWorkflowSession is NOT called on unmount — route coordinator owns exits
+    expect(vi.mocked(endWorkflowSession)).not.toHaveBeenCalled();
   });
 
-  it("calls endWorkflowSession on unmount when session is active", async () => {
+  it("does not call endWorkflowSession on unmount when session is active", async () => {
     vi.mocked(endWorkflowSession).mockClear();
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setRunning(true);
-    const sessionId = useWorkflowStore.getState().workflowSessionId;
-    expect(sessionId).toBeTruthy();
 
     const { unmount } = render(<WorkflowPage />);
 
@@ -514,7 +513,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       unmount();
     });
 
-    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+    // endWorkflowSession is NOT called on unmount — route coordinator owns exits
+    expect(vi.mocked(endWorkflowSession)).not.toHaveBeenCalled();
   });
 
   it("cleans up workflow session on unmount even when not running", async () => {
@@ -635,6 +635,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockClear();
   });
 
@@ -719,6 +720,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(invokeCommand).mockClear();
@@ -1854,6 +1856,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(runWorkflowStep).mockClear();
@@ -2065,6 +2068,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(runAnswerEvaluator).mockClear();
@@ -2164,6 +2168,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(runAnswerEvaluator).mockClear();
@@ -2279,6 +2284,7 @@ describe("WorkflowPage — review mode default state", () => {
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
       modelSettings: {
         model: "sonnet",
         api_key: "sk-test",
@@ -2290,6 +2296,7 @@ describe("WorkflowPage — review mode default state", () => {
     mockBlocker.status = "idle";
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
     vi.mocked(runWorkflowStep).mockClear();
   });
 
@@ -2367,6 +2374,7 @@ describe("step reset behavior regressions", () => {
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(resetWorkflowStep).mockClear();
@@ -2698,6 +2706,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
       modelSettings: {
         model: "sonnet",
         api_key: "sk-test",
@@ -2716,7 +2725,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     vi.mocked(resetWorkflowStep).mockClear();
 
     // Reset named mocks whose implementations may have been persistently changed by earlier describes
-    vi.mocked(getWorkflowState).mockReset().mockRejectedValue("not found");
+    vi.mocked(getWorkflowState).mockReset().mockResolvedValue({ run: null, steps: [] });
     vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
     vi.mocked(runAnswerEvaluator).mockRejectedValue("not available");
     vi.mocked(materializeWorkflowStepOutput).mockResolvedValue(undefined);
@@ -3118,6 +3127,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
       modelSettings: {
         model: "sonnet",
         api_key: "sk-test",
@@ -3136,6 +3146,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockResolvedValue({ run: null, steps: [] });
   });
 
   afterEach(() => {
@@ -3218,7 +3229,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     mockBlocker.status = "idle";
 
     vi.mocked(saveWorkflowState).mockClear();
-    vi.mocked(getWorkflowState).mockReset().mockRejectedValue("not found");
+    vi.mocked(getWorkflowState).mockReset().mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(runAnswerEvaluator).mockClear();
@@ -4050,7 +4061,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     mockBlocker.status = "idle";
 
     vi.mocked(saveWorkflowState).mockClear();
-    vi.mocked(getWorkflowState).mockReset().mockRejectedValue("not found");
+    vi.mocked(getWorkflowState).mockReset().mockResolvedValue({ run: null, steps: [] });
     vi.mocked(readFile).mockReset().mockRejectedValue("not found");
     vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);

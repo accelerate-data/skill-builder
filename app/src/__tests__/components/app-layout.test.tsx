@@ -123,7 +123,13 @@ import {
   setEvalsRunning,
   setEvalsStopping,
 } from "@/lib/eval-running-state";
-import { renderWithQueryClient as render } from "@/test/query-test-utils";
+import { render as rtlRender } from "@testing-library/react";
+import { renderWithQueryClient, createTestQueryClient } from "@/test/query-test-utils";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queries/query-keys";
+
+// Use renderWithQueryClient as the default render for most tests
+const render = renderWithQueryClient;
 
 const defaultSettings: AppSettings = {
   model_settings: {
@@ -363,32 +369,31 @@ describe("AppLayout", () => {
   });
 
   it("pauses the workflow conversation when Escape is pressed during workflow streaming", async () => {
+    const skills = [
+      {
+        name: "my-skill",
+        status: "in_progress",
+        current_step: "1",
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+        description: null,
+        version: null,
+        userInvocable: null,
+        disableModelInvocation: null,
+      },
+    ];
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-      if (cmd === "list_skills") {
-        return Promise.resolve([
-          {
-            name: "my-skill",
-            status: "in_progress",
-            current_step: "1",
-            last_modified: null,
-            tags: [],
-            purpose: "domain",
-            skill_source: "skill-builder",
-            author_login: null,
-            author_avatar: null,
-            intake_json: null,
-            plugin_slug: "skills",
-            plugin_display_name: "Skills",
-            is_default_plugin: true,
-            description: null,
-            version: null,
-            userInvocable: null,
-            disableModelInvocation: null,
-          },
-        ]);
-      }
+      if (cmd === "list_skills") return Promise.resolve(skills);
       if (cmd === "list_imported_skills") return Promise.resolve([]);
       if (cmd === "pause_openhands_session") return Promise.resolve(true);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -426,7 +431,7 @@ describe("AppLayout", () => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
 
-    // Let React process the skills query result
+    // Wait for skills query to resolve
     await act(async () => {
       await new Promise((r) => setTimeout(r, 100));
     });
@@ -534,32 +539,31 @@ describe("AppLayout", () => {
   });
 
   it("sets workflow isStopping immediately when Escape is pressed during workflow run", async () => {
+    const skills = [
+      {
+        name: "my-skill",
+        status: "in_progress",
+        current_step: "1",
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+        description: null,
+        version: null,
+        userInvocable: null,
+        disableModelInvocation: null,
+      },
+    ];
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-      if (cmd === "list_skills") {
-        return Promise.resolve([
-          {
-            name: "my-skill",
-            status: "in_progress",
-            current_step: "1",
-            last_modified: null,
-            tags: [],
-            purpose: "domain",
-            skill_source: "skill-builder",
-            author_login: null,
-            author_avatar: null,
-            intake_json: null,
-            plugin_slug: "skills",
-            plugin_display_name: "Skills",
-            is_default_plugin: true,
-            description: null,
-            version: null,
-            userInvocable: null,
-            disableModelInvocation: null,
-          },
-        ]);
-      }
+      if (cmd === "list_skills") return Promise.resolve(skills);
       if (cmd === "list_imported_skills") return Promise.resolve([]);
       if (cmd === "pause_openhands_session") return Promise.resolve(true);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -598,7 +602,7 @@ describe("AppLayout", () => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
 
-    // Let React process the skills query result
+    // Wait for skills query to resolve
     await act(async () => {
       await new Promise((r) => setTimeout(r, 100));
     });
@@ -1190,6 +1194,7 @@ describe("AppLayout", () => {
         expect(mockNavigate).toHaveBeenCalledWith({
           to: "/workspace/$skillName",
           params: { skillName: "sales-skill" },
+          search: { tab: undefined },
         });
       });
     });

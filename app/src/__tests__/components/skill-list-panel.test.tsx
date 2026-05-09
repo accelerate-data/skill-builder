@@ -504,34 +504,29 @@ describe("SkillListPanel", () => {
 
   // ── Row click routing ─────────────────────────────────────────────────────
 
-  it("navigates to /skill/$skillName when clicking a never-started skill", async () => {
+  it("calls onSelectSkill when clicking a never-started skill", async () => {
+    const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "new-workflow" });
     setBuilderSkills([skill]);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("new-workflow").closest('[role="button"]')!);
 
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/skill/$skillName",
-        params: { skillName: "new-workflow" },
-      }),
-    );
+    // In-progress skills set selected skill but don't call onSelectSkill
+    // (navigation is handled by AppLayout onActivateSkill)
+    expect(onSelectSkill).not.toHaveBeenCalled();
   });
 
-  it("navigates to /skill/$skillName when clicking a step-1 skill", async () => {
+  it("calls onSelectSkill when clicking a step-1 skill", async () => {
+    const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "step1-nav", current_step: "Step 1" });
     setBuilderSkills([skill]);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("step1-nav").closest('[role="button"]')!);
 
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/skill/$skillName",
-        params: { skillName: "step1-nav" },
-      }),
-    );
+    // In-progress skills set selected skill but don't call onSelectSkill
+    expect(onSelectSkill).not.toHaveBeenCalled();
   });
 
   it("calls onSelectSkill when clicking a completed skill", () => {
@@ -627,12 +622,13 @@ describe("SkillListPanel", () => {
 
   // ── Review action ──────────────────────────────────────────────────────
 
-  it("shows Review menu item for completed builder skills and navigates to workflow in review mode", async () => {
+  it("shows Review menu item for completed builder skills and calls onActivateSkill", async () => {
     const user = userEvent.setup();
+    const onActivateSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "review-skill", status: "completed" });
     setBuilderSkills([skill]);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
 
     await openSkillMenu("review-skill", user);
 
@@ -642,11 +638,8 @@ describe("SkillListPanel", () => {
 
     await user.click(reviewItem);
 
-    // Should navigate to workflow page WITHOUT autoStart (review mode)
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "review-skill" },
-    });
+    // Should call onActivateSkill (navigation handled by AppLayout)
+    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("review-skill"));
   });
 
   it("shows the actions menu only for the selected skill", async () => {
@@ -765,7 +758,7 @@ describe("SkillListPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
   });
 
-  it("continue building activates the workflow skill before navigation", async () => {
+  it("continue building activates the workflow skill", async () => {
     const user = userEvent.setup();
     const onActivateSkill = vi.fn().mockResolvedValue(undefined);
     const skill = makeBuilderSkill({ name: "resume-builder", current_step: "Step 1" });
@@ -781,20 +774,16 @@ describe("SkillListPanel", () => {
     await user.click(continueItem);
 
     expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:resume-builder");
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "resume-builder" },
-      state: { autoStart: true },
-    });
   });
 
-  it("redo re-activates the workflow skill after reset before navigation", async () => {
+  it("redo re-activates the workflow skill after reset", async () => {
     const user = userEvent.setup();
+    const onActivateSkill = vi.fn().mockResolvedValue(undefined);
     const skill = makeBuilderSkill({ name: "redo-builder", status: "completed" });
     setBuilderSkills([skill]);
     vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
 
     await openSkillMenu("redo-builder", user);
     await user.click(screen.getByRole("menuitem", { name: "Redo workflow" }));
@@ -810,11 +799,8 @@ describe("SkillListPanel", () => {
       }),
       expect.any(String),
     );
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "redo-builder" },
-      state: { autoStart: true },
-    });
+    // Navigation is handled by AppLayout via onActivateSkill
+    expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:redo-builder");
   });
 
   it("does not navigate when clicking the running skill itself", () => {

@@ -173,7 +173,8 @@ describe("SkillDialog (edit mode)", () => {
 
     await user.click(screen.getByRole("button", { name: /Next/i }));
 
-    expect(screen.getByLabelText(/^Argument Hint/)).toBeEnabled();
+    expect(screen.getByText("User Invocable")).toBeInTheDocument();
+    expect(screen.getByText("Disable Model Invocation")).toBeInTheDocument();
   });
 
   it("disables description for marketplace skills with hint text", () => {
@@ -237,8 +238,6 @@ describe("SkillDialog (edit mode)", () => {
         JSON.stringify({ context: "Original context" }),
         "Original description",
         null,
-        null,
-        "[org-url]",
         true,
         false,
       );
