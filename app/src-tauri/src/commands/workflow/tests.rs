@@ -2738,14 +2738,6 @@ fn test_format_user_context_includes_configuration() {
     );
     assert!(text.contains("**Version**: 1.0"), "should include version");
     assert!(
-        text.contains("**Preferred Model**: claude-sonnet-4-6"),
-        "should include model"
-    );
-    assert!(
-        text.contains("**Argument Hint**: /ask"),
-        "should include argument hint"
-    );
-    assert!(
         text.contains("**User Invocable**: true"),
         "should include user_invocable"
     );

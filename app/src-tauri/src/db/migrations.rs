@@ -1610,8 +1610,6 @@ pub(super) fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqli
         ("deleted_at", "TEXT"),
         ("description", "TEXT"),
         ("version", "TEXT"),
-        ("model", "TEXT"),
-        ("argument_hint", "TEXT"),
         ("user_invocable", "INTEGER"),
         ("disable_model_invocation", "INTEGER"),
     ] {
@@ -1626,19 +1624,16 @@ pub(super) fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqli
     }
 
     // If any column was missing, the migration 24 backfill never ran either.
-    // Run it now so existing imported/marketplace skills have their version/model populated.
+    // Run it now so existing imported/marketplace skills have their version populated.
     // Note: workflow_runs no longer has metadata columns (dropped in migration 35),
     // so we only backfill from imported_skills for marketplace/imported skills.
+    // Note: model and argument_hint were dropped in migration 50 and are no longer backfilled.
     if added_any {
         conn.execute_batch(
             "UPDATE skills
              SET
                version = COALESCE(skills.version, (
                    SELECT imp.version FROM imported_skills imp WHERE imp.skill_name = skills.name)),
-               model = COALESCE(skills.model, (
-                   SELECT imp.model FROM imported_skills imp WHERE imp.skill_name = skills.name)),
-               argument_hint = COALESCE(skills.argument_hint, (
-                   SELECT imp.argument_hint FROM imported_skills imp WHERE imp.skill_name = skills.name)),
                user_invocable = COALESCE(skills.user_invocable, (
                    SELECT imp.user_invocable FROM imported_skills imp WHERE imp.skill_name = skills.name)),
                disable_model_invocation = COALESCE(skills.disable_model_invocation, (
