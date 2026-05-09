@@ -111,14 +111,14 @@ Run these automatically before reporting completion when files match:
 |---|---|
 | `agent-sources/plugins/**/agents/*.md` | `cd app && npm run test:agents:structural` |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
-| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
+| `app/src/__tests__/fixtures/openhands-events/**` | `cd app && npm run test:unit` |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` |
 | `app/src/**` | `cd app && npm run test:unit` |
 | `tests/evals/**` | `cd tests/evals && npm test`; run affected `npm run eval:<package>` scripts when the issue changes live eval behavior |
 
 **E2E tests** use Playwright to drive the real Tauri app UI, but with mocked Tauri commands (`__TAURI_MOCK_OVERRIDES__` / `reloadWithOverrides`). They are not bare-metal system tests — the backend is always mocked.
 
-For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural`, `test:unit`, and the affected live eval package or smoke subset. The `canonical-format.test.ts` suite is the canary for format drift.
+For artifact format changes (OpenHands transcript fixtures + app parser + mock templates): run `test:agents:structural`, `test:unit`, and the affected live eval package or smoke subset. The `canonical-format.test.ts` suite is the canary for OpenHands transcript fixture format drift.
 
 For Rust and cross-layer changes, consult `TEST_MAP.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 

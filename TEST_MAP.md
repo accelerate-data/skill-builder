@@ -40,7 +40,7 @@ Use the tables below for cases tooling cannot infer safely.
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
 | `agent-sources/plugins/**/agents/*.md` | `cd app && npm run test:agents:structural` | Structural validation only by default; live smoke requires explicit approval. |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |
-| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for format drift. |
+| `app/src/__tests__/fixtures/openhands-events/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for OpenHands transcript fixture format drift. |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` | Generated command-contract surface. |
 | `app/src-tauri/src/**` | Use the Rust map below | Add the mapped E2E tag when the command is UI-facing. |
 | `tests/evals/**` | `cd tests/evals && npm test`; run affected `npm run eval:<package>` scripts when behavior changes | Live eval scripts are automated OpenCode checks and may be run as normal validation. |
@@ -122,7 +122,7 @@ format changes covered across producer, fixture, and parser layers.
 | Source | Consumer or risk | Compliance test |
 |---|---|---|
 | `agent-sources/workspace/**/agents/*.md` | Agent artifact anti-patterns and structural rules | `cd app && npm run test:agents:structural` |
-| `app/e2e/fixtures/agent-responses/*.md` | E2E fixture format drift | `cd app && npm run test:unit` (`canonical-format.test.ts`) |
+| `app/src/__tests__/fixtures/openhands-events/*.jsonl` | OpenHands transcript fixture format drift | `cd app && npm run test:unit` (`canonical-format.test.ts`) |
 | `app/src-tauri/src/commands/workflow/guards.rs` | Scope recommendation and decisions guard parser behavior | `cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow::guards` |
 | `app/src/components/decisions-summary-card.tsx` (`parseDecisions`) | Decision heading and frontmatter parser behavior | `cd app && npm run test:unit -- decisions-summary-card.test.tsx` |
 
