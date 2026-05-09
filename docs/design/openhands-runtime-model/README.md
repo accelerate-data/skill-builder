@@ -74,7 +74,7 @@ Related sub-designs:
 | Rust owns Agent Server lifecycle and workspace selection. | The backend already owns persistence, filesystem policy, event delivery, logging, and cancellation. |
 | The frontend never calls OpenHands-shaped APIs directly. | Product APIs stay stable even if the runtime implementation changes. |
 | `skill-creator.md` is always sent through `system_message_suffix`. | The main agent should preserve the default OpenHands system prompt while deterministically appending Skill Builder's stable instructions. |
-| `skill-creator-user-suffix.txt` remains app-owned and additive. | Per-message invariants are a backend control surface and should not be embedded in task prompts. |
+| `skill-creator-user-suffix.txt` remains app-owned and per-call. | The user-message suffix is set per dispatch, not per agent. Workflow surfaces, refine, scope review, and the workflow answer evaluator opt in; eval scenario suggest deliberately omits it because its prompt is fully self-contained. Per-message invariants stay a backend control surface, not embedded in task prompts. |
 | Tool exposure is runtime-owned and centrally defined. | Prevent per-surface tool drift and keep product commands focused on task semantics. |
 | Selected-skill activation owns persistent-session startup. | Workflow and Refine both depend on the same selected-skill conversation. Bootstrapping that session at skill-selection time removes per-surface lifecycle drift. |
 
@@ -468,11 +468,16 @@ Skill Builder uses one top-level OpenHands agent identity: `skill-creator`.
 
 ### Subagents
 
-Named subagents are runtime inputs, not frontend concepts.
+Named subagents are deploy-time inputs, not request-time payload fields.
 
 - default subagent capability is exposed through `task_tool_set`
-- named agents such as `skill-verifier` are sent through
-  `agent_definitions` when a prompt may invoke them
+- named agents such as `skill-verifier` are deployed as `.md` files under
+  `<workspace_skill_dir>/.agents/agents/` by the SHA-gated deploy step
+  (`app/src-tauri/src/commands/workflow/deploy.rs`); the OpenHands SDK
+  discovers file-based agents in that directory at conversation creation, and
+  `task_tool_set` is what invokes them
+- the OpenHands request has no `agent_definitions` field — subagent
+  registration is a file-on-disk contract, not a payload contract
 
 ### Tools
 
@@ -490,7 +495,7 @@ The default tool policy for OpenHands requests lives in the child doc:
 | Workflow step execution | `run_workflow_step` | `OpenHandsSendMessage` | Step-oriented UI, but reuses the selected skill's persistent conversation |
 | Workflow gate evaluation | `run_answer_evaluator` | `OpenHandsSendMessage` | Part of the same workflow conversation, not a disposable side run |
 | Refine chat turn | `send_refine_message` | `OpenHandsSendMessage` | Sends the next user turn into the selected persistent session |
-| Eval scenario generation | `generate_eval_scenario_assertions` | `OpenHandsSendMessage` | Sends a scenario-generation turn into the selected persistent session and persists the parsed result back into SQLite |
+| Eval scenario suggest (target state) | `generate_eval_scenario_assertions` | `OpenHandsSendMessage` | **Target state for VU-1178.** Sends a scenario-generation turn into the selected persistent session and persists the parsed result back into SQLite. Current code still uses `RunThrowawayOpenHandsSession` (see Throwaway surfaces below). |
 | Selected-skill pause on switch/exit | `pause_openhands_session` | `PauseOpenHandsSession` | Shared lifecycle cleanup for switch-away and app shutdown |
 
 ### Throwaway surfaces
@@ -498,6 +503,7 @@ The default tool policy for OpenHands requests lives in the child doc:
 | Product surface | Product command | OpenHands primitive mapping | Notes |
 |---|---|---|---|
 | Create Skill scope validation | `review_skill_scope` | `RunThrowawayOpenHandsSession` | Bounded validation run, no later reply path |
+| Eval scenario suggest (current code) | `generate_eval_scenario_assertions` | `RunThrowawayOpenHandsSession` | `task_kind = "scenario-suggest"`, `OpenHandsRuntimeMode::Throwaway`, `<workspace>/.openhands/throwaway/eval-workbench/{run_id}/` runtime root. VU-1178 migrates this to the persistent surface above. |
 
 ## Workflow Prompt Routing
 

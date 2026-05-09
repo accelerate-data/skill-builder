@@ -29,7 +29,13 @@ Unknown tool names fail conversation creation.
 
 ## Default Tool Set
 
-### `agent.tools`
+The default `agent.tools` set fires only when a surface passes an empty (or
+fully-unrecognized) `allowed_tools`. In practice every surface today passes an
+explicit allowlist, but the fallback is what `openhands_tools()` in
+`app/src-tauri/src/agents/openhands_server/types.rs` emits when the resolved
+list is empty:
+
+### `agent.tools` default fallback
 
 ```rust
 "terminal",
@@ -38,8 +44,6 @@ Unknown tool names fail conversation creation.
 "grep",
 "glob",
 "task_tool_set",
-"browser_tool_set",
-"planning_file_editor",
 ```
 
 | Tool | Why it is included |
@@ -49,9 +53,27 @@ Unknown tool names fail conversation creation.
 | `task_tracker` | Internal multi-step task tracking. |
 | `grep` | Fast read-only search. |
 | `glob` | Fast path discovery. |
-| `task_tool_set` | Default subagent capability. |
-| `browser_tool_set` | Web reads and research where needed. |
-| `planning_file_editor` | Structured plan editing support. |
+| `task_tool_set` | Default subagent capability (modern replacement for the deprecated `delegate` tool). |
+
+`browser_tool_set` and `planning_file_editor` are registered by the Agent
+Server but **not in the default fallback**. They are opt-in via `allowed_tools`:
+
+- `browser_tool_set` was misfiring on local `file://` paths (the model would
+  try to "navigate" the workspace dir and the SDK's SecurityWatchdog blocked
+  it), so it ships only when a surface explicitly needs web research. Today
+  workflow research and detailed research are the only surfaces that opt in.
+- `planning_file_editor` is `PLAN.md`-specific and stays opt-in.
+
+`apply_patch` and `tom_consult` are **not** registered by the Agent Server, so
+sending them raises `KeyError` from `resolve_tool` in the SDK. They must not
+appear in any allowlist.
+
+### `task_tool_set` is non-negotiable
+
+If a surface passes a non-empty `allowed_tools` that omits `task_tool_set`,
+the runtime appends it after normalization. File-based subagent invocation
+(including `skill-verifier`) depends on it, so the contract is "always
+present" regardless of the per-surface allowlist.
 
 ### `include_default_tools`
 
@@ -61,7 +83,7 @@ Unknown tool names fail conversation creation.
 ```
 
 `InvokeSkillTool` is not explicitly listed because OpenHands attaches it when
-the active `agent_context.skills` set requires it.
+the active `agent_context.skills` set is non-empty.
 
 ## Override Policy
 

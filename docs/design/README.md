@@ -2,7 +2,7 @@
 
 | Directory | What it covers |
 |---|---|
-| [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
+| [agent-specs/](agent-specs/README.md) | Agent layer architecture: named OpenHands agents (`skill-creator`, `skill-verifier`), bundled file-based AgentSkills, workflow output contracts, storage layout |
 | [product-architecture/](product-architecture/README.md) | Product-level architecture entrypoint: UI, Rust backend, OpenHands runtime, persistent state, and doc routing |
 | [openhands-runtime-model/](openhands-runtime-model/README.md) | Canonical OpenHands runtime model: frontend-to-backend product commands, backend-to-OpenHands session primitives, persistent versus throwaway sessions, workspace ownership, and surface mapping |
 | [skill-purpose-taxonomy/](skill-purpose-taxonomy/README.md) | Skill purpose taxonomy: three live create-skill purposes, harness-owned exclusions, and source-system-semantics boundaries |

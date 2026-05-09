@@ -1,12 +1,21 @@
 # Canonical Workflow Contracts
 
-This document records the active app ↔ agent contracts for workflow artifacts
-and terminal step outputs.
+This document records the active app ↔ agent **structural** contracts for
+workflow artifacts and terminal step outputs.
 
 The authoritative type definitions live in Rust under
 `app/src-tauri/src/contracts/`. If examples in this doc ever diverge from those
 types, treat the Rust structs as source of truth and update this page in the
 same change.
+
+Structural shape (field names, types, nesting) is enforced here and by the
+generated JSON Schemas attached to OpenHands requests. **Semantic invariants**
+that JSON Schema cannot express — counter consistency, ID patterns, refinement
+nesting limits, notes vs. evaluator-notes separation, warning/error channel
+codes, research-flow privacy — live in
+[`agent-sources/workspace/skills/shared/schemas.md`](../../../agent-sources/workspace/skills/shared/schemas.md)
+and are documented at design level in
+[openhands-bundled-skills.md](openhands-bundled-skills.md).
 
 ## Contract Sources Of Truth
 
