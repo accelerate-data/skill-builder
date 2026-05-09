@@ -292,6 +292,9 @@ mod tests {
         let skill_name = "reset-me";
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
+        // Create the skill in the default plugin so save_skill_conversation_id can find it.
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+            .unwrap();
         crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
             .unwrap();
         let default_conversations =

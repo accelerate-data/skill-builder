@@ -49,7 +49,7 @@ mod tests {
     fn seed_skill(conn: &rusqlite::Connection, skill_id: &str) {
         conn.execute(
             "INSERT OR IGNORE INTO skills (name, skill_source, plugin_id) \
-             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = 'skills'))",
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = 'default'))",
             rusqlite::params![skill_id],
         )
         .unwrap();
