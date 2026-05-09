@@ -66,6 +66,12 @@ export function AppLayout() {
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [nodeReady, setNodeReady] = useState(false);
 
+  // Keep refs for Escape handler to avoid stale closure over skills query data
+  const builderSkillsRef = useRef(builderSkills);
+  builderSkillsRef.current = builderSkills;
+  const importedSkillsRef = useRef(importedSkills);
+  importedSkillsRef.current = importedSkills;
+
   const {
     settingsLoaded,
     reconciled,
@@ -122,7 +128,7 @@ export function AppLayout() {
           if (running) {
             const convoId = useRefineStore.getState().conversationId;
             const skillName = running.skillName;
-            const resolved = resolveSkill(skillName, builderSkills, importedSkills);
+            const resolved = resolveSkill(skillName, builderSkillsRef.current, importedSkillsRef.current);
             const pluginSlug = resolved?.plugin_slug;
             if (convoId && pluginSlug) {
               workflowStore.setStopping(true);
