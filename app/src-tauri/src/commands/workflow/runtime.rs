@@ -181,8 +181,8 @@ fn build_skill_creator_workflow_runtime_config(
             .to_string_lossy()
             .replace('\\', "/");
 
-    let mut config =
-        crate::agents::runtime_config::build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+    let mut config = crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
             prompt: prompt.to_string(),
             llm,
             workspace_root_dir,
@@ -198,7 +198,8 @@ fn build_skill_creator_workflow_runtime_config(
             step_id: Some(step_id as i32),
             run_source: Some("workflow".to_string()),
             plugin_slug: plugin_slug.to_string(),
-        });
+        },
+    );
     config.workflow_session_id = workflow_session_id;
     config
 }
@@ -216,23 +217,26 @@ pub(crate) fn build_answer_evaluator_runtime_config(
             .to_string_lossy()
             .replace('\\', "/");
 
-    crate::agents::runtime_config::build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
-        prompt: prompt.to_string(),
-        llm,
-        workspace_root_dir,
-        workspace_run_dir,
-        mode: None,
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("workflow.answer_evaluator".to_string()),
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
-        max_turns: 20,
-        output_format: Some(answer_evaluator_output_format()),
-        skill_name: Some(skill_name.to_string()),
-        step_id: None,
-        run_source: Some("gate-eval".to_string()),
-        plugin_slug: plugin_slug.to_string(),
-    })
+    crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
+            prompt: prompt.to_string(),
+            llm,
+            workspace_root_dir,
+            workspace_run_dir,
+            mode: None,
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("workflow.answer_evaluator".to_string()),
+            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+            allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(
+            ),
+            max_turns: 20,
+            output_format: Some(answer_evaluator_output_format()),
+            skill_name: Some(skill_name.to_string()),
+            step_id: None,
+            run_source: Some("gate-eval".to_string()),
+            plugin_slug: plugin_slug.to_string(),
+        },
+    )
 }
 
 async fn dispatch_persistent_skill_turn(

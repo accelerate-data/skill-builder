@@ -746,8 +746,10 @@ mod tests {
         {
             let repo = git2::Repository::open(&skills_path).unwrap();
             let head = repo.head().unwrap().peel(git2::ObjectType::Commit).unwrap();
-            repo.tag_lightweight("skill-a/v1.0.0", &head, false).unwrap();
-            repo.tag_lightweight("skill-b/v1.0.0", &head, false).unwrap();
+            repo.tag_lightweight("skill-a/v1.0.0", &head, false)
+                .unwrap();
+            repo.tag_lightweight("skill-b/v1.0.0", &head, false)
+                .unwrap();
         }
 
         let mut settings = crate::types::AppSettings::default();

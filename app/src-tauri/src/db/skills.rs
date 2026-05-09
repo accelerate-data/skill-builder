@@ -566,6 +566,68 @@ pub fn get_skill_master_id_in_plugin(
     .map_err(|e| e.to_string())
 }
 
+/// Resolve a skill identifier to the canonical `skills.id` row.
+///
+/// Accepted identifiers:
+/// - builder library key: `skill-builder:{plugin_slug}:{skill_name}`
+/// - imported library key: `imported:{imported_skill_id}` or `imported:{skills.id}`
+/// - raw `skills.id` string
+/// - legacy unique skill name
+pub fn resolve_skill_master_id_from_identifier(
+    conn: &Connection,
+    identifier: &str,
+) -> Result<Option<i64>, String> {
+    if let Ok(skill_id) = identifier.parse::<i64>() {
+        let row = conn
+            .query_row(
+                "SELECT id FROM skills WHERE id = ?1 AND COALESCE(deleted_at, '') = ''",
+                rusqlite::params![skill_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if row.is_some() {
+            return Ok(row);
+        }
+    }
+
+    if let Some(rest) = identifier.strip_prefix("skill-builder:") {
+        if let Some((plugin_slug, skill_name)) = rest.split_once(':') {
+            return get_skill_master_id_in_plugin(conn, skill_name, plugin_slug);
+        }
+    }
+
+    if let Some(imported_id) = identifier.strip_prefix("imported:") {
+        if let Ok(skill_id) = imported_id.parse::<i64>() {
+            let row = conn
+                .query_row(
+                    "SELECT id FROM skills WHERE id = ?1 AND COALESCE(deleted_at, '') = ''",
+                    rusqlite::params![skill_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+            if row.is_some() {
+                return Ok(row);
+            }
+        }
+
+        return conn
+            .query_row(
+                "SELECT skill_master_id
+                 FROM imported_skills
+                 WHERE skill_id = ?1 AND skill_master_id IS NOT NULL
+                 LIMIT 1",
+                rusqlite::params![imported_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string());
+    }
+
+    get_skill_master_id_any_plugin(conn, identifier)
+}
+
 pub fn move_skill_to_plugin(
     conn: &Connection,
     skill_name: &str,

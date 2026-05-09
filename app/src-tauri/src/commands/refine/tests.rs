@@ -407,7 +407,9 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
         allowed_tools: vec![],
         max_turns: 20,
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        system_message_suffix: Some(crate::agents::runtime_config::skill_creator_system_message_suffix()),
+        system_message_suffix: Some(
+            crate::agents::runtime_config::skill_creator_system_message_suffix(),
+        ),
         task_kind: Some("refine".to_string()),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         skill_name: Some("my-skill".to_string()),

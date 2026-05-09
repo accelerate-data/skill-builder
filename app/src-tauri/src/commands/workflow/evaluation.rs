@@ -474,7 +474,9 @@ mod tests {
         );
         assert!(!default_conversations.exists());
 
-        let run = crate::db::get_workflow_run(&conn, skill_name).unwrap().unwrap();
+        let run = crate::db::get_workflow_run(&conn, skill_name)
+            .unwrap()
+            .unwrap();
         assert_eq!(run.current_step, 0);
         assert_eq!(run.status, "pending");
     }
@@ -1328,25 +1330,15 @@ mod reset_artifact_cleanup_tests {
     }
 
     fn has_clarifications(conn: &rusqlite::Connection, skill_id: &str) -> bool {
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM clarifications WHERE skill_id = ?1",
-                rusqlite::params![skill_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        count > 0
+        workflow_artifacts::read_clarifications(conn, skill_id)
+            .unwrap()
+            .is_some()
     }
 
     fn has_decisions(conn: &rusqlite::Connection, skill_id: &str) -> bool {
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM decisions WHERE skill_id = ?1",
-                rusqlite::params![skill_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        count > 0
+        workflow_artifacts::read_decisions(conn, skill_id)
+            .unwrap()
+            .is_some()
     }
 
     #[test]

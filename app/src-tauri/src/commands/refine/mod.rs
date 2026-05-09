@@ -6,7 +6,9 @@ pub(crate) mod protocol;
 use serde::Deserialize;
 use std::path::Path;
 
-use crate::agents::runtime_config::{build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams};
+use crate::agents::runtime_config::{
+    build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams,
+};
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
 use crate::types::RefineDispatchResult;

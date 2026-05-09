@@ -1,5 +1,7 @@
 use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
-use crate::agents::runtime_config::{BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, OpenHandsRuntimeConfig};
+use crate::agents::runtime_config::{
+    BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
+};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 
@@ -127,23 +129,25 @@ pub(crate) fn build_scope_review_runtime_config(
     let workspace_root_dir = params.workspace_path.replace('\\', "/");
     let workspace_run_dir = params.workspace_run_dir.replace('\\', "/");
 
-    crate::agents::runtime_config::build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
-        prompt: params.prompt.to_string(),
-        llm: params.llm,
-        workspace_root_dir,
-        workspace_run_dir,
-        mode: Some(OpenHandsRuntimeMode::Throwaway),
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("scope_review".to_string()),
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        allowed_tools: vec!["file_editor".to_string()],
-        max_turns: 4,
-        output_format: Some(scope_review_output_format()),
-        skill_name: Some(params.skill_name.to_string()),
-        step_id: Some(-30),
-        run_source: None,
-        plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
-    })
+    crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
+            prompt: params.prompt.to_string(),
+            llm: params.llm,
+            workspace_root_dir,
+            workspace_run_dir,
+            mode: Some(OpenHandsRuntimeMode::Throwaway),
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("scope_review".to_string()),
+            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+            allowed_tools: vec!["file_editor".to_string()],
+            max_turns: 4,
+            output_format: Some(scope_review_output_format()),
+            skill_name: Some(params.skill_name.to_string()),
+            step_id: Some(-30),
+            run_source: None,
+            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+        },
+    )
 }
 
 #[tauri::command]

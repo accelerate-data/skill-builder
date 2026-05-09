@@ -188,9 +188,12 @@ export default function WorkflowPage() {
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );
   const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
-  const currentSkill = builderSkills.find((sk) => sk.name === skillName);
+  const currentSkill = builderSkills.find(
+    (sk) => (sk.library_key ?? sk.name) === skillName,
+  );
   const pluginSlug = currentSkill?.plugin_slug ?? refineSelectedSkill?.plugin_slug;
   const skillLibraryKey = currentSkill?.library_key;
+  const actualSkillName = currentSkill?.name ?? skillName;
 
   const stepConfig = STEP_CONFIGS[currentStep];
 

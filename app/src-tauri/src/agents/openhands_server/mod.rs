@@ -857,7 +857,8 @@ async fn resolve_openhands_conversation_id(
             .await
         }
         OpenHandsConversationResolution::Error(
-            OpenHandsRuntimeError::ConversationNotFound { .. } | OpenHandsRuntimeError::MissingExistingConversation
+            OpenHandsRuntimeError::ConversationNotFound { .. }
+            | OpenHandsRuntimeError::MissingExistingConversation,
         ) => {
             // Conversation was lost (e.g. files deleted while DB retains the ID).
             // Fall back to a fresh conversation and persist the new ID so all UI
@@ -1864,7 +1865,10 @@ fn build_missing_completed_payload_state(
     })
 }
 
-fn redact_openhands_config_for_log(config: &OpenHandsRuntimeConfig, port: u16) -> serde_json::Value {
+fn redact_openhands_config_for_log(
+    config: &OpenHandsRuntimeConfig,
+    port: u16,
+) -> serde_json::Value {
     let mut value = serde_json::to_value(config).unwrap_or(serde_json::Value::Null);
     if let Some(obj) = value.as_object_mut() {
         if obj.contains_key("apiKey") {

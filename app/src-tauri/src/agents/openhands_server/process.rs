@@ -624,7 +624,6 @@ pub fn redact_stderr(text: &str, secrets: &[String]) -> String {
         })
 }
 
-
 async fn wait_until_healthy(port: u16, timeout: Duration) -> Result<(), String> {
     let client = reqwest::Client::new();
     let deadline = Instant::now() + timeout;
@@ -707,7 +706,7 @@ mod tests {
         );
     }
 
-#[test]
+    #[test]
     fn extract_terminal_error_from_stderr_recovers_wrapped_openai_exception() {
         let lines = vec![
             "ConversationRunError:".to_string(),
@@ -865,7 +864,11 @@ mod tests {
         // Conversation with a stale lease
         let conv1 = conversations.join("aaaa-0001");
         fs::create_dir_all(&conv1).unwrap();
-        fs::write(conv1.join("owner_lease.json"), r#"{"owner":"old","expires_at":9999999999.0}"#).unwrap();
+        fs::write(
+            conv1.join("owner_lease.json"),
+            r#"{"owner":"old","expires_at":9999999999.0}"#,
+        )
+        .unwrap();
         fs::write(conv1.join("meta.json"), "{}").unwrap();
 
         // Conversation without a lease (should not be touched)
@@ -875,9 +878,15 @@ mod tests {
 
         release_stale_conversation_leases(&conversations);
 
-        assert!(!conv1.join("owner_lease.json").exists(), "stale lease should be removed");
+        assert!(
+            !conv1.join("owner_lease.json").exists(),
+            "stale lease should be removed"
+        );
         assert!(conv1.join("meta.json").exists(), "meta.json should remain");
-        assert!(conv2.join("meta.json").exists(), "conversation without lease should be untouched");
+        assert!(
+            conv2.join("meta.json").exists(),
+            "conversation without lease should be untouched"
+        );
 
         // Calling on a non-existent path should not panic
         release_stale_conversation_leases(Path::new("/tmp/does-not-exist-999999999"));

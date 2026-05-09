@@ -2,7 +2,10 @@ use crate::db::Db;
 use crate::{CloseGuardState, InstanceInfo};
 use rusqlite::Connection;
 
-fn release_instance_runtime_state(conn: &Connection, instance: &InstanceInfo) -> Result<(), String> {
+fn release_instance_runtime_state(
+    conn: &Connection,
+    instance: &InstanceInfo,
+) -> Result<(), String> {
     let _ = crate::db::release_all_instance_locks(conn, &instance.id)?;
     let _ = crate::commands::workflow_lifecycle::shutdown_sessions_for_pid(conn, instance.pid)?;
     Ok(())

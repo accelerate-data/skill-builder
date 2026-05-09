@@ -207,6 +207,84 @@ fn test_migration_count_matches_expected() {
 }
 
 #[test]
+fn test_migration_51_rebuilds_artifact_tables_on_integer_skill_fks() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 51 {
+            break;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    run_skill_id_artifact_fk_reset_migration(&conn).unwrap();
+
+    assert!(!table_has_column(&conn, "clarifications", "skill_master_id").unwrap());
+    assert!(!table_has_column(&conn, "decisions", "skill_master_id").unwrap());
+
+    let clar_skill_type: String = conn
+        .query_row(
+            "SELECT type FROM pragma_table_info('clarifications') WHERE name = 'skill_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let dec_skill_type: String = conn
+        .query_row(
+            "SELECT type FROM pragma_table_info('decisions') WHERE name = 'skill_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(clar_skill_type, "INTEGER");
+    assert_eq!(dec_skill_type, "INTEGER");
+}
+
+#[test]
+fn test_migration_51_is_rerunnable_after_partial_reset_state() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 51 {
+            break;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clarifications_new (skill_id INTEGER PRIMARY KEY);
+         DROP TABLE IF EXISTS decision_items;",
+    )
+    .unwrap();
+
+    run_skill_id_artifact_fk_reset_migration(&conn).unwrap();
+    run_skill_id_artifact_fk_reset_migration(&conn).unwrap();
+
+    let has_leftover_new: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'clarifications_new'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let has_decision_items: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'decision_items'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(has_leftover_new, 0);
+    assert_eq!(has_decision_items, 1);
+}
+
+#[test]
 fn test_performance_indexes_migration_creates_current_query_indexes() {
     let conn = Connection::open_in_memory().unwrap();
     ensure_migration_table(&conn).unwrap();
@@ -3266,8 +3344,6 @@ fn test_workflow_runs_extended_migration_is_idempotent() {
     let expected_cols = [
         "description",
         "version",
-
-
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3868,8 +3944,6 @@ fn test_migration_35_drops_workflow_runs_metadata_columns() {
     let columns_removed = [
         "description",
         "version",
-
-
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3927,7 +4001,6 @@ fn test_list_imported_skills_filtered() {
         description: None,
         purpose: Some("domain".to_string()),
         version: Some("1.0.0".to_string()),
-
 
         user_invocable: None,
         disable_model_invocation: None,
@@ -4044,7 +4117,6 @@ fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
         description: Some("test".to_string()),
         purpose: Some("skill-builder".to_string()),
         version: Some("1.0.0".to_string()),
-
 
         user_invocable: None,
         disable_model_invocation: None,
@@ -4354,7 +4426,6 @@ fn test_list_imported_skills_excludes_deleted_skills() {
         description: None,
         purpose: Some("domain".to_string()),
         version: Some("1.0.0".to_string()),
-
 
         user_invocable: None,
         disable_model_invocation: None,

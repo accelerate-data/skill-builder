@@ -197,9 +197,9 @@ export function AppLayout() {
       }
 
       try {
-        setSelectedWorkspaceSkillName(name);
+        setSelectedWorkspaceSkillName(editableSkill.name);
         await enterSkill(editableSkill, workspacePath);
-        setActiveSessionSkillName(name);
+        setActiveSessionSkillName(editableSkill.name);
       } catch (err) {
         setSelectedWorkspaceSkillName(null);
         setActiveSessionSkillName(null);

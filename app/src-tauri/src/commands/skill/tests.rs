@@ -133,7 +133,21 @@ fn test_create_and_list_skills_db_primary() {
     let workspace = dir.path().to_str().unwrap();
     let conn = create_test_db();
 
-    create_skill_inner(workspace, "my-skill", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "my-skill",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     let skills = list_skills_inner(workspace, None, &conn).unwrap();
@@ -176,7 +190,19 @@ fn test_create_skill_db_phase_does_not_create_filesystem_dirs() {
     let skills_path = skills.to_str().unwrap();
     let conn = create_test_db();
 
-    create_skill_db_records_inner(&conn, "db-only-skill", None, None, None, None, None, None, None, None, None)
+    create_skill_db_records_inner(
+        &conn,
+        "db-only-skill",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     assert!(crate::db::get_workflow_run(&conn, "db-only-skill")
@@ -191,9 +217,37 @@ fn test_create_duplicate_skill() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
 
-    create_skill_inner(workspace, "dup-skill", None, None, None, None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "dup-skill",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
-    let result = create_skill_inner(workspace, "dup-skill", None, None, None, None, None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace,
+        "dup-skill",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("already exists"));
 }
@@ -207,7 +261,21 @@ fn test_delete_skill_filesystem_phase_does_not_delete_db_records() {
     let skills_path = skills.to_str().unwrap();
     let conn = create_test_db();
 
-    create_skill_inner(workspace_path, "delete-fs-only", None, None, Some(&conn), Some(skills_path), None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace_path,
+        "delete-fs-only",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     delete_skill_filesystem_inner(
@@ -234,7 +302,21 @@ fn test_delete_skill_db_phase_does_not_delete_filesystem_dirs() {
     let skills_path = skills.to_str().unwrap();
     let conn = create_test_db();
 
-    create_skill_inner(workspace_path, "delete-db-only", None, None, Some(&conn), Some(skills_path), None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace_path,
+        "delete-db-only",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     delete_skill_db_records_inner(&conn, "delete-db-only", DEFAULT_PLUGIN_SLUG).unwrap();
@@ -347,7 +429,21 @@ fn test_create_skill_rejects_parent_dir_traversal() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
 
-    let result = create_skill_inner(workspace, "../bad-skill", None, None, None, None, None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace,
+        "../bad-skill",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
     assert!(result.is_err());
 }
 
@@ -356,7 +452,9 @@ fn test_create_skill_rejects_path_separator() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
 
-    let result = create_skill_inner(workspace, "bad/name", None, None, None, None, None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace, "bad/name", None, None, None, None, None, None, None, None, None, None, None,
+    );
     assert!(result.is_err());
 }
 
@@ -365,7 +463,9 @@ fn test_create_skill_rejects_empty_name() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
 
-    let result = create_skill_inner(workspace, "", None, None, None, None, None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace, "", None, None, None, None, None, None, None, None, None, None, None,
+    );
     assert!(result.is_err());
 }
 
@@ -374,7 +474,9 @@ fn test_create_skill_rejects_single_dot() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
 
-    let result = create_skill_inner(workspace, ".", None, None, None, None, None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace, ".", None, None, None, None, None, None, None, None, None, None, None,
+    );
     assert!(result.is_err());
 }
 
@@ -383,7 +485,21 @@ fn test_create_skill_rejects_dot_prefix() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
 
-    let result = create_skill_inner(workspace, ".hidden-skill", None, None, None, None, None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace,
+        ".hidden-skill",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
     assert!(result.is_err());
 }
 
@@ -395,7 +511,21 @@ fn test_delete_skill_workspace_only() {
     let workspace = dir.path().to_str().unwrap();
     let conn = create_test_db();
 
-    create_skill_inner(workspace, "to-delete", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "to-delete",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     let skills = list_skills_inner(workspace, None, &conn).unwrap();
@@ -427,7 +557,21 @@ fn test_delete_skill_with_skills_path() {
     let conn = create_test_db();
 
     // Create skill in workspace
-    create_skill_inner(workspace, "full-delete", None, None, Some(&conn), Some(skills_path), None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "full-delete",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Simulate skill output in skills_path (as would happen after build step, nested under default plugin)
@@ -461,7 +605,21 @@ fn test_delete_skill_cleans_db_fully() {
     let conn = create_test_db();
 
     // Create skill with DB records
-    create_skill_inner(workspace, "db-cleanup", Some(&["tag1".into(), "tag2".into()]), Some("platform"), Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "db-cleanup",
+        Some(&["tag1".into(), "tag2".into()]),
+        Some("platform"),
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Add workflow steps (save_workflow_step populates workflow_run_id FK automatically)
@@ -599,7 +757,21 @@ fn test_delete_skill_directory_traversal() {
     // Create a symlink or sibling that the ".." traversal would resolve to
     // The workspace has a dir that resolves outside via ".."
     // workspace/legit is a real skill
-    create_skill_inner(workspace_str, "legit", None, None, None, None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace_str,
+        "legit",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Attempt to delete using enough ".." segments to escape the canonical
@@ -744,7 +916,21 @@ fn test_delete_skill_inner_skill_builder_routes_to_workflow_path() {
     let conn = create_test_db();
 
     // create_skill_inner inserts into skills (skill_source="skill-builder") + workflow_runs
-    create_skill_inner(workspace, "builder-skill", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "builder-skill",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Verify setup: workflow_run exists
@@ -843,7 +1029,21 @@ fn test_create_skill_collision_in_workspace() {
     // Create the skill directory in workspace manually (simulating a pre-existing flat dir)
     fs::create_dir_all(flat_skill(workspace, "colliding-skill")).unwrap();
 
-    let result = create_skill_inner(workspace, "colliding-skill", None, None, None, Some(skills_path), None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace,
+        "colliding-skill",
+        None,
+        None,
+        None,
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -868,7 +1068,21 @@ fn test_create_skill_collision_in_skills_path() {
     // Create the skill directory in skills_path manually (simulating a pre-existing output dir)
     fs::create_dir_all(nested_skill(skills_path, "colliding-skill")).unwrap();
 
-    let result = create_skill_inner(workspace, "colliding-skill", None, None, None, Some(skills_path), None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace,
+        "colliding-skill",
+        None,
+        None,
+        None,
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -983,7 +1197,21 @@ fn test_create_skill_no_collision() {
     let skills_path = skills_dir.path().to_str().unwrap();
 
     // Neither workspace nor skills_path has the skill directory
-    let result = create_skill_inner(workspace, "new-skill", None, None, None, Some(skills_path), None, None, None, None, None, None, None);
+    let result = create_skill_inner(
+        workspace,
+        "new-skill",
+        None,
+        None,
+        None,
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
     assert!(result.is_ok());
 
     // Verify the workspace working directory was created (flat layout)
@@ -1002,7 +1230,21 @@ fn test_delete_skill_removes_logs_directory() {
     let workspace = dir.path().to_str().unwrap();
 
     // Create a skill
-    create_skill_inner(workspace, "skill-with-logs", None, None, None, None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "skill-with-logs",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Add a logs/ subdirectory with a fake log file inside the skill directory (nested)
@@ -1221,7 +1463,21 @@ fn test_rename_skill_basic() {
     save_skills_path_setting(&conn, skills_path);
 
     // Create skill with workspace dir, skills dir, DB record, tags, and steps
-    create_skill_inner(workspace, "old-name", Some(&["tag-a".into(), "tag-b".into()]), Some("domain"), Some(&conn), Some(skills_path), None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "old-name",
+        Some(&["tag-a".into(), "tag-b".into()]),
+        Some("domain"),
+        Some(&conn),
+        Some(skills_path),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
     crate::db::save_workflow_step(&conn, "old-name", 0, "completed").unwrap();
     crate::db::save_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "old-name", "conv-old")
@@ -1320,9 +1576,37 @@ fn test_rename_skill_collision() {
     let mut conn = create_test_db();
 
     // Create two skills in DB
-    create_skill_inner(workspace, "skill-a", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "skill-a",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
-    create_skill_inner(workspace, "skill-b", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "skill-b",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Attempt to rename skill-a to skill-b (collision)
@@ -1353,7 +1637,21 @@ fn test_rename_skill_noop_same_name() {
     let mut conn = create_test_db();
     let workspace_dir = tempdir().unwrap();
     let workspace = workspace_dir.path().to_str().unwrap();
-    create_skill_inner(workspace, "same-name", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "same-name",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // rename_skill_inner with same name hits the "already exists" check in DB,
@@ -1370,7 +1668,21 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
     let mut conn = create_test_db();
 
     // Create the skill on disk (workspace dir) and in DB
-    create_skill_inner(workspace, "will-rollback", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "will-rollback",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
     assert!(flat_skill(workspace, "will-rollback").exists());
 
@@ -1463,7 +1775,21 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     let mut conn = create_test_db();
 
     // Create the skill via create_skill_inner so it gets proper DB rows.
-    create_skill_inner(workspace, "original-skill", None, None, Some(&conn), None, None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace,
+        "original-skill",
+        None,
+        None,
+        Some(&conn),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Confirm the workspace directory was created on disk (flat layout).
@@ -1524,7 +1850,21 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     let mut conn = create_test_db();
 
     // Create a skill with workspace and skills directories
-    create_skill_inner(workspace_str, "rename-fail", None, None, Some(&conn), Some(skills_str), None, None, None, None, None, None, None)
+    create_skill_inner(
+        workspace_str,
+        "rename-fail",
+        None,
+        None,
+        Some(&conn),
+        Some(skills_str),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
     .unwrap();
 
     // Create the canonical skills-path directory for the existing skill and a

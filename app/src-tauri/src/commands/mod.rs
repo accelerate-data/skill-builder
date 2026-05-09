@@ -11,8 +11,8 @@ pub mod lifecycle;
 pub mod node;
 pub mod reconciliation;
 pub mod refine;
-pub mod settings;
 pub mod runtime_lifecycle;
+pub mod settings;
 pub mod skill;
 pub mod skill_session;
 #[cfg(test)]
