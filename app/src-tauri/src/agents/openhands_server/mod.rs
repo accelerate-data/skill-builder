@@ -1036,8 +1036,12 @@ pub async fn pause_openhands_conversation(
             .to_string()
         })?;
 
-    let local_closed = agent_id.is_some_and(close_local_openhands_run);
-    Ok(local_closed)
+    // Signal the in-process task so it sets cancel_pending=true before the socket closes.
+    // Using pause_openhands_session (signal only) rather than close_local_openhands_run
+    // (signal + abort) keeps the WebSocket alive long enough for the task to receive the
+    // PAUSED terminal state and exit cleanly via build_cancelled_state.
+    let signaled = agent_id.is_some_and(pause_openhands_session);
+    Ok(signaled)
 }
 
 pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
