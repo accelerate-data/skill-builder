@@ -411,7 +411,6 @@ impl OpenHandsAgentServerProcess {
                         Ok(Some(line)) if !line.trim().is_empty() => {
                             let redacted = redact_stderr(&line, &stderr_secrets);
                             push_stderr_tail_line(&stderr_tail_for_task, &redacted).await;
-                            log_stderr_line(&redacted);
                             if let Some(writer) = &mut log_writer {
                                 let _ = writer.write_all(redacted.as_bytes()).await;
                                 let _ = writer.write_all(b"\n").await;
@@ -625,17 +624,6 @@ pub fn redact_stderr(text: &str, secrets: &[String]) -> String {
         })
 }
 
-fn is_info_worthy_stderr_line(line: &str) -> bool {
-    line.to_ascii_lowercase().contains("conversation lease lost")
-}
-
-fn log_stderr_line(line: &str) {
-    if is_info_worthy_stderr_line(line) {
-        log::info!("[openhands-agent-server] {}", line);
-    } else {
-        log::debug!("[openhands-agent-server] {}", line);
-    }
-}
 
 async fn wait_until_healthy(port: u16, timeout: Duration) -> Result<(), String> {
     let client = reqwest::Client::new();
@@ -719,17 +707,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn conversation_lease_loss_stderr_is_promoted_to_info() {
-        assert!(is_info_worthy_stderr_line(
-            "[05/09/26 09:44:22] WARNING  Conversation lease lost while polling event stream"
-        ));
-        assert!(!is_info_worthy_stderr_line(
-            "AuthlibDeprecationWarning: authlib.jose module is deprecated"
-        ));
-    }
-
-    #[test]
+#[test]
     fn extract_terminal_error_from_stderr_recovers_wrapped_openai_exception() {
         let lines = vec![
             "ConversationRunError:".to_string(),
