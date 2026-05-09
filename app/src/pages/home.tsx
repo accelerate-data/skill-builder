@@ -5,7 +5,7 @@ import DashboardPage from "./dashboard";
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const selectedSkillName = useSkillStore((s) => s.activeSkill);
+  const selectedSkillName = useSkillStore((s) => s.selectedSkillName);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {

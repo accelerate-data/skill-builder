@@ -17,8 +17,6 @@ const vu1140Commands = [
   "get_skill_content_for_refine",
   "start_refine_session",
   "close_refine_session",
-  "cancel_agent_run",
-  "cancel_workflow_step",
   "send_refine_message",
   "finalize_refine_run",
   "clean_benchmark_snapshot",
@@ -79,7 +77,6 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "end_workflow_session",
     "resolve_orphan",
     "resolve_discovery",
-    "cancel_workflow_step",
   ];
 
   for (const command of migratedCommands) {

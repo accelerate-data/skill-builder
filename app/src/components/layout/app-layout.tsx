@@ -30,7 +30,7 @@ import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/ski
 import { toEditableSkill, type EditableSkill } from "@/lib/types";
 import { getSkillSurface } from "@/lib/skill-routing";
 import { enterSkill, leaveCurrentSkill } from "@/lib/active-skill-transition";
-import type { RouteDestination } from "@/lib/route-skill-session";
+
 import {
   Dialog,
   DialogContent,
@@ -118,17 +118,23 @@ export function AppLayout() {
             (r): r is typeof r & { skillName: string } =>
               r.status === "running" && r.runSource === "workflow" && !!r.skillName,
           );
-          if (running && refineStore.conversationId && refineStore.selectedSkill) {
-            workflowStore.setStopping(true);
-            pauseOpenHandsSession(
-              refineStore.selectedSkill.name,
-              refineStore.selectedSkill.plugin_slug,
-              refineStore.conversationId,
-              running.agentId,
-            ).catch((err) => {
-              console.error("[app-layout] escape: pause workflow conversation failed", err);
-              workflowStore.setStopping(false);
-            });
+          if (running) {
+            const convoId = useRefineStore.getState().conversationId;
+            const skillName = running.skillName;
+            const skill = builderSkills.find((s) => s.name === skillName) ?? importedSkills.find((s) => `imported:${s.skill_id}` === skillName);
+            const pluginSlug = skill?.plugin_slug;
+            if (convoId && pluginSlug) {
+              workflowStore.setStopping(true);
+              pauseOpenHandsSession(
+                skillName,
+                pluginSlug,
+                convoId,
+                running.agentId,
+              ).catch((err) => {
+                console.error("[app-layout] escape: pause workflow conversation failed", err);
+                workflowStore.setStopping(false);
+              });
+            }
           }
           return;
         }
@@ -232,11 +238,11 @@ export function AppLayout() {
       const currentSessionName = activeSessionSkillName ?? selectedWorkspaceSkillName;
       if (name === currentSessionName) {
         const surface = getSkillSurface(editableSkill);
-        const route: RouteDestination = surface === "workflow"
+        const route = surface === "workflow"
           ? { to: "/workflow/$skillName", params: { skillName: editableSkill.name } }
           : { to: "/workspace/$skillName", params: { skillName: editableSkill.name }, search: { tab: tab ?? undefined } };
         setSelectedSkillName(name);
-        navigate(route as Parameters<typeof navigate>[0]);
+        navigate(route);
         return;
       }
 

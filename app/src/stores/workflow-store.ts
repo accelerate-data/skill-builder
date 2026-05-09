@@ -168,6 +168,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({
       currentStep: stepId,
       isRunning: false,
+      isStopping: false,
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
@@ -184,6 +185,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({
       currentStep: stepId,
       isRunning: false,
+      isStopping: false,
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,

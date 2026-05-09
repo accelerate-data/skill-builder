@@ -5,8 +5,6 @@ interface UseWorkflowSessionOptions {
   skillName: string;
   shouldBlock: () => boolean;
   hasUnsavedChanges: boolean;
-  currentStep: number;
-  steps: Array<{ status: string }>;
 }
 
 export function useWorkflowSession({

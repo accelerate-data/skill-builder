@@ -12,9 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { SkillFile } from "@/stores/refine-store";
 import { requestEvalsCancel } from "@/lib/eval-running-state";
-import { getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
+import { loadSkillFiles } from "@/lib/skill-file-loader";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceRefine } from "./workspace-refine";
@@ -34,13 +33,9 @@ interface WorkspaceShellProps {
 }
 
 export function WorkspaceShell({ skill, skillType, initialSurface = "overview", onNavigateSurface, className }: WorkspaceShellProps) {
-  const [activeTab, setActiveTab] = useState<WorkspaceSurface>(initialSurface);
+  const activeTab = initialSurface;
   const [pendingTab, setPendingTab] = useState<WorkspaceSurface | null>(null);
   const workbenchRunningRef = useRef(false);
-
-  useEffect(() => {
-    setActiveTab(initialSurface);
-  }, [initialSurface]);
 
   const handleTabChange = useCallback((value: string) => {
     const nextTab = value as WorkspaceSurface;
@@ -55,7 +50,6 @@ export function WorkspaceShell({ skill, skillType, initialSurface = "overview", 
       setPendingTab(nextTab);
       return;
     }
-    setActiveTab(nextTab);
     onNavigateSurface?.(nextTab);
   }, [activeTab, onNavigateSurface]);
 
@@ -81,7 +75,6 @@ export function WorkspaceShell({ skill, skillType, initialSurface = "overview", 
           return;
         }
       }
-      setActiveTab(pendingTab);
       onNavigateSurface?.(pendingTab);
       setPendingTab(null);
     }
@@ -99,31 +92,25 @@ export function WorkspaceShell({ skill, skillType, initialSurface = "overview", 
     }
 
     if (store.skillFiles.length === 0) {
-      try {
-        let contents: Awaited<ReturnType<typeof getSkillContentForRefine>>;
-        if (isBuilderSkill && workspacePath) {
-          contents = await getSkillContentForRefine(
-            (skill as SkillSummary).name,
-            workspacePath,
-            (skill as SkillSummary).plugin_slug,
-          );
-        } else if (!isBuilderSkill && "disk_path" in skill && (skill as ImportedSkill).disk_path) {
-          contents = await getSkillContentAtPath((skill as ImportedSkill).disk_path!);
-        } else {
-          return;
-        }
-        const files: SkillFile[] = contents
-          .map((c) => ({ filename: c.path, content: c.content }))
-          .sort((a, b) => {
-            if (a.filename === "SKILL.md") return -1;
-            if (b.filename === "SKILL.md") return 1;
-            return a.filename.localeCompare(b.filename);
-          });
-        store.setSkillFiles(files);
-        if (files.length > 0) store.setActiveFileTab(files[0].filename);
-      } catch {
+      let files: Awaited<ReturnType<typeof loadSkillFiles>>;
+      if (isBuilderSkill && workspacePath) {
+        files = await loadSkillFiles({
+          type: "builder",
+          skillName: (skill as SkillSummary).name,
+          workspacePath,
+          pluginSlug: (skill as SkillSummary).plugin_slug,
+        });
+      } else if (!isBuilderSkill && "disk_path" in skill && (skill as ImportedSkill).disk_path) {
+        files = await loadSkillFiles({
+          type: "imported",
+          diskPath: (skill as ImportedSkill).disk_path,
+        });
+      } else {
         return;
       }
+      if (!files) return;
+      store.setSkillFiles(files);
+      if (files.length > 0) store.setActiveFileTab(files[0].filename);
     }
 
     const tab = store.activeFileTab || "SKILL.md";

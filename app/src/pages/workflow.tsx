@@ -240,8 +240,6 @@ export default function WorkflowPage() {
       return s.isRunning || s.gateLoading || hasUnsavedChangesRef.current;
     },
     hasUnsavedChanges: editorDirty && !!stepConfig?.clarificationsEditable,
-    currentStep,
-    steps,
   });
 
   const restartSelectedSkillSession = useCallback(async () => {
@@ -620,12 +618,10 @@ export default function WorkflowPage() {
             </div>
 
             {/* Content area */}
-            <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
+            <div className={`flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in duration-200 ${
               activeAgentId ? "" : "p-4"
             }`}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in duration-200">
-                {renderContent()}
-              </div>
+              {renderContent()}
             </div>
           </div>
         </div>

@@ -211,6 +211,7 @@ export function useWorkflowStateMachine({
   const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
   const updateStepStatus = useWorkflowStore((s) => s.updateStepStatus);
   const setRunning = useWorkflowStore((s) => s.setRunning);
+  const setStopping = useWorkflowStore((s) => s.setStopping);
   const setInitializing = useWorkflowStore((s) => s.setInitializing);
   const clearInitializing = useWorkflowStore((s) => s.clearInitializing);
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
@@ -303,6 +304,7 @@ export function useWorkflowStateMachine({
     (step: number, message: string) => {
       updateStepStatus(step, "error");
       setRunning(false);
+      setStopping(false);
       setActiveAgent(null);
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
@@ -310,7 +312,7 @@ export function useWorkflowStateMachine({
       }
       toast.error(message, { duration: Infinity });
     },
-    [setActiveAgent, setRunning, updateStepStatus],
+    [setActiveAgent, setRunning, setStopping, updateStepStatus],
   );
 
   const verifyOutputFiles = useCallback(
@@ -354,6 +356,7 @@ export function useWorkflowStateMachine({
 
       updateStepStatus(step, "completed");
       setRunning(false);
+      setStopping(false);
 
       // Invalidate workflow artifact caches so the DB-backed queries pick up
       // the newly materialized clarifications / decisions data.
@@ -361,7 +364,7 @@ export function useWorkflowStateMachine({
         invalidateWorkflowArtifactsAfterStep(skillName, step);
       }
     },
-    [skillName, setRunning, updateStepStatus],
+    [skillName, setRunning, setStopping, updateStepStatus],
   );
 
   const resolveResearchCompletion = useCallback(
@@ -654,6 +657,7 @@ export function useWorkflowStateMachine({
         setPendingAutoStartStep(null);
         setCurrentStep(stepToRestore);
         setGateLoading(false);
+        setStopping(false);
         updateStepStatus(stepToRestore, "completed");
         gate.gateStepRef.current = null;
         toast.error("Answer evaluation failed. Review the workflow logs and retry.", {
@@ -674,6 +678,7 @@ export function useWorkflowStateMachine({
     activeAgentId,
     extractStructuredResultPayload,
     setGateLoading,
+    setStopping,
     updateStepStatus,
     advanceToNextStep,
     clearRuns,
@@ -757,6 +762,7 @@ export function useWorkflowStateMachine({
         : null;
       updateStepStatus(step, "error");
       setRunning(false);
+      setStopping(false);
       setActiveAgent(null);
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
@@ -771,6 +777,7 @@ export function useWorkflowStateMachine({
     } else if (activeRunStatus === "shutdown") {
       setActiveAgent(null);
       setRunning(false);
+      setStopping(false);
       updateStepStatus(step, "pending");
       toast.info("Step cancelled");
     }
@@ -783,6 +790,7 @@ export function useWorkflowStateMachine({
     finalizeCompletedStep,
     updateStepStatus,
     setRunning,
+    setStopping,
     setActiveAgent,
     skillName,
     workspacePath,
@@ -845,6 +853,7 @@ export function useWorkflowStateMachine({
       } catch (err) {
         updateStepStatus(targetStep, "error");
         setRunning(false);
+        setStopping(false);
         clearInitializing();
         toast.error(
           `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`,

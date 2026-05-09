@@ -16,7 +16,6 @@ import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
 import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
-  getSkillContentForRefine,
   sendRefineMessage,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
@@ -27,34 +26,10 @@ import { extractStructuredResultPayload as extractStructuredResultFromDisplayIte
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { initAgentStream } from "@/hooks/use-agent-stream";
 import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
+import { loadSkillFiles } from "@/lib/skill-file-loader";
 
 interface WorkspaceRefineProps {
   skill: EditableSkill;
-}
-
-/** Load skill files from disk, returning null on failure. */
-async function loadSkillFiles(
-  basePath: string,
-  skillName: string,
-  pluginSlug: string,
-): Promise<SkillFile[] | null> {
-  try {
-    const contents = await getSkillContentForRefine(
-      skillName,
-      basePath,
-      pluginSlug,
-    );
-    return contents
-      .map((c): SkillFile => ({ filename: c.path, content: c.content }))
-      .sort((a, b) => {
-        if (a.filename === "SKILL.md") return -1;
-        if (b.filename === "SKILL.md") return 1;
-        return a.filename.localeCompare(b.filename);
-      });
-  } catch (err) {
-    console.error("[workspace-refine] Failed to load skill files:", err);
-    return null;
-  }
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -126,7 +101,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     setSessionTurns(0);
     setSessionTokens(0);
     setSessionCost(0);
-    void loadSkillFiles(workspacePath, skill.name, skill.plugin_slug)
+    void loadSkillFiles({
+      type: "builder",
+      skillName: skill.name,
+      workspacePath: workspacePath!,
+      pluginSlug: skill.plugin_slug,
+    })
       .then((files) => {
         if (cancelled) return;
         if (!files) {
@@ -291,11 +271,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         } catch {
           try {
-            const files = await loadSkillFiles(
-              workspacePath,
-              completionSkill.name,
-              completionSkill.plugin_slug,
-            );
+            const files = await loadSkillFiles({
+              type: "builder",
+              skillName: completionSkill.name,
+              workspacePath: workspacePath!,
+              pluginSlug: completionSkill.plugin_slug,
+            });
             if (files) {
               store.updateSkillFiles(files);
               store.setGitDiff(null);
@@ -313,11 +294,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           workspacePath,
           completionSkill.plugin_slug,
         ).catch(() => {});
-        const files = await loadSkillFiles(
-          workspacePath,
-          completionSkill.name,
-          completionSkill.plugin_slug,
-        );
+        const files = await loadSkillFiles({
+          type: "builder",
+          skillName: completionSkill.name,
+          workspacePath: workspacePath!,
+          pluginSlug: completionSkill.plugin_slug,
+        });
         if (files) {
           store.updateSkillFiles(files);
           store.setGitDiff(null);
