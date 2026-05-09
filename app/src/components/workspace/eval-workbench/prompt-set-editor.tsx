@@ -9,13 +9,13 @@ interface PromptSetEditorProps {
   draft: SaveScenario;
   onChange: (draft: SaveScenario) => void;
   onNew?: () => void;
-  onSuggest?: () => void;
+  onGenerate?: () => void;
   onDelete?: () => void;
-  suggestDisabled?: boolean;
+  generateDisabled?: boolean;
   deleteDisabled?: boolean;
   showDelete?: boolean;
-  showSuggest?: boolean;
-  suggestBusy?: boolean;
+  showGenerate?: boolean;
+  generateBusy?: boolean;
   showNew?: boolean;
   footerStatus?: {
     tone: "running" | "error";
@@ -27,13 +27,13 @@ export function PromptSetEditor({
   draft,
   onChange,
   onNew,
-  onSuggest,
+  onGenerate,
   onDelete,
-  suggestDisabled = false,
+  generateDisabled = false,
   deleteDisabled = false,
   showDelete = false,
-  showSuggest = true,
-  suggestBusy = false,
+  showGenerate = true,
+  generateBusy = false,
   showNew = true,
   footerStatus = null,
 }: PromptSetEditorProps) {
@@ -47,7 +47,7 @@ export function PromptSetEditor({
         <div>
           <h2 className="text-sm font-semibold">Scenario</h2>
           <p className="text-xs text-muted-foreground">
-            Git-backed eval cases for this skill.
+            Database-backed eval cases for this skill.
           </p>
         </div>
         <div className="flex gap-2">
@@ -62,16 +62,16 @@ export function PromptSetEditor({
               Delete scenario
             </Button>
           ) : null}
-          {showSuggest ? (
+          {showGenerate ? (
             <Button
               size="sm"
               variant="outline"
-              onClick={onSuggest}
-              disabled={suggestDisabled}
-              className={suggestBusy ? "cursor-progress" : undefined}
+              onClick={onGenerate}
+              disabled={generateDisabled}
+              className={generateBusy ? "cursor-progress" : undefined}
             >
               <Sparkles className="mr-1 size-3.5" />
-              {suggestBusy ? "Suggesting…" : "Suggest"}
+              {generateBusy ? "Generating..." : "Generate scenario and assertions"}
             </Button>
           ) : null}
           {showNew && onNew ? (
@@ -161,7 +161,7 @@ export function PromptSetEditor({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No assertions yet. Add one or use Suggest.
+                  No assertions yet. Add one or use Generate.
                 </p>
               )}
             </div>

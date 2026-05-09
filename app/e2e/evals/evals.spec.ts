@@ -9,6 +9,8 @@ import {
 
 const PERFORMANCE_SCENARIO = {
   id: "case-1",
+  pluginSlug: "default",
+  skillName: "test-skill",
   name: "Regression",
   prompt: "Forecast next quarter revenue for the west region pipeline.",
   assertions: ["Explains the forecast assumptions."],
@@ -17,7 +19,7 @@ const PERFORMANCE_SCENARIO = {
 const AUTHORED_SCENARIO = {
   ...PERFORMANCE_SCENARIO,
   prompt: "Summarize the pipeline risk for the west region.",
-  expectations: ["Summarizes the main pipeline blockers."],
+  assertions: ["Summarizes the main pipeline blockers."],
 };
 
 const DEFINITIVE_SCENARIO = {
@@ -43,16 +45,16 @@ async function navigateToEvalWorkbench(
 }
 
 test.describe("Eval Workbench", { tag: "@evals" }, () => {
-  test("authors a scenario and defines it with the scenario suggestion flow", async ({
+  test("authors a scenario and generates assertions with the scenario generation flow", async ({
     page,
   }) => {
     await navigateToEvalWorkbench(page, {
       list_scenarios: [{ name: AUTHORED_SCENARIO.name }],
       load_scenario: AUTHORED_SCENARIO,
       create_scenario: AUTHORED_SCENARIO,
-      define_eval_scenario: DEFINITIVE_SCENARIO,
+      generate_eval_scenario_assertions: DEFINITIVE_SCENARIO,
     });
-    await trackInvokes(page, ["create_scenario", "define_eval_scenario"]);
+    await trackInvokes(page, ["create_scenario", "generate_eval_scenario_assertions"]);
 
     await expect(page.getByRole("heading", { name: "Scenarios" })).toBeVisible();
     await expect(page.getByText("Regression")).toBeVisible();
@@ -63,8 +65,8 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
       "Explains the forecast assumptions.",
     );
 
-    await page.getByRole("button", { name: /^suggest$/i }).click();
-    await expect(await getTrackedInvokeCount(page, "define_eval_scenario")).toBe(1);
+    await page.getByRole("button", { name: /generate scenario and assertions/i }).click();
+    await expect(await getTrackedInvokeCount(page, "generate_eval_scenario_assertions")).toBe(1);
     await expect(page.getByLabel("User prompt")).toHaveValue(DEFINITIVE_SCENARIO.prompt);
     await expect(page.locator("textarea").nth(1)).toHaveValue(
       "Explains the forecast assumptions.",

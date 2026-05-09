@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createScenario,
   deleteScenario,
-  defineEvalScenario,
+  generateEvalScenarioAssertions,
   loadScenario,
   listScenarios,
   saveScenario,
@@ -28,7 +28,7 @@ type DeleteScenarioMutationInput = {
   scenarioName: string;
 };
 
-type DefineEvalScenarioMutationInput = {
+type GenerateEvalScenarioAssertionsMutationInput = {
   scenarioName: string;
 };
 
@@ -103,12 +103,12 @@ export function useCreateScenario(skillName: string | null, pluginSlug: string) 
   });
 }
 
-export function useDefineEvalScenario(skillName: string | null, pluginSlug: string) {
+export function useGenerateEvalScenarioAssertions(skillName: string | null, pluginSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ scenarioName }: DefineEvalScenarioMutationInput) =>
-      defineEvalScenario(pluginSlug, skillName!, scenarioName),
+    mutationFn: ({ scenarioName }: GenerateEvalScenarioAssertionsMutationInput) =>
+      generateEvalScenarioAssertions(pluginSlug, skillName!, scenarioName) as Promise<ScenarioDto>,
     onSuccess: (savedScenario, variables) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),

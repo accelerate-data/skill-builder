@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 

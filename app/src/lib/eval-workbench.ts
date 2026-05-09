@@ -4,6 +4,8 @@ export type ScenarioTag = "performance";
 
 export interface Scenario {
   id: string;
+  pluginSlug: string;
+  skillName: string;
   name: string;
   prompt: string;
   assertions: string[];
@@ -11,8 +13,10 @@ export interface Scenario {
 }
 
 export interface ScenarioSummary {
+  id: string;
+  pluginSlug: string;
+  skillName: string;
   name: string;
-  prompt?: string;
   tags?: ScenarioTag[];
 }
 
@@ -70,20 +74,26 @@ export const deleteScenario = (
   scenarioName: string,
 ) => invokeCommand("delete_scenario", { pluginSlug, skillName, scenarioName });
 
-export const defineEvalScenario = (
+export const generateEvalScenarioAssertions = (
   pluginSlug: string,
   skillName: string,
   scenarioName: string,
 ) =>
-  invokeCommand("define_eval_scenario", {
+  invokeCommand("generate_eval_scenario_assertions", {
     pluginSlug,
     skillName,
     scenarioName,
   });
 
-export function createDraftScenario(name = ""): SaveScenario {
+export function createDraftScenario(
+  pluginSlug: string,
+  skillName: string,
+  name = "",
+): SaveScenario {
   return {
     id: `case-${crypto.randomUUID().slice(0, 8)}`,
+    pluginSlug,
+    skillName,
     name,
     prompt: "",
     assertions: [],
@@ -94,6 +104,8 @@ export function createDraftScenario(name = ""): SaveScenario {
 export function scenarioToDraft(scenario: Scenario): SaveScenario {
   return {
     id: scenario.id,
+    pluginSlug: scenario.pluginSlug,
+    skillName: scenario.skillName,
     name: scenario.name,
     prompt: scenario.prompt,
     assertions: Array.isArray(scenario.assertions)
@@ -106,6 +118,8 @@ export function scenarioToDraft(scenario: Scenario): SaveScenario {
 export function normalizeScenario(draft: SaveScenario): SaveScenario {
   return {
     id: draft.id || `case-${crypto.randomUUID().slice(0, 8)}`,
+    pluginSlug: draft.pluginSlug,
+    skillName: draft.skillName,
     name: draft.name.trim(),
     prompt: draft.prompt.trim(),
     assertions: Array.isArray(draft.assertions)

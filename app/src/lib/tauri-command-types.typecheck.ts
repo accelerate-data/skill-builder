@@ -143,7 +143,7 @@ void invokeCommand("save_scenario", {
   previousScenarioName: null,
 });
 
-void invokeCommand("define_eval_scenario", {
+void invokeCommand("generate_eval_scenario_assertions", {
   pluginSlug: "skills",
   skillName: "demo",
   scenarioName: "Regression",

@@ -1,20 +1,17 @@
-pub mod scenarios;
 pub mod types;
 
 use crate::agents::openhands_server;
-use crate::agents::openhands_server::OpenHandsThrowawayRunParams;
-use crate::agents::sidecar::{
-    build_openhands_runtime_config, OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
-};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
-use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
+use crate::commands::workflow::read_initialized_runtime_context;
+use crate::db::eval_workbench::{self, EvalWorkbenchMode, SaveScenario};
+use crate::db::skills::get_skill_conversation_id;
 use crate::db::Db;
 use serde_json::Value;
-use std::path::Path;
+use tauri::Listener;
 pub use types::{ScenarioDto, ScenarioSummaryDto};
 
-const SUGGEST_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
+const GENERATE_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../agent-sources/prompts/eval-workbench-suggest-scenario.txt"
 ));
@@ -32,142 +29,49 @@ fn validate_plugin_slug(plugin_slug: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_scenario_tags(tags: &[String]) -> Result<Vec<scenarios::ScenarioTag>, String> {
-    if tags.is_empty() {
-        return Err("Scenario tags must include at least one mode".to_string());
-    }
-
-    let mut parsed = Vec::new();
-    for tag in tags {
-        let next = match tag.trim() {
-            "performance" => scenarios::ScenarioTag::Performance,
-            other => return Err(format!("Unsupported performance scenario tag: {other}")),
-        };
-        if !parsed.contains(&next) {
-            parsed.push(next);
-        }
-    }
-    Ok(parsed)
-}
-
-fn scenario_tag_strings(tags: &[scenarios::ScenarioTag]) -> Vec<String> {
-    tags.iter()
-        .map(|tag| match tag {
-            scenarios::ScenarioTag::Performance => "performance",
-        })
-        .map(str::to_string)
-        .collect()
-}
-
-fn scenario_from_dto(dto: ScenarioDto) -> Result<scenarios::Scenario, String> {
-    let tags = if dto.tags.is_empty() {
-        vec![scenarios::ScenarioTag::Performance]
-    } else {
-        parse_scenario_tags(&dto.tags)?
-    };
-    let scenario = scenarios::Scenario {
-        id: dto.id,
+fn scenario_from_dto(dto: ScenarioDto) -> Result<SaveScenario, String> {
+    let mode = EvalWorkbenchMode::parse(
+        &dto.tags
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "performance".to_string()),
+    )?;
+    Ok(SaveScenario {
+        id: Some(dto.id),
+        plugin_slug: dto.plugin_slug,
+        skill_name: dto.skill_name,
         name: dto.name,
-        tags,
+        mode,
         prompt: dto.prompt,
-        expectations: dto.assertions,
-    };
-    scenarios::validate_scenario(&scenario)?;
-    Ok(scenario)
-}
-
-fn scenario_to_dto(scenario: scenarios::Scenario) -> ScenarioDto {
-    ScenarioDto {
-        id: scenario.id,
-        name: scenario.name,
-        tags: scenario_tag_strings(&scenario.tags),
-        prompt: scenario.prompt,
-        assertions: scenario.expectations,
-    }
-}
-
-fn scenario_summary_to_dto(summary: scenarios::ScenarioSummary) -> ScenarioSummaryDto {
-    ScenarioSummaryDto {
-        name: summary.name,
-        tags: scenario_tag_strings(&summary.tags),
-    }
-}
-
-fn persist_scenario_file(
-    eval_dir: &std::path::Path,
-    scenario: &scenarios::Scenario,
-    previous_scenario_name: Option<&str>,
-) -> Result<(), String> {
-    if let Some(previous_scenario_name) = previous_scenario_name {
-        scenarios::validate_scenario_name(previous_scenario_name)?;
-    }
-    let path = scenarios::scenario_file_path(eval_dir, &scenario.name);
-    let existing_scenario = scenarios::load_scenario(eval_dir, &scenario.name)?;
-    let existing_target_scenario = if path.exists() {
-        scenarios::read_scenario_file(&path).ok()
-    } else {
-        None
-    };
-    let is_rename = previous_scenario_name.is_some_and(|previous| previous != scenario.name);
-    let is_create = previous_scenario_name.is_none();
-    if existing_scenario.is_some() && (is_create || is_rename) {
-        return Err(format!("Scenario '{}' already exists", scenario.name));
-    }
-    let target_path_matches_existing = existing_target_scenario.as_ref().is_some_and(|existing| {
-        existing.name == scenario.name || previous_scenario_name == Some(existing.name.as_str())
-    });
-    if existing_target_scenario.is_some() && !target_path_matches_existing {
-        return Err(format!(
-            "Scenario '{}' conflicts with existing slug '{}'",
-            scenario.name,
-            scenarios::slugify_scenario_name(&scenario.name)
-        ));
-    }
-    scenarios::write_scenario_file(&path, scenario)?;
-    scenarios::delete_other_scenario_files(eval_dir, &scenario.name, &path)?;
-    if let Some(previous_scenario_name) = previous_scenario_name {
-        if previous_scenario_name != scenario.name {
-            scenarios::delete_scenario_file(eval_dir, previous_scenario_name)?;
-        }
-    }
-
-    Ok(())
-}
-
-fn next_default_scenario_name(eval_dir: &std::path::Path) -> Result<String, String> {
-    let prefix = "Performance";
-    let existing = scenarios::list_scenarios(eval_dir)?;
-    let mut index = 1;
-    loop {
-        let candidate = format!("{prefix} {index}");
-        if !existing.iter().any(|s| s.name == candidate) {
-            return Ok(candidate);
-        }
-        index += 1;
-        if index > 1000 {
-            return Err("Could not find an unused default scenario name".to_string());
-        }
-    }
-}
-
-fn suggested_scenario_output_format() -> Value {
-    serde_json::json!({
-        "type": "object",
-        "properties": {
-            "name": { "type": "string" },
-            "prompt": { "type": "string" },
-            "expectations": {
-                "type": "array",
-                "items": { "type": "string" }
-            }
-        },
-        "required": ["name", "prompt", "expectations"]
+        assertions: dto.assertions,
     })
 }
 
-fn build_suggest_scenario_prompt(
+fn scenario_to_dto(scenario: eval_workbench::Scenario) -> ScenarioDto {
+    ScenarioDto {
+        id: scenario.id,
+        plugin_slug: scenario.plugin_slug,
+        skill_name: scenario.skill_name,
+        name: scenario.name,
+        tags: vec![scenario.mode.as_str().to_string()],
+        prompt: scenario.prompt,
+        assertions: scenario.assertions,
+    }
+}
+
+fn scenario_summary_to_dto(scenario: eval_workbench::Scenario) -> ScenarioSummaryDto {
+    ScenarioSummaryDto {
+        id: scenario.id,
+        plugin_slug: scenario.plugin_slug,
+        skill_name: scenario.skill_name,
+        name: scenario.name,
+        tags: vec![scenario.mode.as_str().to_string()],
+    }
+}
+
+fn build_generate_scenario_prompt(
     skill_name: &str,
-    existing_scenario: &scenarios::Scenario,
+    scenario: &eval_workbench::Scenario,
     skill_files: &[crate::types::SkillFileContent],
     clarifications_json: &str,
     decisions_json: &str,
@@ -179,18 +83,18 @@ fn build_suggest_scenario_prompt(
         .join("\n\n");
     format!(
         "{template}\n\nSkill: {skill_name}\n\nSkill files:\n{skill_context}\n\nExisting scenario:\nname: {name}\nprompt: {prompt}\nexpectations: {expectations}\n\nClarifications:\n{clarifications}\n\nDecisions:\n{decisions}",
-        template = SUGGEST_SCENARIO_PROMPT_TEMPLATE,
+        template = GENERATE_SCENARIO_PROMPT_TEMPLATE,
         skill_name = skill_name,
         skill_context = skill_context,
-        name = existing_scenario.name,
-        prompt = existing_scenario.prompt,
-        expectations = serde_json::to_string(&existing_scenario.expectations).unwrap_or_default(),
+        name = scenario.name,
+        prompt = scenario.prompt,
+        expectations = serde_json::to_string(&scenario.assertions).unwrap_or_default(),
         clarifications = clarifications_json,
         decisions = decisions_json,
     )
 }
 
-fn load_define_eval_scenario_context(
+fn load_generate_eval_scenario_context(
     conn: &rusqlite::Connection,
     skill_name: &str,
 ) -> (String, String) {
@@ -221,24 +125,19 @@ fn clean_openhands_structured_result_text(text: &str) -> &str {
         .trim()
 }
 
-fn parse_suggested_scenario_response(
+fn parse_generated_scenario_response(
     state: &serde_json::Value,
-    existing_scenario: &scenarios::Scenario,
-) -> Result<scenarios::Scenario, String> {
+    existing_scenario: &eval_workbench::Scenario,
+) -> Result<(String, Vec<String>), String> {
     let output = parse_openhands_structured_output(state)?;
     let text = output
         .get("result")
         .and_then(|v| v.as_str())
         .map(clean_openhands_structured_result_text)
         .or_else(|| output.as_str())
-        .ok_or_else(|| "Missing result text in scenario suggestion response".to_string())?;
+        .ok_or_else(|| "Missing result text in scenario generation response".to_string())?;
     let parsed: serde_json::Value = serde_json::from_str(text)
-        .map_err(|e| format!("Failed to parse suggested scenario JSON: {}", e))?;
-    let name = parsed
-        .get("name")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| existing_scenario.name.clone());
+        .map_err(|e| format!("Failed to parse generated scenario JSON: {}", e))?;
     let prompt = parsed
         .get("prompt")
         .and_then(|v| v.as_str())
@@ -252,92 +151,91 @@ fn parse_suggested_scenario_response(
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect()
         })
-        .unwrap_or_else(|| existing_scenario.expectations.clone());
-    Ok(scenarios::Scenario {
-        id: existing_scenario.id.clone(),
-        name,
-        tags: existing_scenario.tags.clone(),
-        prompt,
-        expectations,
-    })
+        .unwrap_or_else(|| existing_scenario.assertions.clone());
+    Ok((prompt, expectations))
 }
 
-fn build_generation_sidecar_config(
-    plugin_slug: &str,
-    skill_name: &str,
-    prompt: &str,
-    workspace_root_dir: &str,
-    workspace_run_dir: &str,
-    output_format: Value,
-    runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-) -> crate::agents::sidecar::SidecarConfig {
-    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
-        prompt: prompt.to_string(),
-        llm: runtime_ctx.llm.clone(),
-        workspace_root_dir: workspace_root_dir.replace('\\', "/"),
-        workspace_run_dir: workspace_run_dir.replace('\\', "/"),
-        mode: Some(OpenHandsRuntimeMode::Throwaway),
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("scenario-suggest".to_string()),
-        user_message_suffix: None,
-        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-        max_turns: 10,
-        output_format: Some(output_format),
-        skill_name: Some(skill_name.to_string()),
-        step_id: Some(-11),
-        run_source: Some("scenario-suggest".to_string()),
-        plugin_slug: plugin_slug.to_string(),
-    })
-}
+async fn wait_for_openhands_turn_result(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    timeout: std::time::Duration,
+) -> Result<serde_json::Value, String> {
+    use tokio::sync::mpsc;
 
-async fn run_define_eval_scenario_throwaway_turn<
-    EnsureRuntimeDir,
-    EnsureRuntimeDirFuture,
-    RunTurn,
-    RunTurnFuture,
->(
-    plugin_slug: &str,
-    skill_name: &str,
-    prompt: &str,
-    runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-    ensure_runtime_dir: EnsureRuntimeDir,
-    run_turn: RunTurn,
-) -> Result<openhands_server::OpenHandsThrowawayRun, String>
-where
-    EnsureRuntimeDir: FnOnce(&std::path::Path) -> EnsureRuntimeDirFuture,
-    EnsureRuntimeDirFuture: std::future::Future<Output = Result<(), String>>,
-    RunTurn: FnOnce(OpenHandsThrowawayRunParams) -> RunTurnFuture,
-    RunTurnFuture:
-        std::future::Future<Output = Result<openhands_server::OpenHandsThrowawayRun, String>>,
-{
-    let run_id = uuid::Uuid::new_v4().to_string();
-    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        std::path::Path::new(&runtime_ctx.workspace_path),
-        "eval-workbench",
-        &run_id,
-    );
-    std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
-        &runtime_run_dir,
-    ))
-    .map_err(|e| format!("Failed to create throwaway conversations dir: {e}"))?;
-    std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
-        .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
-    ensure_runtime_dir(&runtime_run_dir).await?;
-    let config = build_generation_sidecar_config(
-        plugin_slug,
-        skill_name,
-        prompt,
-        &runtime_ctx.workspace_path,
-        &runtime_run_dir.to_string_lossy(),
-        suggested_scenario_output_format(),
-        runtime_ctx,
-    );
-    run_turn(OpenHandsThrowawayRunParams {
-        agent_id: format!("{skill_name}-scenario-suggest-{}", uuid::Uuid::new_v4()),
-        config,
-        timeout: std::time::Duration::from_secs(90),
+    fn parse_terminal_state(
+        payload: &str,
+        target_agent_id: &str,
+    ) -> Option<Result<serde_json::Value, String>> {
+        let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+        if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+            return None;
+        }
+        let message = value.get("message")?;
+        if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+            return None;
+        }
+        match message.get("status").and_then(|v| v.as_str())? {
+            "completed" => Some(Ok(message.clone())),
+            "error" => Some(Err("OpenHands run failed".to_string())),
+            "cancelled" | "canceled" => Some(Err("OpenHands run cancelled".to_string())),
+            _ => None,
+        }
+    }
+
+    let (tx, mut rx) = mpsc::unbounded_channel::<Result<serde_json::Value, String>>();
+    let target_agent_id = agent_id.to_string();
+    let tx_message = tx.clone();
+    let message_listener = app.listen("agent-message", move |event: tauri::Event| {
+        if let Some(result) = parse_terminal_state(event.payload(), target_agent_id.as_str()) {
+            let _ = tx_message.send(result);
+        }
+    });
+
+    let target_agent_id = agent_id.to_string();
+    let tx_exit = tx.clone();
+    let exit_listener = app.listen("agent-exit", move |event: tauri::Event| {
+        let payload: serde_json::Value =
+            serde_json::from_str(event.payload()).unwrap_or_default();
+        if payload.get("agent_id").and_then(|v| v.as_str()) == Some(&target_agent_id) {
+            let success = payload
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if !success {
+                let detail = payload
+                    .get("error_detail")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("OpenHands run failed")
+                    .to_string();
+                let _ = tx_exit.send(Err(detail));
+            }
+        }
+    });
+
+    let wait_result = tokio::time::timeout(timeout, async {
+        while let Some(result) = rx.recv().await {
+            if let Ok(state) = result {
+                return Ok(state);
+            }
+            if let Err(e) = result {
+                return Err(e);
+            }
+        }
+        Err("OpenHands listener closed unexpectedly".to_string())
     })
-    .await
+    .await;
+
+    app.unlisten(message_listener);
+    app.unlisten(exit_listener);
+
+    match wait_result {
+        Ok(Ok(state)) => Ok(state),
+        Ok(Err(e)) => Err(e),
+        Err(_) => {
+            let _ = crate::agents::openhands_server::pause_openhands_session(agent_id);
+            Err("OpenHands generation timed out".to_string())
+        }
+    }
 }
 
 #[tauri::command]
@@ -348,10 +246,8 @@ pub fn list_scenarios(
 ) -> Result<Vec<ScenarioSummaryDto>, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
-    let skills_path = resolve_skills_path(&db)?;
-    let eval_dir =
-        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    scenarios::list_scenarios(&eval_dir)
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    eval_workbench::list_scenarios(&conn, &plugin_slug, &skill_name)
         .map(|items| items.into_iter().map(scenario_summary_to_dto).collect())
 }
 
@@ -364,11 +260,8 @@ pub fn load_scenario(
 ) -> Result<Option<ScenarioDto>, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
-    scenarios::validate_scenario_name(&scenario_name)?;
-    let skills_path = resolve_skills_path(&db)?;
-    let eval_dir =
-        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    scenarios::load_scenario(&eval_dir, &scenario_name)
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    eval_workbench::read_scenario(&conn, &plugin_slug, &skill_name, &scenario_name)
         .map(|scenario| scenario.map(scenario_to_dto))
 }
 
@@ -380,20 +273,33 @@ pub fn create_scenario(
 ) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
-    let skills_path = resolve_skills_path(&db)?;
-    let eval_dir =
-        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    let name = next_default_scenario_name(&eval_dir)?;
-    let scenario = scenarios::Scenario {
-        id: format!("case-{}", uuid::Uuid::new_v4().simple()),
-        name,
-        tags: vec![scenarios::ScenarioTag::Performance],
-        prompt: String::new(),
-        expectations: vec![],
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    let existing = eval_workbench::list_scenarios(&conn, &plugin_slug, &skill_name)?;
+    let mut index = 1i64;
+    loop {
+        let candidate = format!("Performance {index}");
+        if !existing.iter().any(|s| s.name == candidate) {
+            break;
+        }
+        index += 1;
+        if index > 1000 {
+            return Err("Could not find an unused default scenario name".to_string());
+        }
     };
-    let path = scenarios::scenario_file_path(&eval_dir, &scenario.name);
-    scenarios::write_scenario_file(&path, &scenario)?;
-    Ok(scenario_to_dto(scenario))
+    let name = format!("Performance {index}");
+
+    let input = SaveScenario {
+        id: None,
+        plugin_slug: plugin_slug.clone(),
+        skill_name: skill_name.clone(),
+        name,
+        mode: EvalWorkbenchMode::Performance,
+        prompt: String::new(),
+        assertions: vec![],
+    };
+    let saved = eval_workbench::save_scenario(&mut conn, input)?;
+    Ok(scenario_to_dto(saved))
 }
 
 #[tauri::command]
@@ -401,18 +307,15 @@ pub fn save_scenario(
     plugin_slug: String,
     skill_name: String,
     scenario: ScenarioDto,
-    previous_scenario_name: Option<String>,
+    _previous_scenario_name: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
-    let scenario = scenario_from_dto(scenario)?;
-    let skills_path = resolve_skills_path(&db)?;
-    let eval_dir =
-        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    persist_scenario_file(&eval_dir, &scenario, previous_scenario_name.as_deref())?;
-
-    Ok(scenario_to_dto(scenario))
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+    let input = scenario_from_dto(scenario)?;
+    let saved = eval_workbench::save_scenario(&mut conn, input)?;
+    Ok(scenario_to_dto(saved))
 }
 
 #[tauri::command]
@@ -424,16 +327,12 @@ pub fn delete_scenario(
 ) -> Result<(), String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
-    scenarios::validate_scenario_name(&scenario_name)?;
-    let skills_path = resolve_skills_path(&db)?;
-    let eval_dir =
-        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    scenarios::delete_scenario_file(&eval_dir, &scenario_name)?;
-    Ok(())
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+    eval_workbench::delete_scenario(&mut conn, &plugin_slug, &skill_name, &scenario_name)
 }
 
 #[tauri::command]
-pub async fn define_eval_scenario(
+pub async fn generate_eval_scenario_assertions(
     app: tauri::AppHandle,
     plugin_slug: String,
     skill_name: String,
@@ -442,118 +341,129 @@ pub async fn define_eval_scenario(
 ) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
     validate_skill_name(&skill_name)?;
-    scenarios::validate_scenario_name(&scenario_name)?;
 
-    let skills_path = resolve_skills_path(&db)?;
-    let skill_files = get_skill_content_inner_for_plugin(&skill_name, &skills_path, &plugin_slug)?;
-    let eval_dir =
-        crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
-    let existing_scenario = scenarios::load_scenario(&eval_dir, &scenario_name)?
-        .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))?;
-    let (clarifications_json, decisions_json) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        load_define_eval_scenario_context(&conn, &skill_name)
-    };
     let runtime_ctx = read_initialized_runtime_context(&db)?;
-    ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
-    let prompt = build_suggest_scenario_prompt(
+
+    let (existing_scenario, conversation_id, skill_files, clarifications_json, decisions_json) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let existing_scenario =
+            eval_workbench::read_scenario(&conn, &plugin_slug, &skill_name, &scenario_name)?
+                .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))?;
+
+        let conversation_id = get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
+            .ok_or_else(|| {
+                format!(
+                    "No active OpenHands conversation for skill '{}' in plugin '{}'. Select a skill conversation in Refine first.",
+                    skill_name, plugin_slug
+                )
+            })?;
+
+        let skills_path = resolve_skills_path(&db)?;
+        let skill_files =
+            get_skill_content_inner_for_plugin(&skill_name, &skills_path, &plugin_slug)?;
+
+        let (clarifications_json, decisions_json) =
+            load_generate_eval_scenario_context(&conn, &skill_name);
+
+        (
+            existing_scenario,
+            conversation_id,
+            skill_files,
+            clarifications_json,
+            decisions_json,
+        )
+    };
+
+    let prompt = build_generate_scenario_prompt(
         &skill_name,
         &existing_scenario,
         &skill_files,
         &clarifications_json,
         &decisions_json,
     );
-    let run = run_define_eval_scenario_throwaway_turn(
-        &plugin_slug,
-        &skill_name,
-        &prompt,
-        &runtime_ctx,
-        |runtime_run_dir| {
-            let runtime_run_dir = runtime_run_dir.to_path_buf();
-            let app = app.clone();
-            async move {
-                crate::commands::workflow::deploy::ensure_openhands_runtime_dir(
-                    &app,
-                    &runtime_run_dir,
-                )
-                .await
+
+    let agent_id = format!(
+        "{}-eval-generate-{}",
+        skill_name,
+        uuid::Uuid::new_v4().simple()
+    );
+
+    let config = crate::agents::sidecar::build_openhands_runtime_config(
+        crate::agents::sidecar::OpenHandsRuntimeConfigParams {
+            prompt,
+            llm: runtime_ctx.llm,
+            workspace_root_dir: runtime_ctx.workspace_path.clone(),
+            workspace_run_dir: runtime_ctx.workspace_path.clone(),
+            mode: None,
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("eval-workbench-generate".to_string()),
+            user_message_suffix: None,
+            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+            max_turns: 10,
+            output_format: Some(generated_scenario_output_format()),
+            skill_name: Some(skill_name.clone()),
+            step_id: Some(-11),
+            run_source: Some("eval-workbench-generate".to_string()),
+            plugin_slug: plugin_slug.clone(),
+        },
+    );
+
+    openhands_server::send_openhands_message(&app, &agent_id, config, conversation_id).await?;
+
+    let terminal_state =
+        wait_for_openhands_turn_result(&app, &agent_id, std::time::Duration::from_secs(90)).await?;
+
+    let (prompt, assertions) =
+        parse_generated_scenario_response(&terminal_state, &existing_scenario)?;
+
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+    let saved = eval_workbench::save_scenario(
+        &mut conn,
+        SaveScenario {
+            id: Some(existing_scenario.id.clone()),
+            plugin_slug: plugin_slug.clone(),
+            skill_name: skill_name.clone(),
+            name: existing_scenario.name.clone(),
+            mode: existing_scenario.mode,
+            prompt,
+            assertions,
+        },
+    )?;
+
+    Ok(scenario_to_dto(saved))
+}
+
+fn generated_scenario_output_format() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "name": { "type": "string" },
+            "prompt": { "type": "string" },
+            "expectations": {
+                "type": "array",
+                "items": { "type": "string" }
             }
         },
-        |params| {
-            let app = app.clone();
-            async move { openhands_server::run_throwaway_openhands_session(&app, params).await }
-        },
-    )
-    .await?;
-
-    let suggested_scenario =
-        parse_suggested_scenario_response(&run.conversation_state, &existing_scenario)?;
-    persist_scenario_file(&eval_dir, &suggested_scenario, Some(&scenario_name))?;
-    Ok(scenario_to_dto(suggested_scenario))
+        "required": ["name", "prompt", "expectations"]
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agents::openhands_server::OpenHandsThrowawayRun;
-    use crate::commands::workflow::settings::InitializedRuntimeContext;
 
     #[test]
-    fn define_eval_scenario_uses_throwaway_runtime_path() {
-        let workspace = tempfile::tempdir().unwrap();
-        let runtime_ctx = InitializedRuntimeContext {
-            workspace_path: workspace.path().to_string_lossy().into_owned(),
-            llm: crate::types::WorkflowLlmConfig {
-                model: "gpt-4.1".to_string(),
-                api_key: Some(crate::types::SecretString::new("test-key".to_string())),
-                base_url: None,
-                api_version: None,
-                temperature: None,
-                max_output_tokens: None,
-                timeout_seconds: None,
-                num_retries: None,
-                reasoning_effort: None,
-                extra_headers: None,
-                input_cost_per_token: None,
-                output_cost_per_token: None,
-                usage_id: None,
-            },
-        };
+    fn validate_plugin_slug_rejects_empty() {
+        assert!(validate_plugin_slug("").is_err());
+    }
 
-        let result = tokio::runtime::Runtime::new().unwrap().block_on(
-            run_define_eval_scenario_throwaway_turn(
-                "default",
-                "lead-conversion",
-                "prompt",
-                &runtime_ctx,
-                |runtime_run_dir| {
-                    let runtime_run_dir = runtime_run_dir.to_path_buf();
-                    async move {
-                        assert!(runtime_run_dir.exists());
-                        assert!(crate::skill_paths::throwaway_conversations_dir(&runtime_run_dir).is_dir());
-                        assert!(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir).is_dir());
-                        Ok(())
-                    }
-                },
-                |params| async move {
-                    assert!(params.agent_id.contains("lead-conversion-scenario-suggest-"));
-                    assert_eq!(params.config.mode.as_deref(), Some("throwaway"));
-                    assert_eq!(params.config.task_kind.as_deref(), Some("scenario-suggest"));
-                    assert!(params
-                        .config
-                        .workspace_skill_dir
-                        .contains("/.openhands/throwaway/eval-workbench/"));
-                    Ok(OpenHandsThrowawayRun {
-                        conversation_state: serde_json::json!({
-                            "structured_output": {
-                                "result": "{\"name\":\"Performance 1\",\"prompt\":\"Prompt\",\"expectations\":[\"assertion\"]}"
-                            }
-                        }),
-                    })
-                },
-            ),
-        );
+    #[test]
+    fn validate_plugin_slug_rejects_path_traversal() {
+        assert!(validate_plugin_slug("../bad").is_err());
+    }
 
-        assert!(result.is_ok());
+    #[test]
+    fn validate_plugin_slug_accepts_valid() {
+        assert!(validate_plugin_slug("default").is_ok());
     }
 }

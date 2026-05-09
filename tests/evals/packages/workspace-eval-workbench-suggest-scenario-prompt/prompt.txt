@@ -1,4 +1,4 @@
-Suggest the prompt and expectations for one eval scenario for the skill `measuring-pipeline-value`.
+Generate the prompt and expectations for one eval scenario for the skill `measuring-pipeline-value`.
 
 Return exactly one valid JSON object with this shape:
 {

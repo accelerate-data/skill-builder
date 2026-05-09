@@ -8,7 +8,7 @@ import {
   useSaveScenario,
   useScenario,
   useScenarios,
-  useDefineEvalScenario,
+  useGenerateEvalScenarioAssertions,
 } from "@/lib/queries/eval-scenarios";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { WorkspaceEvals } from "./workspace-evals";
@@ -39,7 +39,7 @@ export function WorkspaceEvalWorkbench({
   const scenariosQuery = useScenarios(skillName, pluginSlug);
   const createScenarioMutation = useCreateScenario(skillName, pluginSlug);
   const saveScenarioMutation = useSaveScenario(skillName, pluginSlug);
-  const defineEvalScenarioMutation = useDefineEvalScenario(skillName, pluginSlug);
+  const generateEvalScenarioAssertionsMutation = useGenerateEvalScenarioAssertions(skillName, pluginSlug);
   const deleteScenarioMutation = useDeleteScenario(skillName, pluginSlug);
   const scenarios = scenariosQuery.data ?? [];
   const selectedScenarioQuery = useScenario(
@@ -83,8 +83,8 @@ export function WorkspaceEvalWorkbench({
     return createdScenario;
   }
 
-  async function handleDefineEvalScenario(scenarioName: string) {
-    const savedScenario = await defineEvalScenarioMutation.mutateAsync({ scenarioName });
+  async function handleGenerateEvalScenarioAssertions(scenarioName: string): Promise<ScenarioDto> {
+    const savedScenario = await generateEvalScenarioAssertionsMutation.mutateAsync({ scenarioName }) as ScenarioDto;
     setSelectedScenarioName(savedScenario.name);
     return savedScenario;
   }
@@ -207,12 +207,12 @@ export function WorkspaceEvalWorkbench({
           onStartNewScenario={handleStartNewScenario}
           onCreateScenario={handleCreateScenario}
           onSaveScenario={handleSaveScenario}
-          onDefineEvalScenario={handleDefineEvalScenario}
+          onGenerateEvalScenarioAssertions={handleGenerateEvalScenarioAssertions}
           onDeleteScenario={handleDeleteScenario}
           saveScenarioPending={
             createScenarioMutation.isPending || saveScenarioMutation.isPending
           }
-          defineEvalScenarioPending={defineEvalScenarioMutation.isPending}
+          generateEvalScenarioAssertionsPending={generateEvalScenarioAssertionsMutation.isPending}
           deleteScenarioPending={deleteScenarioMutation.isPending}
           headerContent={scenariosSection}
         />

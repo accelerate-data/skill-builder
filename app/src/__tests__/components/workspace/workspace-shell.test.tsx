@@ -83,7 +83,7 @@ const mockUseScenarios = vi.fn();
 const mockUseScenario = vi.fn();
 const mockUseCreateScenario = vi.fn();
 const mockUseSaveScenario = vi.fn();
-const mockUseDefineEvalScenario = vi.fn();
+const mockUseGenerateEvalScenarioAssertions = vi.fn();
 const mockUseDeleteScenario = vi.fn();
 
 vi.mock("@/lib/queries/eval-scenarios", () => ({
@@ -91,7 +91,7 @@ vi.mock("@/lib/queries/eval-scenarios", () => ({
   useScenario: (...args: unknown[]) => mockUseScenario(...args),
   useCreateScenario: (...args: unknown[]) => mockUseCreateScenario(...args),
   useSaveScenario: (...args: unknown[]) => mockUseSaveScenario(...args),
-  useDefineEvalScenario: (...args: unknown[]) => mockUseDefineEvalScenario(...args),
+  useGenerateEvalScenarioAssertions: (...args: unknown[]) => mockUseGenerateEvalScenarioAssertions(...args),
   useDeleteScenario: (...args: unknown[]) => mockUseDeleteScenario(...args),
 }));
 
@@ -221,7 +221,7 @@ describe("WorkspaceShell", () => {
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
     });
-    mockUseDefineEvalScenario.mockReset().mockReturnValue({
+    mockUseGenerateEvalScenarioAssertions.mockReset().mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue(performanceScenario),
       isPending: false,
     });

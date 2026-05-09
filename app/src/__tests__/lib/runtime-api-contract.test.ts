@@ -34,7 +34,7 @@ describe("runtime API contract", () => {
     expect(evalsSource).toContain('from "@/lib/eval-workbench"');
     expect(evalsSource).not.toContain("startOneShotAgent");
     expect(evalsSource).not.toContain("sendRefineMessage");
-    expect(evalsSource).toContain("onDefineEvalScenario");
+    expect(evalsSource).toContain("onGenerateEvalScenarioAssertions");
   });
 
   it("keeps refine UI on the streaming refine API", () => {

@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { SaveScenario, ScenarioDto } from "@/lib/eval-workbench";
 import {
-  createDraftScenario,
   getErrorMessage,
   normalizeScenario,
   scenarioToDraft,
@@ -25,10 +24,10 @@ interface WorkspaceEvalsProps {
     scenario: ScenarioDto,
     options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
-  onDefineEvalScenario?: (scenarioName: string) => Promise<ScenarioDto>;
+  onGenerateEvalScenarioAssertions?: (scenarioName: string) => Promise<ScenarioDto>;
   onDeleteScenario?: (scenarioName: string) => Promise<void>;
   saveScenarioPending?: boolean;
-  defineEvalScenarioPending?: boolean;
+  generateEvalScenarioAssertionsPending?: boolean;
   deleteScenarioPending?: boolean;
   headerContent?: ReactNode;
 }
@@ -41,15 +40,28 @@ export function WorkspaceEvals({
   onStartNewScenario,
   onCreateScenario,
   onSaveScenario,
-  onDefineEvalScenario,
+  onGenerateEvalScenarioAssertions,
   onDeleteScenario,
   saveScenarioPending = false,
-  defineEvalScenarioPending = false,
+  generateEvalScenarioAssertionsPending = false,
   deleteScenarioPending = false,
   headerContent,
 }: WorkspaceEvalsProps) {
-  const [suggestingScenario, setSuggestingScenario] = useState(false);
-  const [draft, setDraft] = useState<SaveScenario>(() => createDraftScenario());
+  const [generatingScenario, setGeneratingScenario] = useState(false);
+  const [draft, setDraft] = useState<SaveScenario>(() => {
+    if (scenario) {
+      return scenarioToDraft(scenario);
+    }
+    return {
+      id: `case-${crypto.randomUUID().slice(0, 8)}`,
+      pluginSlug: "plugin" in skill ? skill.plugin_slug : "default",
+      skillName: "name" in skill ? skill.name : skill.skill_name,
+      name: "",
+      prompt: "",
+      assertions: [],
+      tags: ["performance"],
+    };
+  });
   const [actionError, setActionError] = useState<string | null>(null);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model);
   const skillName = "name" in skill ? skill.name : skill.skill_name;
@@ -63,10 +75,18 @@ export function WorkspaceEvals({
     if (scenario) {
       setDraft(scenarioToDraft(scenario));
     } else {
-      setDraft(createDraftScenario());
+      setDraft({
+        id: `case-${crypto.randomUUID().slice(0, 8)}`,
+        pluginSlug: "plugin" in skill ? skill.plugin_slug : "default",
+        skillName: "name" in skill ? skill.name : skill.skill_name,
+        name: "",
+        prompt: "",
+        assertions: [],
+        tags: ["performance"],
+      });
     }
     setActionError(null);
-  }, [scenario]);
+  }, [scenario, skill]);
 
   async function handleSave() {
     if (!scenario) return;
@@ -81,16 +101,16 @@ export function WorkspaceEvals({
     }
   }
 
-  async function handleSuggest() {
-    if (!scenario || !onDefineEvalScenario) return;
-    setSuggestingScenario(true);
+  async function handleGenerate() {
+    if (!scenario || !onGenerateEvalScenarioAssertions) return;
+    setGeneratingScenario(true);
     setActionError(null);
     try {
-      await onDefineEvalScenario(scenario.name);
+      await onGenerateEvalScenarioAssertions(scenario.name);
     } catch (err) {
       setActionError(getErrorMessage(err));
     } finally {
-      setSuggestingScenario(false);
+      setGeneratingScenario(false);
     }
   }
 
@@ -145,13 +165,13 @@ export function WorkspaceEvals({
               draft={draft}
               onChange={setDraft}
               onNew={onCreateScenario ? handleCreateScenario : undefined}
-              onSuggest={onDefineEvalScenario ? handleSuggest : undefined}
+              onGenerate={onGenerateEvalScenarioAssertions ? handleGenerate : undefined}
               onDelete={onDeleteScenario ? handleDelete : undefined}
-              suggestDisabled={defineEvalScenarioPending}
+              generateDisabled={generateEvalScenarioAssertionsPending}
               deleteDisabled={deleteScenarioPending}
               showDelete={true}
-              showSuggest={Boolean(onDefineEvalScenario)}
-              suggestBusy={suggestingScenario || defineEvalScenarioPending}
+              showGenerate={Boolean(onGenerateEvalScenarioAssertions)}
+              generateBusy={generatingScenario || generateEvalScenarioAssertionsPending}
               showNew={Boolean(onCreateScenario)}
               footerStatus={
                 actionError

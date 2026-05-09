@@ -36,10 +36,12 @@ describe("eval scenario queries", () => {
 
     mockSaveScenario.mockResolvedValue({
       id: "case-1",
+      pluginSlug: "skills",
+      skillName: "forecast-skill",
       name: "Smoke",
       tags: ["performance"],
       prompt: "Summarize pipeline risk",
-      expectations: [],
+      assertions: [],
     });
 
     function Wrapper({ children }: { children: ReactNode }) {
@@ -56,10 +58,12 @@ describe("eval scenario queries", () => {
     await result.current.mutateAsync({
       scenario: {
         id: "case-1",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
         name: "Smoke",
         tags: ["performance"],
         prompt: "Summarize pipeline risk",
-        expectations: [],
+        assertions: [],
       },
       previousScenarioName: "Regression",
     });

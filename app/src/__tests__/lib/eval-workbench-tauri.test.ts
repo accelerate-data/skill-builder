@@ -6,7 +6,7 @@ import {
   listScenarios,
   loadScenario,
   saveScenario,
-  defineEvalScenario,
+  generateEvalScenarioAssertions,
 } from "@/lib/eval-workbench";
 
 describe("Eval Workbench Tauri wrappers", () => {
@@ -15,7 +15,7 @@ describe("Eval Workbench Tauri wrappers", () => {
     mockInvoke.mockResolvedValue(undefined);
   });
 
-  it("lists git-backed scenarios through the typed workbench contract", async () => {
+  it("lists DB-backed scenarios through the typed workbench contract", async () => {
     await listScenarios("skills", "forecast-skill");
 
     expect(mockInvoke).toHaveBeenCalledWith("list_scenarios", {
@@ -40,6 +40,8 @@ describe("Eval Workbench Tauri wrappers", () => {
       "forecast-skill",
       {
         id: "case-1",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
         name: "Regression",
         prompt: "Forecast next quarter revenue",
         assertions: ["Explains the forecast assumptions."],
@@ -52,6 +54,8 @@ describe("Eval Workbench Tauri wrappers", () => {
       skillName: "forecast-skill",
       scenario: {
         id: "case-1",
+        pluginSlug: "skills",
+        skillName: "forecast-skill",
         name: "Regression",
         prompt: "Forecast next quarter revenue",
         assertions: ["Explains the forecast assumptions."],
@@ -60,10 +64,10 @@ describe("Eval Workbench Tauri wrappers", () => {
     });
   });
 
-  it("supports scenario creation, definition, and deletion commands", async () => {
+  it("supports scenario creation, generation, and deletion commands", async () => {
     await Promise.all([
       createScenario("skills", "forecast-skill"),
-      defineEvalScenario("skills", "forecast-skill", "Regression"),
+      generateEvalScenarioAssertions("skills", "forecast-skill", "Regression"),
       deleteScenario("skills", "forecast-skill", "Regression"),
     ]);
 
@@ -71,7 +75,7 @@ describe("Eval Workbench Tauri wrappers", () => {
       pluginSlug: "skills",
       skillName: "forecast-skill",
     });
-    expect(mockInvoke).toHaveBeenCalledWith("define_eval_scenario", {
+    expect(mockInvoke).toHaveBeenCalledWith("generate_eval_scenario_assertions", {
       pluginSlug: "skills",
       skillName: "forecast-skill",
       scenarioName: "Regression",
