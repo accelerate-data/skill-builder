@@ -100,10 +100,6 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
-import {
-  setEvalsCancelHandler,
-  setEvalsRunning,
-} from "@/lib/eval-running-state";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
 const defaultSettings: AppSettings = {
@@ -147,8 +143,6 @@ describe("AppLayout", () => {
     useRefineStore.getState().clearSession();
     useAgentStore.getState().clearRuns();
     useSkillStore.getState().setActiveSkill(null);
-    setEvalsRunning(false);
-    setEvalsCancelHandler(null);
     vi.mocked(toast.info).mockReset();
     vi.mocked(toast.warning).mockReset();
     vi.mocked(toast.success).mockReset();
@@ -345,29 +339,6 @@ describe("AppLayout", () => {
       });
     });
     expect(mockInvoke).toHaveBeenCalledTimes(1);
-  });
-
-  it("requests eval cancellation when Escape is pressed during eval execution", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: emptyReconciliation,
-    });
-    const cancelEval = vi.fn().mockResolvedValue(undefined);
-    setEvalsRunning(true);
-    setEvalsCancelHandler(cancelEval);
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("outlet")).toBeInTheDocument();
-    });
-
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    await waitFor(() => {
-      expect(cancelEval).toHaveBeenCalledTimes(1);
-    });
-    expect(mockInvoke).not.toHaveBeenCalledWith("cancel_agent_run", expect.anything());
   });
 
   it("renders content after auto-applying notification-only reconciliation", async () => {

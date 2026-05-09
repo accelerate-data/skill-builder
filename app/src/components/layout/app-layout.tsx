@@ -24,11 +24,6 @@ import {
   selectSkillOpenHandsSession,
   releaseLock,
 } from "@/lib/tauri";
-import {
-  getEvalsRunning,
-  requestEvalsCancel,
-  subscribeEvalsRunning,
-} from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import { toEditableSkill, type EditableSkill } from "@/lib/types";
 import { hydrateSelectedSkillOpenHandsSession } from "@/lib/skill-openhands-session";
@@ -50,13 +45,11 @@ export function AppLayout() {
   const setSelectedWorkspaceSkillName = useSkillStore((s) => s.setActiveSkill);
   const refineRunning = useRefineStore((s) => s.isRunning);
   const runs = useAgentStore((s) => s.runs);
-  const [evalsRunningReactive, setEvalsRunningReactive] = useState(getEvalsRunning);
-  useEffect(() => subscribeEvalsRunning(setEvalsRunningReactive), []);
   const runningWorkflow = Object.values(runs).find(
     (r): r is typeof r & { skillName: string } =>
       r.status === "running" && r.runSource === "workflow" && !!r.skillName,
   );
-  const agentRunning = refineRunning || evalsRunningReactive || Boolean(runningWorkflow);
+  const agentRunning = refineRunning || Boolean(runningWorkflow);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const workspaceInitialTab = useRouterState({
@@ -119,12 +112,6 @@ export function AppLayout() {
           cancelWorkflowStep(running.agentId).catch((err) => {
             console.error("[app-layout] escape: cancel workflow step failed", err);
           });
-          return;
-        }
-        if (getEvalsRunning()) {
-          requestEvalsCancel().catch((err) => {
-            console.error("[app-layout] escape: cancel eval workbench run failed", err);
-          });
         }
       }
     };
@@ -184,9 +171,6 @@ export function AppLayout() {
     const refineStore = useRefineStore.getState();
     if (runningWorkflow) {
       await cancelWorkflowStep(runningWorkflow.agentId);
-    }
-    if (getEvalsRunning()) {
-      await requestEvalsCancel();
     }
     if (selectedSkillData && refineStore.conversationId) {
       await pauseOpenHandsSession(
@@ -259,10 +243,9 @@ export function AppLayout() {
         navigate({ to: "/", search: { tab: tab ?? undefined } });
         return;
       }
-      // Guard: block skill switch while refine or evals are running
+      // Guard: block skill switch while refine or workflow are running
       const refineRunning = useRefineStore.getState().isRunning;
-      const evalsRunning = getEvalsRunning();
-      if (refineRunning || evalsRunning || runningWorkflow) {
+      if (refineRunning || runningWorkflow) {
         setPendingSkillSwitch(name);
         pendingSkillSwitchTabRef.current = tab;
         return;

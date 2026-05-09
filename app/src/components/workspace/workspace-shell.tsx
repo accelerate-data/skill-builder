@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,6 @@ import {
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
-import { requestEvalsCancel } from "@/lib/eval-running-state";
 import { getSkillContentAtPath, getSkillContentForRefine } from "@/lib/tauri";
 import { PreviewPanel } from "@/components/refine/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
@@ -42,7 +41,6 @@ function normalizeWorkspaceTab(tab?: string | null): "overview" | "refine" | "ev
 export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useState(() => normalizeWorkspaceTab(initialTab));
   const [pendingTab, setPendingTab] = useState<"overview" | "refine" | "evals" | null>(null);
-  const workbenchRunningRef = useRef(false);
 
   useEffect(() => {
     setActiveTab(normalizeWorkspaceTab(initialTab));
@@ -57,10 +55,6 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
         setPendingTab(nextTab);
         return;
       }
-    }
-    if (activeTab === "evals" && nextTab !== "evals" && workbenchRunningRef.current) {
-      setPendingTab(nextTab);
-      return;
     }
     setActiveTab(nextTab);
   }, [activeTab]);
@@ -79,20 +73,12 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
     setPendingTab(null);
   }, []);
 
-  const handleTabLeave = useCallback(async () => {
+  const handleTabLeave = useCallback(() => {
     if (pendingTab) {
-      if (activeTab === "evals" && workbenchRunningRef.current) {
-        try {
-          await requestEvalsCancel();
-        } catch (err) {
-          console.error("[workspace-shell] eval workbench cancellation failed:", err);
-          return;
-        }
-      }
       setActiveTab(pendingTab);
       setPendingTab(null);
     }
-  }, [pendingTab, activeTab]);
+  }, [pendingTab]);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
@@ -193,9 +179,6 @@ export function WorkspaceShell({ skill, skillType, initialTab }: WorkspaceShellP
               skill={skill}
               workspacePath={workspacePath}
               onNavigateToRefine={() => setActiveTab("refine")}
-              onRunningChange={(running) => {
-                workbenchRunningRef.current = running;
-              }}
             />
           </TabsContent>
         </Tabs>

@@ -16,18 +16,12 @@ import { WorkspaceEvals } from "./workspace-evals";
 interface WorkspaceEvalWorkbenchProps {
   skill: SkillSummary | ImportedSkill;
   workspacePath: string | null;
-  onRunningChange?: (running: boolean) => void;
   onNavigateToRefine?: () => void;
 }
-
-type SaveScenarioOptions = {
-  previousScenarioName?: string | null;
-};
 
 export function WorkspaceEvalWorkbench({
   skill,
   workspacePath,
-  onRunningChange: _onRunningChange,
   onNavigateToRefine: _onNavigateToRefine,
 }: WorkspaceEvalWorkbenchProps) {
   const skillName = "name" in skill ? skill.name : skill.skill_name;
@@ -60,6 +54,10 @@ export function WorkspaceEvalWorkbench({
       setSelectedScenarioName(null);
     }
   }, [scenarios, selectedScenarioName]);
+
+  type SaveScenarioOptions = {
+    previousScenarioName?: string | null;
+  };
 
   async function handleSaveScenario(
     scenario: ScenarioDto,

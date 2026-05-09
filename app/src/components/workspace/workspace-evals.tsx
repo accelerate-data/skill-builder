@@ -7,9 +7,6 @@ import {
   scenarioToDraft,
 } from "@/lib/eval-workbench";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
-import { useSettingsStore } from "@/stores/settings-store";
-import { formatModelName } from "@/stores/agent-store";
-import { RunStatusFooter } from "@/components/run-status-footer";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 
 interface WorkspaceEvalsProps {
@@ -63,8 +60,6 @@ export function WorkspaceEvals({
     };
   });
   const [actionError, setActionError] = useState<string | null>(null);
-  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
-  const skillName = "name" in skill ? skill.name : skill.skill_name;
 
   const isDirty = scenario
     ? JSON.stringify(normalizeScenario(scenarioToDraft(scenario))) !==
@@ -198,12 +193,6 @@ export function WorkspaceEvals({
           )}
         </div>
       </div>
-
-      <RunStatusFooter
-        status="idle"
-        label={skillName}
-        model={selectedModel ? formatModelName(selectedModel) : null}
-      />
     </div>
   );
 }
