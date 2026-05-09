@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SendHorizontal, Square, X, Bot, FileText, HelpCircle } from "lucide-react";
+import { SendHorizontal, X, Bot, FileText, HelpCircle } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Mention from "@tiptap/extension-mention";
@@ -258,22 +258,20 @@ function extractFromEditor(editor: ReturnType<typeof useEditor>): {
 
 interface ChatInputBarProps {
   onSend: (text: string, targetFiles?: string[]) => void;
-  onCancel?: () => void;
-  isRunning: boolean;
   waitingForQuestion?: boolean;
   availableFiles: string[];
   availableAgents: string[];
   prefilledValue?: string;
+  disabled?: boolean;
 }
 
 export function ChatInputBar({
   onSend,
-  onCancel,
-  isRunning,
   waitingForQuestion = false,
   availableFiles,
   availableAgents,
   prefilledValue,
+  disabled = false,
 }: ChatInputBarProps) {
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -390,13 +388,6 @@ export function ChatInputBar({
     }
   }, [prefilledValue, editor]);
 
-  // Disable/enable editor based on running state
-  useEffect(() => {
-    if (editor) {
-      editor.setEditable(!isRunning);
-    }
-  }, [editor, isRunning]);
-
   const handleSend = useCallback(() => {
     if (!editor) return;
     const { text, targetFiles: files } = extractFromEditor(editor);
@@ -444,12 +435,12 @@ export function ChatInputBar({
           data-testid="refine-send-button"
           size="icon"
           type="button"
-          onClick={isRunning ? onCancel : handleSend}
-          disabled={isRunning ? !onCancel : !editor?.getText().trim()}
-          aria-label={isRunning ? "Cancel current run" : "Send refine message"}
-          title={isRunning ? "Cancel current run" : "Send refine message"}
+          onClick={handleSend}
+          disabled={disabled || !editor?.getText().trim()}
+          aria-label="Send refine message"
+          title="Send refine message"
         >
-          {isRunning ? <Square className="size-4 fill-current" /> : <SendHorizontal className="size-4" />}
+          <SendHorizontal className="size-4" />
         </Button>
       </div>
     </div>

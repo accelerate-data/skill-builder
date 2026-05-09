@@ -19,17 +19,16 @@ const EMPTY_STATE_SUGGESTIONS = [
 
 interface ChatMessageListProps {
   messages: RefineMessage[];
-  isRunning: boolean;
   onQuestionSubmit?: (message: RefineMessage, response: RefineQuestionResponse) => Promise<void>;
   onSuggestionClick?: (text: string) => void;
 }
 
 export function ChatMessageList({
   messages,
-  isRunning,
   onQuestionSubmit,
   onSuggestionClick,
 }: ChatMessageListProps) {
+  const isRunning = useRefineStore((s) => s.isRunning);
   const bottomRef = useRef<HTMLDivElement>(null);
   const questionRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
