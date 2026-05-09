@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   mockInvoke,
@@ -363,10 +363,35 @@ describe("AppLayout", () => {
   });
 
   it("pauses the workflow conversation when Escape is pressed during workflow streaming", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: emptyReconciliation,
-      pause_openhands_session: true,
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            name: "my-skill",
+            status: "in_progress",
+            current_step: "1",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "pause_openhands_session") return Promise.resolve(true);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
     useAgentStore.getState().registerRun(
       "workflow-agent-1",
@@ -399,6 +424,11 @@ describe("AppLayout", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    // Let React process the skills query result
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
     });
 
     mockInvoke.mockClear();
@@ -504,10 +534,35 @@ describe("AppLayout", () => {
   });
 
   it("sets workflow isStopping immediately when Escape is pressed during workflow run", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: emptyReconciliation,
-      pause_openhands_session: true,
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            name: "my-skill",
+            status: "in_progress",
+            current_step: "1",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "pause_openhands_session") return Promise.resolve(true);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
     useAgentStore.getState().registerRun(
       "workflow-agent-1",
@@ -541,6 +596,11 @@ describe("AppLayout", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    // Let React process the skills query result
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
     });
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));

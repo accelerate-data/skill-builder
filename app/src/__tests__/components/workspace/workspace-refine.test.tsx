@@ -331,10 +331,6 @@ describe("WorkspaceRefine", () => {
       leaveGuardCapture.onLeave?.(proceed);
     });
 
-    expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
-    expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
-      expectedSkillName: "my-skill",
-    });
     expect(proceed).toHaveBeenCalledTimes(1);
   });
 

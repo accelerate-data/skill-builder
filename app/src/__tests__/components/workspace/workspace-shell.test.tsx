@@ -311,9 +311,10 @@ describe("WorkspaceShell", () => {
   it("switches tab after confirming Leave in the guard dialog", async () => {
     const user = userEvent.setup();
     refineState.isRunning = true;
+    const onNavigateSurface = vi.fn();
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" onNavigateSurface={onNavigateSurface} />,
     );
 
     const overviewTab = container.querySelector('[role="tab"]');
@@ -322,8 +323,7 @@ describe("WorkspaceShell", () => {
 
     await user.click(screen.getByRole("button", { name: "Leave" }));
 
-    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Overview");
+    expect(onNavigateSurface).toHaveBeenCalledWith("overview");
 
     refineState.isRunning = false;
   });
