@@ -1,232 +1,295 @@
 # OpenHands Runtime Clean-Break Follow-ups Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Track what already landed from the OpenHands clean-break follow-up
-work and keep only the real remaining cleanup items active.
+**Goal:** Keep the already-landed selected-skill OpenHands runtime clean break
+intact, then finish the Eval Workbench clean break by deleting run execution,
+disk-backed scenario storage, and Eval-owned OpenHands bootstrap paths.
 
-**Current state:** The original clean-break implementation work is complete.
-This file is now a status-and-follow-up tracker, not an execution plan for the
-already-landed runtime split.
+**Architecture:** Skill selection is the only owner of persistent OpenHands
+bootstrap/resume/pause. Refine, Workflow, Review, and Eval send messages on the
+selected-skill conversation; they do not start or resume conversations
+themselves. Eval Workbench is an authoring-only surface for scenarios and
+assertions stored in SQLite.
 
-**Tech Stack:** Rust (Tauri commands, runtime helpers, SQLite), TypeScript/React (typed Tauri wrappers and eval workbench UI contracts), Vitest, cargo test, Playwright E2E tags, markdownlint.
+**Tech Stack:** Rust/Tauri commands, Rust-managed OpenHands Agent Server,
+SQLite via `rusqlite`, React/TypeScript, TanStack Query, Vitest, cargo test,
+Playwright E2E tags, markdownlint.
 
 ---
 
-## Historical Scope
+## Current Status Summary
 
-The original workstreams in this plan were:
+### Already Done: Selected-Skill OpenHands Runtime Ownership
 
-1. trigger-mode residue removal
-2. throwaway naming cleanup
-3. persistent-session orchestration tightening
+- [x] Selected-skill OpenHands bootstrap moved to the global layout/session
+      layer.
+- [x] Refine no longer bootstraps OpenHands on mount.
+- [x] Workflow persistent turns send on the selected-skill conversation instead
+      of opening/resuming their own conversation.
+- [x] Reset/redo clear stale persisted conversation state and force a fresh
+      selected-skill bootstrap before rerunning workflow.
+- [x] Skill locks moved to selected-skill lifecycle ownership.
+- [x] Skill switch and app shutdown pause the selected-skill OpenHands session
+      and release the selected skill lock.
+- [x] Refine resume restores transcript/messages/events and preserves
+      dispatched-turn state.
+- [x] Stable OpenHands workspace secret persistence exists under
+      `workspace/.openhands/secret.key`.
+- [x] Graceful OpenHands Agent Server shutdown is wired through app exit.
 
-Those workstreams are already implemented on this branch. They are kept below
-only as completed status, not as active tasks.
+### Already Done: Eval Run Schema Removal Direction
 
-## Completed Workstreams
+- [x] Migration 48 creates flat `scenarios` and `assertions` tables.
+- [x] Migration 48 drops legacy `eval_prompt_sets`, `eval_prompt_cases`,
+      `eval_runs`, `eval_run_results`, and `description_candidates`.
+- [x] The active Tauri command registration no longer exports
+      `run_eval_workbench`, `cancel_eval_workbench_run`, `list_eval_runs`,
+      `read_eval_run`, or `build_refine_improvement_brief`.
+- [x] `app/promptfoo-sidecar/` is no longer present in the checkout.
+- [x] The visible Eval UI is already close to authoring-only: scenario name,
+      prompt, assertions, New, Suggest, Delete, and Save.
 
-The original implementation tasks below are now historical. The branch and the
-merged clean-break work already completed the main follow-up workstreams, so
-the old step-by-step execution checklist is no longer the right live tracker.
-Only the post-clarifications cleanup todo below should be treated as active.
+### Still Open: Non-Eval Runtime Test Debt
 
-### Completed: Trigger-Mode Residue Removal
+- [ ] Add direct backend tests for `select_skill_openhands_session` in
+      `app/src-tauri/src/commands/skill_session.rs` covering saved-conversation
+      reuse.
+- [ ] Add direct command-level backend tests for `pause_openhands_session` side
+      effects in `app/src-tauri/src/commands/skill_session.rs`.
 
-- [x] Trigger-mode residue was removed from the live eval workbench contract
-      and backend paths.
-- [x] The app-owned eval workbench surface is performance-only.
-- [x] Migration coverage exists for removing legacy `should_trigger` storage
-      from the app-owned schema.
-- [x] Eval workbench command/UI paths were moved onto the performance-only
-      model.
+## Eval Workbench Clean-Break Target
 
-### Completed: Throwaway Naming Cleanup
+The Eval Workbench target is intentionally narrower than the old design docs:
 
-- [x] Eval workbench, scope review, and settings model validation now use the
-      throwaway runtime surface.
-- [x] Runtime pathing now uses `.openhands/throwaway/...` instead of the old
-      one-shot naming in the active code paths.
-- [x] Sidecar/runtime naming has been normalized to `throwaway` in the active
-      runtime builders.
-- [x] `repo-map.json` stale one-shot wording was removed.
+- only scenario/assertion authoring exists;
+- scenarios and assertions are SQLite-backed, not YAML-backed;
+- Eval does not own OpenHands bootstrap/resume;
+- Eval generation sends a prompt to the already-selected skill conversation;
+- no eval run execution exists in app code, DB tables, docs, or tests;
+- no Promptfoo sidecar exists in app code or app test maps;
+- root `tests/evals/` remains untouched because it is the engineering regression
+  harness, not the app-owned Eval Workbench runtime.
 
-### Completed: Persistent-Session Orchestration Tightening
+## Eval Workbench Clean-Break Tasks
 
-- [x] OpenHands runtime now exposes separate persistent-session and throwaway
-      surfaces.
-- [x] Workflow persistent turns were moved to send-only behavior using the
-      already-started selected-skill session.
-- [x] Selected-skill OpenHands bootstrap was moved out of the Refine page and
-      into global session-selection ownership.
-- [x] Graceful OpenHands shutdown on app exit was implemented.
-- [x] Stable OpenHands workspace secret persistence was implemented.
-- [x] Redo/reset now recreate a fresh selected-skill OpenHands conversation
-      instead of trying to reuse a deleted one.
+### Task 1: Make SQLite The Active Scenario Store
 
-### Completed: Local Validation Already Run On This Branch
+**Files:**
 
-- [x] `cd app && npx vitest run src/__tests__/components/skill-list-panel.test.tsx`
-- [x] `cd app && npx vitest run src/__tests__/hooks/use-workflow-state-machine.test.ts`
-- [x] `cd app && npx vitest run src/__tests__/pages/workflow.test.tsx`
-- [x] `cd app && npx tsc --noEmit`
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `app/src-tauri/src/db/eval_workbench.rs`
+- Delete: `app/src-tauri/src/commands/eval_workbench/scenarios.rs`
+- Modify: `app/src-tauri/src/commands/eval_workbench/types.rs`
+- Modify: `app/src-tauri/src/lib.rs`
+- Modify: `app/src/lib/eval-workbench.ts`
+- Modify: `app/src/lib/queries/eval-scenarios.ts`
+- Modify tests under `app/src-tauri/src/db/eval_workbench.rs`,
+  `app/src/__tests__/lib/eval-workbench-tauri.test.ts`, and
+  `app/src/__tests__/lib/queries/eval-scenarios.test.tsx`
 
-### Deleted / No Longer Useful From The Old Plan
+- [ ] Replace `list_scenarios`, `load_scenario`, `create_scenario`,
+      `save_scenario`, and `delete_scenario` command implementations so they
+      use `crate::db::eval_workbench` exclusively.
+- [ ] Remove `resolve_eval_dir`, `scenario_file_path`, `read_scenario_file`,
+      `write_scenario_file`, `delete_scenario_file`, and YAML parsing from the
+      active Eval command path.
+- [ ] Delete `commands/eval_workbench/scenarios.rs` once no active code imports
+      it.
+- [ ] Remove `#![allow(dead_code)]` from `db/eval_workbench.rs` by making its
+      scenario/assertion CRUD the live command implementation.
+- [ ] Keep scenario identity keyed by stable `id`; use name only as display text
+      and command lookup compatibility where the current UI still passes names.
+- [ ] Update frontend tests that currently say "git-backed scenarios" so they
+      assert DB-backed scenario command contracts instead.
 
-The following old execution framing should not be used anymore and has been
-removed as active work:
+### Task 2: Remove Eval-Owned OpenHands Bootstrap And Throwaway Generation
 
-- the original task ordering that assumed the branch still needed the initial
-  trigger-removal / throwaway-renaming / persistent-send-path implementation
-- test-first checkpoint commit instructions for work that is already landed
-- obsolete commit-by-task instructions for already-completed workstreams
-- generic “run everything later” sequencing that has been superseded by the
-  concrete post-clarifications cleanup todo below
+**Files:**
 
-## Post-Clarifications Cleanup Todo
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `app/src-tauri/src/commands/eval_workbench/types.rs`
+- Modify: `app/src/lib/eval-workbench.ts`
+- Modify: `app/src/lib/queries/eval-scenarios.ts`
+- Modify: `app/e2e/evals/evals.spec.ts`
+- Modify: `tests/evals/packages/workspace-eval-workbench-suggest-scenario-prompt/*`
 
-Use this checklist after the clarifications work is closed. It is the explicit
-follow-up list for the independent-agent findings and simplifier review.
+- [ ] Delete `build_generation_sidecar_config`.
+- [ ] Delete `run_define_eval_scenario_throwaway_turn`.
+- [ ] Delete the test `define_eval_scenario_uses_throwaway_runtime_path`.
+- [ ] Replace `define_eval_scenario` with a selected-conversation generation
+      command. Preferred public name: `generate_eval_scenario_assertions`.
+- [ ] The generation command must look up the persisted selected-skill
+      conversation id from `skill_conversations`.
+- [ ] If no selected-skill conversation exists, fail loudly with the same class
+      of error Workflow uses: no active OpenHands conversation for the skill and
+      plugin.
+- [ ] Dispatch the generation prompt with `send_openhands_message` /
+      `openhands_send_message` using `SendExistingOnly`; do not call
+      `ensure_openhands_server`, `start_openhands_session`, or
+      `run_throwaway_openhands_session`.
+- [ ] Persist generated scenario prompt and assertions back to SQLite in the
+      same command.
+- [ ] Update frontend wrapper/query names from `defineEvalScenario` to
+      `generateEvalScenarioAssertions`.
+- [ ] Rename UI copy from `Suggest` / `Suggesting...` to `Generate scenario and
+      assertions` / `Generating...`.
 
-### A. Skill Lock Ownership And Release
+### Task 3: Delete Eval Run Runtime And UI Leftovers
 
-- [x] Move skill-lock ownership to the same layout/session layer that owns
-      selected-skill OpenHands lifecycle.
-- [x] On skill selection: acquire the selected skill lock before the surface
-      becomes active.
-- [x] On skill deselection / skill switch: pause the selected skill OpenHands
-      session and release that skill lock in the same cleanup path.
-- [x] On app shutdown: pause the selected skill OpenHands session and release
-      the selected skill lock.
-- [x] Remove any remaining lock-ownership behavior from
-      `app/src/components/workspace/workspace-refine.tsx` so Refine is only a
-      surface over the selected skill, not a lifecycle owner.
-- [x] Remove workflow-page lock ownership from
-      `app/src/hooks/use-workflow-session.ts` so Workflow no longer acquires
-      or releases locks independently of selected-skill lifecycle.
-- [x] Add tests that prove selecting a skill acquires the lock.
-- [x] Add tests that prove switching away releases the previous lock.
-- [x] Add tests that prove app shutdown releases the active lock.
+**Files:**
 
-### B. Transcript / Event Replay On Refine Reopen
+- Delete: `app/src/lib/eval-running-state.ts`
+- Delete: `app/src/lib/eval-run.ts`
+- Delete: `app/src/__tests__/lib/eval-run.test.ts`
+- Modify: `app/src/components/layout/app-layout.tsx`
+- Modify: `app/src/components/workspace/workspace-shell.tsx`
+- Modify: `app/src/components/workspace/workspace-evals.tsx`
+- Modify tests under `app/src/__tests__/components/app-layout.test.tsx` and
+  `app/src/__tests__/components/workspace/workspace-shell.test.tsx`
 
-- [x] Stop discarding restore data in
-      `app/src-tauri/src/commands/skill_session.rs`.
-- [x] Return real `restored_messages`, `restored_transcript_events`, and the
-      correct dispatched-turn state when resuming an existing Refine
-      conversation.
-- [x] On frontend bootstrap, hydrate restored transcript/messages into the
-      Refine UI instead of clearing them unconditionally.
-- [x] Preserve resumed-session semantics so reopen does not reset the session
-      to first-turn behavior or rebuild an initialization-style prompt for an
-      existing thread.
-- [x] Replay the setup/runtime row and the contextual dispatched task row when
-      reopening Refine, so restored sessions visibly match the intended Refine
-      transcript contract.
-- [x] Add tests that prove resumed Refine restores transcript/messages/events.
-- [x] Add tests that prove resumed Refine does not send a fresh
-      bootstrap-style first turn.
-- [x] Add tests that prove transcript visibility matches the documented
-      Refine-vs-Workflow contract.
+- [ ] Remove `getEvalsRunning`, `requestEvalsCancel`, and
+      `subscribeEvalsRunning` imports/usages from app layout.
+- [ ] Remove Eval-running tab-switch guard behavior from `workspace-shell.tsx`.
+- [ ] Remove Eval-specific Escape-key cancellation behavior from
+      `app-layout.tsx`.
+- [ ] Remove `RunStatusFooter` from `workspace-evals.tsx`; Eval authoring has no
+      active run status.
+- [ ] Delete pure run-result helper tests and code that only support old eval
+      run analysis.
+- [ ] Keep Workflow benchmark/eval artifact helpers untouched; they are separate
+      from app-owned Eval Workbench runs.
 
-### C. Canonical Session Ownership And Bootstrap Cleanup
+### Task 4: Clean DB Migration Tests And Schema Contracts
 
-- [x] Make layout the only owner of selected-skill lifecycle:
-      - selected skill identity
-      - lock lifecycle
-      - OpenHands bootstrap/resume
-      - pause on deselect
-- [x] Remove split ownership between `app-layout.tsx` and
-      `workspace-refine.tsx`.
-- [x] Remove split ownership between layout-level selected-skill lifecycle and
-      `app/src/hooks/use-workflow-session.ts`.
-- [x] Collapse duplicated frontend bootstrap logic so there is one canonical
-      helper for:
-      - bootstrapping a selected skill session
-      - hydrating the refine store
-      - replaying restored transcript state
-- [x] Remove the duplicate bootstrap/hydration sequence currently present in
-      `app/src/components/layout/app-layout.tsx`.
-- [x] Remove workflow-specific restart fallback logic so workflow restart
-      relies only on canonical selected-skill session ownership.
+**Files:**
 
-### D. Backend Runtime / Session Plumbing Cleanup
+- Modify: `app/src-tauri/src/db/tests.rs`
+- Modify: `app/src-tauri/src/db/migrations.rs` only if a new forward migration
+  is needed
+- Modify: `app/src-tauri/src/db/eval_workbench.rs`
 
-- [x] Remove duplicated refine-runtime setup plumbing between
-      `app/src-tauri/src/commands/skill_session.rs` and
-      `app/src-tauri/src/commands/refine/mod.rs`.
-- [x] Extract one shared internal helper for runtime/session preparation so the
-      skill-session command layer and refine-specific send path do not rebuild
-      the same setup independently.
-- [x] Keep the public boundary clear:
-      - global selected-skill/session commands own selection bootstrap and
-        pause
-      - refine owns refine-specific send/content behavior
-      - workflow/eval consume the selected skill session
+- [ ] Remove tests that validate preserving or recovering legacy `eval_runs`
+      state, because clean break intentionally discards run history.
+- [ ] Keep migration coverage proving old prompt-set/case data migrates into
+      `scenarios` and `assertions`.
+- [ ] Add direct DB tests for create, list, load, update, rename, delete, and
+      assertion replacement through the same DB helpers used by Tauri commands.
+- [ ] Do not add new eval run tables.
+- [ ] Do not add compatibility tables for old Promptfoo app-owned run history.
 
-### E. Reset / Redo Contract Hardening
+### Task 5: Update Docs, Repo Map, And Contract Tests
 
-- [x] Reset/redo now clear persisted conversation state and recreate a fresh
-      selected-skill OpenHands session instead of trying to reuse the deleted
-      conversation.
-- [x] Strengthen workflow reset tests so they verify the real
-      fresh-conversation restart contract end to end, not only helper
-      invocation.
+**Files:**
 
-### F. Test Coverage Gaps
+- Modify: `docs/design/eval-workbench/README.md`
+- Modify: `docs/design/remove-promptfoo/README.md`
+- Modify: `docs/design/backend-design/api.md`
+- Modify: `repo-map.json`
+- Modify: `TEST_MAP.md`
+- Modify: `tests/evals/assertions/tauri-command-contract.test.js`
 
-- [ ] Add direct backend tests for
-      `select_skill_openhands_session` in
-      `app/src-tauri/src/commands/skill_session.rs` covering
-      saved-conversation reuse.
-- [x] Add direct backend tests for stale-session eviction in
-      `app/src-tauri/src/commands/skill_session.rs`.
-- [x] Add direct backend tests for in-memory session-removal side effects in
-      `app/src-tauri/src/commands/skill_session.rs`.
-- [ ] Add direct command-level backend tests for `pause_openhands_session`
-      side effects in the same module.
-- [x] Replace or supplement current mocked helper assertions in:
-      - `app/src/__tests__/pages/workflow.test.tsx`
-      - `app/src/__tests__/components/skill-list-panel.test.tsx`
-      so the real restart helper/store hydration behavior is verified.
-- [x] Add coverage that app shutdown releases selected-skill lock/session
-      state, not just that `graceful_shutdown` is invoked.
+- [ ] Rewrite `docs/design/eval-workbench/README.md` so the source of truth is
+      SQLite `scenarios` + `assertions`, not git-backed YAML files.
+- [ ] Remove `Evaluate`, Promptfoo sidecar, run history, and run-preparation
+      language from Eval Workbench design docs.
+- [ ] Update `docs/design/remove-promptfoo/README.md` to mark completed clean
+      break work and remove stale instructions that say to keep bulk generation.
+- [ ] Update backend API docs to list only active Eval Workbench commands.
+- [ ] Remove stale API docs entries for `run_eval_workbench`,
+      `cancel_eval_workbench_run`, `list_eval_runs`, `read_eval_run`, and
+      `build_refine_improvement_brief`.
+- [ ] Update the Tauri command contract test so it asserts those run commands
+      are absent, not present.
+- [ ] Remove `app/promptfoo-sidecar` entries from `TEST_MAP.md`.
+- [ ] Update `repo-map.json` descriptions so `eval-workbench.ts` is described as
+      scenario/assertion authoring only, with no run history/refine brief.
 
-### G. Repo Metadata / Docs Follow-Through
+### Task 6: Validate The Clean Break
 
-- [x] Update `repo-map.json` to include:
-      - `app/src-tauri/src/commands/skill_session.rs`
-      - `app/src/lib/skill-openhands-session.ts`
-- [x] Update `repo-map.json` descriptions to remove stale `one-shot`
-      terminology and align with the throwaway/runtime naming used by the
-      branch.
-- [x] Verify the runtime design docs and Refine follow-up docs still match the
-      final implemented ownership and replay behavior.
+**Files:**
 
-### Coverage Check
+- No production file ownership; this is verification only.
 
-This todo explicitly covers all outstanding findings:
+- [ ] Run Rust Eval command and DB tests:
 
-- [x] prior skill lock not released on skill switch
-- [x] resumed Refine loses transcript / resets first-turn semantics
-- [x] workflow reset tests still mock away the real restart contract
-- [x] documented Refine visibility / replay contract still unmet
-- [x] `repo-map.json` stale after structural/runtime changes
-- [x] duplicated frontend bootstrap logic
-- [x] split ownership between layout and Refine
-- [x] workflow restart now relies only on the canonical selected-skill
-      session owner
-- [x] duplicated backend refine-runtime setup plumbing
+```bash
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::eval_workbench db::eval_workbench
+```
 
-Run:
+- [ ] Run frontend tests for Eval wrappers and workspace shell:
+
+```bash
+cd app && npx vitest run \
+  src/__tests__/lib/eval-workbench-tauri.test.ts \
+  src/__tests__/lib/queries/eval-scenarios.test.tsx \
+  src/__tests__/components/workspace/workspace-evals.test.tsx \
+  src/__tests__/components/workspace/workspace-shell.test.tsx \
+  src/__tests__/components/app-layout.test.tsx
+```
+
+- [ ] Run command-contract and repo metadata checks:
+
+```bash
+cd tests/evals && npm test
+cd ../.. && cd app && npm run test:repo-map
+```
+
+- [ ] Run typecheck:
+
+```bash
+cd app && npx tsc --noEmit
+```
+
+- [ ] Run markdownlint for changed docs:
 
 ```bash
 markdownlint \
-  docs/design/openhands-runtime-model/README.md \
-  docs/design/openhands-runtime-model/send-turn-semantics.md \
-  docs/plans/2026-05-08-openhands-runtime-clean-break-followups-plan.md
+  docs/plans/2026-05-08-openhands-runtime-clean-break-followups-plan.md \
+  docs/design/eval-workbench/README.md \
+  docs/design/remove-promptfoo/README.md \
+  docs/design/backend-design/api.md \
+  TEST_MAP.md
 ```
 
-Expected:
+## Explicit Delete List
 
-- no markdownlint violations
+Delete these if the implementation confirms they only support removed Eval run
+or disk-backed scenario behavior:
+
+- `app/src-tauri/src/commands/eval_workbench/scenarios.rs`
+- `app/src/lib/eval-running-state.ts`
+- `app/src/lib/eval-run.ts`
+- `app/src/__tests__/lib/eval-run.test.ts`
+- old Eval-running guards in `app/src/components/layout/app-layout.tsx`
+- old Eval-running guards in `app/src/components/workspace/workspace-shell.tsx`
+- stale Promptfoo sidecar rows in `TEST_MAP.md`
+- stale Eval run command rows in `docs/design/backend-design/api.md`
+
+## Non-Goals
+
+- Do not touch root `tests/evals/` packages except for contract tests and prompt
+  text directly tied to the app-owned Eval Workbench generation command.
+- Do not add an eval execution engine.
+- Do not add eval run tables.
+- Do not preserve app-owned Promptfoo run history.
+- Do not support YAML scenario files as a source of truth.
+- Do not make Eval bootstrap or resume OpenHands.
+
+## Completion Criteria
+
+- [ ] Eval scenario list/detail/create/save/delete read and write SQLite only.
+- [ ] Eval generation uses the selected-skill OpenHands conversation only.
+- [ ] Eval generation fails loudly when the selected skill has no active
+      conversation.
+- [ ] No active app code references `eval_runs`, `eval_run_results`,
+      `description_candidates`, `eval_prompt_sets`, or `eval_prompt_cases`
+      outside historical migrations.
+- [ ] No active app code references `app/promptfoo-sidecar`.
+- [ ] No active Eval UI shows run status, run history, Evaluate, or
+      cancellation controls.
+- [ ] Docs and repo metadata describe the clean-break model.
+- [ ] Validation commands in Task 6 pass or have documented, unrelated blockers.
