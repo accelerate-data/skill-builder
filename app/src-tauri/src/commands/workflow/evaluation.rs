@@ -60,6 +60,40 @@ fn clear_persistent_skill_conversation_state(
     Ok(())
 }
 
+/// Delete stale clarifications and decisions based on which step is being reset.
+/// Steps re-run = from_step_id and all subsequent steps.
+/// - from_step_id 0 or 1: re-runs steps that produce clarifications (0,1) and decisions (2) → delete both
+/// - from_step_id 2: re-runs step 2 (decisions) → delete decisions only, clarifications remain valid
+/// - from_step_id 3+: disk files only → no DB cleanup needed
+pub(crate) fn clear_artifacts_for_step_reset(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    from_step_id: u32,
+) -> Result<(), String> {
+    match from_step_id {
+        0 | 1 => {
+            crate::db::workflow_artifacts::delete_clarifications(conn, skill_name)
+                .map_err(|e| e.to_string())?;
+            crate::db::workflow_artifacts::delete_decisions(conn, skill_name)
+                .map_err(|e| e.to_string())?;
+            log::info!(
+                "[clear_artifacts_for_step_reset] cleared clarifications and decisions for '{}' (resetting from step {})",
+                skill_name, from_step_id
+            );
+        }
+        2 => {
+            crate::db::workflow_artifacts::delete_decisions(conn, skill_name)
+                .map_err(|e| e.to_string())?;
+            log::info!(
+                "[clear_artifacts_for_step_reset] cleared decisions for '{}' (resetting from step {})",
+                skill_name, from_step_id
+            );
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn navigate_back_to_step_impl(
     conn: &rusqlite::Connection,
     workspace_path: &str,
@@ -705,6 +739,7 @@ pub fn reset_workflow_step(
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     clear_persistent_skill_conversation_state(&conn, &workspace_path, &plugin_slug, &skill_name)?;
+    clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
     crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
 
     // Update the workflow run's current step
@@ -1202,6 +1237,163 @@ mod benchmark_tests {
 
         let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
         assert!(result.is_none());
+    }
+}
+
+#[cfg(test)]
+mod reset_artifact_cleanup_tests {
+    use crate::commands::test_utils::create_test_db;
+    use crate::db::workflow_artifacts::{
+        self, ClarificationQuestion, ClarificationSection, ClarificationsRecord, DecisionItem,
+        DecisionsRecord,
+    };
+
+    fn seed_clarifications(conn: &mut rusqlite::Connection, skill_id: &str) {
+        let record = ClarificationsRecord {
+            skill_id: skill_id.to_string(),
+            version: "1".to_string(),
+            refinement_count: 0,
+            must_answer_count: 1,
+            question_count: 1,
+            section_count: 1,
+            title: "Test Clarifications".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            sections: vec![ClarificationSection {
+                section_id: 1,
+                ordinal: 0,
+                title: "Scope".to_string(),
+                description: None,
+            }],
+            questions: vec![ClarificationQuestion {
+                question_id: "q1".to_string(),
+                section_id: 1,
+                parent_question_id: None,
+                ordinal: 0,
+                title: "What is the scope?".to_string(),
+                text: "Describe the scope.".to_string(),
+                must_answer: true,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![],
+                refinements: vec![],
+            }],
+            notes: vec![],
+        };
+        let tx = conn.transaction().unwrap();
+        workflow_artifacts::upsert_clarifications(&tx, &record).unwrap();
+        tx.commit().unwrap();
+    }
+
+    fn seed_decisions(conn: &mut rusqlite::Connection, skill_id: &str) {
+        let record = DecisionsRecord {
+            skill_id: skill_id.to_string(),
+            version: "1".to_string(),
+            round: 1,
+            decision_count: 1,
+            conflicts_resolved: 0,
+            contradictory_inputs_state: None,
+            scope_recommendation: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            items: vec![DecisionItem {
+                decision_id: "d1".to_string(),
+                ordinal: 0,
+                title: "Decision 1".to_string(),
+                original_question: "Q?".to_string(),
+                decision: "Yes".to_string(),
+                implication: "Good".to_string(),
+                status: "resolved".to_string(),
+            }],
+        };
+        let tx = conn.transaction().unwrap();
+        workflow_artifacts::upsert_decisions(&tx, &record).unwrap();
+        tx.commit().unwrap();
+    }
+
+    fn has_clarifications(conn: &rusqlite::Connection, skill_id: &str) -> bool {
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM clarifications WHERE skill_id = ?1",
+                rusqlite::params![skill_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        count > 0
+    }
+
+    fn has_decisions(conn: &rusqlite::Connection, skill_id: &str) -> bool {
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM decisions WHERE skill_id = ?1",
+                rusqlite::params![skill_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        count > 0
+    }
+
+    #[test]
+    fn test_reset_from_step_0_clears_clarifications_and_decisions() {
+        let mut conn = create_test_db();
+        crate::db::save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
+
+        seed_clarifications(&mut conn, "test-skill");
+        seed_decisions(&mut conn, "test-skill");
+        assert!(has_clarifications(&conn, "test-skill"));
+        assert!(has_decisions(&conn, "test-skill"));
+
+        // Reset from step 0 should clear both
+        super::clear_artifacts_for_step_reset(&conn, "test-skill", 0).unwrap();
+
+        assert!(
+            !has_clarifications(&conn, "test-skill"),
+            "clarifications should be deleted when resetting from step 0"
+        );
+        assert!(
+            !has_decisions(&conn, "test-skill"),
+            "decisions should be deleted when resetting from step 0"
+        );
+    }
+
+    #[test]
+    fn test_reset_from_step_2_clears_decisions_preserves_clarifications() {
+        let mut conn = create_test_db();
+        crate::db::save_workflow_run(&conn, "test-skill", 2, "pending", "domain").unwrap();
+
+        seed_clarifications(&mut conn, "test-skill");
+        seed_decisions(&mut conn, "test-skill");
+        assert!(has_clarifications(&conn, "test-skill"));
+        assert!(has_decisions(&conn, "test-skill"));
+
+        // Reset from step 2 should clear decisions only
+        super::clear_artifacts_for_step_reset(&conn, "test-skill", 2).unwrap();
+
+        assert!(
+            has_clarifications(&conn, "test-skill"),
+            "clarifications should be preserved when resetting from step 2"
+        );
+        assert!(
+            !has_decisions(&conn, "test-skill"),
+            "decisions should be deleted when resetting from step 2"
+        );
     }
 }
 
