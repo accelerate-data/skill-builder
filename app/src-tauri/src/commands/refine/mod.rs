@@ -424,7 +424,6 @@ pub async fn send_refine_message(
         active_conversation_id
     );
 
-    let expected_conversation_id = active_conversation_id.clone();
     let returned_conversation_id = crate::agents::openhands_server::send_openhands_message(
         &app,
         &agent_id,
@@ -432,13 +431,6 @@ pub async fn send_refine_message(
         active_conversation_id,
     )
     .await?;
-
-    if returned_conversation_id != expected_conversation_id {
-        return Err(format!(
-            "Refine conversation changed unexpectedly for skill '{}' plugin '{}'",
-            skill_name, plugin_slug
-        ));
-    }
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;

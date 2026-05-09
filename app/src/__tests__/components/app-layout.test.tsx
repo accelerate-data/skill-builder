@@ -348,7 +348,7 @@ describe("AppLayout", () => {
           skillName: "my-skill",
           pluginSlug: "skills",
           conversationId: "conv-refine-1",
-          agentId: "refine-agent-1",
+          agentId: null,
         },
       });
     });
@@ -403,7 +403,7 @@ describe("AppLayout", () => {
           skillName: "my-skill",
           pluginSlug: "skills",
           conversationId: "conv-workflow",
-          agentId: "workflow-agent-1",
+          agentId: null,
         },
       });
     });

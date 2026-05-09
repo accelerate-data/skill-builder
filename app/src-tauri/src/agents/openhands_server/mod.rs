@@ -850,6 +850,33 @@ async fn resolve_openhands_conversation_id(
             )
             .await
         }
+        OpenHandsConversationResolution::Error(
+            OpenHandsRuntimeError::ConversationNotFound { .. } | OpenHandsRuntimeError::MissingExistingConversation
+        ) => {
+            // Conversation was lost (e.g. files deleted while DB retains the ID).
+            // Fall back to a fresh conversation and persist the new ID so all UI
+            // surfaces can resume without manual intervention.
+            let stale_id = saved_conversation_id.as_deref().unwrap_or("none");
+            log::warn!(
+                "[openhands-agent-server] conversation_unresumable saved_id={} action=create_new",
+                stale_id
+            );
+            let _ = app.emit(
+                "skill-session-reset",
+                serde_json::json!({
+                    "reason": "conversation_not_found",
+                    "conversation_id": stale_id
+                }),
+            );
+            let new_id = create_prepared_conversation_for_request(
+                &client,
+                request,
+                include_initial_message_on_create,
+            )
+            .await?;
+            save_skill_conversation_id(app, request, &new_id)?;
+            Ok(new_id)
+        }
         OpenHandsConversationResolution::Error(error) => Err(error.to_string()),
     }
 }

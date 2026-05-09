@@ -211,3 +211,23 @@ Path: `docs/plans/2026-05-09-immediate-escape-interruption.md`
 - [x] Press `Esc` repeatedly — should be idempotent, no double-cancel
 - [x] After interrupt completes, send a new message — should work normally
 - [x] No cancel button visible in refine chat input — Escape is the only interrupt
+
+---
+
+### Task 11: Fix "socket closed before terminal state" after Escape
+
+**Root cause:** `pause_openhands_conversation` called `close_local_openhands_run(agent_id)` when `agent_id` was provided, aborting the WebSocket Tokio task before OpenHands could send the PAUSED terminal state.
+
+- [x] Pass `null` as `agentId` in both refine and workflow Escape handlers in `app-layout.tsx`
+- [x] Update app-layout tests to assert `agentId: null`
+
+---
+
+### Task 12: Fix "conversation not found and cannot be resumed" after data loss
+
+**Root cause:** When the conversations directory was deleted, the DB retained the old `conversation_id`. `send_openhands_message` used `SendExistingOnly` which returned `ConversationNotFound` error instead of falling back.
+
+- [x] In `resolve_openhands_conversation_id` (mod.rs), add fallback arm for `ConversationNotFound | MissingExistingConversation` — log warning, create new conversation, persist new ID to DB, emit `skill-session-reset` Tauri event
+- [x] In `send_refine_message` (refine/mod.rs), remove equality guard that blocked the new-ID return path
+- [x] In `use-agent-stream.ts`, add `skill-session-reset` listener that shows a `toast.warning`
+- [x] Update use-agent-stream test listener count from 12 to 13

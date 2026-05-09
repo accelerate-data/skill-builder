@@ -112,7 +112,7 @@ export function AppLayout() {
             refineStore.selectedSkill.name,
             refineStore.selectedSkill.plugin_slug,
             refineStore.conversationId,
-            refineStore.activeAgentId,
+            null, // leave WebSocket open so OpenHands can send terminal state
           ).catch((err) => {
             console.error("[app-layout] escape: pause refine conversation failed", err);
             toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
@@ -134,7 +134,7 @@ export function AppLayout() {
               refineStore.selectedSkill.name,
               refineStore.selectedSkill.plugin_slug,
               refineStore.conversationId,
-              running.agentId,
+              null, // leave WebSocket open so OpenHands can send terminal state
             ).catch((err) => {
               console.error("[app-layout] escape: pause workflow conversation failed", err);
               workflowStore.setStopping(false);

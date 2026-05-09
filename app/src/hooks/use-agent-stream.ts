@@ -279,6 +279,10 @@ export async function initAgentStream() {
     listen<{ agent_id: string }>("agent-turn-complete", (event) => {
       console.log("event=turn_complete component=use-agent-stream agent_id=%s", event.payload.agent_id);
     }).then((u) => { _unlisteners.push(u); }),
+    // skill-session-reset fires when a saved conversation is missing and a new one is created.
+    listen<{ reason: string; conversation_id: string }>("skill-session-reset", () => {
+      toast.warning("Previous session not found — started a new conversation.", { duration: 6000 });
+    }).then((u) => { _unlisteners.push(u); }),
   ]).then(() => {
     initialized = true;
   }).catch((error) => {
