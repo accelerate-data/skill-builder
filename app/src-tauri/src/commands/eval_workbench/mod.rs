@@ -159,6 +159,14 @@ struct TurnListener {
     rx: tokio::sync::mpsc::UnboundedReceiver<Result<serde_json::Value, String>>,
     message_listener: tauri::EventId,
     exit_listener: tauri::EventId,
+    app: tauri::AppHandle,
+}
+
+impl Drop for TurnListener {
+    fn drop(&mut self) {
+        self.app.unlisten(self.message_listener);
+        self.app.unlisten(self.exit_listener);
+    }
 }
 
 fn setup_turn_listeners(
@@ -227,26 +235,20 @@ fn setup_turn_listeners(
         }
     });
 
-    TurnListener { rx, message_listener, exit_listener }
+    TurnListener { rx, message_listener, exit_listener, app: app.clone() }
 }
 
 async fn wait_for_turn_result(
-    app: &tauri::AppHandle,
     agent_id: &str,
-    listener: TurnListener,
+    mut listener: TurnListener,
     timeout: std::time::Duration,
 ) -> Result<serde_json::Value, String> {
-    let TurnListener { mut rx, message_listener, exit_listener } = listener;
-
     let wait_result = tokio::time::timeout(timeout, async {
-        let result = rx.recv().await
+        let result = listener.rx.recv().await
             .ok_or_else(|| "OpenHands listener closed unexpectedly".to_string())?;
         result
     })
     .await;
-
-    app.unlisten(message_listener);
-    app.unlisten(exit_listener);
 
     match wait_result {
         Ok(Ok(state)) => Ok(state),
@@ -327,7 +329,6 @@ pub fn save_scenario(
     plugin_slug: String,
     skill_name: String,
     scenario: ScenarioDto,
-    _previous_scenario_name: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<ScenarioDto, String> {
     validate_plugin_slug(&plugin_slug)?;
@@ -413,7 +414,7 @@ pub async fn generate_eval_scenario_assertions(
             prompt,
             llm: runtime_ctx.llm,
             workspace_root_dir: runtime_ctx.workspace_path.clone(),
-            workspace_run_dir: runtime_ctx.workspace_path.clone(),
+            workspace_run_dir: format!("{}/.openhands/eval-generate", runtime_ctx.workspace_path),
             mode: None,
             agent_name: "skill-creator".to_string(),
             task_kind: Some("eval-workbench-generate".to_string()),
@@ -434,7 +435,7 @@ pub async fn generate_eval_scenario_assertions(
     openhands_server::send_openhands_message(&app, &agent_id, config, conversation_id).await?;
 
     let terminal_state =
-        wait_for_turn_result(&app, &agent_id, listener, std::time::Duration::from_secs(90)).await?;
+        wait_for_turn_result(&agent_id, listener, std::time::Duration::from_secs(90)).await?;
 
     let (prompt, assertions) =
         parse_generated_scenario_response(&terminal_state, &existing_scenario)?;

@@ -60,7 +60,6 @@ describe("Eval Workbench Tauri wrappers", () => {
         prompt: "Forecast next quarter revenue",
         assertions: ["Explains the forecast assumptions."],
       },
-      previousScenarioName: "Old regression",
     });
   });
 

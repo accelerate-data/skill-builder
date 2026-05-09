@@ -222,12 +222,15 @@ pub fn delete_scenario(
     name: &str,
 ) -> Result<(), String> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute(
+    let rows = tx.execute(
         "DELETE FROM scenarios WHERE plugin_slug = ?1 AND skill_name = ?2 AND name = ?3",
         params![plugin_slug, skill_name, name],
     )
     .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
+    if rows == 0 {
+        return Err(format!("Scenario '{}' not found", name));
+    }
     Ok(())
 }
 

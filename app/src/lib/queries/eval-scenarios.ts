@@ -56,8 +56,8 @@ export function useSaveScenario(skillName: string | null, pluginSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ scenario, previousScenarioName }: SaveScenarioMutationInput) =>
-      saveScenario(pluginSlug, skillName!, scenario, previousScenarioName),
+    mutationFn: ({ scenario }: SaveScenarioMutationInput) =>
+      saveScenario(pluginSlug, skillName!, scenario),
     onSuccess: (savedScenario, variables) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),

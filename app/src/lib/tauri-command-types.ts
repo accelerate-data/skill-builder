@@ -439,7 +439,6 @@ export interface TauriCommandMap {
       pluginSlug: string;
       skillName: string;
       scenario: ScenarioDto;
-      previousScenarioName: string | null;
     };
     result: ScenarioDto;
   };

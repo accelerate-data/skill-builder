@@ -59,13 +59,11 @@ export const saveScenario = (
   pluginSlug: string,
   skillName: string,
   scenario: SaveScenario,
-  previousScenarioName?: string | null,
 ) =>
   invokeCommand("save_scenario", {
     pluginSlug,
     skillName,
     scenario,
-    previousScenarioName: previousScenarioName ?? null,
   });
 
 export const deleteScenario = (
