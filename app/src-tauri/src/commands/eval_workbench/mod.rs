@@ -155,18 +155,33 @@ fn parse_generated_scenario_response(
     Ok((prompt, expectations))
 }
 
-async fn wait_for_openhands_turn_result(
+struct TurnListener {
+    rx: tokio::sync::mpsc::UnboundedReceiver<Result<serde_json::Value, String>>,
+    message_listener: tauri::EventId,
+    exit_listener: tauri::EventId,
+}
+
+fn setup_turn_listeners(
     app: &tauri::AppHandle,
     agent_id: &str,
-    timeout: std::time::Duration,
-) -> Result<serde_json::Value, String> {
+) -> TurnListener {
     use tokio::sync::mpsc;
 
     fn parse_terminal_state(
         payload: &str,
         target_agent_id: &str,
     ) -> Option<Result<serde_json::Value, String>> {
-        let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+        let value = match serde_json::from_str::<serde_json::Value>(payload) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!(
+                    "[eval_workbench] failed to parse agent-message payload for {}: {}",
+                    target_agent_id,
+                    e
+                );
+                return None;
+            }
+        };
         if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
             return None;
         }
@@ -182,7 +197,7 @@ async fn wait_for_openhands_turn_result(
         }
     }
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<Result<serde_json::Value, String>>();
+    let (tx, rx) = mpsc::unbounded_channel::<Result<serde_json::Value, String>>();
     let target_agent_id = agent_id.to_string();
     let tx_message = tx.clone();
     let message_listener = app.listen("agent-message", move |event: tauri::Event| {
@@ -211,6 +226,17 @@ async fn wait_for_openhands_turn_result(
             }
         }
     });
+
+    TurnListener { rx, message_listener, exit_listener }
+}
+
+async fn wait_for_turn_result(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    listener: TurnListener,
+    timeout: std::time::Duration,
+) -> Result<serde_json::Value, String> {
+    let TurnListener { mut rx, message_listener, exit_listener } = listener;
 
     let wait_result = tokio::time::timeout(timeout, async {
         while let Some(result) = rx.recv().await {
@@ -408,10 +434,13 @@ pub async fn generate_eval_scenario_assertions(
         },
     );
 
+    // Set up listeners BEFORE dispatching to avoid race condition
+    let listener = setup_turn_listeners(&app, &agent_id);
+
     openhands_server::send_openhands_message(&app, &agent_id, config, conversation_id).await?;
 
     let terminal_state =
-        wait_for_openhands_turn_result(&app, &agent_id, std::time::Duration::from_secs(90)).await?;
+        wait_for_turn_result(&app, &agent_id, listener, std::time::Duration::from_secs(90)).await?;
 
     let (prompt, assertions) =
         parse_generated_scenario_response(&terminal_state, &existing_scenario)?;
