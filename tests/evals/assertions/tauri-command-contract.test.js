@@ -166,14 +166,24 @@ test("published Eval Workbench command surface omits legacy and no-op commands",
     "create_scenario",
     "save_scenario",
     "delete_scenario",
-    "define_eval_scenario",
+    "generate_eval_scenario_assertions",
+  ]) {
+    assert.ok(apiSource.includes(`| \`${command}\` |`));
+  }
+
+  for (const removedCommand of [
     "run_eval_workbench",
     "cancel_eval_workbench_run",
     "list_eval_runs",
     "read_eval_run",
     "build_refine_improvement_brief",
+    "define_eval_scenario",
   ]) {
-    assert.ok(apiSource.includes(`| \`${command}\` |`));
+    assert.equal(
+      apiSource.includes(`| \`${removedCommand}\` |`),
+      false,
+      `${removedCommand} should not appear in the published API`,
+    );
   }
 
   assert.equal(apiSource.includes("| `generate_suggestions` |"), false);
@@ -199,12 +209,17 @@ test("Eval Workbench design omits retired description-generation surfaces", () =
     "workspace-description.tsx",
     "suggest_description_candidates",
     "apply_description_candidate",
+    "promptfoo-sidecar",
+    "run_eval_workbench",
+    "cancel_eval_workbench_run",
+    "list_eval_runs",
+    "read_eval_run",
   ]) {
     assert.equal(evalWorkbenchSource.includes(staleReference), false);
   }
 
-  assert.match(evalWorkbenchSource, /One-tab Eval Workbench shell/);
-  assert.match(evalWorkbenchSource, /one-scenario editor UI/);
+  assert.match(evalWorkbenchSource, /authoring-only/);
+  assert.match(evalWorkbenchSource, /SQLite/);
 });
 
 test("invokeUnsafe call expressions are rejected outside documented exceptions", () => {

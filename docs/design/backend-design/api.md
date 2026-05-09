@@ -193,17 +193,12 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 
 | Command | Description |
 |---|---|
-| `list_scenarios` | List scenario summaries for a plugin skill from disk |
-| `load_scenario` | Read one full scenario from disk |
+| `list_scenarios` | List scenario summaries for a plugin skill from SQLite |
+| `load_scenario` | Read one full scenario from SQLite |
 | `create_scenario` | Create a new performance scenario draft for a plugin skill |
-| `save_scenario` | Persist a performance scenario to disk and mirror it into the prompt-set store |
-| `delete_scenario` | Delete a saved performance scenario file while preserving historical eval runs |
-| `define_eval_scenario` | Rewrite an existing scenario from skill context and saved workflow artifacts |
-| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a selected scenario and mode |
-| `cancel_eval_workbench_run` | Cancel an in-flight Eval Workbench run and pause any active OpenHands session |
-| `list_eval_runs` | List Promptfoo-backed Eval Workbench runs for a skill and mode |
-| `read_eval_run` | Read one Eval Workbench run with results and persisted run metadata |
-| `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a saved workbench run |
+| `save_scenario` | Upsert a performance scenario and replace assertions in SQLite |
+| `delete_scenario` | Delete a saved performance scenario from SQLite (assertions cascade) |
+| `generate_eval_scenario_assertions` | Rewrite an existing scenario from skill context via the selected-skill conversation |
 
 ## Feedback
 

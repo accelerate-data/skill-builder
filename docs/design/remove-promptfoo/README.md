@@ -1,11 +1,24 @@
 # Remove Promptfoo + Simplify Eval Data Model
 
 **Date:** 2026-05-07  
-**Status:** Approved
+**Status:** Completed (2026-05-09)
 
 ## Summary
 
 Remove the embedded Promptfoo sidecar and all eval-run execution infrastructure from the app. Replace the complex `eval_prompt_sets` / `eval_prompt_cases` / `eval_runs` / `eval_run_results` / `description_candidates` schema with a flat `scenarios` + `assertions` model: one skill has many scenarios, each scenario has many free-text assertions.
+
+## Completion Notes
+
+All goals have been achieved:
+
+1. Promptfoo sidecar (`app/promptfoo-sidecar/`) removed from the app.
+2. DB schema simplified to `scenarios` + `assertions` via migration 48.
+3. Scenario CRUD UI preserved with minimal changes (assertions replace expectations).
+4. Eval-run history, description candidates, and all execution-related commands dropped.
+5. Eval generation uses the selected-skill conversation via `send_openhands_message`.
+6. No active app code references `eval_runs`, `eval_run_results`, `description_candidates`, `eval_prompt_sets`, or `eval_prompt_cases` outside historical migrations.
+7. No active app code references `app/promptfoo-sidecar`.
+8. No active Eval UI shows run status, run history, Evaluate, or cancellation controls.
 
 ## Background
 
