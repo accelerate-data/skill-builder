@@ -913,8 +913,6 @@ fn test_create_skill_recreates_stale_workspace_dir_when_db_row_missing() {
         None,
         None,
         None,
-        None,
-        None,
     )
     .unwrap();
 
@@ -950,8 +948,6 @@ fn test_create_skill_recreates_stale_output_dir_when_db_row_missing() {
         None,
         Some(&conn),
         Some(skills_path),
-        None,
-        None,
         None,
         None,
         None,
