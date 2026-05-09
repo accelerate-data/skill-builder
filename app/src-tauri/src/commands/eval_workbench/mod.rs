@@ -174,36 +174,7 @@ fn setup_turn_listeners(
     agent_id: &str,
 ) -> TurnListener {
     use tokio::sync::mpsc;
-
-    fn parse_terminal_state(
-        payload: &str,
-        target_agent_id: &str,
-    ) -> Option<Result<serde_json::Value, String>> {
-        let value = match serde_json::from_str::<serde_json::Value>(payload) {
-            Ok(v) => v,
-            Err(e) => {
-                log::warn!(
-                    "[eval_workbench] failed to parse agent-message payload for {}: {}",
-                    target_agent_id,
-                    e
-                );
-                return None;
-            }
-        };
-        if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
-            return None;
-        }
-        let message = value.get("message")?;
-        if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
-            return None;
-        }
-        match message.get("status").and_then(|v| v.as_str())? {
-            "completed" => Some(Ok(message.clone())),
-            "error" => Some(Err("OpenHands run failed".to_string())),
-            "cancelled" | "canceled" => Some(Err("OpenHands run cancelled".to_string())),
-            _ => None,
-        }
-    }
+    use event_parsing::parse_terminal_state;
 
     let (tx, rx) = mpsc::unbounded_channel::<Result<serde_json::Value, String>>();
     let target_agent_id = agent_id.to_string();
@@ -236,6 +207,38 @@ fn setup_turn_listeners(
     });
 
     TurnListener { rx, message_listener, exit_listener, app: app.clone() }
+}
+
+mod event_parsing {
+    pub fn parse_terminal_state(
+        payload: &str,
+        target_agent_id: &str,
+    ) -> Option<Result<serde_json::Value, String>> {
+        let value = match serde_json::from_str::<serde_json::Value>(payload) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!(
+                    "[eval_workbench] failed to parse agent-message payload for {}: {}",
+                    target_agent_id,
+                    e
+                );
+                return None;
+            }
+        };
+        if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+            return None;
+        }
+        let message = value.get("message")?;
+        if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+            return None;
+        }
+        match message.get("status").and_then(|v| v.as_str())? {
+            "completed" => Some(Ok(message.clone())),
+            "error" => Some(Err("OpenHands run failed".to_string())),
+            "cancelled" | "canceled" => Some(Err("OpenHands run cancelled".to_string())),
+            _ => None,
+        }
+    }
 }
 
 async fn wait_for_turn_result(
@@ -489,5 +492,163 @@ mod tests {
     #[test]
     fn validate_plugin_slug_accepts_valid() {
         assert!(validate_plugin_slug("default").is_ok());
+    }
+
+    fn existing_scenario_for_test() -> eval_workbench::Scenario {
+        eval_workbench::Scenario {
+            id: "test-id".to_string(),
+            plugin_slug: "skills".to_string(),
+            skill_name: "forecast".to_string(),
+            name: "Regression".to_string(),
+            mode: eval_workbench::EvalWorkbenchMode::Performance,
+            prompt: "existing prompt".to_string(),
+            sort_order: 0,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            assertions: vec!["existing assertion".to_string()],
+        }
+    }
+
+    #[test]
+    fn parse_generated_scenario_response_full() {
+        let existing = existing_scenario_for_test();
+        let state = serde_json::json!({
+            "structured_output": {
+                "result": "{\"prompt\": \"new prompt\", \"expectations\": [\"assertion 1\", \"assertion 2\"]}"
+            }
+        });
+        let (prompt, assertions) = parse_generated_scenario_response(&state, &existing).unwrap();
+        assert_eq!(prompt, "new prompt");
+        assert_eq!(assertions, vec!["assertion 1", "assertion 2"]);
+    }
+
+    #[test]
+    fn parse_generated_scenario_response_missing_prompt_falls_back() {
+        let existing = existing_scenario_for_test();
+        let state = serde_json::json!({
+            "structured_output": {
+                "result": "{\"expectations\": [\"new assertion\"]}"
+            }
+        });
+        let (prompt, assertions) = parse_generated_scenario_response(&state, &existing).unwrap();
+        assert_eq!(prompt, "existing prompt");
+        assert_eq!(assertions, vec!["new assertion"]);
+    }
+
+    #[test]
+    fn parse_generated_scenario_response_missing_expectations_falls_back() {
+        let existing = existing_scenario_for_test();
+        let state = serde_json::json!({
+            "structured_output": {
+                "result": "{\"prompt\": \"new prompt\"}"
+            }
+        });
+        let (prompt, assertions) = parse_generated_scenario_response(&state, &existing).unwrap();
+        assert_eq!(prompt, "new prompt");
+        assert_eq!(assertions, vec!["existing assertion"]);
+    }
+
+    #[test]
+    fn parse_generated_scenario_response_strips_json_fence() {
+        let existing = existing_scenario_for_test();
+        let state = serde_json::json!({
+            "structured_output": {
+                "result": "```json\n{\"prompt\": \"fenced\", \"expectations\": [\"a\"]}\n```"
+            }
+        });
+        let (prompt, assertions) = parse_generated_scenario_response(&state, &existing).unwrap();
+        assert_eq!(prompt, "fenced");
+        assert_eq!(assertions, vec!["a"]);
+    }
+
+    #[test]
+    fn parse_generated_scenario_response_missing_result_errors() {
+        let existing = existing_scenario_for_test();
+        let state = serde_json::json!({
+            "structured_output": {}
+        });
+        assert!(parse_generated_scenario_response(&state, &existing).is_err());
+    }
+
+    #[test]
+    fn parse_terminal_state_completed() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "completed",
+                "data": "done"
+            }
+        });
+        let result = super::event_parsing::parse_terminal_state(&payload.to_string(), "agent-1");
+        assert!(result.is_some());
+        assert!(result.unwrap().is_ok());
+    }
+
+    #[test]
+    fn parse_terminal_state_error() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "error"
+            }
+        });
+        let result = super::event_parsing::parse_terminal_state(&payload.to_string(), "agent-1");
+        assert!(result.is_some());
+        assert!(result.unwrap().is_err());
+    }
+
+    #[test]
+    fn parse_terminal_state_cancelled() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "cancelled"
+            }
+        });
+        let result = super::event_parsing::parse_terminal_state(&payload.to_string(), "agent-1");
+        assert!(result.is_some());
+        assert!(result.unwrap().is_err());
+    }
+
+    #[test]
+    fn parse_terminal_state_wrong_agent_id() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-2",
+            "message": {
+                "type": "conversation_state",
+                "status": "completed"
+            }
+        });
+        let result = super::event_parsing::parse_terminal_state(&payload.to_string(), "agent-1");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_terminal_state_wrong_message_type() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "other_type",
+                "status": "completed"
+            }
+        });
+        let result = super::event_parsing::parse_terminal_state(&payload.to_string(), "agent-1");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_terminal_state_unknown_status() {
+        let payload = serde_json::json!({
+            "agent_id": "agent-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "running"
+            }
+        });
+        let result = super::event_parsing::parse_terminal_state(&payload.to_string(), "agent-1");
+        assert!(result.is_none());
     }
 }

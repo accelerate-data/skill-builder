@@ -46,7 +46,6 @@ describe("Eval Workbench Tauri wrappers", () => {
         prompt: "Forecast next quarter revenue",
         assertions: ["Explains the forecast assumptions."],
       },
-      "Old regression",
     );
 
     expect(mockInvoke).toHaveBeenCalledWith("save_scenario", {

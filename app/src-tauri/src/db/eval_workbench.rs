@@ -423,4 +423,12 @@ mod tests {
             .unwrap();
         assert_eq!(read.assertions, vec!["Explains the forecast"]);
     }
+
+    #[test]
+    fn delete_nonexistent_scenario_errors() {
+        let mut conn = test_db();
+        let result = delete_scenario(&mut conn, "skills", "forecast", "does-not-exist");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does-not-exist"));
+    }
 }
