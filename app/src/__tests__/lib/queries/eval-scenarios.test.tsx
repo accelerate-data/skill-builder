@@ -26,13 +26,9 @@ describe("eval scenario queries", () => {
     mockSaveScenario.mockReset();
   });
 
-  it("stores renamed scenario detail under the new key and removes the old cache entry", async () => {
+  it("stores saved scenario detail and invalidates the list", async () => {
     const queryClient = createTestQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-    queryClient.setQueryData(
-      evalScenarioKeys.detail("forecast-skill", "skills", "Regression"),
-      { name: "Regression" },
-    );
 
     mockSaveScenario.mockResolvedValue({
       id: "case-1",
@@ -65,7 +61,6 @@ describe("eval scenario queries", () => {
         prompt: "Summarize pipeline risk",
         assertions: [],
       },
-      previousScenarioName: "Regression",
     });
 
     await waitFor(() =>
@@ -73,11 +68,6 @@ describe("eval scenario queries", () => {
         queryKey: evalScenarioKeys.list("forecast-skill", "skills"),
       }),
     );
-    expect(
-      queryClient.getQueryData(
-        evalScenarioKeys.detail("forecast-skill", "skills", "Regression"),
-      ),
-    ).toBeUndefined();
     expect(
       queryClient.getQueryData(
         evalScenarioKeys.detail("forecast-skill", "skills", "Smoke"),

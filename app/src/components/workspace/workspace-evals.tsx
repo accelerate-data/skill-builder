@@ -19,7 +19,6 @@ interface WorkspaceEvalsProps {
   onCreateScenario?: () => Promise<ScenarioDto>;
   onSaveScenario: (
     scenario: ScenarioDto,
-    options?: { previousScenarioName?: string | null },
   ) => Promise<ScenarioDto>;
   onGenerateEvalScenarioAssertions?: (scenarioName: string) => Promise<ScenarioDto>;
   onDeleteScenario?: (scenarioName: string) => Promise<void>;
@@ -87,10 +86,7 @@ export function WorkspaceEvals({
     if (!scenario) return;
     setActionError(null);
     try {
-      await onSaveScenario(
-        { ...draft, id: draft.id || scenario.id },
-        { previousScenarioName: scenario.name },
-      );
+      await onSaveScenario({ ...draft, id: draft.id || scenario.id });
     } catch (err) {
       setActionError(getErrorMessage(err));
     }

@@ -62,7 +62,7 @@ test.describe("Eval Workbench", { tag: "@evals" }, () => {
     await expect(await getTrackedInvokeCount(page, "create_scenario")).toBe(1);
     await expect(page.getByLabel("User prompt")).toHaveValue(AUTHORED_SCENARIO.prompt);
     await expect(page.locator("textarea").nth(1)).toHaveValue(
-      "Explains the forecast assumptions.",
+      "Summarizes the main pipeline blockers.",
     );
 
     await page.getByRole("button", { name: /generate scenario and assertions/i }).click();

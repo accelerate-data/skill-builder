@@ -55,22 +55,8 @@ export function WorkspaceEvalWorkbench({
     }
   }, [scenarios, selectedScenarioName]);
 
-  type SaveScenarioOptions = {
-    previousScenarioName?: string | null;
-  };
-
-  async function handleSaveScenario(
-    scenario: ScenarioDto,
-    options?: SaveScenarioOptions,
-  ) {
-    const previousScenarioName =
-      options && "previousScenarioName" in options
-        ? (options.previousScenarioName ?? null)
-        : (selectedScenario?.name ?? null);
-    const savedScenario = await saveScenarioMutation.mutateAsync({
-      scenario,
-      previousScenarioName,
-    });
+  async function handleSaveScenario(scenario: ScenarioDto) {
+    const savedScenario = await saveScenarioMutation.mutateAsync({ scenario });
     setSelectedScenarioName(savedScenario.name);
     return savedScenario;
   }

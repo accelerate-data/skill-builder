@@ -21,7 +21,6 @@ export const evalScenarioKeys = {
 
 type SaveScenarioMutationInput = {
   scenario: ScenarioDto;
-  previousScenarioName?: string | null;
 };
 
 type DeleteScenarioMutationInput = {
@@ -58,22 +57,10 @@ export function useSaveScenario(skillName: string | null, pluginSlug: string) {
   return useMutation({
     mutationFn: ({ scenario }: SaveScenarioMutationInput) =>
       saveScenario(pluginSlug, skillName!, scenario),
-    onSuccess: (savedScenario, variables) => {
+    onSuccess: (savedScenario) => {
       void queryClient.invalidateQueries({
         queryKey: evalScenarioKeys.list(skillName ?? "", pluginSlug),
       });
-      if (
-        variables.previousScenarioName &&
-        variables.previousScenarioName !== savedScenario.name
-      ) {
-        queryClient.removeQueries({
-          queryKey: evalScenarioKeys.detail(
-            skillName ?? "",
-            pluginSlug,
-            variables.previousScenarioName,
-          ),
-        });
-      }
       queryClient.setQueryData(
         evalScenarioKeys.detail(
           skillName ?? "",

@@ -2,8 +2,13 @@ import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
 // Polyfill localStorage for Node 25+ where the built-in localStorage
-// lacks standard methods (clear, key, length) when --localstorage-file is not set.
-if (typeof globalThis.localStorage !== "undefined" && typeof globalThis.localStorage.clear !== "function") {
+// lacks standard methods (clear, key, length) when --localstorage-file is not set,
+// or for environments where localStorage is not defined at all.
+const needsLocalStoragePolyfill =
+  typeof globalThis.localStorage === "undefined" ||
+  typeof globalThis.localStorage.clear !== "function";
+
+if (needsLocalStoragePolyfill) {
   const store = new Map<string, string>();
   const localStoragePolyfill: Storage = {
     getItem: (key: string) => store.get(key) ?? null,

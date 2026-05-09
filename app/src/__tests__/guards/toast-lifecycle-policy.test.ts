@@ -60,7 +60,6 @@ describe("toast lifecycle policy guard", () => {
     // These are fire-and-forget catch blocks where Infinity duration is not yet wired.
     const knownExceptions = new Set([
       "components/skill-list-panel.tsx",
-      "hooks/use-workflow-session.ts",
     ]);
 
     for (const filePath of files) {
@@ -129,7 +128,6 @@ describe("toast lifecycle policy guard", () => {
       { file: "components/imported-skills-tab.tsx", severities: ["error"] },
       { file: "components/skill-list-panel.tsx", severities: ["error"] },
       { file: "hooks/use-workflow-gate.ts", severities: ["info", "warning"] },
-      { file: "hooks/use-workflow-session.ts", severities: ["error"] },
     ];
 
     const missing: string[] = [];
