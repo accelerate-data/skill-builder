@@ -60,6 +60,74 @@ fn clear_persistent_skill_conversation_state(
     Ok(())
 }
 
+fn navigate_back_to_step_impl(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    skills_path: &str,
+    skill_name: &str,
+    target_step_id: u32,
+) -> Result<(), String> {
+    // Delete output files for steps from the target onwards.
+    // Step 0 is a special case: navigating back to it means a full rerun, so its own
+    // artifacts (clarifications.json, answer-evaluation.json) must also be cleared.
+    let delete_from = if target_step_id == 0 {
+        0
+    } else {
+        target_step_id + 1
+    };
+    let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)?
+        .map(|m| m.plugin_slug)
+        .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+
+    // Auto-commit: checkpoint before artifacts are deleted, at the per-skill repo dir
+    let skill_dir = crate::skill_paths::resolve_skill_dir(
+        std::path::Path::new(skills_path),
+        &plugin_slug,
+        skill_name,
+    );
+    let msg = format!(
+        "{}: checkpoint before navigate back to {}",
+        skill_name,
+        workflow_step_log_name(target_step_id as i32)
+    );
+    if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
+        log::warn!(
+            "[navigate_back_to_step] git commit failed at skill_dir {}: {}",
+            skill_dir.display(),
+            e
+        );
+    }
+    crate::cleanup::delete_step_output_files(
+        workspace_path,
+        skill_name,
+        &plugin_slug,
+        delete_from,
+        skills_path,
+    );
+
+    if target_step_id == 0 {
+        clear_persistent_skill_conversation_state(conn, workspace_path, &plugin_slug, skill_name)?;
+    }
+
+    // Reset only steps after the target; target step status is preserved as "completed".
+    crate::db::reset_workflow_steps_from(conn, skill_name, delete_from as i32)?;
+
+    // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
+    // Use "pending" for the run status because subsequent steps are now reset; the next
+    // saveWorkflowState sync will recompute and update as needed.
+    if let Some(run) = crate::db::get_workflow_run(conn, skill_name)? {
+        crate::db::save_workflow_run(
+            conn,
+            skill_name,
+            target_step_id as i32,
+            "pending",
+            &run.purpose,
+        )?;
+    }
+
+    Ok(())
+}
+
 // --- Workflow state persistence (SQLite-backed) ---
 
 #[tauri::command]
@@ -333,6 +401,49 @@ mod tests {
         );
         assert!(!plugin_conversations.exists());
         assert!(!default_conversations.exists());
+    }
+
+    #[test]
+    fn test_navigate_back_to_step_zero_clears_saved_conversation_state() {
+        let conn = create_test_db();
+        let tmp = tempdir().unwrap();
+        let workspace_path = tmp.path().to_str().unwrap();
+        let skills_path = tmp.path().join("skills");
+        std::fs::create_dir_all(&skills_path).unwrap();
+
+        let skill_name = "reset-me";
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+            .unwrap();
+        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
+            .unwrap();
+        crate::db::save_workflow_run(&conn, skill_name, 2, "completed", "domain").unwrap();
+
+        let default_conversations =
+            crate::skill_paths::workspace_skill_dir(tmp.path(), default_slug, skill_name)
+                .join("conversations");
+        std::fs::create_dir_all(&default_conversations).unwrap();
+        std::fs::write(default_conversations.join("meta.json"), "{}").unwrap();
+
+        super::navigate_back_to_step_impl(
+            &conn,
+            workspace_path,
+            skills_path.to_str().unwrap(),
+            skill_name,
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(
+            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
+            None
+        );
+        assert!(!default_conversations.exists());
+
+        let run = crate::db::get_workflow_run(&conn, skill_name).unwrap().unwrap();
+        assert_eq!(run.current_step, 0);
+        assert_eq!(run.status, "pending");
     }
 
     /// TC-06: Test the full DB path of save_workflow_run + save_workflow_step
@@ -630,65 +741,14 @@ pub fn navigate_back_to_step(
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     log::debug!("[navigate_back_to_step] skills_path={}", skills_path);
-
-    // Delete output files for steps from the target onwards.
-    // Step 0 is a special case: navigating back to it means a full rerun, so its own
-    // artifacts (clarifications.json, answer-evaluation.json) must also be cleared.
-    let delete_from = if target_step_id == 0 {
-        0
-    } else {
-        target_step_id + 1
-    };
-    let plugin_slug = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_master_any_plugin(&conn, &skill_name)?
-            .map(|m| m.plugin_slug)
-            .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string())
-    };
-
-    // Auto-commit: checkpoint before artifacts are deleted, at the per-skill repo dir
-    let skill_dir = crate::skill_paths::resolve_skill_dir(
-        std::path::Path::new(&skills_path),
-        &plugin_slug,
-        &skill_name,
-    );
-    let msg = format!(
-        "{}: checkpoint before navigate back to {}",
-        skill_name,
-        workflow_step_log_name(target_step_id as i32)
-    );
-    if let Err(e) = crate::git::commit_all(&skill_dir, &msg) {
-        log::warn!(
-            "[navigate_back_to_step] git commit failed at skill_dir {}: {}",
-            skill_dir.display(),
-            e
-        );
-    }
-    crate::cleanup::delete_step_output_files(
-        &workspace_path,
-        &skill_name,
-        &plugin_slug,
-        delete_from,
-        &skills_path,
-    );
-
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-
-    // Reset only steps after the target; target step status is preserved as "completed".
-    crate::db::reset_workflow_steps_from(&conn, &skill_name, delete_from as i32)?;
-
-    // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
-    // Use "pending" for the run status because subsequent steps are now reset; the next
-    // saveWorkflowState sync will recompute and update as needed.
-    if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
-        crate::db::save_workflow_run(
-            &conn,
-            &skill_name,
-            target_step_id as i32,
-            "pending",
-            &run.purpose,
-        )?;
-    }
+    navigate_back_to_step_impl(
+        &conn,
+        &workspace_path,
+        &skills_path,
+        &skill_name,
+        target_step_id,
+    )?;
 
     log::info!(
         "[navigate_back_to_step] done skill={} current_step={} current_step_id={}",

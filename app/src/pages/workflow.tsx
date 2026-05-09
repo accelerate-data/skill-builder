@@ -39,6 +39,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import {
   getDisabledSteps,
+  resetWorkflowStep,
   navigateBackToStepDb,
 } from "@/lib/tauri";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
@@ -503,7 +504,9 @@ export default function WorkflowPage() {
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
         executeReset={resetTarget !== null
-          ? () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
+          ? resetTarget === 0
+            ? () => resetWorkflowStep(workspacePath ?? "", skillName, 0)
+            : () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
           : undefined}
         onReset={() => {
           if (resetTarget !== null) {
