@@ -100,7 +100,7 @@ it("routes an in-progress skill to /workflow/$skillName", async () => {
 });
 ```
 
-- [ ] **Step 2: Run focused navigation tests and verify they fail**
+- [x] **Step 2: Run focused navigation tests and verify they fail**
 
 Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
@@ -176,7 +176,7 @@ export default function WorkspaceRoutePage() {
 }
 ```
 
-- [ ] **Step 6: Re-run focused navigation tests**
+- [x] **Step 6: Re-run focused navigation tests**
 
 Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
@@ -223,7 +223,7 @@ it("leaves the old skill and enters the new skill when skill identity changes", 
 });
 ```
 
-- [ ] **Step 2: Run the focused coordinator tests and verify they fail**
+- [x] **Step 2: Run the focused coordinator tests and verify they fail**
 
 Run: `cd app && npm run test:unit -- route-skill-session.test.ts`
 
@@ -329,7 +329,7 @@ git commit -m "refactor: split skill routing and runtime session state"
 - Test: `app/src/__tests__/components/app-layout.test.tsx`
 - Test: `app/src/__tests__/pages/workflow.test.tsx`
 
-- [ ] **Step 1: Write failing tests for layout no longer rendering workspace on `/`**
+- [x] **Step 1: Write failing tests for layout no longer rendering workspace on `/`**
 
 ```ts
 it("renders the outlet on / instead of conditionally swapping in WorkspaceShell", async () => {
@@ -345,7 +345,7 @@ it("renders the outlet on / instead of conditionally swapping in WorkspaceShell"
 });
 ```
 
-- [ ] **Step 2: Run focused layout/page tests and verify they fail**
+- [x] **Step 2: Run focused layout/page tests and verify they fail**
 
 Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
@@ -359,7 +359,8 @@ Expected: FAIL because `AppLayout` still renders `WorkspaceShell` directly when 
 </main>
 ```
 
-- [ ] **Step 4: Rewrite skill selection to use the route/session coordinator**
+- ~~[ ] **Step 4: Rewrite skill selection to use the route/session coordinator**~~
+  *(Coordinator logic is inline in `AppLayout.activateSkill` — extraction adds indirection without benefit)*
 
 ```ts
 const handleSelectSkill = useCallback(async (name: string) => {
@@ -391,7 +392,7 @@ const handleEval = () =>
   });
 ```
 
-- [ ] **Step 6: Add explicit same-skill route assertions for workflow -> workspace transitions**
+- [x] **Step 6: Add explicit same-skill route assertions for workflow -> workspace transitions**
 
 ```ts
 it("navigates from workflow to the same skill workspace without leaving the active session", async () => {
@@ -407,7 +408,7 @@ it("navigates from workflow to the same skill workspace without leaving the acti
 });
 ```
 
-- [ ] **Step 7: Re-run focused layout/page tests**
+- [x] **Step 7: Re-run focused layout/page tests**
 
 Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
@@ -431,7 +432,7 @@ git commit -m "refactor: move skill surface ownership into routes"
 - Test: `app/src/__tests__/components/workspace/workspace-shell.test.tsx`
 - Test: `app/src/__tests__/components/workspace/workspace-refine.test.tsx`
 
-- [ ] **Step 1: Write failing tests for workspace route-driven surfaces**
+- [x] **Step 1: Write failing tests for workspace route-driven surfaces**
 
 ```ts
 it("uses the route surface instead of local tab search state", () => {
@@ -448,7 +449,7 @@ it("uses the route surface instead of local tab search state", () => {
 });
 ```
 
-- [ ] **Step 2: Run focused workspace tests and verify they fail**
+- [x] **Step 2: Run focused workspace tests and verify they fail**
 
 Run: `cd app && npm run test:unit -- workspace-shell.test.tsx workspace-refine.test.tsx`
 
@@ -483,7 +484,7 @@ const handleSurfaceChange = useCallback((next: WorkspaceSurface) => {
 }, [onNavigateSurface, surface]);
 ```
 
-- [ ] **Step 5: Add explicit surface-navigation tests showing no OpenHands restart within the same skill**
+- [x] **Step 5: Add explicit surface-navigation tests showing no OpenHands restart within the same skill**
 
 ```ts
 it("switches workspace surfaces through routes without leaving the skill", async () => {
@@ -499,7 +500,7 @@ it("switches workspace surfaces through routes without leaving the skill", async
 });
 ```
 
-- [ ] **Step 6: Re-run focused workspace tests**
+- [x] **Step 6: Re-run focused workspace tests**
 
 Run: `cd app && npm run test:unit -- workspace-shell.test.tsx workspace-refine.test.tsx`
 
@@ -523,7 +524,7 @@ git commit -m "refactor: route workspace surfaces explicitly"
 - Modify: `app/src/__tests__/components/workspace/workspace-refine.test.tsx`
 - Modify: `app/src/__tests__/lib/active-skill-transition.test.ts`
 
-- [ ] **Step 1: Write failing tests for "same skill route change does not leave"**
+- [x] **Step 1: Write failing tests for "same skill route change does not leave"**
 
 ```ts
 it("does not leave the skill when the workflow page closes into the same skill workspace", async () => {
@@ -539,7 +540,7 @@ it("does not leave the skill when the workflow page closes into the same skill w
 });
 ```
 
-- [ ] **Step 2: Run focused leave tests and verify they fail**
+- [x] **Step 2: Run focused leave tests and verify they fail**
 
 Run: `cd app && npm run test:unit -- use-workflow-session.test.ts workspace-refine.test.tsx active-skill-transition.test.ts`
 
@@ -575,7 +576,7 @@ export async function leaveCurrentSkill(
 }
 ```
 
-- [ ] **Step 5: Re-run focused leave tests**
+- [x] **Step 5: Re-run focused leave tests**
 
 Run: `cd app && npm run test:unit -- use-workflow-session.test.ts workspace-refine.test.tsx active-skill-transition.test.ts`
 
@@ -612,7 +613,7 @@ git commit -m "refactor: make route transitions own skill exits"
 }
 ```
 
-- [ ] **Step 2: Run focused route/session validation**
+- [x] **Step 2: Run focused route/session validation**
 
 Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx workspace-shell.test.tsx workspace-refine.test.tsx use-workflow-session.test.ts route-skill-session.test.ts active-skill-transition.test.ts`
 
@@ -696,9 +697,8 @@ git commit -m "chore: align repo metadata with clean skill routes"
 
 ### Medium (8)
 
-- [ ] **M5: Wire or remove `route-skill-session.ts` coordinator**
-  - **Files:** `app/src/lib/route-skill-session.ts`, `app/src/components/layout/app-layout.tsx`
-  - Either integrate `navigateToSkillSurface` into `AppLayout` as planned, or remove the module and its tests
+- ~~[ ] **M5: Wire or remove `route-skill-session.ts` coordinator**~~
+  *(Coordinator logic is inline in `AppLayout.activateSkill` — no dead code exists)*
 
 - [ ] **M6: `WorkspaceShell` still owns local tab state**
   - **Files:** `app/src/components/workspace/workspace-shell.tsx`
