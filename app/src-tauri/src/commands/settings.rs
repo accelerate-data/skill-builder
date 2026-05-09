@@ -717,6 +717,62 @@ mod tests {
     }
 
     #[test]
+    fn test_startup_migration_two_skills_same_version_in_shared_root_no_collision() {
+        // Two skills in a shared-root repo both carry version 1.0.0.
+        // After migration, the first skill gets v1.0.0; the second must
+        // retain its legacy tag rather than losing it to a collision.
+        let conn = crate::db::create_test_db_for_tests();
+        let dir = tempfile::tempdir().unwrap();
+        let skills_path = dir.path().join("skills");
+        let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        let skill_a_dir = skills_path.join(plugin).join("skill-a");
+        let skill_b_dir = skills_path.join(plugin).join("skill-b");
+        std::fs::create_dir_all(&skill_a_dir).unwrap();
+        std::fs::create_dir_all(&skill_b_dir).unwrap();
+        crate::git::ensure_repo(&skills_path).unwrap();
+
+        for (dir, name) in [(&skill_a_dir, "skill-a"), (&skill_b_dir, "skill-b")] {
+            std::fs::write(
+                dir.join("SKILL.md"),
+                format!(
+                    "---\nname: {}\ndescription: Test\nmetadata:\n  version: \"1.0.0\"\n---\n# Body\n",
+                    name
+                ),
+            )
+            .unwrap();
+        }
+        crate::git::commit_all(&skills_path, "seed both skills").unwrap();
+
+        // Seed legacy-format tags for both skills.
+        {
+            let repo = git2::Repository::open(&skills_path).unwrap();
+            let head = repo.head().unwrap().peel(git2::ObjectType::Commit).unwrap();
+            repo.tag_lightweight("skill-a/v1.0.0", &head, false).unwrap();
+            repo.tag_lightweight("skill-b/v1.0.0", &head, false).unwrap();
+        }
+
+        let mut settings = crate::types::AppSettings::default();
+        settings.skills_path = Some(skills_path.to_str().unwrap().to_string());
+        crate::db::write_settings(&conn, &settings).unwrap();
+
+        run_settings_startup_migrations(&conn).unwrap();
+
+        let repo = git2::Repository::open(&skills_path).unwrap();
+
+        // Skill-a should have the new-format tag.
+        assert!(
+            crate::git::skill_version_tag_exists(&skills_path, plugin, "skill-a", "1.0.0").unwrap(),
+            "skill-a should have migrated to v1.0.0"
+        );
+        // Skill-b must NOT lose its legacy tag due to collision.
+        assert!(
+            repo.find_reference("refs/tags/skill-b/v1.0.0").is_ok(),
+            "skill-b legacy tag should be preserved when v1.0.0 already exists"
+        );
+    }
+
+    #[test]
     fn test_normalize_path_no_change_needed() {
         assert_eq!(normalize_path("/Users/me/Skills"), "/Users/me/Skills");
     }

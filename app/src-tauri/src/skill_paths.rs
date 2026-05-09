@@ -63,10 +63,14 @@ fn resolve_path_template(template: &str, vars: &[(&str, &str)]) -> PathBuf {
     PathBuf::from(resolved)
 }
 
+/// Returns the tag prefix (e.g. "v"). Parameters are preserved for backward
+/// compatibility with callers that still pass plugin/skill context.
 pub fn skill_tag_prefix(_plugin_slug: &str, _skill_name: &str) -> String {
     paths().tag_prefix.clone()
 }
 
+/// Returns the tag glob (e.g. "v*"). Parameters are preserved for backward
+/// compatibility with callers that still pass plugin/skill context.
 pub fn skill_tag_glob(_plugin_slug: &str, _skill_name: &str) -> String {
     paths().tag_glob.clone()
 }
