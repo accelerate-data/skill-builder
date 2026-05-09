@@ -7,7 +7,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 
 type WorkspaceSurface = "overview" | "refine" | "evals";
 
-function surfaceFromRoute(pathname: string, tab?: string): WorkspaceSurface {
+export function surfaceFromRoute(pathname: string, tab?: string): WorkspaceSurface {
   if (pathname.endsWith("/refine")) return "refine";
   if (pathname.endsWith("/evals")) return "evals";
   if (tab === "refine") return "refine";

@@ -27,9 +27,10 @@ import {
   subscribeEvalsRunning,
 } from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
-import { toEditableSkill, type EditableSkill } from "@/lib/types";
+import { type EditableSkill } from "@/lib/types";
 import { getSkillSurface } from "@/lib/skill-routing";
 import { enterSkill, leaveCurrentSkill } from "@/lib/active-skill-transition";
+import { resolveSkill } from "@/lib/resolve-skill";
 
 import {
   Dialog,
@@ -121,8 +122,8 @@ export function AppLayout() {
           if (running) {
             const convoId = useRefineStore.getState().conversationId;
             const skillName = running.skillName;
-            const skill = builderSkills.find((s) => s.name === skillName) ?? importedSkills.find((s) => `imported:${s.skill_id}` === skillName);
-            const pluginSlug = skill?.plugin_slug;
+            const resolved = resolveSkill(skillName, builderSkills, importedSkills);
+            const pluginSlug = resolved?.plugin_slug;
             if (convoId && pluginSlug) {
               workflowStore.setStopping(true);
               pauseOpenHandsSession(
@@ -154,28 +155,15 @@ export function AppLayout() {
 
   const [pendingSkillSwitch, setPendingSkillSwitch] = useState<string | null>(null);
 
-  const resolveSkill = useCallback(
-    (name: string): EditableSkill | null => {
-      const targetBuilderSkill = builderSkills.find(
-        (skill) =>
-          skill.skill_source === "skill-builder" &&
-          (skill.library_key ?? skill.name) === name,
-      );
-      const targetImportedSkill = importedSkills.find(
-        (skill) => (skill.library_key ?? `imported:${skill.skill_id}`) === name,
-      );
-      const targetSkill = targetBuilderSkill ?? targetImportedSkill ?? null;
-      if (!targetSkill) return null;
-      return "name" in targetSkill
-        ? (targetSkill as EditableSkill)
-        : toEditableSkill(targetSkill);
-    },
+  const resolveEditableSkill = useCallback(
+    (name: string): EditableSkill | null =>
+      resolveSkill(name, builderSkills, importedSkills),
     [builderSkills, importedSkills],
   );
 
   const activateSkill = useCallback(
     async (name: string) => {
-      const editableSkill = resolveSkill(name);
+      const editableSkill = resolveEditableSkill(name);
       if (!editableSkill) {
         throw new Error(`Skill '${name}' is not available`);
       }
@@ -220,7 +208,7 @@ export function AppLayout() {
       }
     },
     [
-      resolveSkill,
+      resolveEditableSkill,
       workspacePath,
       activeSessionSkillName,
       selectedWorkspaceSkillName,
@@ -232,7 +220,7 @@ export function AppLayout() {
 
   const handleSelectSkill = useCallback(
     async (name: string, tab?: string) => {
-      const editableSkill = resolveSkill(name);
+      const editableSkill = resolveEditableSkill(name);
       if (!editableSkill) return;
 
       const currentSessionName = activeSessionSkillName ?? selectedWorkspaceSkillName;
@@ -260,7 +248,7 @@ export function AppLayout() {
         toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });
       }
     },
-    [activateSkill, resolveSkill, activeSessionSkillName, selectedWorkspaceSkillName, runningWorkflow, setSelectedSkillName, navigate],
+    [activateSkill, resolveEditableSkill, activeSessionSkillName, selectedWorkspaceSkillName, runningWorkflow, setSelectedSkillName, navigate],
   );
 
   const handleSkillSwitchStay = useCallback(() => {
