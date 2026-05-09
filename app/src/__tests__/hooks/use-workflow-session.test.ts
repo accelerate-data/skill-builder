@@ -4,7 +4,7 @@ import { useWorkflowSession } from "@/hooks/use-workflow-session";
 
 const mockLeaveCurrentSkill = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/lib/active-skill-transition", () => ({
-  leaveCurrentSkill: () => mockLeaveCurrentSkill(),
+  leaveCurrentSkill: (options?: unknown) => mockLeaveCurrentSkill(options),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -111,6 +111,9 @@ describe("useWorkflowSession", () => {
     const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
     unmount();
     expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
+    expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
+      expectedSkillName: "test-skill",
+    });
   });
 
   it("still delegates cleanup when session id is null on unmount", () => {
@@ -118,6 +121,9 @@ describe("useWorkflowSession", () => {
     const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
     unmount();
     expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
+    expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
+      expectedSkillName: "test-skill",
+    });
   });
 
   it("returns blockerStatus from useLeaveGuard", () => {
@@ -139,6 +145,9 @@ describe("useWorkflowSession", () => {
 
     await waitFor(() => {
       expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
+      expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
+        expectedSkillName: "test-skill",
+      });
       expect(proceed).toHaveBeenCalled();
     });
   });

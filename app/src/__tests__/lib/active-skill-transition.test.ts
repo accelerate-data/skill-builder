@@ -168,6 +168,15 @@ describe("active-skill-transition", () => {
     expect(refineState.selectSkill).toHaveBeenCalledWith(null);
   });
 
+  it("ignores stale leave requests for a different skill", async () => {
+    await leaveCurrentSkill({ expectedSkillName: "finance-skill" });
+
+    expect(tauriMocks.pauseOpenHandsSession).not.toHaveBeenCalled();
+    expect(tauriMocks.releaseLock).not.toHaveBeenCalled();
+    expect(refineState.selectSkill).not.toHaveBeenCalled();
+    expect(tauriMocks.stopOpenHandsServer).not.toHaveBeenCalled();
+  });
+
   it("enters the selected skill by acquiring a lock, bootstrapping, and hydrating", async () => {
     const skill = makeSkill("finance-skill");
 

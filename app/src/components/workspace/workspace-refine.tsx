@@ -101,7 +101,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
     shouldBlock: () => useRefineStore.getState().isRunning,
     onLeave: (proceed) => {
-      void leaveCurrentSkill()
+      void leaveCurrentSkill({ expectedSkillName: activeSkill.name })
         .then(() => proceed())
         .catch((err) => {
           toast.error(err instanceof Error ? err.message : String(err), {

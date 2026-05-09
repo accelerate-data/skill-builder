@@ -19,6 +19,10 @@ interface ActiveSkillSession {
   agentId: string | null;
 }
 
+interface LeaveCurrentSkillOptions {
+  expectedSkillName?: string;
+}
+
 function getActiveSkillSession(): ActiveSkillSession | null {
   const refineStore = useRefineStore.getState();
   const selectedSkill = refineStore.selectedSkill;
@@ -50,8 +54,14 @@ function clearActiveSkillUiState(): void {
   useSkillStore.getState().setActiveSkill(null);
 }
 
-export async function leaveCurrentSkill(): Promise<void> {
+export async function leaveCurrentSkill(
+  options: LeaveCurrentSkillOptions = {},
+): Promise<void> {
   const session = getActiveSkillSession();
+
+  if (options.expectedSkillName && session?.skillName !== options.expectedSkillName) {
+    return;
+  }
 
   if (session?.conversationId) {
     await pauseOpenHandsSession(

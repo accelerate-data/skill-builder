@@ -45,7 +45,7 @@ export function useWorkflowSession({
     return () => {
       if (sessionCleanedUpRef.current) return;
       sessionCleanedUpRef.current = true;
-      void leaveCurrentSkill().catch((err) => {
+      void leaveCurrentSkill({ expectedSkillName: skillName }).catch((err) => {
         toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
       });
     };
@@ -56,7 +56,7 @@ export function useWorkflowSession({
     shouldBlock: () => shouldBlock(),
     onLeave: (proceed) => {
       sessionCleanedUpRef.current = true;
-      void leaveCurrentSkill()
+      void leaveCurrentSkill({ expectedSkillName: skillName })
         .then(() => proceed())
         .catch((err) => {
           toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);

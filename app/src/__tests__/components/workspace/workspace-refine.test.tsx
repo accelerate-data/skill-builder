@@ -6,7 +6,7 @@ import { toast } from "@/lib/toast";
 
 const mockLeaveCurrentSkill = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/lib/active-skill-transition", () => ({
-  leaveCurrentSkill: () => mockLeaveCurrentSkill(),
+  leaveCurrentSkill: (options?: unknown) => mockLeaveCurrentSkill(options),
 }));
 
 // --- Tauri mock ---
@@ -332,6 +332,9 @@ describe("WorkspaceRefine", () => {
     });
 
     expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
+    expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
+      expectedSkillName: "my-skill",
+    });
     expect(proceed).toHaveBeenCalledTimes(1);
   });
 
