@@ -17,6 +17,7 @@ const initialState = {
   pendingFollowupMessage: null,
   activeAgentId: null,
   isRunning: false,
+  isStopping: false,
   conversationId: null,
   sessionExhausted: false,
   selectedModifiedFile: null,
@@ -42,6 +43,7 @@ describe("useRefineStore", () => {
     expect(state.pendingFollowupMessage).toBeNull();
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
+    expect(state.isStopping).toBe(false);
     expect(state.conversationId).toBeNull();
     expect(state.sessionExhausted).toBe(false);
   });
@@ -70,6 +72,7 @@ describe("useRefineStore", () => {
       activeFileTab: "references/glossary.md",
       activeAgentId: "agent-1",
       isRunning: true,
+      isStopping: true,
     });
 
     const skill = makeSkillSummary({ name: "my-skill" });
@@ -84,6 +87,7 @@ describe("useRefineStore", () => {
     expect(state.activeFileTab).toBe("SKILL.md");
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
+    expect(state.isStopping).toBe(false);
   });
 
   it("selectSkill(null) resets to initial state", () => {
@@ -323,6 +327,7 @@ describe("useRefineStore", () => {
       messages: [{ id: "m1", role: "user", userText: "hi", timestamp: 1 }],
       activeAgentId: "agent-1",
       isRunning: true,
+      isStopping: true,
       conversationId: "conv-1",
       diffMode: true,
       gitDiff: { stat: "1 file changed", files: [] },
@@ -340,6 +345,7 @@ describe("useRefineStore", () => {
     expect(state.messages).toEqual([]);
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
+    expect(state.isStopping).toBe(false);
     expect(state.conversationId).toBeNull();
     expect(state.diffMode).toBe(false);
     expect(state.gitDiff).toBeNull();
@@ -385,6 +391,19 @@ describe("useRefineStore", () => {
     expect(useRefineStore.getState().isRunning).toBe(true);
     useRefineStore.getState().setRunning(false);
     expect(useRefineStore.getState().isRunning).toBe(false);
+  });
+
+  it("setStopping toggles the stopping flag", () => {
+    useRefineStore.getState().setStopping(true);
+    expect(useRefineStore.getState().isStopping).toBe(true);
+    useRefineStore.getState().setStopping(false);
+    expect(useRefineStore.getState().isStopping).toBe(false);
+  });
+
+  it("clearSession resets isStopping to false", () => {
+    useRefineStore.getState().setStopping(true);
+    useRefineStore.getState().clearSession();
+    expect(useRefineStore.getState().isStopping).toBe(false);
   });
 
   it("setConversationId sets and clears the conversation id", () => {
