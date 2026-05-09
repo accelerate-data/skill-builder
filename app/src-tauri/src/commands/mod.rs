@@ -12,7 +12,7 @@ pub mod node;
 pub mod reconciliation;
 pub mod refine;
 pub mod settings;
-pub mod sidecar_lifecycle;
+pub mod runtime_lifecycle;
 pub mod skill;
 pub mod skill_session;
 #[cfg(test)]

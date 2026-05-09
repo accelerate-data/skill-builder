@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::agents::sidecar::SidecarConfig;
+use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 
 #[derive(Debug, Clone)]
 pub struct OpenHandsRuntimeRequest {
@@ -25,7 +25,7 @@ pub struct OpenHandsRuntimeRequest {
 }
 
 impl OpenHandsRuntimeRequest {
-    pub fn try_from_sidecar_config(config: &SidecarConfig) -> Result<Self, String> {
+    pub fn try_from_runtime_config(config: &OpenHandsRuntimeConfig) -> Result<Self, String> {
         let llm = config
             .llm
             .clone()
@@ -524,7 +524,7 @@ fn clean_scalar(raw: &str) -> Option<String> {
 }
 
 fn openhands_tools(_working_dir: &str, allowed_tools: &[String]) -> Vec<OpenHandsTool> {
-    // Map sidecar `allowed_tools` (a Claude-Code-era concept) onto the
+    // Map runtime `allowed_tools` (a Claude-Code-era concept) onto the
     // OpenHands tool registry. Names match `register_tool` in the SDK's
     // openhands.tools.* packages: snake-cased class name minus `_tool`.
     //

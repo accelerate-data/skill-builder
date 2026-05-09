@@ -351,7 +351,7 @@ export interface AgentRun {
   agentId: string;
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
-  /** Structured display items from sidecar MessageProcessor. */
+  /** Structured display items from the runtime event stream. */
   displayItems: DisplayItem[];
   /** OpenHands-native conversation events for clean-break runtime runs. */
   conversationEvents?: OpenHandsConversationEvent[];
@@ -404,7 +404,7 @@ interface AgentState {
     runSource?: "refine" | "test",
     usageSessionId?: string,
   ) => void;
-  /** Add a structured DisplayItem from the sidecar. Update-by-id for tool call status changes. */
+  /** Add a structured DisplayItem from the runtime. Update-by-id for tool call status changes. */
   addDisplayItem: (agentId: string, item: DisplayItem) => void;
   addConversationEvent: (
     agentId: string,

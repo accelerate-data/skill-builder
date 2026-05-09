@@ -65,7 +65,7 @@ fn resolve_skills_path(db: &Db) -> Result<String, String> {
 }
 
 async fn restore_refine_conversation_state(
-    config: &crate::agents::sidecar::SidecarConfig,
+    config: &crate::agents::runtime_config::OpenHandsRuntimeConfig,
     conversation_id: &str,
 ) -> Result<
     (

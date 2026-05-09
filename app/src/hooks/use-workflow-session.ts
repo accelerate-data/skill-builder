@@ -24,7 +24,7 @@ interface UseWorkflowSessionOptions {
  * Responsibilities:
  * - Provide onLeave callback for navigation/window close cleanup
  * - Track unsaved changes for blocking
- * - End workflow session and clean up sidecar on leave
+ * - End workflow session and clean up the runtime on leave
  */
 export function useWorkflowSession({
   skillName,

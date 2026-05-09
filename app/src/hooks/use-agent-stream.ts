@@ -60,7 +60,7 @@ interface AgentInitErrorPayload {
   fix_hint: string;
 }
 
-/** Map sidecar system event subtypes to user-facing progress messages. */
+/** Map runtime system event subtypes to user-facing progress messages. */
 const INIT_PROGRESS_MESSAGES: Record<string, string> = {
   init_start: "Loading runtime modules...",
   runtime_ready: "Connecting to API...",
@@ -273,7 +273,7 @@ export async function initAgentStream() {
       useAgentStore.getState().shutdownRun(event.payload.agent_id);
     }),
     // agent-turn-complete fires at each turn boundary in a streaming refine session.
-    // agent-exit (triggered by sidecar_pool's turn_complete handler) already calls
+    // agent-exit (triggered by the runtime turn_complete handler) already calls
     // completeRun for the per-turn request. This listener is a hook for future
     // refine-store turn-boundary UI state (e.g. "waiting for input" indicator).
     listen<{ agent_id: string }>("agent-turn-complete", (event) => {

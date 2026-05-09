@@ -3,8 +3,8 @@ pub mod types;
 
 use crate::agents::openhands_server;
 use crate::agents::openhands_server::OpenHandsThrowawayRunParams;
-use crate::agents::sidecar::{
-    build_openhands_runtime_config, OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
+use crate::agents::runtime_config::{
+    build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
 };
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
@@ -262,7 +262,7 @@ fn parse_suggested_scenario_response(
     })
 }
 
-fn build_generation_sidecar_config(
+fn build_generation_runtime_config(
     plugin_slug: &str,
     skill_name: &str,
     prompt: &str,
@@ -270,8 +270,8 @@ fn build_generation_sidecar_config(
     workspace_run_dir: &str,
     output_format: Value,
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-) -> crate::agents::sidecar::SidecarConfig {
-    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
+    build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir: workspace_root_dir.replace('\\', "/"),
@@ -323,7 +323,7 @@ where
     std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
     ensure_runtime_dir(&runtime_run_dir).await?;
-    let config = build_generation_sidecar_config(
+    let config = build_generation_runtime_config(
         plugin_slug,
         skill_name,
         prompt,

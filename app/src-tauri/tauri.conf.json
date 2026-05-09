@@ -33,7 +33,6 @@
       }
     },
     "resources": {
-      "../sidecar/dist/": "sidecar/dist",
       "../../agent-sources/workspace/": "workspace"
     },
     "icon": [

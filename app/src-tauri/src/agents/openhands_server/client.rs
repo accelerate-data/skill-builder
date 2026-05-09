@@ -284,13 +284,13 @@ impl OpenHandsServerClient {
 mod tests {
     use super::super::types::OpenHandsRuntimeRequest;
     use super::*;
-    use crate::agents::sidecar::SidecarConfig;
+    use crate::agents::runtime_config::OpenHandsRuntimeConfig;
     use crate::types::{SecretString, WorkflowLlmConfig};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    fn base_config(workspace_root_dir: &str, workspace_skill_dir: &str) -> SidecarConfig {
-        SidecarConfig {
+    fn base_config(workspace_root_dir: &str, workspace_skill_dir: &str) -> OpenHandsRuntimeConfig {
+        OpenHandsRuntimeConfig {
             mode: None,
             prompt: "Build the skill".to_string(),
             system_prompt: None,
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn conversation_payload_contains_local_workspace_for_skill_directory() {
         let config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
-        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn persistent_session_create_payload_omits_initial_message() {
         let config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
-        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload =
             StartConversationRequest::from_runtime_request_with_initial_message(&request, false);
         let json = serde_json::to_value(payload).unwrap();
@@ -395,7 +395,7 @@ mod tests {
         llm.model = "opencode/minimax-m2.7".to_string();
         llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
 
-        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
@@ -413,7 +413,7 @@ mod tests {
         llm.model = "opencode-go/minimax-m2.7".to_string();
         llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
 
-        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
@@ -423,7 +423,7 @@ mod tests {
     #[test]
     fn scope_review_payload_uses_workspace_root_as_local_workspace() {
         let config = base_config("/workspace-root", "/workspace-root");
-        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
@@ -437,7 +437,7 @@ mod tests {
             Some("session-key".to_string()),
         );
         let config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
-        let runtime_request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let runtime_request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let create = client
             .build_create_conversation_request(&StartConversationRequest::from_runtime_request(
                 &runtime_request,
@@ -497,7 +497,7 @@ mod tests {
     fn default_tool_set_includes_search_and_subagent_spawn() {
         let mut config = base_config("/workspace-root", "/workspace-root/default/lead-routing");
         config.allowed_tools = None;
-        let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config).unwrap();
+        let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 

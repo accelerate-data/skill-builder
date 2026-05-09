@@ -65,7 +65,7 @@ the active `agent_context.skills` set requires it.
 
 ## Override Policy
 
-`allowed_tools` on `SidecarConfig` is an explicit backend override:
+`allowed_tools` on `OpenHandsRuntimeConfig` is an explicit backend override:
 
 - known tool names are normalized and used
 - unknown names are dropped

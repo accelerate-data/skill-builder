@@ -402,7 +402,7 @@ It reads only `settings.model_settings` and validates:
 - numeric values are in supported ranges.
 - `reasoning_effort` is one of the allowed values.
 
-It returns a sidecar-safe config:
+It returns a runtime-safe config:
 
 ```rust
 pub struct WorkflowLlmConfig {

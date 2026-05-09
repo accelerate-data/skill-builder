@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: ./tests/run.sh [level] [--tag TAG]"
       echo ""
       echo "Levels:"
-      echo "  unit          Pure logic: stores, utils, hooks, Rust, sidecar"
+      echo "  unit          Pure logic: stores, utils, hooks, Rust"
       echo "  integration   Component rendering with mocked APIs"
       echo "  e2e           Full browser tests (Playwright)"
       echo "  agents        Agent structural checks (Vitest)"
@@ -107,9 +107,6 @@ run_unit() {
   fi
 
   header "Unit Tests: Rust (cargo test)"
-  # Tauri's build script requires sidecar/dist to exist (resource path validation).
-  # Create a stub if it's missing so local runs don't fail at compile time.
-  mkdir -p "$APP_DIR/sidecar/dist"
   # On Windows, RUSTUP_TOOLCHAIN=*-windows-gnu causes STATUS_ENTRYPOINT_NOT_FOUND in
   # the test runner binary. Unset it so cargo falls back to the default MSVC toolchain,
   # which matches what CI (windows-latest) uses.
@@ -121,13 +118,6 @@ run_unit() {
     pass "Rust unit tests"
   else
     fail "Rust unit tests"
-  fi
-
-  header "Unit Tests: Sidecar (Vitest)"
-  if (cd "$APP_DIR/sidecar" && npx vitest run); then
-    pass "Sidecar unit tests"
-  else
-    fail "Sidecar unit tests"
   fi
 
   # Canonical format compliance is now covered by:

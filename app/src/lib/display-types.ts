@@ -1,9 +1,7 @@
 /**
- * Frontend mirror of sidecar DisplayItem types.
+ * Canonical frontend DisplayItem type definitions for rendering OpenHands output.
  *
- * READ-ONLY — the sidecar owns the canonical definition at
- * `app/sidecar/display-types.ts`. This file must be kept in sync
- * via `test:agents:structural` tests.
+ * READ-ONLY except when intentionally changing the UI contract consumed by the app.
  *
  * @module display-types
  */
@@ -77,7 +75,7 @@ export interface DisplayItem {
   errorSubtype?: string;
   /** Structured output from the SDK result, used for artifact materialization. */
   structuredOutput?: unknown;
-  /** Display-ready markdown extracted by the sidecar from structured output fields. */
+  /** Display-ready markdown extracted from structured output fields. */
   resultMarkdown?: string;
 
   // error

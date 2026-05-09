@@ -29,7 +29,7 @@ plugin-level operations such as publish and skill-level operations such as
 workflow, refine, eval, and export.
 
 This page replaces the old `docs/architecture.md` deep dive. That document
-described a Node sidecar and Claude SDK topology that is no longer the intended
+described a legacy Claude SDK runtime topology that is no longer the intended
 product architecture.
 
 ## Design Scope
@@ -197,7 +197,6 @@ Use this page as the entrypoint, then drop to the next level only when needed:
 
 ## Open Questions
 
-1. `[docs]` The current [backend-design](../backend-design/README.md) page still
-   describes the old Node sidecar as the active backend/runtime integration.
-   That doc should be updated separately so the deeper implementation reference
-   matches the current product architecture.
+1. `[docs]` Keep the deeper [backend-design](../backend-design/README.md) page in
+   sync with the product-level OpenHands runtime model so the implementation
+   reference does not drift again.

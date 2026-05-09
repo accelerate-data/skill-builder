@@ -6,8 +6,8 @@ import path from "path";
 // __dirname is src/__tests__/lib, so go up 3 levels to reach app/.
 const APP_ROOT = path.resolve(__dirname, "../../..");
 const REPO_ROOT = path.resolve(APP_ROOT, "..");
-const MOCK_ROOT = path.join(APP_ROOT, "sidecar/mock-templates/outputs");
 const FIXTURE_ROOT = path.join(APP_ROOT, "e2e/fixtures/agent-responses");
+const LEGACY_MOCK_ROOT = path.join(APP_ROOT, "__removed-sidecar-mocks__");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,10 +28,9 @@ function findFiles(dir: string, ext: string): string[] {
   return results;
 }
 
-/** Collect all .md files from mock templates and fixtures */
+/** Collect all .md files from checked-in fixtures */
 function collectMarkdownFiles(): string[] {
   const files: string[] = [];
-  files.push(...findFiles(MOCK_ROOT, ".md"));
   files.push(...findFiles(FIXTURE_ROOT, ".md"));
   return files;
 }
@@ -107,10 +106,7 @@ describe("Canonical format: skill generation prompt contract", () => {
 // clarifications.json structural checks (step0 + step1)
 // ---------------------------------------------------------------------------
 
-const clarificationFiles = [
-  path.join(MOCK_ROOT, "step0/context/clarifications.json"),
-  path.join(MOCK_ROOT, "step1/context/clarifications.json"),
-].filter((f) => fs.existsSync(f));
+const clarificationFiles: string[] = [];
 
 describe.skipIf(clarificationFiles.length === 0)("Canonical format: clarifications.json structure", () => {
   for (const file of clarificationFiles) {
@@ -199,7 +195,7 @@ describe.skipIf(clarificationFiles.length === 0)("Canonical format: clarificatio
   }
 
   // Step1-specific refinement checks (Detailed Research)
-  const step1 = path.join(MOCK_ROOT, "step1/context/clarifications.json");
+  const step1 = path.join(LEGACY_MOCK_ROOT, "step1/context/clarifications.json");
   if (fs.existsSync(step1)) {
     describe("step1 refinements", () => {
       const data = JSON.parse(readFile(step1));
@@ -369,7 +365,7 @@ describe.skipIf(clarificationFiles.length === 0)("Canonical format: clarificatio
 // decisions.json structural checks (step2)
 // ---------------------------------------------------------------------------
 
-const decisionsFile = path.join(MOCK_ROOT, "step2/context/decisions.json");
+const decisionsFile = path.join(LEGACY_MOCK_ROOT, "step2/context/decisions.json");
 
 describe.skipIf(!fs.existsSync(decisionsFile))("Canonical format: decisions.json structure", () => {
   if (fs.existsSync(decisionsFile)) {
@@ -425,8 +421,8 @@ describe.skipIf(!fs.existsSync(decisionsFile))("Canonical format: decisions.json
 // ---------------------------------------------------------------------------
 
 const step0ClarificationFiles = [
-  path.join(MOCK_ROOT, "step0/context/clarifications.json"),
-  path.join(MOCK_ROOT, "step0-contradictory/context/clarifications.json"),
+  path.join(LEGACY_MOCK_ROOT, "step0/context/clarifications.json"),
+  path.join(LEGACY_MOCK_ROOT, "step0-contradictory/context/clarifications.json"),
 ].filter((f) => fs.existsSync(f));
 
 describe.skipIf(step0ClarificationFiles.length === 0)("Canonical format: step0 clean-break metadata", () => {
@@ -457,7 +453,7 @@ describe.skipIf(step0ClarificationFiles.length === 0)("Canonical format: step0 c
 // ---------------------------------------------------------------------------
 
 const evalFile = path.join(
-  MOCK_ROOT,
+  LEGACY_MOCK_ROOT,
   "gate-answer-evaluator/answer-evaluation.json",
 );
 

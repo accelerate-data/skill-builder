@@ -3,7 +3,7 @@ use std::time::Duration;
 use tauri::State;
 
 use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
-use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, SidecarConfig};
+use crate::agents::runtime_config::{BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, OpenHandsRuntimeConfig};
 use crate::commands::workflow::deploy::ensure_openhands_runtime_dir;
 use crate::db::Db;
 use crate::types::ModelSettings;
@@ -91,8 +91,8 @@ fn build_model_connection_test_config(
     workspace_path: &str,
     runtime_run_dir: &std::path::Path,
     llm: crate::types::WorkflowLlmConfig,
-) -> SidecarConfig {
-    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+) -> OpenHandsRuntimeConfig {
+    crate::agents::runtime_config::build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: MODEL_CONNECTION_TEST_PROMPT.to_string(),
         llm,
         workspace_root_dir: workspace_path.replace('\\', "/"),

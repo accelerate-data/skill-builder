@@ -25,14 +25,14 @@ use self::process::{
     ensure_agent_server as ensure_agent_server_process, extract_terminal_error_from_stderr,
     stderr_tail_snapshot,
 };
-use crate::agents::sidecar::SidecarConfig;
+use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::db::Db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
 pub struct OpenHandsThrowawayRunParams {
     pub agent_id: String,
-    pub config: SidecarConfig,
+    pub config: OpenHandsRuntimeConfig,
     pub timeout: Duration,
 }
 
@@ -574,7 +574,7 @@ async fn stream_live_child_subagent_events(
         ) {
             Ok(events) => {
                 for event in events {
-                    super::events::handle_sidecar_message(
+                    super::events::handle_runtime_message(
                         &task.app,
                         &task.agent_id,
                         &event.to_string(),
@@ -887,8 +887,8 @@ async fn resolve_openhands_conversation_id(
     }
 }
 
-pub async fn ensure_openhands_server(config: &SidecarConfig) -> Result<(), String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(config)?;
+pub async fn ensure_openhands_server(config: &OpenHandsRuntimeConfig) -> Result<(), String> {
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir())
         .await
         .map(|_| ())
@@ -896,10 +896,10 @@ pub async fn ensure_openhands_server(config: &SidecarConfig) -> Result<(), Strin
 
 pub async fn start_openhands_session(
     app: &tauri::AppHandle,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let conversation_id = resolve_openhands_conversation_id(
         app,
         &request,
@@ -913,10 +913,10 @@ pub async fn start_openhands_session(
 }
 
 pub async fn list_openhands_conversation_events(
-    config: &SidecarConfig,
+    config: &OpenHandsRuntimeConfig,
     conversation_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     let server =
         ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
@@ -935,10 +935,10 @@ pub async fn list_openhands_conversation_events(
 pub async fn send_openhands_message(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: String,
 ) -> Result<String, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     dispatch_openhands_turn_with_request(
         app,
         agent_id,
@@ -954,7 +954,7 @@ pub async fn send_openhands_message(
 pub async fn openhands_send_message(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: String,
 ) -> Result<String, String> {
     send_openhands_message(app, agent_id, config, conversation_id).await
@@ -1004,11 +1004,11 @@ fn send_cancel_signal(agent_id: &str) -> bool {
 }
 
 pub async fn pause_openhands_conversation(
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: &str,
     agent_id: Option<&str>,
 ) -> Result<bool, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let server =
         ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
@@ -1106,7 +1106,7 @@ pub async fn run_throwaway_openhands_session(
         }
     });
 
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     dispatch_openhands_turn_with_request(
         app,
         &agent_id,
@@ -1200,7 +1200,7 @@ async fn run_conversation_task(
 async fn dispatch_openhands_turn_with_request(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     request: OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
@@ -1228,7 +1228,7 @@ async fn dispatch_openhands_turn_with_request(
     );
 
     let config_event = redact_openhands_config_for_log(&config, server.port);
-    super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
+    super::events::handle_runtime_message(app, agent_id, &config_event.to_string());
 
     let event_recovery = determine_event_recovery_mode(selection, request.prompt.as_str());
 
@@ -1260,7 +1260,7 @@ async fn dispatch_openhands_turn_with_request(
         unregister_cancel(&agent_for_task);
         unregister_task_handle(&agent_for_task);
         if let Err(error) = result {
-            super::events::handle_sidecar_exit_with_detail(
+            super::events::handle_runtime_exit_with_detail(
                 &app_for_task,
                 &agent_for_task,
                 false,
@@ -1341,7 +1341,7 @@ async fn run_conversation_task_inner(
                             terminal_state = Some(normalized);
                             continue;
                         }
-                        super::events::handle_sidecar_message(
+                        super::events::handle_runtime_message(
                             &task.app,
                             &task.agent_id,
                             &normalized.to_string(),
@@ -1384,7 +1384,7 @@ async fn run_conversation_task_inner(
                             terminal_state = Some(normalized);
                             continue;
                         }
-                        super::events::handle_sidecar_message(
+                        super::events::handle_runtime_message(
                             &task.app,
                             &task.agent_id,
                             &normalized.to_string(),
@@ -1517,7 +1517,7 @@ async fn run_conversation_task_inner(
                     terminal_state = Some(normalized);
                     break;
                 } else {
-                    super::events::handle_sidecar_message(&task.app, &task.agent_id, &normalized.to_string());
+                    super::events::handle_runtime_message(&task.app, &task.agent_id, &normalized.to_string());
                 }
             }
         }
@@ -1590,8 +1590,8 @@ async fn run_conversation_task_inner(
         &terminal_state,
         &task.summary_context,
     );
-    super::events::handle_sidecar_message(&task.app, &task.agent_id, &terminal_state.to_string());
-    super::events::handle_sidecar_exit_with_detail(
+    super::events::handle_runtime_message(&task.app, &task.agent_id, &terminal_state.to_string());
+    super::events::handle_runtime_exit_with_detail(
         &task.app,
         &task.agent_id,
         terminal_error.is_none(),
@@ -1740,7 +1740,7 @@ fn emit_openhands_run_result(
     context: &OpenHandsRunSummaryContext,
 ) {
     let run_result = build_openhands_run_result_event(terminal_state, context);
-    super::events::handle_sidecar_message(app, agent_id, &run_result.to_string());
+    super::events::handle_runtime_message(app, agent_id, &run_result.to_string());
 }
 
 fn build_openhands_run_result_event(
@@ -1864,7 +1864,7 @@ fn build_missing_completed_payload_state(
     })
 }
 
-fn redact_openhands_config_for_log(config: &SidecarConfig, port: u16) -> serde_json::Value {
+fn redact_openhands_config_for_log(config: &OpenHandsRuntimeConfig, port: u16) -> serde_json::Value {
     let mut value = serde_json::to_value(config).unwrap_or(serde_json::Value::Null);
     if let Some(obj) = value.as_object_mut() {
         if obj.contains_key("apiKey") {
@@ -2441,7 +2441,7 @@ mod tests {
                     .to_string(),
             ),
             system_message_suffix: Some(
-                crate::agents::sidecar::skill_creator_system_message_suffix(),
+                crate::agents::runtime_config::skill_creator_system_message_suffix(),
             ),
             task_kind: Some("workflow.skill_generation".to_string()),
             plugin_slug: "default".to_string(),
@@ -2526,7 +2526,7 @@ mod tests {
     #[test]
     fn answer_evaluator_requests_match_existing_skill_creator_conversations() {
         let workflow_config =
-            crate::commands::workflow::runtime::build_workflow_generate_skill_sidecar_config(
+            crate::commands::workflow::runtime::build_workflow_generate_skill_runtime_config(
                 "my-skill",
                 "Generate the skill",
                 "/tmp/workspace",
@@ -2549,7 +2549,7 @@ mod tests {
                 Some("workflow-session".to_string()),
             );
         let answer_evaluator_config =
-            crate::commands::workflow::runtime::build_answer_evaluator_sidecar_config(
+            crate::commands::workflow::runtime::build_answer_evaluator_runtime_config(
                 "my-skill",
                 "Evaluate answers",
                 "/tmp/workspace",
@@ -2572,9 +2572,9 @@ mod tests {
             );
 
         let workflow_request =
-            OpenHandsRuntimeRequest::try_from_sidecar_config(&workflow_config).unwrap();
+            OpenHandsRuntimeRequest::try_from_runtime_config(&workflow_config).unwrap();
         let answer_evaluator_request =
-            OpenHandsRuntimeRequest::try_from_sidecar_config(&answer_evaluator_config).unwrap();
+            OpenHandsRuntimeRequest::try_from_runtime_config(&answer_evaluator_config).unwrap();
         let existing_conversation = serde_json::json!({
             "agent": {
                 "agent_context": {

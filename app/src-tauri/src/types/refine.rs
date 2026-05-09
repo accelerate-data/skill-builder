@@ -61,7 +61,7 @@ impl std::fmt::Debug for RefineSessionInfo {
 
 /// A single message in a refine conversation history.
 /// Typed struct ensures Tauri IPC rejects malformed payloads at the boundary
-/// rather than silently forwarding broken JSON to the sidecar.
+/// rather than silently forwarding broken JSON to the runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConversationMessage {
     pub role: String,

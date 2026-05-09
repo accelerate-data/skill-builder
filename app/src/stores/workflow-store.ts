@@ -29,7 +29,7 @@ interface WorkflowState {
   /** Step IDs that are disabled due to scope recommendation (too broad). */
   disabledSteps: number[];
 
-  /** Structured runtime error from a failed sidecar startup (shown in RuntimeErrorDialog). */
+  /** Structured runtime error from a failed runtime startup (shown in RuntimeErrorDialog). */
   runtimeError: RuntimeError | null;
 
   /** Transient: true while the answer-evaluator gate agent is running (not persisted to SQLite). */
@@ -54,7 +54,7 @@ interface WorkflowState {
   navigateBackToStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[], savedCurrentStep?: number) => void;
   setHydrated: (hydrated: boolean) => void;
-  /** Set a structured runtime error from a sidecar startup failure. */
+  /** Set a structured runtime error from a runtime startup failure. */
   setRuntimeError: (error: RuntimeError) => void;
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
   clearRuntimeError: () => void;

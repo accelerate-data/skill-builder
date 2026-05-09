@@ -13,8 +13,6 @@ Use the tables below for cases tooling cannot infer safely.
 | Frontend integration | `cd app && npm run test:integration` | `app/src/__tests__/components/`, `app/src/__tests__/pages/` | Free |
 | E2E | `cd app && npm run test:e2e` | `app/e2e/` | Free, mocked backend |
 | Rust | `cargo test --manifest-path app/src-tauri/Cargo.toml` | `app/src-tauri/src/` | Free |
-| Sidecar | `cd app/sidecar && npx vitest run` | `app/sidecar/__tests__/` | Free |
-| Promptfoo sidecar | `cd app/promptfoo-sidecar && npm test` | `app/promptfoo-sidecar/src/__tests__/` | Free |
 | Agent structural | `cd app && npm run test:agents:structural` | `app/agent-tests/` plus `agent-sources/` | Free |
 | Repo map audit | `cd app && npm run test:repo-map` | `repo-map.json`, `scripts/ci/verify-repo-map.mjs` | Free |
 | Eval harness contracts | `cd tests/evals && npm test` | `tests/evals/scripts/`, `tests/evals/assertions/` | Free |
@@ -30,7 +28,6 @@ Use the tables below for cases tooling cannot infer safely.
 | `app/tests/` | App-local test runner and harness self-tests | Keep orchestration scripts here. Run from `app/`. |
 | `app/src/__tests__/` | Frontend Vitest tests | Mirror source areas by `stores`, `lib`, `hooks`, `components`, `pages`, and `guards`. |
 | `app/e2e/` | Playwright E2E specs | Use mocked Tauri commands, not bare-metal system tests. |
-| `app/sidecar/__tests__/` | Sidecar Vitest tests | Use for Node sidecar modules and runtime adapters. Live OpenHands tests should read the app DB-backed LLM settings by default; keep env vars as explicit overrides for CI or isolated runs. OpenHands runtime tests belong with the Rust-managed Agent Server path. |
 | `tests/evals/` | Promptfoo/OpenCode eval harness | Keep separate from `app/tests/`; it has its own package and live-model risk. Promptfoo state is exported by the eval runtime, not worktree creation. |
 
 ## Change To Test Map
@@ -41,8 +38,7 @@ Use the tables below for cases tooling cannot infer safely.
 | `repo-map.json`, `scripts/ci/verify-repo-map.mjs`, `scripts/ci/verify-repo-map.test.mjs` | `cd app && npm run test:repo-map` | Verifies repo-map command/page/store inventory against the filesystem. |
 | `app/src/**` | `cd app && npm run test:unit` | Prefer `npm run test:changed` for narrower local feedback when appropriate. |
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
-| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` | Restart `npm run dev` after sidecar changes. OpenHands requests should not run through the Node sidecar. |
-| `app/promptfoo-sidecar/**` | `cd app/promptfoo-sidecar && npm test` | Run `cd tests/evals && npm test` as well when changing JSONL protocol or eval-contract behavior consumed by the repo eval harness. |
+| `agent-sources/plugins/**/agents/*.md` | `cd app && npm run test:agents:structural` | Structural validation only by default; live smoke requires explicit approval. |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |
 | `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` | `canonical-format.test.ts` is the canary for format drift. |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` | Generated command-contract surface. |
@@ -99,7 +95,7 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/documents/mod.rs` | `commands::documents` | `@settings` |
 | `app/src-tauri/src/commands/usage.rs` | `commands::usage` | `@dashboard` |
 | `app/src-tauri/src/commands/agent.rs` | -- | `@workflow` |
-| `app/src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow`, `@setup` |
+| `app/src-tauri/src/commands/runtime_lifecycle.rs` | -- | `@workflow`, `@setup` |
 | `app/src-tauri/src/commands/skill_session.rs` | `commands::skill_session` | `@workflow`, `@refine` |
 | `app/src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `app/src-tauri/src/commands/refine/mod.rs` | `commands::refine` | `@refine` |
@@ -109,7 +105,7 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/feedback.rs` | -- | -- |
 | `app/src-tauri/src/commands/node.rs` | `commands::node` | -- |
 | `app/src-tauri/src/agents/openhands_server/` | `agents::openhands_server` | `@workflow` |
-| `app/src-tauri/src/agents/sidecar.rs` | `agents::sidecar` | `@workflow` |
+| `app/src-tauri/src/agents/runtime_config.rs` | `agents::runtime_config` | `@workflow` |
 | `app/src-tauri/src/db/mod.rs` | `db` | -- |
 | `app/src-tauri/src/types/mod.rs` | `types` | -- |
 | `app/src-tauri/src/cleanup.rs` | `cleanup` | -- |

@@ -27,7 +27,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: |
             app/package-lock.json
-            app/sidecar/package-lock.json
 
       - name: Install npm dependencies
         working-directory: app
@@ -36,14 +35,6 @@ jobs:
       - name: Type check
         working-directory: app
         run: npx tsc --noEmit
-
-      - name: Install sidecar dependencies
-        working-directory: app/sidecar
-        run: npm ci --prefer-offline
-
-      - name: Sidecar unit tests
-        working-directory: app/sidecar
-        run: npx vitest run
 
       - name: Install Tauri system dependencies
         run: |
@@ -60,9 +51,6 @@ jobs:
         with:
           workspaces: "app/src-tauri -> target"
 
-      - name: Stub sidecar dist for Tauri resource validation
-        run: mkdir -p app/sidecar/dist
-
       - name: Cargo test
         working-directory: app/src-tauri
         run: cargo test
@@ -77,7 +65,7 @@ jobs:
 
       - name: Check codegen freshness
         run: |
-          git diff --exit-code app/src/generated/ app/sidecar/generated/ app/src-tauri/src/generated/
+          git diff --exit-code app/src/generated/ app/src-tauri/src/generated/
 
   platform-windows:
     name: platform-windows
@@ -93,7 +81,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: |
             app/package-lock.json
-            app/sidecar/package-lock.json
 
       - name: Install npm dependencies
         working-directory: app
@@ -102,14 +89,6 @@ jobs:
       - name: Type check
         working-directory: app
         run: npx tsc --noEmit
-
-      - name: Install sidecar dependencies
-        working-directory: app/sidecar
-        run: npm ci --prefer-offline
-
-      - name: Sidecar unit tests
-        working-directory: app/sidecar
-        run: npx vitest run
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -120,10 +99,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "app/src-tauri -> target"
-
-      - name: Stub sidecar dist for Tauri resource validation
-        shell: bash
-        run: mkdir -p app/sidecar/dist
 
       - name: Cargo test
         working-directory: app/src-tauri
@@ -147,7 +122,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: |
             app/package-lock.json
-            app/sidecar/package-lock.json
 
       - name: Install npm dependencies
         working-directory: app
@@ -156,14 +130,6 @@ jobs:
       - name: Type check
         working-directory: app
         run: npx tsc --noEmit
-
-      - name: Install sidecar dependencies
-        working-directory: app/sidecar
-        run: npm ci --prefer-offline
-
-      - name: Sidecar unit tests
-        working-directory: app/sidecar
-        run: npx vitest run
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -174,9 +140,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "app/src-tauri -> target"
-
-      - name: Stub sidecar dist for Tauri resource validation
-        run: mkdir -p app/sidecar/dist
 
       - name: Cargo test
         working-directory: app/src-tauri

@@ -252,7 +252,7 @@ describe("useWorkflowStateMachine", () => {
   });
 
   it("handleStartAgentStep shows error toast when runWorkflowStep fails", async () => {
-    mockRunWorkflowStep.mockRejectedValueOnce(new Error("sidecar error"));
+    mockRunWorkflowStep.mockRejectedValueOnce(new Error("runtime error"));
     const { toast } = await import("@/lib/toast");
 
     const { result } = renderHook(() =>

@@ -6,7 +6,7 @@ pub(crate) mod protocol;
 use serde::Deserialize;
 use std::path::Path;
 
-use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
+use crate::agents::runtime_config::{build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams};
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
 use crate::types::RefineDispatchResult;
@@ -186,13 +186,13 @@ pub(crate) fn build_refine_openhands_config(
     prompt: &str,
     workspace_path: &str,
     llm: crate::types::WorkflowLlmConfig,
-) -> crate::agents::sidecar::SidecarConfig {
+) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
     let workspace_skill_dir =
         crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
             .to_string_lossy()
             .replace('\\', "/");
 
-    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+    build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm,
         workspace_root_dir: workspace_path.replace('\\', "/"),

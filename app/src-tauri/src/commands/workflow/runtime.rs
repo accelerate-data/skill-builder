@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::{Emitter, Listener, Manager};
 
 use crate::agents::openhands_server;
-use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, SidecarConfig};
+use crate::agents::runtime_config::{BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig};
 use crate::db::Db;
 use crate::skill_paths::resolve_workspace_skill_dir;
 
@@ -58,15 +58,15 @@ struct WorkflowStepMaterializedPayload {
     error_detail: Option<String>,
 }
 
-pub(crate) fn build_workflow_research_sidecar_config(
+pub(crate) fn build_workflow_research_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -80,15 +80,15 @@ pub(crate) fn build_workflow_research_sidecar_config(
     })
 }
 
-pub(crate) fn build_workflow_detailed_research_sidecar_config(
+pub(crate) fn build_workflow_detailed_research_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -102,15 +102,15 @@ pub(crate) fn build_workflow_detailed_research_sidecar_config(
     })
 }
 
-pub(crate) fn build_workflow_confirm_decisions_sidecar_config(
+pub(crate) fn build_workflow_confirm_decisions_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -124,15 +124,15 @@ pub(crate) fn build_workflow_confirm_decisions_sidecar_config(
     })
 }
 
-pub(crate) fn build_workflow_generate_skill_sidecar_config(
+pub(crate) fn build_workflow_generate_skill_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -159,9 +159,9 @@ struct SkillCreatorWorkflowConfigParams<'a> {
     max_turns: u32,
 }
 
-fn build_skill_creator_workflow_sidecar_config(
+fn build_skill_creator_workflow_runtime_config(
     params: SkillCreatorWorkflowConfigParams<'_>,
-) -> SidecarConfig {
+) -> OpenHandsRuntimeConfig {
     let SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
@@ -182,7 +182,7 @@ fn build_skill_creator_workflow_sidecar_config(
             .replace('\\', "/");
 
     let mut config =
-        crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+        crate::agents::runtime_config::build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
             prompt: prompt.to_string(),
             llm,
             workspace_root_dir,
@@ -203,20 +203,20 @@ fn build_skill_creator_workflow_sidecar_config(
     config
 }
 
-pub(crate) fn build_answer_evaluator_sidecar_config(
+pub(crate) fn build_answer_evaluator_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
-) -> SidecarConfig {
+) -> OpenHandsRuntimeConfig {
     let workspace_root_dir = workspace_path.replace('\\', "/");
     let workspace_run_dir =
         resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
             .to_string_lossy()
             .replace('\\', "/");
 
-    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+    crate::agents::runtime_config::build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm,
         workspace_root_dir,
@@ -238,7 +238,7 @@ pub(crate) fn build_answer_evaluator_sidecar_config(
 async fn dispatch_persistent_skill_turn(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
 ) -> Result<String, String> {
     // Resume the saved OpenHands conversation for this skill, or create a new
     // one and persist the ID. start_openhands_session uses ResumeOrCreate, so
@@ -270,12 +270,12 @@ async fn dispatch_persistent_skill_turn(
 
 pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<Send, SendFuture>(
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: String,
     send: Send,
 ) -> Result<String, String>
 where
-    Send: FnOnce(&str, SidecarConfig, String) -> SendFuture,
+    Send: FnOnce(&str, OpenHandsRuntimeConfig, String) -> SendFuture,
     SendFuture: std::future::Future<Output = Result<(), String>>,
 {
     send(agent_id, config, conversation_id.clone()).await?;
@@ -506,7 +506,7 @@ async fn run_workflow_step_inner(
     );
 
     let config = match step_id {
-        0 => build_workflow_research_sidecar_config(
+        0 => build_workflow_research_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -514,7 +514,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
             workflow_session_id,
         ),
-        1 => build_workflow_detailed_research_sidecar_config(
+        1 => build_workflow_detailed_research_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -522,7 +522,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
             workflow_session_id,
         ),
-        2 => build_workflow_confirm_decisions_sidecar_config(
+        2 => build_workflow_confirm_decisions_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -530,7 +530,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
             workflow_session_id,
         ),
-        3 => build_workflow_generate_skill_sidecar_config(
+        3 => build_workflow_generate_skill_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -797,7 +797,7 @@ pub async fn run_answer_evaluator(
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
-    let config = build_answer_evaluator_sidecar_config(
+    let config = build_answer_evaluator_runtime_config(
         &skill_name,
         &prompt,
         &workspace_path,

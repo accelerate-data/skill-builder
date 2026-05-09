@@ -12,8 +12,6 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "codegen": "cargo run --manifest-path src-tauri/Cargo.toml --bin codegen",
-    "sidecar:install": "cd sidecar && npm install",
-    "postinstall": "cd sidecar && npm install",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run src/__tests__/stores/ src/__tests__/lib/ src/__tests__/hooks/",

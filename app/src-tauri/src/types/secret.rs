@@ -4,7 +4,7 @@ use std::fmt;
 /// A string wrapper that prevents accidental logging of sensitive values.
 ///
 /// `Debug` and `Display` emit `[REDACTED]`; `Serialize` passes through the
-/// inner value transparently so JSON IPC (e.g. sidecar stdin) still works.
+/// inner value transparently so JSON IPC (e.g. runtime stdin) still works.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SecretString(String);

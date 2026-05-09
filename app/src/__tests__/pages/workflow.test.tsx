@@ -495,7 +495,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       unmount();
     });
 
-    // endWorkflowSession should be called (sidecar pool cleanup removed)
+    // endWorkflowSession should be called (legacy runtime-pool cleanup removed)
     expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 

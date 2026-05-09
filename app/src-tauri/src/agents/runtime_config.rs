@@ -25,7 +25,7 @@ fn strip_optional_yaml_frontmatter(raw: &str) -> String {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SidecarConfig {
+pub struct OpenHandsRuntimeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
     pub prompt: String,
@@ -110,9 +110,9 @@ pub struct SidecarConfig {
     pub system_message_suffix: Option<String>,
 }
 
-impl std::fmt::Debug for SidecarConfig {
+impl std::fmt::Debug for OpenHandsRuntimeConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SidecarConfig")
+        f.debug_struct("OpenHandsRuntimeConfig")
             .field("mode", &self.mode)
             .field("prompt", &self.prompt)
             .field("model", &self.model)
@@ -144,7 +144,7 @@ impl std::fmt::Debug for SidecarConfig {
     }
 }
 
-pub struct OpenHandsRuntimeConfigParams {
+pub struct BuildOpenHandsRuntimeConfigParams {
     pub prompt: String,
     pub llm: crate::types::WorkflowLlmConfig,
     pub workspace_root_dir: String,
@@ -180,10 +180,12 @@ impl OpenHandsRuntimeMode {
 /// Feature commands supply only agent/task details. Initialized workspace and
 /// selected LLM must already have been resolved by the backend runtime context
 /// API before this helper is called.
-pub fn build_openhands_runtime_config(params: OpenHandsRuntimeConfigParams) -> SidecarConfig {
+pub fn build_openhands_runtime_config(
+    params: BuildOpenHandsRuntimeConfigParams,
+) -> OpenHandsRuntimeConfig {
     let system_message_suffix =
         (params.agent_name == "skill-creator").then(skill_creator_system_message_suffix);
-    SidecarConfig {
+    OpenHandsRuntimeConfig {
         mode: params.mode.map(|mode| mode.as_str().to_string()),
         prompt: params.prompt,
         system_prompt: None,
@@ -222,8 +224,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sidecar_config_serialization() {
-        let config = SidecarConfig {
+    fn test_runtime_config_serialization() {
+        let config = OpenHandsRuntimeConfig {
             mode: None,
             prompt: "Analyze this codebase".to_string(),
             system_prompt: None,
@@ -275,8 +277,8 @@ mod tests {
     }
 
     #[test]
-    fn test_sidecar_config_serialization_with_thinking() {
-        let config = SidecarConfig {
+    fn test_runtime_config_serialization_with_thinking() {
+        let config = OpenHandsRuntimeConfig {
             mode: None,
             prompt: "Reason about this".to_string(),
             system_prompt: None,
@@ -320,10 +322,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sidecar_config_skill_name_serialized_as_camel_case() {
-        // skill_name must serialize as "skillName" so the sidecar's
+    fn test_runtime_config_skill_name_serialized_as_camel_case() {
+        // skill_name must serialize as "skillName" so the runtime's
         // mock discriminator (config.skillName) receives the value correctly.
-        let config = SidecarConfig {
+        let config = OpenHandsRuntimeConfig {
             mode: None,
             prompt: "test".to_string(),
             system_prompt: None,
@@ -368,9 +370,9 @@ mod tests {
     }
 
     #[test]
-    fn test_sidecar_config_skill_name_absent_when_none() {
+    fn test_runtime_config_skill_name_absent_when_none() {
         // When skill_name is None, it must be omitted (skip_serializing_if = "Option::is_none").
-        let config = SidecarConfig {
+        let config = OpenHandsRuntimeConfig {
             mode: None,
             prompt: "test".to_string(),
             system_prompt: None,
@@ -412,7 +414,7 @@ mod tests {
 
     #[test]
     fn test_scope_review_config_serializes_user_suffix_and_task_kind() {
-        let config = SidecarConfig {
+        let config = OpenHandsRuntimeConfig {
             mode: Some("throwaway".to_string()),
             prompt: "review scope".to_string(),
             system_prompt: None,
@@ -483,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_non_skill_creator_openhands_config_does_not_inject_system_message_suffix() {
-        let config = build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+        let config = build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
             prompt: "Analyze".to_string(),
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),

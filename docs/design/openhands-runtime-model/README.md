@@ -100,7 +100,7 @@ Each command is responsible for:
 
 - validating user-facing inputs
 - loading backend-owned workspace and model context
-- building the correct task prompt and `SidecarConfig`
+- building the correct task prompt and `OpenHandsRuntimeConfig`
 - choosing persistent versus throwaway session behavior
 - parsing terminal outputs into app-owned result contracts
 
@@ -538,7 +538,7 @@ remaining cleanup residue is narrower:
 | `app/src-tauri/src/agents/openhands_server/mod.rs` | OpenHands runtime primitives, persistence policy, event orchestration, and throwaway/persistent session helpers. |
 | `app/src-tauri/src/agents/openhands_server/process.rs` | Agent Server process lifecycle and environment wiring. |
 | `app/src-tauri/src/agents/openhands_server/types.rs` | OpenHands request shape, tool list, suffix wiring, and agent definitions. |
-| `app/src-tauri/src/agents/sidecar.rs` | Backend-owned request/config builder used by product commands. |
+| `app/src-tauri/src/agents/runtime_config.rs` | Backend-owned request/config builder used by product commands. |
 | `app/src-tauri/src/skill_paths.rs` | Runtime workspace path resolution for persistent skill workspaces and implemented throwaway runtime directories. |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow product command orchestration. |
 | `app/src-tauri/src/commands/refine/mod.rs` | Refine product command orchestration and restore/event helpers. |

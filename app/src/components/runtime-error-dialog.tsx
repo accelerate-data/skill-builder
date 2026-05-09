@@ -24,7 +24,7 @@ interface RuntimeErrorDialogProps {
 /** Map error types to human-readable dialog titles. */
 function getErrorTitle(errorType: string): string {
   switch (errorType) {
-    case "sidecar_missing":
+    case "runtime_missing":
       return "Agent Runtime Not Found";
     case "node_missing":
       return "Node.js Not Installed";
@@ -44,7 +44,7 @@ function getErrorTitle(errorType: string): string {
 /** Map error types to appropriate icons. */
 function getErrorIcon(errorType: string) {
   switch (errorType) {
-    case "sidecar_missing":
+    case "runtime_missing":
     case "spawn_failed":
       return <Terminal className="size-5 text-destructive" />;
     case "node_missing":

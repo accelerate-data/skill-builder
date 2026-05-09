@@ -1,8 +1,8 @@
 //! Canonical agent event contract types.
 //!
-//! These types mirror the TypeScript definitions in `app/sidecar/agent-events.ts`
+//! These types mirror the frontend TypeScript definitions in `app/src/lib/agent-events.ts`
 //! and serve as the single source of truth for the agent event JSON schema.
-//! The sidecar uses camelCase in JSON, so all structs use `rename_all = "camelCase"`.
+//! The runtime uses camelCase in JSON, so all structs use `rename_all = "camelCase"`.
 
 /// Current version of the agent events protocol.
 pub const AGENT_EVENTS_VERSION: u32 = 3;
@@ -196,9 +196,9 @@ pub enum AgentEvent {
     RunResult(Box<RunResultEvent>),
 }
 
-/// Wrapper envelope for agent events, matching the sidecar `AgentEventEnvelope`.
+/// Wrapper envelope for agent events, matching the runtime `AgentEventEnvelope`.
 ///
-/// The sidecar envelope has `type: "agent_event"` as a literal discriminator
+/// The runtime envelope has `type: "agent_event"` as a literal discriminator
 /// plus the nested `event` and `timestamp` fields.
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
@@ -538,8 +538,8 @@ mod tests {
     }
 
     #[test]
-    fn test_envelope_from_sidecar_json() {
-        // Simulate what the sidecar sends: outer type + nested event with its own type
+    fn test_envelope_from_runtime_json() {
+        // Simulate what the runtime sends: outer type + nested event with its own type
         let json = r#"{
             "type": "agent_event",
             "event": {

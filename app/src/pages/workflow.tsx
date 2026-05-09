@@ -286,7 +286,7 @@ export default function WorkflowPage() {
   });
 
   // Local callback: abandon agent and switch to a different step.
-  // Unlike handleNavLeave, we do NOT release the skill lock or shut down the sidecar
+  // Unlike handleNavLeave, we do NOT release the skill lock or shut down the runtime
   // because the user is still in the workflow.
   const handleStepSwitchLeave = useCallback(() => {
     const targetStep = pendingStepSwitch;

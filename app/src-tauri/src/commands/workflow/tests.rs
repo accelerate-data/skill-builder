@@ -14,9 +14,9 @@ use super::prompt::{
     build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
 };
 use super::runtime::{
-    build_answer_evaluator_sidecar_config, build_workflow_confirm_decisions_sidecar_config,
-    build_workflow_detailed_research_sidecar_config, build_workflow_generate_skill_sidecar_config,
-    build_workflow_research_sidecar_config, dispatch_persistent_skill_turn_with_runtime,
+    build_answer_evaluator_runtime_config, build_workflow_confirm_decisions_runtime_config,
+    build_workflow_detailed_research_runtime_config, build_workflow_generate_skill_runtime_config,
+    build_workflow_research_runtime_config, dispatch_persistent_skill_turn_with_runtime,
 };
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
@@ -222,7 +222,7 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 
 #[test]
 fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() {
-    let config = build_workflow_research_sidecar_config(
+    let config = build_workflow_research_runtime_config(
         "lead-conversion",
         "prompt",
         "/tmp/workspace",
@@ -337,8 +337,8 @@ fn research_prompt_includes_user_context_block_when_provided() {
 }
 
 #[test]
-fn research_sidecar_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_research_sidecar_config(
+fn research_runtime_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_research_runtime_config(
         "lead-conversion",
         "prompt",
         "/tmp/workspace",
@@ -453,8 +453,8 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
 }
 
 #[test]
-fn detailed_research_sidecar_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_detailed_research_sidecar_config(
+fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_detailed_research_runtime_config(
         "pipeline-value",
         "prompt",
         "/tmp/workspace",
@@ -518,8 +518,8 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
 }
 
 #[test]
-fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
-    let config = build_answer_evaluator_sidecar_config(
+fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
+    let config = build_answer_evaluator_runtime_config(
         "sales-analytics",
         "prompt",
         "/tmp/workspace",
@@ -549,7 +549,7 @@ fn answer_evaluator_sidecar_config_uses_skill_creator_openhands_contract() {
 
 #[test]
 fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow() {
-    let workflow_config = build_workflow_generate_skill_sidecar_config(
+    let workflow_config = build_workflow_generate_skill_runtime_config(
         "sales-analytics",
         "generate the skill",
         "/tmp/workspace",
@@ -557,7 +557,7 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
         test_workflow_llm_config(),
         Some("workflow-session".to_string()),
     );
-    let answer_evaluator_config = build_answer_evaluator_sidecar_config(
+    let answer_evaluator_config = build_answer_evaluator_runtime_config(
         "sales-analytics",
         "evaluate the answers",
         "/tmp/workspace",
@@ -566,12 +566,12 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
     );
 
     let workflow_request =
-        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_sidecar_config(
+        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_runtime_config(
             &workflow_config,
         )
         .unwrap();
     let answer_evaluator_request =
-        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_sidecar_config(
+        crate::agents::openhands_server::OpenHandsRuntimeRequest::try_from_runtime_config(
             &answer_evaluator_config,
         )
         .unwrap();
@@ -750,7 +750,7 @@ mod research {
 
     #[test]
     fn openhands_contract_and_terminal_materialization_smoke() {
-        let config = build_workflow_research_sidecar_config(
+        let config = build_workflow_research_runtime_config(
             "lead-conversion",
             "prompt",
             "/tmp/workspace",
@@ -853,8 +853,8 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
 }
 
 #[test]
-fn confirm_decisions_sidecar_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_confirm_decisions_sidecar_config(
+fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_confirm_decisions_runtime_config(
         "lead-conversion",
         "prompt",
         "/tmp/workspace",
@@ -958,8 +958,8 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
 }
 
 #[test]
-fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_generate_skill_sidecar_config(
+fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
+    let config = build_workflow_generate_skill_runtime_config(
         "pipeline-value",
         "prompt",
         "/tmp/workspace",
@@ -988,7 +988,7 @@ fn skill_generation_sidecar_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace/default/skills/pipeline-value"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(3));
-    let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+    let expected_suffix = crate::agents::runtime_config::skill_creator_system_message_suffix();
     assert_eq!(
         config.system_message_suffix.as_deref(),
         Some(expected_suffix.as_str())
