@@ -142,17 +142,9 @@ export function SkillListPanel({
     if (externalLockedSkills.has(skill.name)) return;
 
     console.log("event=skill_selected skill=%s", skill.name);
-    if (isSkillComplete(skill) || skill.source !== "builder") {
-      localStorage.setItem("last-selected-skill", skill.key);
-      setSelectedSkill(skill.key);
-      await onSelectSkill?.(skill.key);
-    } else {
-      localStorage.setItem("last-selected-skill", skill.key);
-      setSelectedSkill(skill.key);
-      // Row click always opens in Review mode — auto-start is only for explicit actions
-      // (SkillDialog create, Continue Building, Redo) which pass state: { autoStart: true }.
-      // Navigation is handled by onActivateSkill in AppLayout.
-    }
+    localStorage.setItem("last-selected-skill", skill.key);
+    setSelectedSkill(skill.key);
+    await onSelectSkill?.(skill.key);
   }
 
   function handleRedo(skill: UnifiedSkill) {

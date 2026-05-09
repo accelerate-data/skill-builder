@@ -208,9 +208,9 @@ export function AppLayout() {
 
       const surface = getSkillSurface(editableSkill);
       if (surface === "workflow") {
-        navigate({ to: "/workflow/$skillName", params: { skillName: editableSkill.name } });
+        navigate({ to: "/workflow/$skillName", params: { skillName: name } });
       } else {
-        navigate({ to: "/workspace/$skillName", params: { skillName: editableSkill.name }, search: { tab: undefined } });
+        navigate({ to: "/workspace/$skillName", params: { skillName: name }, search: { tab: undefined } });
       }
     },
     [
@@ -233,8 +233,8 @@ export function AppLayout() {
       if (name === currentSessionName) {
         const surface = getSkillSurface(editableSkill);
         const route = surface === "workflow"
-          ? { to: "/workflow/$skillName", params: { skillName: editableSkill.name } }
-          : { to: "/workspace/$skillName", params: { skillName: editableSkill.name }, search: { tab: tab ?? undefined } };
+          ? { to: "/workflow/$skillName", params: { skillName: name } }
+          : { to: "/workspace/$skillName", params: { skillName: name }, search: { tab: tab ?? undefined } };
         setSelectedSkillName(name);
         navigate(route);
         return;

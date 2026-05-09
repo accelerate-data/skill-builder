@@ -512,9 +512,7 @@ describe("SkillListPanel", () => {
     renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("new-workflow").closest('[role="button"]')!);
 
-    // In-progress skills set selected skill but don't call onSelectSkill
-    // (navigation is handled by AppLayout onActivateSkill)
-    expect(onSelectSkill).not.toHaveBeenCalled();
+    expect(onSelectSkill).toHaveBeenCalledWith(builderKey("new-workflow"));
   });
 
   it("calls onSelectSkill when clicking a step-1 skill", async () => {
@@ -525,8 +523,7 @@ describe("SkillListPanel", () => {
     renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("step1-nav").closest('[role="button"]')!);
 
-    // In-progress skills set selected skill but don't call onSelectSkill
-    expect(onSelectSkill).not.toHaveBeenCalled();
+    expect(onSelectSkill).toHaveBeenCalledWith(builderKey("step1-nav"));
   });
 
   it("calls onSelectSkill when clicking a completed skill", () => {
