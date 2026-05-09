@@ -21,7 +21,6 @@ import {
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
 } from "@/lib/tauri";
-import { leaveCurrentSkill } from "@/lib/active-skill-transition";
 import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
@@ -101,13 +100,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
     shouldBlock: () => useRefineStore.getState().isRunning,
     onLeave: (proceed) => {
-      void leaveCurrentSkill({ expectedSkillName: activeSkill.name })
-        .then(() => proceed())
-        .catch((err) => {
-          toast.error(err instanceof Error ? err.message : String(err), {
-            duration: Infinity,
-          });
-        });
+      void proceed();
     },
   });
 

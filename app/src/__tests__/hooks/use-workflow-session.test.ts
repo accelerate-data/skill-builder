@@ -2,20 +2,6 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 
-const mockLeaveCurrentSkill = vi.fn().mockResolvedValue(undefined);
-vi.mock("@/lib/active-skill-transition", () => ({
-  leaveCurrentSkill: (options?: unknown) => mockLeaveCurrentSkill(options),
-}));
-
-vi.mock("@tanstack/react-router", () => ({
-  useBlocker: vi.fn().mockReturnValue({ proceed: vi.fn(), reset: vi.fn(), status: "idle" }),
-}));
-
-const mockEndWorkflowSession = vi.fn((_arg?: unknown) => Promise.resolve());
-vi.mock("@/lib/tauri", () => ({
-  endWorkflowSession: (sessionId: string) => mockEndWorkflowSession(sessionId),
-}));
-
 const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture } = vi.hoisted(() => {
   let mockWorkflowState = {
     workflowSessionId: "session-uuid-123",
@@ -45,7 +31,6 @@ const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapt
     { getState: vi.fn(() => ({ clearRuns: mockClearRuns })) }
   );
 
-  // Captures the onLeave callback so tests can invoke it directly.
   const leaveGuardCapture = {
     onLeave: undefined as ((proceed: () => void) => void) | undefined,
   };
@@ -61,12 +46,15 @@ vi.mock("@/stores/agent-store", () => ({
   useAgentStore: mockAgentStoreMock,
 }));
 
-// Mock useLeaveGuard — captures onLeave so tests can invoke it directly
 vi.mock("@/hooks/use-leave-guard", () => ({
   useLeaveGuard: vi.fn().mockImplementation(({ onLeave }: { onLeave: (proceed: () => void) => void }) => {
     leaveGuardCapture.onLeave = onLeave;
     return { blockerStatus: "idle", handleNavStay: vi.fn(), handleNavLeave: vi.fn() };
   }),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useBlocker: vi.fn().mockReturnValue({ proceed: vi.fn(), reset: vi.fn(), status: "idle" }),
 }));
 
 let mockWorkflowState = {
@@ -107,31 +95,12 @@ describe("useWorkflowSession", () => {
     mockWorkflowStoreMock.mockImplementation(() => mockWorkflowState);
   });
 
-  it("delegates unmount cleanup to leaveCurrentSkill", () => {
-    const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
-    unmount();
-    expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
-    expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
-      expectedSkillName: "test-skill",
-    });
-  });
-
-  it("still delegates cleanup when session id is null on unmount", () => {
-    mockWorkflowState.workflowSessionId = null as unknown as string;
-    const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
-    unmount();
-    expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
-    expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
-      expectedSkillName: "test-skill",
-    });
-  });
-
   it("returns blockerStatus from useLeaveGuard", () => {
     const { result } = renderHook(() => useWorkflowSession(defaultOptions));
     expect(result.current.blockerStatus).toBe("idle");
   });
 
-  it("onLeave delegates cleanup and calls proceed", async () => {
+  it("onLeave calls proceed without teardown (route coordinator owns exits)", async () => {
     renderHook(() => useWorkflowSession(defaultOptions));
 
     await waitFor(() => {
@@ -144,11 +113,12 @@ describe("useWorkflowSession", () => {
     });
 
     await waitFor(() => {
-      expect(mockLeaveCurrentSkill).toHaveBeenCalledTimes(1);
-      expect(mockLeaveCurrentSkill).toHaveBeenCalledWith({
-        expectedSkillName: "test-skill",
-      });
       expect(proceed).toHaveBeenCalled();
     });
+  });
+
+  it("does not call leaveCurrentSkill on unmount (route coordinator owns exits)", () => {
+    const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
+    unmount();
   });
 });
