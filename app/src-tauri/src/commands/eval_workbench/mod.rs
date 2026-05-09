@@ -239,15 +239,9 @@ async fn wait_for_turn_result(
     let TurnListener { mut rx, message_listener, exit_listener } = listener;
 
     let wait_result = tokio::time::timeout(timeout, async {
-        while let Some(result) = rx.recv().await {
-            if let Ok(state) = result {
-                return Ok(state);
-            }
-            if let Err(e) = result {
-                return Err(e);
-            }
-        }
-        Err("OpenHands listener closed unexpectedly".to_string())
+        let result = rx.recv().await
+            .ok_or_else(|| "OpenHands listener closed unexpectedly".to_string())?;
+        result
     })
     .await;
 

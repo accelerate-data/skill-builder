@@ -12,6 +12,7 @@ pub struct PluginPaths {
     #[allow(dead_code)]
     pub default_plugin_slug: String,
     pub skill_dir: String,
+    #[allow(dead_code)]
     pub eval_dir: String,
     pub workspace_skill_dir: String,
     pub tag_prefix: String,
@@ -186,17 +187,6 @@ pub fn throwaway_logs_dir(run_dir: &Path) -> PathBuf {
 pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().skill_dir,
-        &[
-            ("root", &root.to_string_lossy()),
-            ("plugin_slug", plugin_slug),
-            ("skill_name", skill_name),
-        ],
-    )
-}
-
-pub fn resolve_eval_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    resolve_path_template(
-        &paths().eval_dir,
         &[
             ("root", &root.to_string_lossy()),
             ("plugin_slug", plugin_slug),
@@ -502,17 +492,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_eval_dir_includes_evals_subdir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-
-        assert_eq!(
-            resolve_eval_dir(root, "analytics", "weekly-report"),
-            root.join("analytics").join("evals").join("weekly-report")
-        );
-    }
-
-    #[test]
     fn workspace_agent_dirs_are_under_workspace_skill_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace_skill = workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report");
@@ -668,13 +647,4 @@ mod tests {
         assert!(locations.is_empty());
     }
 
-    #[test]
-    fn resolves_eval_dir_from_plugin_layout() {
-        let root = Path::new("/users/alice/my-plugins");
-        let dir = resolve_eval_dir(root, "superpowers", "analyzing-bookings");
-        assert_eq!(
-            dir,
-            Path::new("/users/alice/my-plugins/superpowers/evals/analyzing-bookings")
-        );
-    }
 }
