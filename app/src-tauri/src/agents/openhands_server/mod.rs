@@ -979,6 +979,24 @@ fn close_local_openhands_run(agent_id: &str) -> bool {
     found
 }
 
+/// Send the cancel oneshot signal to a registered agent's Tokio task.
+/// Returns `true` if the agent is registered (or was already signaled), `false` if not found.
+fn send_cancel_signal(agent_id: &str) -> bool {
+    let mut handle = match cancel_registry().get_mut(agent_id) {
+        Some(h) => h,
+        None => return false,
+    };
+    if handle.pause_requested {
+        true
+    } else if let Some(sender) = handle.sender.take() {
+        handle.pause_requested = true;
+        sender.send(()).is_ok()
+    } else {
+        handle.pause_requested = true;
+        true
+    }
+}
+
 pub async fn pause_openhands_conversation(
     config: SidecarConfig,
     conversation_id: &str,
@@ -1012,54 +1030,13 @@ pub async fn pause_openhands_conversation(
     // Signal the in-process task so it sets cancel_pending=true before the socket closes.
     // This keeps the WebSocket alive long enough for the task to receive the PAUSED terminal
     // state and exit cleanly via build_cancelled_state rather than the error recovery path.
-    let signaled = if let Some(id) = agent_id {
-        let mut handle = match cancel_registry().get_mut(id) {
-            Some(h) => h,
-            None => return Ok(false),
-        };
-        if handle.pause_requested {
-            log::debug!(
-                "[pause_openhands_conversation] agent_id={} action=already-requested",
-                id
-            );
-            true
-        } else if let Some(sender) = handle.sender.take() {
-            handle.pause_requested = true;
-            let sent = sender.send(()).is_ok();
-            log::debug!(
-                "[pause_openhands_conversation] agent_id={} action=signal-dispatched sent={}",
-                id, sent
-            );
-            sent
-        } else {
-            handle.pause_requested = true;
-            log::debug!(
-                "[pause_openhands_conversation] agent_id={} action=awaiting-terminal",
-                id
-            );
-            true
-        }
-    } else {
-        false
-    };
+    let signaled = agent_id.map(send_cancel_signal).unwrap_or(false);
     Ok(signaled)
 }
 
 pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
     // Signal the in-process task to stop gracefully before the force-abort timeout.
-    let mut found = {
-        let mut f = false;
-        if let Some(mut handle) = cancel_registry().get_mut(agent_id) {
-            f = true;
-            if !handle.pause_requested {
-                handle.pause_requested = true;
-                if let Some(sender) = handle.sender.take() {
-                    let _ = sender.send(());
-                }
-            }
-        }
-        f
-    };
+    let mut found = send_cancel_signal(agent_id);
 
     if task_registry().contains_key(agent_id) {
         found = true;
@@ -2996,18 +2973,18 @@ mod tests {
     }
 
     #[test]
-    fn pause_registry_signals_once_and_stays_registered_until_unregistered() {
+    fn cancel_signal_sends_once_and_is_idempotent_until_unregistered() {
         let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
         let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
 
         register_cancel(&agent_id, cancel_tx).unwrap();
 
-        assert!(pause_openhands_session(&agent_id));
+        assert!(send_cancel_signal(&agent_id));
         assert!(cancel_rx.try_recv().is_ok());
-        assert!(pause_openhands_session(&agent_id));
+        assert!(send_cancel_signal(&agent_id)); // idempotent after sender consumed
 
         unregister_cancel(&agent_id);
-        assert!(!pause_openhands_session(&agent_id));
+        assert!(!send_cancel_signal(&agent_id)); // false once unregistered
     }
 
     #[tokio::test]
