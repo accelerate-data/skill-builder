@@ -8,6 +8,21 @@ fn release_instance_runtime_state(conn: &Connection, instance: &InstanceInfo) ->
     Ok(())
 }
 
+/// Stop the OpenHands agent server for the current skill.
+/// Called when navigating away from a skill (workflow or workspace) so that
+/// Python's __aexit__ runs, conversation leases are released, and the next
+/// skill's server starts with a clean slate.
+#[tauri::command]
+pub async fn stop_openhands_server() -> Result<(), String> {
+    log::info!("[stop_openhands_server] shutting down OpenHands agent server");
+    crate::agents::openhands_server::process::shutdown_agent_server()
+        .await
+        .map_err(|e| {
+            log::warn!("[stop_openhands_server] shutdown failed: {e}");
+            e.to_string()
+        })
+}
+
 /// Graceful shutdown: release locks, end sessions, then exit.
 /// Called by the close-guard when the user confirms closing with agents running.
 ///

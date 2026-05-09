@@ -7,8 +7,10 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 const mockEndWorkflowSession = vi.fn((_arg?: unknown) => Promise.resolve());
+const mockInvokeCommand = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/lib/tauri", () => ({
   endWorkflowSession: (sessionId: string) => mockEndWorkflowSession(sessionId),
+  invokeCommand: (...args: unknown[]) => mockInvokeCommand(...args),
 }));
 
 const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture } = vi.hoisted(() => {
@@ -102,10 +104,11 @@ describe("useWorkflowSession", () => {
     mockWorkflowStoreMock.mockImplementation(() => mockWorkflowState);
   });
 
-  it("ends workflow session with UUID on unmount", () => {
+  it("ends workflow session and stops server on unmount", () => {
     const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
     unmount();
     expect(mockEndWorkflowSession).toHaveBeenCalledWith("session-uuid-123");
+    expect(mockInvokeCommand).toHaveBeenCalledWith("stop_openhands_server", {});
   });
 
   it("does not call endWorkflowSession if sessionId is null on unmount", () => {
@@ -149,6 +152,8 @@ describe("useWorkflowSession", () => {
     expect(mockClearRuns).toHaveBeenCalled();
     // Session ended
     expect(mockEndWorkflowSession).toHaveBeenCalledWith(sessionId);
+    // Server stopped on skill switch
+    expect(mockInvokeCommand).toHaveBeenCalledWith("stop_openhands_server", {});
     // Navigation allowed to proceed
     expect(proceed).toHaveBeenCalled();
   });

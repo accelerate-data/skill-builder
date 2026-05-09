@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { toast } from "@/lib/toast";
 import { useLeaveGuard } from "./use-leave-guard";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
+import { invokeCommand } from "@/lib/tauri";
 
 interface UseWorkflowSessionOptions {
   /** Skill name from route params */
@@ -51,6 +52,7 @@ export function useWorkflowSession({
           toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
         },
       });
+      void invokeCommand("stop_openhands_server", {});
     };
   }, [skillName]);
 
@@ -66,6 +68,7 @@ export function useWorkflowSession({
           toast.error(`Session cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
         },
       });
+      void invokeCommand("stop_openhands_server", {});
       proceed();
     },
   });

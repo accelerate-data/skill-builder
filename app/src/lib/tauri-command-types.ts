@@ -213,6 +213,7 @@ export interface TauriCommandMap {
   get_workspace_path: { args: NoArgs; result: string };
   graceful_shutdown: { args: NoArgs; result: void };
   allow_app_exit: { args: NoArgs; result: void };
+  stop_openhands_server: { args: NoArgs; result: void };
   create_workflow_session: { args: { sessionId: string; skillName: string }; result: void };
   end_workflow_session: { args: { sessionId: string }; result: void };
   resolve_orphan: { args: { skillName: string; action: "delete" | "keep" }; result: void };

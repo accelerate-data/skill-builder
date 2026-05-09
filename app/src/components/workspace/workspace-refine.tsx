@@ -20,6 +20,7 @@ import {
   sendRefineMessage,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
+  invokeCommand,
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
@@ -108,6 +109,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.setRunning(false);
       store.setActiveAgentId(null);
       clearRefineAgentRuns();
+      void invokeCommand("stop_openhands_server", {});
       proceed();
     },
   });
