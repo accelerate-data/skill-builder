@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
 use thiserror::Error;
 use tokio_tungstenite::tungstenite::Message;
 
