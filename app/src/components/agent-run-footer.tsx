@@ -10,7 +10,7 @@ import {
   getAgentActivityCount,
   getDisplayStatus,
 } from "@/components/agent-status-header";
-import { RunStatusFooter } from "@/components/run-status-footer";
+import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
 
 interface AgentRunFooterProps {
   agentId: string;
@@ -19,36 +19,50 @@ interface AgentRunFooterProps {
 export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
   const workflowIsInitializing = useWorkflowStore((s) => s.isInitializing);
+  const workflowIsStopping = useWorkflowStore((s) => s.isStopping);
   const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
 
   const displayStatus: DisplayStatus | null = run
     ? getDisplayStatus(run.status, getAgentActivityCount(run), workflowIsInitializing)
     : null;
 
+  // Map stopping state to footer status
+  const footerStatus: FooterDisplayStatus = workflowIsStopping
+    ? "stopping"
+    : displayStatus === "initializing"
+      ? "initializing"
+      : displayStatus === "error"
+        ? "error"
+        : displayStatus === "completed"
+          ? "completed"
+          : run?.status === "running"
+            ? "running"
+            : "idle";
+
   // Force re-render every second while running or initializing so elapsed time updates
   const [, setTick] = useState(0);
   useEffect(() => {
-    if (!displayStatus || displayStatus === "completed" || displayStatus === "error") return;
+    if (!footerStatus || footerStatus === "completed" || footerStatus === "error") return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [displayStatus]);
+  }, [footerStatus]);
 
-  if (!run || !displayStatus) return null;
+  if (!run || !footerStatus) return null;
 
   // Elapsed time origin: during initialization, prefer initStartTime from workflow store
   const elapsedOrigin =
-    displayStatus === "initializing" && workflowInitStartTime
+    footerStatus === "initializing" && workflowInitStartTime
       ? workflowInitStartTime
       : run.startTime;
 
   const elapsed = run.endTime ? run.endTime - elapsedOrigin : Date.now() - elapsedOrigin;
 
-  const isFinished = displayStatus === "completed" || displayStatus === "error";
+  const isFinished = footerStatus === "completed" || footerStatus === "error";
   const turnCount = run.contextHistory.length;
 
   return (
     <RunStatusFooter
-      status={displayStatus}
+      status={footerStatus}
       label={run.agentName ?? null}
       model={run.model && run.model !== "unknown" ? formatModelName(run.model) : null}
       elapsedMs={elapsed}

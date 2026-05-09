@@ -10,7 +10,13 @@ import {
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { useSettingsStore } from "@/stores/settings-store";
 import { formatModelName } from "@/stores/agent-store";
-import { RunStatusFooter } from "@/components/run-status-footer";
+import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
+import {
+  getEvalsRunning,
+  getEvalsStopping,
+  subscribeEvalsRunning,
+  subscribeEvalsStopping,
+} from "@/lib/eval-running-state";
 import { PromptSetEditor } from "./eval-workbench/prompt-set-editor";
 
 interface WorkspaceEvalsProps {
@@ -53,6 +59,24 @@ export function WorkspaceEvals({
   const [actionError, setActionError] = useState<string | null>(null);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model);
   const skillName = "name" in skill ? skill.name : skill.skill_name;
+
+  const [evalsRunning, setEvalsRunningReactive] = useState(getEvalsRunning());
+  const [evalsStopping, setEvalsStoppingReactive] = useState(getEvalsStopping());
+
+  useEffect(() => {
+    const unsubRunning = subscribeEvalsRunning(setEvalsRunningReactive);
+    const unsubStopping = subscribeEvalsStopping(setEvalsStoppingReactive);
+    return () => {
+      unsubRunning();
+      unsubStopping();
+    };
+  }, []);
+
+  const footerStatus: FooterDisplayStatus = evalsStopping
+    ? "stopping"
+    : evalsRunning
+      ? "running"
+      : "idle";
 
   const isDirty = scenario
     ? JSON.stringify(normalizeScenario(scenarioToDraft(scenario))) !==
@@ -180,7 +204,7 @@ export function WorkspaceEvals({
       </div>
 
       <RunStatusFooter
-        status="idle"
+        status={footerStatus}
         label={skillName}
         model={selectedModel ? formatModelName(selectedModel) : null}
       />
