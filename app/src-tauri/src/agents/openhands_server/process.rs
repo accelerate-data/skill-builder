@@ -40,13 +40,13 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
     let uv_name = if cfg!(windows) { "uv.exe" } else { "uv" };
     let candidate = resource_dir.join(uv_name);
     if candidate.is_file() {
-        log::info!(
+        log::debug!(
             "[openhands-agent-server] using bundled uv at {}",
             candidate.display()
         );
         let _ = BUNDLED_UV_PATH.set(Some(candidate));
     } else {
-        log::info!(
+        log::debug!(
             "[openhands-agent-server] no bundled uv found in resource dir; falling back to system uvx"
         );
         let _ = BUNDLED_UV_PATH.set(None);
@@ -137,7 +137,7 @@ fn read_or_create_openhands_secret(runtime_run_dir: &Path) -> Result<String, Str
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600));
     }
-    log::info!(
+    log::debug!(
         "[openhands-agent-server] created stable OpenHands secret at {}",
         secret_path.display()
     );
@@ -352,7 +352,7 @@ impl OpenHandsAgentServerProcess {
             &openhands_secret_key,
             Some(&conversations_path_str),
         );
-        log::info!(
+        log::debug!(
             "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
             conversations_path_str
         );

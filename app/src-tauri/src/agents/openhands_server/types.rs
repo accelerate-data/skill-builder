@@ -248,7 +248,7 @@ impl StartConversationRequest {
                             runtime_run_dir.display()
                         );
                     } else {
-                        log::info!(
+                        log::debug!(
                             "[openhands-agent-server] attaching {} AgentSkill(s) from {}/.agents/skills/: {}",
                             skills.len(),
                             runtime_run_dir.display(),
