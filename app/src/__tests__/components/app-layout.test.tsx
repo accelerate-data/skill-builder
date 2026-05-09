@@ -98,11 +98,15 @@ vi.mock("@/lib/toast", () => ({
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
 import {
+  getEvalsRunning,
+  getEvalsStopping,
   setEvalsCancelHandler,
   setEvalsRunning,
+  setEvalsStopping,
 } from "@/lib/eval-running-state";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
 
@@ -145,9 +149,11 @@ describe("AppLayout", () => {
     resetTauriMocks();
     useSettingsStore.getState().reset();
     useRefineStore.getState().clearSession();
+    useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
     useSkillStore.getState().setActiveSkill(null);
     setEvalsRunning(false);
+    setEvalsStopping(false);
     setEvalsCancelHandler(null);
     vi.mocked(toast.info).mockReset();
     vi.mocked(toast.warning).mockReset();
@@ -329,6 +335,7 @@ describe("AppLayout", () => {
       "workflow",
       "parent-1",
     );
+    useWorkflowStore.getState().setRunning(true);
 
     render(<AppLayout />);
 
@@ -368,6 +375,105 @@ describe("AppLayout", () => {
       expect(cancelEval).toHaveBeenCalledTimes(1);
     });
     expect(mockInvoke).not.toHaveBeenCalledWith("cancel_agent_run", expect.anything());
+  });
+
+  it("sets refine isStopping immediately when Escape is pressed during refine run", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+    useRefineStore.setState({
+      isRunning: true,
+      isStopping: false,
+      activeAgentId: "refine-agent-1",
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    expect(useRefineStore.getState().isStopping).toBe(true);
+  });
+
+  it("does not call cancel again when Escape is pressed during refine stopping state", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+    useRefineStore.setState({
+      isRunning: true,
+      isStopping: true,
+      activeAgentId: "refine-agent-stopping",
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    mockInvoke.mockClear();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(mockInvoke).not.toHaveBeenCalledWith("cancel_agent_run", expect.anything());
+  });
+
+  it("sets workflow isStopping immediately when Escape is pressed during workflow run", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+    useAgentStore.getState().registerRun(
+      "workflow-agent-1",
+      "test-model",
+      "my-skill",
+      "workflow",
+      "parent-1",
+    );
+    useWorkflowStore.getState().setRunning(true);
+    useWorkflowStore.getState().setStopping(false);
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    expect(useWorkflowStore.getState().isStopping).toBe(true);
+  });
+
+  it("sets evals isStopping immediately when Escape is pressed during eval run", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+    });
+    const cancelEval = vi.fn().mockResolvedValue(undefined);
+    setEvalsRunning(true);
+    setEvalsStopping(false);
+    setEvalsCancelHandler(cancelEval);
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    // Verify evals are running before Escape
+    expect(getEvalsRunning()).toBe(true);
+    expect(getEvalsStopping()).toBe(false);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    // isStopping should be true immediately (optimistic)
+    expect(getEvalsStopping()).toBe(true);
+    expect(cancelEval).toHaveBeenCalledTimes(1);
   });
 
   it("renders content after auto-applying notification-only reconciliation", async () => {

@@ -15,6 +15,7 @@ import { toast } from "@/lib/toast";
 import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import {
   acquireLock,
@@ -26,7 +27,9 @@ import {
 } from "@/lib/tauri";
 import {
   getEvalsRunning,
+  getEvalsStopping,
   requestEvalsCancel,
+  setEvalsStopping,
   subscribeEvalsRunning,
 } from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
@@ -100,30 +103,40 @@ export function AppLayout() {
         setPanelCollapsed((prev) => !prev);
       }
       if (e.key === "Escape") {
-        // Refine (streaming): pause via session UUID from RefineSessionManager.
+        // Refine: check if running and not already stopping
         const refineStore = useRefineStore.getState();
-        if (refineStore.isRunning && refineStore.activeAgentId) {
+        if (refineStore.isRunning && refineStore.activeAgentId && !refineStore.isStopping) {
+          refineStore.setStopping(true);
           cancelAgentRun(refineStore.activeAgentId).catch((err) => {
             console.error("[app-layout] escape: cancel refine run failed", err);
             toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+            refineStore.setStopping(false);
           });
           return;
         }
-        // Workflow step (streaming): cancel via agentId → session lookup in backend.
-        const runs = useAgentStore.getState().runs;
-        const running = Object.values(runs).find(
-          (r): r is typeof r & { skillName: string } =>
-            r.status === "running" && r.runSource === "workflow" && !!r.skillName,
-        );
-        if (running) {
-          cancelWorkflowStep(running.agentId).catch((err) => {
-            console.error("[app-layout] escape: cancel workflow step failed", err);
-          });
+        // Workflow: check if running and not already stopping
+        const workflowStore = useWorkflowStore.getState();
+        if (workflowStore.isRunning && !workflowStore.isStopping) {
+          workflowStore.setStopping(true);
+          const runs = useAgentStore.getState().runs;
+          const running = Object.values(runs).find(
+            (r): r is typeof r & { skillName: string } =>
+              r.status === "running" && r.runSource === "workflow" && !!r.skillName,
+          );
+          if (running) {
+            cancelWorkflowStep(running.agentId).catch((err) => {
+              console.error("[app-layout] escape: cancel workflow step failed", err);
+              workflowStore.setStopping(false);
+            });
+          }
           return;
         }
-        if (getEvalsRunning()) {
+        // Evals: check if running and not already stopping
+        if (getEvalsRunning() && !getEvalsStopping()) {
+          setEvalsStopping(true);
           requestEvalsCancel().catch((err) => {
             console.error("[app-layout] escape: cancel eval workbench run failed", err);
+            setEvalsStopping(false);
           });
         }
       }
