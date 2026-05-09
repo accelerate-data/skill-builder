@@ -26,8 +26,6 @@ function buildSessionSkill(
     tags: skill.tags ?? [],
     intake_json: skill.intake_json ?? null,
     version: skill.version ?? null,
-    model: skill.model ?? null,
-    argumentHint: skill.argumentHint ?? null,
     userInvocable: skill.userInvocable ?? null,
     disableModelInvocation: skill.disableModelInvocation ?? null,
     status: skill.status ?? null,

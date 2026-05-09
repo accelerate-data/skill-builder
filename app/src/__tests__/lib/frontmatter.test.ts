@@ -10,7 +10,6 @@ describe("parseFrontmatter", () => {
       "domain: data-engineering",
       "type: automation",
       "tools: Bash, Read, Write",
-      "model: sonnet",
       "metadata:",
       "  version: 1.0.0",
       "  author: hb",
@@ -28,7 +27,6 @@ describe("parseFrontmatter", () => {
       domain: "data-engineering",
       type: "automation",
       tools: "Bash, Read, Write",
-      model: "sonnet",
       version: "1.0.0",
       author: "hb",
     });
@@ -151,16 +149,16 @@ describe("parseFrontmatter", () => {
   it("converts hyphens in keys to underscores", () => {
     const content = [
       "---",
-      "argument-hint: Use when testing",
       "user-invocable: true",
+      "disable-model-invocation: false",
       "---",
       "",
       "Body.",
     ].join("\n");
 
     const result = parseFrontmatter(content);
-    expect(result.frontmatter?.argument_hint).toBe("Use when testing");
     expect(result.frontmatter?.user_invocable).toBe("true");
+    expect(result.frontmatter?.disable_model_invocation).toBe("false");
   });
 
   it("prefers metadata version and author over legacy top-level fields", () => {

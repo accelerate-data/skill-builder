@@ -48,8 +48,6 @@ mod tests {
             description: None,
             purpose: None,
             version: None,
-            model: None,
-            argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
             marketplace_source_url: None,

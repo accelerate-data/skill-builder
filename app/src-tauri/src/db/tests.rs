@@ -2783,8 +2783,6 @@ fn test_delete_imported_skill_by_name_non_default_plugin() {
         description: None,
         purpose: Some("domain".to_string()),
         version: None,
-        model: None,
-        argument_hint: None,
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -3237,8 +3235,6 @@ fn test_imported_skills_extended_migration_is_idempotent() {
     let expected_cols = [
         "skill_type",
         "version",
-        "model",
-        "argument_hint",
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3270,8 +3266,8 @@ fn test_workflow_runs_extended_migration_is_idempotent() {
     let expected_cols = [
         "description",
         "version",
-        "model",
-        "argument_hint",
+
+
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3347,8 +3343,6 @@ fn test_list_active_skills() {
         is_bundled: false,
         description: None,
         version: None,
-        model: None,
-        argument_hint: None,
         user_invocable: None,
         disable_model_invocation: None,
         purpose: None,
@@ -3370,8 +3364,6 @@ fn test_list_active_skills() {
         is_bundled: false,
         description: None,
         version: None,
-        model: None,
-        argument_hint: None,
         user_invocable: None,
         disable_model_invocation: None,
         purpose: None,
@@ -3393,8 +3385,6 @@ fn test_list_active_skills() {
         is_bundled: false,
         description: None,
         version: None,
-        model: None,
-        argument_hint: None,
         user_invocable: None,
         disable_model_invocation: None,
         purpose: None,
@@ -3430,8 +3420,6 @@ fn test_delete_imported_skill_by_name() {
         description: None,
         purpose: Some("domain".to_string()),
         version: None,
-        model: None,
-        argument_hint: None,
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -3880,8 +3868,8 @@ fn test_migration_35_drops_workflow_runs_metadata_columns() {
     let columns_removed = [
         "description",
         "version",
-        "model",
-        "argument_hint",
+
+
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3939,8 +3927,8 @@ fn test_list_imported_skills_filtered() {
         description: None,
         purpose: Some("domain".to_string()),
         version: Some("1.0.0".to_string()),
-        model: None,
-        argument_hint: None,
+
+
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: Some("https://github.com/acme/skills".to_string()),
@@ -3990,8 +3978,6 @@ fn test_get_imported_skill_by_id() {
         description: None,
         purpose: None,
         version: None,
-        model: None,
-        argument_hint: None,
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -4026,8 +4012,6 @@ fn test_delete_imported_skill_by_skill_id() {
         description: None,
         purpose: None,
         version: None,
-        model: None,
-        argument_hint: None,
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: None,
@@ -4060,8 +4044,8 @@ fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
         description: Some("test".to_string()),
         purpose: Some("skill-builder".to_string()),
         version: Some("1.0.0".to_string()),
-        model: None,
-        argument_hint: None,
+
+
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: Some("https://github.com/acme/skills-a".to_string()),
@@ -4270,8 +4254,6 @@ fn test_save_workflow_state_preserves_skills_metadata() {
         "meta-skill",
         Some("Canonical description"),
         Some("2.0.0"),
-        Some("claude-opus-4-5"),
-        Some("--format json"),
         Some(true),
         Some(false),
     )
@@ -4293,16 +4275,7 @@ fn test_save_workflow_state_preserves_skills_metadata() {
         Some("2.0.0"),
         "version must be untouched after save_workflow_run"
     );
-    assert_eq!(
-        master.model.as_deref(),
-        Some("claude-opus-4-5"),
-        "model must be untouched after save_workflow_run"
-    );
-    assert_eq!(
-        master.argument_hint.as_deref(),
-        Some("--format json"),
-        "argument_hint must be untouched after save_workflow_run"
-    );
+
     assert_eq!(
         master.user_invocable,
         Some(true),
@@ -4339,8 +4312,6 @@ fn test_workflow_runs_has_no_metadata_columns() {
     let banned = [
         "description",
         "version",
-        "model",
-        "argument_hint",
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -4383,8 +4354,8 @@ fn test_list_imported_skills_excludes_deleted_skills() {
         description: None,
         purpose: Some("domain".to_string()),
         version: Some("1.0.0".to_string()),
-        model: None,
-        argument_hint: None,
+
+
         user_invocable: None,
         disable_model_invocation: None,
         marketplace_source_url: Some("https://github.com/acme/skills".to_string()),

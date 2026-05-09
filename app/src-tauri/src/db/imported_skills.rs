@@ -7,7 +7,7 @@ use super::skills::{get_skill_master_id_any_plugin, get_skill_master_id_in_plugi
 fn imported_skill_select(prefix: &str) -> String {
     format!(
         "SELECT {p}.skill_id, {p}.skill_name, {p}.is_active, {p}.disk_path, {p}.imported_at, {p}.is_bundled,
-                {p}.purpose, {p}.version, {p}.model, {p}.argument_hint, {p}.user_invocable,
+                {p}.purpose, {p}.version, {p}.user_invocable,
                 {p}.disable_model_invocation, {p}.marketplace_source_url,
                 pl.slug, pl.display_name, pl.is_default
          FROM imported_skills {p}
@@ -30,14 +30,12 @@ fn row_to_imported_skill(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImportedSk
         description: None,
         purpose: row.get(6)?,
         version: row.get(7)?,
-        model: row.get(8)?,
-        argument_hint: row.get(9)?,
-        user_invocable: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-        disable_model_invocation: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-        marketplace_source_url: row.get(12)?,
-        plugin_slug: row.get(13)?,
-        plugin_display_name: row.get(14)?,
-        is_default_plugin: row.get::<_, Option<i32>>(15)?.map(|v| v != 0),
+        user_invocable: row.get::<_, Option<i32>>(8)?.map(|v| v != 0),
+        disable_model_invocation: row.get::<_, Option<i32>>(9)?.map(|v| v != 0),
+        marketplace_source_url: row.get(10)?,
+        plugin_slug: row.get(11)?,
+        plugin_display_name: row.get(12)?,
+        is_default_plugin: row.get::<_, Option<i32>>(13)?.map(|v| v != 0),
     })
 }
 
@@ -76,8 +74,8 @@ pub fn insert_imported_skill(
 ) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+             purpose, version, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -87,8 +85,6 @@ pub fn insert_imported_skill(
             skill.is_bundled as i32,
             skill.purpose,
             skill.version,
-            skill.model,
-            skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
             skill_master_id,
@@ -117,8 +113,8 @@ pub fn upsert_imported_skill(
 ) -> Result<(), String> {
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, is_active, disk_path, imported_at, is_bundled,
-             purpose, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             purpose, version, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
          ON CONFLICT(skill_master_id) DO UPDATE SET
              skill_id = excluded.skill_id,
              skill_name = excluded.skill_name,
@@ -126,8 +122,6 @@ pub fn upsert_imported_skill(
              imported_at = excluded.imported_at,
              purpose = excluded.purpose,
              version = excluded.version,
-             model = excluded.model,
-             argument_hint = excluded.argument_hint,
              user_invocable = excluded.user_invocable,
              disable_model_invocation = excluded.disable_model_invocation,
              skill_master_id = excluded.skill_master_id,
@@ -141,8 +135,6 @@ pub fn upsert_imported_skill(
             skill.is_bundled as i32,
             skill.purpose,
             skill.version,
-            skill.model,
-            skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
             skill_master_id,
@@ -156,17 +148,13 @@ pub fn upsert_imported_skill(
     conn.execute(
         "UPDATE skills SET
             version = ?2,
-            model = ?3,
-            argument_hint = ?4,
-            user_invocable = ?5,
-            disable_model_invocation = ?6,
+            user_invocable = ?3,
+            disable_model_invocation = ?4,
             updated_at = datetime('now')
          WHERE id = ?1",
         rusqlite::params![
             skill_master_id,
             skill.version,
-            skill.model,
-            skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
         ],

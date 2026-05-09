@@ -335,8 +335,6 @@ describe("useWorkflowStateMachine", () => {
               tags: [],
               intake_json: null,
               version: null,
-              model: null,
-              argumentHint: null,
               userInvocable: null,
               disableModelInvocation: null,
               status: null,

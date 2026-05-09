@@ -38,8 +38,8 @@ export function ImportedSkillsTab() {
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState("")
   const [importMeta, setImportMeta] = useState<SkillFileMeta>({
-    name: null, description: null, version: null, model: null,
-    argument_hint: null, user_invocable: null, disable_model_invocation: null,
+    name: null, description: null, version: null,
+    user_invocable: null, disable_model_invocation: null,
   })
 
   const handleImport = useCallback(async () => {

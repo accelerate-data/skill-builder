@@ -68,8 +68,8 @@ export function SkillListPanel({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState("");
   const [uploadMeta, setUploadMeta] = useState<SkillFileMeta>({
-    name: null, description: null, version: null, model: null,
-    argument_hint: null, user_invocable: null, disable_model_invocation: null,
+    name: null, description: null, version: null,
+    user_invocable: null, disable_model_invocation: null,
   });
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);

@@ -107,8 +107,6 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     intake_json: JSON.stringify({ context: "Original context" }),
     description: "Original description",
     version: "1.2.3",
-    model: null,
-    argumentHint: "[org-url]",
     userInvocable: true,
     disableModelInvocation: false,
     plugin_slug: "skills",

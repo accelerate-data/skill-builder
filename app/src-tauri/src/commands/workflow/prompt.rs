@@ -332,8 +332,6 @@ pub fn format_user_context(
     description: Option<&str>,
     purpose: Option<&str>,
     version: Option<&str>,
-    skill_model: Option<&str>,
-    argument_hint: Option<&str>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
     documents: &[crate::db::DocumentContent],
@@ -415,10 +413,6 @@ pub fn format_user_context(
     // --- Configuration ---
     let mut config_parts: Vec<String> = Vec::new();
     push_field(&mut config_parts, "Version", version);
-    if let Some(m) = skill_model.filter(|s| !s.is_empty() && *s != "inherit") {
-        config_parts.push(format!("**Preferred Model**: {}", m));
-    }
-    push_field(&mut config_parts, "Argument Hint", argument_hint);
     if let Some(inv) = user_invocable {
         config_parts.push(format!("**User Invocable**: {}", inv));
     }

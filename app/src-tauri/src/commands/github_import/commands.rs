@@ -428,8 +428,6 @@ pub(crate) async fn list_github_skills_inner(
                             skill.description = Some(desc);
                         }
                         skill.version = fm.version;
-                        skill.model = fm.model;
-                        skill.argument_hint = fm.argument_hint;
                         skill.user_invocable = fm.user_invocable;
                         skill.disable_model_invocation = fm.disable_model_invocation;
                         final_skills.push(skill);
@@ -905,15 +903,13 @@ pub async fn import_marketplace_plugin_to_library(
 
         // Update frontmatter metadata on skill master
         let _ = conn.execute(
-            "UPDATE skills SET description = ?2, version = ?3, model = ?4, argument_hint = ?5,
-                    user_invocable = ?6, disable_model_invocation = ?7, updated_at = datetime('now')
+            "UPDATE skills SET description = ?2, version = ?3,
+                    user_invocable = ?4, disable_model_invocation = ?5, updated_at = datetime('now')
              WHERE id = ?1",
             rusqlite::params![
                 skill_master_id,
                 fm.description,
                 fm.version,
-                fm.model,
-                fm.argument_hint,
                 fm.user_invocable.map(|v| v as i32),
                 fm.disable_model_invocation.map(|v| v as i32),
             ],
@@ -932,8 +928,6 @@ pub async fn import_marketplace_plugin_to_library(
             description: fm.description.clone(),
             purpose: Some(purpose.to_string()),
             version: Some(version.to_string()),
-            model: fm.model.clone(),
-            argument_hint: fm.argument_hint.clone(),
             user_invocable: fm.user_invocable,
             disable_model_invocation: fm.disable_model_invocation,
             marketplace_source_url: Some(source_url.clone()),

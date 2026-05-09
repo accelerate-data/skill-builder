@@ -74,8 +74,6 @@ pub fn update_skill_metadata(
     intake_json: Option<String>,
     description: Option<String>,
     version: Option<String>,
-    model: Option<String>,
-    argument_hint: Option<String>,
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
     db: tauri::State<'_, Db>,
@@ -120,8 +118,6 @@ pub fn update_skill_metadata(
     })?;
     if description.is_some()
         || version.is_some()
-        || model.is_some()
-        || argument_hint.is_some()
         || user_invocable.is_some()
         || disable_model_invocation.is_some()
     {
@@ -132,8 +128,6 @@ pub fn update_skill_metadata(
             &skill_name,
             description.as_deref(),
             version.as_deref(),
-            model.as_deref(),
-            argument_hint.as_deref(),
             user_invocable,
             disable_model_invocation,
         )

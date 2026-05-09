@@ -34,7 +34,6 @@ export function ImportSkillDialog({
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [version, setVersion] = useState("1.0.0")
-  const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(false)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -46,7 +45,6 @@ export function ImportSkillDialog({
       setName(meta.name ?? "")
       setDescription(meta.description ?? "")
       setVersion(meta.version ?? "1.0.0")
-      setArgumentHint(meta.argument_hint ?? "")
       setUserInvocable(meta.user_invocable ?? false)
       setDisableModelInvocation(meta.disable_model_invocation ?? false)
       setSubmitting(false)
@@ -71,8 +69,6 @@ export function ImportSkillDialog({
           name: name.trim(),
           description: description.trim(),
           version: version.trim(),
-          model: null,
-          argumentHint: argumentHint || null,
           userInvocable,
           disableModelInvocation,
         })
@@ -92,7 +88,7 @@ export function ImportSkillDialog({
       }
     },
     [
-      filePath, name, description, version, argumentHint,
+      filePath, name, description, version,
       userInvocable, disableModelInvocation, onOpenChange, onImported,
     ]
   )
@@ -156,17 +152,6 @@ export function ImportSkillDialog({
                 placeholder="1.0.0"
                 value={version}
                 onChange={(e) => setVersion(e.target.value)}
-                disabled={submitting}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="import-argument-hint">Argument Hint</Label>
-              <Input
-                id="import-argument-hint"
-                placeholder="e.g., [salesforce-org-url]"
-                value={argumentHint}
-                onChange={(e) => setArgumentHint(e.target.value)}
                 disabled={submitting}
               />
             </div>

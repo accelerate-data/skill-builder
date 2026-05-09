@@ -2622,22 +2622,7 @@ fn test_reset_cleans_workspace_context_files() {
 fn test_format_user_context_all_fields() {
     let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","agent_mistakes":"Assumes AWS"}"#;
     let tags = vec!["analytics".to_string(), "salesforce".to_string()];
-    let result = format_user_context(
-        Some("my-skill"),
-        &tags,
-        None,
-        Some("Healthcare"),
-        Some("Analytics Lead"),
-        Some(intake),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(Some("my-skill"), &tags, None, Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, &[]);
     let ctx = result.unwrap();
     assert!(ctx.starts_with("## User Context\n"));
     assert!(ctx.contains("**Name**: my-skill"));
@@ -2658,22 +2643,7 @@ fn test_format_user_context_all_fields() {
 
 #[test]
 fn test_format_user_context_partial_fields() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        Some("Fintech"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, Some("Fintech"), None, None, None, None, None, None, None, &[]);
     let ctx = result.unwrap();
     assert!(ctx.contains("**Industry**: Fintech"));
     assert!(!ctx.contains("**Function**"));
@@ -2681,64 +2651,19 @@ fn test_format_user_context_partial_fields() {
 
 #[test]
 fn test_format_user_context_empty_strings_skipped() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        Some(""),
-        Some(""),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, Some(""), Some(""), None, None, None, None, None, None, &[]);
     assert!(result.is_none());
 }
 
 #[test]
 fn test_format_user_context_all_none() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, None, None, None, None, None, None, None, None, &[]);
     assert!(result.is_none());
 }
 
 #[test]
 fn test_format_user_context_invalid_json_ignored() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        Some("Tech"),
-        None,
-        Some("not json"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, Some("Tech"), None, Some("not json"), None, None, None, None, None, &[]);
     let ctx = result.unwrap();
     assert!(ctx.contains("**Industry**: Tech"));
     assert!(!ctx.contains("Target Audience"));
@@ -2747,22 +2672,7 @@ fn test_format_user_context_invalid_json_ignored() {
 #[test]
 fn test_format_user_context_partial_intake() {
     let intake = r#"{"audience":"Engineers","scope":"APIs"}"#;
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        None,
-        None,
-        Some(intake),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, None, None, Some(intake), None, None, None, None, None, &[]);
     let ctx = result.unwrap();
     assert!(ctx.contains("### Target Audience"));
     assert!(ctx.contains("Engineers"));
@@ -2780,22 +2690,7 @@ fn test_format_user_context_partial_intake() {
 #[test]
 fn test_format_user_context_includes_name_and_tags() {
     let tags = vec!["finance".to_string(), "analytics".to_string()];
-    let result = format_user_context(
-        Some("my-skill"),
-        &tags,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(Some("my-skill"), &tags, None, None, None, None, None, None, None, None, None, &[]);
     let text = result.unwrap();
     assert!(text.contains("## User Context"), "should have heading");
     assert!(text.contains("**Name**: my-skill"), "should include name");
@@ -2807,22 +2702,7 @@ fn test_format_user_context_includes_name_and_tags() {
 
 #[test]
 fn test_format_user_context_includes_purpose_label_mapping() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some("domain"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, None, None, None, None, Some("domain"), None, None, None, &[]);
     let text = result.unwrap();
     assert!(
         text.contains("Business process knowledge"),
@@ -2832,22 +2712,7 @@ fn test_format_user_context_includes_purpose_label_mapping() {
 
 #[test]
 fn test_format_user_context_includes_profile_section() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        Some("Healthcare"),
-        Some("Data Engineer"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, Some("Healthcare"), Some("Data Engineer"), None, None, None, None, None, None, &[]);
     let text = result.unwrap();
     assert!(
         text.contains("### About You"),
@@ -2865,36 +2730,13 @@ fn test_format_user_context_includes_profile_section() {
 
 #[test]
 fn test_format_user_context_includes_configuration() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some("1.0"),
-        Some("claude-sonnet-4-6"),
-        Some("/ask"),
-        Some(true),
-        Some(false),
-        &[],
-    );
+    let result = format_user_context(None, &[], None, None, None, None, None, None, Some("1.0"), Some(true), Some(false), &[]);
     let text = result.unwrap();
     assert!(
         text.contains("### Configuration"),
         "should have config heading"
     );
     assert!(text.contains("**Version**: 1.0"), "should include version");
-    assert!(
-        text.contains("**Preferred Model**: claude-sonnet-4-6"),
-        "should include model"
-    );
-    assert!(
-        text.contains("**Argument Hint**: /ask"),
-        "should include argument hint"
-    );
     assert!(
         text.contains("**User Invocable**: true"),
         "should include user_invocable"
@@ -2907,22 +2749,7 @@ fn test_format_user_context_includes_configuration() {
 
 #[test]
 fn test_format_user_context_skips_inherit_model() {
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some("inherit"),
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, None, None, None, None, None, None, None, None, &[]);
     // "inherit" model should be filtered out — if nothing else is set, result is None
     assert!(result.is_none(), "inherit model alone should produce None");
 }
@@ -2930,22 +2757,7 @@ fn test_format_user_context_skips_inherit_model() {
 #[test]
 fn test_format_user_context_includes_intake_json_context() {
     let intake = r#"{"context": "We use Snowflake and dbt for data pipelines."}"#;
-    let result = format_user_context(
-        None,
-        &[],
-        None,
-        None,
-        None,
-        Some(intake),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        &[],
-    );
+    let result = format_user_context(None, &[], None, None, None, Some(intake), None, None, None, None, None, &[]);
     let text = result.unwrap();
     assert!(
         text.contains("### What the Agent Needs to Know"),

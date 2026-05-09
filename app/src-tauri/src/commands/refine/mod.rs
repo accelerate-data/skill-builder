@@ -249,8 +249,6 @@ fn load_refine_prompt_context(
         settings.description.as_deref(),
         Some(&settings.purpose),
         settings.version.as_deref(),
-        settings.skill_model.as_deref(),
-        settings.argument_hint.as_deref(),
         settings.user_invocable,
         settings.disable_model_invocation,
         &settings.documents,

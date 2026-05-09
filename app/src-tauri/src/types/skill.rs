@@ -30,10 +30,6 @@ pub struct SkillSummary {
     pub description: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default, rename = "argumentHint")]
-    pub argument_hint: Option<String>,
     #[serde(default, rename = "userInvocable")]
     pub user_invocable: Option<bool>,
     #[serde(default, rename = "disableModelInvocation")]
@@ -75,10 +71,6 @@ pub struct ImportedSkill {
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub argument_hint: Option<String>,
-    #[serde(default)]
     pub user_invocable: Option<bool>,
     #[serde(default)]
     pub disable_model_invocation: Option<bool>,
@@ -113,8 +105,6 @@ pub struct SkillFileMeta {
     pub name: Option<String>,
     pub description: Option<String>,
     pub version: Option<String>,
-    pub model: Option<String>,
-    pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
 }
@@ -154,10 +144,6 @@ pub struct AvailableSkill {
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub argument_hint: Option<String>,
-    #[serde(default)]
     pub user_invocable: Option<bool>,
     #[serde(default)]
     pub disable_model_invocation: Option<bool>,
@@ -179,7 +165,6 @@ pub struct SkillMetadataOverride {
     pub description: Option<String>,
     pub purpose: Option<String>,
     pub version: Option<String>,
-    pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
 }

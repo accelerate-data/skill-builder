@@ -59,8 +59,6 @@ function makeBuilderSkill(name: string): SkillSummary {
     source: null,
     description: null,
     version: null,
-    model: null,
-    argumentHint: null,
     userInvocable: null,
     disableModelInvocation: null,
     plugin_slug: "skills",

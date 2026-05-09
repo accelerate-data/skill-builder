@@ -5,7 +5,6 @@ export interface SkillFrontmatter {
   domain?: string;
   type?: string;
   tools?: string;
-  model?: string;
   version?: string;
   author?: string;
   [key: string]: string | undefined;

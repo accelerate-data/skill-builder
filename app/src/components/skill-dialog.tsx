@@ -155,7 +155,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [tags, setTags] = useState<string[]>([])
   const [contextQuestions, setContextQuestions] = useState("")
   // Step 2 behaviour fields
-  const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(true)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -192,7 +191,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setDescription("")
     setTags([])
     setContextQuestions("")
-    setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
     setError(null)
@@ -208,7 +206,6 @@ export default function SkillDialog(props: SkillDialogProps) {
       setTags([...editSkill.tags])
       setDescription(editSkill.description || "")
       setContextQuestions(parseIntakeContext(editSkill.intake_json))
-      setArgumentHint(editSkill.argumentHint || "")
       setUserInvocable(editSkill.userInvocable ?? true)
       setDisableModelInvocation(editSkill.disableModelInvocation ?? false)
     } else if (!dialogOpen) {
@@ -248,8 +245,6 @@ export default function SkillDialog(props: SkillDialogProps) {
           buildIntakeJson({ context: contextQuestions }),
           description.trim() || null,
           null,
-          null,
-          argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
         )
@@ -266,8 +261,6 @@ export default function SkillDialog(props: SkillDialogProps) {
           intakeJson: buildIntakeJson({ context: contextQuestions }),
           description: description.trim() || null,
           version: null,
-          model: null,
-          argumentHint: argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
         })
@@ -493,19 +486,6 @@ export default function SkillDialog(props: SkillDialogProps) {
             {/* Step 2: Behaviour settings */}
             {step === 2 && (
               <>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="argument-hint">Argument Hint</Label>
-                  <Input
-                    id="argument-hint"
-                    placeholder="e.g., [salesforce-org-url]"
-                    value={argumentHint}
-                    onChange={(e) => setArgumentHint(e.target.value)}
-                    disabled={submitting}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional hint shown to users when invoking this skill
-                  </p>
-                </div>
                 <div className="flex items-center justify-between rounded-md border p-3">
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm font-medium">User Invocable</span>

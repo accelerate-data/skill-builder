@@ -1117,8 +1117,6 @@ fn test_user_context_inline_block_built_from_fields() {
         None,
         None,
         None,
-        None,
-        None,
         &[],
     );
     assert!(ctx.is_some());
@@ -1134,8 +1132,6 @@ fn test_user_context_inline_block_empty_when_fields_empty() {
     let ctx = crate::commands::workflow::prompt::format_user_context(
         None,
         &[],
-        None,
-        None,
         None,
         None,
         None,

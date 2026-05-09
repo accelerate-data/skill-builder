@@ -41,8 +41,6 @@ mod tests {
             description: None,
             purpose: None,
             version: version.map(str::to_string),
-            model: None,
-            argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
         }
@@ -886,20 +884,16 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let skill_md = dir.path().join("SKILL.md");
 
-        // Original SKILL.md has version and model set
-        let original = "---\nname: original-name\ndescription: original-desc\nmetadata:\n  version: \"1.0.0\"\n  author: \"acceleratedata\"\nmodel: claude-3-haiku\n---\n# Body content\n";
+        let original = "---\nname: original-name\ndescription: original-desc\nmetadata:\n  version: \"1.0.0\"\n  author: \"acceleratedata\"\n---\n# Body content\n";
         fs::write(&skill_md, original).unwrap();
 
-        // Simulate what import_single_skill does: parse original, then apply partial override
         let mut fm = crate::commands::imported_skills::parse_frontmatter_full(original);
-        // Override only name and description; version and model not in override
         fm.name = Some("overridden-name".to_string());
         fm.description = Some("overridden-desc".to_string());
 
         rewrite_skill_md(dir.path(), &fm).unwrap();
         let result = fs::read_to_string(&skill_md).unwrap();
 
-        // Overridden fields must be updated
         assert!(
             result.contains("name: \"overridden-name\""),
             "name not overridden: {}",
@@ -911,19 +905,18 @@ mod tests {
             result
         );
 
-        // Non-overridden fields must be preserved from the original parse
         assert!(
             result.contains("metadata:\n  version: \"1.0.0\"\n  author: \"acceleratedata\""),
             "version was lost: {}",
             result
         );
+
         assert!(
-            result.contains("model: \"claude-3-haiku\""),
-            "model was lost: {}",
+            !result.contains("model:"),
+            "non-spec model field should be dropped: {}",
             result
         );
 
-        // Body must be preserved
         assert!(
             result.contains("# Body content"),
             "body was lost: {}",

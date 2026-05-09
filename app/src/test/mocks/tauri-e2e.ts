@@ -205,8 +205,6 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
     name: "imported-skill",
     description: "A skill imported from a file",
     version: "1.2.0",
-    model: null,
-    argument_hint: null,
     user_invocable: false,
     disable_model_invocation: false,
   },

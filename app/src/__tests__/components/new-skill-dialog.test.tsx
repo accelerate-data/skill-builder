@@ -447,8 +447,6 @@ describe("SkillDialog (create mode)", () => {
         intakeJson: null,
         description: "A sales pipeline skill",
         version: null,
-        model: null,
-        argumentHint: null,
         userInvocable: true,
         disableModelInvocation: false,
       });

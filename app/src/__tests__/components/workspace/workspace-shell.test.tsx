@@ -186,8 +186,6 @@ const baseBuilderSkill: SkillSummary = {
   source: null,
   description: "Automates sales pipeline tracking",
   version: "1.0.0",
-  model: null,
-  argumentHint: null,
   userInvocable: null,
   disableModelInvocation: null,
   plugin_slug: "skills",
