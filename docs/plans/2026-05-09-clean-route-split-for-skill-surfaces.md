@@ -667,3 +667,99 @@ git commit -m "chore: align repo metadata with clean skill routes"
 - This plan intentionally treats the rewrite as structural, not incremental. Do not preserve `/?tab=` compatibility or the current `pathname === "/"` workspace injection in `AppLayout`.
 - If the implementation reveals that nested route rendering is too awkward for the current `WorkspaceShell`, split overview/refine/evals into separate page components rather than reintroducing local tab-as-router logic.
 - The most important execution invariant is: route change within the same skill must never call `leaveCurrentSkill()`.
+
+---
+
+## Task 7: Address Code Review Findings
+
+> Post-implementation review identified 22 findings across Critical, High, Medium, and Low severity. This task addresses all of them.
+
+### Critical (1)
+
+- [ ] **C1: Add tests for `eval-running-state` cancel handler**
+  - **Files:** `app/src/lib/eval-running-state.ts`, `app/src/__tests__/lib/eval-running-state.test.ts`
+  - Test `setEvalsCancelHandler`, `requestEvalsCancel`, `subscribeEvalsRunning`, `subscribeEvalsStopping`
+
+### High (3)
+
+- [ ] **H2: Workflow `isStopping` never cleared on terminal state**
+  - **Files:** `app/src/hooks/use-workflow-state-machine.ts`
+  - Add `setStopping(false)` alongside every `setRunning(false)` in terminal paths (completed, error, shutdown)
+
+- [ ] **H3: Eval harness tests fail — removed commands still in VU-1140 contract list**
+  - **Files:** `tests/evals/assertions/tauri-command-contract.test.js`
+  - Remove `cancel_agent_run` and `cancel_workflow_step` from `vu1140Commands` and `migratedCommands`
+
+- [ ] **H4: Workflow Escape handler reads from refine store**
+  - **Files:** `app/src/components/layout/app-layout.tsx:121-128`
+  - Derive workflow conversation ID and skill context from workflow/agent store, not `refineStore`
+
+### Medium (8)
+
+- [ ] **M5: Wire or remove `route-skill-session.ts` coordinator**
+  - **Files:** `app/src/lib/route-skill-session.ts`, `app/src/components/layout/app-layout.tsx`
+  - Either integrate `navigateToSkillSurface` into `AppLayout` as planned, or remove the module and its tests
+
+- [ ] **M6: `WorkspaceShell` still owns local tab state**
+  - **Files:** `app/src/components/workspace/workspace-shell.tsx`
+  - Remove `useState<WorkspaceSurface>(activeTab)` and derive surface directly from `initialSurface` prop
+
+- [ ] **M7: `HomePage` reads `activeSkill` instead of `selectedSkillName`**
+  - **Files:** `app/src/pages/home.tsx:8`
+  - Change `s.activeSkill` to `s.selectedSkillName`
+
+- [ ] **M8: Extract duplicate `loadSkillFiles` logic**
+  - **Files:** `app/src/components/workspace/workspace-refine.tsx`, `app/src/components/workspace/workspace-shell.tsx`
+  - Extract shared `getSkillContentForRefine` → `.map()` → `.sort()` to a utility
+
+- [ ] **M9: Add tests for new page components**
+  - **Files:** `app/src/__tests__/pages/home.test.tsx`, `app/src/__tests__/pages/workspace-route.test.tsx`
+  - Test `home.tsx` redirect behavior and `workspace-route.tsx` surface routing/skill resolution
+
+- [ ] **M10: Add error-path tests for `enterSkill`**
+  - **Files:** `app/src/__tests__/lib/active-skill-transition.test.ts`
+  - Test lock release when `selectSkillOpenHandsSession` throws
+
+- [ ] **M11: Separate `setActiveSkill` coupling**
+  - **Files:** `app/src/stores/skill-store.ts`
+  - `setActiveSkill` should only set `activeSkill`; callers that need both should call both setters
+
+- [ ] **M12: Migrate `eval-running-state.ts` to Zustand**
+  - **Files:** `app/src/lib/eval-running-state.ts`
+  - Replace module-level singletons with a Zustand store
+
+### Low (9)
+
+- [ ] **L13: Remove dead cancel props in `chat-input-bar.tsx`**
+  - **Files:** `app/src/components/refine/chat-input-bar.tsx`, `app/src/components/refine/chat-panel.tsx`
+
+- [ ] **L14: Remove unused interface parameters in `use-workflow-session.ts`**
+  - **Files:** `app/src/hooks/use-workflow-session.ts`
+  - Remove `currentStep`, `steps`, and `_skillName` from interface
+
+- [ ] **L15: Extract duplicate skill resolution logic**
+  - **Files:** `app/src/pages/workspace-route.tsx`, `app/src/components/layout/app-layout.tsx`
+  - Extract `resolveSkill(name)` to a shared utility
+
+- [ ] **L16: Remove `RouteDestination` thin wrapper type**
+  - **Files:** `app/src/lib/route-skill-session.ts`, `app/src/components/layout/app-layout.tsx`
+  - Use TanStack Router's native type
+
+- [ ] **L17: Single source of truth for `runningWorkflow` in `AppLayout`**
+  - **Files:** `app/src/components/layout/app-layout.tsx`
+  - Remove duplicate computation in Escape handler
+
+- [ ] **L18: Merge nested redundant divs in `workflow.tsx`**
+  - **Files:** `app/src/pages/workflow.tsx`
+
+- [ ] **L19: Fix markdown lint errors in plan doc**
+  - **Files:** `docs/plans/2026-05-09-immediate-escape-interruption.md`
+
+- [ ] **L20: Add smoke tests for skeleton components**
+  - **Files:** `app/src/__tests__/components/workflow-loading-skeleton.test.tsx`, `app/src/__tests__/components/workspace/workspace-loading-skeleton.test.tsx`
+
+- [ ] **L21: Add integration test with real `WorkspaceShell`**
+  - **Files:** `app/src/__tests__/components/app-layout.test.tsx`
+
+- [ ] **L22: Add test for steer-after-interrupt flow**
+  - **Files:** `app/src/__tests__/components/workspace/workspace-refine.test.tsx`
