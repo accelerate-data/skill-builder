@@ -21,10 +21,12 @@ State flow: `AppLayout` Escape handler → sets `isStopping` optimistically in t
 |---|---|---|
 | `app/src/stores/refine-store.ts` | Add `isStopping` + `setStopping()` + SESSION_DEFAULTS reset | Refine interruption state |
 | `app/src/stores/workflow-store.ts` | Add `isStopping` + `setStopping()` + init/reset | Workflow interruption state |
+| `app/src/lib/eval-running-state.ts` | Add `isStopping` + `setEvalsStopping()` | Eval interruption state |
 | `app/src/components/layout/app-layout.tsx` | Escape handler sets `isStopping` optimistically + idempotency guard | Single Escape entry point |
 | `app/src/components/run-status-footer.tsx` | Add "stopping" status variant | Shared status bar |
 | `app/src/components/agent-run-footer.tsx` | Wire `isStopping` from stores to `RunStatusFooter` | Workflow footer |
 | `app/src/components/workspace/workspace-refine.tsx` | Replace inline status bar with `RunStatusFooter`; clear `isStopping` on terminal | Refine uses shared footer |
+| `app/src/components/workspace/workspace-evals.tsx` | Wire `isStopping` to `RunStatusFooter` (currently hardcoded to "idle") | Eval uses shared footer |
 | `app/src/components/refine/chat-input-bar.tsx` | Remove cancel button (Escape is the only interrupt) | Simplify UI |
 | `app/src/__tests__/stores/refine-store.test.ts` | Tests for `isStopping` / `setStopping` | Refine store unit tests |
 | `app/src/__tests__/stores/workflow-store.test.ts` | Tests for `isStopping` / `setStopping` | Workflow store unit tests |
@@ -222,7 +224,105 @@ git commit -m "VU-1176: add isStopping state to workflow-store"
 
 ---
 
-### Task 3: Add "stopping" status to RunStatusFooter (shared component)
+### Task 3: Add `isStopping` to eval-running-state
+
+**Files:**
+- Modify: `app/src/lib/eval-running-state.ts`
+- Test: `app/src/__tests__/lib/eval-running-state.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+// In app/src/__tests__/lib/eval-running-state.test.ts (create if needed)
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  getEvalsRunning,
+  setEvalsRunning,
+  getEvalsStopping,
+  setEvalsStopping,
+} from "@/lib/eval-running-state";
+
+beforeEach(() => {
+  setEvalsRunning(false);
+  setEvalsStopping(false);
+});
+
+describe("eval-running-state", () => {
+  it("setEvalsStopping toggles the stopping flag", () => {
+    setEvalsStopping(true);
+    expect(getEvalsStopping()).toBe(true);
+    setEvalsStopping(false);
+    expect(getEvalsStopping()).toBe(false);
+  });
+
+  it("setEvalsRunning clears isStopping", () => {
+    setEvalsStopping(true);
+    setEvalsRunning(true);
+    expect(getEvalsStopping()).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd app && npm run test:unit -- --run --testPathPattern eval-running-state.test`
+Expected: FAIL
+
+- [ ] **Step 3: Add `isStopping` to eval-running-state module**
+
+In `app/src/lib/eval-running-state.ts`, add stopping state alongside running state:
+
+```typescript
+let _isRunning = false;
+let _isStopping = false;
+let _cancelCurrentRun: (() => Promise<void>) | null = null;
+const _listeners = new Set<(v: boolean) => void>();
+const _stoppingListeners = new Set<(v: boolean) => void>();
+
+export function setEvalsRunning(v: boolean): void {
+  _isRunning = v;
+  if (v) _isStopping = false; // Clear stopping when starting a new run
+  for (const fn of _listeners) fn(v);
+}
+
+export function getEvalsRunning(): boolean {
+  return _isRunning;
+}
+
+export function setEvalsStopping(v: boolean): void {
+  _isStopping = v;
+  for (const fn of _stoppingListeners) fn(v);
+}
+
+export function getEvalsStopping(): boolean {
+  return _isStopping;
+}
+```
+
+Also add a subscriber for stopping state:
+
+```typescript
+export function subscribeEvalsStopping(fn: (v: boolean) => void): () => void {
+  _stoppingListeners.add(fn);
+  return () => _stoppingListeners.delete(fn);
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd app && npm run test:unit -- --run --testPathPattern eval-running-state.test`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src/lib/eval-running-state.ts app/src/__tests__/lib/eval-running-state.test.ts
+git commit -m "VU-1176: add isStopping to eval-running-state"
+```
+
+---
+
+### Task 4: Add "stopping" status to RunStatusFooter (shared component)
 
 **Files:**
 - Modify: `app/src/components/run-status-footer.tsx`
@@ -435,11 +535,44 @@ In `app/src/components/layout/app-layout.tsx`, replace the Escape handler (aroun
         return;
       }
 
-      // Evals: existing logic (no isStopping concept for evals)
-      if (getEvalsRunning()) {
+      // Evals: check if running and not already stopping
+      if (getEvalsRunning() && !getEvalsStopping()) {
+        // Optimistic: set stopping immediately
+        setEvalsStopping(true);
         requestEvalsCancel();
+        return;
       }
     }
+```
+
+Also add the import for `getEvalsStopping` and `setEvalsStopping` at the top of the file.
+
+- [ ] **Step 1b: Add eval stopping test**
+
+In `app/src/__tests__/components/app-layout.test.tsx`, add:
+
+```typescript
+it("sets evals isStopping immediately when Escape is pressed during eval run", async () => {
+  mockInvokeCommands({
+    get_settings: defaultSettings,
+    reconcile_startup: emptyReconciliation,
+  });
+  setEvalsRunning(true);
+  setEvalsStopping(false);
+  const cancelEval = vi.fn().mockResolvedValue(undefined);
+  setEvalsCancelHandler(cancelEval);
+
+  render(<AppLayout />);
+
+  await waitFor(() => {
+    expect(screen.getByTestId("outlet")).toBeInTheDocument();
+  });
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+  // isStopping should be true immediately
+  expect(getEvalsStopping()).toBe(true);
+});
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -573,7 +706,73 @@ git commit -m "VU-1176: replace refine inline status bar with RunStatusFooter"
 
 ---
 
-### Task 6: Wire isStopping through AgentRunFooter (workflow)
+### Task 6: Wire eval isStopping to RunStatusFooter
+
+**Files:**
+- Modify: `app/src/components/workspace/workspace-evals.tsx`
+
+- [ ] **Step 1: Read current RunStatusFooter usage**
+
+The eval page already uses `RunStatusFooter` at line 182-186 but it's hardcoded to `status="idle"`. We need to make it dynamic based on eval running/stopping state.
+
+- [ ] **Step 2: Update workspace-evals.tsx to wire stopping state**
+
+In `app/src/components/workspace/workspace-evals.tsx`, add state subscription and derive footer status:
+
+```typescript
+import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
+import {
+  getEvalsRunning,
+  getEvalsStopping,
+  subscribeEvalsRunning,
+  subscribeEvalsStopping,
+} from "@/lib/eval-running-state";
+
+// In the component, add reactive state:
+const [evalsRunning, setEvalsRunningReactive] = useState(getEvalsRunning());
+const [evalsStopping, setEvalsStoppingReactive] = useState(getEvalsStopping());
+
+useEffect(() => {
+  const unsubRunning = subscribeEvalsRunning(setEvalsRunningReactive);
+  const unsubStopping = subscribeEvalsStopping(setEvalsStoppingReactive);
+  return () => {
+    unsubRunning();
+    unsubStopping();
+  };
+}, []);
+
+// Derive footer status:
+const footerStatus: FooterDisplayStatus = evalsStopping
+  ? "stopping"
+  : evalsRunning
+    ? "running"
+    : "idle";
+```
+
+Update the `RunStatusFooter` usage (around line 182):
+
+```tsx
+      <RunStatusFooter
+        status={footerStatus}
+        label={skillName}
+        model={selectedModel ? formatModelName(selectedModel) : null}
+      />
+```
+
+- [ ] **Step 3: Clear eval isStopping when run completes**
+
+In the eval workbench component where `setEvalsRunning(false)` is called (when eval run finishes), also call `setEvalsStopping(false)`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/src/components/workspace/workspace-evals.tsx
+git commit -m "VU-1176: wire eval isStopping to RunStatusFooter"
+```
+
+---
+
+### Task 7: Wire isStopping through AgentRunFooter (workflow)
 
 **Files:**
 - Modify: `app/src/components/agent-run-footer.tsx`
@@ -699,7 +898,7 @@ git commit -m "VU-1176: wire isStopping through AgentRunFooter"
 
 ---
 
-### Task 7: Remove cancel button from chat-input-bar
+### Task 8: Remove cancel button from chat-input-bar
 
 **Files:**
 - Modify: `app/src/components/refine/chat-input-bar.tsx`
@@ -783,7 +982,7 @@ git commit -m "VU-1176: remove cancel button from chat-input-bar (Escape is the 
 
 ---
 
-### Task 8: Run full test suite and verify
+### Task 9: Run full test suite and verify
 
 - [ ] **Step 1: Run all unit tests**
 
