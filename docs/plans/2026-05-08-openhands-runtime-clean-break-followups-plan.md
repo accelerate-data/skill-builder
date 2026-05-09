@@ -87,8 +87,6 @@ The Eval Workbench target is intentionally narrower than the old design docs:
 - Modify: `app/src-tauri/src/lib.rs`
 - Modify: `app/src/lib/eval-workbench.ts`
 - Modify: `app/src/lib/queries/eval-scenarios.ts`
-- Modify: `app/src/lib/tauri-command-types.ts`
-- Modify: `app/src/lib/tauri-command-types.typecheck.ts`
 - Modify tests under `app/src-tauri/src/db/eval_workbench.rs`,
   `app/src/__tests__/lib/eval-workbench-tauri.test.ts`, and
   `app/src/__tests__/lib/queries/eval-scenarios.test.tsx`
@@ -103,21 +101,8 @@ The Eval Workbench target is intentionally narrower than the old design docs:
       it.
 - [ ] Remove `#![allow(dead_code)]` from `db/eval_workbench.rs` by making its
       scenario/assertion CRUD the live command implementation.
-- [ ] Make SQLite `scenarios.id` the only durable scenario identity. `name` is
-      editable display data, not the durable key.
-- [ ] For this cleanup pass, keep name-based lookup compatibility only for the
-      currently published command surface that still passes `scenarioName`
-      (`load_scenario`, `delete_scenario`, and the generation command before its
-      typed surface is revised).
-- [ ] Define rename behavior explicitly: a save that changes `name` updates the
-      same row by `id`, replaces assertions in-place, and returns the renamed
-      row; it must not create a second scenario record.
-- [ ] Define collision behavior explicitly: if a rename targets an existing
-      scenario name for the same skill/plugin, fail loudly rather than
-      auto-merging or silently overwriting.
-- [ ] Keep the transitional name-keyed read/delete/generate contract scoped to
-      this cleanup issue only. A later follow-up may move those commands to
-      id-based lookup once the frontend typed surface is updated end to end.
+- [ ] Keep scenario identity keyed by stable `id`; use name only as display text
+      and command lookup compatibility where the current UI still passes names.
 - [ ] Update frontend tests that currently say "git-backed scenarios" so they
       assert DB-backed scenario command contracts instead.
 
@@ -129,38 +114,31 @@ The Eval Workbench target is intentionally narrower than the old design docs:
 - Modify: `app/src-tauri/src/commands/eval_workbench/types.rs`
 - Modify: `app/src/lib/eval-workbench.ts`
 - Modify: `app/src/lib/queries/eval-scenarios.ts`
-- Modify: `app/src/lib/tauri-command-types.ts`
-- Modify: `app/src/lib/tauri-command-types.typecheck.ts`
 - Modify: `app/e2e/evals/evals.spec.ts`
-- Modify: `docs/design/openhands-runtime-model/README.md`
 - Modify: `tests/evals/packages/workspace-eval-workbench-suggest-scenario-prompt/*`
 
-- [ ] Align this task to the runtime design in
-      `docs/design/openhands-runtime-model/README.md`: Eval scenario generation
-      is a selected-skill persistent-turn surface, not a throwaway surface.
 - [ ] Delete `build_generation_sidecar_config`.
 - [ ] Delete `run_define_eval_scenario_throwaway_turn`.
 - [ ] Delete the test `define_eval_scenario_uses_throwaway_runtime_path`.
 - [ ] Replace `define_eval_scenario` with a selected-conversation generation
-      command. Preferred public name: `generate_eval_scenario_assertions`.
+      command. Public name: `generate_eval_scenario_assertions`.
 - [ ] The generation command must look up the persisted selected-skill
-      conversation id from `skill_conversations`.
+      conversation id from `skill_conversations` via
+      `crate::db::skills::get_skill_conversation_id`.
 - [ ] If no selected-skill conversation exists, fail loudly with the same class
       of error Workflow uses: no active OpenHands conversation for the skill and
       plugin.
-- [ ] Dispatch the generation prompt with `send_openhands_message` /
-      `openhands_send_message` using `SendExistingOnly`; do not call
-      `ensure_openhands_server`, `start_openhands_session`, or
-      `run_throwaway_openhands_session`.
-- [ ] Reuse the existing selected-skill lifecycle instead of inventing any
-      Eval-specific bootstrap/resume ownership. Eval owns prompt construction,
-      result parsing, and SQLite persistence only.
+- [ ] Dispatch the generation prompt with `send_openhands_message` (canonical
+      `SendExistingOnly` dispatch); do not call `ensure_openhands_server`,
+      `start_openhands_session`, or `run_throwaway_openhands_session`.
+- [ ] Add a private `wait_for_openhands_turn_result` helper in `mod.rs` that
+      listens for `agent-message` / `agent-exit` Tauri events and returns the
+      terminal `conversation_state` JSON. This keeps `send_openhands_message` as
+      the sole dispatch API — the helper is just a local wait-for-result wrapper.
+- [ ] Parse the structured output from the terminal state and extract the
+      scenario JSON.
 - [ ] Persist generated scenario prompt and assertions back to SQLite in the
       same command.
-- [ ] Update the Tauri command name from `define_eval_scenario` to
-      `generate_eval_scenario_assertions` across the backend registration,
-      frontend wrappers, React Query hooks, typed IPC map, and typed usage
-      fixtures.
 - [ ] Update frontend wrapper/query names from `defineEvalScenario` to
       `generateEvalScenarioAssertions`.
 - [ ] Rename UI copy from `Suggest` / `Suggesting...` to `Generate scenario and
@@ -215,12 +193,9 @@ The Eval Workbench target is intentionally narrower than the old design docs:
 
 - Modify: `docs/design/eval-workbench/README.md`
 - Modify: `docs/design/remove-promptfoo/README.md`
-- Modify: `docs/design/openhands-runtime-model/README.md`
 - Modify: `docs/design/backend-design/api.md`
 - Modify: `repo-map.json`
 - Modify: `TEST_MAP.md`
-- Modify: `app/src/lib/tauri-command-types.ts`
-- Modify: `app/src/lib/tauri-command-types.typecheck.ts`
 - Modify: `tests/evals/assertions/tauri-command-contract.test.js`
 
 - [ ] Rewrite `docs/design/eval-workbench/README.md` so the source of truth is
@@ -229,19 +204,10 @@ The Eval Workbench target is intentionally narrower than the old design docs:
       language from Eval Workbench design docs.
 - [ ] Update `docs/design/remove-promptfoo/README.md` to mark completed clean
       break work and remove stale instructions that say to keep bulk generation.
-- [ ] Update `docs/design/openhands-runtime-model/README.md` so Eval scenario
-      generation is documented as a selected-skill persistent-turn surface using
-      `OpenHandsSendMessage`, not `RunThrowawayOpenHandsSession`.
 - [ ] Update backend API docs to list only active Eval Workbench commands.
-- [ ] Replace stale `define_eval_scenario` references in runtime docs and API
-      docs with `generate_eval_scenario_assertions` where the rename is part of
-      the implemented surface.
 - [ ] Remove stale API docs entries for `run_eval_workbench`,
       `cancel_eval_workbench_run`, `list_eval_runs`, `read_eval_run`, and
       `build_refine_improvement_brief`.
-- [ ] Update the typed IPC contract and typecheck fixtures to match the final
-      command names and arguments exposed by the cleaned-up Eval Workbench
-      surface.
 - [ ] Update the Tauri command contract test so it asserts those run commands
       are absent, not present.
 - [ ] Remove `app/promptfoo-sidecar` entries from `TEST_MAP.md`.
@@ -291,7 +257,6 @@ markdownlint \
   docs/plans/2026-05-08-openhands-runtime-clean-break-followups-plan.md \
   docs/design/eval-workbench/README.md \
   docs/design/remove-promptfoo/README.md \
-  docs/design/openhands-runtime-model/README.md \
   docs/design/backend-design/api.md \
   TEST_MAP.md
 ```
@@ -326,15 +291,11 @@ or disk-backed scenario behavior:
 - [ ] Eval generation uses the selected-skill OpenHands conversation only.
 - [ ] Eval generation fails loudly when the selected skill has no active
       conversation.
-- [ ] No active Eval command or doc path still describes Eval scenario
-      generation as a throwaway OpenHands runtime.
 - [ ] No active app code references `eval_runs`, `eval_run_results`,
       `description_candidates`, `eval_prompt_sets`, or `eval_prompt_cases`
       outside historical migrations.
 - [ ] No active app code references `app/promptfoo-sidecar`.
 - [ ] No active Eval UI shows run status, run history, Evaluate, or
       cancellation controls.
-- [ ] Typed IPC contracts, typed usage fixtures, runtime docs, and backend API
-      docs all publish the same final Eval command names and argument shapes.
 - [ ] Docs and repo metadata describe the clean-break model.
 - [ ] Validation commands in Task 6 pass or have documented, unrelated blockers.
