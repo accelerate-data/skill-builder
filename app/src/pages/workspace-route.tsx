@@ -4,7 +4,6 @@ import { useCallback } from "react";
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
 import { useSettingsStore } from "@/stores/settings-store";
-import { toEditableSkill } from "@/lib/types";
 
 type WorkspaceSurface = "overview" | "refine" | "evals";
 
@@ -44,11 +43,11 @@ export default function WorkspaceRoutePage() {
     (surface: WorkspaceSurface) => {
       if (!skillName) return;
       if (surface === "overview") {
-        navigate({ to: "/workspace/$skillName", params: { skillName }, replace: true });
+        navigate({ to: "/workspace/$skillName", params: { skillName }, search: { tab: undefined }, replace: true });
       } else if (surface === "refine") {
-        navigate({ to: "/workspace/$skillName/refine", params: { skillName }, replace: true });
+        navigate({ to: "/workspace/$skillName/refine", params: { skillName }, search: { tab: "refine" }, replace: true });
       } else {
-        navigate({ to: "/workspace/$skillName/evals", params: { skillName }, replace: true });
+        navigate({ to: "/workspace/$skillName/evals", params: { skillName }, search: { tab: "evals" }, replace: true });
       }
     },
     [skillName, navigate],
@@ -63,12 +62,11 @@ export default function WorkspaceRoutePage() {
   }
 
   const initialSurface = surfaceFromRoute(pathname, search?.tab);
-  const editableSkill = "name" in skill ? skill : toEditableSkill(skill);
 
   return (
     <WorkspaceShell
       key={skillName}
-      skill={editableSkill}
+      skill={skill}
       skillType={skillType}
       initialSurface={initialSurface}
       onNavigateSurface={handleNavigateSurface}

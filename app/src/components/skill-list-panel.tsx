@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { PanelLeftClose, Plus, Search, Upload } from "lucide-react";
@@ -90,7 +90,6 @@ export function SkillListPanel({
   const deleteImportedSkillMutation = useDeleteImportedSkillMutation();
   const invalidateSkillQueries = useInvalidateSkillQueries();
   const runs = useAgentStore((s) => s.runs);
-  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // Refresh external locks on every navigation so stale lock state clears after leaving a skill
@@ -152,7 +151,7 @@ export function SkillListPanel({
       setSelectedSkill(skill.key);
       // Row click always opens in Review mode — auto-start is only for explicit actions
       // (SkillDialog create, Continue Building, Redo) which pass state: { autoStart: true }.
-      navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
+      // Navigation is handled by onActivateSkill in AppLayout.
     }
   }
 
@@ -182,11 +181,7 @@ export function SkillListPanel({
       localStorage.setItem("last-selected-skill", skill.key);
       setSelectedSkill(skill.key);
       setRedoTarget(null);
-      navigate({
-        to: "/skill/$skillName",
-        params: { skillName: skill.name },
-        state: { autoStart: true },
-      });
+      // Navigation is handled by onActivateSkill in AppLayout.
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
       console.error("event=skill_redo_failed skill=%s error=%s", skill.name, err);
@@ -213,7 +208,6 @@ export function SkillListPanel({
     localStorage.setItem("last-selected-skill", skill.key);
     setSelectedSkill(skill.key);
     await onActivateSkill?.(skill.key);
-    navigate({ to: "/skill/$skillName", params: { skillName: skill.name } });
   }
 
   async function handleContinueBuilding(skill: UnifiedSkill) {
@@ -221,11 +215,6 @@ export function SkillListPanel({
     localStorage.setItem("last-selected-skill", skill.key);
     setSelectedSkill(skill.key);
     await onActivateSkill?.(skill.key);
-    navigate({
-      to: "/skill/$skillName",
-      params: { skillName: skill.name },
-      state: { autoStart: true },
-    });
   }
 
   function handleDelete(skill: UnifiedSkill) {

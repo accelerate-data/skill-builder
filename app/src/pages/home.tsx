@@ -14,6 +14,7 @@ export default function HomePage() {
     navigate({
       to: "/workspace/$skillName",
       params: { skillName: selectedSkillName },
+      search: { tab: undefined },
       replace: true,
     });
   }, [navigate, selectedSkillName, pathname]);

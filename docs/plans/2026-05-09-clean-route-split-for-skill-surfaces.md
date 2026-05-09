@@ -70,7 +70,7 @@
 - Test: `app/src/__tests__/components/app-layout.test.tsx`
 - Test: `app/src/__tests__/pages/workflow.test.tsx`
 
-- [ ] **Step 1: Write failing route-shape tests**
+- [x] **Step 1: Write failing route-shape tests**
 
 ```ts
 it("routes a completed skill to /workspace/$skillName", async () => {
@@ -106,7 +106,7 @@ Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
 Expected: FAIL because the router still points workflow skills at `/skill/$skillName` and workspace skills at `/`
 
-- [ ] **Step 3: Replace the route tree with explicit surfaces**
+- [x] **Step 3: Replace the route tree with explicit surfaces**
 
 ```ts
 const homeRoute = createRoute({
@@ -140,7 +140,7 @@ const workspaceEvalsRoute = createRoute({
 });
 ```
 
-- [ ] **Step 4: Make `/` a real home route**
+- [x] **Step 4: Make `/` a real home route**
 
 ```ts
 export default function HomePage() {
@@ -160,7 +160,7 @@ export default function HomePage() {
 }
 ```
 
-- [ ] **Step 5: Add explicit workspace route wrapper**
+- [x] **Step 5: Add explicit workspace route wrapper**
 
 ```ts
 export default function WorkspaceRoutePage() {
@@ -182,7 +182,7 @@ Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
 Expected: PASS for route-path expectations; later tests may still fail on session semantics until Task 2
 
-- [ ] **Step 7: Commit the explicit route tree**
+- [x] **Step 7: Commit the explicit route tree**
 
 ```bash
 git add app/src/router.tsx app/src/pages/home.tsx app/src/pages/workspace-route.tsx app/src/__tests__/components/app-layout.test.tsx app/src/__tests__/pages/workflow.test.tsx
@@ -197,7 +197,7 @@ git commit -m "refactor: split workflow and workspace routes"
 - Create: `app/src/lib/route-skill-session.ts`
 - Test: `app/src/__tests__/lib/route-skill-session.test.ts`
 
-- [ ] **Step 1: Write failing coordinator tests for same-skill vs different-skill transitions**
+- [x] **Step 1: Write failing coordinator tests for same-skill vs different-skill transitions**
 
 ```ts
 it("does not leave or re-enter when moving between surfaces of the same skill", async () => {
@@ -229,7 +229,7 @@ Run: `cd app && npm run test:unit -- route-skill-session.test.ts`
 
 Expected: FAIL with module-not-found or missing-export errors for `navigateToSkillSurface`
 
-- [ ] **Step 3: Split store state into routing intent and runtime identity**
+- [x] **Step 3: Split store state into routing intent and runtime identity**
 
 ```ts
 interface SkillState {
@@ -242,7 +242,7 @@ interface SkillState {
 }
 ```
 
-- [ ] **Step 4: Add the route/session coordinator**
+- [x] **Step 4: Add the route/session coordinator**
 
 ```ts
 export async function navigateToSkillSurface(
@@ -266,7 +266,7 @@ export async function navigateToSkillSurface(
 }
 ```
 
-- [ ] **Step 5: Add explicit "leave to non-skill route" behavior**
+- [x] **Step 5: Add explicit "leave to non-skill route" behavior**
 
 ```ts
 export async function leaveActiveSkillForNonSkillRoute(
@@ -283,7 +283,7 @@ export async function leaveActiveSkillForNonSkillRoute(
 }
 ```
 
-- [ ] **Step 6: Add explicit OpenHands lifecycle tests**
+- [x] **Step 6: Add explicit OpenHands lifecycle tests**
 
 ```ts
 it("does not restart OpenHands when navigating between routes of the same skill", async () => {
@@ -305,13 +305,13 @@ it("cleans up OpenHands without bootstrapping a replacement when leaving to sett
 });
 ```
 
-- [ ] **Step 7: Re-run the focused coordinator tests**
+- [x] **Step 7: Re-run the focused coordinator tests**
 
 Run: `cd app && npm run test:unit -- route-skill-session.test.ts`
 
 Expected: PASS
 
-- [ ] **Step 8: Commit the state/coordinator split**
+- [x] **Step 8: Commit the state/coordinator split**
 
 ```bash
 git add app/src/stores/skill-store.ts app/src/lib/route-skill-session.ts app/src/__tests__/lib/route-skill-session.test.ts
@@ -351,7 +351,7 @@ Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
 Expected: FAIL because `AppLayout` still renders `WorkspaceShell` directly when `pathname === "/"`
 
-- [ ] **Step 3: Remove route-owned workspace rendering from `AppLayout`**
+- [x] **Step 3: Remove route-owned workspace rendering from `AppLayout`**
 
 ```tsx
 <main className="flex flex-1 flex-col overflow-hidden">
@@ -375,7 +375,7 @@ const handleSelectSkill = useCallback(async (name: string) => {
 }, [routeSkillSessionDeps]);
 ```
 
-- [ ] **Step 5: Rewrite workflow close/eval navigation to explicit workspace routes**
+- [x] **Step 5: Rewrite workflow close/eval navigation to explicit workspace routes**
 
 ```ts
 const handleClose = () =>
@@ -413,7 +413,7 @@ Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx`
 
 Expected: PASS
 
-- [ ] **Step 8: Commit the layout/page route ownership rewrite**
+- [x] **Step 8: Commit the layout/page route ownership rewrite**
 
 ```bash
 git add app/src/components/layout/app-layout.tsx app/src/lib/skill-routing.ts app/src/pages/workflow.tsx app/src/pages/settings.tsx app/src/__tests__/components/app-layout.test.tsx app/src/__tests__/pages/workflow.test.tsx
@@ -454,7 +454,7 @@ Run: `cd app && npm run test:unit -- workspace-shell.test.tsx workspace-refine.t
 
 Expected: FAIL because `WorkspaceShell` still owns `activeTab` from local tab state and `initialTab`
 
-- [ ] **Step 3: Change `WorkspaceShell` to consume explicit surface props**
+- [x] **Step 3: Change `WorkspaceShell` to consume explicit surface props**
 
 ```ts
 type WorkspaceSurface = "overview" | "refine" | "evals";
@@ -467,7 +467,7 @@ interface WorkspaceShellProps {
 }
 ```
 
-- [ ] **Step 4: Route tab changes through navigation instead of local tab state**
+- [x] **Step 4: Route tab changes through navigation instead of local tab state**
 
 ```ts
 const handleSurfaceChange = useCallback((next: WorkspaceSurface) => {
@@ -505,7 +505,7 @@ Run: `cd app && npm run test:unit -- workspace-shell.test.tsx workspace-refine.t
 
 Expected: PASS
 
-- [ ] **Step 7: Commit the workspace subroute rewrite**
+- [x] **Step 7: Commit the workspace subroute rewrite**
 
 ```bash
 git add app/src/components/workspace/workspace-shell.tsx app/src/components/workspace/workspace-eval-workbench.tsx app/src/components/workspace/workspace-overview.tsx app/src/components/workspace/workspace-refine.tsx app/src/__tests__/components/workspace/workspace-shell.test.tsx app/src/__tests__/components/workspace/workspace-refine.test.tsx
@@ -545,7 +545,7 @@ Run: `cd app && npm run test:unit -- use-workflow-session.test.ts workspace-refi
 
 Expected: FAIL because workflow/refine hooks still own runtime teardown on unmount/leave
 
-- [ ] **Step 3: Strip page-owned teardown from workflow/refine hooks**
+- [x] **Step 3: Strip page-owned teardown from workflow/refine hooks**
 
 ```ts
 const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
@@ -558,7 +558,7 @@ const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
 });
 ```
 
-- [ ] **Step 4: Keep `leaveCurrentSkill()` only for actual skill exits**
+- [x] **Step 4: Keep `leaveCurrentSkill()` only for actual skill exits**
 
 ```ts
 export async function leaveCurrentSkill(
@@ -581,7 +581,7 @@ Run: `cd app && npm run test:unit -- use-workflow-session.test.ts workspace-refi
 
 Expected: PASS
 
-- [ ] **Step 6: Commit the exit-ownership cleanup**
+- [x] **Step 6: Commit the exit-ownership cleanup**
 
 ```bash
 git add app/src/hooks/use-workflow-session.ts app/src/components/workspace/workspace-refine.tsx app/src/lib/active-skill-transition.ts app/src/__tests__/hooks/use-workflow-session.test.ts app/src/__tests__/components/workspace/workspace-refine.test.tsx app/src/__tests__/lib/active-skill-transition.test.ts
@@ -595,7 +595,7 @@ git commit -m "refactor: make route transitions own skill exits"
 - Modify: `repo-map.json`
 - Review: `TEST_MAP.md`
 
-- [ ] **Step 1: Update `repo-map.json` for the new route/page/session structure**
+- [x] **Step 1: Update `repo-map.json` for the new route/page/session structure**
 
 ```json
 {
@@ -618,13 +618,13 @@ Run: `cd app && npm run test:unit -- app-layout.test.tsx workflow.test.tsx works
 
 Expected: PASS
 
-- [ ] **Step 3: Run full frontend verification**
+- [x] **Step 3: Run full frontend verification**
 
 Run: `cd app && npm run test:unit`
 
 Expected: PASS
 
-- [ ] **Step 4: Run typecheck and repo-map validation**
+- [x] **Step 4: Run typecheck and repo-map validation**
 
 Run: `cd app && npx tsc --noEmit`
 Expected: PASS
@@ -632,13 +632,13 @@ Expected: PASS
 Run: `npm run test:repo-map`
 Expected: PASS
 
-- [ ] **Step 5: Run diff hygiene checks**
+- [x] **Step 5: Run diff hygiene checks**
 
 Run: `git diff --check`
 
 Expected: PASS
 
-- [ ] **Step 6: Commit metadata and final verification updates**
+- [x] **Step 6: Commit metadata and final verification updates**
 
 ```bash
 git add repo-map.json TEST_MAP.md

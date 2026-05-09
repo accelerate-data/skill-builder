@@ -10,7 +10,7 @@ interface UseWorkflowSessionOptions {
 }
 
 export function useWorkflowSession({
-  skillName,
+  skillName: _skillName,
   shouldBlock,
   hasUnsavedChanges,
 }: UseWorkflowSessionOptions) {

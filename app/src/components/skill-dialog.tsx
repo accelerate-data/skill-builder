@@ -268,7 +268,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         toast.success(`Skill "${skillName}" created`)
         const createdName = skillName.trim()
         await createOnCreated?.(createdName)
-        navigate({ to: "/skill/$skillName", params: { skillName: createdName }, state: { autoStart: true } })
+        navigate({ to: "/workflow/$skillName", params: { skillName: createdName }, state: { autoStart: true } })
         handleOpenChange(false)
       }
     } catch (err) {

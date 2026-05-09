@@ -30,10 +30,7 @@ import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/ski
 import { toEditableSkill, type EditableSkill } from "@/lib/types";
 import { getSkillSurface } from "@/lib/skill-routing";
 import { enterSkill, leaveCurrentSkill } from "@/lib/active-skill-transition";
-import {
-  navigateToSkillSurface as coordinateNavigation,
-  type RouteDestination,
-} from "@/lib/route-skill-session";
+import type { RouteDestination } from "@/lib/route-skill-session";
 import {
   Dialog,
   DialogContent,
@@ -170,20 +167,6 @@ export function AppLayout() {
     [builderSkills, importedSkills],
   );
 
-  const routeSkillSessionDeps = useCallback(
-    () => ({
-      currentActiveSessionSkillName: activeSessionSkillName ?? selectedWorkspaceSkillName,
-      navigate: (route: RouteDestination) => {
-        void navigate(route as Parameters<typeof navigate>[0]);
-      },
-      setSelectedSkillName,
-      setActiveSessionSkillName,
-      leaveCurrentSkill,
-      enterSkill,
-    }),
-    [activeSessionSkillName, selectedWorkspaceSkillName, navigate, setSelectedSkillName, setActiveSessionSkillName],
-  );
-
   const activateSkill = useCallback(
     async (name: string) => {
       const editableSkill = resolveSkill(name);
@@ -227,7 +210,7 @@ export function AppLayout() {
       if (surface === "workflow") {
         navigate({ to: "/workflow/$skillName", params: { skillName: editableSkill.name } });
       } else {
-        navigate({ to: "/workspace/$skillName", params: { skillName: editableSkill.name } });
+        navigate({ to: "/workspace/$skillName", params: { skillName: editableSkill.name }, search: { tab: undefined } });
       }
     },
     [

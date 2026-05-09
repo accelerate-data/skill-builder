@@ -159,7 +159,7 @@ function WorkflowMainHeader({ skillName, currentStep, stepStatus }: WorkflowMain
 }
 
 export default function WorkflowPage() {
-  const { skillName } = useParams({ from: "/skill/$skillName" });
+  const { skillName } = useParams({ from: "/workflow/$skillName" });
   const navigate = useNavigate();
   const location = useLocation();
   const autoStart = location.state?.autoStart === true;
@@ -308,10 +308,10 @@ export default function WorkflowPage() {
     const nextStepBlocked = !isTerminalStep && disabledSteps.includes(nextStep);
     const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
     const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
-    const handleClose = () => navigate({ to: "/workspace/$skillName", params: { skillName } });
+    const handleClose = () => navigate({ to: "/workspace/$skillName", params: { skillName }, search: { tab: undefined } });
     const handleEval = () => {
       useSkillStore.getState().setActiveSkill(skillLibraryKey ?? skillName);
-      navigate({ to: "/workspace/$skillName/evals", params: { skillName } });
+      navigate({ to: "/workspace/$skillName/evals", params: { skillName }, search: { tab: "evals" } });
     };
     const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 
