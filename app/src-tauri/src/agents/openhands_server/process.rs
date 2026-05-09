@@ -40,13 +40,13 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
     let uv_name = if cfg!(windows) { "uv.exe" } else { "uv" };
     let candidate = resource_dir.join(uv_name);
     if candidate.is_file() {
-        log::info!(
+        log::debug!(
             "[openhands-agent-server] using bundled uv at {}",
             candidate.display()
         );
         let _ = BUNDLED_UV_PATH.set(Some(candidate));
     } else {
-        log::info!(
+        log::debug!(
             "[openhands-agent-server] no bundled uv found in resource dir; falling back to system uvx"
         );
         let _ = BUNDLED_UV_PATH.set(None);
@@ -137,7 +137,7 @@ fn read_or_create_openhands_secret(runtime_run_dir: &Path) -> Result<String, Str
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600));
     }
-    log::info!(
+    log::debug!(
         "[openhands-agent-server] created stable OpenHands secret at {}",
         secret_path.display()
     );
@@ -352,7 +352,7 @@ impl OpenHandsAgentServerProcess {
             &openhands_secret_key,
             Some(&conversations_path_str),
         );
-        log::info!(
+        log::debug!(
             "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
             conversations_path_str
         );
@@ -372,7 +372,7 @@ impl OpenHandsAgentServerProcess {
                         Ok(Some(line)) if !line.trim().is_empty() => {
                             let redacted = redact_stderr(&line, &stderr_secrets);
                             push_stderr_tail_line(&stderr_tail_for_task, &redacted).await;
-                            log::debug!("[openhands-agent-server] {}", redacted);
+                            log_stderr_line(&redacted);
                         }
                         Ok(Some(_)) => {}
                         Ok(None) => break,
@@ -547,6 +547,18 @@ pub fn redact_stderr(text: &str, secrets: &[String]) -> String {
         })
 }
 
+fn is_info_worthy_stderr_line(line: &str) -> bool {
+    line.to_ascii_lowercase().contains("conversation lease lost")
+}
+
+fn log_stderr_line(line: &str) {
+    if is_info_worthy_stderr_line(line) {
+        log::info!("[openhands-agent-server] {}", line);
+    } else {
+        log::debug!("[openhands-agent-server] {}", line);
+    }
+}
+
 async fn wait_until_healthy(port: u16, timeout: Duration) -> Result<(), String> {
     let client = reqwest::Client::new();
     let deadline = Instant::now() + timeout;
@@ -627,6 +639,16 @@ mod tests {
             redacted,
             "failed with [REDACTED] and [REDACTED]; [REDACTED] again"
         );
+    }
+
+    #[test]
+    fn conversation_lease_loss_stderr_is_promoted_to_info() {
+        assert!(is_info_worthy_stderr_line(
+            "[05/09/26 09:44:22] WARNING  Conversation lease lost while polling event stream"
+        ));
+        assert!(!is_info_worthy_stderr_line(
+            "AuthlibDeprecationWarning: authlib.jose module is deprecated"
+        ));
     }
 
     #[test]

@@ -248,7 +248,7 @@ impl StartConversationRequest {
                             runtime_run_dir.display()
                         );
                     } else {
-                        log::info!(
+                        log::debug!(
                             "[openhands-agent-server] attaching {} AgentSkill(s) from {}/.agents/skills/: {}",
                             skills.len(),
                             runtime_run_dir.display(),
@@ -387,7 +387,13 @@ pub(crate) fn discover_agentskills(workspace_skill_dir: &Path) -> Vec<OpenHandsS
         }
         let skill_md = match find_skill_md_case_insensitive(&dir) {
             Some(path) => path,
-            None => continue,
+            None => {
+                log::warn!(
+                    "[openhands-agent-server] skipping AgentSkill dir without SKILL.md: {}",
+                    dir.display()
+                );
+                continue;
+            }
         };
         let raw = match std::fs::read_to_string(&skill_md) {
             Ok(content) => content,
@@ -404,6 +410,12 @@ pub(crate) fn discover_agentskills(workspace_skill_dir: &Path) -> Vec<OpenHandsS
             .file_name()
             .and_then(|name| name.to_str())
             .map(str::to_string);
+        if parsed.name.is_none() {
+            log::warn!(
+                "[openhands-agent-server] AgentSkill at {} missing frontmatter name; falling back to folder name",
+                skill_md.display()
+            );
+        }
         let Some(name) = parsed.name.or(folder_name) else {
             continue;
         };
@@ -660,5 +672,25 @@ mod skill_discovery_tests {
         assert_eq!(parsed.name.as_deref(), Some("my-skill"));
         assert_eq!(parsed.description.as_deref(), Some("A skill"));
         assert!(parsed.body.contains("Body"));
+    }
+
+    #[test]
+    fn missing_frontmatter_name_falls_back_to_folder_name() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let workspace_skill_dir = tmp.path();
+        let skills_root = workspace_skill_dir.join(".agents").join("skills");
+        let skill_dir = skills_root.join("fallback-name-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\ndescription: Missing explicit name\n---\n\nBody\n",
+        )
+        .unwrap();
+
+        let skills = discover_agentskills(workspace_skill_dir);
+
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "fallback-name-skill");
+        assert_eq!(skills[0].description.as_deref(), Some("Missing explicit name"));
     }
 }

@@ -376,14 +376,20 @@ pub fn migrate_skill_tags(
             Err(_) => continue,
         };
         let new_tag = skill_version_tag_name(new_plugin_slug, skill_name, &version);
-        // Create new tag (ignore if already exists)
-        let _ = repo.tag_lightweight(&new_tag, &commit_obj, false);
-        // Delete old tag
-        if let Ok(mut reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
-            let _ = reference.delete();
+        // Create new tag; only delete old tag if creation succeeded.
+        if repo.tag_lightweight(&new_tag, &commit_obj, false).is_ok() {
+            if let Ok(mut reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
+                let _ = reference.delete();
+            }
+            log::debug!("[git] migrated tag '{}' → '{}'", tag_name, new_tag);
+            count += 1;
+        } else {
+            log::warn!(
+                "[git] tag '{}' already exists; skipping migration of '{}'",
+                new_tag,
+                tag_name
+            );
         }
-        log::debug!("[git] migrated tag '{}' → '{}'", tag_name, new_tag);
-        count += 1;
     }
 
     if count > 0 {

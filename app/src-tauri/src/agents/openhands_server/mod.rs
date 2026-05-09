@@ -429,7 +429,7 @@ fn collect_live_child_subagent_events(
 ) -> Result<Vec<serde_json::Value>, String> {
     let children = list_persisted_subagent_conversations(root)?;
     let mut emitted = Vec::new();
-    log::info!(
+    log::debug!(
         "[openhands-agent-server:{}] live_subagent_scan root={} launch_count={} child_count={} known_links={} emitted_keys={}",
         agent_id,
         root.display(),
@@ -445,7 +445,7 @@ fn collect_live_child_subagent_events(
             .get(&child.conversation_id)
             .cloned()
         {
-            log::info!(
+            log::debug!(
                 "[openhands-agent-server:{}] live_subagent_scan reuse_link child_conversation={} parent_tool_call_id={}",
                 agent_id,
                 child.conversation_id,
@@ -465,7 +465,7 @@ fn collect_live_child_subagent_events(
                 })
                 .map(|launch| launch.tool_call_id.clone());
             let Some(matched) = matched else {
-                log::info!(
+                log::debug!(
                     "[openhands-agent-server:{}] live_subagent_scan no_match child_conversation={} first_prompt_len={} child_first_event_ts={}",
                     agent_id,
                     child.conversation_id,
@@ -477,7 +477,7 @@ fn collect_live_child_subagent_events(
             state
                 .parent_tool_call_by_child_conversation
                 .insert(child.conversation_id.clone(), matched.clone());
-            log::info!(
+            log::debug!(
                 "[openhands-agent-server:{}] live_subagent_scan matched child_conversation={} parent_tool_call_id={} first_prompt_len={} event_count={}",
                 agent_id,
                 child.conversation_id,
@@ -505,7 +505,7 @@ fn collect_live_child_subagent_events(
                 normalize_server_event(agent_id, &child.conversation_id, &linked_child);
             if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
             {
-                log::info!(
+                log::debug!(
                     "[openhands-agent-server:{}] live_subagent_emit child_conversation={} parent_tool_call_id={} event_class={} tool_call_id={} raw_kind={}",
                     agent_id,
                     child.conversation_id,
@@ -604,7 +604,7 @@ fn record_subagent_launch(
     maybe_record_subagent_launch(raw, &mut guard);
     if guard.len() > before {
         if let Some(last) = guard.values().last() {
-            log::info!(
+            log::debug!(
                 "[openhands-agent-server] recorded_subagent_launch tool_call_id={} prompt_len={} started_at_ms={} launch_count={}",
                 last.tool_call_id,
                 last.prompt.len(),
@@ -952,7 +952,7 @@ pub fn pause_openhands_session(agent_id: &str) -> bool {
     };
 
     if handle.pause_requested {
-        log::info!(
+        log::debug!(
             "[pause_openhands_session] agent_id={} action=already-requested",
             agent_id
         );
@@ -961,7 +961,7 @@ pub fn pause_openhands_session(agent_id: &str) -> bool {
 
     let Some(cancel) = handle.sender.take() else {
         handle.pause_requested = true;
-        log::info!(
+        log::debug!(
             "[pause_openhands_session] agent_id={} action=awaiting-terminal",
             agent_id
         );
@@ -971,7 +971,7 @@ pub fn pause_openhands_session(agent_id: &str) -> bool {
     let sent = cancel.send(()).is_ok();
     if sent {
         handle.pause_requested = true;
-        log::info!(
+        log::debug!(
             "[pause_openhands_session] agent_id={} action=signal-dispatched",
             agent_id
         );
@@ -1416,7 +1416,7 @@ async fn run_conversation_task_inner(
     while terminal_state.is_none() {
         tokio::select! {
             _ = &mut *cancel_rx, if !cancel_pending => {
-                log::info!(
+                log::debug!(
                     "[openhands-agent-server:{}] pause_request dispatch conversation_id={}",
                     task.agent_id,
                     task.conversation_id
@@ -1425,7 +1425,7 @@ async fn run_conversation_task_inner(
                     .pause_conversation(&task.conversation_id)
                     .await
                     .map_err(|e| format!("Failed to pause OpenHands Agent Server conversation: {e}"))?;
-                log::info!(
+                log::debug!(
                     "[openhands-agent-server:{}] pause_request result=ok conversation_id={}",
                     task.agent_id,
                     task.conversation_id
