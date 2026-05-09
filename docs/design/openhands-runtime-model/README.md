@@ -15,7 +15,7 @@ Skill Builder integrates with OpenHands through two layers:
 1. **Frontend -> Backend API**
    Product-specific Tauri commands such as `run_workflow_step`,
    `select_skill_openhands_session`, `send_refine_message`,
-   `review_skill_scope`, and `define_eval_scenario`.
+   `review_skill_scope`, and `generate_eval_scenario_assertions`.
 2. **Backend -> OpenHands API**
    A small set of runtime primitives that create or resume OpenHands
    conversations, send messages, pause active execution, or run disposable
@@ -29,8 +29,8 @@ skill conversation versus a non-resumable throwaway run.
 The active runtime model in this branch is:
 
 - selected-skill activation owns persistent session bootstrap
-- workflow and refine both send into the already-selected persistent skill
-  conversation
+- workflow, refine, and Eval scenario generation all send into the
+  already-selected persistent skill conversation
 - switch-away and app shutdown pause the selected skill session instead of
   deleting the conversation
 
@@ -68,8 +68,8 @@ Related sub-designs:
 | Model OpenHands around sessions, not ad hoc helpers. | OpenHands is conversation-backed in both persistent and throwaway cases. The product should name the actual lifecycle boundary. |
 | Keep two explicit layers: product commands and runtime primitives. | Frontend surfaces should call product-specific commands; only the backend should speak in raw OpenHands session terms. |
 | Use explicit runtime primitives for server lifecycle and conversation lifecycle. | The runtime needs server ensure/shutdown plus persistent session preparation, `OpenHandsSendMessage`, `PauseOpenHandsSession`, and `RunThrowawayOpenHandsSession`. Everything else is product orchestration. |
-| Persistent session reuse covers workflow and refine only. | Workflow steps and refine chat reuse the saved skill conversation. Eval scenario definition is a bounded throwaway task so it does not overwrite the product conversation slot. |
-| Throwaway sessions are reserved for bounded execution tasks. | Scope validation and eval scenario definition run as non-resumable tasks whose runtime artifacts stay outside normal product conversation state. |
+| Persistent session reuse covers workflow, refine, and Eval scenario generation. | Workflow steps, refine chat, and Eval scenario generation are all follow-up turns on the selected skill, so they should reuse the saved skill conversation rather than inventing a second conversation lifecycle. |
+| Throwaway sessions are reserved for bounded execution tasks with no later reply path. | Scope validation remains non-resumable because it produces a bounded artifact and should stay outside normal product conversation state. |
 | The live Eval Workbench surface is performance-only end to end. | The frontend, backend model, and migration path all flatten legacy trigger-mode data to performance scenarios. |
 | Rust owns Agent Server lifecycle and workspace selection. | The backend already owns persistence, filesystem policy, event delivery, logging, and cancellation. |
 | The frontend never calls OpenHands-shaped APIs directly. | Product APIs stay stable even if the runtime implementation changes. |
@@ -94,7 +94,7 @@ Examples:
 - `cancel_agent_run`
 - `pause_openhands_session`
 - `review_skill_scope`
-- `define_eval_scenario`
+- `generate_eval_scenario_assertions`
 
 Each command is responsible for:
 
@@ -164,7 +164,7 @@ The frontend should stay product-oriented:
 - Refine calls `send_refine_message`.
 - selected-skill cleanup calls `pause_openhands_session`.
 - Create Skill calls `review_skill_scope`.
-- Eval Workbench calls scenario definition commands.
+- Eval Workbench calls scenario-generation commands.
 
 The frontend should not need to know whether a surface reuses a persistent
 session or uses a throwaway one.
@@ -257,6 +257,26 @@ The runtime is intentionally skill-scoped:
   saved `conversation_id`
 - stale or incompatible saved ids are cleared during selected-skill bootstrap
   before a new persistent conversation is created
+
+### Persistent Eval Scenario Generation Contract
+
+Eval scenario generation is part of the selected-skill persistent conversation
+model, not a throwaway side path.
+
+Contract:
+
+1. selected-skill activation has already prepared the durable
+   `conversation_id`
+2. Eval loads that saved `conversation_id` from `skill_conversations`
+3. Eval dispatches its generation prompt as another turn on that existing
+   conversation
+4. Eval does not start, resume, or pause the conversation itself; it relies on
+   the selected-skill lifecycle owner
+5. Eval persists only the parsed scenario/assertion result back into SQLite
+
+This keeps Eval aligned with Workflow and Refine: the user is still operating
+on the currently selected skill, so scenario generation should reuse that
+skill's accumulated conversation context.
 
 ### Stable Persistence Secret
 
@@ -373,9 +393,9 @@ The current branch implements the split like this:
 - workflow steps and `run_answer_evaluator` dispatch against the selected
   skill-scoped conversation
 - refine turns dispatch against that same selected persistent conversation
-- Eval Workbench scenario definition uses isolated
-  `.openhands/throwaway/eval-workbench/...` runtime roots and does not save a
-  resumable product conversation id
+- Eval Workbench scenario generation is being aligned to dispatch against that
+  same selected persistent conversation and persist only the parsed
+  scenario/assertion result back into SQLite
 - scope review uses isolated
   `.openhands/throwaway/...` runtime roots and do not save resumable product
   conversation ids
@@ -470,6 +490,7 @@ The default tool policy for OpenHands requests lives in the child doc:
 | Workflow step execution | `run_workflow_step` | `OpenHandsSendMessage` | Step-oriented UI, but reuses the selected skill's persistent conversation |
 | Workflow gate evaluation | `run_answer_evaluator` | `OpenHandsSendMessage` | Part of the same workflow conversation, not a disposable side run |
 | Refine chat turn | `send_refine_message` | `OpenHandsSendMessage` | Sends the next user turn into the selected persistent session |
+| Eval scenario generation | `generate_eval_scenario_assertions` | `OpenHandsSendMessage` | Sends a scenario-generation turn into the selected persistent session and persists the parsed result back into SQLite |
 | Selected-skill pause on switch/exit | `pause_openhands_session` | `PauseOpenHandsSession` | Shared lifecycle cleanup for switch-away and app shutdown |
 
 ### Throwaway surfaces
@@ -477,7 +498,6 @@ The default tool policy for OpenHands requests lives in the child doc:
 | Product surface | Product command | OpenHands primitive mapping | Notes |
 |---|---|---|---|
 | Create Skill scope validation | `review_skill_scope` | `RunThrowawayOpenHandsSession` | Bounded validation run, no later reply path |
-| Eval scenario definition | `define_eval_scenario` | `RunThrowawayOpenHandsSession` | Bounded scenario-authoring assist run that must not overwrite the saved skill conversation |
 
 ## Workflow Prompt Routing
 
@@ -544,13 +564,13 @@ remaining cleanup residue is narrower:
 | `app/src-tauri/src/commands/refine/mod.rs` | Refine product command orchestration and restore/event helpers. |
 | `app/src-tauri/src/commands/skill_session.rs` | Selected-skill OpenHands session bootstrap and pause command surface. |
 | `app/src-tauri/src/commands/skill/scope_review.rs` | Create-skill scope validation command. |
-| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Eval Workbench command surface and runtime call sites. |
+| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Eval Workbench command surface, selected-conversation send path, and scenario/assertion result parsing and persistence. |
 | `agent-sources/workspace/agents/skill-creator.md` | Main-agent instruction source. |
 | `agent-sources/workspace/skills/` | Bundled AgentSkills deployed into `.agents/skills`. |
 | `agent-sources/prompts/` | App-owned task prompts rendered by the backend. |
 
 ## Remaining Cleanup Direction
 
-- Remove the retained Eval Workbench trigger/runtime residue or re-promote it to
-  a live surface explicitly; the current branch still has backend/data-model
-  branches that the frontend no longer exposes.
+- Remove the retained Eval Workbench run-history, throwaway-runtime, and
+  disk-backed-scenario residue so the implementation matches the persistent
+  selected-skill conversation model documented here.
