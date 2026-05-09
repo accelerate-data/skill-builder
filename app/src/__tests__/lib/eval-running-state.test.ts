@@ -6,6 +6,8 @@ import {
   setEvalsStopping,
   setEvalsCancelHandler,
   requestEvalsCancel,
+  subscribeEvalsRunning,
+  subscribeEvalsStopping,
 } from "@/lib/eval-running-state";
 
 beforeEach(() => {
@@ -62,6 +64,66 @@ describe("eval-running-state", () => {
       setEvalsCancelHandler(null);
       await requestEvalsCancel();
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("subscribeEvalsRunning", () => {
+    it("notifies subscribers when running state changes", () => {
+      const fn = vi.fn();
+      const unsub = subscribeEvalsRunning(fn);
+      setEvalsRunning(true);
+      expect(fn).toHaveBeenCalledWith(true);
+      setEvalsRunning(false);
+      expect(fn).toHaveBeenCalledWith(false);
+      unsub();
+    });
+
+    it("does not notify after unsubscribe", () => {
+      const fn = vi.fn();
+      const unsub = subscribeEvalsRunning(fn);
+      unsub();
+      setEvalsRunning(true);
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it("notifies multiple subscribers", () => {
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
+      subscribeEvalsRunning(fn1);
+      subscribeEvalsRunning(fn2);
+      setEvalsRunning(true);
+      expect(fn1).toHaveBeenCalledWith(true);
+      expect(fn2).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe("subscribeEvalsStopping", () => {
+    it("notifies subscribers when stopping state changes", () => {
+      const fn = vi.fn();
+      const unsub = subscribeEvalsStopping(fn);
+      setEvalsStopping(true);
+      expect(fn).toHaveBeenCalledWith(true);
+      setEvalsStopping(false);
+      expect(fn).toHaveBeenCalledWith(false);
+      unsub();
+    });
+
+    it("does not notify after unsubscribe", () => {
+      const fn = vi.fn();
+      const unsub = subscribeEvalsStopping(fn);
+      unsub();
+      setEvalsStopping(true);
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it("notifies multiple subscribers", () => {
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
+      subscribeEvalsStopping(fn1);
+      subscribeEvalsStopping(fn2);
+      setEvalsStopping(true);
+      expect(fn1).toHaveBeenCalledWith(true);
+      expect(fn2).toHaveBeenCalledWith(true);
     });
   });
 });

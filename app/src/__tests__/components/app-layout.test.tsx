@@ -405,25 +405,16 @@ describe("AppLayout", () => {
       "workflow",
       "parent-1",
     );
-    useWorkflowStore.getState().setRunning(true);
-    useRefineStore.setState({
-      selectedSkill: {
-        name: "my-skill",
-        status: "in_progress",
-        current_step: "1",
-        last_modified: null,
-        tags: [],
-        purpose: "domain",
-        skill_source: "skill-builder",
-        author_login: null,
-        author_avatar: null,
-        intake_json: null,
-        plugin_slug: "skills",
-        plugin_display_name: "Skills",
-        is_default_plugin: true,
+    useAgentStore.setState((state) => ({
+      runs: {
+        ...state.runs,
+        "workflow-agent-1": {
+          ...state.runs["workflow-agent-1"],
+          sessionId: "conv-workflow",
+        },
       },
-      conversationId: "conv-workflow",
-    });
+    }));
+    useWorkflowStore.getState().setRunning(true);
 
     render(<AppLayout />);
 
@@ -575,26 +566,17 @@ describe("AppLayout", () => {
       "workflow",
       "parent-1",
     );
+    useAgentStore.setState((state) => ({
+      runs: {
+        ...state.runs,
+        "workflow-agent-1": {
+          ...state.runs["workflow-agent-1"],
+          sessionId: "conv-workflow",
+        },
+      },
+    }));
     useWorkflowStore.getState().setRunning(true);
     useWorkflowStore.getState().setStopping(false);
-    useRefineStore.setState({
-      selectedSkill: {
-        name: "my-skill",
-        status: "in_progress",
-        current_step: "1",
-        last_modified: null,
-        tags: [],
-        purpose: "domain",
-        skill_source: "skill-builder",
-        author_login: null,
-        author_avatar: null,
-        intake_json: null,
-        plugin_slug: "skills",
-        plugin_display_name: "Skills",
-        is_default_plugin: true,
-      },
-      conversationId: "conv-workflow",
-    });
 
     render(<AppLayout />);
 

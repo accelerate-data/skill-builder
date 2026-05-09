@@ -334,4 +334,16 @@ describe("WorkspaceRefine", () => {
     expect(proceed).toHaveBeenCalledTimes(1);
   });
 
+  it("tracks pending followup message for steer-after-interrupt flow", async () => {
+    const skill = makeSkill("my-skill");
+    refineStoreState.selectedSkill = skill;
+    refineStoreState.conversationId = "conv-steer";
+    refineStoreState.pendingFollowupMessage = "Now fix the tests";
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    expect(refineStoreState.pendingFollowupMessage).toBe("Now fix the tests");
+  });
 });

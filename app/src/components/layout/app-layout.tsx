@@ -126,7 +126,7 @@ export function AppLayout() {
               r.status === "running" && r.runSource === "workflow" && !!r.skillName,
           );
           if (running) {
-            const convoId = useRefineStore.getState().conversationId;
+            const convoId = running.sessionId;
             const skillName = running.skillName;
             const resolved = resolveSkill(skillName, builderSkillsRef.current, importedSkillsRef.current);
             const pluginSlug = resolved?.plugin_slug;
