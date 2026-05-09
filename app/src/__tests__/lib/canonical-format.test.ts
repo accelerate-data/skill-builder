@@ -7,7 +7,7 @@ import path from "path";
 const APP_ROOT = path.resolve(__dirname, "../../..");
 const REPO_ROOT = path.resolve(APP_ROOT, "..");
 const FIXTURE_ROOT = path.join(APP_ROOT, "e2e/fixtures/agent-responses");
-const LEGACY_MOCK_ROOT = path.join(APP_ROOT, "__removed-sidecar-mocks__");
+const LEGACY_MOCK_ROOT = path.join(APP_ROOT, "__removed-legacy-mocks__");
 
 // ---------------------------------------------------------------------------
 // Helpers

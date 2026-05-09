@@ -55,7 +55,7 @@
 - Delete: `app/sidecar/`
 - Modify: `app/package.json`
 
-- [ ] **Step 1: Verify the package is only legacy plumbing**
+- [x] **Step 1: Verify the package is only legacy plumbing**
 
 Run:
 
@@ -65,7 +65,7 @@ rg -n "sidecar:install|app/sidecar|sidecar/dist" app/package.json app/src-tauri/
 
 Expected: hits in package/build/test/docs metadata, not a live Node runtime entrypoint.
 
-- [ ] **Step 2: Remove sidecar install hooks from `app/package.json`**
+- [x] **Step 2: Remove sidecar install hooks from `app/package.json`**
 
 Update the scripts block to remove:
 
@@ -76,7 +76,7 @@ Update the scripts block to remove:
 
 Keep all remaining frontend and OpenHands smoke scripts intact.
 
-- [ ] **Step 3: Delete `app/sidecar/` from the repo**
+- [x] **Step 3: Delete `app/sidecar/` from the repo**
 
 Delete the full directory, including:
 
@@ -94,7 +94,7 @@ app/sidecar/tsconfig.json
 app/sidecar/vitest.config.ts
 ```
 
-- [ ] **Step 4: Remove Tauri resource bundling of `sidecar/dist`**
+- [x] **Step 4: Remove Tauri resource bundling of `sidecar/dist`**
 
 Delete this resource mapping from `app/src-tauri/tauri.conf.json`:
 
@@ -102,7 +102,7 @@ Delete this resource mapping from `app/src-tauri/tauri.conf.json`:
 "../sidecar/dist/": "sidecar/dist"
 ```
 
-- [ ] **Step 5: Run focused validation for deleted package assumptions**
+- [x] **Step 5: Run focused validation for deleted package assumptions**
 
 Run:
 
@@ -123,7 +123,7 @@ Expected: no matches.
 - Modify: `scripts/worktree.sh`
 - Modify: `app/tests/run.sh`
 
-- [ ] **Step 1: Remove sidecar install/test/stub steps from CI**
+- [x] **Step 1: Remove sidecar install/test/stub steps from CI**
 
 Delete workflow steps that:
 
@@ -135,7 +135,7 @@ Delete workflow steps that:
 
 Keep OpenHands, frontend, Rust, and repo-audit checks.
 
-- [ ] **Step 2: Remove sidecar artifacts from release staging**
+- [x] **Step 2: Remove sidecar artifacts from release staging**
 
 Delete release-stage copy logic shaped like:
 
@@ -146,11 +146,11 @@ cp -R "app/sidecar/dist/." "$STAGE/sidecar/dist/"
 
 Update release-stage verification fixtures so `sidecar/dist/*` is no longer required.
 
-- [ ] **Step 3: Remove worktree/bootstrap assumptions**
+- [x] **Step 3: Remove worktree/bootstrap assumptions**
 
 Delete the sidecar dist copy block from `scripts/worktree.sh` and the dist bootstrap from `app/tests/run.sh`.
 
-- [ ] **Step 4: Run metadata-only validation**
+- [x] **Step 4: Run metadata-only validation**
 
 Run:
 
@@ -172,7 +172,7 @@ Expected: no active workflow/script references outside intentionally historical 
 - Modify: `app/src/lib/agent-events.ts`
 - Modify: `app/src/__tests__/lib/agent-events-sync.test.ts`
 
-- [ ] **Step 1: Stop writing generated contracts into the deleted sidecar path**
+- [x] **Step 1: Stop writing generated contracts into the deleted sidecar path**
 
 In `app/src-tauri/src/bin/codegen.rs`, remove the secondary output path:
 
@@ -189,7 +189,7 @@ let frontend_path = project_root().join("src/generated/contracts.ts");
 write_with_dirs(&frontend_path, &ts_output)?;
 ```
 
-- [ ] **Step 2: Simplify the sync test to frontend-only expectations**
+- [x] **Step 2: Simplify the sync test to frontend-only expectations**
 
 Replace sidecar comparisons with assertions that:
 
@@ -199,7 +199,7 @@ Replace sidecar comparisons with assertions that:
 - no test requires app/sidecar/agent-events.ts
 ```
 
-- [ ] **Step 3: Regenerate contracts**
+- [x] **Step 3: Regenerate contracts**
 
 Run:
 
@@ -216,7 +216,7 @@ Expected: `app/src/generated/contracts.ts` updates if needed, with no `sidecar/g
 - Modify: `app/src/lib/display-types.ts`
 - Modify or delete: `app/src/__tests__/lib/display-types-sync.test.ts`
 
-- [ ] **Step 1: Rewrite the file header to reflect canonical frontend ownership**
+- [x] **Step 1: Rewrite the file header to reflect canonical frontend ownership**
 
 Replace the “mirror of sidecar types” wording with a header shaped like:
 
@@ -227,7 +227,7 @@ Replace the “mirror of sidecar types” wording with a header shaped like:
  */
 ```
 
-- [ ] **Step 2: Remove the deleted-file sync test**
+- [x] **Step 2: Remove the deleted-file sync test**
 
 Choose one of:
 
@@ -238,7 +238,7 @@ Choose one of:
 
 Preferred: delete it unless there is a meaningful non-duplicative invariant left.
 
-- [ ] **Step 3: Verify no frontend code imports from `app/sidecar`**
+- [x] **Step 3: Verify no frontend code imports from `app/sidecar`**
 
 Run:
 
@@ -268,7 +268,7 @@ Expected: no imports or file-path references to deleted sidecar TS sources.
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
 - Modify: `app/src-tauri/src/types/mod.rs`
 
-- [ ] **Step 1: Rename the module and the primary config type**
+- [x] **Step 1: Rename the module and the primary config type**
 
 Use a runtime-accurate naming set such as:
 
@@ -280,7 +280,7 @@ OpenHandsRuntimeConfigParams -> BuildOpenHandsRuntimeConfigParams
 
 Keep field names stable unless they are themselves misleading.
 
-- [ ] **Step 2: Update imports and helper names everywhere**
+- [x] **Step 2: Update imports and helper names everywhere**
 
 Convert imports shaped like:
 
@@ -290,7 +290,7 @@ use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
 
 to the renamed runtime module and types.
 
-- [ ] **Step 3: Rename config-focused tests**
+- [x] **Step 3: Rename config-focused tests**
 
 Rename tests such as:
 
@@ -301,7 +301,7 @@ test_sidecar_config_serde
 
 to runtime-focused equivalents so grep no longer suggests a Node sidecar config.
 
-- [ ] **Step 4: Verify compile-time references are clean**
+- [x] **Step 4: Verify compile-time references are clean**
 
 Run:
 
@@ -321,7 +321,7 @@ Expected: no matches.
 - Modify: `app/src-tauri/src/contracts/agent_events.rs`
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-- [ ] **Step 1: Rename event router APIs**
+- [x] **Step 1: Rename event router APIs**
 
 Convert function names shaped like:
 
@@ -339,7 +339,7 @@ handle_runtime_exit
 handle_runtime_exit_with_detail
 ```
 
-- [ ] **Step 2: Rename sidecar-specific structs/comments where they now represent runtime traffic**
+- [x] **Step 2: Rename sidecar-specific structs/comments where they now represent runtime traffic**
 
 Examples to evaluate and rename if appropriate:
 
@@ -350,11 +350,11 @@ AgentInitError docs mentioning sidecar startup
 contract comments that say these mirror app/sidecar/*.ts
 ```
 
-- [ ] **Step 3: Preserve protocol semantics while changing labels**
+- [x] **Step 3: Preserve protocol semantics while changing labels**
 
 Do not change serialized event names like `agent_event` or `display_item` unless a real protocol migration is intended. This task is about internal naming clarity, not wire-format churn.
 
-- [ ] **Step 4: Verify no active Rust event code still describes a Node sidecar**
+- [x] **Step 4: Verify no active Rust event code still describes a Node sidecar**
 
 Run:
 
@@ -381,7 +381,7 @@ Expected: only intentional historical comments or explicitly deferred strings re
 - Modify: `docs/design/openhands-runtime-model/tools-included.md`
 - Modify: other touched docs returned by repo grep
 
-- [ ] **Step 1: Remove repo guidance that claims a Node sidecar runtime**
+- [x] **Step 1: Remove repo guidance that claims a Node sidecar runtime**
 
 Update AGENTS, repo-map, and TEST_MAP so they:
 
@@ -391,7 +391,7 @@ Update AGENTS, repo-map, and TEST_MAP so they:
 - describe the Rust-managed OpenHands Agent Server as the runtime
 ```
 
-- [ ] **Step 2: Update backend/runtime docs**
+- [x] **Step 2: Update backend/runtime docs**
 
 Replace stale wording like:
 
@@ -404,7 +404,7 @@ mirrors app/sidecar/agent-events.ts
 
 with runtime/OpenHands terminology consistent with the renamed Rust code.
 
-- [ ] **Step 3: Re-run repo metadata audits**
+- [x] **Step 3: Re-run repo metadata audits**
 
 Run:
 
@@ -425,7 +425,7 @@ Expected: metadata/tests reflect the new structure with no stale sidecar invento
 
 - Validate all modified files from Tasks 1-7
 
-- [ ] **Step 1: Run frontend unit/integration tests**
+- [x] **Step 1: Run frontend unit/integration tests**
 
 Run:
 
@@ -435,7 +435,7 @@ cd app && npm run test:unit
 
 Expected: pass.
 
-- [ ] **Step 2: Run agent structural tests**
+- [x] **Step 2: Run agent structural tests**
 
 Run:
 
@@ -445,7 +445,7 @@ cd app && npm run test:agents:structural
 
 Expected: pass.
 
-- [ ] **Step 3: Run Rust tests**
+- [x] **Step 3: Run Rust tests**
 
 Run:
 
@@ -455,7 +455,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml
 
 Expected: pass.
 
-- [ ] **Step 4: Run TypeScript compile check**
+- [x] **Step 4: Run TypeScript compile check**
 
 Run:
 
@@ -465,7 +465,7 @@ cd app && npx tsc --noEmit
 
 Expected: pass.
 
-- [ ] **Step 5: Run release-stage verification tests**
+- [x] **Step 5: Run release-stage verification tests**
 
 Run:
 
@@ -475,7 +475,7 @@ node --test scripts/ci/verify-release-stage.test.mjs
 
 Expected: pass with no `sidecar/dist` expectations.
 
-- [ ] **Step 6: Run markdown/doc lint on touched docs**
+- [x] **Step 6: Run markdown/doc lint on touched docs**
 
 Run:
 
@@ -491,4 +491,4 @@ Expected: pass.
 - [ ] Trigger a workflow run and confirm agent events still render in the UI.
 - [ ] Trigger a refine run and confirm display items still render correctly.
 - [ ] Trigger an eval/workbench path that uses the OpenHands runtime and confirm renamed Rust config/event code still works.
-- [ ] Build confidence that no active script, workflow, or repo doc claims the app ships a Node sidecar.
+- [x] Build confidence that no active script, workflow, or repo doc claims the app ships a Node sidecar.
