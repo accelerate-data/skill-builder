@@ -19,6 +19,7 @@ export function teardownWorkflowSession({
   }
 
   store.setRunning(false);
+  store.setStopping(false);
   store.setGateLoading(false);
   store.clearInitializing();
   store.clearRuntimeError();

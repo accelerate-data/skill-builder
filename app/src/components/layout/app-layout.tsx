@@ -117,13 +117,13 @@ export function AppLayout() {
         // Workflow: check if running and not already stopping
         const workflowStore = useWorkflowStore.getState();
         if (workflowStore.isRunning && !workflowStore.isStopping) {
-          workflowStore.setStopping(true);
           const runs = useAgentStore.getState().runs;
           const running = Object.values(runs).find(
             (r): r is typeof r & { skillName: string } =>
               r.status === "running" && r.runSource === "workflow" && !!r.skillName,
           );
           if (running) {
+            workflowStore.setStopping(true);
             cancelWorkflowStep(running.agentId).catch((err) => {
               console.error("[app-layout] escape: cancel workflow step failed", err);
               workflowStore.setStopping(false);
@@ -195,11 +195,14 @@ export function AppLayout() {
 
   const cleanupCurrentSelectedSkill = useCallback(async () => {
     const refineStore = useRefineStore.getState();
+    const workflowStore = useWorkflowStore.getState();
     if (runningWorkflow) {
       await cancelWorkflowStep(runningWorkflow.agentId);
+      workflowStore.setStopping(false);
     }
     if (getEvalsRunning()) {
       await requestEvalsCancel();
+      setEvalsStopping(false);
     }
     if (selectedSkillData && refineStore.conversationId) {
       await pauseOpenHandsSession(

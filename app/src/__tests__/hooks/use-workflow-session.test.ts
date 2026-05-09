@@ -17,6 +17,7 @@ const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapt
     currentStep: 0,
     steps: [{ status: "pending" }],
     setRunning: vi.fn(),
+    setStopping: vi.fn(),
     setGateLoading: vi.fn(),
     clearInitializing: vi.fn(),
     clearRuntimeError: vi.fn(),
@@ -68,6 +69,7 @@ let mockWorkflowState = {
   currentStep: 0,
   steps: [{ status: "pending" }],
   setRunning: vi.fn(),
+  setStopping: vi.fn(),
   setGateLoading: vi.fn(),
   clearInitializing: vi.fn(),
   clearRuntimeError: vi.fn(),
@@ -90,6 +92,7 @@ describe("useWorkflowSession", () => {
       currentStep: 0,
       steps: [{ status: "pending" }],
       setRunning: vi.fn(),
+      setStopping: vi.fn(),
       setGateLoading: vi.fn(),
       clearInitializing: vi.fn(),
       clearRuntimeError: vi.fn(),
@@ -138,6 +141,7 @@ describe("useWorkflowSession", () => {
     expect(mockWorkflowState.updateStepStatus).toHaveBeenCalledWith(0, "pending");
     // Running/gate state cleared
     expect(mockWorkflowState.setRunning).toHaveBeenCalledWith(false);
+    expect(mockWorkflowState.setStopping).toHaveBeenCalledWith(false);
     expect(mockWorkflowState.setGateLoading).toHaveBeenCalledWith(false);
     // Session ID cleared
     expect(mockWorkflowStoreMock.setState).toHaveBeenCalledWith({ workflowSessionId: null });
