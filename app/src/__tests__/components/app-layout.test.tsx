@@ -44,12 +44,15 @@ vi.mock("@/components/layout/sidebar", () => ({
 vi.mock("@/components/skill-list-panel", () => ({
   SkillListPanel: ({
     onSelectSkill,
+    onActivateSkill,
   }: {
     onSelectSkill?: (name: string, tab?: string) => void;
+    onActivateSkill?: (name: string) => Promise<void> | void;
   }) => (
     <div data-testid="skill-list-panel">
       <button onClick={() => onSelectSkill?.("sales-skill", "refine")}>Select sales</button>
       <button onClick={() => onSelectSkill?.("finance-skill", "refine")}>Select finance</button>
+      <button onClick={() => void onActivateSkill?.("sales-skill")}>Startup activate sales</button>
     </div>
   ),
 }));
@@ -323,10 +326,11 @@ describe("AppLayout", () => {
     expect(mockInvoke).toHaveBeenCalledTimes(1);
   });
 
-  it("cancels the active workflow step when Escape is pressed during workflow streaming", async () => {
+  it("pauses the workflow conversation when Escape is pressed during workflow streaming", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
       reconcile_startup: emptyReconciliation,
+      pause_openhands_session: true,
     });
     useAgentStore.getState().registerRun(
       "workflow-agent-1",
@@ -336,6 +340,24 @@ describe("AppLayout", () => {
       "parent-1",
     );
     useWorkflowStore.getState().setRunning(true);
+    useRefineStore.setState({
+      selectedSkill: {
+        name: "my-skill",
+        status: "in_progress",
+        current_step: "1",
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      conversationId: "conv-workflow",
+    });
 
     render(<AppLayout />);
 
@@ -347,11 +369,16 @@ describe("AppLayout", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("cancel_workflow_step", {
-        agentId: "workflow-agent-1",
+      expect(mockInvoke).toHaveBeenCalledWith("pause_openhands_session", {
+        input: {
+          skillName: "my-skill",
+          pluginSlug: "skills",
+          conversationId: "conv-workflow",
+          agentId: "workflow-agent-1",
+        },
       });
     });
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).not.toHaveBeenCalledWith("cancel_workflow_step", expect.anything());
   });
 
   it("requests eval cancellation when Escape is pressed during eval execution", async () => {
@@ -427,6 +454,7 @@ describe("AppLayout", () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
       reconcile_startup: emptyReconciliation,
+      pause_openhands_session: true,
     });
     useAgentStore.getState().registerRun(
       "workflow-agent-1",
@@ -437,6 +465,24 @@ describe("AppLayout", () => {
     );
     useWorkflowStore.getState().setRunning(true);
     useWorkflowStore.getState().setStopping(false);
+    useRefineStore.setState({
+      selectedSkill: {
+        name: "my-skill",
+        status: "in_progress",
+        current_step: "1",
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      conversationId: "conv-workflow",
+    });
 
     render(<AppLayout />);
 
@@ -541,9 +587,13 @@ describe("AppLayout", () => {
       return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
     });
 
-    useSkillStore.getState().setActiveSkill("sales-skill");
-
     render(<AppLayout />);
+
+    // Wait for the skill panel to appear, then simulate SkillListPanel's startup auto-select
+    await waitFor(() => {
+      expect(screen.getByText("Startup activate sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Startup activate sales"));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {

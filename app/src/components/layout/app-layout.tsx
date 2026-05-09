@@ -21,7 +21,6 @@ import { useAppStartup } from "@/hooks/use-app-startup";
 import {
   acquireLock,
   cancelAgentRun,
-  cancelWorkflowStep,
   pauseOpenHandsSession,
   selectSkillOpenHandsSession,
   releaseLock,
@@ -124,10 +123,15 @@ export function AppLayout() {
             (r): r is typeof r & { skillName: string } =>
               r.status === "running" && r.runSource === "workflow" && !!r.skillName,
           );
-          if (running) {
+          if (running && refineStore.conversationId && refineStore.selectedSkill) {
             workflowStore.setStopping(true);
-            cancelWorkflowStep(running.agentId).catch((err) => {
-              console.error("[app-layout] escape: cancel workflow step failed", err);
+            pauseOpenHandsSession(
+              refineStore.selectedSkill.name,
+              refineStore.selectedSkill.plugin_slug,
+              refineStore.conversationId,
+              running.agentId,
+            ).catch((err) => {
+              console.error("[app-layout] escape: pause workflow conversation failed", err);
               workflowStore.setStopping(false);
             });
           }
@@ -213,10 +217,7 @@ export function AppLayout() {
   const cleanupCurrentSelectedSkill = useCallback(async () => {
     const refineStore = useRefineStore.getState();
     const workflowStore = useWorkflowStore.getState();
-    if (runningWorkflow) {
-      await cancelWorkflowStep(runningWorkflow.agentId);
-      workflowStore.setStopping(false);
-    }
+    const agentIdToClose = runningWorkflow?.agentId ?? refineStore.activeAgentId;
     if (getEvalsRunning()) {
       await requestEvalsCancel();
       setEvalsStopping(false);
@@ -226,8 +227,11 @@ export function AppLayout() {
         "name" in selectedSkillData ? selectedSkillData.name : selectedSkillData.skill_name,
         selectedSkillData.plugin_slug,
         refineStore.conversationId,
-        refineStore.activeAgentId,
+        agentIdToClose,
       );
+    }
+    if (runningWorkflow) {
+      workflowStore.setStopping(false);
     }
     if (selectedSkillData) {
       await releaseLock(
