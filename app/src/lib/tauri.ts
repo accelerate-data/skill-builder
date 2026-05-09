@@ -430,12 +430,6 @@ export const pauseOpenHandsSession = (
     },
   })
 
-export const cancelAgentRun = (agentId: string) =>
-  invokeCommand("cancel_agent_run", { agentId })
-
-export const cancelWorkflowStep = (agentId: string) =>
-  invokeCommand("cancel_workflow_step", { agentId })
-
 export const sendRefineMessage = (
   skillName: string,
   pluginSlug: string,

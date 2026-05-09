@@ -447,19 +447,6 @@ pub async fn send_refine_message(
     })
 }
 
-/// Cancel an active OpenHands agent run by agent_id.
-#[tauri::command]
-pub async fn cancel_agent_run(agent_id: String) -> Result<(), String> {
-    log::info!("[cancel_agent_run] agent='{}'", agent_id);
-    if !crate::agents::openhands_server::pause_openhands_session(&agent_id) {
-        log::warn!(
-            "[cancel_agent_run] No active OpenHands run found for agent='{}'",
-            agent_id
-        );
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests;
 

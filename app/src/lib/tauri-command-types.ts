@@ -315,8 +315,6 @@ export interface TauriCommandMap {
     };
     result: void;
   };
-  cancel_agent_run: { args: { agentId: string }; result: void };
-  cancel_workflow_step: { args: { agentId: string }; result: void };
   send_refine_message: {
     args: {
       input: {

@@ -640,7 +640,7 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        openhands_server::pause_openhands_session(stale_agent_id);
+        openhands_server::abort_openhands_run(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
@@ -852,30 +852,6 @@ pub async fn run_answer_evaluator(
 ///
 /// Cancels an active workflow request. OpenHands requests are killed
 /// through the direct Rust runner registry.
-#[tauri::command]
-pub async fn cancel_workflow_step(
-    agent_id: String,
-    runs: tauri::State<'_, WorkflowStepRunManager>,
-) -> Result<(), String> {
-    log::info!("[cancel_workflow_step] agent={}", agent_id);
-    {
-        let map = runs.0.lock().map_err(|e| {
-            log::error!(
-                "[cancel_workflow_step] Failed to acquire session lock: {}",
-                e
-            );
-            e.to_string()
-        })?;
-        if map.get(&agent_id).is_none() {
-            let msg = format!("No workflow step session found for agent_id={}", agent_id);
-            log::warn!("[cancel_workflow_step] {}", msg);
-            return Err(msg);
-        }
-    }
-    openhands_server::pause_openhands_session(&agent_id);
-    Ok(())
-}
-
 /// Log the user's gate decision so it appears in the backend log stream.
 #[tauri::command]
 pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) {

@@ -954,6 +954,13 @@ pub async fn openhands_send_message(
     send_openhands_message(app, agent_id, config, conversation_id).await
 }
 
+/// Force-abort the local Tokio task for an agent. Only for edge-case cleanup
+/// (stale runs, timed-out throwaway sessions). Normal user-initiated stops
+/// must go through `pause_openhands_conversation` so OpenHands is notified.
+pub fn abort_openhands_run(agent_id: &str) -> bool {
+    close_local_openhands_run(agent_id)
+}
+
 fn close_local_openhands_run(agent_id: &str) -> bool {
     let mut found = false;
 
@@ -970,40 +977,6 @@ fn close_local_openhands_run(agent_id: &str) -> bool {
     }
 
     found
-}
-
-pub fn pause_openhands_session(agent_id: &str) -> bool {
-    let mut handle = match cancel_registry().get_mut(agent_id) {
-        Some(handle) => handle,
-        None => return false,
-    };
-
-    if handle.pause_requested {
-        log::debug!(
-            "[pause_openhands_session] agent_id={} action=already-requested",
-            agent_id
-        );
-        return true;
-    }
-
-    let Some(cancel) = handle.sender.take() else {
-        handle.pause_requested = true;
-        log::debug!(
-            "[pause_openhands_session] agent_id={} action=awaiting-terminal",
-            agent_id
-        );
-        return true;
-    };
-
-    let sent = cancel.send(()).is_ok();
-    if sent {
-        handle.pause_requested = true;
-        log::debug!(
-            "[pause_openhands_session] agent_id={} action=signal-dispatched",
-            agent_id
-        );
-    }
-    sent
 }
 
 pub async fn pause_openhands_conversation(
@@ -1037,15 +1010,56 @@ pub async fn pause_openhands_conversation(
         })?;
 
     // Signal the in-process task so it sets cancel_pending=true before the socket closes.
-    // Using pause_openhands_session (signal only) rather than close_local_openhands_run
-    // (signal + abort) keeps the WebSocket alive long enough for the task to receive the
-    // PAUSED terminal state and exit cleanly via build_cancelled_state.
-    let signaled = agent_id.is_some_and(pause_openhands_session);
+    // This keeps the WebSocket alive long enough for the task to receive the PAUSED terminal
+    // state and exit cleanly via build_cancelled_state rather than the error recovery path.
+    let signaled = if let Some(id) = agent_id {
+        let mut handle = match cancel_registry().get_mut(id) {
+            Some(h) => h,
+            None => return Ok(false),
+        };
+        if handle.pause_requested {
+            log::debug!(
+                "[pause_openhands_conversation] agent_id={} action=already-requested",
+                id
+            );
+            true
+        } else if let Some(sender) = handle.sender.take() {
+            handle.pause_requested = true;
+            let sent = sender.send(()).is_ok();
+            log::debug!(
+                "[pause_openhands_conversation] agent_id={} action=signal-dispatched sent={}",
+                id, sent
+            );
+            sent
+        } else {
+            handle.pause_requested = true;
+            log::debug!(
+                "[pause_openhands_conversation] agent_id={} action=awaiting-terminal",
+                id
+            );
+            true
+        }
+    } else {
+        false
+    };
     Ok(signaled)
 }
 
 pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
-    let mut found = pause_openhands_session(agent_id);
+    // Signal the in-process task to stop gracefully before the force-abort timeout.
+    let mut found = {
+        let mut f = false;
+        if let Some(mut handle) = cancel_registry().get_mut(agent_id) {
+            f = true;
+            if !handle.pause_requested {
+                handle.pause_requested = true;
+                if let Some(sender) = handle.sender.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+        f
+    };
 
     if task_registry().contains_key(agent_id) {
         found = true;
@@ -1155,9 +1169,9 @@ pub async fn run_throwaway_openhands_session(
         Ok(Ok(())) => {}
         Ok(Err(error)) => return Err(error),
         Err(_) => {
-            if !pause_openhands_session(&agent_id) {
+            if !close_local_openhands_run(&agent_id) {
                 log::warn!(
-                    "[openhands-agent-server] throwaway_run_timeout agent_id={} cleanup=pause-not-found",
+                    "[openhands-agent-server] throwaway_run_timeout agent_id={} cleanup=not-found",
                     agent_id
                 );
             }
