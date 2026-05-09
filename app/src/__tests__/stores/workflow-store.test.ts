@@ -78,6 +78,25 @@ describe("useWorkflowStore", () => {
     expect(useWorkflowStore.getState().isRunning).toBe(false);
   });
 
+  it("setStopping toggles isStopping", () => {
+    useWorkflowStore.getState().setStopping(true);
+    expect(useWorkflowStore.getState().isStopping).toBe(true);
+    useWorkflowStore.getState().setStopping(false);
+    expect(useWorkflowStore.getState().isStopping).toBe(false);
+  });
+
+  it("reset clears isStopping", () => {
+    useWorkflowStore.getState().setStopping(true);
+    useWorkflowStore.getState().reset();
+    expect(useWorkflowStore.getState().isStopping).toBe(false);
+  });
+
+  it("initWorkflow clears isStopping", () => {
+    useWorkflowStore.getState().setStopping(true);
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    expect(useWorkflowStore.getState().isStopping).toBe(false);
+  });
+
   it("isRunning is false when reviewMode is active (initial state)", () => {
     const state = useWorkflowStore.getState();
     // reviewMode defaults to true; isRunning must be false — no agent runs in review mode

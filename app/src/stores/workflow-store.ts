@@ -16,6 +16,7 @@ interface WorkflowState {
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  isStopping: boolean;
   /** When true, users can browse completed steps without triggering resets. */
   reviewMode: boolean;
   /** Active workflow session ID for usage tracking. Created when running starts, ended on navigate-away. */
@@ -42,6 +43,7 @@ interface WorkflowState {
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
   setRunning: (running: boolean) => void;
+  setStopping: (stopping: boolean) => void;
   setInitializing: () => void;
   clearInitializing: () => void;
   setInitProgressMessage: (message: string) => void;
@@ -73,6 +75,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
+  isStopping: false,
   reviewMode: true,
   workflowSessionId: null,
   isInitializing: false,
@@ -91,6 +94,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      isStopping: false,
       reviewMode: initialReviewMode ?? true,
       workflowSessionId: null,
       isInitializing: false,
@@ -129,6 +133,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       set({ isRunning: running });
     }
   },
+
+  setStopping: (stopping) => set({ isStopping: stopping }),
 
   setInitializing: () =>
     set({
@@ -224,6 +230,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      isStopping: false,
       reviewMode: true,
       workflowSessionId: null,
       isInitializing: false,
