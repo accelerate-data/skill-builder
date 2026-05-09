@@ -240,20 +240,12 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: SidecarConfig,
 ) -> Result<String, String> {
-    let skill_name = config.skill_name.clone().ok_or_else(|| {
-        "Workflow OpenHands config missing skill_name for selected conversation lookup".to_string()
-    })?;
-    let conversation_id = {
-        let db = app.state::<Db>();
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_conversation_id(&conn, &config.plugin_slug, &skill_name)?
-    }
-    .ok_or_else(|| {
-        format!(
-            "No active OpenHands conversation for workflow skill '{}' plugin '{}'",
-            skill_name, config.plugin_slug
-        )
-    })?;
+    // Resume the saved OpenHands conversation for this skill, or create a new
+    // one and persist the ID. start_openhands_session uses ResumeOrCreate, so
+    // it covers every "no saved conversation" case — fresh skill, post-reset,
+    // server lost the conversation, DB drift — without erroring back to the UI.
+    let conversation_id =
+        crate::agents::openhands_server::start_openhands_session(app, config.clone(), None).await?;
 
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,
