@@ -430,15 +430,20 @@ fn collect_live_child_subagent_events(
 ) -> Result<Vec<serde_json::Value>, String> {
     let children = list_persisted_subagent_conversations(root)?;
     let mut emitted = Vec::new();
-    log::debug!(
-        "[openhands-agent-server:{}] live_subagent_scan root={} launch_count={} child_count={} known_links={} emitted_keys={}",
-        agent_id,
-        root.display(),
-        launches.len(),
-        children.len(),
-        state.parent_tool_call_by_child_conversation.len(),
-        state.emitted_child_event_keys.len()
-    );
+    // Skip the per-tick log when there's nothing to scan — the parent step
+    // hasn't launched a sub-agent and the child directory is empty. Without
+    // this guard the loop logs a noisy line every 250ms.
+    if !launches.is_empty() || !children.is_empty() {
+        log::debug!(
+            "[openhands-agent-server:{}] live_subagent_scan root={} launch_count={} child_count={} known_links={} emitted_keys={}",
+            agent_id,
+            root.display(),
+            launches.len(),
+            children.len(),
+            state.parent_tool_call_by_child_conversation.len(),
+            state.emitted_child_event_keys.len()
+        );
+    }
 
     for child in children {
         let parent_tool_call_id = if let Some(existing) = state
