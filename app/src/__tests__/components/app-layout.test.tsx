@@ -132,10 +132,7 @@ import {
   setEvalsRunning,
   setEvalsStopping,
 } from "@/lib/eval-running-state";
-import { render as rtlRender } from "@testing-library/react";
-import { renderWithQueryClient, createTestQueryClient } from "@/test/query-test-utils";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/queries/query-keys";
+import { renderWithQueryClient } from "@/test/query-test-utils";
 
 // Use renderWithQueryClient as the default render for most tests
 const render = renderWithQueryClient;
