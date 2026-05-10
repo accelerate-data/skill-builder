@@ -15,8 +15,6 @@ function read(relativePath) {
 const vu1140Commands = [
   "get_skill_content_at_path",
   "get_skill_content_for_refine",
-  "start_refine_session",
-  "close_refine_session",
   "send_refine_message",
   "finalize_refine_run",
   "clean_benchmark_snapshot",
