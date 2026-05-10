@@ -4,6 +4,7 @@ use crate::agents::runtime_config::{
 };
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 
 const SCOPE_REVIEW_PROMPT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -38,11 +39,37 @@ pub(crate) struct ScopeReviewPromptParams<'a> {
 }
 
 pub(crate) struct ScopeReviewRuntimeConfigParams<'a> {
+    pub app_data_root: &'a str,
     pub skill_name: &'a str,
     pub prompt: &'a str,
-    pub workspace_path: &'a str,
-    pub workspace_run_dir: &'a str,
+    pub skills_root: &'a str,
+    pub skill_dir: &'a str,
     pub llm: crate::types::WorkflowLlmConfig,
+}
+
+pub(crate) fn build_scope_review_runtime_config(
+    params: ScopeReviewRuntimeConfigParams<'_>,
+) -> OpenHandsRuntimeConfig {
+    crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
+            prompt: params.prompt.to_string(),
+            llm: params.llm,
+            app_data_root: params.app_data_root.to_string(),
+            skills_root: params.skills_root.replace('\\', "/"),
+            skill_dir: params.skill_dir.replace('\\', "/"),
+            mode: Some(OpenHandsRuntimeMode::Throwaway),
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("scope_review".to_string()),
+            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+            allowed_tools: vec!["file_editor".to_string()],
+            max_turns: 4,
+            output_format: Some(scope_review_output_format()),
+            skill_name: Some(params.skill_name.to_string()),
+            step_id: Some(-30),
+            run_source: None,
+            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+        },
+    )
 }
 
 pub(crate) fn render_scope_review_prompt(params: ScopeReviewPromptParams<'_>) -> String {
@@ -123,33 +150,6 @@ fn scope_review_output_format() -> serde_json::Value {
     })
 }
 
-pub(crate) fn build_scope_review_runtime_config(
-    params: ScopeReviewRuntimeConfigParams<'_>,
-) -> OpenHandsRuntimeConfig {
-    let workspace_root_dir = params.workspace_path.replace('\\', "/");
-    let workspace_run_dir = params.workspace_run_dir.replace('\\', "/");
-
-    crate::agents::runtime_config::build_openhands_runtime_config(
-        BuildOpenHandsRuntimeConfigParams {
-            prompt: params.prompt.to_string(),
-            llm: params.llm,
-            workspace_root_dir,
-            workspace_run_dir,
-            mode: Some(OpenHandsRuntimeMode::Throwaway),
-            agent_name: "skill-creator".to_string(),
-            task_kind: Some("scope_review".to_string()),
-            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-            allowed_tools: vec!["file_editor".to_string()],
-            max_turns: 4,
-            output_format: Some(scope_review_output_format()),
-            skill_name: Some(params.skill_name.to_string()),
-            step_id: Some(-30),
-            run_source: None,
-            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
-        },
-    )
-}
-
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn review_skill_scope(
@@ -216,11 +216,22 @@ pub async fn review_skill_scope(
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
     crate::commands::workflow::deploy::ensure_openhands_runtime_dir(&app, &runtime_run_dir).await?;
 
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let skills_path = crate::commands::refine::resolve_skills_path(&db)
+        .inspect_err(|e| log::error!("[review_skill_scope] Failed to resolve skills path: {}", e))?;
+
     let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
+        app_data_root: &app_data_root,
         skill_name: &skill_name,
         prompt: &prompt,
-        workspace_path: &runtime_context.workspace_path,
-        workspace_run_dir: &runtime_run_dir.to_string_lossy(),
+        skills_root: &skills_path,
+        skill_dir: &runtime_run_dir.to_string_lossy(),
         llm: runtime_context.llm,
     });
 
@@ -387,11 +398,11 @@ mod tests {
     #[test]
     fn scope_review_openhands_config_uses_clean_break_runner_contract() {
         let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
+            app_data_root: "/tmp/app-data",
             skill_name: "forecasting-churned-customers",
             prompt: "rendered prompt",
-            workspace_path: "/tmp/skill-builder/workspace",
-            workspace_run_dir:
-                "/tmp/skill-builder/workspace/.openhands/throwaway/scope-review/run-1",
+            skills_root: "/tmp/skills",
+            skill_dir: "/tmp/skills/.openhands/throwaway/scope-review/run-1",
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),
                 api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
@@ -425,14 +436,11 @@ mod tests {
         assert_eq!(json["llm"]["model"], "anthropic/claude-sonnet-4-5");
         assert!(json.get("model").is_none());
         assert_eq!(json["apiKey"], "openhands-llm-config");
-        assert!(json["workspaceRootDir"]
+        assert_eq!(json["skillsRoot"], "/tmp/skills");
+        assert!(json["skillDir"]
             .as_str()
             .unwrap()
-            .ends_with("/workspace"));
-        assert!(json["workspaceSkillDir"]
-            .as_str()
-            .unwrap()
-            .ends_with("/workspace/.openhands/throwaway/scope-review/run-1"));
+            .ends_with("/.openhands/throwaway/scope-review/run-1"));
         assert_eq!(json["allowedTools"], serde_json::json!(["file_editor"]));
         assert_eq!(json["maxTurns"], 4);
         assert!(json["outputFormat"]["schema"]["required"]

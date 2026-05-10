@@ -2827,10 +2827,21 @@ fn test_delete_workflow_run_non_default_plugin() {
     // save_workflow_run always places skills in the default plugin (handles redo
     // workflow case). Use it to create the workflow run + skill.
     save_workflow_run(&conn, "mkt-skill-del", 0, "pending", "domain").unwrap();
-    set_skill_tags(&conn, "mkt-skill-del", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["mkt-tag".into()]).unwrap();
+    set_skill_tags(
+        &conn,
+        "mkt-skill-del",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["mkt-tag".into()],
+    )
+    .unwrap();
 
     // delete_workflow_run with the default plugin_slug should succeed
-    delete_workflow_run(&conn, "mkt-skill-del", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
+    delete_workflow_run(
+        &conn,
+        "mkt-skill-del",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
 
     // Workflow run should be gone
     assert!(get_workflow_run(&conn, "mkt-skill-del").unwrap().is_none());

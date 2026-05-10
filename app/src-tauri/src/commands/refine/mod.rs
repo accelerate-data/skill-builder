@@ -4,6 +4,7 @@ pub mod output;
 pub(crate) mod protocol;
 
 use serde::Deserialize;
+use tauri::Manager;
 
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
@@ -320,7 +321,13 @@ pub async fn send_refine_message(
         (session.dispatched_user_turn_count == 0, dispatch_plan)
     };
 
-    let runtime_ctx = crate::commands::skill_session::ensure_skill_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
+    let runtime_ctx = crate::commands::skill_session::ensure_skill_runtime_ready(
+        &app,
+        &db,
+        &skill_name,
+        &plugin_slug,
+    )
+    .await?;
 
     let prompt = if is_first_turn {
         let skills_path = resolve_skills_path(&db)?;
@@ -343,11 +350,19 @@ pub async fn send_refine_message(
         user_message.clone()
     };
 
+    let skills_path = resolve_skills_path(&db)?;
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
     let config = crate::commands::skill_session::build_skill_session_config(
         &skill_name,
         &plugin_slug,
         &prompt,
-        &runtime_ctx.workspace_path,
+        &app_data_root,
+        &skills_path,
         runtime_ctx.llm.clone(),
     );
     let agent_id = format!(

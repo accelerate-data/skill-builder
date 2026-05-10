@@ -11,7 +11,7 @@ import { getDisabledSteps } from "@/lib/tauri";
 
 const mockGetDisabledSteps = getDisabledSteps as ReturnType<typeof vi.fn>;
 
-const skill = { name: "my-skill", current_step: null, status: null, last_modified: null, tags: [], purpose: null, skill_source: null, author_login: null, author_avatar: null, intake_json: null } as unknown as SkillSummary;
+const skill = { id: 1, name: "my-skill", current_step: null, status: null, last_modified: null, tags: [], purpose: null, skill_source: null, author_login: null, author_avatar: null, intake_json: null } as unknown as SkillSummary;
 
 describe("useScopeBlocked", () => {
   beforeEach(() => {
@@ -50,7 +50,7 @@ describe("useScopeBlocked", () => {
     await waitFor(() => expect(result.current).toBe(true));
 
     mockGetDisabledSteps.mockResolvedValue([]);
-    const skill2 = { name: "other-skill", current_step: null, status: null, last_modified: null, tags: [], purpose: null, skill_source: null, author_login: null, author_avatar: null, intake_json: null } as unknown as SkillSummary;
+    const skill2 = { id: 2, name: "other-skill", current_step: null, status: null, last_modified: null, tags: [], purpose: null, skill_source: null, author_login: null, author_avatar: null, intake_json: null } as unknown as SkillSummary;
     rerender({ s: skill2 });
     await waitFor(() => expect(result.current).toBe(false));
   });

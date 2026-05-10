@@ -658,8 +658,10 @@ async fn import_marketplace_entries_to_library(
 
                 // Step 2a: Create/update skill master row (with plugin FK)
                 // Step 2b: Create/update imported_skills row (with skill master FK)
-                let purpose_for_master =
-                    skill.purpose.clone().unwrap_or_else(|| "domain".to_string());
+                let purpose_for_master = skill
+                    .purpose
+                    .clone()
+                    .unwrap_or_else(|| "domain".to_string());
                 let db_result: Result<(), String> = (|| {
                     let skill_master_id = crate::db::upsert_skill_in_plugin(
                         &conn,

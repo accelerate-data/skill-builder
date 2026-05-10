@@ -189,7 +189,7 @@ pub(crate) fn list_refinable_skills_inner(
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_skill(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     workspace_path: String,
     name: String,
     tags: Option<Vec<String>>,
@@ -259,7 +259,12 @@ pub fn create_skill(
             .ok_or_else(|| format!("Failed to find created skill '{}'", name))?
     };
 
-    post_create_skill_filesystem_inner(&name, skills_path.as_deref(), DEFAULT_PLUGIN_SLUG);
+    post_create_skill_filesystem_inner(
+        &name,
+        skills_path.as_deref(),
+        DEFAULT_PLUGIN_SLUG,
+        Some(&app),
+    );
     Ok(skill_id)
 }
 
@@ -303,7 +308,7 @@ pub(crate) fn create_skill_inner(
             disable_model_invocation,
         )?;
     }
-    post_create_skill_filesystem_inner(name, skills_path, DEFAULT_PLUGIN_SLUG);
+    post_create_skill_filesystem_inner(name, skills_path, DEFAULT_PLUGIN_SLUG, None);
     Ok(())
 }
 
@@ -487,16 +492,35 @@ pub(crate) fn create_skill_db_records_inner(
     Ok(())
 }
 
-fn post_create_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plugin_slug: &str) {
+fn post_create_skill_filesystem_inner(
+    name: &str,
+    skills_path: Option<&str>,
+    plugin_slug: &str,
+    app_handle: Option<&tauri::AppHandle>,
+) {
     // INTENTIONAL: DB committed first; git commit may fail.
     // Reconciler corrects disk/DB divergence on next startup.
     if let Some(sp) = skills_path {
+        let skill_dir = crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
+
+        // Seed .agents/ so OpenHands can find agents immediately.
+        if let Some(app) = app_handle {
+            if let Err(e) =
+                crate::commands::workflow::deploy::seed_skill_agents_dir(app, &skill_dir)
+            {
+                log::warn!(
+                    "[create_skill] failed to seed .agents/ for {}: {}",
+                    skill_dir.display(),
+                    e
+                );
+            }
+        }
+
         // Regenerate marketplace manifests
         if let Err(e) = crate::marketplace_manifest::regenerate_all_manifests(Path::new(sp)) {
             log::warn!("Manifest regeneration failed after create: {}", e);
         }
         // Initialize per-skill git repo and commit at the skill dir level
-        let skill_dir = crate::skill_paths::resolve_skill_dir(Path::new(sp), plugin_slug, name);
         if let Err(e) = crate::git::ensure_repo(&skill_dir) {
             log::warn!(
                 "[post_create_skill_filesystem_inner] failed to init git repo for '{}': {}",
@@ -563,6 +587,35 @@ pub async fn delete_skill(
             &refine_sessions,
         )?
     };
+
+    // Best-effort HTTP pause — swallows all errors so delete cannot be blocked
+    // by server state. Collect IDs while holding the lock, then pause outside it.
+    let conversation_ids: Vec<String> = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let mut ids = Vec::new();
+        let slugs_to_check = if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+            vec![
+                plugin_slug.clone(),
+                crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+            ]
+        } else {
+            vec![plugin_slug.clone()]
+        };
+        for slug in &slugs_to_check {
+            if let Ok(Some(id)) = crate::db::get_skill_conversation_id(&conn, slug, &name) {
+                ids.push(id);
+            }
+        }
+        ids
+    };
+    for conv_id in &conversation_ids {
+        crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
+        log::info!(
+            "[delete_skill] paused conversation {} for skill={}",
+            conv_id,
+            name
+        );
+    }
 
     for agent_id in &shutdown_plan.agent_ids {
         let stopped = crate::agents::openhands_server::terminate_openhands_session(
@@ -808,7 +861,7 @@ mod tests {
         let skills_path = dir.path().to_str().unwrap();
         let plugin_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        post_create_skill_filesystem_inner("brand-new-skill", Some(skills_path), plugin_slug);
+        post_create_skill_filesystem_inner("brand-new-skill", Some(skills_path), plugin_slug, None);
 
         let skill_dir =
             crate::skill_paths::resolve_skill_dir(dir.path(), plugin_slug, "brand-new-skill");

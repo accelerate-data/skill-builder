@@ -12,6 +12,7 @@ use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runti
 use crate::db::Db;
 use serde_json::Value;
 use std::path::Path;
+use tauri::Manager;
 pub use types::{ScenarioDto, ScenarioSummaryDto};
 
 const SUGGEST_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
@@ -262,20 +263,23 @@ fn parse_suggested_scenario_response(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_generation_runtime_config(
+    app_data_root: &str,
     plugin_slug: &str,
     skill_name: &str,
     prompt: &str,
-    workspace_root_dir: &str,
-    workspace_run_dir: &str,
+    skills_root: &str,
+    skill_dir: &str,
     output_format: Value,
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
 ) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
     build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
-        workspace_root_dir: workspace_root_dir.replace('\\', "/"),
-        workspace_run_dir: workspace_run_dir.replace('\\', "/"),
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.replace('\\', "/"),
+        skill_dir: skill_dir.replace('\\', "/"),
         mode: Some(OpenHandsRuntimeMode::Throwaway),
         agent_name: "skill-creator".to_string(),
         task_kind: Some("scenario-suggest".to_string()),
@@ -296,6 +300,7 @@ async fn run_define_eval_scenario_throwaway_turn<
     RunTurn,
     RunTurnFuture,
 >(
+    app_data_root: &str,
     plugin_slug: &str,
     skill_name: &str,
     prompt: &str,
@@ -324,6 +329,7 @@ where
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
     ensure_runtime_dir(&runtime_run_dir).await?;
     let config = build_generation_runtime_config(
+        app_data_root,
         plugin_slug,
         skill_name,
         prompt,
@@ -463,7 +469,14 @@ pub async fn define_eval_scenario(
         &clarifications_json,
         &decisions_json,
     );
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
     let run = run_define_eval_scenario_throwaway_turn(
+        &app_data_root,
         &plugin_slug,
         &skill_name,
         &prompt,
@@ -522,6 +535,7 @@ mod tests {
 
         let result = tokio::runtime::Runtime::new().unwrap().block_on(
             run_define_eval_scenario_throwaway_turn(
+                "/tmp/app-data",
                 "default",
                 "lead-conversion",
                 "prompt",
@@ -541,7 +555,7 @@ mod tests {
                     assert_eq!(params.config.task_kind.as_deref(), Some("scenario-suggest"));
                     assert!(params
                         .config
-                        .workspace_skill_dir
+                        .skill_dir
                         .contains("/.openhands/throwaway/eval-workbench/"));
                     Ok(OpenHandsThrowawayRun {
                         conversation_state: serde_json::json!({

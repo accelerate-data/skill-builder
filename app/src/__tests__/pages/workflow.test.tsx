@@ -2548,6 +2548,30 @@ describe("step reset behavior regressions", () => {
     // onResetStep must be a function in update mode (not undefined)
     expect(typeof capturedOnResetStep).toBe("function");
   });
+
+  it("does not pass onReset for editable step 0 in update mode", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    let capturedOnReset: unknown = "NOT_CAPTURED";
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onReset }) => {
+      capturedOnReset = onReset;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    expect(capturedOnReset).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

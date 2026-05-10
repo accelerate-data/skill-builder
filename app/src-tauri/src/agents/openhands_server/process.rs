@@ -56,13 +56,13 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
 /// Absolute path where the OpenHands SDK should persist conversation state
 /// for this workspace. All skills share this directory; per-skill isolation
 /// comes from `workspace.working_dir` in each conversation's REST request body.
-pub(crate) fn compute_conversations_path(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(".openhands").join("conversations")
+pub(crate) fn compute_conversations_path(app_data_root: &Path) -> PathBuf {
+    app_data_root.join("openhands").join("conversations")
 }
 
 /// Absolute path where the OpenHands server persists bash event logs for this workspace.
-pub(crate) fn compute_bash_events_path(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(".openhands").join("bash_events")
+pub(crate) fn compute_bash_events_path(app_data_root: &Path) -> PathBuf {
+    app_data_root.join("openhands").join("bash_events")
 }
 
 fn apply_session_env(
@@ -83,12 +83,14 @@ fn apply_session_env(
     }
 }
 
-fn openhands_secret_path(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(".openhands").join(OPENHANDS_SECRET_FILENAME)
+fn openhands_secret_path(app_data_root: &Path) -> PathBuf {
+    app_data_root
+        .join("openhands")
+        .join(OPENHANDS_SECRET_FILENAME)
 }
 
-fn read_or_create_openhands_secret(workspace_root: &Path) -> Result<String, String> {
-    let secret_path = openhands_secret_path(workspace_root);
+fn read_or_create_openhands_secret(app_data_root: &Path) -> Result<String, String> {
+    let secret_path = openhands_secret_path(app_data_root);
     if let Ok(existing) = fs::read_to_string(&secret_path) {
         let trimmed = existing.trim();
         if !trimmed.is_empty() {
@@ -267,7 +269,7 @@ fn release_stale_conversation_leases(conversations_path: &Path) {
 
 pub async fn ensure_agent_server(
     timeout: Duration,
-    workspace_root: &Path,
+    app_data_root: &Path,
 ) -> Result<OpenHandsAgentServerHandle, String> {
     let mut registry = agent_server_registry().lock().await;
     if let Some(server) = registry.as_mut() {
@@ -292,9 +294,9 @@ pub async fn ensure_agent_server(
         *registry = None;
     }
 
-    release_stale_conversation_leases(&compute_conversations_path(workspace_root));
+    release_stale_conversation_leases(&compute_conversations_path(app_data_root));
 
-    let process = OpenHandsAgentServerProcess::start(timeout, workspace_root).await?;
+    let process = OpenHandsAgentServerProcess::start(timeout, app_data_root).await?;
     let handle = OpenHandsAgentServerHandle {
         port: process.port,
         session_api_key: process.session_api_key.clone(),
@@ -307,6 +309,15 @@ pub async fn ensure_agent_server(
     Ok(handle)
 }
 
+/// Returns the cached agent server handle if one exists.
+/// Does NOT start a new server — callers that only need the handle for
+/// best-effort operations (e.g. pause before delete) use this instead of
+/// `ensure_agent_server`.
+pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle> {
+    let registry = agent_server_registry().lock().await;
+    registry.as_ref().map(|s| s.handle.clone())
+}
+
 pub async fn shutdown_agent_server() -> Result<(), String> {
     let mut registry = agent_server_registry().lock().await;
     if let Some(mut server) = registry.take() {
@@ -316,10 +327,10 @@ pub async fn shutdown_agent_server() -> Result<(), String> {
 }
 
 impl OpenHandsAgentServerProcess {
-    pub async fn start(timeout: Duration, workspace_root: &Path) -> Result<Self, String> {
+    pub async fn start(timeout: Duration, app_data_root: &Path) -> Result<Self, String> {
         let mut last_error = None;
         for attempt in 1..=5 {
-            match Self::start_once(timeout, workspace_root).await {
+            match Self::start_once(timeout, app_data_root).await {
                 Ok(process) => return Ok(process),
                 Err(error) => {
                     log::warn!(
@@ -333,10 +344,10 @@ impl OpenHandsAgentServerProcess {
         Err(last_error.unwrap_or_else(|| "Failed to start OpenHands Agent Server".to_string()))
     }
 
-    async fn start_once(timeout: Duration, workspace_root: &Path) -> Result<Self, String> {
+    async fn start_once(timeout: Duration, app_data_root: &Path) -> Result<Self, String> {
         let port = select_random_local_port()?;
         let session_api_key = uuid::Uuid::new_v4().to_string();
-        let openhands_secret_key = read_or_create_openhands_secret(workspace_root)?;
+        let openhands_secret_key = read_or_create_openhands_secret(app_data_root)?;
         let command = OpenHandsServerCommand::new(port);
         let runtime_dir = tempfile::Builder::new()
             .prefix("openhands-agent-server-")
@@ -344,10 +355,10 @@ impl OpenHandsAgentServerProcess {
             .map_err(|e| format!("Failed to create OpenHands Agent Server runtime dir: {e}"))?;
         let mut tokio_command = command.tokio_command();
         tokio_command.current_dir(runtime_dir.path());
-        let conversations_path_str = compute_conversations_path(workspace_root)
+        let conversations_path_str = compute_conversations_path(app_data_root)
             .to_string_lossy()
             .into_owned();
-        let bash_events_path_str = compute_bash_events_path(workspace_root)
+        let bash_events_path_str = compute_bash_events_path(app_data_root)
             .to_string_lossy()
             .into_owned();
         apply_session_env(
@@ -365,7 +376,7 @@ impl OpenHandsAgentServerProcess {
             "[openhands-agent-server] OH_BASH_EVENTS_DIR={}",
             bash_events_path_str
         );
-        let log_file = open_server_log_file(workspace_root).await;
+        let log_file = open_server_log_file(app_data_root).await;
         let stderr_secrets = vec![session_api_key.clone(), openhands_secret_key];
         let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(
             STDERR_TAIL_MAX_LINES,
@@ -483,10 +494,10 @@ impl OpenHandsAgentServerProcess {
     }
 }
 
-/// Opens a timestamped log file for a server instance under `{workspace_root}/.openhands/logs/`.
+/// Opens a timestamped log file for a server instance under `{app_data_root}/openhands/logs/`.
 /// Best-effort: returns `None` on any IO error rather than failing the server start.
-async fn open_server_log_file(workspace_root: &Path) -> Option<BufWriter<tokio::fs::File>> {
-    let logs_dir = workspace_root.join(".openhands").join("logs");
+async fn open_server_log_file(app_data_root: &Path) -> Option<BufWriter<tokio::fs::File>> {
+    let logs_dir = app_data_root.join("openhands").join("logs");
     if let Err(e) = tokio::fs::create_dir_all(&logs_dir).await {
         log::warn!(
             "[openhands-agent-server] could not create log dir {}: {e}",
@@ -707,22 +718,20 @@ mod tests {
     }
 
     #[test]
-    fn compute_conversations_path_resolves_under_workspace_root_openhands_dir() {
-        let path = compute_conversations_path(Path::new("/tmp/workspace"));
-        let s = path.to_string_lossy().replace('\\', "/");
-        assert!(
-            s.ends_with(".openhands/conversations"),
-            "expected path to end with .openhands/conversations; got {s}",
+    fn compute_conversations_path_resolves_under_app_data_root_openhands_dir() {
+        let root = Path::new("/tmp/app-data");
+        assert_eq!(
+            compute_conversations_path(root),
+            Path::new("/tmp/app-data/openhands/conversations")
         );
     }
 
     #[test]
-    fn compute_bash_events_path_resolves_under_workspace_root_openhands_dir() {
-        let path = compute_bash_events_path(Path::new("/tmp/workspace"));
-        let s = path.to_string_lossy().replace('\\', "/");
-        assert!(
-            s.ends_with(".openhands/bash_events"),
-            "expected path to end with .openhands/bash_events; got {s}",
+    fn compute_bash_events_path_resolves_under_app_data_root_openhands_dir() {
+        let root = Path::new("/tmp/app-data");
+        assert_eq!(
+            compute_bash_events_path(root),
+            Path::new("/tmp/app-data/openhands/bash_events")
         );
     }
 
@@ -827,16 +836,16 @@ mod tests {
     }
 
     #[test]
-    fn read_or_create_openhands_secret_uses_stable_workspace_root_file() {
+    fn read_or_create_openhands_secret_uses_stable_app_data_root_file() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let workspace_root = tmp.path();
+        let app_data_root = tmp.path();
 
-        let first = read_or_create_openhands_secret(workspace_root).expect("first secret");
-        let second = read_or_create_openhands_secret(workspace_root).expect("second secret");
+        let first = read_or_create_openhands_secret(app_data_root).expect("first secret");
+        let second = read_or_create_openhands_secret(app_data_root).expect("second secret");
         assert_eq!(first, second);
 
-        let secret_path = workspace_root
-            .join(".openhands")
+        let secret_path = app_data_root
+            .join("openhands")
             .join(OPENHANDS_SECRET_FILENAME);
         assert_eq!(
             fs::read_to_string(&secret_path)
@@ -850,10 +859,10 @@ mod tests {
     #[cfg(unix)]
     async fn live_openhands_server_shutdown_prefers_sigterm() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let workspace_root = tmp.path();
+        let app_data_root = tmp.path();
 
         let mut process =
-            OpenHandsAgentServerProcess::start(Duration::from_secs(60), workspace_root)
+            OpenHandsAgentServerProcess::start(Duration::from_secs(60), app_data_root)
                 .await
                 .expect("start OpenHands server");
 
@@ -882,11 +891,19 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn try_get_cached_server_handle_returns_none_when_no_server_cached() {
+        // Registry starts empty in a fresh process; this should always be None.
+        // (Other tests that start a real server must not run in the same process.)
+        let handle = try_get_cached_server_handle().await;
+        assert!(handle.is_none());
+    }
+
     #[test]
     fn ensure_agent_server_does_not_restart_on_skill_switch() {
         // ensure_agent_server no longer accepts conversations_path or any
-        // skill-scoped parameter.  The signature is (timeout, workspace_root),
-        // so calling it twice with the same workspace_root reuses the cached
+        // skill-scoped parameter.  The signature is (timeout, app_data_root),
+        // so calling it twice with the same app_data_root reuses the cached
         // server when it is running and healthy — no restart occurs.
         // This is a compile-time proof test: if the signature regresses to
         // accept skill-scoped paths, this reference will fail to compile.

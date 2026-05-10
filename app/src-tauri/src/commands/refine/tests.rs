@@ -402,11 +402,16 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
     let request = crate::agents::openhands_server::OpenHandsRuntimeRequest {
         prompt: String::new(),
         llm: test_workflow_llm_config(),
-        workspace_root_dir: "/tmp/workspace".to_string(),
-        workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+        app_data_root: "/tmp/app-data".to_string(),
+        skills_root: "/tmp/workspace".to_string(),
+        skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
         allowed_tools: vec![],
         max_turns: 20,
-        user_message_suffix: Some(crate::agents::skill_creator::SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        user_message_suffix: Some(
+            crate::agents::skill_creator::SKILL_CREATOR_USER_SUFFIX
+                .trim()
+                .to_string(),
+        ),
         system_message_suffix: Some(
             crate::agents::runtime_config::skill_creator_system_message_suffix(),
         ),
@@ -1767,7 +1772,8 @@ fn test_refine_openhands_config_uses_skill_creator_system_message_suffix() {
         "my-skill",
         DEFAULT_PLUGIN_SLUG,
         "Refine the skill",
-        "/tmp/workspace",
+        "/tmp/app-data",
+        "/tmp/skills",
         crate::types::WorkflowLlmConfig {
             model: "anthropic/claude-sonnet-4-5".to_string(),
             api_key: Some(crate::types::SecretString::new("sk-test".to_string())),

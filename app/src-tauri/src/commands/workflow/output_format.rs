@@ -67,9 +67,7 @@ pub(crate) fn extract_workflow_json_from_conversation_state(
         .or_else(|| state.get("resultText"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
-            format!(
-                "OpenHands {workflow_label} conversation_state missing result_text/resultText"
-            )
+            format!("OpenHands {workflow_label} conversation_state missing result_text/resultText")
         })?;
 
     let trimmed = result_text.trim();
@@ -799,7 +797,8 @@ pub(crate) fn materialize_workflow_step_output_value(
             persist_clarifications(db, &record)
         }
         2 => {
-            let parsed = match serde_json::from_value::<DecisionsOutput>(structured_output.clone()) {
+            let parsed = match serde_json::from_value::<DecisionsOutput>(structured_output.clone())
+            {
                 Ok(parsed) => parsed,
                 Err(parse_error) => {
                     if let Some(normalized) =

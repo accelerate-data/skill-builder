@@ -1,4 +1,4 @@
-# OpenHands Runtime Model — Implementation Plan
+ # OpenHands Runtime Model — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -1466,13 +1466,13 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 
 **Smoke 3 — Artifacts on disk are under workspace root**
 
-1. After Smoke 2, find your workspace root (default: `~/.vibedata/`)
+1. After Smoke 2, find your workspace root in **Settings → Workspace Path** (shown as `{workspace_root}` below)
 2. Check the filesystem:
    ```bash
-   ls ~/.vibedata/.openhands/conversations/
-   ls ~/.vibedata/.openhands/bash_events/
+   ls {workspace_root}/.openhands/conversations/
+   ls {workspace_root}/.openhands/bash_events/
    ```
-3. **Verify:** Both directories exist and contain entries. No `conversations/` directory exists under `~/.vibedata/{plugin}/skills/{skill_name}/`.
+3. **Verify:** Both directories exist and contain entries. No `conversations/` directory exists under `{workspace_root}/{plugin}/skills/{skill_name}/`.
 
 **Smoke 4 — Conversation survives app quit + restart**
 
@@ -1488,25 +1488,27 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 **Goal:** Finish the runtime-model clean break after PR 6. Every skill-scoped
 conversation should use the canonical skill directory as `workspace.working_dir`
 and `.agents` root; the app-local data dir should no longer hide runtime state
-inside a `workspace/` wrapper. In the same PR, `reset_workflow_step` pauses the
-skill's active conversation before clearing the DB record, and the
-`remove_dir_all` on the conversations folder is removed entirely — conversation
-directories are never deleted on reset; orphaned conversation files are
-harmless once the DB record is gone.
+inside a `workspace/` wrapper — runtime state moves to `{app_data_root}/openhands/`
+directly. In the same PR, `reset_workflow_step` pauses the skill's active
+conversation before clearing the DB record and deletes the specific conversation
+directory by ID; the old blanket `remove_dir_all` on the whole conversations
+folder is removed.
 
 **Architecture:** Two halves of the same folder-model cleanup. Phase 1
 canonicalizes runtime roots and skill working directories: remove the
 `workspaceSkillDir` contract, point OpenHands CWD at the canonical skill
 directory, flatten app-local storage to root-level `openhands/`, DB, and
-documents, and make canonical skill dirs the only runtime `.agents` location.
+documents, delete the now-empty `workspace/` wrapper on first launch, and make
+canonical skill dirs the only runtime `.agents` location.
 Phase 2 keeps the existing reset cleanup work: (1) add
 `try_get_cached_server_handle` to `process.rs`, (2) add
 `pause_conversation_if_server_running` to `mod.rs`, and (3) refactor
-`clear_persistent_skill_conversation_state` in `evaluation.rs` to remove
-`remove_dir_all`, split into a sync ID-collection step and a sync DB-clear step
-so the DB lock is never held across the async pause.
+`clear_persistent_skill_conversation_state` in `evaluation.rs` to pause then
+delete the specific `openhands/conversations/{conv_id}/` directory, split into a
+sync ID-collection step and a sync DB-clear step so the DB lock is never held
+across the async pause.
 
-**Why no directory deletion:** After the DB record is cleared, the old conversation directory is an unreferenced orphan. It does not interfere with future conversations (each has its own ID-keyed subdirectory). Deleting the whole conversations folder on reset is dangerous once PR 6's shared `{workspace_root}/.openhands/conversations/` path is in place — it would wipe every skill's conversation state.
+**On directory deletion:** We delete the specific conversation directory by ID after pausing — `{app_data_root}/openhands/conversations/{conv_id}/`. This is safe because each conversation lives in its own ID-keyed subdirectory; deleting one does not affect others. The old concern (wiping every skill's state) applied only to deleting the shared conversations root, not individual entries.
 
 ---
 
@@ -1533,62 +1535,29 @@ app-local `workspace/` tree as the runtime root. This task makes the target
 contract explicit and removes the extra runtime mirror layer before the reset
 cleanup work lands.
 
-- [ ] **Step 1: Replace `workspaceSkillDir` semantics in the runtime contracts**
+- [x] **Step 1: Replace `workspaceSkillDir` semantics in the runtime contracts**
+<!-- Verified: `OpenHandsRuntimeConfig` and `OpenHandsRuntimeRequest` have `skills_root`, `skill_dir`, `app_data_root` fields; `workspace_root_dir`/`workspace_skill_dir` renamed in both structs -->
 
-Update `OpenHandsRuntimeConfig`, `OpenHandsRuntimeRequest`, and related helper
-methods so the working-directory field represents the canonical skill
-directory. Rename fields/types where that improves clarity; do not keep
-`workspaceSkillDir` as the public runtime contract name if it now means the
-canonical skill dir.
+- [x] **Step 2: Update skill-creator config builders to use canonical skill paths**
+<!-- Verified: `skill_creator.rs` uses `resolve_skill_dir(Path::new(params.skills_root), ...)` to compute canonical skill dir -->
 
-- [ ] **Step 2: Update skill-creator config builders to use canonical skill paths**
+- [x] **Step 3: Flatten app-local path resolution and delete the old `workspace/` wrapper**
+<!-- Verified: `workspace.rs` has `migrate_flatten_openhands_dir` (lines 18-48), called in `init_workspace` (line 494) -->
 
-Change `agents/skill_creator.rs` and any Layer 3 wrappers so they compute
-`workspace.working_dir` from the canonical authored skill path:
+- [x] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
+<!-- Verified: `deploy.rs` has `seed_skill_agents_dir` (line 504) with SHA-gating; `copy_workspace_*` renamed to `copy_agent_sources_*` -->
 
-```text
-<skills_root>/<plugin>/skills/<skill>
-```
+- [x] **Step 5: Update refine and finalize helpers to the new root model**
+<!-- Verified: `refine/protocol.rs` uses `workspace_skill_dir` for scratch dir creation (separate from canonical skill dir); `refine/output.rs` uses `resolve_workspace_skill_dir` for snapshot paths; `skill/crud.rs` uses `workspace_skill_dir` for workspace scratch -- all intentional separation of concerns -->
 
-Pre-create and throwaway flows should create that directory up front when
-needed and then use the same path as the OpenHands working dir.
-
-- [ ] **Step 3: Flatten app-local path resolution**
-
-Update `commands/workspace.rs` and any path helpers/callers so app-local
-runtime state lives directly under the app data root:
-
-```text
-{app_data_root}/openhands/
-{app_data_root}/skill-builder.db
-{app_data_root}/documents/
-```
-
-Remove the extra `{app_data_root}/workspace/` wrapper from the target layout.
-Preserve one-time cleanup/migration behavior for older installs if needed, but
-the steady-state layout must be flat.
-
-- [ ] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
-
-Update deploy/setup/runtime helpers so `.agents` is managed where OpenHands will
-actually read it: inside the canonical skill directory. Remove plan references
-or code paths that depend on a separate `workspaceSkillDir` mirror being the
-runtime-visible `.agents` root.
-
-- [ ] **Step 5: Update refine and finalize helpers to the new root model**
-
-Audit `commands/refine/*` helpers that currently mix canonical skill paths with
-workspace-scratch paths. The file viewer, prompt rendering, finalize flows,
-snapshot cleanup, and any benchmark/output helpers should all treat the
-canonical skill dir as the authoritative working tree.
-
-- [ ] **Step 6: Update tests, fixtures, and repo metadata**
+- [x] **Step 6: Update tests, fixtures, and repo metadata**
+<!-- Verified: `types/mod.rs` fixture uses new fields (line 127-129); `client.rs` test helper uses new fields (line 292-317); `skill_paths.rs` still exports `workspace_skill_dir` for scratch-dir concept (intentional) -->
 
 Replace assertions, fixtures, and docs that still encode the old
 `workspaceSkillDir` or app-local `workspace/` layout. Update `repo-map.json`
 and the design docs in the same PR so future agents see the new model first.
 
-- [ ] **Step 7: Run focused verification**
+- [x] **Step 7: Run focused verification**
 
 ```bash
 cd app && npm run test:unit
@@ -1608,52 +1577,17 @@ Expected: Clean.
 
 **Context:** `ensure_agent_server` always starts a new server if none is cached — wrong for a cleanup path where we only want to pause if the server is already running. `try_get_cached_server_handle` returns the cached handle without touching the process.
 
-- [ ] **Step 1: Write a failing test**
+- [x] **Step 1: Write a failing test**
+<!-- Verified: test `try_get_cached_server_handle_returns_none_when_no_server_cached` at process.rs:893 -->
 
-Add to the `#[cfg(test)]` block:
+- [x] **Step 2: Run to confirm it fails**
 
-```rust
-#[tokio::test]
-async fn try_get_cached_server_handle_returns_none_when_no_server_cached() {
-    // Registry starts empty in a fresh process; this should always be None.
-    // (Other tests that start a real server must not run in the same process.)
-    let handle = try_get_cached_server_handle().await;
-    assert!(handle.is_none());
-}
-```
+- [x] **Step 3: Add `try_get_cached_server_handle`**
+<!-- Verified: function at process.rs:314, returns `Option<OpenHandsAgentServerHandle>` -->
 
-- [ ] **Step 2: Run to confirm it fails**
+- [x] **Step 4: Run the test**
 
-```bash
-cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle_returns_none_when_no_server_cached 2>&1 | tail -5
-```
-
-Expected: FAILED — function not found.
-
-- [ ] **Step 3: Add `try_get_cached_server_handle`**
-
-Insert immediately after `ensure_agent_server`:
-
-```rust
-/// Returns the cached agent server handle if one exists.
-/// Does NOT start a new server — callers that only need the handle for
-/// best-effort operations (e.g. pause before delete) use this instead of
-/// `ensure_agent_server`.
-pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle> {
-    let registry = agent_server_registry().lock().await;
-    registry.as_ref().map(|s| s.handle.clone())
-}
-```
-
-- [ ] **Step 4: Run the test**
-
-```bash
-cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle 2>&1 | tail -5
-```
-
-Expected: PASS.
-
-- [ ] **Step 5: Run full process tests**
+- [x] **Step 5: Run full process tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -10
@@ -1670,58 +1604,12 @@ Expected: All pass.
 
 **Context:** This is the best-effort pause used by the reset path. It checks the cached server, constructs a client, and sends the pause HTTP call. All errors are logged and swallowed — the reset must not fail because the server is unreachable.
 
-- [ ] **Step 1: Add the function**
+- [x] **Step 1: Add the function**
+<!-- Verified: `pause_conversation_if_server_running` at mod.rs:1047, uses `try_get_cached_server_handle` -->
 
-Add after `pause_openhands_conversation`:
+- [x] **Step 2: Build to confirm compilation**
 
-```rust
-/// Best-effort pause of a conversation using the cached server handle.
-/// Does NOT start a new server. If no server is cached, or the pause call
-/// fails, logs and returns — the caller proceeds with cleanup regardless.
-pub async fn pause_conversation_if_server_running(conversation_id: &str) {
-    let Some(handle) =
-        crate::agents::openhands_server::process::try_get_cached_server_handle().await
-    else {
-        log::debug!(
-            "[openhands-agent-server] no cached server; skipping pause for conversation {}",
-            conversation_id
-        );
-        return;
-    };
-    let url = match handle.base_url().parse::<reqwest::Url>() {
-        Ok(u) => u,
-        Err(e) => {
-            log::warn!(
-                "[openhands-agent-server] invalid server URL for pause of {}: {}",
-                conversation_id, e
-            );
-            return;
-        }
-    };
-    let client = OpenHandsServerClient::new(url, Some(handle.session_api_key));
-    if let Err(e) = client.pause_conversation(conversation_id).await {
-        log::warn!(
-            "[openhands-agent-server] best-effort pause of conversation {} failed (non-fatal): {}",
-            conversation_id, e
-        );
-    } else {
-        log::info!(
-            "[openhands-agent-server] paused conversation {} before reset",
-            conversation_id
-        );
-    }
-}
-```
-
-- [ ] **Step 2: Build to confirm compilation**
-
-```bash
-cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
-```
-
-Expected: No errors.
-
-- [ ] **Step 3: Run clippy**
+- [x] **Step 3: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
@@ -1738,161 +1626,26 @@ Expected: Clean.
 
 **Context:** `clear_persistent_skill_conversation_state` currently: (1) clears the DB record, (2) removes the entire `conversations/` directory. The fix: (1) collect conversation IDs before clearing, (2) remove the `remove_dir_all` entirely, (3) return the IDs so `reset_workflow_step` can pause them before the DB clear. `reset_workflow_step` becomes `async fn` so it can `await` the pause.
 
-- [ ] **Step 1: Write a failing test proving no directory deletion**
+- [x] **Step 1: Write a failing test proving no directory deletion**
+<!-- Verified: test `clear_skill_conversation_db_records_does_not_touch_filesystem` at evaluation.rs:398 -->
 
-Add to `#[cfg(test)]` in `evaluation.rs` (or a new `tests` module if none exists):
+- [x] **Step 2: Run to confirm it currently fails**
 
-```rust
-#[test]
-fn clear_persistent_skill_conversation_state_does_not_touch_filesystem() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let conversations_dir = tmp
-        .path()
-        .join("default")
-        .join("skills")
-        .join("my-skill")
-        .join("conversations");
-    std::fs::create_dir_all(&conversations_dir).expect("create conversations dir");
-    // Write a sentinel file inside to detect deletion
-    std::fs::write(conversations_dir.join("sentinel.txt"), b"keep me").expect("write sentinel");
+- [x] **Step 3: Refactor `clear_persistent_skill_conversation_state`**
+<!-- Verified: `clear_persistent_skill_conversation_state` removed entirely; replaced by `collect_skill_conversation_ids` (line 35) and `clear_skill_conversation_db_records` (line 56) -->
 
-    let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
-    // clear_persistent_skill_conversation_state must not remove the sentinel
-    clear_persistent_skill_conversation_state(
-        &conn,
-        tmp.path().to_str().unwrap(),
-        "default",
-        "my-skill",
-    )
-    .expect("clear");
+- [x] **Step 4: Make `reset_workflow_step` async; add pause**
+<!-- Verified: `pub async fn reset_workflow_step` at evaluation.rs:646; collects IDs (line 688), pauses (line 701), deletes conv dirs (line 704), clears DB (line 714) -->
 
-    assert!(
-        conversations_dir.join("sentinel.txt").exists(),
-        "conversations directory must not be deleted during reset"
-    );
-}
-```
+- [x] **Step 5: Run the filesystem test**
 
-- [ ] **Step 2: Run to confirm it currently fails**
+- [x] **Step 6: Run full cargo test**
 
-```bash
-cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
-```
+- [x] **Step 7: Run clippy**
 
-Expected: FAILED — sentinel file is deleted by the current `remove_dir_all`.
+- [x] **Step 8: Update `lib.rs` command registration**
 
-- [ ] **Step 3: Refactor `clear_persistent_skill_conversation_state`**
-
-Replace the function with two focused functions:
-
-```rust
-/// Collect the saved conversation IDs for a skill (and its legacy default-plugin
-/// entry if the skill moved plugins). Returns (plugin_slug, conversation_id) pairs.
-fn collect_skill_conversation_ids(
-    conn: &rusqlite::Connection,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Vec<(String, String)> {
-    let mut plugin_slugs = vec![plugin_slug.to_string()];
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-    }
-    plugin_slugs
-        .into_iter()
-        .filter_map(|slug| {
-            crate::db::get_skill_conversation_id(conn, &slug, skill_name)
-                .ok()
-                .flatten()
-                .map(|id| (slug, id))
-        })
-        .collect()
-}
-
-/// Clear conversation DB records for a skill. Does not touch the filesystem.
-fn clear_skill_conversation_db_records(
-    conn: &rusqlite::Connection,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Result<(), String> {
-    let mut plugin_slugs = vec![plugin_slug.to_string()];
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-    }
-    for slug in plugin_slugs {
-        crate::db::clear_skill_conversation_id(conn, &slug, skill_name)?;
-    }
-    Ok(())
-}
-```
-
-Remove `clear_persistent_skill_conversation_state` entirely.
-
-- [ ] **Step 4: Make `reset_workflow_step` async; add pause**
-
-Replace the function signature and the old `clear_persistent_skill_conversation_state` call site:
-
-```rust
-#[tauri::command]
-pub async fn reset_workflow_step(
-    workspace_path: String,
-    skill_name: String,
-    from_step_id: u32,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-```
-
-Inside the function, replace the single `clear_persistent_skill_conversation_state` call with:
-
-```rust
-// Collect conversation IDs before clearing the DB (sync, brief lock).
-let conversation_ids = {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    collect_skill_conversation_ids(&conn, &plugin_slug, &skill_name)
-};
-
-// Best-effort pause — does not hold the DB lock.
-for (_, conv_id) in &conversation_ids {
-    crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
-}
-
-// Reset steps in SQLite
-let conn = db.0.lock().map_err(|e| e.to_string())?;
-clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
-clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
-crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
-```
-
-Remove the `// Reset steps in SQLite` comment and the existing `let conn = db.0.lock()` line that preceded the old call — they are replaced by the block above. Keep the `save_workflow_run` block unchanged.
-
-- [ ] **Step 5: Run the filesystem test**
-
-```bash
-cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Run full cargo test**
-
-```bash
-cd app/src-tauri && cargo test 2>&1 | tail -20
-```
-
-Expected: All pass.
-
-- [ ] **Step 7: Run clippy**
-
-```bash
-cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
-```
-
-Expected: Clean.
-
-- [ ] **Step 8: Update `lib.rs` command registration**
-
-`reset_workflow_step` is now async. In `app/src-tauri/src/lib.rs`, confirm it is registered in `invoke_handler!`. Tauri 2 handles async commands transparently — no registration change required, but verify the build compiles cleanly.
-
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/process.rs \
@@ -1901,13 +1654,254 @@ git add app/src-tauri/src/agents/openhands_server/process.rs \
 git commit -m "feat: pause conversation before workflow reset; remove conversation directory deletion"
 ```
 
-**Manual smoke:**
+---
 
-1. Open a skill, start a workflow step so the agent is running
-2. While the agent is running, click Reset Workflow
-3. **Verify:** The reset completes cleanly. No error toast. Rust logs show `paused conversation <id> before reset`.
-4. Re-open the skill. **Verify:** Workflow starts fresh (step 0, no history).
-5. Check `~/.vibedata/.openhands/conversations/` — the old conversation directory may still be present on disk, which is expected and correct.
+### Task 7.4 — Rename confusing workspace fields; thread `app_data_root` to server startup
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/runtime_config.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/types.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/client.rs`
+- Modify: `app/src-tauri/src/agents/skill_creator.rs`
+- Modify: `app/src-tauri/src/types/mod.rs`
+- Modify: `app/src-tauri/src/commands/skill_session.rs`
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/skill/scope_review.rs`
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `app/src-tauri/src/commands/api_validation.rs`
+
+**Context:** Code review found that `OH_CONVERSATIONS_PATH` and `OH_BASH_EVENTS_DIR` are being set to paths under `{skills_root}/.openhands/…` instead of `{app_data_root}/openhands/…`. Root cause: the field named `workspace_root_dir` is actually the skills root (not the app data root), and `ensure_agent_server` derives conversation/bash_events paths from it. `workspace_skill_dir` is the canonical per-skill CWD. Neither field name reflects its actual meaning, and `app_data_root` has no representation anywhere in the config structs.
+
+The three distinct roots are:
+- `app_data_root` = `~/Library/Application Support/com.vibedata.skill-builder/` — owns `openhands/`, the DB, documents
+- `skills_root` = user-configured skill tree root — owns all plugin/skill files
+- `skill_dir` = `{skills_root}/{plugin_slug}/skills/{skill_name}` — OpenHands CWD
+
+This task renames the fields to match these roots and adds `app_data_root` so the server receives the correct paths.
+
+- [x] **Step 1: Rename fields in `runtime_config.rs` and add `app_data_root`**
+<!-- Verified: `runtime_config.rs` has `app_data_root` (line 45), `skills_root` (line 48), `skill_dir` (line 52); serde renames updated; `BuildOpenHandsRuntimeConfigParams` also updated (lines 153-155) -->
+
+- [x] **Step 2: Rename fields in `types.rs` and add `app_data_root`**
+<!-- Verified: `types.rs` has `app_data_root` (line 11), `skills_root` (line 12), `skill_dir` (line 13); `skill_dir_path()` method at line 56-57; `try_from_runtime_config` maps fields (lines 38-40) -->
+
+- [x] **Step 3: Fix path helpers in `process.rs` to use `app_data_root`**
+<!-- Verified: `compute_conversations_path` takes `app_data_root` (line 59), resolves to `{app_data_root}/openhands/conversations` (line 60); `compute_bash_events_path` same pattern (line 64-65); `openhands_secret_path` (line 86-87); `ensure_agent_server` signature (line 270); `start`/`start_once` use `app_data_root` (lines 328, 345); tests renamed (lines 719, 728) -->
+
+- [x] **Step 4: Update `mod.rs` to pass `app_data_root` to `ensure_agent_server_process`**
+<!-- Verified: all 5 call sites use `Path::new(&request.app_data_root)` (lines 803, 893, 922, 1014, 1259); `skill_dir_path()` used in log lines (750, 758, 765); test fixtures use `app_data_root` (lines 2433, 2477, 2533, 2551) -->
+
+- [x] **Step 5: Update `skill_creator.rs` and `SkillCreatorConfigParams`**
+<!-- Verified: `SkillCreatorConfigParams` has `app_data_root` (line 17), `skills_root` (line 20); `build_skill_creator_config` passes through (lines 43-45) -->
+
+- [x] **Step 6: Update Layer 3 callers to resolve and pass `app_data_root`**
+<!-- Verified: `skill_session.rs` (lines 162, 277); `workflow/runtime.rs` (line 456); `skill/scope_review.rs` (line 219); `eval_workbench/mod.rs` (line 472); `api_validation.rs` (line 50) -- all resolve `app_data_root` from `AppHandle` and pass through -->
+
+- [x] **Step 7: Fix `client.rs` test helper and `types/mod.rs` fixture**
+<!-- Verified: `client.rs` `base_config` uses `app_data_root`, `skills_root`, `skill_dir` (lines 292-317); `types/mod.rs` fixture at lines 127-129 -->
+
+- [x] **Step 8: Full build and test**
+
+- [x] **Step 9: Commit**
+
+```bash
+git add app/src-tauri/src/agents/runtime_config.rs \
+        app/src-tauri/src/agents/openhands_server/types.rs \
+        app/src-tauri/src/agents/openhands_server/process.rs \
+        app/src-tauri/src/agents/openhands_server/mod.rs \
+        app/src-tauri/src/agents/openhands_server/client.rs \
+        app/src-tauri/src/agents/skill_creator.rs \
+        app/src-tauri/src/types/mod.rs \
+        app/src-tauri/src/commands/skill_session.rs \
+        app/src-tauri/src/commands/workflow/runtime.rs \
+        app/src-tauri/src/commands/skill/scope_review.rs \
+        app/src-tauri/src/commands/eval_workbench/mod.rs \
+        app/src-tauri/src/commands/api_validation.rs
+git commit -m "refactor: rename workspace_root_dir/workspace_skill_dir to skills_root/skill_dir; add app_data_root; fix OH_CONVERSATIONS_PATH and OH_BASH_EVENTS_DIR to use app data root"
+```
+
+---
+
+### Task 7.5 — Seed `.agents/` into every skill's canonical directory on startup and create
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
+- Modify: `app/src-tauri/src/commands/workspace.rs`
+- Modify: `app/src-tauri/src/commands/skill/crud.rs`
+
+**Context:** OpenHands now uses `skill_dir` (`{skills_root}/{plugin_slug}/skills/{skill_name}`) as `workspace.working_dir`. It reads agents and skills from `{skill_dir}/.agents/agents/` and `{skill_dir}/.agents/skills/`. The source of truth for these files is `agent-sources/workspace/` in the repo (bundled as a Tauri resource in production). Without seeding, new and existing skills have no agents available to OpenHands.
+
+Two call sites are needed:
+1. **App startup** — seed every skill that already exists in the DB.
+2. **Skill creation** — seed the new skill directory immediately after it is created on disk.
+
+The existing copy functions already perform the correct copy logic; they just need to be renamed (dropping the legacy `workspace_` prefix) and a new public `seed_skill_agents_dir` helper needs to be added with SHA-gating per skill dir.
+
+- [x] **Step 1: Rename all three legacy `copy_workspace_*` functions**
+<!-- Verified: `copy_workspace_*` no longer exists in deploy.rs; replaced by `copy_agent_sources_to_openhands_cwd` (line 362), `copy_agent_sources_to_agents_dir` (line 431), `copy_agent_sources_to_skills_dir` (line 467), `copy_agent_sources_to_full_layout` (line 346) -->
+
+- [x] **Step 2: Add `seed_skill_agents_dir` — SHA-gated per-skill seeder**
+<!-- Verified: `seed_skill_agents_dir` at deploy.rs:504 with SHA-gating, cache, and copy logic -->
+
+- [x] **Step 3: Call `seed_skill_agents_dir` on startup for all existing skills**
+<!-- Verified: `workspace.rs` `init_workspace` calls `seed_skill_agents_dir` for all skills from DB (lines 535) after `migrate_flatten_openhands_dir` (line 494) -->
+
+- [x] **Step 4: Call `seed_skill_agents_dir` after skill creation**
+<!-- Verified: `skill/crud.rs` `post_create_skill_filesystem_inner` calls `seed_skill_agents_dir` (line 503) -->
+
+- [x] **Step 5: Full build, test, clippy**
+
+- [x] **Step 6: Commit**
+
+```bash
+git add app/src-tauri/src/commands/workflow/deploy.rs \
+        app/src-tauri/src/commands/workspace.rs \
+        app/src-tauri/src/commands/skill/crud.rs
+git commit -m "feat: seed .agents/ into skill_dir on startup and create; rename copy_workspace_* fns to copy_agent_sources_*"
+```
+
+---
+
+### Task 7.6 — Pause conversation before `delete_skill` filesystem/DB cleanup
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/skill/crud.rs`
+
+**Context:** `delete_skill` calls `terminate_openhands_session` (kills the local Tauri task) but never sends an HTTP pause to the OpenHands server. The server retains an `owner_lease.json` for the conversation for up to 45 seconds. The fix collects the skill's saved conversation IDs from the DB and calls `pause_conversation_if_server_running` before any filesystem or DB cleanup. No conversation directory is deleted — the orphaned directory is harmless once the DB record is gone.
+
+- [x] **Step 1: Collect conversation IDs and pause before cleanup**
+<!-- Verified: `skill/crud.rs` `delete_skill` collects conversation IDs from DB (lines 590-606), calls `pause_conversation_if_server_running` for each (line 608), logs pause (lines 609-614) -->
+
+- [x] **Step 2: Build and verify**
+
+- [x] **Step 3: Commit**
+
+```bash
+git add app/src-tauri/src/commands/skill/crud.rs
+git commit -m "fix: pause OpenHands conversation before delete_skill filesystem cleanup"
+```
+
+---
+
+### Task 7.7 — Remove `clear_persistent_skill_conversation_state`; replace with DB-only clear
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
+
+**Context:** `clear_persistent_skill_conversation_state` (lines 33–61) still calls `remove_dir_all` on `workspace_skill_dir/conversations/`. Task 7.3 said to remove it entirely and replace its one call site in `navigate_back_to_step_impl` with `clear_skill_conversation_db_records` (which already exists in the same file). The old test `test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state` contradicts the plan and must be replaced with a test that asserts no filesystem deletion.
+
+- [x] **Step 1: Remove the function**
+<!-- Verified: `clear_persistent_skill_conversation_state` no longer exists in evaluation.rs (grep returns no matches) -->
+
+- [x] **Step 2: Replace the call site in `navigate_back_to_step_impl`**
+<!-- Verified: `navigate_back_to_step_impl` at evaluation.rs:151 calls `clear_skill_conversation_db_records` instead -->
+
+- [x] **Step 3: Delete the old test and add the replacement**
+<!-- Verified: old test `test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state` no longer exists; new test `clear_skill_conversation_db_records_does_not_touch_filesystem` at evaluation.rs:398 -->
+
+- [x] **Step 4: Build and test**
+
+- [x] **Step 5: Commit**
+
+```bash
+git add app/src-tauri/src/commands/workflow/evaluation.rs
+git commit -m "fix: remove clear_persistent_skill_conversation_state; replace with DB-only clear in navigate_back_to_step"
+```
+
+---
+
+### Task 7.8 — Manual smoke tests for all of PR 7
+
+**Prerequisite:** All of Tasks 7.0–7.7 must be landed and the app compiled in dev mode (`cd app && npm run dev`).
+
+**How to find `app_data_root`:** On macOS it is `~/Library/Application Support/com.vibedata.skill-builder/`. The conversations, logs, and bash_events directories all live inside `{app_data_root}/openhands/`.
+
+**How to find `skills_root`:** Check Settings → Skills Path, or look at `~/skill-builder/` (default). Skill dirs live at `{skills_root}/{plugin_slug}/skills/{skill_name}/`.
+
+---
+
+#### Smoke 1 — Cold launch: paths land in the right roots
+
+- [X] Launch the app fresh (no prior session running).
+- [X] Open an existing skill and run a workflow step to completion (a single agent turn is enough).
+- [X] **Pass:** `{app_data_root}/openhands/conversations/` contains a conversation directory named by a UUID. **Fail:** any conversation directory appears under `{skills_root}`.
+- [X] **Pass:** `{app_data_root}/openhands/bash_events/` and `{app_data_root}/openhands/logs/` are populated by the server. **Fail:** they appear under `{skills_root}/.openhands/` or anywhere else under the skills tree.
+
+---
+
+#### Smoke 2 — First-launch migration
+
+Only run if you have a real previous install with data in the old layout. If not, skip.
+
+- [X] Back up `{app_data_root}/workspace/.openhands/` by copying it somewhere safe.
+- [X] Launch the app.
+- [X] **Pass:** `{app_data_root}/workspace/` is gone after launch. `{app_data_root}/openhands/conversations/`, `/logs/`, and `/bash_events/` exist and contain the migrated data. Existing conversation IDs visible in the DB still resolve to the correct directories.
+
+---
+
+#### Smoke 3 — `.agents/` seeding on startup
+
+- [X] Launch the app. Do not start any workflow.
+- [X] For each skill that already exists in the app (check the Skills list), look at `{skills_root}/{plugin_slug}/skills/{skill_name}/.agents/agents/` and `{skills_root}/{plugin_slug}/skills/{skill_name}/.agents/skills/`.
+- [X] **Pass:** Both subdirectories are present and non-empty (e.g., `skill-creator.md` inside `agents/`). **Fail:** `.agents/` is absent or empty for any existing skill.
+
+---
+
+#### Smoke 4 — `.agents/` seeding on skill creation
+
+- [X] Create a new skill via the UI (any name, any description).
+- [X] After creation completes, open a terminal and check `{skills_root}/default/skills/{new-skill-name}/.agents/agents/` and `/skills/`.
+- [X] **Pass:** Both directories exist and contain the bundled agent files. **Fail:** `.agents/` is missing or empty.
+
+---
+
+#### Smoke 5 — Reset workflow: conversation paused and directory deleted
+
+- [X] Open a skill that has completed at least one step so a conversation exists in the DB.
+- [X] Navigate to a step with a completed agent run and note the conversation directory in `{app_data_root}/openhands/conversations/` (it should exist and match the ID in the logs).
+- [X] Click Reset Workflow (or Navigate Back to Step 0) from the UI.
+- [X] **Pass:** Reset completes with no error toast.
+- [X] Open the Tauri dev console or the log file in `{app_data_root}/openhands/logs/`. Confirm a log line like `paused conversation <id>` and `deleted conversation dir` appears.
+- [X] **Pass:** The conversation directory you noted above is **gone** from `{app_data_root}/openhands/conversations/`. **Fail:** It still exists.
+- [X] Re-open the skill. **Pass:** Workflow starts at step 0 with no prior history shown. No error.
+
+---
+
+#### Smoke 6 — Delete skill: conversation directory is preserved
+
+- [X] Open a skill and run at least one step so a conversation ID is saved in the DB. Note the conversation ID from the logs or `{app_data_root}/openhands/conversations/` directory listing.
+- [X] Delete the skill via the UI.
+- [X] **Pass:** The conversation directory at `{app_data_root}/openhands/conversations/{conv_id}/` still exists — delete only removes the DB record, not the conversation data.
+- [X] Confirm via the Tauri logs that `paused conversation <id>` was logged during the delete.
+- [X] **Pass:** The skill is gone from the Skills list. No error toast.
+
+---
+
+#### Smoke 7 — Multi-skill isolation: reset one does not affect another
+
+- [X] Open Skill A, run a step, note its conversation directory path.
+- [X] Open Skill B, run a step, note its conversation directory path.
+- [X] Reset Skill A's workflow to step 0.
+- [X] **Pass:** Skill A's conversation directory is deleted from `{app_data_root}/openhands/conversations/`. Skill B's conversation directory is **still present**.
+- [X] Open Skill B, verify its workflow history is intact (steps still show, no data loss).
+
+---
+
+#### Smoke 8 — Refine flow end-to-end
+
+- [X] Complete a workflow step on any skill so the Refine button is available.
+- [X] Trigger a Refine run.
+- [X] **Pass:** Refine completes and the refined output is visible. No error toast or Rust panic in the logs.
+
+---
+
+#### Smoke 9 — Scope review
+
+- [X] Open a skill that has at least one completed step.
+- [X] Trigger Scope Review from the UI (wherever it is exposed).
+- [X] **Pass:** Review runs and returns results. No crash or error toast.
 
 ---
 
@@ -2238,9 +2232,582 @@ git commit -m "feat: split skill activation into sync + async phases (Gap 10)"
 
 ---
 
+## PR 11 — Backend lease enforcement + advisory UI lock polling
+
+**Goal:** Move selected-skill lease acquisition and enforcement fully into the backend, key selected-skill bootstrap by `skillId`, remove frontend lease acquisition on skill selection, and add advisory UI lock polling so the menu usually prevents locked-skill clicks before the backend has to reject them.
+
+### Task 11.1: Move selected-skill lease acquisition into the backend bootstrap command
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/skill_session.rs`
+- Test: `app/src-tauri/src/commands/skill_session.rs`
+
+- [ ] **Step 1: Add failing tests for backend-owned lease acquisition**
+
+Add these tests to the `#[cfg(test)]` block in `app/src-tauri/src/commands/skill_session.rs`:
+
+```rust
+    #[test]
+    fn acquire_or_verify_skill_lock_acquires_missing_lock_for_current_instance() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "locked-skill", "skill-builder", "domain").unwrap();
+
+        let skill = acquire_or_verify_skill_lock(
+            &conn,
+            skill_id,
+            "instance-a",
+            std::process::id(),
+        )
+        .unwrap();
+
+        assert_eq!(skill.id, skill_id);
+
+        let lock = crate::db::get_skill_lock_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .expect("lock row");
+        assert_eq!(lock.instance_id, "instance-a");
+    }
+
+    #[test]
+    fn acquire_or_verify_skill_lock_rejects_other_instance_lease() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "locked-skill", "skill-builder", "domain").unwrap();
+        crate::db::acquire_skill_lock_by_skill_id(
+            &conn,
+            skill_id,
+            "instance-b",
+            std::process::id(),
+        )
+        .unwrap();
+
+        let error = acquire_or_verify_skill_lock(
+            &conn,
+            skill_id,
+            "instance-a",
+            std::process::id(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "Skill 'locked-skill' is being edited in another instance");
+    }
+```
+
+- [ ] **Step 2: Add the backend acquire-or-verify helper**
+
+In `app/src-tauri/src/commands/skill_session.rs`, add this helper near the existing session helpers:
+
+```rust
+pub(crate) fn acquire_or_verify_skill_lock(
+    conn: &rusqlite::Connection,
+    skill_id: i64,
+    instance_id: &str,
+    pid: u32,
+) -> Result<crate::types::SkillMasterRow, String> {
+    crate::db::acquire_skill_lock_by_skill_id(conn, skill_id, instance_id, pid)?;
+    crate::db::get_skill_master_by_id(conn, skill_id)?
+        .ok_or_else(|| format!("Skill id {} was not found in the skills master", skill_id))
+}
+```
+
+- [ ] **Step 3: Change `select_skill_openhands_session` to use `skillId` and acquire the lease before session restore**
+
+In `app/src-tauri/src/commands/skill_session.rs`, change the command signature from:
+
+```rust
+pub async fn select_skill_openhands_session(
+    app: tauri::AppHandle,
+    skill_name: String,
+    plugin_slug: String,
+    _workspace_path: String,
+    sessions: tauri::State<'_, SkillSessionManager>,
+    db: tauri::State<'_, Db>,
+) -> Result<RefineSessionInfo, String>
+```
+
+To:
+
+```rust
+pub async fn select_skill_openhands_session(
+    app: tauri::AppHandle,
+    skill_id: i64,
+    _workspace_path: String,
+    instance: tauri::State<'_, crate::InstanceInfo>,
+    sessions: tauri::State<'_, SkillSessionManager>,
+    db: tauri::State<'_, Db>,
+) -> Result<RefineSessionInfo, String>
+```
+
+At the top of the function, replace the direct `skill_name` / `plugin_slug` inputs with a DB-backed lease acquisition and canonical skill lookup:
+
+```rust
+    let (skill_name, plugin_slug, saved_conversation_id) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let skill = acquire_or_verify_skill_lock(
+            &conn,
+            skill_id,
+            &instance.id,
+            instance.pid,
+        )?;
+        let saved_conversation_id =
+            crate::db::get_skill_conversation_id(&conn, &skill.plugin_slug, &skill.name)?;
+        (skill.name, skill.plugin_slug, saved_conversation_id)
+    };
+
+    log::info!(
+        "[select_skill_openhands_session] skill_id={} skill={} plugin={}",
+        skill_id,
+        skill_name,
+        plugin_slug
+    );
+```
+
+Keep the rest of the command behavior intact: runtime readiness, `build_skill_session_config`, `ensure_skill_session`, transcript restore, and the in-memory session map upsert.
+
+- [ ] **Step 4: Run the focused Rust tests**
+
+```bash
+cd app/src-tauri && cargo test commands::skill_session
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src-tauri/src/commands/skill_session.rs
+git commit -m "feat: enforce selected-skill lease in backend bootstrap"
+```
+
+### Task 11.2: Re-check lease ownership on persistent refine dispatch
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/mod.rs`
+- Modify: `app/src-tauri/src/commands/refine/tests.rs`
+
+- [ ] **Step 1: Add a failing test that documents the dispatch seam**
+
+Add this control test to `app/src-tauri/src/commands/refine/tests.rs`:
+
+```rust
+#[test]
+fn plan_refine_dispatch_reuses_the_existing_conversation_id() {
+    let session = SkillSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-session-1".to_string(),
+        conversation_id: Some("conv-123".to_string()),
+        current_agent_id: None,
+        dispatched_user_turn_count: 0,
+        head_sha_at_start: None,
+    };
+
+    let plan = super::plan_refine_conversation_dispatch(&session, Some("conv-123".to_string()))
+        .expect("dispatch plan");
+
+    assert_eq!(
+        plan,
+        super::RefineConversationDispatchPlan::ReuseExisting("conv-123".to_string())
+    );
+}
+```
+
+Then add a guard-level test:
+
+```rust
+#[test]
+fn selected_skill_lease_guard_rejects_other_instance_before_refine_dispatch() {
+    let conn = crate::db::create_test_db_for_tests();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "default", "domain").unwrap();
+    crate::db::acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-b", std::process::id())
+        .unwrap();
+
+    let error = crate::commands::skill_session::acquire_or_verify_skill_lock(
+        &conn,
+        skill_id,
+        "instance-a",
+        std::process::id(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error, "Skill 'my-skill' is being edited in another instance");
+}
+```
+
+- [ ] **Step 2: Add the backend lease guard at the top of `send_refine_message`**
+
+In `app/src-tauri/src/commands/refine/mod.rs`, update the command signature to include:
+
+```rust
+    instance: tauri::State<'_, crate::InstanceInfo>,
+```
+
+Then, immediately after destructuring `input`, add:
+
+```rust
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
+            .ok_or_else(|| {
+                format!(
+                    "Skill '{}' in plugin '{}' was not found in the skills master",
+                    skill_name, plugin_slug
+                )
+            })?;
+        crate::commands::skill_session::acquire_or_verify_skill_lock(
+            &conn,
+            skill_id,
+            &instance.id,
+            instance.pid,
+        )?;
+    }
+```
+
+Do not change the existing session-map and OpenHands dispatch flow below this guard.
+
+- [ ] **Step 3: Run focused refine tests**
+
+```bash
+cd app/src-tauri && cargo test commands::refine
+```
+
+Expected: PASS.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/refine/tests.rs
+git commit -m "feat: enforce selected-skill lease before refine dispatch"
+```
+
+### Task 11.3: Remove frontend lease acquisition and switch selected-skill bootstrap to `skillId`
+
+**Files:**
+- Modify: `app/src/lib/tauri-command-types.ts`
+- Modify: `app/src/lib/tauri.ts`
+- Modify: `app/src/lib/active-skill-transition.ts`
+- Modify: `app/src/lib/skill-openhands-session.ts`
+- Modify: `app/src/__tests__/lib/tauri.test.ts`
+- Modify: `app/src/__tests__/components/app-layout.test.tsx`
+
+- [ ] **Step 1: Update the typed command contract**
+
+In `app/src/lib/tauri-command-types.ts`, replace:
+
+```ts
+  select_skill_openhands_session: {
+    args: { skillName: string; pluginSlug: string; workspacePath: string };
+    result: RefineSessionInfo;
+  };
+```
+
+With:
+
+```ts
+  select_skill_openhands_session: {
+    args: { skillId: number; workspacePath: string };
+    result: RefineSessionInfo;
+  };
+```
+
+- [ ] **Step 2: Update the wrapper**
+
+In `app/src/lib/tauri.ts`, replace:
+
+```ts
+export const selectSkillOpenHandsSession = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invokeCommand("select_skill_openhands_session", { skillName, pluginSlug, workspacePath })
+```
+
+With:
+
+```ts
+export const selectSkillOpenHandsSession = (skillId: number, workspacePath: string) =>
+  invokeCommand("select_skill_openhands_session", { skillId, workspacePath })
+```
+
+- [ ] **Step 3: Remove `acquireLock` from selected-skill entry**
+
+In `app/src/lib/active-skill-transition.ts`, replace:
+
+```ts
+  await acquireLock(skill.id);
+  try {
+    const session = await selectSkillOpenHandsSession(
+      skill.name,
+      workspacePath,
+      skill.plugin_slug,
+    );
+    hydrateSelectedSkillOpenHandsSession(skill, session);
+  } catch (error) {
+    await releaseLock(skill.id).catch(() => {});
+    throw error;
+  }
+```
+
+With:
+
+```ts
+  const session = await selectSkillOpenHandsSession(skill.id, workspacePath);
+  hydrateSelectedSkillOpenHandsSession(skill, session);
+```
+
+Also remove the unused `acquireLock` import.
+
+- [ ] **Step 4: Update restart hydration**
+
+In `app/src/lib/skill-openhands-session.ts`, replace:
+
+```ts
+  const session = await selectSkillOpenHandsSession(
+    editableSkill.name,
+    workspacePath,
+    editableSkill.plugin_slug,
+  );
+```
+
+With:
+
+```ts
+  if (editableSkill.id == null) {
+    throw new Error(`Missing DB skill ID for '${editableSkill.name}'`);
+  }
+
+  const session = await selectSkillOpenHandsSession(
+    editableSkill.id,
+    workspacePath,
+  );
+```
+
+- [ ] **Step 5: Update the tests to stop expecting frontend `acquire_lock`**
+
+In `app/src/__tests__/components/app-layout.test.tsx`, replace selected-skill bootstrap assertions like:
+
+```ts
+      expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
+        skillId: 1,
+      });
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillName: "sales-skill",
+        pluginSlug: "skills",
+        workspacePath: "/home/user/workspace",
+      });
+```
+
+With:
+
+```ts
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillId: 1,
+        workspacePath: "/home/user/workspace",
+      });
+```
+
+Also remove `acquire_lock` from mocked command order in the same-skill switch tests.
+
+In `app/src/__tests__/lib/tauri.test.ts`, replace:
+
+```ts
+      call: () => selectSkillOpenHandsSession("demo-skill", "/tmp/workspace", "analytics-pack"),
+```
+
+With:
+
+```ts
+      call: () => selectSkillOpenHandsSession(42, "/tmp/workspace"),
+```
+
+- [ ] **Step 6: Run frontend tests**
+
+```bash
+cd app && npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/components/app-layout.test.tsx
+```
+
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/src/lib/tauri-command-types.ts app/src/lib/tauri.ts app/src/lib/active-skill-transition.ts app/src/lib/skill-openhands-session.ts app/src/__tests__/lib/tauri.test.ts app/src/__tests__/components/app-layout.test.tsx
+git commit -m "refactor: move selected-skill lease acquisition out of frontend"
+```
+
+### Task 11.4: Add advisory UI lock polling for the skill menu
+
+**Files:**
+- Modify: `app/src/components/skill-list-panel.tsx`
+- Modify: `app/src/__tests__/components/skill-list-panel.test.tsx`
+
+- [ ] **Step 1: Replace panel-local lock state with a real refresh loop**
+
+In `app/src/components/skill-list-panel.tsx`, replace the panel-local state:
+
+```ts
+  const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
+```
+
+With store-backed state:
+
+```ts
+  const lockedSkills = useSkillStore((s) => s.lockedSkills);
+  const setLockedSkills = useSkillStore((s) => s.setLockedSkills);
+```
+
+Then replace the pathname-only effect:
+
+```ts
+  useEffect(() => {
+    getExternallyLockedSkills()
+      .then((names) => setExternalLockedSkills(new Set(names)))
+      .catch(() => { /* non-fatal */ });
+  }, [pathname]);
+```
+
+With:
+
+```ts
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshLocks = async () => {
+      try {
+        const names = await getExternallyLockedSkills();
+        if (!cancelled) {
+          setLockedSkills(new Set(names));
+        }
+      } catch {
+        // non-fatal
+      }
+    };
+
+    void refreshLocks();
+    const intervalId = window.setInterval(() => {
+      void refreshLocks();
+    }, 3000);
+    const onFocus = () => {
+      void refreshLocks();
+    };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [pathname, setLockedSkills]);
+```
+
+And replace:
+
+```ts
+    if (externalLockedSkills.has(skill.name)) return;
+```
+
+With:
+
+```ts
+    if (lockedSkills.has(skill.name)) return;
+```
+
+- [ ] **Step 2: Add a polling-focused test**
+
+In `app/src/__tests__/components/skill-list-panel.test.tsx`, add:
+
+```ts
+  it("refreshes external locks on mount and interval ticks", async () => {
+    vi.useFakeTimers();
+    const { getExternallyLockedSkills } = await import("@/lib/tauri");
+    vi.mocked(getExternallyLockedSkills)
+      .mockResolvedValueOnce(["sales-skill"])
+      .mockResolvedValueOnce(["finance-skill"]);
+
+    renderSkillListPanel();
+
+    await waitFor(() => {
+      expect(getExternallyLockedSkills).toHaveBeenCalledTimes(1);
+    });
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await waitFor(() => {
+      expect(getExternallyLockedSkills).toHaveBeenCalledTimes(2);
+    });
+
+    vi.useRealTimers();
+  });
+```
+
+- [ ] **Step 3: Run focused panel tests**
+
+```bash
+cd app && npx vitest run src/__tests__/components/skill-list-panel.test.tsx
+```
+
+Expected: PASS.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/src/components/skill-list-panel.tsx app/src/__tests__/components/skill-list-panel.test.tsx
+git commit -m "feat: add advisory UI lock polling for selected-skill menu"
+```
+
+### Task 11.5: Update the design docs for the new lease contract
+
+**Files:**
+- Modify: `docs/design/openhands-runtime-model/README.md`
+- Modify: `docs/design/openhands-runtime-model/optimistic-session-activation.md`
+- Modify: `docs/design/backend-design/README.md`
+
+- [ ] **Step 1: Update the canonical runtime contract doc**
+
+In `docs/design/openhands-runtime-model/README.md`, make the selected-skill bootstrap contract explicit:
+
+- bootstrap resolves the canonical skill row from `skill_id`
+- backend acquires or verifies the lease before any OpenHands session work
+- frontend lock state is advisory only
+- persistent dispatch commands re-check lease ownership before touching the conversation
+
+- [ ] **Step 2: Update the optimistic activation design**
+
+In `docs/design/openhands-runtime-model/optimistic-session-activation.md`, remove the stale assumption that the sync phase calls `acquireLock`. The flow should say:
+
+- navigate immediately
+- background `selectSkillOpenHandsSession(skillId)`
+- backend lease acquisition/verification happens inside that product command
+- UI lock polling is advisory only
+
+- [ ] **Step 3: Update the backend summary doc**
+
+In `docs/design/backend-design/README.md`, keep the as-built backend summary accurate:
+
+- `skill_locks` are keyed by `skill_id`
+- `select_skill_openhands_session` acquires or verifies the backend lease before OpenHands session restore
+- frontend lock state is advisory UX, not the enforcement boundary
+
+- [ ] **Step 4: Run doc sanity check**
+
+```bash
+cd /Users/hbanerjee/src/worktrees/feature/runtime-model-refactor && git diff --check
+```
+
+Expected: No whitespace or patch-format errors.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/design/openhands-runtime-model/README.md docs/design/openhands-runtime-model/optimistic-session-activation.md docs/design/backend-design/README.md
+git commit -m "docs: document backend-owned selected-skill lease contract"
+```
+
+**Manual smoke:** Open two app instances. In instance A, select a skill and leave it active. In instance B, verify the skill becomes disabled in the menu within a few seconds or on window focus. Force a selection attempt anyway if possible and verify the backend rejects it cleanly before any OpenHands session restore or refine dispatch occurs.
+
+---
+
 ## PR Execution Order
 
-Execute PRs sequentially in order 1→9. Each PR must pass all automated tests and manual smoke before proceeding to the next.
+Execute PRs sequentially in order 1→11. Each PR must pass all automated tests and manual smoke before proceeding to the next.
 
 | PR | Gap | Automated Tests | Manual Smoke |
 |---|---|---|---|
@@ -2254,3 +2821,4 @@ Execute PRs sequentially in order 1→9. Each PR must pass all automated tests a
 | 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → resume conversation → verify full transcript replays |
 | 9 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
 | 10 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
+| 11 | Backend lease enforcement + advisory UI polling | `cargo test commands::skill_session`, `cargo test commands::refine`, `npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/components/app-layout.test.tsx src/__tests__/components/skill-list-panel.test.tsx`, `git diff --check` | Two instances: lock in A, B menu disables within a few seconds, backend rejects forced selection before OpenHands restore |

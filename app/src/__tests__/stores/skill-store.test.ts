@@ -4,7 +4,7 @@ import { useSkillStore } from "@/stores/skill-store";
 describe("useSkillStore", () => {
   beforeEach(() => {
     useSkillStore.setState({
-      activeSkill: null,
+      activeSkillId: null,
       lockedSkills: new Set(),
       latestVersion: null,
     });
@@ -12,12 +12,12 @@ describe("useSkillStore", () => {
 
   it("stores selected skill UI state", () => {
     const state = useSkillStore.getState();
-    expect(state.activeSkill).toBeNull();
+    expect(state.activeSkillId).toBeNull();
 
     useSkillStore.getState().setActiveSkill("my-skill");
-    expect(useSkillStore.getState().activeSkill).toBe("my-skill");
+    expect(useSkillStore.getState().activeSkillId).toBe("my-skill");
     useSkillStore.getState().setActiveSkill(null);
-    expect(useSkillStore.getState().activeSkill).toBeNull();
+    expect(useSkillStore.getState().activeSkillId).toBeNull();
   });
 
   it("initial lockedSkills is an empty Set", () => {

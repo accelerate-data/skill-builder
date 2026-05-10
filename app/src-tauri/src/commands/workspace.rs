@@ -4,6 +4,69 @@ use std::path::Path;
 
 const WORKSPACE_PARENT: &str = ".vibedata";
 const WORKSPACE_SUBDIR: &str = "workspace";
+const OPENHANDS_SUBDIR: &str = "openhands";
+
+/// Resolve the app-local OpenHands conversations directory.
+/// Shape: `{app_data_root}/openhands/conversations/`
+pub fn resolve_openhands_conversations_dir(app_data_root: &Path) -> std::path::PathBuf {
+    app_data_root.join(OPENHANDS_SUBDIR).join("conversations")
+}
+
+/// One-time: move logs/conversations/bash_events from workspace/.openhands/ to openhands/,
+/// then remove the legacy workspace/ wrapper.
+/// Preserves in-flight conversation directories so DB conversation IDs remain valid.
+fn migrate_flatten_openhands_dir(app_data_root: &Path) {
+    let old_openhands = app_data_root.join(WORKSPACE_SUBDIR).join(".openhands");
+    let new_openhands = app_data_root.join(OPENHANDS_SUBDIR);
+
+    if !old_openhands.exists() {
+        return;
+    }
+
+    if let Err(e) = fs::create_dir_all(&new_openhands) {
+        log::warn!(
+            "[migrate] failed to create destination dir {}: {} — aborting migration",
+            new_openhands.display(),
+            e
+        );
+        return;
+    }
+
+    // Move each known subdirectory: logs/, conversations/, bash_events/
+    for subdir in &["logs", "conversations", "bash_events"] {
+        let src = old_openhands.join(subdir);
+        if src.exists() {
+            let dst = new_openhands.join(subdir);
+            if !dst.exists() {
+                if let Err(e) = fs::rename(&src, &dst) {
+                    log::warn!(
+                        "[migrate] failed to move {} → {}: {}",
+                        src.display(),
+                        dst.display(),
+                        e
+                    );
+                } else {
+                    log::info!("[migrate] moved {} → {}", src.display(), dst.display());
+                }
+            }
+        }
+    }
+
+    // Remove the old workspace/ wrapper after moving
+    let old_workspace = app_data_root.join(WORKSPACE_SUBDIR);
+    if let Err(e) = fs::remove_dir_all(&old_workspace) {
+        log::warn!(
+            "[migrate] failed to remove legacy workspace dir {}: {}",
+            old_workspace.display(),
+            e
+        );
+    } else {
+        log::info!(
+            "[migrate] removed legacy workspace dir {}",
+            old_workspace.display()
+        );
+    }
+}
 
 /// Iterate over immediate subdirectories of `dir`, skipping hidden (dotfile)
 /// entries. Returns an empty iterator if `dir` cannot be read.
@@ -448,6 +511,9 @@ pub fn init_workspace(
     // One-time cleanup for legacy workspace layout before seeding current runtime files.
     migrate_workspace_layout(&workspace_path);
 
+    // One-time: flatten app-local storage from workspace/.openhands/ to openhands/
+    migrate_flatten_openhands_dir(data_dir);
+
     // Purge stale bundled workspace mirrors then seed current ones (filesystem-only, no DB).
     {
         let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(app);
@@ -475,6 +541,33 @@ pub fn init_workspace(
 
     // Deploy bundled workflow agents/skills to the OpenHands .agents layout.
     super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
+
+    // Seed .agents/ into every existing skill's canonical directory.
+    if let Ok(conn) = db.0.lock() {
+        if let Ok(settings) = crate::db::read_settings(&conn) {
+            if let Some(ref skills_path) = settings.skills_path {
+                if let Ok(all_skills) = crate::db::list_all_skills(&conn) {
+                    for skill in all_skills {
+                        let skill_dir = crate::skill_paths::resolve_skill_dir(
+                            std::path::Path::new(skills_path),
+                            &skill.plugin_slug,
+                            &skill.name,
+                        );
+                        if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
+                            app, &skill_dir,
+                        ) {
+                            log::warn!(
+                                "[init_workspace] failed to seed .agents/ for skill {}/{}: {}",
+                                skill.plugin_slug,
+                                skill.name,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Remove stale benchmark snapshots left by interrupted runs
     cleanup_stale_snapshots(&workspace_path);

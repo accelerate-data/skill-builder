@@ -32,7 +32,7 @@ describe("useWorkflowStore", () => {
     useWorkflowStore.getState().setRunning(true);
 
     // Now init a new workflow
-    useWorkflowStore.getState().initWorkflow("my-skill", "domain");
+    useWorkflowStore.getState().initWorkflow("my-skill", null, "domain");
 
     const state = useWorkflowStore.getState();
     expect(state.skillName).toBe("my-skill");
@@ -93,7 +93,7 @@ describe("useWorkflowStore", () => {
 
   it("initWorkflow clears isStopping", () => {
     useWorkflowStore.getState().setStopping(true);
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", null, "test domain");
     expect(useWorkflowStore.getState().isStopping).toBe(false);
   });
 
@@ -144,7 +144,7 @@ describe("useWorkflowStore", () => {
     useWorkflowStore.getState().setRunning(false);
 
     // Re-init (user navigates back to dashboard and opens a skill)
-    useWorkflowStore.getState().initWorkflow("new-skill", "new-domain");
+    useWorkflowStore.getState().initWorkflow("new-skill", null, "new-domain");
     expect(useWorkflowStore.getState().workflowSessionId).toBeNull();
 
     // New workflow start → new session ID
@@ -155,7 +155,7 @@ describe("useWorkflowStore", () => {
   });
 
   it("reset clears everything back to initial state", () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "hr analytics");
+    useWorkflowStore.getState().initWorkflow("test-skill", null, "hr analytics");
     useWorkflowStore.getState().setCurrentStep(3);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
@@ -255,7 +255,7 @@ describe("useWorkflowStore", () => {
 
     it("initWorkflow resets initializing state", () => {
       useWorkflowStore.getState().setInitializing();
-      useWorkflowStore.getState().initWorkflow("test", "test domain");
+      useWorkflowStore.getState().initWorkflow("test", null, "test domain");
       const state = useWorkflowStore.getState();
       expect(state.isInitializing).toBe(false);
       expect(state.initStartTime).toBeNull();
@@ -277,7 +277,7 @@ describe("useWorkflowStore", () => {
 
     it("creates a session ID when setRunning(true) is called", async () => {
       const { createWorkflowSession } = await import("@/lib/tauri");
-      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().initWorkflow("test-skill", 42, "test domain");
       useWorkflowStore.getState().setRunning(true);
 
       const state = useWorkflowStore.getState();
@@ -286,7 +286,7 @@ describe("useWorkflowStore", () => {
       // createWorkflowSession should have been called fire-and-forget
       expect(createWorkflowSession).toHaveBeenCalledWith(
         state.workflowSessionId,
-        "test-skill",
+        42,
       );
     });
 
@@ -294,7 +294,7 @@ describe("useWorkflowStore", () => {
       const { createWorkflowSession } = await import("@/lib/tauri");
       vi.mocked(createWorkflowSession).mockClear();
 
-      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().initWorkflow("test-skill", 42, "test domain");
       useWorkflowStore.getState().setRunning(true);
       const firstId = useWorkflowStore.getState().workflowSessionId;
 
@@ -305,7 +305,7 @@ describe("useWorkflowStore", () => {
     });
 
     it("clears session ID on reset", () => {
-      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().initWorkflow("test-skill", null, "test domain");
       useWorkflowStore.getState().setRunning(true);
       expect(useWorkflowStore.getState().workflowSessionId).toBeTruthy();
 
@@ -314,11 +314,11 @@ describe("useWorkflowStore", () => {
     });
 
     it("clears session ID on initWorkflow", () => {
-      useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+      useWorkflowStore.getState().initWorkflow("test-skill", null, "test domain");
       useWorkflowStore.getState().setRunning(true);
       expect(useWorkflowStore.getState().workflowSessionId).toBeTruthy();
 
-      useWorkflowStore.getState().initWorkflow("new-skill", "new domain");
+      useWorkflowStore.getState().initWorkflow("new-skill", null, "new domain");
       expect(useWorkflowStore.getState().workflowSessionId).toBeNull();
     });
   });
@@ -338,7 +338,7 @@ describe("useWorkflowStore", () => {
 
     it("initWorkflow resets gateLoading to false", () => {
       useWorkflowStore.getState().setGateLoading(true);
-      useWorkflowStore.getState().initWorkflow("test", "test domain");
+      useWorkflowStore.getState().initWorkflow("test", null, "test domain");
       expect(useWorkflowStore.getState().gateLoading).toBe(false);
     });
 
@@ -415,7 +415,7 @@ describe("useWorkflowStore", () => {
       useWorkflowStore.getState().setDisabledSteps([3]);
       expect(useWorkflowStore.getState().disabledSteps).toEqual([3]);
 
-      useWorkflowStore.getState().initWorkflow("new-skill", "domain");
+      useWorkflowStore.getState().initWorkflow("new-skill", null, "domain");
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
 
