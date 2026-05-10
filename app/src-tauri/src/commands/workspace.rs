@@ -521,6 +521,34 @@ pub fn init_workspace(
     // Deploy bundled workflow agents/skills to the OpenHands .agents layout.
     super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
 
+    // Seed .agents/ into every existing skill's canonical directory.
+    if let Ok(conn) = db.0.lock() {
+        if let Ok(settings) = crate::db::read_settings(&conn) {
+            if let Some(ref skills_path) = settings.skills_path {
+                if let Ok(all_skills) = crate::db::list_all_skills(&conn) {
+                    for skill in all_skills {
+                        let skill_dir = crate::skill_paths::resolve_skill_dir(
+                            std::path::Path::new(skills_path),
+                            &skill.plugin_slug,
+                            &skill.name,
+                        );
+                        if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
+                            app,
+                            &skill_dir,
+                        ) {
+                            log::warn!(
+                                "[init_workspace] failed to seed .agents/ for skill {}/{}: {}",
+                                skill.plugin_slug,
+                                skill.name,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Remove stale benchmark snapshots left by interrupted runs
     cleanup_stale_snapshots(&workspace_path);
 
