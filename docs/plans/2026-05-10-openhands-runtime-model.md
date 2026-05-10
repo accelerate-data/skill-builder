@@ -1483,7 +1483,7 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 
 ---
 
-## PR 6b — Pause conversation before workflow reset; remove directory deletion
+## PR 7 — Pause conversation before workflow reset; remove directory deletion
 
 **Goal:** `reset_workflow_step` pauses the skill's active conversation before clearing the DB record, so any in-flight agent work is cancelled cleanly. The `remove_dir_all` on the conversations folder is removed entirely — conversation directories are never deleted on reset; orphaned conversation files are harmless once the DB record is gone.
 
@@ -1493,7 +1493,7 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 
 ---
 
-### Task 6b.1 — Add `try_get_cached_server_handle` to `process.rs`
+### Task 7.1 — Add `try_get_cached_server_handle` to `process.rs`
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
@@ -1555,7 +1555,7 @@ Expected: All pass.
 
 ---
 
-### Task 6b.2 — Add `pause_conversation_if_server_running` to `mod.rs`
+### Task 7.2 — Add `pause_conversation_if_server_running` to `mod.rs`
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
@@ -1623,7 +1623,7 @@ Expected: Clean.
 
 ---
 
-### Task 6b.3 — Refactor `clear_persistent_skill_conversation_state`; make `reset_workflow_step` async
+### Task 7.3 — Refactor `clear_persistent_skill_conversation_state`; make `reset_workflow_step` async
 
 **Files:**
 - Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
@@ -1803,13 +1803,13 @@ git commit -m "feat: pause conversation before workflow reset; remove conversati
 
 ---
 
-## PR 7 — Remove `workflow_session_id` from contracts (Gap 7)
+## PR 9 — Remove `workflow_session_id` from contracts (Gap 7)
 
 **Goal:** Remove `workflow_session_id` from contracts struct, regenerate TypeScript types, update callers.
 
 **Scope note:** This removes `workflow_session_id` from the Rust contracts struct and generated TypeScript types. The DB schema and usage queries retain the field — that's a separate future cleanup.
 
-### Task 7.1: Remove from contracts
+### Task 9.1: Remove from contracts
 
 **Files:**
 - Modify: `app/src-tauri/src/contracts/agent_events.rs`
@@ -2040,7 +2040,7 @@ git commit -m "refactor: collapse event recovery to always-FullHistory (Gap 8)"
 
 ---
 
-## PR 9 — Optimistic session activation (Gap 10)
+## PR 10 — Optimistic session activation (Gap 10)
 
 **Goal:** Split skill activation into sync (lock + navigate) and async (session boot) phases.
 
@@ -2142,7 +2142,7 @@ Execute PRs sequentially in order 1→9. Each PR must pass all automated tests a
 | 4 | Move Layer 2 out of `refine/mod.rs` | `cargo test` (all), clippy | Open refine, send message, switch skills |
 | 5 | Delete duplicate workflow config | `cargo test commands::workflow`, clippy | Run workflow steps 0-3, answer evaluator |
 | 6 | Consolidate OH artifacts to workspace root + `OH_BASH_EVENTS_DIR` + remove skill-switch restart (backend) + remove `stopOpenHandsServer` (frontend) | `cargo test agents::openhands_server`, full cargo test, `npm run test:unit`, clippy | Switch skills → PID unchanged; verify `.openhands/conversations/` and `.openhands/bash_events/` exist; send message in new skill |
-| 6b | Pause conversation before workflow reset; remove directory deletion | `cargo test agents::openhands_server::process`, full cargo test, clippy | Reset workflow mid-run → verify clean pause in logs → verify fresh workflow on re-open |
+| 7 | Pause conversation before workflow reset; remove directory deletion | `cargo test agents::openhands_server::process`, full cargo test, clippy | Reset workflow mid-run → verify clean pause in logs → verify fresh workflow on re-open |
 | 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → resume conversation → verify full transcript replays |
-| 7 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
-| 9 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
+| 9 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
+| 10 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
