@@ -796,7 +796,7 @@ describe("AppLayout", () => {
       }
       if (cmd === "list_imported_skills") return Promise.resolve([]);
       if (cmd === "acquire_lock") return Promise.resolve(undefined);
-      if (cmd === "release_lock" || cmd === "stop_openhands_server") {
+      if (cmd === "release_lock") {
         return Promise.resolve(undefined);
       }
       if (cmd === "select_skill_openhands_session") {
@@ -969,7 +969,6 @@ describe("AppLayout", () => {
       }
       if (cmd === "pause_openhands_session") return Promise.resolve(undefined);
       if (cmd === "release_lock") return Promise.resolve(undefined);
-      if (cmd === "stop_openhands_server") return Promise.resolve(undefined);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
@@ -1020,10 +1019,6 @@ describe("AppLayout", () => {
     });
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("stop_openhands_server", {});
-    });
-
-    await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
         skillId: 2,
       });
@@ -1038,9 +1033,6 @@ describe("AppLayout", () => {
       commandOrder.indexOf("release_lock"),
     );
     expect(commandOrder.indexOf("release_lock")).toBeLessThan(
-      commandOrder.indexOf("stop_openhands_server"),
-    );
-    expect(commandOrder.indexOf("stop_openhands_server")).toBeLessThan(
       commandOrder.indexOf("acquire_lock"),
     );
   });
@@ -1095,7 +1087,7 @@ describe("AppLayout", () => {
       if (cmd === "list_skills") return Promise.resolve(skills);
       if (cmd === "list_imported_skills") return Promise.resolve([]);
       if (cmd === "pause_openhands_session") return Promise.reject(new Error("pause failed"));
-      if (cmd === "release_lock" || cmd === "stop_openhands_server") {
+      if (cmd === "release_lock") {
         return Promise.resolve(undefined);
       }
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -1346,7 +1338,7 @@ describe("AppLayout", () => {
         if (cmd === "list_skills") return Promise.resolve([{ ...baseSkill, ...skillOverrides }]);
         if (cmd === "list_imported_skills") return Promise.resolve([]);
         if (cmd === "acquire_lock") return acquireLockFn ? acquireLockFn() : Promise.resolve(undefined);
-        if (cmd === "release_lock" || cmd === "stop_openhands_server") {
+        if (cmd === "release_lock") {
           return Promise.resolve(undefined);
         }
         if (cmd === "select_skill_openhands_session") {
