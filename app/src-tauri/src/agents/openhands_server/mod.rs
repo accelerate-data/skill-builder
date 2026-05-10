@@ -135,10 +135,6 @@ async fn send_user_message(
         .map_err(|e| format!("Failed to send event to OpenHands conversation: {e}"))
 }
 
-fn should_backfill_persisted_history(prompt_delivery: PromptDelivery) -> bool {
-    matches!(prompt_delivery, PromptDelivery::IncludedInConversationCreate)
-}
-
 pub(crate) fn conversation_matches_request(
     conversation: &serde_json::Value,
     request: &OpenHandsRuntimeRequest,
@@ -151,6 +147,12 @@ pub(crate) fn conversation_matches_request(
         .and_then(|value| value.as_str());
     persisted_system_suffix == request.system_message_suffix.as_deref()
         && persisted_user_suffix == request.user_message_suffix.as_deref()
+}
+
+#[derive(Debug, Clone)]
+pub struct StartedOpenHandsSession {
+    pub conversation_id: String,
+    pub restored_events: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,7 +217,6 @@ struct OpenHandsConversationTask {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptDelivery {
     ViaSendEvent,
-    IncludedInConversationCreate,
 }
 
 #[derive(Clone)]
@@ -719,15 +720,9 @@ fn log_session_resolution(
 async fn create_prepared_conversation_for_request(
     client: &OpenHandsServerClient,
     request: &OpenHandsRuntimeRequest,
-    include_initial_message: bool,
 ) -> Result<String, String> {
     let conversation = client
-        .create_conversation(
-            &StartConversationRequest::from_runtime_request_with_initial_message(
-                request,
-                include_initial_message,
-            ),
-        )
+        .create_conversation(&StartConversationRequest::from_runtime_request(request))
         .await
         .map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -744,7 +739,6 @@ async fn resolve_openhands_conversation_id(
     request: &OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
-    include_initial_message_on_create: bool,
 ) -> Result<String, String> {
     let server =
         ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
@@ -797,12 +791,7 @@ async fn resolve_openhands_conversation_id(
     match resolution {
         OpenHandsConversationResolution::Reuse { conversation_id } => Ok(conversation_id),
         OpenHandsConversationResolution::Create { .. } => {
-            create_prepared_conversation_for_request(
-                &client,
-                request,
-                include_initial_message_on_create,
-            )
-            .await
+            create_prepared_conversation_for_request(&client, request).await
         }
         OpenHandsConversationResolution::Error(
             OpenHandsRuntimeError::ConversationNotFound { .. }
@@ -823,12 +812,7 @@ async fn resolve_openhands_conversation_id(
                     "conversation_id": stale_id
                 }),
             );
-            let new_id = create_prepared_conversation_for_request(
-                &client,
-                request,
-                include_initial_message_on_create,
-            )
-            .await?;
+            let new_id = create_prepared_conversation_for_request(&client, request).await?;
             save_skill_conversation_id(app, request, &new_id)?;
             Ok(new_id)
         }
@@ -847,25 +831,35 @@ pub async fn start_openhands_session(
     app: &tauri::AppHandle,
     config: OpenHandsRuntimeConfig,
     conversation_id: Option<String>,
-) -> Result<String, String> {
+) -> Result<StartedOpenHandsSession, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
+    let requested_conversation_id = conversation_id
+        .clone()
+        .or_else(|| load_saved_skill_conversation_id(app, &request).ok().flatten());
     let conversation_id = resolve_openhands_conversation_id(
         app,
         &request,
         conversation_id,
         OpenHandsConversationSelection::ResumeOrCreate,
-        false,
     )
     .await?;
     save_skill_conversation_id(app, &request, &conversation_id)?;
-    Ok(conversation_id)
+    let restored_events = if requested_conversation_id.as_deref() == Some(conversation_id.as_str())
+    {
+        list_openhands_conversation_events_from_request(&request, &conversation_id).await?
+    } else {
+        Vec::new()
+    };
+    Ok(StartedOpenHandsSession {
+        conversation_id,
+        restored_events,
+    })
 }
 
-pub async fn list_openhands_conversation_events(
-    config: &OpenHandsRuntimeConfig,
+async fn list_openhands_conversation_events_from_request(
+    request: &OpenHandsRuntimeRequest,
     conversation_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     let server =
         ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
             .await?;
@@ -1104,7 +1098,7 @@ pub async fn run_throwaway_openhands_session(
         request,
         None,
         OpenHandsConversationSelection::CreateFresh,
-        PromptDelivery::IncludedInConversationCreate,
+        PromptDelivery::ViaSendEvent,
     )
     .await
     .inspect_err(|_| {
@@ -1201,10 +1195,6 @@ async fn dispatch_openhands_turn_with_request(
         &request,
         conversation_id,
         selection,
-        matches!(
-            prompt_delivery,
-            PromptDelivery::IncludedInConversationCreate
-        ),
     )
     .await?;
     let server =
@@ -1297,46 +1287,6 @@ async fn run_conversation_task_inner(
             .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
     }
 
-    // Only replay persisted history for conversations whose initial prompt was
-    // included in POST /api/conversations before the WS subscriber attached.
-    // Reused conversations are hydrated separately when the UI opens them;
-    // replaying that full history here would re-emit stale terminal states and
-    // poison the new turn.
-    if should_backfill_persisted_history(task.prompt_delivery) {
-        match task.client.list_all_events(&task.conversation_id).await {
-            Ok(events) => {
-                for raw in events {
-                    if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
-                        if !seen_event_ids.insert(id.to_string()) {
-                            continue;
-                        }
-                    }
-                    record_subagent_launch(&raw, &pending_subagent_launches);
-                    let normalized =
-                        normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
-                    if normalized.get("type").and_then(|value| value.as_str())
-                        == Some("conversation_state")
-                    {
-                        terminal_state = Some(normalized);
-                        continue;
-                    }
-                    super::events::handle_runtime_message(
-                        &task.app,
-                        &task.agent_id,
-                        &normalized.to_string(),
-                    );
-                }
-            }
-            Err(e) => {
-                log::warn!(
-                    "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
-                    task.agent_id,
-                    e
-                );
-            }
-        }
-    }
-
     let stop_subagent_stream = Arc::new(AtomicBool::new(false));
     let subagent_stream_handle = if terminal_state.is_none() {
         let launches = Arc::clone(&pending_subagent_launches);
@@ -1361,15 +1311,6 @@ async fn run_conversation_task_inner(
     };
 
     let mut cancel_pending = false;
-    // For conversation-create flows, REST backfill may already contain the
-    // terminal state; skip the redundant /run in that case. Reused
-    // conversations are run immediately after send_user_message above.
-    if terminal_state.is_none() && should_backfill_persisted_history(task.prompt_delivery) {
-        task.client
-            .run_conversation(&task.conversation_id)
-            .await
-            .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
-    }
 
     while terminal_state.is_none() {
         tokio::select! {
@@ -2974,13 +2915,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn only_conversation_create_path_replays_persisted_history() {
-        assert!(should_backfill_persisted_history(
-            PromptDelivery::IncludedInConversationCreate
-        ));
-        assert!(!should_backfill_persisted_history(
-            PromptDelivery::ViaSendEvent
-        ));
-    }
 }

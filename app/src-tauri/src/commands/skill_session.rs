@@ -116,32 +116,23 @@ fn resolve_skills_path(db: &Db) -> Result<String, String> {
         .ok_or_else(|| "Skills path not configured in settings".to_string())
 }
 
-async fn restore_skill_conversation_state(
-    config: &crate::agents::runtime_config::OpenHandsRuntimeConfig,
-    conversation_id: &str,
-) -> Result<
-    (
-        Vec<crate::types::ConversationMessage>,
-        Vec<crate::types::RestoredConversationEvent>,
-        usize,
-    ),
-    String,
-> {
-    let events = crate::agents::openhands_server::list_openhands_conversation_events(
-        config,
-        conversation_id,
-    )
-    .await?;
+fn restore_skill_conversation_state(
+    events: &[serde_json::Value],
+) -> (
+    Vec<crate::types::ConversationMessage>,
+    Vec<crate::types::RestoredConversationEvent>,
+    usize,
+) {
     let restored_messages = crate::commands::refine::extract_conversation_messages(&events);
     let restored_transcript_events =
         crate::commands::refine::extract_restored_conversation_events(&events);
     let dispatched_user_turn_count =
         crate::commands::refine::restored_conversation_user_turn_count(&restored_transcript_events);
-    Ok((
+    (
         restored_messages,
         restored_transcript_events,
         dispatched_user_turn_count,
-    ))
+    )
 }
 
 #[tauri::command]
@@ -182,14 +173,15 @@ pub async fn select_skill_openhands_session(
         &skills_path,
         runtime_ctx.llm.clone(),
     );
-    let active_conversation_id = crate::agents::skill_creator::ensure_skill_session(
+    let started_session = crate::agents::skill_creator::ensure_skill_session(
         &app,
-        session_config.clone(),
+        session_config,
         saved_conversation_id,
     )
     .await?;
+    let active_conversation_id = started_session.conversation_id.clone();
     let (restored_messages, restored_transcript_events, dispatched_user_turn_count) =
-        restore_skill_conversation_state(&session_config, &active_conversation_id).await?;
+        restore_skill_conversation_state(&started_session.restored_events);
 
     let mut map = sessions.0.lock().map_err(|e| {
         log::error!(

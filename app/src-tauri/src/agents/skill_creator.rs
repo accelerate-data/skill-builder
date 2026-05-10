@@ -61,7 +61,7 @@ pub async fn ensure_skill_session(
     app: &tauri::AppHandle,
     config: OpenHandsRuntimeConfig,
     saved_conversation_id: Option<String>,
-) -> Result<String, String> {
+) -> Result<crate::agents::openhands_server::StartedOpenHandsSession, String> {
     crate::agents::openhands_server::ensure_openhands_server(&config).await?;
     crate::agents::openhands_server::start_openhands_session(app, config, saved_conversation_id)
         .await

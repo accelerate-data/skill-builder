@@ -68,7 +68,7 @@ click skill → navigate → page shows skeleton
 
 | Step | Duration | Rationale |
 |---|---|---|
-| `selectSkillOpenHandsSession` | 2-5s cold, <500ms warm | Backend product command. Acquires or verifies the skill lease, then calls `ensure_skill_session` and restores history. |
+| `selectSkillOpenHandsSession` | 2-5s cold, <500ms warm | Backend product command. Acquires or verifies the skill lease, then calls `ensure_skill_session`, which resumes or creates the conversation and returns restored history when resuming. |
 | `hydrateSelectedSkillOpenHandsSession` | <50ms | Store writes, no I/O. Populates `refineStore.conversationId`, `selectedSkill`, `messages`, and `availableAgents`. |
 | `setActiveSessionSkillName` | sync | Marks the session as fully active. |
 
