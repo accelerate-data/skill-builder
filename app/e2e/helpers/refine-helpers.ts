@@ -92,7 +92,6 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
   close_refine_session: undefined,
   acquire_lock: undefined,
   release_lock: undefined,
-  cleanup_skill_sidecar: undefined,
   get_disabled_steps: [],
 };
 

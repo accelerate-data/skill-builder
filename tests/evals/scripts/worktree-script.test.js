@@ -113,12 +113,12 @@ test('worktree helper leaves Promptfoo state setup to the eval runtime', () => {
   }
 });
 
-test('worktree helper copies sidecar dist into the created worktree when available', () => {
+test('worktree helper does not create legacy sidecar dist content in the created worktree', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-builder-worktree-'));
 
   try {
     const { env, worktreeBase } = createBaseEnv(tmpDir);
-    const result = spawnSync(SCRIPT_PATH, ['feature/sidecar-dist-bootstrap'], {
+    const result = spawnSync(SCRIPT_PATH, ['feature/no-sidecar-dist-bootstrap'], {
       cwd: REPO_ROOT,
       env,
       encoding: 'utf8',
@@ -126,23 +126,16 @@ test('worktree helper copies sidecar dist into the created worktree when availab
 
     assert.equal(result.status, 0, result.stderr);
 
-    const sourceSidecarDist = path.join(REPO_ROOT, 'app', 'sidecar', 'dist');
     const worktreeSidecarDist = path.join(
       worktreeBase,
       'feature',
-      'sidecar-dist-bootstrap',
+      'no-sidecar-dist-bootstrap',
       'app',
       'sidecar',
       'dist',
     );
 
-    if (fs.existsSync(sourceSidecarDist)) {
-      assert.equal(fs.existsSync(path.join(worktreeSidecarDist, 'package.json')), true);
-      assert.equal(fs.existsSync(path.join(worktreeSidecarDist, 'bootstrap.js')), true);
-      assert.equal(fs.existsSync(path.join(worktreeSidecarDist, 'agent-runner.js')), true);
-    } else {
-      assert.equal(fs.existsSync(worktreeSidecarDist), false);
-    }
+    assert.equal(fs.existsSync(worktreeSidecarDist), false);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

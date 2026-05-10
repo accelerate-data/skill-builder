@@ -1051,65 +1051,7 @@ git commit -m "refactor: collapse event recovery to always-FullHistory (Gap 8)"
 
 ---
 
-## PR 9 — Delete `app/sidecar/` (Gap 9)
-
-**Goal:** Remove the dead Node sidecar package.
-
-### Task 9.1: Delete sidecar directory
-
-**Files:**
-- Delete: `app/sidecar/` (entire directory)
-
-- [ ] **Step 1: Check for references to sidecar**
-
-```bash
-grep -r "sidecar" .github/ package.json app/package.json app/src-tauri/ --include="*.yml" --include="*.json" --include="*.toml" --include="*.md" 2>/dev/null
-```
-
-Note all files that reference sidecar.
-
-- [ ] **Step 2: Delete `app/sidecar/`**
-
-```bash
-rm -rf app/sidecar/
-```
-
-- [ ] **Step 3: Update any CI/packaging references**
-
-Remove sidecar references from `.github/workflows/`, `package.json` scripts, etc.
-
-- [ ] **Step 4: Update `repo-map.json`**
-
-Remove any sidecar references from `repo-map.json`.
-
-- [ ] **Step 5: Run repo-map audit**
-
-```bash
-cd app && npm run test:repo-map
-```
-
-Expected: Passes.
-
-- [ ] **Step 6: Run full cargo test**
-
-```bash
-cd app/src-tauri && cargo test
-```
-
-Expected: All tests pass.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add -A
-git commit -m "chore: delete app/sidecar/ dead package (Gap 9)"
-```
-
-**Manual smoke:** App launches normally. Basic workflow runs.
-
----
-
-## PR 10 — Optimistic session activation (Gap 10)
+## PR 9 — Optimistic session activation (Gap 10)
 
 **Goal:** Split skill activation into sync (lock + navigate) and async (session boot) phases.
 
@@ -1201,7 +1143,7 @@ git commit -m "feat: split skill activation into sync + async phases (Gap 10)"
 
 ## PR Execution Order
 
-Execute PRs sequentially in order 1→10. Each PR must pass all automated tests and manual smoke before proceeding to the next.
+Execute PRs sequentially in order 1→9. Each PR must pass all automated tests and manual smoke before proceeding to the next.
 
 | PR | Gap | Automated Tests | Manual Smoke |
 |---|---|---|---|
@@ -1213,5 +1155,4 @@ Execute PRs sequentially in order 1→10. Each PR must pass all automated tests 
 | 6 | Remove `stopOpenHandsServer` | `cargo test`, `npm run test:unit` | Switch skills, verify fast |
 | 7 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
 | 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Send refine message, run workflow step |
-| 9 | Delete `app/sidecar/` | `npm run test:repo-map`, `cargo test` | App launches, workflow runs |
-| 10 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
+| 9 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |

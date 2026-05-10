@@ -262,6 +262,6 @@ None blocking. Remaining detail decisions live in the migration plan task notes.
 
 ## Migration Sequencing
 
-See `docs/plans/2026-05-04-workflow-artifact-storage-db-migration.md`.
-
-This work lands as a single PR off `feature/vu-1157-...`, targeting the `feature/vu-1145-implement-openhands-native-clean-break-agent-runtime` accumulation branch. VU-1145 collects all OpenHands clean-break work before it merges to `main`.
+This work originally landed as part of the OpenHands clean-break rollout. The
+implementation now lives on `main`; no separate plan document is maintained
+here.

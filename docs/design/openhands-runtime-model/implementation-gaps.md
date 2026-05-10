@@ -242,17 +242,13 @@ non-`FullHistory` mode are updated to use `FullHistory`.
 
 ---
 
-## Gap 9 — Node sidecar still exists in the repo
+## Gap 9 — Node sidecar cleanup is already complete on `main`
 
-**Target:** The `app/sidecar/` package is removed. The Rust process and
-OpenHands Agent Server are the only runtime. TypeScript contract ownership is
-explicit without any dependency on `app/sidecar/`.
+**Status:** Resolved outside this refactor.
 
-**Current state:** `app/sidecar/` still exists (with `node_modules/`). Packaging, CI, and release
-scripts still reference it.
-
-**Fix (separate PR):** Delete `app/sidecar/`. Update packaging and CI.
-Update docs, repo-map, TEST_MAP, and AGENTS.md.
+The tracked Node sidecar package and its packaging/CI wiring have already been
+removed on `main`. If a local checkout still shows `app/sidecar/`, treat it as
+workspace residue and delete it before starting the runtime-model refactor.
 
 ---
 

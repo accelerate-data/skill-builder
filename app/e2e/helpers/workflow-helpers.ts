@@ -48,7 +48,6 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   save_workflow_state: undefined,
   capture_step_artifacts: [],
   reset_workflow_step: undefined,
-  cleanup_skill_sidecar: undefined,
   run_workflow_step: "agent-001",
   // Provide canonical step-0 artifacts so workflow completion can advance in e2e mocks.
   read_file: {

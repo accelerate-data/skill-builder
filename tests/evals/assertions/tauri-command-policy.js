@@ -17,7 +17,6 @@ const DEFAULT_UNSAFE_WRAPPER_COMMAND_ALLOWLIST = [
   "write_file",
   "list_skill_files",
   "get_workspace_path",
-  "cleanup_skill_sidecar",
   "graceful_shutdown",
   "allow_app_exit",
   "create_workflow_session",
