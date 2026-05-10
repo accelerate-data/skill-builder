@@ -552,11 +552,11 @@ git commit -m "refactor: move Layer 2 code out of refine/mod.rs (Gap 4)"
 **Files:**
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
 
-- [ ] **Step 1: Delete `SkillCreatorWorkflowConfigParams` and `build_skill_creator_workflow_runtime_config`**
+- [x] **Step 1: Delete `SkillCreatorWorkflowConfigParams` and `build_skill_creator_workflow_runtime_config`**
 
 Remove the struct and function (lines ~149-205).
 
-- [ ] **Step 2: Update `build_workflow_research_runtime_config`**
+- [x] **Step 2: Update `build_workflow_research_runtime_config`**
 
 ```rust
 pub(crate) fn build_workflow_research_runtime_config(
@@ -586,7 +586,7 @@ pub(crate) fn build_workflow_research_runtime_config(
 
 Remove `workflow_session_id` parameter from the function signature.
 
-- [ ] **Step 3: Update `build_workflow_detailed_research_runtime_config`**
+- [x] **Step 3: Update `build_workflow_detailed_research_runtime_config`**
 
 ```rust
 pub(crate) fn build_workflow_detailed_research_runtime_config(
@@ -616,7 +616,7 @@ pub(crate) fn build_workflow_detailed_research_runtime_config(
 
 Remove `workflow_session_id` parameter.
 
-- [ ] **Step 4: Update `build_workflow_confirm_decisions_runtime_config`**
+- [x] **Step 4: Update `build_workflow_confirm_decisions_runtime_config`**
 
 ```rust
 pub(crate) fn build_workflow_confirm_decisions_runtime_config(
@@ -646,7 +646,7 @@ pub(crate) fn build_workflow_confirm_decisions_runtime_config(
 
 Remove `workflow_session_id` parameter.
 
-- [ ] **Step 5: Update `build_workflow_generate_skill_runtime_config`**
+- [x] **Step 5: Update `build_workflow_generate_skill_runtime_config`**
 
 ```rust
 pub(crate) fn build_workflow_generate_skill_runtime_config(
@@ -676,7 +676,7 @@ pub(crate) fn build_workflow_generate_skill_runtime_config(
 
 Remove `workflow_session_id` parameter.
 
-- [ ] **Step 6: Update `build_answer_evaluator_runtime_config`**
+- [x] **Step 6: Update `build_answer_evaluator_runtime_config`**
 
 ```rust
 pub(crate) fn build_answer_evaluator_runtime_config(
@@ -706,17 +706,17 @@ pub(crate) fn build_answer_evaluator_runtime_config(
 
 Note: `step_id` changes from `None` to `-1` per the design spec.
 
-- [ ] **Step 7: Update callers to remove `workflow_session_id` argument**
+- [x] **Step 7: Update callers to remove `workflow_session_id` argument**
 
 In `run_workflow_step_inner`, remove `workflow_session_id` from all config builder calls (lines ~512-550).
 In `run_workflow_step` signature, keep `workflow_session_id` parameter for now (it's still in the Tauri command contract — Gap 7 removes it).
 In `run_answer_evaluator`, no change needed (it never passed `workflow_session_id`).
 
-- [ ] **Step 8: Update workflow tests**
+- [x] **Step 8: Update workflow tests**
 
 In `commands/workflow/tests.rs`, update any test that passes `workflow_session_id` to config builders. Remove the parameter from calls. Update assertions that check `config.workflow_session_id`.
 
-- [ ] **Step 9: Run workflow tests**
+- [x] **Step 9: Run workflow tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::workflow
@@ -724,7 +724,7 @@ cd app/src-tauri && cargo test commands::workflow
 
 Expected: All tests pass.
 
-- [ ] **Step 10: Run clippy**
+- [x] **Step 10: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -732,7 +732,7 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: Clean.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/workflow/tests.rs
@@ -740,6 +740,106 @@ git commit -m "refactor: delegate workflow config builders to skill_creator (Gap
 ```
 
 **Manual smoke:** Run workflow steps 0-3 in the app. Verify each completes. Run answer evaluator gate. Verify it works.
+
+---
+
+## PR 5b — Set `OH_BASH_EVENTS_DIR` explicitly (process env hygiene)
+
+**Goal:** Bash events land in the skill-scoped workspace alongside conversations, not in the temp CWD. The OpenHands server default for `bash_events_dir` is `workspace/bash_events` relative to its CWD. Because the CWD is a throwaway temp dir, bash events currently go there and are lost. Explicitly setting `OH_BASH_EVENTS_DIR` to `{workspace_skill_dir}/bash_events` keeps all persistent OpenHands artifacts in the skill-scoped directory alongside `conversations/`.
+
+### Task 5b.1: Add `OH_BASH_EVENTS_DIR` to `apply_session_env`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
+
+- [ ] **Step 1: Add `compute_bash_events_path`**
+
+After `compute_conversations_path`, add:
+
+```rust
+pub(crate) fn compute_bash_events_path(runtime_run_dir: &Path) -> PathBuf {
+    runtime_run_dir.join("bash_events")
+}
+```
+
+- [ ] **Step 2: Update `apply_session_env` signature and body**
+
+Add `bash_events_path: Option<&str>` parameter and set `OH_BASH_EVENTS_DIR`:
+
+```rust
+fn apply_session_env(
+    cmd: &mut tokio::process::Command,
+    session_api_key: &str,
+    openhands_secret_key: &str,
+    conversations_path: Option<&str>,
+    bash_events_path: Option<&str>,
+) {
+    cmd.env("SESSION_API_KEY", session_api_key)
+        .env("OH_SESSION_API_KEYS_0", session_api_key)
+        .env("OH_SECRET_KEY", openhands_secret_key);
+    if let Some(p) = conversations_path {
+        cmd.env("OH_CONVERSATIONS_PATH", p);
+    }
+    if let Some(p) = bash_events_path {
+        cmd.env("OH_BASH_EVENTS_DIR", p);
+    }
+}
+```
+
+- [ ] **Step 3: Update `start_once` to compute and pass the bash events path**
+
+After the `conversations_path_str` binding, add:
+
+```rust
+let bash_events_path_str = compute_bash_events_path(runtime_run_dir)
+    .to_string_lossy()
+    .into_owned();
+```
+
+Pass it to `apply_session_env`:
+
+```rust
+apply_session_env(
+    &mut tokio_command,
+    &session_api_key,
+    &openhands_secret_key,
+    Some(&conversations_path_str),
+    Some(&bash_events_path_str),
+);
+```
+
+- [ ] **Step 4: Update tests**
+
+Update `apply_session_env_sets_conversations_path_when_present` to pass `None` as the new fifth argument and add a parallel assertion for `OH_BASH_EVENTS_DIR`.
+
+Update `apply_session_env_omits_conversations_path_when_none` to pass `None` as the fifth argument and add an assertion that `OH_BASH_EVENTS_DIR` is also absent.
+
+Add a new test `compute_bash_events_path_resolves_under_runtime_run_dir` mirroring the conversations path test.
+
+- [ ] **Step 5: Run process tests**
+
+```bash
+cd app/src-tauri && cargo test agents::openhands_server::process
+```
+
+Expected: All tests pass.
+
+- [ ] **Step 6: Run clippy**
+
+```bash
+cd app/src-tauri && cargo clippy -- -D warnings
+```
+
+Expected: Clean.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/src-tauri/src/agents/openhands_server/process.rs
+git commit -m "fix: set OH_BASH_EVENTS_DIR explicitly to skill-scoped workspace dir"
+```
+
+**Manual smoke:** Run a workflow step that uses terminal commands. Verify `bash_events/` appears inside the skill workspace directory, not in a temp dir.
 
 ---
 

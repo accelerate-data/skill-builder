@@ -228,7 +228,6 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
     let events = Arc::new(Mutex::new(Vec::<String>::new()));
     let send_events = Arc::clone(&events);
@@ -344,7 +343,6 @@ fn research_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -377,7 +375,6 @@ fn research_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 #[test]
@@ -460,7 +457,6 @@ fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -490,7 +486,6 @@ fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 #[test]
@@ -544,7 +539,7 @@ fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands answer evaluation should rely on workspace .agents skills"
     );
-    assert!(config.step_id.is_none());
+    assert_eq!(config.step_id, Some(-1));
 }
 
 #[test]
@@ -555,7 +550,6 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("workflow-session".to_string()),
     );
     let answer_evaluator_config = build_answer_evaluator_runtime_config(
         "sales-analytics",
@@ -780,7 +774,6 @@ mod research {
             "/tmp/workspace",
             DEFAULT_PLUGIN_SLUG,
             test_workflow_llm_config(),
-            None,
         );
         assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
         assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
@@ -884,7 +877,6 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -911,7 +903,6 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 #[test]
@@ -989,7 +980,6 @@ fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -1021,7 +1011,6 @@ fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 /// Steps 0–2 use inline schemas: all $ref resolved, no definitions block,
