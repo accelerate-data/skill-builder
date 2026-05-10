@@ -1,4 +1,4 @@
-use crate::commands::skill_session::RefineSessionManager;
+use crate::commands::skill_session::SkillSessionManager;
 use crate::commands::workflow::runtime::WorkflowStepRunManager;
 use crate::db::Db;
 use crate::skill_paths::{
@@ -521,7 +521,7 @@ pub async fn delete_skill(
     name: String,
     db: tauri::State<'_, Db>,
     workflow_runs: tauri::State<'_, WorkflowStepRunManager>,
-    refine_sessions: tauri::State<'_, RefineSessionManager>,
+    refine_sessions: tauri::State<'_, SkillSessionManager>,
 ) -> Result<(), String> {
     log::info!("[delete_skill] name={}", name);
     let (skills_path, plugin_slug) = {
@@ -710,7 +710,7 @@ pub(crate) fn prepare_skill_runtime_shutdown_inner(
     name: &str,
     plugin_slug: &str,
     workflow_runs: &WorkflowStepRunManager,
-    refine_sessions: &RefineSessionManager,
+    refine_sessions: &SkillSessionManager,
 ) -> Result<SkillRuntimeShutdownPlan, String> {
     let mut agent_ids = Vec::new();
 

@@ -8,7 +8,7 @@ use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::types::RefineSessionInfo;
 
-pub struct RefineSession {
+pub struct SkillSession {
     pub skill_name: String,
     pub plugin_slug: String,
     #[allow(dead_code)]
@@ -19,22 +19,22 @@ pub struct RefineSession {
     pub head_sha_at_start: Option<String>,
 }
 
-pub struct RefineSessionManager(pub Mutex<HashMap<String, RefineSession>>);
+pub struct SkillSessionManager(pub Mutex<HashMap<String, SkillSession>>);
 
-impl RefineSessionManager {
+impl SkillSessionManager {
     pub fn new() -> Self {
         Self(Mutex::new(HashMap::new()))
     }
 }
 
-pub(crate) fn refine_session_key(skill_name: &str, plugin_slug: &str) -> String {
+pub(crate) fn skill_session_key(skill_name: &str, plugin_slug: &str) -> String {
     format!("{}::{}", plugin_slug, skill_name)
 }
 
-fn upsert_refine_session(
-    sessions: &mut HashMap<String, RefineSession>,
+fn upsert_skill_session(
+    sessions: &mut HashMap<String, SkillSession>,
     session_key: String,
-    session: RefineSession,
+    session: SkillSession,
 ) {
     let skill_name = session.skill_name.clone();
     let plugin_slug = session.plugin_slug.clone();
@@ -46,8 +46,8 @@ fn upsert_refine_session(
     sessions.insert(session_key, session);
 }
 
-fn remove_refine_sessions_for_skill(
-    sessions: &mut HashMap<String, RefineSession>,
+fn remove_skill_sessions(
+    sessions: &mut HashMap<String, SkillSession>,
     skill_name: &str,
     plugin_slug: &str,
 ) {
@@ -64,7 +64,7 @@ fn resolve_skills_path(db: &Db) -> Result<String, String> {
         .ok_or_else(|| "Skills path not configured in settings".to_string())
 }
 
-async fn restore_refine_conversation_state(
+async fn restore_skill_conversation_state(
     config: &crate::agents::runtime_config::OpenHandsRuntimeConfig,
     conversation_id: &str,
 ) -> Result<
@@ -98,7 +98,7 @@ pub async fn select_skill_openhands_session(
     skill_name: String,
     plugin_slug: String,
     _workspace_path: String,
-    sessions: tauri::State<'_, RefineSessionManager>,
+    sessions: tauri::State<'_, SkillSessionManager>,
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
     log::info!(
@@ -139,7 +139,7 @@ pub async fn select_skill_openhands_session(
         runtime_ctx.llm.clone(),
     );
     let (restored_messages, restored_transcript_events, dispatched_user_turn_count) =
-        restore_refine_conversation_state(&session_config, &active_conversation_id).await?;
+        restore_skill_conversation_state(&session_config, &active_conversation_id).await?;
 
     let mut map = sessions.0.lock().map_err(|e| {
         log::error!(
@@ -149,7 +149,7 @@ pub async fn select_skill_openhands_session(
         e.to_string()
     })?;
 
-    let session_key = refine_session_key(&skill_name, &plugin_slug);
+    let session_key = skill_session_key(&skill_name, &plugin_slug);
     if map.iter().any(|(key, session)| {
         key != &session_key
             && session.skill_name == skill_name
@@ -176,13 +176,13 @@ pub async fn select_skill_openhands_session(
             Some(commit.id().to_string())
         });
 
-    upsert_refine_session(
+    upsert_skill_session(
         &mut map,
         session_key,
-        RefineSession {
+        SkillSession {
             skill_name: skill_name.clone(),
             plugin_slug: plugin_slug.clone(),
-            usage_session_id: crate::commands::refine::protocol::new_refine_usage_session_id(
+            usage_session_id: crate::commands::refine::protocol::new_skill_usage_session_id(
                 &skill_name,
             ),
             conversation_id: Some(active_conversation_id.clone()),
@@ -215,7 +215,7 @@ pub struct PauseOpenHandsSessionInput {
 pub async fn pause_openhands_session(
     input: PauseOpenHandsSessionInput,
     db: tauri::State<'_, Db>,
-    sessions: tauri::State<'_, RefineSessionManager>,
+    sessions: tauri::State<'_, SkillSessionManager>,
 ) -> Result<(), String> {
     let PauseOpenHandsSessionInput {
         skill_name,
@@ -259,7 +259,7 @@ pub async fn pause_openhands_session(
     );
 
     if let Ok(mut map) = sessions.0.lock() {
-        remove_refine_sessions_for_skill(&mut map, &skill_name, &plugin_slug);
+        remove_skill_sessions(&mut map, &skill_name, &plugin_slug);
     }
 
     Ok(())
@@ -268,12 +268,12 @@ pub async fn pause_openhands_session(
 #[cfg(test)]
 mod tests {
     use super::{
-        refine_session_key, remove_refine_sessions_for_skill, upsert_refine_session, RefineSession,
+        remove_skill_sessions, skill_session_key, upsert_skill_session, SkillSession,
     };
     use std::collections::HashMap;
 
-    fn session(skill_name: &str, plugin_slug: &str, usage_session_id: &str) -> RefineSession {
-        RefineSession {
+    fn session(skill_name: &str, plugin_slug: &str, usage_session_id: &str) -> SkillSession {
+        SkillSession {
             skill_name: skill_name.to_string(),
             plugin_slug: plugin_slug.to_string(),
             usage_session_id: usage_session_id.to_string(),
@@ -285,19 +285,19 @@ mod tests {
     }
 
     #[test]
-    fn upsert_refine_session_removes_stale_entries_for_same_skill() {
+    fn upsert_skill_session_removes_stale_entries_for_same_skill() {
         let mut sessions = HashMap::new();
         sessions.insert(
             "legacy-key".to_string(),
             session("sales-skill", "default", "usage-legacy"),
         );
         sessions.insert(
-            refine_session_key("other-skill", "default"),
+            skill_session_key("other-skill", "default"),
             session("other-skill", "default", "usage-other"),
         );
 
-        let new_key = refine_session_key("sales-skill", "default");
-        upsert_refine_session(
+        let new_key = skill_session_key("sales-skill", "default");
+        upsert_skill_session(
             &mut sessions,
             new_key.clone(),
             session("sales-skill", "default", "usage-new"),
@@ -311,14 +311,14 @@ mod tests {
                 .map(|session| session.usage_session_id.as_str()),
             Some("usage-new")
         );
-        assert!(sessions.contains_key(&refine_session_key("other-skill", "default")));
+        assert!(sessions.contains_key(&skill_session_key("other-skill", "default")));
     }
 
     #[test]
-    fn remove_refine_sessions_for_skill_clears_matching_entries_only() {
+    fn remove_skill_sessions_clears_matching_entries_only() {
         let mut sessions = HashMap::new();
         sessions.insert(
-            refine_session_key("sales-skill", "default"),
+            skill_session_key("sales-skill", "default"),
             session("sales-skill", "default", "usage-current"),
         );
         sessions.insert(
@@ -326,13 +326,13 @@ mod tests {
             session("sales-skill", "default", "usage-legacy"),
         );
         sessions.insert(
-            refine_session_key("sales-skill", "custom"),
+            skill_session_key("sales-skill", "custom"),
             session("sales-skill", "custom", "usage-custom"),
         );
 
-        remove_refine_sessions_for_skill(&mut sessions, "sales-skill", "default");
+        remove_skill_sessions(&mut sessions, "sales-skill", "default");
 
         assert_eq!(sessions.len(), 1);
-        assert!(sessions.contains_key(&refine_session_key("sales-skill", "custom")));
+        assert!(sessions.contains_key(&skill_session_key("sales-skill", "custom")));
     }
 }
