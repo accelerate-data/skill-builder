@@ -698,6 +698,30 @@ fn research_json_extraction_repairs_missing_commas_between_array_objects() {
 }
 
 #[test]
+fn research_json_extraction_repairs_missing_section_closers_before_notes() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": r#"{"status":"research_complete","question_count":1,"research_output":{"version":"1","metadata":{"question_count":1,"section_count":1,"refinement_count":0,"must_answer_count":1,"priority_questions":["Q1"],"scope_recommendation":false,"scope_reason":null,"warning":null,"error":null},"sections":[{"id":1,"title":"Pipeline Scope","questions":[{"id":"Q1","title":"Pipeline type","text":"What type of pipeline does pipeline value refer to?","must_answer":true,"choices":[{"id":"C1","text":"Sales pipeline","is_other":false},{"id":"C2","text":"Other (please specify)","is_other":true}],"refinements":[]}],"notes":[{"type":"critical_gap","title":"Pipeline type ambiguous","body":"Need pipeline type before continuing."}],"answer_evaluator_notes":[]}}"#
+    });
+
+    let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+
+    assert_eq!(parsed["status"], "research_complete");
+    assert_eq!(
+        parsed["research_output"]["sections"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        parsed["research_output"]["notes"].as_array().unwrap().len(),
+        1
+    );
+}
+
+#[test]
 fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_json() {
     let missing = serde_json::json!({
         "type": "conversation_state",

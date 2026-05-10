@@ -118,6 +118,17 @@ fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
                 }
             }
 
+            if let Some(repaired) = repair_missing_research_section_closers(json_text) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&repaired) {
+                    if parsed.is_object() {
+                        log::warn!(
+                            "[materialize_step] repaired OpenHands research result_text with missing section closers"
+                        );
+                        return Ok(parsed);
+                    }
+                }
+            }
+
             Err(format!(
                 "OpenHands research result_text invalid JSON: {}",
                 parse_error
@@ -168,6 +179,22 @@ fn repair_missing_commas_between_json_values(text: &str) -> Option<String> {
         }
 
         repaired.push(ch);
+    }
+
+    changed.then_some(repaired)
+}
+
+fn repair_missing_research_section_closers(text: &str) -> Option<String> {
+    let mut repaired = text.to_string();
+    let mut changed = false;
+
+    for field in [r#","notes""#, r#","answer_evaluator_notes""#] {
+        let needle = format!(r#""refinements":[]}}]{field}"#);
+        let replacement = format!(r#""refinements":[]}}]}}]{field}"#);
+        if repaired.contains(&needle) {
+            repaired = repaired.replace(&needle, &replacement);
+            changed = true;
+        }
     }
 
     changed.then_some(repaired)
