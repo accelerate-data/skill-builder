@@ -20,7 +20,7 @@
 - Create: `app/src-tauri/src/agents/skill_creator.rs`
 - Modify: `app/src-tauri/src/agents/mod.rs`
 
-- [ ] **Step 1: Create `agents/skill_creator.rs`**
+- [x] **Step 1: Create `agents/skill_creator.rs`**
 
 ```rust
 // app/src-tauri/src/agents/skill_creator.rs
@@ -198,7 +198,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Register module in `agents/mod.rs`**
+- [x] **Step 2: Register module in `agents/mod.rs`**
 
 Read `app/src-tauri/src/agents/mod.rs` and add:
 
@@ -206,7 +206,7 @@ Read `app/src-tauri/src/agents/mod.rs` and add:
 pub mod skill_creator;
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::skill_creator
@@ -214,7 +214,7 @@ cd app/src-tauri && cargo test agents::skill_creator
 
 Expected: All 4 tests pass.
 
-- [ ] **Step 4: Run clippy**
+- [x] **Step 4: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -222,7 +222,7 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: Clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/agents/mod.rs
