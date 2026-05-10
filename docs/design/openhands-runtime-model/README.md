@@ -72,10 +72,23 @@ Layer 3 exports:
 
 | Export | Location | Purpose |
 |---|---|---|
-| `ensure_skill_runtime_ready` | `commands/skill_session.rs` | Validates workspace is initialized, ensures prompts are deployed, creates skill workspace dir. Returns `InitializedRuntimeContext` (workspace path + LLM config). Layer 3 concern because it reads from the DB and touches workspace dirs. |
+| `ensure_skill_runtime_ready` | `commands/skill_session.rs` | Validates the app runtime is initialized, ensures prompts are deployed, and ensures the canonical skill directory exists. Returns `InitializedRuntimeContext` (workspace path + LLM config). Layer 3 concern because it reads from the DB and touches app-owned paths. |
 | `build_skill_session_config` | `commands/skill_session.rs` | Thin wrapper over `skill_creator::build_skill_creator_config` with refine-fixed params: `task_kind: "refine"`, `step_id: -10`, `allowed_tools: ["file_editor", "terminal"]`, `max_turns: 500`, `run_source: "refine"`. |
 
 **Dispatch exception:** Layer 3 may call Layer 1 dispatch primitives (`send_openhands_message`, `pause_openhands_conversation`) directly for one-shot turn operations. These do not need Layer 2 helpers — they operate on an already-booted session and only append/pause. Layer 2 is required for session boot (`ensure_skill_session`) and config construction (`build_skill_creator_config`), not for individual turn dispatch.
+
+## Runtime Roots
+
+The target model has two durable roots:
+
+| Root | Purpose |
+|---|---|
+| `{app_data_root}` | App-owned runtime state. Contains `openhands/`, the SQLite DB, and app documents directly at the root. There is no extra `workspace/` wrapper directory. |
+| `{skills_root}` | Canonical authored skill tree. OpenHands conversations set `workspace.working_dir` to a canonical skill directory under this root. |
+
+`workspaceSkillDir` is not part of the target model. A skill conversation works directly in the canonical skill directory:
+
+`{skills_root}/{plugin_slug}/skills/{skill_name}`
 
 ## Persistent vs Throwaway Sessions
 
@@ -107,17 +120,17 @@ Properties:
 
 - no saved `conversation_id`
 - runtime files may be kept for debugging but are not resumable product state
-- throwaway workspace lives at `{workspace}/.openhands/throwaway/{surface}/{run_id}/`
+- the conversation still uses the canonical skill directory as `workspace.working_dir`
 
 ## Selected-Skill Bootstrap Contract
 
 Selected-skill activation owns the persistent session bootstrap sequence:
 
-1. resolve the skill-scoped runtime root
+1. resolve the canonical skill directory
 2. call `ensure_skill_session` with the saved `conversation_id` from the DB
 3. restore visible transcript history from the conversation events
 
-The runtime is workspace-scoped: `OH_CONVERSATIONS_PATH` points at `{workspace}/.openhands/conversations/` and `OH_BASH_EVENTS_DIR` points at `{workspace}/.openhands/bash_events/`. Both are fixed for the lifetime of the workspace — they do not change between skill switches. The cached Agent Server is reused across skill switches; it only restarts on process crash or failed health probe. Per-skill file isolation is provided by `workspace.working_dir` in each conversation's `POST /api/conversations` body. The DB is the durable source of truth for the saved `conversation_id`.
+The runtime is app-scoped: `OH_CONVERSATIONS_PATH` points at `{app_data_root}/openhands/conversations/` and `OH_BASH_EVENTS_DIR` points at `{app_data_root}/openhands/bash_events/`. Both are fixed for the lifetime of the app data root — they do not change between skill switches. The cached Agent Server is reused across skill switches; it only restarts on process crash or failed health probe. Skill-specific file access is provided by `workspace.working_dir` in each conversation's `POST /api/conversations` body, and that working dir is always the canonical skill directory. The DB is the durable source of truth for the saved `conversation_id`.
 
 See [optimistic-session-activation.md](optimistic-session-activation.md) for the async optimization of this sequence.
 
@@ -129,7 +142,7 @@ Every UI path that leaves the current skill uses the same shared leave sequence:
 2. release the current skill lock
 3. clear app-level UI state
 
-The server stays alive after leave. The next skill's bootstrap calls `ensure_skill_session`, which reuses the running server if the conversations root matches or restarts it if the root changes.
+The server stays alive after leave. The next skill's bootstrap calls `ensure_skill_session`, which reuses the running server against the same app-scoped `openhands/` storage.
 
 Failure policy:
 
@@ -145,18 +158,19 @@ The `RunEvent::Exit` handler repeats lock release and server shutdown as a belt-
 
 ## Stable Persistence Secret
 
-Persistent conversations depend on a workspace-level encryption key at `{workspace}/.openhands/secret.key`. This key is stable across Agent Server restarts. `SESSION_API_KEY` is separate — it is per-process request authentication only, not used for conversation encryption.
+Persistent conversations depend on an app-scoped encryption key at `{app_data_root}/openhands/secret.key`. This key is stable across Agent Server restarts. `SESSION_API_KEY` is separate — it is per-process request authentication only, not used for conversation encryption.
 
-## Workspace Ownership
+## Runtime Ownership
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `{workspace}/.openhands/secret.key` | Rust process lifecycle | Stable encryption key across all skills. |
-| `{workspace}/.openhands/conversations/` | Rust + Agent Server | All skill conversations (`OH_CONVERSATIONS_PATH`). Per-skill isolation comes from `workspace.working_dir` in each conversation's REST body, not from this directory. |
-| `{workspace}/.openhands/bash_events/` | Rust + Agent Server | Bash event logs for all conversations (`OH_BASH_EVENTS_DIR`). |
-| `{workspace}/.openhands/logs/` | Rust | Agent Server stderr logs. |
-| `{workspace}/{plugin_slug}/{skill_name}` | Rust product lifecycle | Skill-scoped working directory — set as `workspace.working_dir` in `POST /api/conversations`. |
-| `{workspace}/.openhands/throwaway/{surface}/{run_id}` | Rust | Isolated throwaway runtime roots. |
+| `{app_data_root}/openhands/secret.key` | Rust process lifecycle | Stable encryption key across all skills. |
+| `{app_data_root}/openhands/conversations/` | Rust + Agent Server | All skill conversations (`OH_CONVERSATIONS_PATH`). Conversation identity is shared here; skill-specific file access comes from `workspace.working_dir`. |
+| `{app_data_root}/openhands/bash_events/` | Rust + Agent Server | Bash event logs for all conversations (`OH_BASH_EVENTS_DIR`). |
+| `{app_data_root}/openhands/logs/` | Rust | Agent Server stderr logs. |
+| `{skills_root}/{plugin_slug}/skills/{skill_name}` | Product-owned authored content | Canonical skill directory. OpenHands sets this as `workspace.working_dir`, reads `.agents/` here, and edits skill files here directly. |
+| `{app_data_root}/skill-builder.db` | Rust + SQLite | Durable metadata and conversation bindings. |
+| `{app_data_root}/documents/` | Rust product lifecycle | App-managed document artifacts. |
 
 ## Agent Construction Contract
 

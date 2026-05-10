@@ -14,7 +14,6 @@ const tauriMocks = vi.hoisted(() => ({
     restored_messages: [],
     restored_transcript_events: [],
   }),
-  stopOpenHandsServer: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/tauri", () => tauriMocks);
@@ -105,7 +104,6 @@ describe("active-skill-transition", () => {
       restored_messages: [],
       restored_transcript_events: [],
     });
-    tauriMocks.stopOpenHandsServer.mockResolvedValue(undefined);
     refineState.selectedSkill = {
       id: 7,
       name: "sales-skill",
@@ -134,13 +132,10 @@ describe("active-skill-transition", () => {
     refineState.selectSkill.mockImplementation(() => {
       calls.push("clear");
     });
-    tauriMocks.stopOpenHandsServer.mockImplementation(async () => {
-      calls.push("stop");
-    });
 
     await leaveCurrentSkill();
 
-    expect(calls).toEqual(["pause", "release", "clear", "stop"]);
+    expect(calls).toEqual(["pause", "release", "clear"]);
     expect(teardownWorkflowSession).toHaveBeenCalledWith({
       logPrefix: "active-skill-transition",
       clearSessionId: true,
@@ -153,7 +148,6 @@ describe("active-skill-transition", () => {
 
     await expect(leaveCurrentSkill()).rejects.toThrow("pause failed");
     expect(refineState.selectSkill).not.toHaveBeenCalled();
-    expect(tauriMocks.stopOpenHandsServer).not.toHaveBeenCalled();
   });
 
   it("does not clear UI state when lock release fails", async () => {
@@ -161,14 +155,6 @@ describe("active-skill-transition", () => {
 
     await expect(leaveCurrentSkill()).rejects.toThrow("release failed");
     expect(refineState.selectSkill).not.toHaveBeenCalled();
-    expect(tauriMocks.stopOpenHandsServer).not.toHaveBeenCalled();
-  });
-
-  it("surfaces stop-server failures after UI clear", async () => {
-    tauriMocks.stopOpenHandsServer.mockRejectedValue(new Error("stop failed"));
-
-    await expect(leaveCurrentSkill()).rejects.toThrow("stop failed");
-    expect(refineState.selectSkill).toHaveBeenCalledWith(null);
   });
 
   it("ignores stale leave requests for a different skill", async () => {
@@ -177,7 +163,6 @@ describe("active-skill-transition", () => {
     expect(tauriMocks.pauseOpenHandsSession).not.toHaveBeenCalled();
     expect(tauriMocks.releaseLock).not.toHaveBeenCalled();
     expect(refineState.selectSkill).not.toHaveBeenCalled();
-    expect(tauriMocks.stopOpenHandsServer).not.toHaveBeenCalled();
   });
 
   it("enters the selected skill by acquiring a lock, bootstrapping, and hydrating", async () => {

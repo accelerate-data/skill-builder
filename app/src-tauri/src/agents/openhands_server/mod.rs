@@ -800,7 +800,7 @@ async fn resolve_openhands_conversation_id(
     include_initial_message_on_create: bool,
 ) -> Result<String, String> {
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -890,7 +890,7 @@ async fn resolve_openhands_conversation_id(
 
 pub async fn ensure_openhands_server(config: &OpenHandsRuntimeConfig) -> Result<(), String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
-    ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir())
+    ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir))
         .await
         .map(|_| ())
 }
@@ -919,7 +919,7 @@ pub async fn list_openhands_conversation_events(
 ) -> Result<Vec<serde_json::Value>, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -1011,7 +1011,7 @@ pub async fn pause_openhands_conversation(
 ) -> Result<bool, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -1219,7 +1219,7 @@ async fn dispatch_openhands_turn_with_request(
     )
     .await?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
     let client = OpenHandsServerClient::new(
         server
             .base_url()

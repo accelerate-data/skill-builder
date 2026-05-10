@@ -345,7 +345,6 @@ pub fn run() {
             commands::workflow::runtime::log_gate_decision,
             commands::runtime_lifecycle::graceful_shutdown,
             commands::runtime_lifecycle::allow_app_exit,
-            commands::runtime_lifecycle::stop_openhands_server,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::reconciliation::reconcile_startup,
