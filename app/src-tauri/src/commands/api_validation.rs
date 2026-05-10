@@ -53,7 +53,8 @@ pub async fn test_model_connection(
         .map_err(|e| format!("failed to resolve app data dir: {e}"))?
         .to_string_lossy()
         .replace('\\', "/");
-    let config = build_model_connection_test_config(&app_data_root, &workspace_path, &runtime_run_dir, llm);
+    let config =
+        build_model_connection_test_config(&app_data_root, &workspace_path, &runtime_run_dir, llm);
     let run = openhands_server::run_throwaway_openhands_session(
         &app,
         OpenHandsThrowawayRunParams {
@@ -72,23 +73,13 @@ fn read_initialized_workspace_path(db: &Db) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings
-        .workspace_path
+        .skills_path
         .clone()
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "Workspace path not configured".to_string())?;
+        .ok_or_else(|| "Skills path not configured".to_string())?;
     if !std::path::Path::new(&workspace_path).is_dir() {
         return Err(format!(
-            "Workspace not initialized: {}. Restart Skill Builder to initialize the workspace.",
-            workspace_path
-        ));
-    }
-    let workspace = std::path::Path::new(&workspace_path);
-    let skill_creator_agent =
-        crate::skill_paths::workspace_agent_files_dir(workspace).join("skill-creator.md");
-    let skills_dir = crate::skill_paths::workspace_agent_skills_dir(workspace);
-    if !skill_creator_agent.is_file() || !skills_dir.is_dir() {
-        return Err(format!(
-            "Workspace runtime artifacts are not initialized for {}. Restart Skill Builder to initialize the workspace.",
+            "Skills path is not initialized: {}. Update Settings -> Skills Path to a valid directory.",
             workspace_path
         ));
     }

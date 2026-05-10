@@ -30,36 +30,6 @@ pub(crate) fn workflow_step_log_name(step_id: i32) -> String {
     crate::db::step_name(step_id)
 }
 
-fn clear_persistent_skill_conversation_state(
-    conn: &rusqlite::Connection,
-    workspace_path: &str,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Result<(), String> {
-    let mut plugin_slugs = vec![plugin_slug.to_string()];
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-    }
-
-    for slug in plugin_slugs {
-        crate::db::clear_skill_conversation_id(conn, &slug, skill_name)?;
-        let conversations_dir =
-            crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), &slug, skill_name)
-                .join("conversations");
-        if conversations_dir.exists() {
-            std::fs::remove_dir_all(&conversations_dir).map_err(|e| {
-                format!(
-                    "Failed to remove persistent conversation state at {}: {}",
-                    conversations_dir.display(),
-                    e
-                )
-            })?;
-        }
-    }
-
-    Ok(())
-}
-
 /// Collect the saved conversation IDs for a skill (and its legacy default-plugin
 /// entry if the skill moved plugins). Returns (plugin_slug, conversation_id) pairs.
 fn collect_skill_conversation_ids(
@@ -178,7 +148,7 @@ fn navigate_back_to_step_impl(
     );
 
     if target_step_id == 0 {
-        clear_persistent_skill_conversation_state(conn, workspace_path, &plugin_slug, skill_name)?;
+        clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
     }
 
     // Reset only steps after the target; target step status is preserved as "completed".
@@ -312,6 +282,7 @@ pub fn save_workflow_state(
 
 #[cfg(test)]
 mod tests {
+    use super::clear_skill_conversation_db_records;
     use crate::commands::test_utils::create_test_db;
     use crate::types::StepStatusUpdate;
     use tempfile::tempdir;
@@ -424,54 +395,36 @@ mod tests {
     }
 
     #[test]
-    fn test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state() {
+    fn clear_skill_conversation_db_records_does_not_touch_filesystem() {
         let conn = create_test_db();
         let tmp = tempdir().unwrap();
-        let workspace_path = tmp.path().to_str().unwrap();
         let skill_name = "reset-me";
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        // Create the skill in the default plugin so save_skill_conversation_id can find it.
         crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
             .unwrap();
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
-            .unwrap();
-        let default_conversations =
-            crate::skill_paths::workspace_skill_dir(tmp.path(), default_slug, skill_name)
-                .join("conversations");
-        std::fs::create_dir_all(&default_conversations).unwrap();
-        std::fs::write(default_conversations.join("meta.json"), "{}").unwrap();
+        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-abc").unwrap();
 
-        let (_, plugin_slug) =
-            crate::db::create_plugin(&conn, "Marketplace Plugin", "local", None, None).unwrap();
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "imported", "domain", &plugin_slug)
-            .unwrap();
-        crate::db::save_skill_conversation_id(&conn, &plugin_slug, skill_name, "conv-plugin")
-            .unwrap();
-        let plugin_conversations =
-            crate::skill_paths::workspace_skill_dir(tmp.path(), &plugin_slug, skill_name)
-                .join("conversations");
-        std::fs::create_dir_all(&plugin_conversations).unwrap();
-        std::fs::write(plugin_conversations.join("meta.json"), "{}").unwrap();
+        let sentinel = tmp
+            .path()
+            .join(default_slug)
+            .join("skills")
+            .join(skill_name)
+            .join("conversations")
+            .join("sentinel.txt");
+        std::fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
+        std::fs::write(&sentinel, b"keep me").unwrap();
 
-        super::clear_persistent_skill_conversation_state(
-            &conn,
-            workspace_path,
-            &plugin_slug,
-            skill_name,
-        )
-        .unwrap();
+        clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
 
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, &plugin_slug, skill_name).unwrap(),
-            None
-        );
         assert_eq!(
             crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
             None
         );
-        assert!(!plugin_conversations.exists());
-        assert!(!default_conversations.exists());
+        assert!(
+            sentinel.exists(),
+            "conversations directory must not be deleted"
+        );
     }
 
     #[test]
@@ -491,12 +444,6 @@ mod tests {
             .unwrap();
         crate::db::save_workflow_run(&conn, skill_name, 2, "completed", "domain").unwrap();
 
-        let default_conversations =
-            crate::skill_paths::workspace_skill_dir(tmp.path(), default_slug, skill_name)
-                .join("conversations");
-        std::fs::create_dir_all(&default_conversations).unwrap();
-        std::fs::write(default_conversations.join("meta.json"), "{}").unwrap();
-
         super::navigate_back_to_step_impl(
             &conn,
             workspace_path,
@@ -510,7 +457,6 @@ mod tests {
             crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
             None
         );
-        assert!(!default_conversations.exists());
 
         let run = crate::db::get_workflow_run(&conn, skill_name)
             .unwrap()
@@ -682,10 +628,7 @@ mod verify_step_output_tests {
 }
 
 #[tauri::command]
-pub fn get_disabled_steps(
-    skill_id: i64,
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<u32>, String> {
+pub fn get_disabled_steps(skill_id: i64, db: tauri::State<'_, Db>) -> Result<Vec<u32>, String> {
     log::info!("[get_disabled_steps] skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let skill_id_text = skill_id.to_string();
@@ -749,18 +692,27 @@ pub async fn reset_workflow_step(
     // Best-effort pause then delete per-conversation directory.
     // All errors are logged and swallowed — reset must not fail due to server state.
     use tauri::Manager;
-    let data_dir = app_handle.path().app_data_dir().map_err(|e| {
-        format!("Failed to resolve app data dir: {e}")
-    })?;
-    let openhands_conversations_dir = crate::commands::workspace::resolve_openhands_conversations_dir(&data_dir);
+    let data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    let openhands_conversations_dir =
+        crate::commands::workspace::resolve_openhands_conversations_dir(&data_dir);
     for (_, conv_id) in &conversation_ids {
         crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
         let conv_dir = openhands_conversations_dir.join(conv_id);
         if conv_dir.exists() {
             if let Err(e) = std::fs::remove_dir_all(&conv_dir) {
-                log::warn!("[reset_workflow_step] failed to delete conversation dir {}: {}", conv_dir.display(), e);
+                log::warn!(
+                    "[reset_workflow_step] failed to delete conversation dir {}: {}",
+                    conv_dir.display(),
+                    e
+                );
             } else {
-                log::info!("[reset_workflow_step] deleted conversation dir {}", conv_dir.display());
+                log::info!(
+                    "[reset_workflow_step] deleted conversation dir {}",
+                    conv_dir.display()
+                );
             }
         }
     }

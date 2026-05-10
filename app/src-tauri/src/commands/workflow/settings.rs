@@ -23,9 +23,8 @@ pub(crate) struct WorkflowSettings {
 
 /// Backend-owned runtime context shared by OpenHands callers.
 ///
-/// Startup owns workspace creation and prompt deployment. Runtime paths should
-/// read the initialized workspace path and selected LLM through this API instead
-/// of re-projecting raw settings fields.
+/// Runtime paths should read the initialized skills root and selected LLM
+/// through this API instead of re-projecting raw settings fields.
 #[derive(Debug)]
 pub(crate) struct InitializedRuntimeContext {
     pub workspace_path: String,
@@ -38,23 +37,13 @@ pub(crate) fn read_initialized_runtime_context(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings
-        .workspace_path
+        .skills_path
         .clone()
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "Workspace path not configured".to_string())?;
+        .ok_or_else(|| "Skills path not configured".to_string())?;
     if !std::path::Path::new(&workspace_path).is_dir() {
         return Err(format!(
-            "Workspace not initialized: {}. Restart Skill Builder to initialize the workspace.",
-            workspace_path
-        ));
-    }
-    let workspace = std::path::Path::new(&workspace_path);
-    let skill_creator_agent =
-        crate::skill_paths::workspace_agent_files_dir(workspace).join("skill-creator.md");
-    let skills_dir = crate::skill_paths::workspace_agent_skills_dir(workspace);
-    if !skill_creator_agent.is_file() || !skills_dir.is_dir() {
-        return Err(format!(
-            "Workspace runtime artifacts are not initialized for {}. Restart Skill Builder to initialize the workspace.",
+            "Skills path is not initialized: {}. Update Settings -> Skills Path to a valid directory.",
             workspace_path
         ));
     }
@@ -93,7 +82,9 @@ pub(crate) fn read_workflow_settings_by_skill_id(
     // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
     // from frontend-supplied payload — always call `get_skill_master_any_plugin` here.
     // Use any-plugin lookup so non-default-plugin skills are found correctly.
-    let master_row = crate::db::get_skill_master_by_id(&conn, skill_id).ok().flatten();
+    let master_row = crate::db::get_skill_master_by_id(&conn, skill_id)
+        .ok()
+        .flatten();
     let plugin_slug = master_row
         .as_ref()
         .map(|m| m.plugin_slug.clone())
@@ -101,8 +92,7 @@ pub(crate) fn read_workflow_settings_by_skill_id(
 
     // Validate prerequisites (step 3 requires decisions from DB)
     if step_id == 3 {
-        let decisions =
-            crate::db::workflow_artifacts::read_decisions(&conn, &skill_id.to_string())
+        let decisions = crate::db::workflow_artifacts::read_decisions(&conn, &skill_id.to_string())
             .map_err(|e| e.to_string())?;
         if decisions.is_none_or(|d| d.items.is_empty()) {
             return Err(
@@ -212,25 +202,19 @@ mod tests {
         }
     }
 
-    fn initialized_workspace(root: &std::path::Path) -> String {
-        let workspace = root.join("workspace");
-        std::fs::create_dir_all(workspace.join(".agents/agents")).unwrap();
-        std::fs::create_dir_all(workspace.join(".agents/skills")).unwrap();
-        std::fs::write(
-            workspace.join(".agents/agents/skill-creator.md"),
-            "# Skill Creator",
-        )
-        .unwrap();
-        workspace.to_string_lossy().into_owned()
+    fn initialized_skills_root(root: &std::path::Path) -> String {
+        let skills_root = root.join("skills-root");
+        std::fs::create_dir_all(&skills_root).unwrap();
+        skills_root.to_string_lossy().into_owned()
     }
 
     #[test]
-    fn read_initialized_runtime_context_returns_workspace_and_llm() {
+    fn read_initialized_runtime_context_returns_skills_root_and_llm() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace_path = initialized_workspace(tmp.path());
+        let workspace_path = initialized_skills_root(tmp.path());
         let conn = create_test_db_for_tests();
         let mut settings = configured_settings("anthropic/claude-sonnet-4-5", Some("sk-test"));
-        settings.workspace_path = Some(workspace_path.clone());
+        settings.skills_path = Some(workspace_path.clone());
         write_settings(&conn, &settings).unwrap();
         let db = Db(Mutex::new(conn));
 
@@ -242,19 +226,22 @@ mod tests {
     }
 
     #[test]
-    fn read_initialized_runtime_context_rejects_missing_runtime_artifacts() {
+    fn read_initialized_runtime_context_rejects_missing_skills_root() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
         let conn = create_test_db_for_tests();
         let mut settings = configured_settings("anthropic/claude-sonnet-4-5", Some("sk-test"));
-        settings.workspace_path = Some(workspace.to_string_lossy().into_owned());
+        settings.skills_path = Some(
+            tmp.path()
+                .join("missing-skills-root")
+                .to_string_lossy()
+                .into_owned(),
+        );
         write_settings(&conn, &settings).unwrap();
         let db = Db(Mutex::new(conn));
 
         let error = read_initialized_runtime_context(&db).unwrap_err();
 
-        assert!(error.contains("Workspace runtime artifacts are not initialized"));
+        assert!(error.contains("Skills path is not initialized"));
     }
 
     #[test]

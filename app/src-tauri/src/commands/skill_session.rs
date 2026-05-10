@@ -42,12 +42,21 @@ pub(crate) async fn ensure_skill_runtime_ready(
     plugin_slug: &str,
 ) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
-    crate::commands::workflow::ensure_workspace_prompts(app, &runtime_ctx.workspace_path).await?;
-    crate::commands::refine::protocol::ensure_skill_workspace_dir(
-        &runtime_ctx.workspace_path,
+    let skill_dir = crate::skill_paths::ensure_nested_skill_dir(
+        Path::new(&runtime_ctx.workspace_path),
         plugin_slug,
         skill_name,
-    );
+    )?;
+    if !skill_dir.exists() {
+        std::fs::create_dir_all(&skill_dir).map_err(|e| {
+            format!(
+                "Failed to create skill directory '{}': {}",
+                skill_dir.display(),
+                e
+            )
+        })?;
+    }
+    crate::commands::workflow::deploy::seed_skill_agents_dir(app, &skill_dir)?;
     Ok(runtime_ctx)
 }
 
@@ -173,9 +182,12 @@ pub async fn select_skill_openhands_session(
         &skills_path,
         runtime_ctx.llm.clone(),
     );
-    let active_conversation_id =
-        crate::agents::skill_creator::ensure_skill_session(&app, session_config.clone(), saved_conversation_id)
-            .await?;
+    let active_conversation_id = crate::agents::skill_creator::ensure_skill_session(
+        &app,
+        session_config.clone(),
+        saved_conversation_id,
+    )
+    .await?;
     let (restored_messages, restored_transcript_events, dispatched_user_turn_count) =
         restore_skill_conversation_state(&session_config, &active_conversation_id).await?;
 
@@ -313,9 +325,7 @@ pub async fn pause_openhands_session(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        remove_skill_sessions, skill_session_key, upsert_skill_session, SkillSession,
-    };
+    use super::{remove_skill_sessions, skill_session_key, upsert_skill_session, SkillSession};
     use std::collections::HashMap;
 
     fn session(skill_name: &str, plugin_slug: &str, usage_session_id: &str) -> SkillSession {
