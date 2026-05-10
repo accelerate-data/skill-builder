@@ -13,11 +13,14 @@ use crate::db::workflow_artifacts as db_artifacts;
 use crate::db::workflow_artifacts::{ClarificationsRecord, DecisionsRecord};
 use crate::db::Db;
 
-pub(crate) fn extract_research_json_from_conversation_state(
+pub(crate) fn extract_workflow_json_from_conversation_state(
     state: &serde_json::Value,
+    workflow_label: &str,
 ) -> Result<serde_json::Value, String> {
     if state.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
-        return Err("OpenHands research result was not a conversation_state".to_string());
+        return Err(format!(
+            "OpenHands {workflow_label} result was not a conversation_state"
+        ));
     }
 
     match state.get("status").and_then(|v| v.as_str()) {
@@ -28,9 +31,9 @@ pub(crate) fn extract_research_json_from_conversation_state(
                 .or_else(|| state.get("errorDetail"))
                 .and_then(|v| v.as_str())
                 .filter(|detail| !detail.trim().is_empty())
-                .unwrap_or("OpenHands research run failed");
+                .unwrap_or("OpenHands workflow run failed");
             return Err(format!(
-                "OpenHands research conversation_state failed: {}",
+                "OpenHands {workflow_label} conversation_state failed: {}",
                 detail
             ));
         }
@@ -40,20 +43,22 @@ pub(crate) fn extract_research_json_from_conversation_state(
                 .or_else(|| state.get("errorDetail"))
                 .and_then(|v| v.as_str())
                 .filter(|detail| !detail.trim().is_empty())
-                .unwrap_or("OpenHands research run cancelled");
+                .unwrap_or("OpenHands workflow run cancelled");
             return Err(format!(
-                "OpenHands research conversation_state cancelled: {}",
+                "OpenHands {workflow_label} conversation_state cancelled: {}",
                 detail
             ));
         }
         Some(status) => {
             return Err(format!(
-                "OpenHands research conversation_state status must be completed but got '{}'",
+                "OpenHands {workflow_label} conversation_state status must be completed but got '{}'",
                 status
             ));
         }
         None => {
-            return Err("OpenHands research conversation_state missing status".to_string());
+            return Err(format!(
+                "OpenHands {workflow_label} conversation_state missing status"
+            ));
         }
     }
 
@@ -62,20 +67,33 @@ pub(crate) fn extract_research_json_from_conversation_state(
         .or_else(|| state.get("resultText"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
-            "OpenHands research conversation_state missing result_text/resultText".to_string()
+            format!(
+                "OpenHands {workflow_label} conversation_state missing result_text/resultText"
+            )
         })?;
 
     let trimmed = result_text.trim();
     if trimmed.is_empty() {
-        return Err("OpenHands research conversation_state has empty result_text".to_string());
+        return Err(format!(
+            "OpenHands {workflow_label} conversation_state has empty result_text"
+        ));
     }
 
     let parsed = parse_research_result_text(trimmed)?;
     if !parsed.is_object() {
-        return Err("OpenHands research result_text must be a JSON object".to_string());
+        return Err(format!(
+            "OpenHands {workflow_label} result_text must be a JSON object"
+        ));
     }
 
     Ok(parsed)
+}
+
+#[cfg(test)]
+pub(crate) fn extract_research_json_from_conversation_state(
+    state: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    extract_workflow_json_from_conversation_state(state, "research")
 }
 
 fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {

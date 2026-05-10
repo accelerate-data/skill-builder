@@ -6,8 +6,8 @@ use super::evaluation::get_step_output_files;
 use super::guards::{make_agent_id, workflow_step_runtime_label};
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
-    materialize_answer_evaluation_output_value, materialize_workflow_step_output_value,
-    publish_commit_and_tag_generated_skill,
+    extract_workflow_json_from_conversation_state, materialize_answer_evaluation_output_value,
+    materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
 };
 use super::prompt::format_user_context;
 use super::prompt::{
@@ -797,6 +797,154 @@ mod research {
             crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
                 .unwrap()
                 .is_some()
+        );
+    }
+}
+
+mod backend_materialization {
+    use super::*;
+
+    #[test]
+    fn detailed_research_terminal_materialization_smoke() {
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": serde_json::to_string(&payload).unwrap()
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+        let db = db_with_seeded_skill("rt-step1-materialization");
+        materialize_workflow_step_output_value(&db, "rt-step1-materialization", 1, &parsed)
+            .unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let clarifications = crate::db::workflow_artifacts::read_clarifications(
+            &conn,
+            "rt-step1-materialization",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(clarifications.refinement_count, 1);
+    }
+
+    #[test]
+    fn confirm_decisions_terminal_materialization_smoke() {
+        let payload = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "decision_count": 1,
+                "conflicts_resolved": 0,
+                "round": 1
+            },
+            "decisions": [{
+                "id": "D1",
+                "title": "Use weighted pipeline value",
+                "original_question": "How should pipeline value be measured?",
+                "decision": "Use weighted pipeline value",
+                "implication": "Downstream calculations use stage probability weighting.",
+                "status": "resolved"
+            }]
+        });
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": serde_json::to_string(&payload).unwrap()
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+        let db = db_with_seeded_skill("rt-step2-materialization");
+        materialize_workflow_step_output_value(&db, "rt-step2-materialization", 2, &parsed)
+            .unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let decisions = crate::db::workflow_artifacts::read_decisions(
+            &conn,
+            "rt-step2-materialization",
+        )
+        .unwrap();
+        assert!(decisions.is_some());
+    }
+
+    #[test]
+    fn generate_skill_terminal_materialization_smoke() {
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let conn = crate::db::create_test_db_for_tests();
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, plugin_id) \
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+            rusqlite::params!["rt-step3-materialization", DEFAULT_PLUGIN_SLUG],
+        )
+        .unwrap();
+        crate::db::write_settings(
+            &conn,
+            &crate::types::AppSettings {
+                skills_path: Some(skills_tmp.path().to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let db = crate::db::Db(std::sync::Mutex::new(conn));
+
+        let workspace_skill_root = crate::skill_paths::workspace_skill_dir(
+            workspace_tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "rt-step3-materialization",
+        );
+        std::fs::create_dir_all(workspace_skill_root.join("skill")).unwrap();
+        std::fs::write(
+            workspace_skill_root.join("skill").join("SKILL.md"),
+            r#"---
+name: measuring-pipeline-value
+description: Use when measuring weighted pipeline value.
+---
+
+# Measuring Pipeline Value
+"#,
+        )
+        .unwrap();
+
+        let payload = serde_json::json!({
+            "status": "generated",
+            "benchmark_path": null,
+            "skipped": false,
+            "commit_summary": "Create skill package with SKILL.md",
+            "call_trace": [
+                "read-user-context",
+                "read-decisions",
+                "read-clarifications",
+                "synthesize-generation-brief",
+                "use-creating-skills",
+                "write-skill",
+                "fresh-context-verifier-review"
+            ]
+        });
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": serde_json::to_string(&payload).unwrap()
+        });
+
+        let parsed =
+            extract_workflow_json_from_conversation_state(&state, "generate-skill").unwrap();
+        materialize_workflow_step_output_value(&db, "rt-step3-materialization", 3, &parsed)
+            .unwrap();
+
+        let published_skill = crate::skill_paths::resolve_skill_dir(
+            skills_tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "rt-step3-materialization",
+        )
+        .join("SKILL.md");
+        assert!(
+            !published_skill.exists(),
+            "step 3 generate materialization validates output but does not publish files"
         );
     }
 }

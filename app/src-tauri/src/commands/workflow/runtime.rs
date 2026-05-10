@@ -16,7 +16,7 @@ use super::guards::{
     workflow_step_runtime_label,
 };
 use super::output_format::{
-    answer_evaluator_output_format, extract_research_json_from_conversation_state,
+    answer_evaluator_output_format, extract_workflow_json_from_conversation_state,
     materialize_workflow_step_output_value,
 };
 use super::prompt::{
@@ -232,11 +232,12 @@ fn parse_target_conversation_state(
     }
 }
 
-fn install_research_materialization_listener(
+fn install_workflow_step_materialization_listener(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
     agent_id: &str,
     skill_name: &str,
+    step_id: u32,
 ) -> tauri::EventId {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
     let target_agent_id = agent_id.to_string();
@@ -257,16 +258,29 @@ fn install_research_materialization_listener(
         let result = match rx.recv().await {
             Some(state) => {
                 let db = app_handle.state::<Db>();
-                extract_research_json_from_conversation_state(&state).and_then(|payload| {
-                    materialize_workflow_step_output_value(
-                        db.inner(),
-                        &skill_id_for_db,
-                        0,
-                        &payload,
+                let workflow_label = workflow_step_log_name(step_id as i32);
+                extract_workflow_json_from_conversation_state(&state, &workflow_label).and_then(
+                    |payload| {
+                        materialize_workflow_step_output_value(
+                            db.inner(),
+                            &skill_id_for_db,
+                            step_id,
+                            &payload,
+                        )
+                    },
+                )
+                .map_err(|err| {
+                    format!(
+                        "{} materialization failed: {}",
+                        workflow_step_log_name(step_id as i32),
+                        err
                     )
                 })
             }
-            None => Err("Workflow research materialization listener closed".to_string()),
+            None => Err(format!(
+                "{} materialization listener closed",
+                workflow_step_log_name(step_id as i32)
+            )),
         };
 
         app_handle.unlisten(listener_to_remove);
@@ -277,15 +291,14 @@ fn install_research_materialization_listener(
         let payload = WorkflowStepMaterializedPayload {
             agent_id: agent_id.clone(),
             skill_name,
-            step_id: 0,
+            step_id,
             success: result.is_ok(),
             error_detail: result.err(),
         };
         if let Err(e) = app_handle.emit("workflow-step-materialized", &payload) {
             log::warn!(
-                "[workflow_research_materialize] failed to emit event for agent={}: {}",
-                agent_id,
-                e
+                "[workflow_materialize] failed to emit event for agent={} step_id={}: {}",
+                agent_id, step_id, e
             );
         }
     });
@@ -472,13 +485,9 @@ async fn run_workflow_step_inner(
         config.workspace_skill_dir,
     );
 
-    let materialization_listener = if step_id == 0 {
-        Some(install_research_materialization_listener(
-            app, runs, &agent_id, skill_name,
-        ))
-    } else {
-        None
-    };
+    let materialization_listener = Some(install_workflow_step_materialization_listener(
+        app, runs, &agent_id, skill_name, step_id,
+    ));
 
     // Register before dispatch so a fast terminal conversation_state can clean
     // up the active run entry through the backend materialization listener.
