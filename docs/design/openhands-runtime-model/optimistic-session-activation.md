@@ -4,21 +4,17 @@ functional-specs: [custom-plugin-management]
 
 # Optimistic Session Activation
 
-> **Status:** Draft
-> **Functional specs:** Not applicable; this design proposes a UI-latency
-> optimization for the selected-skill bootstrap sequence.
 > **Parent design:** [openhands-runtime-model/README.md](README.md)
 
 ## Overview
 
-This design splits the selected-skill bootstrap sequence into a synchronous
-navigation phase and an asynchronous session-boot phase, so the UI responds
-immediately to user input instead of blocking on Agent Server startup.
+Skill activation splits into a synchronous navigation phase and an asynchronous
+session-boot phase. The UI responds immediately to a skill click instead of
+blocking on Agent Server startup.
 
-It extends the [Selected-Skill Bootstrap Contract](README.md#selected-skill-bootstrap-contract)
-from the parent runtime model by decoupling the lock + navigation steps (which
-must be synchronous to prevent races) from the server ensure + conversation
-resolve steps (which can run in the background).
+The sync phase (lock + navigate) must complete before anything else. The async
+phase (server ensure + conversation resolve + history hydration) runs in the
+background while the target page shows its loading skeleton.
 
 ## Design Scope
 
@@ -37,7 +33,6 @@ resolve steps (which can run in the background).
   primitives. The backend contract is unchanged.
 - Agent Server lifecycle or workspace path resolution — owned by the parent
   runtime model.
-- Implementation task sequencing.
 
 ## Key Decisions
 
@@ -49,9 +44,7 @@ resolve steps (which can run in the background).
 | Background boot errors navigate back to dashboard. | The user sees a brief skeleton flash, then an error toast and a return to `/`. This is preferable to leaving the page in a broken state with no conversation. |
 | Stale hydration is harmless. | If the user navigates to a different skill before the background boot completes, the new skill's activation overwrites the refine store. The old hydration lands on inactive state. |
 
-## Architecture / How It Works
-
-### Proposed Flow (Optimistic)
+## Flow
 
 ```text
 click skill → acquireLock → navigate → page shows skeleton
@@ -65,7 +58,7 @@ click skill → acquireLock → navigate → page shows skeleton
 
 | Step | Duration | Rationale |
 |---|---|---|
-| `acquireLock` | <50ms | Must be sync — prevents double-activation races. Maps to the "acquire the next skill lock" step in the [enter sequence](README.md#selected-skill-bootstrap-contract). |
+| `acquireLock` | <50ms | Must be sync — prevents double-activation races. |
 | `setSelectedWorkspaceSkillName` | sync | Store update, no I/O. |
 | `navigate` | sync | Route change is instant. The target page shows its existing loading skeleton. |
 
@@ -82,8 +75,7 @@ click skill → acquireLock → navigate → page shows skeleton
 The optimistic flow preserves the [three-layer runtime contract](README.md#three-layer-architecture):
 
 - **Frontend → Backend**: `selectSkillOpenHandsSession` is still called as a
-  single product command. The frontend does not call runtime primitives
-  directly.
+  single product command. The frontend does not call runtime primitives directly.
 - **Backend → OpenHands**: The backend still owns server ensure (via
   `ensure_skill_session`), conversation resolution, and event normalization.
   No changes to the runtime primitive layer.
@@ -117,13 +109,11 @@ or restarts it if the root changes.
 `isLoaded === false`. The `useWorkflowPersistence` hook sets `isLoaded = true`
 after `getWorkflowState` resolves from the database.
 
-For the optimistic flow, the page must also wait for
-`refineStore.conversationId` to be non-null before showing content. This
-prevents the page from rendering with an empty chat panel or missing transcript
-history.
+The page must also wait for `refineStore.conversationId` to be non-null before
+showing content. This prevents the page from rendering with an empty chat panel
+or missing transcript history.
 
 ```typescript
-// In WorkflowPage
 const conversationId = useRefineStore((s) => s.conversationId);
 const sessionReady = isLoaded && !!conversationId;
 
@@ -142,17 +132,6 @@ If the background session boot fails:
 2. Navigate back to the dashboard (`/`)
 3. Clear `activeSessionSkillName` and `selectedWorkspaceSkillName`
 4. Release the lock (best-effort, fire-and-forget)
-
-The user sees a brief flash of the workflow/workspace skeleton, then an error
-toast and a return to the dashboard. This is acceptable because:
-
-- The lock prevents other tabs from activating the same skill
-- The error is surfaced immediately
-- The user can retry with a single click
-
-This failure policy is consistent with the parent runtime model's principle
-that if session boot fails after navigation, the user is returned to a safe
-state (dashboard).
 
 ## Race Conditions
 
@@ -201,13 +180,6 @@ loading ──session ready──> active ────────────�
 | `loading` | Skeleton (workflow or workspace) | `conversationId = null` |
 | `active` | Full content | `conversationId` set, `activeSessionSkillName` set |
 | `error` | Toast + dashboard | `activeSessionSkillName = null` |
-
-## Relationship to Existing Design Specs
-
-| Spec | Relationship |
-|---|---|
-| [README.md](README.md) | Parent runtime model. This spec extends the Selected-Skill Bootstrap Contract with an optimistic navigation phase. |
-| [send-turn-semantics.md](send-turn-semantics.md) | Unaffected. Message dispatch happens after session is active. |
 
 ## Key Source Files
 

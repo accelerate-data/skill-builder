@@ -212,7 +212,7 @@ schema, and update all callers.
 
 ---
 
-## Gap 9 — Event recovery has multiple modes; target is always-FullHistory
+## Gap 8 — Event recovery has multiple modes; target is always-FullHistory
 
 **Target:** `OpenHandsSendMessage` always replays full conversation history after
 send. No per-surface recovery mode selection. One code path, same behavior for
@@ -231,7 +231,7 @@ non-`FullHistory` mode are updated to use `FullHistory`.
 
 ---
 
-## Gap 8 — Node sidecar still exists in the repo
+## Gap 9 — Node sidecar still exists in the repo
 
 **Target:** The `app/sidecar/` package is removed. The Rust process and
 OpenHands Agent Server are the only runtime. TypeScript contract ownership is
@@ -246,3 +246,24 @@ scripts still reference it. Some Rust module names (`agents/sidecar.rs`,
 Rust modules and types to remove `sidecar` in favor of runtime-oriented names
 (`runtime_config.rs`, `OpenHandsRuntimeConfig`, etc.). Update docs, repo-map,
 TEST_MAP, and AGENTS.md.
+
+---
+
+## Gap 10 — Skill activation blocks on session boot
+
+**Target:** Skill activation splits into a sync phase (lock + navigate) and an
+async background phase (server ensure + conversation resolve + history hydration).
+The UI navigates immediately and shows a skeleton while the session boots.
+Full spec: [optimistic-session-activation.md](optimistic-session-activation.md).
+
+**Current state:** `activateSkill` in `app/src/components/layout/app-layout.tsx`
+calls `selectSkillOpenHandsSession` synchronously before navigating. The UI
+blocks for 2–5s on a cold Agent Server start before the target page appears.
+
+**Fix:** Split `activateSkill` into sync and async phases. Sync: `acquireLock`,
+`setSelectedWorkspaceSkillName`, `navigate`. Async (background):
+`selectSkillOpenHandsSession`, `hydrateSelectedSkillOpenHandsSession`,
+`setActiveSessionSkillName`. Add a `conversationId` null-guard to the loading
+state in `WorkflowPage` and `WorkspaceRoutePage` so they hold the skeleton
+until the background boot completes. On failure: toast, navigate to `/`,
+release lock.
