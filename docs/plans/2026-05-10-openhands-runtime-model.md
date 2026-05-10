@@ -1567,10 +1567,10 @@ runtime state lives directly under the app data root:
 ```
 
 Remove the extra `{app_data_root}/workspace/` wrapper from the target layout.
-Add a one-time migration that runs on startup (alongside the existing `migrate_workspace_layout` calls). It moves the conversations and bash_events subdirectories to the new flat location, then removes the old workspace wrapper:
+Add a one-time migration that runs on startup (alongside the existing `migrate_workspace_layout` calls). It moves the logs, conversations, and bash_events subdirectories to the new flat location, then removes the old workspace wrapper:
 
 ```rust
-/// One-time: move conversations/bash_events from workspace/.openhands/ to openhands/,
+/// One-time: move logs/conversations/bash_events from workspace/.openhands/ to openhands/,
 /// then remove the legacy workspace/ wrapper.
 /// Preserves in-flight conversation directories so DB conversation IDs remain valid.
 fn migrate_flatten_openhands_dir(app_data_root: &Path) {
@@ -1581,8 +1581,8 @@ fn migrate_flatten_openhands_dir(app_data_root: &Path) {
         return;
     }
 
-    // Move each known subdirectory: conversations/, bash_events/
-    for subdir in &["conversations", "bash_events"] {
+    // Move each known subdirectory: logs/, conversations/, bash_events/
+    for subdir in &["logs", "conversations", "bash_events"] {
         let src = old_openhands.join(subdir);
         if src.exists() {
             let dst = new_openhands.join(subdir);
