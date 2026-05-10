@@ -218,7 +218,7 @@ Cost and usage queries group by `skill_name + step_id`. A per-invocation session
 
 | Doc | Purpose |
 |---|---|
-| [skill-creator-config-unification.md](skill-creator-config-unification.md) | Spec for `agents/skill_creator.rs` — the unified Layer 2 config model. |
+| [skill-creator-config-unification.md](skill-creator-config-unification.md) | Implementation spec for the Layer 2 creation PR — struct, function signatures, per-file changes (Gaps 1–5). |
 | [send-turn-semantics.md](send-turn-semantics.md) | Contract for `OpenHandsSendMessage` — turn envelope, recovery, and transcript consistency. |
 | [optimistic-session-activation.md](optimistic-session-activation.md) | Async skill bootstrap optimization: navigate before server ready. |
 | [tools-included.md](tools-included.md) | Tool policy for OpenHands requests. |
