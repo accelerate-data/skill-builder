@@ -1819,6 +1819,6 @@ Execute PRs sequentially in order 1→9. Each PR must pass all automated tests a
 | 5 | Delete duplicate workflow config | `cargo test commands::workflow`, clippy | Run workflow steps 0-3, answer evaluator |
 | 5b | Consolidate artifacts to workspace root + `OH_BASH_EVENTS_DIR` + remove skill-switch restart | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → PID unchanged; verify `.openhands/conversations/` and `.openhands/bash_events/` exist |
 | 6 | Remove `stopOpenHandsServer` | `cargo test`, `npm run test:unit` | Switch skills, verify fast |
+| 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → resume conversation → verify full transcript replays |
 | 7 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
-| 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Send refine message, run workflow step |
 | 9 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
