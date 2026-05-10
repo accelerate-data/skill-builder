@@ -244,12 +244,8 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: OpenHandsRuntimeConfig,
 ) -> Result<String, String> {
-    // Resume the saved OpenHands conversation for this skill, or create a new
-    // one and persist the ID. start_openhands_session uses ResumeOrCreate, so
-    // it covers every "no saved conversation" case — fresh skill, post-reset,
-    // server lost the conversation, DB drift — without erroring back to the UI.
     let conversation_id =
-        crate::agents::openhands_server::start_openhands_session(app, config.clone(), None).await?;
+        crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None).await?;
 
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,
