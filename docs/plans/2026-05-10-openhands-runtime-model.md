@@ -2255,6 +2255,188 @@ git commit -m "refactor: rename workspace_root_dir/workspace_skill_dir to skills
 
 ---
 
+### Task 7.5 — Seed `.agents/` into every skill's canonical directory on startup and create
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
+- Modify: `app/src-tauri/src/commands/workspace.rs`
+- Modify: `app/src-tauri/src/commands/skill/crud.rs`
+
+**Context:** OpenHands now uses `skill_dir` (`{skills_root}/{plugin_slug}/skills/{skill_name}`) as `workspace.working_dir`. It reads agents and skills from `{skill_dir}/.agents/agents/` and `{skill_dir}/.agents/skills/`. The source of truth for these files is `agent-sources/workspace/` in the repo (bundled as a Tauri resource in production). Without seeding, new and existing skills have no agents available to OpenHands.
+
+Two call sites are needed:
+1. **App startup** — seed every skill that already exists in the DB.
+2. **Skill creation** — seed the new skill directory immediately after it is created on disk.
+
+The existing `copy_workspace_sources_to_openhands_dir` already performs the correct copy; it just needs to be renamed and exposed as a public helper with SHA-gating per skill dir.
+
+- [ ] **Step 1: Rename `copy_workspace_sources_to_openhands_dir` → `copy_agent_sources_to_openhands_cwd`**
+
+In `deploy.rs`, rename the private function and all six call sites within the file:
+
+```rust
+fn copy_agent_sources_to_openhands_cwd(
+    agents_src: &Path,
+    workspace_skills_src: &Path,
+    skill_dir: &Path,
+) -> Result<(), String> {
+    copy_workspace_agents_to_openhands_layout(agents_src, skill_dir)?;
+    copy_workspace_agent_skills_to_openhands_layout(workspace_skills_src, skill_dir)?;
+    Ok(())
+}
+```
+
+Update every internal call site in the same file (`ensure_workspace_prompts_inner`, `ensure_openhands_runtime_dir`, `redeploy_agents`, `copy_workspace_sources_to_openhands_layout`).
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
+
+Expected: clean (rename is internal to `deploy.rs`).
+
+- [ ] **Step 2: Add `seed_skill_agents_dir` — SHA-gated per-skill seeder**
+
+Add this public function to `deploy.rs`:
+
+```rust
+/// Copy bundled agent sources (`agent-sources/workspace/`) into `{skill_dir}/.agents/`.
+/// SHA-gated: skips the copy when the source content matches the last recorded SHA for
+/// this skill dir. Call on startup for all existing skills and after creating a new skill.
+pub fn seed_skill_agents_dir(
+    app_handle: &tauri::AppHandle,
+    skill_dir: &Path,
+) -> Result<(), String> {
+    let agents_src = resolve_prompt_source_dirs(app_handle);
+    let skills_src = resolve_workspace_skills_dir(app_handle);
+
+    if !agents_src.is_dir() && !skills_src.is_dir() {
+        return Ok(());
+    }
+
+    let current_sha = compute_dir_sha(&[&agents_src, &skills_src])?;
+    let skill_key = skill_dir.to_string_lossy().to_string();
+
+    let needs_copy = {
+        let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
+        // Use the skill_dir itself as the cache key (no workspace prefix needed).
+        let entry = cache.entry(skill_key.clone()).or_default();
+        let layout_ok = skill_dir.join(".agents").join("agents").is_dir()
+            && skill_dir.join(".agents").join("skills").is_dir();
+        let stale = entry.source_sha.as_deref() != Some(current_sha.as_str()) || !layout_ok;
+        if stale {
+            entry.source_sha = Some(current_sha.clone());
+        }
+        stale
+    };
+
+    if needs_copy {
+        copy_agent_sources_to_openhands_cwd(&agents_src, &skills_src, skill_dir)
+            .map_err(|e| {
+                // Clear the optimistic cache entry so the next call retries.
+                let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
+                cache.remove(&skill_key);
+                e
+            })?;
+        log::info!(
+            "[seed_skill_agents_dir] seeded .agents/ in {}",
+            skill_dir.display()
+        );
+    }
+
+    Ok(())
+}
+```
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
+
+- [ ] **Step 3: Call `seed_skill_agents_dir` on startup for all existing skills**
+
+In `commands/workspace.rs`, inside `init_workspace` (after `migrate_flatten_openhands_dir` and before returning), add a block that:
+
+1. Resolves `skills_path` from the DB settings.
+2. Queries all skills from the DB via `crate::db::list_all_skills(&conn)`.
+3. For each skill, resolves its canonical dir and calls `seed_skill_agents_dir`.
+
+```rust
+// Seed .agents/ into every existing skill's canonical directory.
+if let Ok(skills_path) = crate::db::get_setting(&conn, "skills_path") {
+    if let Ok(all_skills) = crate::db::list_all_skills(&conn) {
+        for skill in all_skills {
+            let skill_dir = crate::skill_paths::resolve_skill_dir(
+                std::path::Path::new(&skills_path),
+                &skill.plugin_slug,
+                &skill.name,
+            );
+            if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
+                &app,
+                &skill_dir,
+            ) {
+                log::warn!(
+                    "[init_workspace] failed to seed .agents/ for skill {}/{}: {}",
+                    skill.plugin_slug,
+                    skill.name,
+                    e
+                );
+            }
+        }
+    }
+}
+```
+
+The `app: &tauri::AppHandle` is already available in `init_workspace`. Failures are logged and swallowed — startup must not fail because a skill's `.agents/` couldn't be written.
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
+
+Fix any name mismatches (`get_setting`, `list_all_skills`, the field names on the skill struct) by checking `src/db.rs` for the actual function signatures.
+
+- [ ] **Step 4: Call `seed_skill_agents_dir` after skill creation**
+
+In `commands/skill/crud.rs`, find `post_create_skill_filesystem_inner` (the function that runs filesystem setup after a skill row is inserted). Add a `seed_skill_agents_dir` call at the end, before returning:
+
+```rust
+// Seed .agents/ so OpenHands can find agents immediately.
+if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
+    app_handle,
+    std::path::Path::new(&skill_dir),
+) {
+    log::warn!(
+        "[create_skill] failed to seed .agents/ for {}: {}",
+        skill_dir,
+        e
+    );
+}
+```
+
+`app_handle: &tauri::AppHandle` and `skill_dir: &str` are already parameters of `post_create_skill_filesystem_inner`. If they are not, trace the call chain up to the nearest function that has them and thread them down.
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
+
+- [ ] **Step 5: Full build, test, clippy**
+
+```bash
+cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
+cd app/src-tauri && cargo test 2>&1 | tail -10
+cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
+```
+
+Expected: clean.
+
+- [ ] **Step 6: Manual smoke**
+
+1. Start the app. Open an existing skill (`petstore-sales` or any skill in `~/skill-builder/default/skills/`).
+2. Check `~/skill-builder/default/skills/<skill-name>/.agents/agents/` — `skill-creator.md` must be present.
+3. Check `~/skill-builder/default/skills/<skill-name>/.agents/skills/` — skill files must be present.
+4. Create a new skill. Check that its `.agents/` directory is populated immediately.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/src-tauri/src/commands/workflow/deploy.rs \
+        app/src-tauri/src/commands/workspace.rs \
+        app/src-tauri/src/commands/skill/crud.rs
+git commit -m "feat: seed .agents/ into skill_dir on startup and create; rename copy fn to copy_agent_sources_to_openhands_cwd"
+```
+
+---
+
 ## PR 8 — Collapse event recovery to always-FullHistory (Gap 8)
 
 **Goal:** Single event replay path. Delete `EventRecoveryMode` enum entirely. Every `OpenHandsSendMessage` always replays full conversation history.
