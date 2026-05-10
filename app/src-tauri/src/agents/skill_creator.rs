@@ -1,9 +1,11 @@
+#![allow(dead_code)]
+
 use std::path::Path;
 
 use crate::agents::runtime_config::{
     build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig,
 };
-use crate::skill_paths::workspace_skill_dir;
+use crate::skill_paths::resolve_skill_dir;
 use crate::types::WorkflowLlmConfig;
 
 pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -12,9 +14,10 @@ pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
 ));
 
 pub struct SkillCreatorConfigParams<'a> {
+    pub app_data_root: &'a str,
     pub skill_name: &'a str,
     pub prompt: &'a str,
-    pub workspace_path: &'a str,
+    pub skills_root: &'a str,
     pub plugin_slug: &'a str,
     pub llm: WorkflowLlmConfig,
     pub task_kind: &'a str,
@@ -26,8 +29,8 @@ pub struct SkillCreatorConfigParams<'a> {
 }
 
 pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenHandsRuntimeConfig {
-    let workspace_run_dir = workspace_skill_dir(
-        Path::new(params.workspace_path),
+    let skill_dir = resolve_skill_dir(
+        Path::new(params.skills_root),
         params.plugin_slug,
         params.skill_name,
     )
@@ -37,8 +40,9 @@ pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenH
     build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: params.prompt.to_string(),
         llm: params.llm,
-        workspace_root_dir: params.workspace_path.replace('\\', "/"),
-        workspace_run_dir,
+        app_data_root: params.app_data_root.to_string(),
+        skills_root: params.skills_root.replace('\\', "/"),
+        skill_dir,
         mode: None,
         agent_name: "skill-creator".to_string(),
         task_kind: Some(params.task_kind.to_string()),
@@ -59,12 +63,8 @@ pub async fn ensure_skill_session(
     saved_conversation_id: Option<String>,
 ) -> Result<String, String> {
     crate::agents::openhands_server::ensure_openhands_server(&config).await?;
-    crate::agents::openhands_server::start_openhands_session(
-        app,
-        config,
-        saved_conversation_id,
-    )
-    .await
+    crate::agents::openhands_server::start_openhands_session(app, config, saved_conversation_id)
+        .await
 }
 
 #[cfg(test)]
@@ -92,9 +92,10 @@ mod tests {
     #[test]
     fn test_build_skill_creator_config_sets_correct_fields() {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
+            app_data_root: "/tmp/app-data",
             skill_name: "test-skill",
             prompt: "do something",
-            workspace_path: "/tmp/workspace",
+            skills_root: "/tmp/skills",
             plugin_slug: "default",
             llm: test_llm_config(),
             task_kind: "refine",
@@ -117,16 +118,18 @@ mod tests {
             Some(vec!["file_editor".to_string(), "terminal".to_string()])
         );
         assert!(config.user_message_suffix.is_some());
-        assert!(config.workspace_skill_dir.contains("default"));
-        assert!(config.workspace_skill_dir.contains("test-skill"));
+        assert!(config.skill_dir.contains("default"));
+        assert!(config.skill_dir.contains("skills"));
+        assert!(config.skill_dir.contains("test-skill"));
     }
 
     #[test]
     fn test_build_skill_creator_config_workflow_step() {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
+            app_data_root: "/tmp/app-data",
             skill_name: "my-skill",
             prompt: "research",
-            workspace_path: "/tmp/ws",
+            skills_root: "/tmp/skills",
             plugin_slug: "plugins",
             llm: test_llm_config(),
             task_kind: "workflow.research",
@@ -145,9 +148,10 @@ mod tests {
     #[test]
     fn test_build_skill_creator_config_answer_evaluator() {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
+            app_data_root: "/tmp/app-data",
             skill_name: "my-skill",
             prompt: "evaluate",
-            workspace_path: "/tmp/ws",
+            skills_root: "/tmp/skills",
             plugin_slug: "default",
             llm: test_llm_config(),
             task_kind: "workflow.answer_evaluator",
@@ -158,7 +162,10 @@ mod tests {
             output_format: Some(serde_json::json!({})),
         });
 
-        assert_eq!(config.task_kind, Some("workflow.answer_evaluator".to_string()));
+        assert_eq!(
+            config.task_kind,
+            Some("workflow.answer_evaluator".to_string())
+        );
         assert_eq!(config.step_id, Some(-1));
         assert_eq!(config.run_source, Some("gate-eval".to_string()));
         assert!(config.output_format.is_some());
