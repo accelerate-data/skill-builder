@@ -79,7 +79,7 @@ pub(crate) fn extract_workflow_json_from_conversation_state(
         ));
     }
 
-    let parsed = parse_research_result_text(trimmed)?;
+    let parsed = parse_research_result_text(trimmed, workflow_label)?;
     if !parsed.is_object() {
         return Err(format!(
             "OpenHands {workflow_label} result_text must be a JSON object"
@@ -96,7 +96,10 @@ pub(crate) fn extract_research_json_from_conversation_state(
     extract_workflow_json_from_conversation_state(state, "research")
 }
 
-fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
+fn parse_research_result_text(
+    text: &str,
+    workflow_label: &str,
+) -> Result<serde_json::Value, String> {
     let json_text = strip_single_json_markdown_fence(text);
     match serde_json::from_str::<serde_json::Value>(json_text) {
         Ok(parsed) => Ok(parsed),
@@ -148,7 +151,7 @@ fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
             }
 
             Err(format!(
-                "OpenHands research result_text invalid JSON: {}",
+                "OpenHands {workflow_label} result_text invalid JSON: {}",
                 parse_error
             ))
         }
@@ -215,7 +218,121 @@ fn repair_missing_research_section_closers(text: &str) -> Option<String> {
         }
     }
 
+    if let Some(nested_repaired) = repair_nested_numeric_sections_in_questions(&repaired) {
+        repaired = nested_repaired;
+        changed = true;
+    }
+
     changed.then_some(repaired)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JsonContainer {
+    Object,
+    Array { is_questions: bool },
+}
+
+fn repair_nested_numeric_sections_in_questions(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut repaired = String::with_capacity(text.len() + 32);
+    let mut stack: Vec<JsonContainer> = Vec::new();
+    let mut next_array_is_questions = false;
+    let mut changed = false;
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            let start = i;
+            i += 1;
+            let mut escaped = false;
+            while i < bytes.len() {
+                let ch = bytes[i];
+                i += 1;
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                if ch == b'\\' {
+                    escaped = true;
+                    continue;
+                }
+                if ch == b'"' {
+                    break;
+                }
+            }
+
+            repaired.push_str(&text[start..i]);
+
+            if &text[start..i] == r#""questions""# {
+                let mut cursor = i;
+                while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                    cursor += 1;
+                }
+                if cursor < bytes.len() && bytes[cursor] == b':' {
+                    cursor += 1;
+                    while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                        cursor += 1;
+                    }
+                    if cursor < bytes.len() && bytes[cursor] == b'[' {
+                        next_array_is_questions = true;
+                    }
+                }
+            }
+            continue;
+        }
+
+        if starts_numeric_section_entry(bytes, i)
+            && stack
+                .iter()
+                .any(|container| matches!(container, JsonContainer::Array { is_questions: true }))
+        {
+            while matches!(
+                stack.last(),
+                Some(JsonContainer::Array { is_questions: true })
+            ) {
+                stack.pop();
+                repaired.push(']');
+                if matches!(stack.last(), Some(JsonContainer::Object)) {
+                    stack.pop();
+                    repaired.push('}');
+                }
+                changed = true;
+            }
+        }
+
+        match bytes[i] {
+            b'{' => stack.push(JsonContainer::Object),
+            b'[' => {
+                stack.push(JsonContainer::Array {
+                    is_questions: next_array_is_questions,
+                });
+                next_array_is_questions = false;
+            }
+            b'}' | b']' => {
+                stack.pop();
+            }
+            _ => {}
+        }
+
+        repaired.push(bytes[i] as char);
+        i += 1;
+    }
+
+    changed.then_some(repaired)
+}
+
+fn starts_numeric_section_entry(bytes: &[u8], index: usize) -> bool {
+    if !bytes[index..].starts_with(br#",{"id":"#) {
+        return false;
+    }
+
+    let mut cursor = index + br#",{"id":"#.len();
+    let digit_start = cursor;
+    while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
+        cursor += 1;
+    }
+
+    cursor > digit_start && bytes[cursor..].starts_with(br#","title":"#)
 }
 
 fn json_value_can_start(ch: char) -> bool {

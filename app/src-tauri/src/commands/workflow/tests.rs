@@ -716,6 +716,27 @@ fn research_json_extraction_repairs_missing_section_closers_before_notes() {
 }
 
 #[test]
+fn workflow_json_extraction_repairs_missing_section_closers_before_next_section() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": r#"{"status":"detailed_research_complete","refinement_count":3,"section_count":5,"clarifications_json":{"version":"1","metadata":{"question_count":7,"section_count":5,"refinement_count":3,"must_answer_count":5,"priority_questions":["Q1","Q2","Q3","Q5","R4.1"],"scope_recommendation":false,"scope_reason":null,"scope_next_action":null,"duplicates_removed":0,"warning":null,"error":null},"notes":[],"answer_evaluator_notes":[],"sections":[{"id":1,"title":"Pipeline Scope and Definition","questions":[{"id":"Q1","title":"Pipeline type","text":"What type?","must_answer":true,"choices":[{"id":"C1","text":"Sales","is_other":false}],"answer_choice":"C1","answer_text":"Sales","refinements":[]},{"id":"Q2","title":"Pipeline stages","text":"What stages?","must_answer":true,"choices":[{"id":"C1","text":"Standard","is_other":false}],"answer_choice":"C1","answer_text":"Standard","refinements":[]}]},{"id":2,"title":"Value Metrics and Calculation Logic","questions":[{"id":"Q3","title":"Value measures","text":"Which measures?","must_answer":true,"choices":[{"id":"C1","text":"All","is_other":false}],"answer_choice":"C1","answer_text":"All","refinements":[]},{"id":"Q4","title":"Probability weighting method","text":"How weighted?","must_answer":false,"choices":[{"id":"C1","text":"Fixed","is_other":false}],"answer_choice":"C1","answer_text":"Fixed","refinements":[{"id":"R4.1","title":"Stage probability values","text":"What fixed percentages?","must_answer":true,"choices":[{"id":"C1","text":"10/25/50/75/100","is_other":false}],"refinements":[]}]},{"id":4,"title":"Business Rules and Edge Cases","questions":[{"id":"Q6","title":"Material business rules","text":"Which rules?","must_answer":false,"choices":[{"id":"C1","text":"All of the above","is_other":false}],"answer_choice":"C1","answer_text":"All of the above","refinements":[{"id":"R6.1","title":"Value allocation method","text":"How allocate?","must_answer":false,"choices":[{"id":"C1","text":"Proportional split","is_other":false}],"refinements":[]},{"id":"R6.2","title":"Aging threshold and write-off","text":"What aging threshold?","must_answer":false,"choices":[{"id":"C1","text":"90 days excluded","is_other":false}],"refinements":[]}]},{"id":5,"title":"Reconciliation and Validation","questions":[{"id":"Q7","title":"Reconciliation expectations","text":"What reconcile?","must_answer":false,"choices":[{"id":"C1","text":"All of the above","is_other":false}],"answer_choice":"C1","answer_text":"All of the above","refinements":[]}]},{"id":3,"title":"Grain and Dimensional Hierarchy","questions":[{"id":"Q5","title":"Measurement grain","text":"At what grain?","must_answer":true,"choices":[{"id":"C1","text":"Nested hierarchy","is_other":false}],"answer_choice":"C1","answer_text":"Nested hierarchy","refinements":[]}]}]}}"#
+    });
+
+    let parsed =
+        extract_workflow_json_from_conversation_state(&state, "detailed research").unwrap();
+
+    assert_eq!(parsed["status"], "detailed_research_complete");
+    assert_eq!(
+        parsed["clarifications_json"]["sections"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+}
+
+#[test]
 fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_json() {
     let missing = serde_json::json!({
         "type": "conversation_state",
