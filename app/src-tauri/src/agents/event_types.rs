@@ -56,8 +56,6 @@ pub struct RuntimeRunSummary {
     pub skill_name: String,
     #[serde(rename = "stepId")]
     pub step_id: i32,
-    #[serde(rename = "workflowSessionId")]
-    pub workflow_session_id: Option<String>,
     #[serde(rename = "usageSessionId")]
     pub usage_session_id: Option<String>,
     #[serde(rename = "runSource")]

@@ -140,7 +140,6 @@ mod tests {
             conversation_history: None,
             skill_name: None,
             step_id: None,
-            workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),

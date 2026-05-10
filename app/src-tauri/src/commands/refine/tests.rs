@@ -420,7 +420,6 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
         skill_name: Some("my-skill".to_string()),
         step_id: Some(-10),
         run_source: Some("refine".to_string()),
-        workflow_session_id: None,
         usage_session_id: None,
     };
     let compatible = serde_json::json!({

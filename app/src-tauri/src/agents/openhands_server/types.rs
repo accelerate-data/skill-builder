@@ -21,7 +21,6 @@ pub struct OpenHandsRuntimeRequest {
     pub skill_name: Option<String>,
     pub step_id: Option<i32>,
     pub run_source: Option<String>,
-    pub workflow_session_id: Option<String>,
     pub usage_session_id: Option<String>,
 }
 
@@ -47,7 +46,6 @@ impl OpenHandsRuntimeRequest {
             skill_name: config.skill_name.clone(),
             step_id: config.step_id,
             run_source: config.run_source.clone(),
-            workflow_session_id: config.workflow_session_id.clone(),
             usage_session_id: config.usage_session_id.clone(),
         })
     }
@@ -83,8 +81,6 @@ pub struct ConversationMetadata {
     pub step_id: Option<String>,
     #[serde(rename = "source", skip_serializing_if = "Option::is_none")]
     pub run_source: Option<String>,
-    #[serde(rename = "session", skip_serializing_if = "Option::is_none")]
-    pub workflow_session_id: Option<String>,
     #[serde(rename = "workspace", skip_serializing_if = "Option::is_none")]
     pub skills_root: Option<String>,
 }
@@ -204,10 +200,6 @@ impl StartConversationRequest {
                 skill_name: request.skill_name.as_deref().map(openhands_tag_value),
                 step_id: request.step_id.map(|step_id| step_id.to_string()),
                 run_source: request.run_source.as_deref().map(openhands_tag_value),
-                workflow_session_id: request
-                    .workflow_session_id
-                    .as_deref()
-                    .map(openhands_tag_value),
                 skills_root: Some(openhands_tag_value(&request.skills_root)),
             },
             agent: OpenHandsAgent {
