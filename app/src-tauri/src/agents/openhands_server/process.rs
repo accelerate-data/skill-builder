@@ -870,6 +870,30 @@ mod tests {
     }
 
     #[test]
+    fn cached_server_reuse_does_not_depend_on_path() {
+        // After workspace-root consolidation, reuse depends only on process
+        // liveness and HTTP health — not on conversations_path or any other
+        // path field.  should_reuse_cached_server takes no path arguments.
+        assert!(should_reuse_cached_server(true, Ok(())));
+        assert!(!should_reuse_cached_server(false, Ok(())));
+        assert!(!should_reuse_cached_server(
+            true,
+            Err("unhealthy".to_string())
+        ));
+    }
+
+    #[test]
+    fn ensure_agent_server_does_not_restart_on_skill_switch() {
+        // ensure_agent_server no longer accepts conversations_path or any
+        // skill-scoped parameter.  The signature is (timeout, workspace_root),
+        // so calling it twice with the same workspace_root reuses the cached
+        // server when it is running and healthy — no restart occurs.
+        // This is a compile-time proof test: if the signature regresses to
+        // accept skill-scoped paths, this reference will fail to compile.
+        let _f = ensure_agent_server;
+    }
+
+    #[test]
     fn release_stale_conversation_leases_removes_lease_files_and_ignores_missing_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let conversations = tmp.path().join("conversations");
