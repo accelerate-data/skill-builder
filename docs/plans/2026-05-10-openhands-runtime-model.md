@@ -2268,29 +2268,39 @@ Two call sites are needed:
 1. **App startup** — seed every skill that already exists in the DB.
 2. **Skill creation** — seed the new skill directory immediately after it is created on disk.
 
-The existing `copy_workspace_sources_to_openhands_dir` already performs the correct copy; it just needs to be renamed and exposed as a public helper with SHA-gating per skill dir.
+The existing copy functions already perform the correct copy logic; they just need to be renamed (dropping the legacy `workspace_` prefix) and a new public `seed_skill_agents_dir` helper needs to be added with SHA-gating per skill dir.
 
-- [ ] **Step 1: Rename `copy_workspace_sources_to_openhands_dir` → `copy_agent_sources_to_openhands_cwd`**
+- [ ] **Step 1: Rename all three legacy `copy_workspace_*` functions**
 
-In `deploy.rs`, rename the private function and all six call sites within the file:
+Three functions carry the old `workspace` name; rename them all in `deploy.rs` (they are all private, so no external callers):
+
+| Old name | New name |
+|---|---|
+| `copy_workspace_sources_to_openhands_dir` | `copy_agent_sources_to_openhands_cwd` |
+| `copy_workspace_agents_to_openhands_layout` | `copy_agent_sources_to_agents_dir` |
+| `copy_workspace_agent_skills_to_openhands_layout` | `copy_agent_sources_to_skills_dir` |
+
+After renaming, the top-level function body becomes:
 
 ```rust
 fn copy_agent_sources_to_openhands_cwd(
     agents_src: &Path,
-    workspace_skills_src: &Path,
+    skills_src: &Path,
     skill_dir: &Path,
 ) -> Result<(), String> {
-    copy_workspace_agents_to_openhands_layout(agents_src, skill_dir)?;
-    copy_workspace_agent_skills_to_openhands_layout(workspace_skills_src, skill_dir)?;
+    copy_agent_sources_to_agents_dir(agents_src, skill_dir)?;
+    copy_agent_sources_to_skills_dir(skills_src, skill_dir)?;
     Ok(())
 }
 ```
 
-Update every internal call site in the same file (`ensure_workspace_prompts_inner`, `ensure_openhands_runtime_dir`, `redeploy_agents`, `copy_workspace_sources_to_openhands_layout`).
+Also rename the parameter `workspace_skills_src` → `skills_src` in all three functions for consistency.
+
+Update every call site in the file: `ensure_workspace_prompts_inner`, `ensure_openhands_runtime_dir`, `redeploy_agents`, `copy_workspace_sources_to_openhands_layout` (rename that wrapper function too → `copy_agent_sources_to_full_layout`).
 
 Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
 
-Expected: clean (rename is internal to `deploy.rs`).
+Expected: clean (all renames are internal to `deploy.rs`).
 
 - [ ] **Step 2: Add `seed_skill_agents_dir` — SHA-gated per-skill seeder**
 
@@ -2432,7 +2442,7 @@ Expected: clean.
 git add app/src-tauri/src/commands/workflow/deploy.rs \
         app/src-tauri/src/commands/workspace.rs \
         app/src-tauri/src/commands/skill/crud.rs
-git commit -m "feat: seed .agents/ into skill_dir on startup and create; rename copy fn to copy_agent_sources_to_openhands_cwd"
+git commit -m "feat: seed .agents/ into skill_dir on startup and create; rename copy_workspace_* fns to copy_agent_sources_*"
 ```
 
 ---
