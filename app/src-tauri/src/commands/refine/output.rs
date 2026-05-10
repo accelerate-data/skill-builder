@@ -560,7 +560,7 @@ pub fn finalize_refine_run(
     workspace_path: String,
     structured_output: Option<serde_json::Value>,
     db: tauri::State<'_, Db>,
-    sessions: tauri::State<'_, super::RefineSessionManager>,
+    sessions: tauri::State<'_, super::SkillSessionManager>,
 ) -> Result<RefineFinalizeResult, String> {
     log::info!(
         "[finalize_refine_run] skill={} plugin={}",

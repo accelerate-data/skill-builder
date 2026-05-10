@@ -4,7 +4,7 @@ use super::crud::{
     list_refinable_skills_inner, list_skills_inner, prepare_skill_runtime_shutdown_inner,
 };
 use super::metadata::{is_valid_kebab, rename_skill_inner};
-use crate::commands::skill_session::{RefineSession, RefineSessionManager};
+use crate::commands::skill_session::{SkillSession, SkillSessionManager};
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::runtime::{WorkflowStepRun, WorkflowStepRunManager};
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
@@ -354,12 +354,12 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
         );
     }
 
-    let refine_sessions = RefineSessionManager::new();
+    let refine_sessions = SkillSessionManager::new();
     {
         let mut map = refine_sessions.0.lock().unwrap();
         map.insert(
             "skill-builder::active-skill".to_string(),
-            RefineSession {
+            SkillSession {
                 skill_name: "active-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-1".to_string(),
@@ -371,7 +371,7 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
         );
         map.insert(
             "skill-builder::other-skill".to_string(),
-            RefineSession {
+            SkillSession {
                 skill_name: "other-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-2".to_string(),

@@ -25,8 +25,8 @@ const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
 /// run optional tools, summarize.
 const REFINE_MAX_TURNS_PER_TURN: u32 = 500;
 
-pub(crate) use crate::commands::skill_session::refine_session_key;
-pub use crate::commands::skill_session::{RefineSession, RefineSessionManager};
+pub(crate) use crate::commands::skill_session::skill_session_key;
+pub use crate::commands::skill_session::{SkillSession, SkillSessionManager};
 
 // ─── Shared helper ───────────────────────────────────────────────────────────
 
@@ -308,7 +308,7 @@ fn normalize_conversation_id(value: Option<String>) -> Option<String> {
 }
 
 fn plan_refine_conversation_dispatch(
-    session: &RefineSession,
+    session: &SkillSession,
     requested_conversation_id: Option<String>,
 ) -> Result<RefineConversationDispatchPlan, String> {
     let requested_conversation_id = normalize_conversation_id(requested_conversation_id);
@@ -346,7 +346,7 @@ fn plan_refine_conversation_dispatch(
 #[tauri::command]
 pub async fn send_refine_message(
     input: SendRefineMessageInput,
-    sessions: tauri::State<'_, RefineSessionManager>,
+    sessions: tauri::State<'_, SkillSessionManager>,
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<RefineDispatchResult, String> {
@@ -358,7 +358,7 @@ pub async fn send_refine_message(
         target_files,
     } = input;
 
-    let session_key = refine_session_key(&skill_name, &plugin_slug);
+    let session_key = skill_session_key(&skill_name, &plugin_slug);
     let (is_first_turn, dispatch_plan) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(

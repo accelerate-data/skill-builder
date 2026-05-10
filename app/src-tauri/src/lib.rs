@@ -296,7 +296,7 @@ pub fn run() {
             Ok(())
         })
         .manage(CloseGuardState::default())
-        .manage(commands::skill_session::RefineSessionManager::new())
+        .manage(commands::skill_session::SkillSessionManager::new())
         .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
 
         .invoke_handler(tauri::generate_handler![

@@ -204,8 +204,8 @@ fn test_get_refine_diff_added_file() {
 }
 
 #[test]
-fn test_session_manager_new() {
-    let manager = RefineSessionManager::new();
+fn test_skill_session_manager_new() {
+    let manager = SkillSessionManager::new();
     let sessions = manager.0.lock().unwrap();
     assert!(sessions.is_empty());
 }
@@ -213,15 +213,15 @@ fn test_session_manager_new() {
 // ===== session lifecycle tests =====
 
 #[test]
-fn test_session_create_and_lookup() {
-    let manager = RefineSessionManager::new();
+fn test_skill_session_create_and_lookup() {
+    let manager = SkillSessionManager::new();
     let session_id = "test-session-1".to_string();
 
     {
         let mut map = manager.0.lock().unwrap();
         map.insert(
             session_id.clone(),
-            RefineSession {
+            SkillSession {
                 skill_name: "my-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-session-1".to_string(),
@@ -240,14 +240,14 @@ fn test_session_create_and_lookup() {
 }
 
 #[test]
-fn test_session_conflict_detection() {
-    let manager = RefineSessionManager::new();
+fn test_skill_session_conflict_detection() {
+    let manager = SkillSessionManager::new();
 
     {
         let mut map = manager.0.lock().unwrap();
         map.insert(
             "session-1".to_string(),
-            RefineSession {
+            SkillSession {
                 skill_name: "my-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-session-1".to_string(),
@@ -268,18 +268,18 @@ fn test_session_conflict_detection() {
 }
 
 #[test]
-fn test_session_not_found_returns_none() {
-    let manager = RefineSessionManager::new();
+fn test_skill_session_not_found_returns_none() {
+    let manager = SkillSessionManager::new();
     let map = manager.0.lock().unwrap();
     assert!(map.get("nonexistent").is_none());
 }
 
 #[test]
-fn test_new_refine_usage_session_id_is_opaque_and_scoped_to_skill() {
-    let usage_session_id = new_refine_usage_session_id("my-skill");
+fn test_new_skill_usage_session_id_is_opaque_and_scoped_to_skill() {
+    let usage_session_id = new_skill_usage_session_id("my-skill");
 
     assert!(usage_session_id.starts_with("synthetic:refine:my-skill:"));
-    assert_ne!(usage_session_id, new_refine_usage_session_id("my-skill"));
+    assert_ne!(usage_session_id, new_skill_usage_session_id("my-skill"));
 }
 
 fn test_workflow_llm_config() -> crate::types::WorkflowLlmConfig {
@@ -442,8 +442,8 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
 }
 
 #[test]
-fn test_prepared_refine_session_starts_without_dispatch_history() {
-    let session = RefineSession {
+fn test_prepared_skill_session_starts_without_dispatch_history() {
+    let session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -798,14 +798,14 @@ fn test_refine_prompt_file_targeting_uses_absolute_paths() {
 
 #[test]
 fn test_close_session_removes_entry() {
-    let manager = RefineSessionManager::new();
+    let manager = SkillSessionManager::new();
     let session_id = "to-close".to_string();
 
     {
         let mut map = manager.0.lock().unwrap();
         map.insert(
             session_id.clone(),
-            RefineSession {
+            SkillSession {
                 skill_name: "my-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-session-close".to_string(),
@@ -829,7 +829,7 @@ fn test_close_session_removes_entry() {
 
 #[test]
 fn test_close_nonexistent_session_is_noop() {
-    let manager = RefineSessionManager::new();
+    let manager = SkillSessionManager::new();
     let mut map = manager.0.lock().unwrap();
     assert!(map.remove("nonexistent").is_none());
 }
@@ -933,9 +933,9 @@ fn test_get_refine_diff_stat_ignores_patch_file_header_lines() {
 }
 
 #[test]
-fn test_prepared_refine_session_uses_contextual_prompt_only_for_initial_load() {
+fn test_prepared_skill_session_uses_contextual_prompt_only_for_initial_load() {
     let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
-    let mut session = RefineSession {
+    let mut session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -979,9 +979,9 @@ fn test_prepared_refine_session_uses_contextual_prompt_only_for_initial_load() {
 }
 
 #[test]
-fn test_prepared_refine_session_switches_away_from_contextual_prompt_after_dispatch() {
+fn test_prepared_skill_session_switches_away_from_contextual_prompt_after_dispatch() {
     let skill_output_dir = default_skill_dir(std::path::Path::new("/skills"), "my-skill");
-    let mut session = RefineSession {
+    let mut session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -1019,8 +1019,8 @@ fn test_prepared_refine_session_switches_away_from_contextual_prompt_after_dispa
 }
 
 #[test]
-fn test_plan_refine_conversation_dispatch_reuses_saved_conversation() {
-    let session = RefineSession {
+fn test_plan_skill_conversation_dispatch_reuses_saved_conversation() {
+    let session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -1038,8 +1038,8 @@ fn test_plan_refine_conversation_dispatch_reuses_saved_conversation() {
 }
 
 #[test]
-fn test_plan_refine_conversation_dispatch_requires_existing_conversation() {
-    let session = RefineSession {
+fn test_plan_skill_conversation_dispatch_requires_existing_conversation() {
+    let session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -1054,8 +1054,8 @@ fn test_plan_refine_conversation_dispatch_requires_existing_conversation() {
 }
 
 #[test]
-fn test_plan_refine_conversation_dispatch_reuses_existing_conversation_after_first_turn() {
-    let session = RefineSession {
+fn test_plan_skill_conversation_dispatch_reuses_existing_conversation_after_first_turn() {
+    let session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -1074,8 +1074,8 @@ fn test_plan_refine_conversation_dispatch_reuses_existing_conversation_after_fir
 }
 
 #[test]
-fn test_plan_refine_conversation_dispatch_rejects_mismatched_conversation_after_first_turn() {
-    let session = RefineSession {
+fn test_plan_skill_conversation_dispatch_rejects_mismatched_conversation_after_first_turn() {
+    let session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
@@ -1795,8 +1795,8 @@ fn test_refine_openhands_config_uses_skill_creator_system_message_suffix() {
 }
 
 #[test]
-fn test_refine_session_holds_conversation_and_agent_ids() {
-    let session = RefineSession {
+fn test_skill_session_holds_conversation_and_agent_ids() {
+    let session = SkillSession {
         skill_name: "my-skill".to_string(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         usage_session_id: "usage-1".to_string(),
