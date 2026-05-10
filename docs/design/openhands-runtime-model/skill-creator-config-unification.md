@@ -5,6 +5,7 @@
 The product has two diverged code paths for constructing OpenHands runtime configs and invoking the skill-creator agent — one for the workflow UI and one for the workspace (refine) UI. Neither path is authoritative. Both call the same underlying `build_openhands_runtime_config` primitive but with different wrappers, different module locations, and different naming conventions. A third issue: the workflow path skips the server lifecycle check (`ensure_openhands_server`) that the workspace path performs, creating an implicit correctness gap.
 
 The result is three violations of the intended architecture:
+
 1. No single model for how the product speaks to OpenHands.
 2. Call paths don't all go through the same primitives.
 3. App-specific logic and OpenHands interaction model are mixed together in the same modules.
@@ -19,7 +20,7 @@ The result is three violations of the intended architecture:
 
 Three layers with strict dependency direction (each layer only imports from layers below it):
 
-```
+```text
 commands/           ← Layer 3: app-specific (Tauri commands, DB, workspace setup)
 agents/skill_creator.rs  ← Layer 2: skill creator model (config, session sequence)
 agents/openhands_server/ ← Layer 1: raw OpenHands API (HTTP, server lifecycle)

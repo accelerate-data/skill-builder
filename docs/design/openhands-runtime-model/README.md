@@ -5,586 +5,221 @@ functional-specs: []
 # OpenHands Runtime Model
 
 > **Status:** Draft
-> **Functional specs:** Not applicable; this design defines the runtime model
-> shared by Workflow, Refine, create-skill validation, and Eval Workbench.
+> **Functional specs:** Not applicable; this design defines the runtime model shared by Workflow, Refine, create-skill validation, and Eval Workbench.
 
-## Overview
+## Design Principles
 
-Skill Builder integrates with OpenHands through two layers:
+1. **One model** — a single `SkillCreatorConfigParams` struct and `build_skill_creator_config` function is the only way to build an OpenHands config for any skill-creator run.
+2. **Same primitives** — all product surfaces go through the same call sequence: `ensure_skill_session` → `OpenHandsSendMessage` → `PauseOpenHandsSession`.
+3. **Clean separation** — the OpenHands interaction model lives in `agents/`; app-specific setup (workspace dirs, DB reads, Tauri commands) lives in `commands/`.
 
-1. **Frontend -> Backend API**
-   Product-specific Tauri commands such as `run_workflow_step`,
-   `select_skill_openhands_session`, `send_refine_message`,
-   `review_skill_scope`, and `define_eval_scenario`.
-2. **Backend -> OpenHands API**
-   A small set of runtime primitives that create or resume OpenHands
-   conversations, send messages, pause active execution, or run disposable
-   throwaway conversations.
+## Three-Layer Architecture
 
-The key model is that OpenHands always operates on a conversation-backed
-session. The important product distinction is whether Skill Builder keeps the
-conversation alive for future user-visible turns or treats it as a persistent
-skill conversation versus a non-resumable throwaway run.
+```text
+commands/                    ← Layer 3: app commands (Tauri IPC, DB, workspace setup)
+agents/skill_creator.rs      ← Layer 2: skill creator model (config, session sequence)
+agents/openhands_server/     ← Layer 1: raw OpenHands API (HTTP, server lifecycle)
+```
 
-The active runtime model in this branch is:
+Each layer imports only from layers below it. `commands/` never reaches into `agents/openhands_server/` directly — it goes through Layer 2.
 
-- selected-skill activation owns persistent session bootstrap
-- workflow and refine both send into the already-selected persistent skill
-  conversation
-- switch-away and app shutdown pause the selected skill session instead of
-  deleting the conversation
+### Layer 1 — Raw OpenHands API (`agents/openhands_server/`)
 
-Related sub-designs:
-
-- [send-turn-semantics.md](send-turn-semantics.md) — how
-  `OpenHandsSendMessage` must own stream attach, message dispatch, turn-scoped
-  recovery, and visible `task_sent` consistency across Workflow and Refine.
-
-## Design Scope
-
-**Covers**
-
-- The two-layer runtime contract: frontend/backend product APIs and
-  backend/OpenHands session APIs.
-- Persistent versus throwaway OpenHands session semantics.
-- Workspace ownership, Agent Server ownership, and session persistence.
-- The command-to-runtime mapping for Workflow, Refine, create-skill flows, and
-  Eval Workbench.
-- Main-agent prompt ownership, suffix wiring, subagent registration, and tool
-  exposure.
-- Workflow step routing where it affects runtime behavior.
-
-**Does not cover**
-
-- Product behavior source-of-truth for individual user flows.
-- Implementation sequencing or migration steps.
-- Prompt wording details beyond ownership and routing.
-- Eval rubric design or Promptfoo package behavior.
-
-## Key Decisions
-
-| Decision | Rationale |
-|---|---|
-| Model OpenHands around sessions, not ad hoc helpers. | OpenHands is conversation-backed in both persistent and throwaway cases. The product should name the actual lifecycle boundary. |
-| Keep two explicit layers: product commands and runtime primitives. | Frontend surfaces should call product-specific commands; only the backend should speak in raw OpenHands session terms. |
-| Use explicit runtime primitives for server lifecycle and conversation lifecycle. | The runtime needs server ensure/shutdown plus persistent session preparation, `OpenHandsSendMessage`, `PauseOpenHandsSession`, and `RunThrowawayOpenHandsSession`. Everything else is product orchestration. |
-| Persistent session reuse covers workflow and refine only. | Workflow steps and refine chat reuse the saved skill conversation. Eval scenario definition is a bounded throwaway task so it does not overwrite the product conversation slot. |
-| Throwaway sessions are reserved for bounded execution tasks. | Scope validation and eval scenario definition run as non-resumable tasks whose runtime artifacts stay outside normal product conversation state. |
-| The live Eval Workbench surface is performance-only end to end. | The frontend, backend model, and migration path all flatten legacy trigger-mode data to performance scenarios. |
-| Rust owns Agent Server lifecycle and workspace selection. | The backend already owns persistence, filesystem policy, event delivery, logging, and cancellation. |
-| The frontend never calls OpenHands-shaped APIs directly. | Product APIs stay stable even if the runtime implementation changes. |
-| `skill-creator.md` is always sent through `system_message_suffix`. | The main agent should preserve the default OpenHands system prompt while deterministically appending Skill Builder's stable instructions. |
-| `skill-creator-user-suffix.txt` remains app-owned and additive. | Per-message invariants are a backend control surface and should not be embedded in task prompts. |
-| Tool exposure is runtime-owned and centrally defined. | Prevent per-surface tool drift and keep product commands focused on task semantics. |
-| Selected-skill activation owns persistent-session startup. | Workflow and Refine both depend on the same selected-skill conversation. Bootstrapping that session at skill-selection time removes per-surface lifecycle drift. |
-
-## Core Concepts
-
-### Product Command Layer
-
-This is the **frontend -> backend** contract. These commands are shaped around
-product surfaces, not OpenHands transport details.
-
-Examples:
-
-- `run_workflow_step`
-- `run_answer_evaluator`
-- `select_skill_openhands_session`
-- `send_refine_message`
-- `cancel_agent_run`
-- `pause_openhands_session`
-- `review_skill_scope`
-- `define_eval_scenario`
-
-Each command is responsible for:
-
-- validating user-facing inputs
-- loading backend-owned workspace and model context
-- building the correct task prompt and `OpenHandsRuntimeConfig`
-- choosing persistent versus throwaway session behavior
-- parsing terminal outputs into app-owned result contracts
-
-### Runtime Primitive Layer
-
-This is the **backend -> OpenHands** contract.
+The raw primitives. No product concepts here.
 
 | Primitive | Purpose |
 |---|---|
-| Ensure server | Make sure the per-skill OpenHands Agent Server is running for the target runtime root. |
-| Session start | Create or resume a persistent OpenHands conversation for a skill-scoped session. |
-| `OpenHandsSendMessage` | Append a user message to an existing persistent conversation and run it. |
-| `PauseOpenHandsSession` | Pause active execution on a persistent conversation without deleting it. |
-| `RunThrowawayOpenHandsSession` | Create a bounded conversation, run it to completion, collect the result, and keep it outside resumable product state. |
-| `ShutdownOpenHandsServer` | Stop the cached Agent Server process for the current runtime root during app-exit cleanup. |
-
-These primitives are generic runtime concepts. They should not know about
-Workflow step numbers, Refine UI state, or Eval Workbench entities.
+| `ensure_openhands_server` | Start or reuse the cached Agent Server process for a given runtime root. |
+| `start_openhands_session` | Resolve or create a persistent conversation for a skill. |
+| `send_openhands_message` | Append a user message to an existing persistent conversation and run it. |
+| `pause_openhands_conversation` | Pause active execution without deleting the conversation. |
+| `list_openhands_conversation_events` | Fetch all events for a conversation (used during session restore). |
+| `shutdown_agent_server` | Stop the cached Agent Server process. |
 
 Rules:
 
-- ensure-server is conversation-free. It must not call
-  `GET /api/conversations/:id` or create a conversation shell.
-- persistent session start owns resume-or-create behavior.
-- `OpenHandsSendMessage` sends the next turn into an already-established
-  persistent session.
-- `PauseOpenHandsSession` is only for explicit user stop/cancel during an
-  active run.
-- A successfully completed turn does not auto-pause. The conversation remains
-  persisted and idle.
-- `RunThrowawayOpenHandsSession` is for bounded tasks with no later reply path.
-- `ShutdownOpenHandsServer` is a process-lifecycle primitive, not a
-  conversation-turn primitive.
+- `ensure_openhands_server` is conversation-free — it must not create a conversation.
+- `start_openhands_session` owns resume-or-create behavior.
+- A successfully completed turn does not auto-pause. The conversation remains persisted and idle.
+- `shutdown_agent_server` is a process-lifecycle primitive, not a conversation-turn primitive.
 
-## Two-Layer Model
+### Layer 2 — Skill Creator Model (`agents/skill_creator.rs`)
 
-```text
-Frontend
-  -> product-specific Tauri commands
+The single place that knows how to configure and launch the skill-creator agent. No deps on `commands::`.
 
-Rust backend command layer
-  -> validate inputs
-  -> resolve workspace + model context
-  -> render prompt + config
-  -> choose persistent vs throwaway policy
-  -> call OpenHands runtime primitive
-  -> normalize events and parse results
+| Export | Purpose |
+|---|---|
+| `SkillCreatorConfigParams` | Unified params struct for every skill-creator run. |
+| `build_skill_creator_config` | Builds `OpenHandsRuntimeConfig` from params. |
+| `ensure_skill_session` | Wraps `ensure_openhands_server` + `start_openhands_session` in the correct sequence. |
+| `SKILL_CREATOR_USER_SUFFIX` | Per-message suffix applied to every skill-creator turn. |
 
-OpenHands runtime layer
-  -> Agent Server process
-  -> REST conversation/session calls
-  -> WebSocket event stream
-```
+`ensure_skill_session` is the enforced entry point. All product surfaces call it instead of the Layer 1 primitives directly — this guarantees the server lifecycle check always runs before a session is opened.
 
-### Frontend -> Backend API
+See [skill-creator-config-unification.md](skill-creator-config-unification.md) for the full spec.
 
-The frontend should stay product-oriented:
+### Layer 3 — App Commands (`commands/`)
 
-- selected-skill activation calls `select_skill_openhands_session`.
-- Workflow calls `run_workflow_step` and `run_answer_evaluator`.
-- Refine calls `send_refine_message`.
-- selected-skill cleanup calls `pause_openhands_session`.
-- Create Skill calls `review_skill_scope`.
-- Eval Workbench calls scenario definition commands.
+Product-specific Tauri commands and orchestration. Responsible for:
 
-The frontend should not need to know whether a surface reuses a persistent
-session or uses a throwaway one.
+- validating user-facing inputs
+- loading workspace and model context from the DB
+- building task prompts
+- choosing persistent vs throwaway session behavior
+- parsing terminal outputs into app-owned result contracts
 
-### Backend -> OpenHands API
-
-The backend translates product commands into the minimal runtime operations:
-
-- start or resume a persistent session
-- send a message into that session
-- pause that session
-- run a disposable throwaway session
-
-That layer owns:
-
-- Agent Server process lifecycle
-- OpenHands REST and WebSocket calls
-- session persistence and deletion policy
-- event normalization into `conversation_event` and `conversation_state`
+`ensure_skill_runtime_ready` lives here (not in Layer 2) because it reads from the DB and ensures workspace dirs — app concerns that Layer 2 must not know about.
 
 ## Persistent vs Throwaway Sessions
 
 ### Persistent Session
 
-Use a persistent session when the product wants later turns to reuse the same
-skill-bound conversation.
+Use when the product wants later turns to reuse the same skill-bound conversation.
 
 ```text
-ensure server
-  -> no conversation lookup
-
-open or resume session
-  -> persistent session start
-
-normal product turn
-  -> OpenHandsSendMessage
-  -> run completes
-  -> conversation remains persisted and idle
-
-explicit user stop during active run
-  -> PauseOpenHandsSession
+ensure_skill_session          → starts or resumes the conversation
+OpenHandsSendMessage          → dispatches one turn; conversation stays alive after completion
+PauseOpenHandsSession         → only on explicit user stop during an active run
 ```
 
 Properties:
 
-- conversation survives between turns
-- conversation survives leaving the view
-- prior context is intentionally preserved
+- conversation survives between turns and between skill selections
+- the DB stores the durable `conversation_id` per skill
 - completed turns do not require an explicit pause
-- app stores the current `conversation_id`
-
-### Selected-Skill Bootstrap Seam
-
-The VU-1175 follow-up work exposed that session ownership had to move above
-Refine:
-
-1. the app stores a durable `conversation_id` per skill
-2. skill switch can restart the per-skill OpenHands Agent Server because
-   `OH_CONVERSATIONS_PATH` is skill-scoped
-3. abrupt server shutdown can leave OpenHands lease state behind for some
-   saved conversations
-4. per-surface startup logic created drift between Workflow and Refine about
-   when to resume, recreate, or pause the durable conversation
-
-The current contract removes that split ownership:
-
-- selected-skill activation performs resume-or-create for the durable
-  `conversation_id`
-- workflow and refine both consume that same selected-skill session
-- switch-away and app shutdown pause the selected skill session through the
-  same lifecycle owner
-
-### Selected-Skill Bootstrap Contract
-
-Selected-skill activation owns the persistent OpenHands bootstrap sequence:
-
-1. resolve the skill-scoped runtime root
-2. ensure the cached Agent Server matches that runtime root
-3. load the saved `conversation_id` from `skill_conversations`
-4. resume that conversation when it is still compatible, or create a fresh one
-5. restore visible transcript history for the selected-skill surface
-
-The runtime is intentionally skill-scoped:
-
-- `OH_CONVERSATIONS_PATH` points at the selected skill workspace's
-  `conversations/` directory
-- switching skills can restart the cached Agent Server when that conversations
-  root changes
-- the database remains the durable source of truth for the selected skill's
-  saved `conversation_id`
-- stale or incompatible saved ids are cleared during selected-skill bootstrap
-  before a new persistent conversation is created
-
-### Active Skill Leave Contract
-
-Leaving the current skill and entering the next skill are separate lifecycle
-events.
-
-Every UI path that leaves the current skill uses the same shared leave
-sequence:
-
-1. pause the current persistent conversation
-2. release the current skill lock
-3. clear app-level UI state for the active skill
-4. stop the OpenHands Agent Server
-
-That leave sequence is shared by:
-
-- skill-list switching
-- workflow leave/unmount cleanup
-- refine leave/unmount cleanup
-
-The next skill bootstrap is a separate enter sequence:
-
-1. acquire the next skill lock
-2. call `select_skill_openhands_session`
-3. hydrate the selected skill session into frontend state
-
-Failure policy:
-
-- if pause fails, the current skill stays visible and the next skill does not
-  bootstrap
-- if lock release fails, the current skill stays visible and the next skill
-  does not bootstrap
-- if server stop fails after UI clear, the leave operation fails and the next
-  skill does not bootstrap
-
-### Stable Persistence Secret
-
-Persistent OpenHands conversations depend on a workspace-level encryption
-secret, not a per-process runtime token.
-
-Contract:
-
-- Rust stores the secret at `{workspace}/.openhands/secret.key`
-- the same secret is reused across all plugins and skill-scoped runtime roots
-- Agent Server startup always loads that file into `OH_SECRET_KEY`
-- `SESSION_API_KEY` remains per-process request authentication and is not used
-  for persistent conversation encryption
-
-This split matters because the selected skill can restart the cached Agent
-Server with a different `OH_CONVERSATIONS_PATH`. Persisted conversations only
-remain decryptable across those restarts when `OH_SECRET_KEY` is stable.
-
-### App Shutdown Contract
-
-App-exit cleanup is a selected-skill lifecycle concern, not a Refine-only
-cleanup path.
-
-Contract:
-
-1. release skill locks owned by the current app instance
-2. end workflow/runtime sessions owned by the current app instance
-3. pause or stop active OpenHands execution through the selected-skill cleanup
-   path
-4. shut down the cached Agent Server process
-
-The backend owns this flow through `graceful_shutdown`, which calls the runtime
-server-shutdown primitive. Server shutdown is graceful-first and only falls
-back to forced termination when the Agent Server does not exit within the
-bounded wait window.
 
 ### Throwaway Session
 
-Use a throwaway session when the result is a bounded derived artifact and the
-user is not expected to continue talking to that same OpenHands conversation.
+Use when the result is a bounded derived artifact and no later reply is expected.
 
 ```text
-product command
-  -> RunThrowawayOpenHandsSession
-  -> create conversation
-  -> send one task message
-  -> run to terminal state
-  -> parse result
+RunThrowawayOpenHandsSession  → create, run to completion, parse result
 ```
 
 Properties:
 
 - no saved `conversation_id`
-- no later user reply path
-- the product keeps only the parsed output or evaluation result
-- runtime files may be retained under `.openhands/throwaway/...` for debugging
-  or later cleanup without becoming resumable product state
+- runtime files may be kept for debugging but are not resumable product state
+- throwaway workspace lives at `{workspace}/.openhands/throwaway/{surface}/{run_id}/`
 
-## Session Ownership Model
+## Selected-Skill Bootstrap Contract
 
-### Workspace Ownership
+Selected-skill activation owns the persistent session bootstrap sequence:
 
-| Folder | Owner | Purpose |
+1. resolve the skill-scoped runtime root
+2. call `ensure_skill_session` with the saved `conversation_id` from the DB
+3. restore visible transcript history from the conversation events
+
+The runtime is skill-scoped: `OH_CONVERSATIONS_PATH` points at the selected skill's `conversations/` directory. Switching skills may restart the cached Agent Server when the conversations root changes. The DB is the durable source of truth for the saved `conversation_id`.
+
+See [optimistic-session-activation.md](optimistic-session-activation.md) for the async optimization of this sequence.
+
+## Active Skill Leave Contract
+
+Every UI path that leaves the current skill uses the same shared leave sequence:
+
+1. pause the current persistent conversation (`pause_openhands_session`)
+2. release the current skill lock
+3. clear app-level UI state
+
+The server stays alive after leave. The next skill's bootstrap calls `ensure_skill_session`, which reuses the running server if the conversations root matches or restarts it if the root changes.
+
+Failure policy:
+
+- if pause fails, the current skill stays visible and the next skill does not bootstrap
+- if lock release fails, the current skill stays visible and the next skill does not bootstrap
+
+## App Shutdown Contract
+
+1. release skill locks and end workflow sessions owned by the current app instance
+2. call `shutdown_agent_server` (graceful-first, forced-kill fallback after 5s)
+
+The `RunEvent::Exit` handler repeats lock release and server shutdown as a belt-and-suspenders safety net.
+
+## Stable Persistence Secret
+
+Persistent conversations depend on a workspace-level encryption key at `{workspace}/.openhands/secret.key`. This key is stable across Agent Server restarts. `SESSION_API_KEY` is separate — it is per-process request authentication only, not used for conversation encryption.
+
+## Workspace Ownership
+
+| Path | Owner | Purpose |
 |---|---|---|
-| `{data_dir}/workspace` | Rust startup/settings | App workspace root and pre-skill throwaway runs. |
-| `{workspace}/.openhands/secret.key` | Rust process lifecycle | Stable OpenHands persistence secret shared by all skills and throwaway surfaces in this app workspace. |
-| `{workspace}/{plugin_slug}/{skill_name}` | Rust product lifecycle | Skill-scoped working directory for Workflow and Refine. |
-| `{workspace_skill_dir}/.agents/agents` | Rust deployment | OpenHands file-based agent definitions. |
-| `{workspace_skill_dir}/.agents/skills` | Rust deployment | OpenHands AgentSkills. |
-| `{workspace_skill_dir}/conversations` | Rust + Agent Server | Persistent conversation storage for the skill. |
-| `{workspace_skill_dir}/logs` | Rust | App logs and transcripts. |
-
-### Throwaway runtime workspaces
-
-Throwaway runs still need a full OpenHands runtime workspace. They should not
-reuse a skill-owned workspace directory or skill-owned `conversations/`
-directory.
-
-They still use the same top-level OpenHands agent identity as persistent
-surfaces: `skill-creator`. The distinction is runtime workspace ownership,
-resumability, and retention policy, not a different main agent.
-
-Recommended shape:
-
-```text
-{workspace}/.openhands/throwaway/{surface}/{run_id}/
-  .agents/
-    agents/
-    skills/
-  conversations/
-  logs/
-```
-
-Rules:
-
-- throwaway runs get their own runtime directory outside
-  `{workspace}/{plugin_slug}/{skill_name}`
-- `.agents/agents` and `.agents/skills` are deployed into that throwaway run
-  directory the same way they are for persistent skill workspaces
-- throwaway conversations are stored under that run directory's
-  `conversations/`
-- throwaway runs are not saved in normal skill conversation state and are not
-  resumable from product state
-- throwaway artifacts may still be retained for debugging and cleaned up later
-  by retention policy
-
-### Current implementation status
-
-The current branch implements the split like this:
-
-- selected-skill activation validates saved session state, restores compatible
-  history, clears stale saved ids, and prepares the persistent OpenHands
-  conversation for the active skill
-- workflow steps and `run_answer_evaluator` dispatch against the selected
-  skill-scoped conversation
-- refine turns dispatch against that same selected persistent conversation
-- Eval Workbench scenario definition uses isolated
-  `.openhands/throwaway/eval-workbench/...` runtime roots and does not save a
-  resumable product conversation id
-- scope review uses isolated
-  `.openhands/throwaway/...` runtime roots and do not save resumable product
-  conversation ids
-- the frontend and backend both expose performance-only scenario authoring; old
-  trigger-mode database rows are flattened during migration and unsupported
-  legacy scenario files now fail loudly instead of disappearing silently
-
-### Agent Server Ownership
-
-Rust owns Agent Server process lifecycle:
-
-- bind on a random loopback port
-- configure workspace and conversation roots
-- provide a stable OpenHands persistence secret
-- manage auth when supported by the installed server
-- shut the process down with the owning app or skill lifecycle
-
-### OpenHands Secret Persistence
-
-Persistent OpenHands conversation state is encrypted with a stable workspace
-secret:
-
-- the secret is stored once at `{workspace}/.openhands/secret.key`
-- the same secret is reused across all skills and throwaway runtime roots in
-  that app workspace
-- `OH_SECRET_KEY` is loaded from that file on every Agent Server start
-- `SESSION_API_KEY` remains per-process and is not used as the persistence
-  encryption key
-
-This stability matters because saved OpenHands conversations become
-undecryptable if the persistence key rotates between server restarts.
-
-### Graceful Shutdown Contract
-
-App-exit cleanup is a product-layer lifecycle command backed by the runtime
-process primitive `ShutdownOpenHandsServer`:
-
-1. release selected-skill locks and end workflow sessions owned by the current
-   app instance
-2. request graceful OpenHands Agent Server shutdown
-3. allow a bounded wait for clean exit
-4. fall back to forced process termination only if graceful shutdown fails
-
-Persistent conversation reuse after app restart depends on three stable inputs:
-
-- the skill-scoped `OH_CONVERSATIONS_PATH`
-- the saved `conversation_id` in `skill_conversations`
-- the stable workspace `OH_SECRET_KEY`
-
-OpenHands owns:
-
-- conversation execution
-- run/pause behavior
-- event streaming
-- on-disk conversation state inside the configured conversations root
+| `{workspace}/.openhands/secret.key` | Rust process lifecycle | Stable persistence key across all skills. |
+| `{workspace}/{plugin_slug}/{skill_name}` | Rust product lifecycle | Skill-scoped working directory. |
+| `{workspace_skill_dir}/conversations` | Rust + Agent Server | Persistent conversation storage. |
+| `{workspace}/.openhands/throwaway/{surface}/{run_id}` | Rust | Isolated throwaway runtime roots. |
 
 ## Agent Construction Contract
 
-### Main Agent
-
-Skill Builder uses one top-level OpenHands agent identity: `skill-creator`.
+Skill Builder uses one top-level agent identity: `skill-creator`.
 
 | Input | Source | OpenHands destination |
 |---|---|---|
 | main agent instructions | `agent-sources/workspace/agents/skill-creator.md` | `agent_context.system_message_suffix` |
 | file-based skills | `agent-sources/workspace/skills/**` | `agent_context.skills` |
-| per-message suffix | `agent-sources/prompts/skill-creator-user-suffix.txt` | `agent_context.user_message_suffix` |
-| task prompt | `agent-sources/prompts/*.txt` | message/event content |
-| tools | backend runtime policy | `agent.tools` + `include_default_tools` |
+| per-message suffix | `SKILL_CREATOR_USER_SUFFIX` (`agents/skill_creator.rs`) | `agent_context.user_message_suffix` |
+| task prompt | rendered by each product command | message content |
+| tools | `allowed_tools` in `SkillCreatorConfigParams` | `agent.tools` |
 
-### Subagents
+See [tools-included.md](tools-included.md) for tool policy.
 
-Named subagents are runtime inputs, not frontend concepts.
+## `step_id` Convention
 
-- default subagent capability is exposed through `task_tool_set`
-- named agents such as `skill-verifier` are sent through
-  `agent_definitions` when a prompt may invoke them
+| Context | `step_id` |
+|---|---|
+| Workflow step 0–3 | `0`, `1`, `2`, `3` |
+| Answer evaluator | `-1` |
+| Workspace (refine) | `-10` |
 
-### Tools
-
-The default tool policy for OpenHands requests lives in the child doc:
-
-- [tools-included.md](tools-included.md)
+Cost and usage queries group by `skill_name + step_id`. A per-invocation session ID is not needed.
 
 ## Active Product Surface Mapping
 
 ### Persistent surfaces
 
-| Product surface | Product command | OpenHands primitive mapping | Notes |
-|---|---|---|---|
-| Selected skill activation | `select_skill_openhands_session` | persistent session preparation | Restores compatible history, clears stale saved ids, and prepares the persistent OpenHands conversation for the active skill |
-| Workflow step execution | `run_workflow_step` | `OpenHandsSendMessage` | Step-oriented UI, but reuses the selected skill's persistent conversation |
-| Workflow gate evaluation | `run_answer_evaluator` | `OpenHandsSendMessage` | Part of the same workflow conversation, not a disposable side run |
-| Refine chat turn | `send_refine_message` | `OpenHandsSendMessage` | Sends the next user turn into the selected persistent session |
-| Selected-skill pause on switch/exit | `pause_openhands_session` | `PauseOpenHandsSession` | Shared lifecycle cleanup for switch-away and app shutdown |
+| Surface | Product command | Primitive path |
+|---|---|---|
+| Skill activation | `select_skill_openhands_session` | `ensure_skill_session` → restore history |
+| Workflow step | `run_workflow_step` | `OpenHandsSendMessage` |
+| Workflow gate | `run_answer_evaluator` | `OpenHandsSendMessage` |
+| Refine turn | `send_refine_message` | `OpenHandsSendMessage` |
+| Skill leave | `pause_openhands_session` | `PauseOpenHandsSession` |
 
 ### Throwaway surfaces
 
-| Product surface | Product command | OpenHands primitive mapping | Notes |
-|---|---|---|---|
-| Create Skill scope validation | `review_skill_scope` | `RunThrowawayOpenHandsSession` | Bounded validation run, no later reply path |
-| Eval scenario definition | `define_eval_scenario` | `RunThrowawayOpenHandsSession` | Bounded scenario-authoring assist run that must not overwrite the saved skill conversation |
+| Surface | Product command | Primitive path |
+|---|---|---|
+| Scope validation | `review_skill_scope` | `RunThrowawayOpenHandsSession` |
+| Eval scenario definition | `define_eval_scenario` | `RunThrowawayOpenHandsSession` |
 
 ## Workflow Prompt Routing
 
-Workflow-specific runtime behavior is selected by app-owned prompt templates and
-task metadata, not by switching top-level agents.
-
-| Operation | Prompt | Task kind |
-|---|---|---|
-| scope validation | `scope-review.txt` | `scope_review` |
-| step 0 research | `research.txt` | `workflow.research` |
-| step 1 detailed research | `detailed-research.txt` | `workflow.detailed_research` |
-| answer evaluation | `answer-evaluator.txt` | `workflow.answer_evaluation` |
-| step 2 confirm decisions | `confirm_decisions.txt` | `workflow.decision_confirmation` |
-| step 3 generate skill | `skill-generation.txt` | `workflow.skill_generation` |
-
-This keeps the runtime model stable while allowing task behavior to vary by
-product operation.
+| Step | Task kind |
+|---|---|
+| Scope validation | `scope_review` |
+| Step 0 research | `workflow.research` |
+| Step 1 detailed research | `workflow.detailed_research` |
+| Answer evaluation | `workflow.answer_evaluator` |
+| Step 2 confirm decisions | `workflow.confirm_decisions` |
+| Step 3 generate skill | `workflow.skill_generation` |
+| Refine turn | `refine` |
 
 ## Event Model
 
-The backend normalizes OpenHands events into app-owned envelopes.
-
 | OpenHands event | Skill Builder event |
 |---|---|
-| conversation created / running | `conversation_state(status = "running")` |
-| message/tool/action/observation event | `conversation_event` |
-| completed run | terminal `conversation_state(status = "completed")` |
-| errored run | terminal `conversation_state(status = "error")` |
-| paused or cancelled run | terminal `conversation_state(status = "cancelled")` or pause-specific lifecycle handling |
+| running | `conversation_state(status = "running")` |
+| message / tool / action / observation | `conversation_event` |
+| completed | terminal `conversation_state(status = "completed")` |
+| error | terminal `conversation_state(status = "error")` |
+| paused / cancelled | terminal `conversation_state(status = "cancelled")` |
 
-This app-facing event model stays stable even if the internal OpenHands
-transport details evolve.
+## Child Docs
 
-## Relationship To Existing Design Specs
-
-| Spec | Relationship |
+| Doc | Purpose |
 |---|---|
-| `docs/design/product-architecture/README.md` | Product-level entrypoint. This doc is the canonical runtime-model detail page. |
-| `docs/design/model-settings/README.md` | Defines the app-owned `llm` configuration contract that this runtime consumes when building OpenHands requests. |
-| `docs/design/workflow-artifact-storage/README.md` | Owns artifact persistence boundaries above this runtime model. |
-| `docs/design/skill-scope-review/README.md` | Owns create-skill behavior. This doc defines the runtime shape that behavior uses. |
-| `docs/design/openhands-event-display-projection/README.md` | Consumes the event model defined here for UI projection. |
-
-## Dead Code Cleanup
-
-The branch already removed the old description-surface commands and UI. The
-remaining cleanup residue is narrower:
-
-- trigger-mode Eval Workbench runtime/data paths that still exist even though
-  the current frontend live surface is performance-only
-- product-layer persistent-turn helpers that still duplicate session-selection
-  logic already implied by the runtime primitive layer
-
-## Key Source Files
-
-| File | Purpose |
-|---|---|
-| `app/src-tauri/src/agents/openhands_server/mod.rs` | OpenHands runtime primitives, persistence policy, event orchestration, and throwaway/persistent session helpers. |
-| `app/src-tauri/src/agents/openhands_server/process.rs` | Agent Server process lifecycle and environment wiring. |
-| `app/src-tauri/src/agents/openhands_server/types.rs` | OpenHands request shape, tool list, suffix wiring, and agent definitions. |
-| `app/src-tauri/src/agents/runtime_config.rs` | Backend-owned request/config builder used by product commands. |
-| `app/src-tauri/src/skill_paths.rs` | Runtime workspace path resolution for persistent skill workspaces and implemented throwaway runtime directories. |
-| `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow product command orchestration. |
-| `app/src-tauri/src/commands/refine/mod.rs` | Refine product command orchestration and restore/event helpers. |
-| `app/src-tauri/src/commands/skill_session.rs` | Selected-skill OpenHands session bootstrap and pause command surface. |
-| `app/src-tauri/src/commands/skill/scope_review.rs` | Create-skill scope validation command. |
-| `app/src-tauri/src/commands/eval_workbench/mod.rs` | Eval Workbench command surface and runtime call sites. |
-| `agent-sources/workspace/agents/skill-creator.md` | Main-agent instruction source. |
-| `agent-sources/workspace/skills/` | Bundled AgentSkills deployed into `.agents/skills`. |
-| `agent-sources/prompts/` | App-owned task prompts rendered by the backend. |
-
-## Remaining Cleanup Direction
-
-- Remove the retained Eval Workbench trigger/runtime residue or re-promote it to
-  a live surface explicitly; the current branch still has backend/data-model
-  branches that the frontend no longer exposes.
+| [skill-creator-config-unification.md](skill-creator-config-unification.md) | Spec for `agents/skill_creator.rs` — the unified Layer 2 config model. |
+| [send-turn-semantics.md](send-turn-semantics.md) | Contract for `OpenHandsSendMessage` — turn envelope, recovery, and transcript consistency. |
+| [optimistic-session-activation.md](optimistic-session-activation.md) | Async skill bootstrap optimization: navigate before server ready. |
+| [tools-included.md](tools-included.md) | Tool policy for OpenHands requests. |
+| [implementation-gaps.md](implementation-gaps.md) | Gaps between the target design and the current codebase. |
