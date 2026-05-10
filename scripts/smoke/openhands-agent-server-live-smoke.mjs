@@ -100,6 +100,7 @@ try {
   const socketDone = waitForSocketTerminal(socket, observed);
   await waitForSocketOpen(socket);
   socket.send(JSON.stringify({ type: "auth", session_api_key: sessionApiKey }));
+  await sendUserMessage(port, sessionApiKey, conversationId);
   await runConversation(port, sessionApiKey, conversationId);
   await socketDone;
 
@@ -178,16 +179,6 @@ async function createConversation({
       kind: "LocalWorkspace",
       working_dir: workspace,
     },
-    initial_message: {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "Smoke test. Inspect README.md, then finish with exactly SMOKE_OK.",
-        },
-      ],
-      run: false,
-    },
     max_iterations: 8,
     stuck_detection: true,
     confirmation_policy: {
@@ -221,6 +212,22 @@ async function createConversation({
   return await apiFetch(port, sessionApiKey, "/api/conversations", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+async function sendUserMessage(port, sessionApiKey, conversationId) {
+  await apiFetch(port, sessionApiKey, `/api/conversations/${conversationId}/events`, {
+    method: "POST",
+    body: JSON.stringify({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Smoke test. Inspect README.md, then finish with exactly SMOKE_OK.",
+        },
+      ],
+      run: false,
+    }),
   });
 }
 
@@ -280,8 +287,8 @@ function normalizeBlank(value) {
 }
 
 function normalizeOpenHandsModel(model, baseUrl) {
-  if (baseUrl && model.startsWith("opencode-go/")) {
-    return `openai/${model.slice("opencode-go/".length)}`;
+  if (baseUrl && (model.startsWith("opencode-go/") || model.startsWith("opencode/"))) {
+    return `openai/${model.slice(model.indexOf("/") + 1)}`;
   }
   return model;
 }
