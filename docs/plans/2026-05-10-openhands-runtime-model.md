@@ -743,15 +743,15 @@ git commit -m "refactor: delegate workflow config builders to skill_creator (Gap
 
 ---
 
-## PR 5b — Consolidate server artifacts to workspace root; add `OH_BASH_EVENTS_DIR`; remove skill-switch restart
+## PR 6 — Consolidate OH artifacts to workspace root; remove skill-switch server stop (Gaps 6 + 11)
 
-**Goal:** All persistent OpenHands server artifacts (`conversations/`, `bash_events/`, `logs/`) land under `{workspace_root}/.openhands/` rather than being split across per-skill directories. The server's env vars (`OH_CONVERSATIONS_PATH`, `OH_BASH_EVENTS_DIR`) are derived from the workspace root, not from the skill directory. Because the artifact root no longer changes between skill switches, the skill-switch server restart is eliminated.
+**Goal:** Two halves of the same observable fix — the server stays alive across skill switches. Phase 1 removes the backend restart condition (workspace-scoped artifact paths, no path-comparison restart). Phase 2 removes the frontend explicit stop (`stopOpenHandsServer` in `leaveCurrentSkill`). Both halves are required for the smoke test to pass; all backend unit tests run before Phase 2 begins.
 
-**Architecture:** All changes are in `app/src-tauri/src/agents/openhands_server/process.rs` (path helpers, env setup, handle struct, lifecycle logic) and the five call sites in `app/src-tauri/src/agents/openhands_server/mod.rs` (pass `workspace_root_dir` instead of `workspace_skill_dir`). No frontend changes.
+**Architecture:** Phase 1 touches `app/src-tauri/src/agents/openhands_server/process.rs` (path helpers, env setup, handle struct, lifecycle logic) and the five call sites in `app/src-tauri/src/agents/openhands_server/mod.rs`. Phase 2 touches `app/src/lib/active-skill-transition.ts`, `app/src-tauri/src/commands/runtime_lifecycle.rs`, and `app/src-tauri/src/lib.rs`.
 
-**Background — why the server restarts today:** `ensure_agent_server` stores `conversations_path` (derived from `workspace_skill_dir`) in `OpenHandsAgentServerHandle` and restarts whenever that path differs from the incoming request's path. Switching skills changes `workspace_skill_dir` → changes `conversations_path` → forces restart. After this PR, all paths are derived from `workspace_root`, which is stable across skills. The restart condition is removed.
+**Background — why the server restarts today:** `ensure_agent_server` stores `conversations_path` (derived from `workspace_skill_dir`) in `OpenHandsAgentServerHandle` and restarts whenever that path differs from the incoming request's path. Switching skills changes `workspace_skill_dir` → changes `conversations_path` → forces restart. After Phase 1, all paths are derived from `workspace_root`, which is stable across skills. The restart condition is removed. After Phase 2, `leaveCurrentSkill` no longer calls `stopOpenHandsServer()`, removing the frontend's explicit kill.
 
-**Path layout after this PR:**
+**Path layout after Phase 1:**
 
 | Path | Purpose |
 |---|---|
@@ -760,11 +760,15 @@ git commit -m "refactor: delegate workflow config builders to skill_creator (Gap
 | `{workspace_root}/.openhands/logs/` | Server stderr logs |
 | `{workspace_root}/.openhands/secret.key` | Stable encryption key (unchanged) |
 
-**How `workspace_root` reaches `ensure_agent_server`:** `OpenHandsRuntimeRequest` has two path fields: `workspace_root_dir` (the workspace root, e.g. `/workspace`) and `workspace_skill_dir` (the skill dir, e.g. `/workspace/default/skills/my-skill`). Currently callers pass `request.runtime_run_dir()` (which returns `workspace_skill_dir`) to `ensure_agent_server`. After this PR they pass `Path::new(&request.workspace_root_dir)` instead.
+**How `workspace_root` reaches `ensure_agent_server`:** `OpenHandsRuntimeRequest` has two path fields: `workspace_root_dir` (the workspace root, e.g. `/workspace`) and `workspace_skill_dir` (the skill dir, e.g. `/workspace/default/skills/my-skill`). Currently callers pass `request.runtime_run_dir()` (which returns `workspace_skill_dir`) to `ensure_agent_server`. After Phase 1 they pass `Path::new(&request.workspace_root_dir)` instead.
 
 ---
 
-### Task 5b.1 — Update path helper functions
+### Phase 1 — Backend: workspace-root artifact paths, `OH_BASH_EVENTS_DIR`, no skill-switch restart
+
+All unit tests for Phase 1 must pass before starting Phase 2.
+
+### Task 6.1 — Update path helper functions
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
@@ -951,7 +955,7 @@ Expected: All pass. (Some compilation errors from handle/ensure callers are expe
 
 ---
 
-### Task 5b.2 — Update `apply_session_env`
+### Task 6.2 — Update `apply_session_env`
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
@@ -1045,7 +1049,7 @@ Expected: All four tests PASS.
 
 ---
 
-### Task 5b.3 — Remove `conversations_path` from `OpenHandsAgentServerHandle`
+### Task 6.3 — Remove `conversations_path` from `OpenHandsAgentServerHandle`
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
@@ -1077,7 +1081,7 @@ pub struct OpenHandsAgentServerHandle {
 
 ---
 
-### Task 5b.4 — Update `ensure_agent_server` — remove skill-switch restart
+### Task 6.4 — Update `ensure_agent_server` — remove skill-switch restart
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
@@ -1168,7 +1172,7 @@ pub async fn ensure_agent_server(
 
 ---
 
-### Task 5b.5 — Update `OpenHandsAgentServerProcess::start` and `start_once`
+### Task 6.5 — Update `OpenHandsAgentServerProcess::start` and `start_once`
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
@@ -1246,11 +1250,11 @@ The body after `let log_file = open_server_log_file(workspace_root).await;` is u
 cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -15
 ```
 
-Expected: All tests pass. (If `mod.rs` callers cause a compile error, proceed to Task 5b.6 first.)
+Expected: All tests pass. (If `mod.rs` callers cause a compile error, proceed to Task 6.6 first.)
 
 ---
 
-### Task 5b.6 — Update callers in `mod.rs`
+### Task 6.6 — Update callers in `mod.rs`
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
@@ -1293,7 +1297,7 @@ Expected: No errors.
 
 ---
 
-### Task 5b.7 — Update remaining tests and run full suite
+### Task 6.7 — Update remaining tests and run full suite
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
@@ -1351,52 +1355,17 @@ cd app/src-tauri && cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D 
 
 Expected: Clean.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Intermediate commit (Phase 1)**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/process.rs \
         app/src-tauri/src/agents/openhands_server/mod.rs
-git commit -m "refactor: consolidate OH artifacts to workspace root, add OH_BASH_EVENTS_DIR, remove skill-switch restart"
+git commit -m "refactor: consolidate OH artifacts to workspace root, add OH_BASH_EVENTS_DIR, remove backend skill-switch restart"
 ```
 
-**Manual smoke:**
+All backend unit tests now pass. Proceed to Phase 2. Manual smoke runs after Phase 2 — the server-stays-alive invariant requires both halves.
 
-> E2E tests mock Tauri commands and cannot verify real server lifecycle or filesystem state. Run these manually against the live app.
-
-**Smoke 1 — Server PID unchanged across skill switch (core PR5b invariant)**
-
-1. Start the app, open skill A
-2. Record the server PID:
-   ```bash
-   ps aux | grep openhands-agent-server | grep -v grep
-   ```
-3. Switch to skill B
-4. Run the same `ps aux` command again
-5. **Verify:** PID is **unchanged**. No server restart flash in the UI.
-
-**Smoke 2 — Message in skill B after switching**
-
-1. After Smoke 1, send a message in skill B's Refine/Chat tab
-2. **Verify:** Agent responds normally. Full transcript replays. No errors in Rust logs.
-
-**Smoke 3 — Artifacts on disk are under workspace root**
-
-1. After Smoke 2, find your workspace root (default: `~/.vibedata/`)
-2. Check the filesystem:
-   ```bash
-   ls ~/.vibedata/.openhands/conversations/
-   ls ~/.vibedata/.openhands/bash_events/
-   ```
-3. **Verify:** Both directories exist and contain entries. No `conversations/` directory exists under `~/.vibedata/{plugin}/skills/{skill_name}/`.
-
-**Smoke 4 — Conversation survives app quit + restart**
-
-1. Send a message in skill A, wait for the response to complete
-2. Quit the app completely (Cmd+Q)
-3. Restart the app, open skill A
-4. **Verify:** Previous conversation transcript is restored. No errors.
-
-**Failure triage**
+**Phase 1 failure triage**
 
 | Symptom | Likely cause |
 |---|---|
@@ -1404,15 +1373,15 @@ git commit -m "refactor: consolidate OH artifacts to workspace root, add OH_BASH
 | `OH_CONVERSATIONS_PATH` points to skill dir | Call site in `mod.rs` still passes `runtime_run_dir()` instead of `workspace_root_dir` |
 | `OH_BASH_EVENTS_DIR` not set | `apply_session_env` call in `start_once` missing fifth argument |
 | Conversation not restored after restart | `secret.key` path wrong, or conversations dir not under `.openhands/` at workspace root |
-| Compile error on handle construction | `conversations_path` field still present — Task 5b.3 not applied |
+| Compile error on handle construction | `conversations_path` field still present — Task 6.3 not applied |
 
 ---
 
-## PR 6 — Remove `stopOpenHandsServer` from `leaveCurrentSkill` (Gap 6)
+### Phase 2 — Frontend: remove explicit server stop
 
-**Goal:** Server stays alive between skill switches.
+Phase 1 unit tests must all pass before starting here.
 
-### Task 6.1: Frontend — remove `stopOpenHandsServer` call
+### Task 6.8 — Remove `stopOpenHandsServer` from `leaveCurrentSkill`
 
 **Files:**
 - Modify: `app/src/lib/active-skill-transition.ts`
@@ -1430,7 +1399,7 @@ No server stop.
 
 Remove the `stopOpenHandsServer` import if no longer used.
 
-### Task 6.2: Backend — delete `stop_openhands_server` Tauri command
+### Task 6.9 — Delete the `stop_openhands_server` Tauri command
 
 **Files:**
 - Modify: `app/src-tauri/src/commands/runtime_lifecycle.rs`
@@ -1472,10 +1441,45 @@ Expected: Clean.
 
 ```bash
 git add app/src/lib/active-skill-transition.ts app/src-tauri/src/commands/runtime_lifecycle.rs app/src-tauri/src/lib.rs
-git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill (Gap 6)"
+git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete dead Tauri command (Gap 6)"
 ```
 
-**Manual smoke:** Open a skill, then switch to a different skill. Verify the switch is fast (no server restart flash). Send a message in the new skill, verify it works.
+**Manual smoke — full integration (both phases required)**
+
+> E2E tests mock Tauri commands and cannot verify real server lifecycle or filesystem state. Run these manually against the live app after both Phase 1 and Phase 2 commits are in.
+
+**Smoke 1 — Server PID unchanged across skill switch**
+
+1. Start the app, open skill A
+2. Record the server PID:
+   ```bash
+   ps aux | grep openhands-agent-server | grep -v grep
+   ```
+3. Switch to skill B
+4. Run the same `ps aux` command again
+5. **Verify:** PID is **unchanged**. No server restart flash in the UI.
+
+**Smoke 2 — Message in skill B after switching**
+
+1. After Smoke 1, send a message in skill B's Refine/Chat tab
+2. **Verify:** Agent responds normally. Full transcript replays. No errors in Rust logs.
+
+**Smoke 3 — Artifacts on disk are under workspace root**
+
+1. After Smoke 2, find your workspace root (default: `~/.vibedata/`)
+2. Check the filesystem:
+   ```bash
+   ls ~/.vibedata/.openhands/conversations/
+   ls ~/.vibedata/.openhands/bash_events/
+   ```
+3. **Verify:** Both directories exist and contain entries. No `conversations/` directory exists under `~/.vibedata/{plugin}/skills/{skill_name}/`.
+
+**Smoke 4 — Conversation survives app quit + restart**
+
+1. Send a message in skill A, wait for the response to complete
+2. Quit the app completely (Cmd+Q)
+3. Restart the app, open skill A
+4. **Verify:** Previous conversation transcript is restored. No errors.
 
 ---
 
@@ -1817,8 +1821,7 @@ Execute PRs sequentially in order 1→9. Each PR must pass all automated tests a
 | 3 | Rename `Refine*` → `Skill*` | `cargo test` (all) | Open refine, send message |
 | 4 | Move Layer 2 out of `refine/mod.rs` | `cargo test` (all), clippy | Open refine, send message, switch skills |
 | 5 | Delete duplicate workflow config | `cargo test commands::workflow`, clippy | Run workflow steps 0-3, answer evaluator |
-| 5b | Consolidate artifacts to workspace root + `OH_BASH_EVENTS_DIR` + remove skill-switch restart | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → PID unchanged; verify `.openhands/conversations/` and `.openhands/bash_events/` exist |
-| 6 | Remove `stopOpenHandsServer` | `cargo test`, `npm run test:unit` | Switch skills, verify fast |
+| 6 | Consolidate OH artifacts to workspace root + `OH_BASH_EVENTS_DIR` + remove skill-switch restart (backend) + remove `stopOpenHandsServer` (frontend) | `cargo test agents::openhands_server`, full cargo test, `npm run test:unit`, clippy | Switch skills → PID unchanged; verify `.openhands/conversations/` and `.openhands/bash_events/` exist; send message in new skill |
 | 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → resume conversation → verify full transcript replays |
 | 7 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
 | 9 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
