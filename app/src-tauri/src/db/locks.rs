@@ -62,6 +62,7 @@ pub fn acquire_skill_lock_by_skill_id(
     result
 }
 
+#[allow(dead_code)]
 pub fn acquire_skill_lock(
     conn: &Connection,
     skill_name: &str,
@@ -86,6 +87,7 @@ pub fn release_skill_lock_by_skill_id(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn release_skill_lock(
     conn: &Connection,
     skill_name: &str,
@@ -132,6 +134,7 @@ pub fn get_skill_lock_by_skill_id(
     }
 }
 
+#[allow(dead_code)]
 pub fn get_skill_lock(
     conn: &Connection,
     skill_name: &str,

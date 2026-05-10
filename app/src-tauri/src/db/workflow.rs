@@ -158,6 +158,7 @@ pub fn get_purpose_by_skill_id(conn: &Connection, skill_id: i64) -> Result<Strin
     })
 }
 
+#[allow(dead_code)]
 pub fn get_purpose(conn: &Connection, skill_name: &str) -> Result<String, String> {
     get_workflow_run(conn, skill_name).map(|opt| {
         opt.map(|run| run.purpose)
@@ -395,6 +396,7 @@ pub fn create_workflow_session_by_skill_id(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn create_workflow_session(
     conn: &Connection,
     session_id: &str,

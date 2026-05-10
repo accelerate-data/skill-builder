@@ -13,6 +13,7 @@ pub fn start_session_by_skill_id(
     crate::db::create_workflow_session_by_skill_id(conn, session_id, skill_id, pid)
 }
 
+#[allow(dead_code)]
 pub fn start_session(
     conn: &Connection,
     session_id: &str,

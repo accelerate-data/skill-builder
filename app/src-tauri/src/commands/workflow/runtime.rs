@@ -595,6 +595,7 @@ async fn run_workflow_step_inner(
     Ok(agent_id)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
