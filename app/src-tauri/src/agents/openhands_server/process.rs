@@ -53,10 +53,16 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
     }
 }
 
-/// Resolve the absolute path the OpenHands SDK should persist conversation
-/// state and per-event JSON to for a specific runtime run directory.
-pub(crate) fn compute_conversations_path(runtime_run_dir: &Path) -> PathBuf {
-    runtime_run_dir.join("conversations")
+/// Absolute path where the OpenHands SDK should persist conversation state
+/// for this workspace. All skills share this directory; per-skill isolation
+/// comes from `workspace.working_dir` in each conversation's REST request body.
+pub(crate) fn compute_conversations_path(workspace_root: &Path) -> PathBuf {
+    workspace_root.join(".openhands").join("conversations")
+}
+
+/// Absolute path where the OpenHands server persists bash event logs for this workspace.
+pub(crate) fn compute_bash_events_path(workspace_root: &Path) -> PathBuf {
+    workspace_root.join(".openhands").join("bash_events")
 }
 
 fn apply_session_env(
@@ -64,6 +70,7 @@ fn apply_session_env(
     session_api_key: &str,
     openhands_secret_key: &str,
     conversations_path: Option<&str>,
+    bash_events_path: Option<&str>,
 ) {
     cmd.env("SESSION_API_KEY", session_api_key)
         .env("OH_SESSION_API_KEYS_0", session_api_key)
@@ -71,40 +78,17 @@ fn apply_session_env(
     if let Some(p) = conversations_path {
         cmd.env("OH_CONVERSATIONS_PATH", p);
     }
-}
-
-fn workspace_root_for_runtime_run_dir(runtime_run_dir: &Path) -> Option<PathBuf> {
-    for ancestor in runtime_run_dir.ancestors() {
-        let Some(name) = ancestor.file_name().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        if name == ".openhands" {
-            return ancestor.parent().map(Path::to_path_buf);
-        }
-        if name == "skills" {
-            return ancestor
-                .parent()
-                .and_then(Path::parent)
-                .map(Path::to_path_buf);
-        }
+    if let Some(p) = bash_events_path {
+        cmd.env("OH_BASH_EVENTS_DIR", p);
     }
-    None
 }
 
-fn openhands_secret_path(runtime_run_dir: &Path) -> Result<PathBuf, String> {
-    let workspace_root = workspace_root_for_runtime_run_dir(runtime_run_dir).ok_or_else(|| {
-        format!(
-            "Failed to determine workspace root from OpenHands runtime dir {}",
-            runtime_run_dir.display()
-        )
-    })?;
-    Ok(workspace_root
-        .join(".openhands")
-        .join(OPENHANDS_SECRET_FILENAME))
+fn openhands_secret_path(workspace_root: &Path) -> PathBuf {
+    workspace_root.join(".openhands").join(OPENHANDS_SECRET_FILENAME)
 }
 
-fn read_or_create_openhands_secret(runtime_run_dir: &Path) -> Result<String, String> {
-    let secret_path = openhands_secret_path(runtime_run_dir)?;
+fn read_or_create_openhands_secret(workspace_root: &Path) -> Result<String, String> {
+    let secret_path = openhands_secret_path(workspace_root);
     if let Ok(existing) = fs::read_to_string(&secret_path) {
         let trimmed = existing.trim();
         if !trimmed.is_empty() {
@@ -148,7 +132,6 @@ fn read_or_create_openhands_secret(runtime_run_dir: &Path) -> Result<String, Str
 pub struct OpenHandsAgentServerHandle {
     pub port: u16,
     pub session_api_key: String,
-    pub conversations_path: String,
     pub stderr_tail: Arc<AsyncMutex<VecDeque<String>>>,
 }
 
@@ -284,12 +267,9 @@ fn release_stale_conversation_leases(conversations_path: &Path) {
 
 pub async fn ensure_agent_server(
     timeout: Duration,
-    runtime_run_dir: &Path,
+    workspace_root: &Path,
 ) -> Result<OpenHandsAgentServerHandle, String> {
     let mut registry = agent_server_registry().lock().await;
-    let conversations_path = compute_conversations_path(runtime_run_dir)
-        .to_string_lossy()
-        .into_owned();
     if let Some(server) = registry.as_mut() {
         let process_running = server.process.is_running();
         let health_result = if process_running {
@@ -300,17 +280,8 @@ pub async fn ensure_agent_server(
         } else {
             Err("cached process is not running".to_string())
         };
-        if server.handle.conversations_path == conversations_path
-            && should_reuse_cached_server(process_running, health_result.clone())
-        {
+        if should_reuse_cached_server(process_running, health_result.clone()) {
             return Ok(server.handle.clone());
-        }
-        if server.handle.conversations_path != conversations_path {
-            log::info!(
-                "[openhands-agent-server] restarting cached server because conversations root changed: {} -> {}",
-                server.handle.conversations_path,
-                conversations_path
-            );
         }
         if let Err(error) = &health_result {
             log::warn!(
@@ -321,19 +292,12 @@ pub async fn ensure_agent_server(
         *registry = None;
     }
 
-    // The OpenHands lease system gives each conversation a 45-second TTL lease
-    // tied to the server instance that created it. If the previous server was
-    // killed (SIGTERM without clean async teardown), leases are left on disk and
-    // the new server skips loading those conversations during startup, returning
-    // 404 for any resumed conversation. Clear stale leases after confirming the
-    // old process is dead so the fresh server loads all persisted conversations.
-    release_stale_conversation_leases(Path::new(&conversations_path));
+    release_stale_conversation_leases(&compute_conversations_path(workspace_root));
 
-    let process = OpenHandsAgentServerProcess::start(timeout, runtime_run_dir).await?;
+    let process = OpenHandsAgentServerProcess::start(timeout, workspace_root).await?;
     let handle = OpenHandsAgentServerHandle {
         port: process.port,
         session_api_key: process.session_api_key.clone(),
-        conversations_path,
         stderr_tail: Arc::clone(&process.stderr_tail),
     };
     *registry = Some(ManagedOpenHandsAgentServer {
@@ -352,10 +316,10 @@ pub async fn shutdown_agent_server() -> Result<(), String> {
 }
 
 impl OpenHandsAgentServerProcess {
-    pub async fn start(timeout: Duration, runtime_run_dir: &Path) -> Result<Self, String> {
+    pub async fn start(timeout: Duration, workspace_root: &Path) -> Result<Self, String> {
         let mut last_error = None;
         for attempt in 1..=5 {
-            match Self::start_once(timeout, runtime_run_dir).await {
+            match Self::start_once(timeout, workspace_root).await {
                 Ok(process) => return Ok(process),
                 Err(error) => {
                     log::warn!(
@@ -369,10 +333,10 @@ impl OpenHandsAgentServerProcess {
         Err(last_error.unwrap_or_else(|| "Failed to start OpenHands Agent Server".to_string()))
     }
 
-    async fn start_once(timeout: Duration, runtime_run_dir: &Path) -> Result<Self, String> {
+    async fn start_once(timeout: Duration, workspace_root: &Path) -> Result<Self, String> {
         let port = select_random_local_port()?;
         let session_api_key = uuid::Uuid::new_v4().to_string();
-        let openhands_secret_key = read_or_create_openhands_secret(runtime_run_dir)?;
+        let openhands_secret_key = read_or_create_openhands_secret(workspace_root)?;
         let command = OpenHandsServerCommand::new(port);
         let runtime_dir = tempfile::Builder::new()
             .prefix("openhands-agent-server-")
@@ -380,7 +344,10 @@ impl OpenHandsAgentServerProcess {
             .map_err(|e| format!("Failed to create OpenHands Agent Server runtime dir: {e}"))?;
         let mut tokio_command = command.tokio_command();
         tokio_command.current_dir(runtime_dir.path());
-        let conversations_path_str = compute_conversations_path(runtime_run_dir)
+        let conversations_path_str = compute_conversations_path(workspace_root)
+            .to_string_lossy()
+            .into_owned();
+        let bash_events_path_str = compute_bash_events_path(workspace_root)
             .to_string_lossy()
             .into_owned();
         apply_session_env(
@@ -388,12 +355,17 @@ impl OpenHandsAgentServerProcess {
             &session_api_key,
             &openhands_secret_key,
             Some(&conversations_path_str),
+            Some(&bash_events_path_str),
         );
         log::debug!(
             "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
             conversations_path_str
         );
-        let log_file = open_server_log_file(runtime_run_dir).await;
+        log::debug!(
+            "[openhands-agent-server] OH_BASH_EVENTS_DIR={}",
+            bash_events_path_str
+        );
+        let log_file = open_server_log_file(workspace_root).await;
         let stderr_secrets = vec![session_api_key.clone(), openhands_secret_key];
         let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(
             STDERR_TAIL_MAX_LINES,
@@ -511,10 +483,10 @@ impl OpenHandsAgentServerProcess {
     }
 }
 
-/// Opens a timestamped log file for a server instance under `{runtime_run_dir}/logs/`.
+/// Opens a timestamped log file for a server instance under `{workspace_root}/.openhands/logs/`.
 /// Best-effort: returns `None` on any IO error rather than failing the server start.
-async fn open_server_log_file(runtime_run_dir: &Path) -> Option<BufWriter<tokio::fs::File>> {
-    let logs_dir = runtime_run_dir.join("logs");
+async fn open_server_log_file(workspace_root: &Path) -> Option<BufWriter<tokio::fs::File>> {
+    let logs_dir = workspace_root.join(".openhands").join("logs");
     if let Err(e) = tokio::fs::create_dir_all(&logs_dir).await {
         log::warn!(
             "[openhands-agent-server] could not create log dir {}: {e}",
@@ -735,14 +707,22 @@ mod tests {
     }
 
     #[test]
-    fn compute_conversations_path_resolves_under_runtime_run_dir() {
-        let path = compute_conversations_path(Path::new(
-            "/tmp/workspace/default/skills/analyzing-bookings",
-        ));
+    fn compute_conversations_path_resolves_under_workspace_root_openhands_dir() {
+        let path = compute_conversations_path(Path::new("/tmp/workspace"));
         let s = path.to_string_lossy().replace('\\', "/");
         assert!(
-            s.ends_with("default/skills/analyzing-bookings/conversations"),
-            "expected path to end with the skill-scoped conversations suffix; got {s}",
+            s.ends_with(".openhands/conversations"),
+            "expected path to end with .openhands/conversations; got {s}",
+        );
+    }
+
+    #[test]
+    fn compute_bash_events_path_resolves_under_workspace_root_openhands_dir() {
+        let path = compute_bash_events_path(Path::new("/tmp/workspace"));
+        let s = path.to_string_lossy().replace('\\', "/");
+        assert!(
+            s.ends_with(".openhands/bash_events"),
+            "expected path to end with .openhands/bash_events; got {s}",
         );
     }
 
@@ -754,6 +734,7 @@ mod tests {
             "session-key-123",
             "stable-secret-456",
             Some("/tmp/test/conversations"),
+            Some("/tmp/test/bash_events"),
         );
         let envs: Vec<(String, String)> = cmd
             .as_std()
@@ -771,6 +752,12 @@ mod tests {
         );
         assert!(
             envs.iter()
+                .any(|(k, v)| k == "OH_BASH_EVENTS_DIR" && v == "/tmp/test/bash_events"),
+            "expected OH_BASH_EVENTS_DIR env var; got {:?}",
+            envs
+        );
+        assert!(
+            envs.iter()
                 .any(|(k, v)| k == "OH_SECRET_KEY" && v == "stable-secret-456"),
             "expected OH_SECRET_KEY env var; got {:?}",
             envs
@@ -780,47 +767,75 @@ mod tests {
     #[test]
     fn apply_session_env_omits_conversations_path_when_none() {
         let mut cmd = tokio::process::Command::new("/usr/bin/true");
-        apply_session_env(&mut cmd, "k", "s", None);
-        let has_it = cmd
+        apply_session_env(&mut cmd, "k", "s", None, None);
+        let has_conversations = cmd
             .as_std()
             .get_envs()
             .any(|(k, _)| k.to_string_lossy() == "OH_CONVERSATIONS_PATH");
         assert!(
-            !has_it,
+            !has_conversations,
             "OH_CONVERSATIONS_PATH should be absent when path is None"
+        );
+        let has_bash_events = cmd
+            .as_std()
+            .get_envs()
+            .any(|(k, _)| k.to_string_lossy() == "OH_BASH_EVENTS_DIR");
+        assert!(
+            !has_bash_events,
+            "OH_BASH_EVENTS_DIR should be absent when path is None"
         );
     }
 
     #[test]
-    fn workspace_root_for_runtime_run_dir_resolves_skill_workspace_root() {
-        let root = workspace_root_for_runtime_run_dir(Path::new(
-            "/tmp/workspace/default/skills/petstore-sales",
-        ))
-        .expect("workspace root");
-        assert_eq!(root, PathBuf::from("/tmp/workspace"));
+    fn apply_session_env_sets_bash_events_dir_when_present() {
+        let mut cmd = tokio::process::Command::new("/usr/bin/true");
+        apply_session_env(
+            &mut cmd,
+            "session-key-123",
+            "stable-secret-456",
+            Some("/tmp/test/conversations"),
+            Some("/tmp/test/bash_events"),
+        );
+        let envs: Vec<(String, String)> = cmd
+            .as_std()
+            .get_envs()
+            .filter_map(|(k, v)| {
+                let key = k.to_string_lossy().into_owned();
+                v.map(|val| (key, val.to_string_lossy().into_owned()))
+            })
+            .collect();
+        assert!(
+            envs.iter()
+                .any(|(k, v)| k == "OH_BASH_EVENTS_DIR" && v == "/tmp/test/bash_events"),
+            "expected OH_BASH_EVENTS_DIR env var; got {:?}",
+            envs
+        );
     }
 
     #[test]
-    fn workspace_root_for_runtime_run_dir_resolves_throwaway_workspace_root() {
-        let root = workspace_root_for_runtime_run_dir(Path::new(
-            "/tmp/workspace/.openhands/throwaway/scope-review/run-1",
-        ))
-        .expect("workspace root");
-        assert_eq!(root, PathBuf::from("/tmp/workspace"));
+    fn apply_session_env_omits_bash_events_dir_when_none() {
+        let mut cmd = tokio::process::Command::new("/usr/bin/true");
+        apply_session_env(&mut cmd, "k", "s", None, None);
+        let has_it = cmd
+            .as_std()
+            .get_envs()
+            .any(|(k, _)| k.to_string_lossy() == "OH_BASH_EVENTS_DIR");
+        assert!(
+            !has_it,
+            "OH_BASH_EVENTS_DIR should be absent when path is None"
+        );
     }
 
     #[test]
     fn read_or_create_openhands_secret_uses_stable_workspace_root_file() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let runtime_run_dir = tmp.path().join("default/skills/petstore-sales");
-        fs::create_dir_all(&runtime_run_dir).expect("runtime dir");
+        let workspace_root = tmp.path();
 
-        let first = read_or_create_openhands_secret(&runtime_run_dir).expect("first secret");
-        let second = read_or_create_openhands_secret(&runtime_run_dir).expect("second secret");
+        let first = read_or_create_openhands_secret(workspace_root).expect("first secret");
+        let second = read_or_create_openhands_secret(workspace_root).expect("second secret");
         assert_eq!(first, second);
 
-        let secret_path = tmp
-            .path()
+        let secret_path = workspace_root
             .join(".openhands")
             .join(OPENHANDS_SECRET_FILENAME);
         assert_eq!(
@@ -831,15 +846,14 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[tokio::test]
+    #[cfg(unix)]
     async fn live_openhands_server_shutdown_prefers_sigterm() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let runtime_run_dir = tmp.path().join("default/skills/petstore-sales");
-        fs::create_dir_all(&runtime_run_dir).expect("runtime dir");
+        let workspace_root = tmp.path();
 
         let mut process =
-            OpenHandsAgentServerProcess::start(Duration::from_secs(60), &runtime_run_dir)
+            OpenHandsAgentServerProcess::start(Duration::from_secs(60), workspace_root)
                 .await
                 .expect("start OpenHands server");
 
