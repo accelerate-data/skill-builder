@@ -406,7 +406,7 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
         workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
         allowed_tools: vec![],
         max_turns: 20,
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        user_message_suffix: Some(crate::agents::skill_creator::SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
         system_message_suffix: Some(
             crate::agents::runtime_config::skill_creator_system_message_suffix(),
         ),
@@ -1763,7 +1763,7 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
 
 #[test]
 fn test_refine_openhands_config_uses_skill_creator_system_message_suffix() {
-    let config = build_refine_openhands_config(
+    let config = crate::commands::skill_session::build_skill_session_config(
         "my-skill",
         DEFAULT_PLUGIN_SLUG,
         "Refine the skill",

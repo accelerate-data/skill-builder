@@ -8,6 +8,46 @@ use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::types::RefineSessionInfo;
 
+pub fn build_skill_session_config(
+    skill_name: &str,
+    plugin_slug: &str,
+    prompt: &str,
+    workspace_path: &str,
+    llm: crate::types::WorkflowLlmConfig,
+) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
+    crate::agents::skill_creator::build_skill_creator_config(
+        crate::agents::skill_creator::SkillCreatorConfigParams {
+            skill_name,
+            prompt,
+            workspace_path,
+            plugin_slug,
+            llm,
+            task_kind: "refine",
+            run_source: "refine",
+            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
+            max_turns: 500,
+            step_id: -10,
+            output_format: None,
+        },
+    )
+}
+
+pub(crate) async fn ensure_skill_runtime_ready(
+    app: &tauri::AppHandle,
+    db: &crate::db::Db,
+    skill_name: &str,
+    plugin_slug: &str,
+) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
+    crate::commands::workflow::ensure_workspace_prompts(app, &runtime_ctx.workspace_path).await?;
+    crate::commands::refine::protocol::ensure_skill_workspace_dir(
+        &runtime_ctx.workspace_path,
+        plugin_slug,
+        skill_name,
+    );
+    Ok(runtime_ctx)
+}
+
 pub struct SkillSession {
     pub skill_name: String,
     pub plugin_slug: String,
@@ -108,36 +148,23 @@ pub async fn select_skill_openhands_session(
     );
     validate_skill_name(&skill_name)?;
 
-    let runtime_ctx =
-        crate::commands::refine::ensure_refine_runtime_ready(&app, &db, &skill_name, &plugin_slug)
-            .await?;
-
-    let session_config = crate::commands::refine::build_refine_openhands_config(
-        &skill_name,
-        &plugin_slug,
-        "",
-        &runtime_ctx.workspace_path,
-        runtime_ctx.llm.clone(),
-    );
-    crate::agents::openhands_server::ensure_openhands_server(&session_config).await?;
+    let runtime_ctx = ensure_skill_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
 
     let saved_conversation_id = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
     };
-    let active_conversation_id = crate::agents::openhands_server::start_openhands_session(
-        &app,
-        session_config,
-        saved_conversation_id.clone(),
-    )
-    .await?;
-    let session_config = crate::commands::refine::build_refine_openhands_config(
+
+    let session_config = build_skill_session_config(
         &skill_name,
         &plugin_slug,
         "",
         &runtime_ctx.workspace_path,
         runtime_ctx.llm.clone(),
     );
+    let active_conversation_id =
+        crate::agents::skill_creator::ensure_skill_session(&app, session_config.clone(), saved_conversation_id)
+            .await?;
     let (restored_messages, restored_transcript_events, dispatched_user_turn_count) =
         restore_skill_conversation_state(&session_config, &active_conversation_id).await?;
 
@@ -235,7 +262,7 @@ pub async fn pause_openhands_session(
         &skill_name,
     );
 
-    let config = crate::commands::refine::build_refine_openhands_config(
+    let config = build_skill_session_config(
         &skill_name,
         &plugin_slug,
         "",

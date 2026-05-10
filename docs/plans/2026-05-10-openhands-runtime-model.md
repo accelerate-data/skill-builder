@@ -323,7 +323,7 @@ git commit -m "fix: dispatch_persistent_skill_turn calls ensure_skill_session (G
 **Files:**
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 
-- [ ] **Step 1: Apply renames in `skill_session.rs`**
+- [x] **Step 1: Apply renames in `skill_session.rs`**
 
 Replace all occurrences:
 - `RefineSession` → `SkillSession`
@@ -348,7 +348,7 @@ Also rename test functions:
 
 Rename `new_refine_usage_session_id` → `new_skill_usage_session_id` but keep the output format `"synthetic:refine:{skill_name}:{uuid}"` unchanged (durable DB data).
 
-- [ ] **Step 2: Run skill_session tests**
+- [x] **Step 2: Run skill_session tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::skill_session
@@ -364,7 +364,7 @@ Expected: All tests pass with renamed names.
 - Modify: `app/src-tauri/src/commands/refine/output.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 3: Update `lib.rs`**
+- [x] **Step 3: Update `lib.rs`**
 
 Replace:
 ```rust
@@ -375,15 +375,15 @@ with:
 .manage(commands::skill_session::SkillSessionManager::new())
 ```
 
-- [ ] **Step 4: Update `commands/skill/crud.rs`**
+- [x] **Step 4: Update `commands/skill/crud.rs`**
 
 Replace all `RefineSessionManager` → `SkillSessionManager`.
 
-- [ ] **Step 5: Update `commands/refine/output.rs`**
+- [x] **Step 5: Update `commands/refine/output.rs`**
 
 Replace all `RefineSessionManager` → `SkillSessionManager`.
 
-- [ ] **Step 6: Update `commands/refine/mod.rs`**
+- [x] **Step 6: Update `commands/refine/mod.rs`**
 
 Replace re-exports:
 ```rust
@@ -391,7 +391,7 @@ pub use crate::commands::skill_session::{SkillSession, SkillSessionManager};
 pub(crate) use crate::commands::skill_session::skill_session_key;
 ```
 
-- [ ] **Step 7: Run all Rust tests**
+- [x] **Step 7: Run all Rust tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -399,7 +399,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/lib.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/refine/output.rs app/src-tauri/src/commands/refine/mod.rs
