@@ -68,6 +68,7 @@ import { getWorkflowState, saveWorkflowState, readFile, verifyStepOutput } from 
 describe("useWorkflowPersistence", () => {
   const defaultOptions = {
     skillName: "test-skill",
+    skillId: 1,
     skillsPath: "/skills",
     stepConfig: { outputFiles: ["skill/SKILL.md"] },
     currentStep: 0,
@@ -99,7 +100,7 @@ describe("useWorkflowPersistence", () => {
     renderHook(() => useWorkflowPersistence(defaultOptions));
 
     await waitFor(() => {
-      expect(mockInitWorkflow).toHaveBeenCalledWith("test-skill", undefined, undefined);
+      expect(mockInitWorkflow).toHaveBeenCalledWith("test-skill", 1, undefined, undefined);
       expect(mockSetHydrated).toHaveBeenCalledWith(true);
     });
   });
