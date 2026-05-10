@@ -157,7 +157,7 @@ function normalizeWorkflowStepMaterializedPayload(
 }
 
 interface UseWorkflowStateMachineOptions {
-  /** Skill name from route params */
+  skillId: number | null;
   skillName: string;
   /** Plugin slug for the skill (looked up from skill store) */
   pluginSlug?: string;
@@ -192,6 +192,7 @@ interface UseWorkflowStateMachineOptions {
  * gate evaluation (via useWorkflowGate), and all associated state transitions.
  */
 export function useWorkflowStateMachine({
+  skillId,
   skillName,
   pluginSlug,
   workspacePath,
@@ -335,9 +336,9 @@ export function useWorkflowStateMachine({
 
   const finalizeCompletedStep = useCallback(
     async (step: number) => {
-      if (skillName) {
+      if (skillId != null) {
         try {
-          const disabled = await getDisabledSteps(skillName);
+          const disabled = await getDisabledSteps(skillId);
           useWorkflowStore.getState().setDisabledSteps(disabled);
         } catch {
           // Non-fatal
@@ -519,6 +520,7 @@ export function useWorkflowStateMachine({
   // --- Gate evaluation (delegated to useWorkflowGate) ---
 
   const gate = useWorkflowGate({
+    skillId,
     skillName,
     pluginSlug,
     workspacePath,
@@ -843,7 +845,11 @@ export function useWorkflowStateMachine({
           `[workflow] Starting step ${targetStep} for skill "${skillName}"`,
         );
         const sessionId = useWorkflowStore.getState().workflowSessionId;
+        if (skillId == null) {
+          throw new Error("Missing skill ID");
+        }
         const agentId = await runWorkflowStep(
+          skillId,
           skillName,
           targetStep,
           workspacePath,
@@ -904,9 +910,9 @@ export function useWorkflowStateMachine({
     resetToStep(effectiveStepId);
 
     let disabled: number[] = [];
-    if (skillName) {
+    if (skillId != null) {
       try {
-        disabled = await getDisabledSteps(skillName);
+        disabled = await getDisabledSteps(skillId);
         useWorkflowStore.getState().setDisabledSteps(disabled);
       } catch {
         // non-fatal

@@ -5,19 +5,19 @@ import DashboardPage from "./dashboard";
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const selectedSkillName = useSkillStore((s) => s.selectedSkillName);
+  const activeSkillId = useSkillStore((s) => s.activeSkillId);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     if (pathname !== "/") return;
-    if (!selectedSkillName) return;
+    if (!activeSkillId) return;
     navigate({
-      to: "/workspace/$skillName",
-      params: { skillName: selectedSkillName },
+      to: "/workspace/$skillId",
+      params: { skillId: activeSkillId },
       search: { tab: undefined },
       replace: true,
     });
-  }, [navigate, selectedSkillName, pathname]);
+  }, [navigate, activeSkillId, pathname]);
 
   return <DashboardPage />;
 }

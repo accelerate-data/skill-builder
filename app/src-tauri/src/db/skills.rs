@@ -472,6 +472,31 @@ pub fn get_skill_master_any_plugin(
     }
 }
 
+pub fn get_skill_master_by_id(
+    conn: &Connection,
+    skill_id: i64,
+) -> Result<Option<SkillMasterRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.name, s.skill_source,
+                    p.id, p.slug, p.display_name, p.is_default,
+                    s.purpose, s.created_at, s.updated_at,
+                    s.description, s.version, s.user_invocable, s.disable_model_invocation
+             FROM skills s
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE s.id = ?1 AND COALESCE(s.deleted_at, '') = ''",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(rusqlite::params![skill_id], map_skill_master_row);
+
+    match result {
+        Ok(row) => Ok(Some(row)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 pub fn get_skill_master_in_plugin(
     conn: &Connection,
     skill_name: &str,

@@ -18,6 +18,7 @@ function buildSessionSkill(
   skill: Pick<EditableSkill, "name" | "plugin_slug"> & Partial<EditableSkill>,
 ): EditableSkill {
   return {
+    id: skill.id ?? null,
     name: skill.name,
     plugin_slug: skill.plugin_slug,
     skill_source: skill.skill_source ?? null,

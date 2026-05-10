@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import WorkspaceRoutePage, { surfaceFromRoute } from "@/pages/workspace-route";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
+import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 
-const mockUseParams = vi.fn(() => ({ skillName: "test-skill" }));
+const mockUseParams = vi.fn(() => ({ skillId: "101" }));
 const mockUseSearch = vi.fn(() => ({}));
 const mockUseRouterState = vi.fn(({ select }) =>
-  select({ location: { pathname: "/workspace/test-skill" } })
+  select({ location: { pathname: "/workspace/101" } })
 );
 const mockNavigate = vi.fn();
 
@@ -40,10 +41,10 @@ beforeEach(() => {
   mockImportedSkills = [];
   mockBuilderPending = false;
   mockImportedPending = false;
-  mockUseParams.mockReturnValue({ skillName: "test-skill" });
+  mockUseParams.mockReturnValue({ skillId: "101" });
   mockUseSearch.mockReturnValue({});
   mockUseRouterState.mockImplementation(({ select }) =>
-    select({ location: { pathname: "/workspace/test-skill" } })
+    select({ location: { pathname: "/workspace/101" } })
   );
   mockNavigate.mockClear();
 });
@@ -90,10 +91,11 @@ describe("WorkspaceRoutePage", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
-  it("finds builder skill by library_key when route param uses key", () => {
-    mockUseParams.mockReturnValue({ skillName: "petstore-sales" });
+  it("finds builder skill by skill_id", () => {
+    mockUseParams.mockReturnValue({ skillId: "101" });
     mockBuilderSkills = [
       {
+        id: 101,
         name: "petstore-sales-v2",
         library_key: "petstore-sales",
         skill_source: "skill-builder",
@@ -114,10 +116,11 @@ describe("WorkspaceRoutePage", () => {
     expect(screen.getByTestId("workspace-shell")).toBeInTheDocument();
   });
 
-  it("finds builder skill by name when library_key is null", () => {
-    mockUseParams.mockReturnValue({ skillName: "sales-skill" });
+  it("finds builder skill by skill_id when library_key is null", () => {
+    mockUseParams.mockReturnValue({ skillId: "102" });
     mockBuilderSkills = [
       {
+        id: 102,
         name: "sales-skill",
         library_key: null,
         skill_source: "skill-builder",
@@ -138,8 +141,8 @@ describe("WorkspaceRoutePage", () => {
     expect(screen.getByTestId("workspace-shell")).toBeInTheDocument();
   });
 
-  it("finds imported skill by library_key when route param uses key", () => {
-    mockUseParams.mockReturnValue({ skillName: "imported-petstore" });
+  it("finds imported skill by skill_id", () => {
+    mockUseParams.mockReturnValue({ skillId: "uuid-123" });
     mockImportedSkills = [
       {
         skill_id: "uuid-123",
@@ -163,8 +166,8 @@ describe("WorkspaceRoutePage", () => {
     expect(screen.getByTestId("workspace-shell")).toBeInTheDocument();
   });
 
-  it("finds imported skill by generated key when library_key is null", () => {
-    mockUseParams.mockReturnValue({ skillName: "imported:uuid-123" });
+  it("finds imported skill by skill_id when library_key is null", () => {
+    mockUseParams.mockReturnValue({ skillId: "uuid-123" });
     mockImportedSkills = [
       {
         skill_id: "uuid-123",
@@ -186,5 +189,38 @@ describe("WorkspaceRoutePage", () => {
 
     render(<WorkspaceRoutePage />);
     expect(screen.getByTestId("workspace-shell")).toBeInTheDocument();
+  });
+
+  it("passes skillType='marketplace' for marketplace-imported skills", () => {
+    mockUseParams.mockReturnValue({ skillId: "uuid-mkt-1" });
+    mockImportedSkills = [
+      {
+        skill_id: "uuid-mkt-1",
+        skill_name: "marketplace-plugin-skill",
+        library_key: "imported:uuid-mkt-1",
+        plugin_slug: "analytics-pack",
+        plugin_display_name: "Analytics Pack",
+        is_default_plugin: false,
+        description: "Marketplace skill",
+        purpose: "domain",
+        version: "1.0.0",
+        user_invocable: true,
+        disable_model_invocation: false,
+        disk_path: "/some/plugin/path",
+        imported_at: "2026-01-01T00:00:00Z",
+        marketplace_source_url: "https://github.com/acme/skills",
+      },
+    ];
+
+    render(<WorkspaceRoutePage />);
+
+    expect(screen.getByTestId("workspace-shell")).toBeInTheDocument();
+    expect(vi.mocked(WorkspaceShell)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skillType: "marketplace",
+        initialSurface: "overview",
+      }),
+      undefined,
+    );
   });
 });

@@ -27,13 +27,13 @@ const settingsRoute = createRoute({
 
 const workflowRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/workflow/$skillName",
+  path: "/workflow/$skillId",
   component: WorkflowPage,
 });
 
 const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/workspace/$skillName",
+  path: "/workspace/$skillId",
   component: WorkspaceRoutePage,
   validateSearch: (search: Record<string, unknown>) => ({
     tab: typeof search.tab === "string" ? search.tab : undefined,

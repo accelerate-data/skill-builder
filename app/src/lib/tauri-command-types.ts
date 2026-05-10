@@ -175,7 +175,7 @@ export interface TauriCommandMap {
     result: ScopeReviewResult;
   };
   run_workflow_step: {
-    args: { skillName: string; stepId: number; workspacePath: string; workflowSessionId: string | null };
+    args: { skillId: number; skillName: string; stepId: number; workspacePath: string; workflowSessionId: string | null };
     result: string;
   };
   materialize_workflow_step_output: {
@@ -192,11 +192,11 @@ export interface TauriCommandMap {
     result: StepResetPreview[];
   };
   verify_step_output: { args: { workspacePath: string; skillName: string; stepId: number }; result: boolean };
-  get_disabled_steps: { args: { skillName: string }; result: number[] };
-  get_workflow_state: { args: { skillName: string }; result: WorkflowStateResponse };
+  get_disabled_steps: { args: { skillId: number }; result: number[] };
+  get_workflow_state: { args: { skillId: number }; result: WorkflowStateResponse };
   save_workflow_state: {
     args: {
-      skillName: string;
+      skillId: number;
       currentStep: number;
       status: string;
       stepStatuses: StepStatusUpdate[];
@@ -214,7 +214,7 @@ export interface TauriCommandMap {
   graceful_shutdown: { args: NoArgs; result: void };
   allow_app_exit: { args: NoArgs; result: void };
   stop_openhands_server: { args: NoArgs; result: void };
-  create_workflow_session: { args: { sessionId: string; skillName: string }; result: void };
+  create_workflow_session: { args: { sessionId: string; skillId: number }; result: void };
   end_workflow_session: { args: { sessionId: string }; result: void };
   resolve_orphan: { args: { skillName: string; action: "delete" | "keep" }; result: void };
   resolve_discovery: {
@@ -226,8 +226,8 @@ export interface TauriCommandMap {
   github_poll_for_token: { args: { deviceCode: string }; result: GitHubAuthResult };
   github_get_user: { args: NoArgs; result: GitHubUser | null };
   github_logout: { args: NoArgs; result: void };
-  acquire_lock: { args: { skillName: string }; result: void };
-  release_lock: { args: { skillName: string }; result: void };
+  acquire_lock: { args: { skillId: number }; result: void };
+  release_lock: { args: { skillId: number }; result: void };
   get_externally_locked_skills: { args: NoArgs; result: string[] };
   get_usage_summary: {
     args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
@@ -237,7 +237,7 @@ export interface TauriCommandMap {
     args: { limit: number; hideCancelled: boolean; startDate: string | null; skillName: string | null };
     result: WorkflowSessionRecord[];
   };
-  get_step_agent_runs: { args: { skillName: string; stepId: number }; result: AgentRunRecord[] };
+  get_step_agent_runs: { args: { skillId: number; stepId: number }; result: AgentRunRecord[] };
   get_agent_runs: {
     args: {
       hideCancelled: boolean;
@@ -353,7 +353,7 @@ export interface TauriCommandMap {
     args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
     result: SkillFileContent[];
   };
-  run_answer_evaluator: { args: { skillName: string; workspacePath: string }; result: string };
+  run_answer_evaluator: { args: { skillId: number; skillName: string; workspacePath: string }; result: string };
   materialize_answer_evaluation_output: {
     args: { skillName: string; workspacePath: string; structuredOutput: AnswerEvaluationOutput };
     result: void;
@@ -414,7 +414,7 @@ export interface TauriCommandMap {
       userInvocable: boolean | null;
       disableModelInvocation: boolean | null;
     };
-    result: void;
+    result: number;
   };
   get_all_tags: { args: NoArgs; result: string[] };
   read_latest_benchmark: {

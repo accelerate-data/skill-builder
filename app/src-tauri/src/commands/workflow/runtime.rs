@@ -24,7 +24,7 @@ use super::prompt::{
     build_evaluator_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt,
     build_step3_prompt, format_user_context,
 };
-use super::settings::{read_workflow_settings, WorkflowSettings};
+use super::settings::{read_workflow_settings_by_skill_id, WorkflowSettings};
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     skill_generation_workflow_tools, workflow_output_format_for_step,
@@ -600,6 +600,7 @@ pub async fn run_workflow_step(
     app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     runs: tauri::State<'_, WorkflowStepRunManager>,
+    skill_id: i64,
     skill_name: String,
     step_id: u32,
     workspace_path: String,
@@ -645,7 +646,8 @@ pub async fn run_workflow_step(
         }
     }
 
-    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
+    let settings =
+        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, step_id, &workspace_path)?;
     log::info!(
         "[run_workflow_step] settings: skills_path={} purpose={} intake={} industry={:?} function={:?}",
         settings.skills_path,
@@ -670,13 +672,14 @@ pub async fn run_workflow_step(
     // Gate: reject disabled steps when guard conditions are active.
     {
         let conn_guard = db.0.lock().map_err(|e| e.to_string())?;
-        if step_id >= 1 && check_scope_recommendation_db(&conn_guard, &skill_name) {
+        let skill_id_text = skill_id.to_string();
+        if step_id >= 1 && check_scope_recommendation_db(&conn_guard, &skill_id_text) {
             return Err(format!(
                 "{} is disabled: the research phase determined the skill scope is too broad.",
                 workflow_step_log_name(step_id as i32)
             ));
         }
-        if step_id >= 3 && check_decisions_guard_db(&conn_guard, &skill_name) {
+        if step_id >= 3 && check_decisions_guard_db(&conn_guard, &skill_id_text) {
             return Err(format!(
                 "{} is disabled: the decisions agent found unresolvable contradictions.",
                 workflow_step_log_name(step_id as i32)
@@ -750,6 +753,7 @@ pub async fn run_answer_evaluator(
     app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     runs: tauri::State<'_, WorkflowStepRunManager>,
+    skill_id: i64,
     skill_name: String,
     workspace_path: String,
 ) -> Result<String, String> {
@@ -758,7 +762,8 @@ pub async fn run_answer_evaluator(
     // Ensure agent files are deployed to workspace
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    let settings = read_workflow_settings(&db, &skill_name, 0, &workspace_path)?;
+    let settings =
+        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, 0, &workspace_path)?;
 
     let user_context_block = format_user_context(
         Some(&skill_name),
@@ -778,7 +783,7 @@ pub async fn run_answer_evaluator(
 
     let clarifications_json = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_name) {
+        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id.to_string()) {
             Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
             _ => "{}".to_string(),
         }

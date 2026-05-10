@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillSummary {
+    pub id: i64,
     pub name: String,
     #[serde(default)]
     pub library_key: Option<String>,

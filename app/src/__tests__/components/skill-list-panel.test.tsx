@@ -48,8 +48,11 @@ import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+let nextBuilderId = 1;
+
 function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
   const base: SkillSummary = {
+    id: nextBuilderId++,
     name: overrides.name,
     library_key: `skill-builder:skills:${overrides.name}`,
     current_step: null,
@@ -74,7 +77,10 @@ function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): 
 }
 
 function builderKey(name: string) {
-  return `skill-builder:skills:${name}`;
+  return String(
+    builderSkillResults.find((skill) => skill.name === name)?.id ??
+      "missing-builder-id",
+  );
 }
 
 function makeImportedSkill(
@@ -160,10 +166,11 @@ const importedSkill = makeImportedSkill({
 
 describe("SkillListPanel", () => {
   beforeEach(() => {
+    nextBuilderId = 1000;
     setBuilderSkills([]);
     setImportedSkills([]);
     useSkillStore.setState({
-      activeSkill: null,
+      activeSkillId: null,
       lockedSkills: new Set(),
       latestVersion: null,
     });
@@ -283,7 +290,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-imported:id-imp-skill");
+    const dot = screen.getByLabelText("status-dot-id-imp-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-violet)");
   });
 
@@ -296,7 +303,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-imported:id-mkt-skill");
+    const dot = screen.getByLabelText("status-dot-id-mkt-skill");
     expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
   });
 
@@ -355,7 +362,7 @@ describe("SkillListPanel", () => {
     await openSkillMenu("plugin-skill", user);
     await user.click(screen.getByRole("menuitem", { name: "Remove from plugin" }));
 
-    expect(removeSkillFromPlugin).toHaveBeenCalledWith("skill-builder:analytics-pack:plugin-skill");
+    expect(removeSkillFromPlugin).toHaveBeenCalledWith(String(builderSkillResults[0]?.id));
   });
 
   // ── Pulse animation ───────────────────────────────────────────────────────
@@ -546,7 +553,7 @@ describe("SkillListPanel", () => {
     renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("my-import").closest('[role="button"]')!);
 
-    expect(onSelectSkill).toHaveBeenCalledWith("imported:id-my-import");
+    expect(onSelectSkill).toHaveBeenCalledWith("id-my-import");
   });
 
   it("does not navigate or call onSelectSkill when clicking a locked row", () => {
@@ -636,7 +643,7 @@ describe("SkillListPanel", () => {
     await user.click(reviewItem);
 
     // Should call onActivateSkill (navigation handled by AppLayout)
-    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("review-skill"));
+    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("review-skill"), "workflow");
   });
 
   it("shows the actions menu only for the selected skill", async () => {
@@ -644,7 +651,7 @@ describe("SkillListPanel", () => {
     const selectedSkill = makeBuilderSkill({ name: "selected-skill", status: "completed" });
     const unselectedSkill = makeBuilderSkill({ name: "unselected-skill", status: "completed" });
     setBuilderSkills([selectedSkill, unselectedSkill]);
-    useSkillStore.setState({ activeSkill: builderKey("selected-skill") });
+    useSkillStore.setState({ activeSkillId: builderKey("selected-skill") });
 
     renderWithSkillQueries(<SkillListPanel />);
 
@@ -770,7 +777,7 @@ describe("SkillListPanel", () => {
 
     await user.click(continueItem);
 
-    expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:resume-builder");
+    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("resume-builder"), "workflow");
   });
 
   it("redo re-activates the workflow skill after reset", async () => {
@@ -797,7 +804,25 @@ describe("SkillListPanel", () => {
       expect.any(String),
     );
     // Navigation is handled by AppLayout via onActivateSkill
-    expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:redo-builder");
+    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("redo-builder"), "workflow");
+  });
+
+  it("redo confirmation shows the resolved skill name instead of the internal skill id", async () => {
+    const user = userEvent.setup();
+    const skill = makeBuilderSkill({ name: "redo-builder-name", status: "completed" });
+    setBuilderSkills([skill]);
+
+    renderWithSkillQueries(<SkillListPanel />);
+
+    await openSkillMenu("redo-builder-name", user);
+    await user.click(screen.getByRole("menuitem", { name: "Redo workflow" }));
+
+    expect(
+      screen.getByText(/overwrite all generated artifacts and files for/i),
+    ).toHaveTextContent("redo-builder-name");
+    expect(
+      screen.getByText(/overwrite all generated artifacts and files for/i),
+    ).not.toHaveTextContent(String(skill.id));
   });
 
   it("does not navigate when clicking the running skill itself", () => {

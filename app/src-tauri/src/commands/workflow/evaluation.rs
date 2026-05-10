@@ -166,16 +166,16 @@ fn navigate_back_to_step_impl(
 
 #[tauri::command]
 pub fn get_workflow_state(
-    skill_name: String,
+    skill_id: i64,
     db: tauri::State<'_, Db>,
 ) -> Result<WorkflowStateResponse, String> {
-    log::info!("[get_workflow_state] skill={}", skill_name);
+    log::info!("[get_workflow_state] skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_workflow_state] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let run = crate::db::get_workflow_run(&conn, &skill_name)?;
-    let steps = crate::db::get_workflow_steps(&conn, &skill_name)?;
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)?;
+    let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id)?;
     Ok(WorkflowStateResponse { run, steps })
 }
 
@@ -195,7 +195,7 @@ pub fn get_workflow_state(
 /// which queries `get_skill_master` directly, never the frontend payload.
 #[tauri::command]
 pub fn save_workflow_state(
-    skill_name: String,
+    skill_id: i64,
     current_step: i32,
     status: String,
     purpose: String,
@@ -204,7 +204,7 @@ pub fn save_workflow_state(
 ) -> Result<(), String> {
     log::info!(
         "[save_workflow_state] skill={} step={} step_id={} status={}",
-        skill_name,
+        skill_id,
         workflow_step_log_name(current_step),
         current_step,
         status
@@ -225,7 +225,7 @@ pub fn save_workflow_state(
             log::info!(
                 "[save_workflow_state] All {} steps completed for '{}', overriding status '{}' → 'completed'",
                 step_statuses.len(),
-                skill_name,
+                skill_id,
                 status
             );
         }
@@ -234,9 +234,9 @@ pub fn save_workflow_state(
         status
     };
 
-    crate::db::save_workflow_run(
+    crate::db::save_workflow_run_by_skill_id(
         &conn,
-        &skill_name,
+        skill_id,
         current_step,
         &effective_status,
         &purpose,
@@ -244,17 +244,17 @@ pub fn save_workflow_state(
     .map_err(|e| {
         log::error!(
             "[save_workflow_state] save_workflow_run failed skill={}: {}",
-            skill_name,
+            skill_id,
             e
         );
         e
     })?;
     for step in &step_statuses {
-        crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status).map_err(
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status).map_err(
             |e| {
                 log::error!(
                     "[save_workflow_state] save_workflow_step failed skill={} step={} step_id={}: {}",
-                    skill_name,
+                    skill_id,
                     workflow_step_log_name(step.step_id),
                     step.step_id,
                     e
@@ -645,15 +645,15 @@ mod verify_step_output_tests {
 
 #[tauri::command]
 pub fn get_disabled_steps(
-    skill_name: String,
+    skill_id: i64,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<u32>, String> {
-    validate_skill_name(&skill_name)?;
-    log::info!("[get_disabled_steps] skill={}", skill_name);
+    log::info!("[get_disabled_steps] skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    if check_scope_recommendation_db(&conn, &skill_name) {
+    let skill_id_text = skill_id.to_string();
+    if check_scope_recommendation_db(&conn, &skill_id_text) {
         Ok(vec![1, 2, 3])
-    } else if check_decisions_guard_db(&conn, &skill_name) {
+    } else if check_decisions_guard_db(&conn, &skill_id_text) {
         Ok(vec![3])
     } else {
         Ok(vec![])

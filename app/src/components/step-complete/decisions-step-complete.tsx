@@ -36,17 +36,19 @@ function decisionsDtoToString(dto: DecisionsDto): string {
 }
 
 type Props = StepCompleteBaseProps & {
+  skillId?: number | null;
   skillName?: string;
 };
 
 export function DecisionsStepComplete(props: Props) {
   const {
-    stepName, skillName, agentRuns, reviewMode, duration,
+    stepName, skillId, agentRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
   } = props;
 
-  const { data: decisionsDto, isLoading, isError } = useDecisions(skillName ?? null);
-  const saveEdit = useSaveDecisionsEdit(skillName ?? null);
+  const skillIdKey = skillId != null ? String(skillId) : null;
+  const { data: decisionsDto, isLoading, isError } = useDecisions(skillIdKey);
+  const saveEdit = useSaveDecisionsEdit(skillIdKey);
   const setDisabledSteps = useWorkflowStore((s) => s.setDisabledSteps);
 
   if (isLoading) {
@@ -95,8 +97,8 @@ export function DecisionsStepComplete(props: Props) {
             const decisions = parseDecisions(serialized);
             saveEdit.mutate(decisions, {
               onSuccess: () => {
-                if (skillName) {
-                  getDisabledSteps(skillName)
+                if (skillId != null) {
+                  getDisabledSteps(skillId)
                     .then((disabled) => setDisabledSteps(disabled))
                     .catch(() => { /* non-fatal */ });
                 }

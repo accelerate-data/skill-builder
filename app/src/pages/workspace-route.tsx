@@ -16,7 +16,7 @@ export function surfaceFromRoute(pathname: string, tab?: string): WorkspaceSurfa
 }
 
 export default function WorkspaceRoutePage() {
-  const { skillName } = useParams({ strict: false });
+  const { skillId } = useParams({ strict: false });
   const search = useSearch({ strict: false }) as Record<string, string> | undefined;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -25,16 +25,14 @@ export default function WorkspaceRoutePage() {
   const { data: importedSkills = [], isPending: importedPending } = useImportedSkillsQuery();
 
   const selectedBuilderSkill = builderSkills.find(
-    (s) => s.skill_source === "skill-builder" && (s.library_key ?? s.name) === skillName,
+    (s) => s.skill_source === "skill-builder" && String(s.id) === skillId,
   );
   const selectedImportedSkill = importedSkills.find(
-    (s) => (s.library_key ?? `imported:${s.skill_id}`) === skillName,
+    (s) => s.skill_id === skillId,
   );
   const skill = selectedBuilderSkill ?? selectedImportedSkill ?? null;
   const skillType = selectedBuilderSkill
-    ? selectedBuilderSkill.skill_source === "marketplace"
-      ? "marketplace"
-      : "builder"
+    ? "builder"
     : selectedImportedSkill?.marketplace_source_url
       ? "marketplace"
       : "imported";
@@ -49,16 +47,16 @@ export default function WorkspaceRoutePage() {
 
   const handleNavigateSurface = useCallback(
     (surface: WorkspaceSurface) => {
-      if (!skillName) return;
+      if (!skillId) return;
       if (surface === "overview") {
-        navigate({ to: "/workspace/$skillName", params: { skillName }, search: { tab: undefined }, replace: true });
+        navigate({ to: "/workspace/$skillId", params: { skillId }, search: { tab: undefined }, replace: true });
       } else if (surface === "refine") {
-        navigate({ to: "/workspace/$skillName/refine", params: { skillName }, search: { tab: "refine" }, replace: true });
+        navigate({ to: "/workspace/$skillId/refine", params: { skillId }, search: { tab: "refine" }, replace: true });
       } else {
-        navigate({ to: "/workspace/$skillName/evals", params: { skillName }, search: { tab: "evals" }, replace: true });
+        navigate({ to: "/workspace/$skillId/evals", params: { skillId }, search: { tab: "evals" }, replace: true });
       }
     },
-    [skillName, navigate],
+    [skillId, navigate],
   );
 
   if (!skill) {
@@ -73,7 +71,7 @@ export default function WorkspaceRoutePage() {
 
   return (
     <WorkspaceShell
-      key={skillName}
+      key={skillId}
       skill={skill}
       skillType={skillType}
       initialSurface={initialSurface}

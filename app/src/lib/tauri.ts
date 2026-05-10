@@ -93,11 +93,12 @@ export const reviewSkillScope = (
 // --- Workflow ---
 
 export const runWorkflowStep = (
+  skillId: number,
   skillName: string,
   stepId: number,
   workspacePath: string,
   workflowSessionId?: string,
-) => invokeCommand("run_workflow_step", { skillName, stepId, workspacePath, workflowSessionId: workflowSessionId ?? null });
+) => invokeCommand("run_workflow_step", { skillId, skillName, stepId, workspacePath, workflowSessionId: workflowSessionId ?? null });
 
 export const materializeWorkflowStepOutput = (
   skillName: string,
@@ -142,8 +143,8 @@ export const verifyStepOutput = (
   stepId: number,
 ) => invokeCommand("verify_step_output", { workspacePath, skillName, stepId });
 
-export const getDisabledSteps = (skillName: string) =>
-  invokeCommand("get_disabled_steps", { skillName });
+export const getDisabledSteps = (skillId: number) =>
+  invokeCommand("get_disabled_steps", { skillId });
 
 // --- Workflow State (SQLite) ---
 
@@ -174,16 +175,16 @@ export interface StepStatusUpdate {
   status: string;
 }
 
-export const getWorkflowState = (skillName: string) =>
-  invokeCommand("get_workflow_state", { skillName });
+export const getWorkflowState = (skillId: number) =>
+  invokeCommand("get_workflow_state", { skillId });
 
 export const saveWorkflowState = (
-  skillName: string,
+  skillId: number,
   currentStep: number,
   status: string,
   stepStatuses: StepStatusUpdate[],
   purpose?: string,
-) => invokeCommand("save_workflow_state", { skillName, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
+) => invokeCommand("save_workflow_state", { skillId, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
 
 // --- Files ---
 
@@ -219,8 +220,8 @@ export const allowAppExit = () =>
 
 // --- Workflow Sessions ---
 
-export const createWorkflowSession = (sessionId: string, skillName: string) =>
-  invokeCommand("create_workflow_session", { sessionId, skillName });
+export const createWorkflowSession = (sessionId: string, skillId: number) =>
+  invokeCommand("create_workflow_session", { sessionId, skillId });
 
 export const endWorkflowSession = (sessionId: string) =>
   invokeCommand("end_workflow_session", { sessionId });
@@ -277,11 +278,11 @@ export const githubGetUser = () =>
 export const githubLogout = () =>
   invokeCommand("github_logout", {});
 
-export const acquireLock = (skillName: string) =>
-  invokeCommand("acquire_lock", { skillName });
+export const acquireLock = (skillId: number) =>
+  invokeCommand("acquire_lock", { skillId });
 
-export const releaseLock = (skillName: string) =>
-  invokeCommand("release_lock", { skillName });
+export const releaseLock = (skillId: number) =>
+  invokeCommand("release_lock", { skillId });
 
 export const getExternallyLockedSkills = () =>
   invokeCommand("get_externally_locked_skills", {});
@@ -294,8 +295,8 @@ export const getUsageSummary = (hideCancelled: boolean = false, startDate?: stri
 export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
   invokeCommand("get_recent_workflow_sessions", { limit, hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
-export const getStepAgentRuns = (skillName: string, stepId: number) =>
-  invokeCommand("get_step_agent_runs", { skillName, stepId });
+export const getStepAgentRuns = (skillId: number, stepId: number) =>
+  invokeCommand("get_step_agent_runs", { skillId, stepId });
 
 export const getAgentRuns = (
   hideCancelled: boolean = false,
@@ -509,9 +510,10 @@ export type PerQuestionVerdict = PerQuestionEntry;
 export type AnswerEvaluation = AnswerEvaluationOutput;
 
 export const runAnswerEvaluator = (
+  skillId: number,
   skillName: string,
   workspacePath: string,
-) => invokeCommand("run_answer_evaluator", { skillName, workspacePath });
+) => invokeCommand("run_answer_evaluator", { skillId, skillName, workspacePath });
 
 export const materializeAnswerEvaluationOutput = (
   skillName: string,

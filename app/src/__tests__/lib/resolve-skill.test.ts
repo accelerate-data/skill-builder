@@ -4,6 +4,7 @@ import type { SkillSummary, ImportedSkill } from "@/lib/types";
 
 function makeBuilderSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
   return {
+    id: 1,
     name: "test-skill",
     library_key: null,
     skill_source: "skill-builder",
@@ -42,33 +43,33 @@ function makeImportedSkill(overrides: Partial<ImportedSkill> = {}): ImportedSkil
 }
 
 describe("resolveSkill", () => {
-  it("returns null for falsy skillName", () => {
+  it("returns null for falsy skillId", () => {
     expect(resolveSkill(null, [], [])).toBeNull();
     expect(resolveSkill(undefined, [], [])).toBeNull();
     expect(resolveSkill("", [], [])).toBeNull();
   });
 
-  it("finds builder skill by name when library_key is null", () => {
-    const skills = [makeBuilderSkill({ name: "sales-skill" })];
-    const result = resolveSkill("sales-skill", skills, []);
+  it("finds builder skill by id", () => {
+    const skills = [makeBuilderSkill({ id: 42, name: "sales-skill" })];
+    const result = resolveSkill("42", skills, []);
     expect(result).not.toBeNull();
     expect(result?.name).toBe("sales-skill");
   });
 
-  it("finds builder skill by library_key when it differs from name", () => {
+  it("finds builder skill by id even when library_key differs from name", () => {
     const skills = [
-      makeBuilderSkill({ name: "petstore-sales-v2", library_key: "petstore-sales" }),
+      makeBuilderSkill({ id: 77, name: "petstore-sales-v2", library_key: "petstore-sales" }),
     ];
-    const result = resolveSkill("petstore-sales", skills, []);
+    const result = resolveSkill("77", skills, []);
     expect(result).not.toBeNull();
     expect(result?.name).toBe("petstore-sales-v2");
   });
 
-  it("prefers library_key match over name match", () => {
+  it("prefers exact id match", () => {
     const skills = [
-      makeBuilderSkill({ name: "petstore-sales", library_key: "petstore-sales" }),
+      makeBuilderSkill({ id: 99, name: "petstore-sales", library_key: "petstore-sales" }),
     ];
-    const result = resolveSkill("petstore-sales", skills, []);
+    const result = resolveSkill("99", skills, []);
     expect(result).not.toBeNull();
     expect(result?.name).toBe("petstore-sales");
   });
@@ -77,42 +78,42 @@ describe("resolveSkill", () => {
     const skills = [
       makeBuilderSkill({ name: "test-skill", skill_source: "marketplace" as never }),
     ];
-    expect(resolveSkill("test-skill", skills, [])).toBeNull();
+    expect(resolveSkill("1", skills, [])).toBeNull();
   });
 
-  it("finds imported skill by library_key", () => {
+  it("finds imported skill by skill_id", () => {
     const skills = [
       makeImportedSkill({ skill_name: "my-import", library_key: "custom-key" }),
     ];
-    const result = resolveSkill("custom-key", [], skills);
+    const result = resolveSkill("uuid-1", [], skills);
     expect(result).not.toBeNull();
     expect(result?.name).toBe("my-import");
   });
 
-  it("finds imported skill by generated key when library_key is null", () => {
+  it("finds imported skill by skill_id when library_key is null", () => {
     const skills = [
       makeImportedSkill({ skill_id: "abc-123", skill_name: "my-import" }),
     ];
-    const result = resolveSkill("imported:abc-123", [], skills);
+    const result = resolveSkill("abc-123", [], skills);
     expect(result).not.toBeNull();
     expect(result?.name).toBe("my-import");
   });
 
   it("returns null when skill is not found", () => {
     const skills = [makeBuilderSkill({ name: "existing" })];
-    expect(resolveSkill("nonexistent", skills, [])).toBeNull();
+    expect(resolveSkill("404", skills, [])).toBeNull();
   });
 
   it("returns EditableSkill shape for builder skills", () => {
-    const skills = [makeBuilderSkill({ name: "test" })];
-    const result = resolveSkill("test", skills, []);
+    const skills = [makeBuilderSkill({ id: 5, name: "test" })];
+    const result = resolveSkill("5", skills, []);
     expect(result).toHaveProperty("name", "test");
     expect(result).toHaveProperty("plugin_slug", "default");
   });
 
   it("returns EditableSkill shape for imported skills", () => {
     const skills = [makeImportedSkill({ skill_name: "imp" })];
-    const result = resolveSkill("imported:uuid-1", [], skills);
+    const result = resolveSkill("uuid-1", [], skills);
     expect(result).toHaveProperty("name", "imp");
     expect(result).toHaveProperty("plugin_slug", "default");
   });

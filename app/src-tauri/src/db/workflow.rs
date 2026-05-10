@@ -4,21 +4,52 @@ use crate::types::{WorkflowRunRow, WorkflowStepRow};
 
 use super::locks::check_pid_alive;
 use super::skills::{
-    delete_skill_in_plugin, get_skill_master_id_any_plugin, get_skill_master_id_in_plugin,
-    upsert_skill,
+    delete_skill_in_plugin, get_skill_master_by_id, get_skill_master_id_any_plugin,
+    get_skill_master_id_in_plugin,
 };
 
 // --- Workflow Run ---
 
-/// Get the `workflow_runs.id` integer for a given `skill_name`. Returns None if not found.
-pub fn get_workflow_run_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+/// Get the `workflow_runs.id` integer for a given `skill_id`. Returns None if not found.
+pub fn get_workflow_run_id_by_skill_id(
+    conn: &Connection,
+    skill_id: i64,
+) -> Result<Option<i64>, String> {
     conn.query_row(
-        "SELECT id FROM workflow_runs WHERE skill_name = ?1",
-        rusqlite::params![skill_name],
+        "SELECT id FROM workflow_runs WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
         |row| row.get(0),
     )
     .optional()
     .map_err(|e| e.to_string())
+}
+
+pub fn get_workflow_run_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
+        return Ok(None);
+    };
+    get_workflow_run_id_by_skill_id(conn, skill_id)
+}
+
+pub fn save_workflow_run_by_skill_id(
+    conn: &Connection,
+    skill_id: i64,
+    current_step: i32,
+    status: &str,
+    purpose: &str,
+) -> Result<(), String> {
+    let skill = get_skill_master_by_id(conn, skill_id)?
+        .ok_or_else(|| format!("Skill id {} not found", skill_id))?;
+
+    conn.execute(
+        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
+         ON CONFLICT(skill_name) DO UPDATE SET
+             current_step = ?2, status = ?3, purpose = ?4, skill_id = ?5, updated_at = datetime('now') || 'Z'",
+        rusqlite::params![skill.name, current_step, status, purpose, skill_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn save_workflow_run(
@@ -28,33 +59,11 @@ pub fn save_workflow_run(
     status: &str,
     purpose: &str,
 ) -> Result<(), String> {
-    // Ensure the skills master row exists (skill-builder source) in the default plugin.
-    // Redo resets a skill to the default plugin, so stale rows in non-default plugins
-    // are cleaned up below to prevent sidebar duplicates.
-    let skill_id = upsert_skill(conn, skill_name, "skill-builder", purpose)?;
-
-    // Delete any rows for this skill in non-default plugins. This covers the redo case
-    // where the skill was previously in a non-default plugin: upsert_skill above inserted
-    // a new default-plugin row (ON CONFLICT key is (plugin_id, name)), so the old row
-    // remains until explicitly removed here.
-    conn.execute(
-        "DELETE FROM skills
-         WHERE name = ?1
-           AND id != ?2
-           AND plugin_id != (SELECT id FROM plugins WHERE is_default = 1 LIMIT 1)",
-        rusqlite::params![skill_name, skill_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
-         ON CONFLICT(skill_name) DO UPDATE SET
-             current_step = ?2, status = ?3, purpose = ?4, skill_id = ?5, updated_at = datetime('now') || 'Z'",
-        rusqlite::params![skill_name, current_step, status, purpose, skill_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    let skill_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
+        Some(skill_id) => skill_id,
+        None => super::skills::upsert_skill(conn, skill_name, "skill-builder", purpose)?,
+    };
+    save_workflow_run_by_skill_id(conn, skill_id, current_step, status, purpose)
 }
 
 pub fn set_skill_author(
@@ -98,18 +107,18 @@ pub fn set_skill_intake(
     Ok(())
 }
 
-pub fn get_workflow_run(
+pub fn get_workflow_run_by_skill_id(
     conn: &Connection,
-    skill_name: &str,
+    skill_id: i64,
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
-             FROM workflow_runs WHERE skill_name = ?1",
+             FROM workflow_runs WHERE skill_id = ?1",
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
+    let result = stmt.query_row(rusqlite::params![skill_id], |row| {
         Ok(WorkflowRunRow {
             skill_name: row.get(0)?,
             current_step: row.get(1)?,
@@ -130,6 +139,23 @@ pub fn get_workflow_run(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+pub fn get_workflow_run(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<WorkflowRunRow>, String> {
+    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
+        return Ok(None);
+    };
+    get_workflow_run_by_skill_id(conn, skill_id)
+}
+
+pub fn get_purpose_by_skill_id(conn: &Connection, skill_id: i64) -> Result<String, String> {
+    get_workflow_run_by_skill_id(conn, skill_id).map(|opt| {
+        opt.map(|run| run.purpose)
+            .unwrap_or_else(|| "domain".to_string())
+    })
 }
 
 pub fn get_purpose(conn: &Connection, skill_name: &str) -> Result<String, String> {
@@ -239,9 +265,9 @@ pub fn delete_workflow_run(
 
 // --- Workflow Steps ---
 
-pub fn save_workflow_step(
+pub fn save_workflow_step_by_skill_id(
     conn: &Connection,
-    skill_name: &str,
+    skill_id: i64,
     step_id: i32,
     status: &str,
 ) -> Result<(), String> {
@@ -252,7 +278,10 @@ pub fn save_workflow_step(
         _ => (None, None),
     };
 
-    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
+    let workflow_run_id = get_workflow_run_id_by_skill_id(conn, skill_id)?;
+    let skill_name = get_skill_master_by_id(conn, skill_id)?
+        .ok_or_else(|| format!("Skill id {} not found", skill_id))?
+        .name;
 
     conn.execute(
         "INSERT INTO workflow_steps (skill_name, step_id, status, started_at, completed_at, workflow_run_id)
@@ -268,11 +297,22 @@ pub fn save_workflow_step(
     Ok(())
 }
 
-pub fn get_workflow_steps(
+pub fn save_workflow_step(
     conn: &Connection,
     skill_name: &str,
+    step_id: i32,
+    status: &str,
+) -> Result<(), String> {
+    let skill_id = get_skill_master_id_any_plugin(conn, skill_name)?
+        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
+    save_workflow_step_by_skill_id(conn, skill_id, step_id, status)
+}
+
+pub fn get_workflow_steps_by_skill_id(
+    conn: &Connection,
+    skill_id: i64,
 ) -> Result<Vec<WorkflowStepRow>, String> {
-    let wr_id = match get_workflow_run_id(conn, skill_name)? {
+    let wr_id = match get_workflow_run_id_by_skill_id(conn, skill_id)? {
         Some(id) => id,
         None => return Ok(vec![]),
     };
@@ -298,12 +338,22 @@ pub fn get_workflow_steps(
         .map_err(|e| e.to_string())
 }
 
-pub fn reset_workflow_steps_from(
+pub fn get_workflow_steps(
     conn: &Connection,
     skill_name: &str,
+) -> Result<Vec<WorkflowStepRow>, String> {
+    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
+        return Ok(vec![]);
+    };
+    get_workflow_steps_by_skill_id(conn, skill_id)
+}
+
+pub fn reset_workflow_steps_from_by_skill_id(
+    conn: &Connection,
+    skill_id: i64,
     from_step: i32,
 ) -> Result<(), String> {
-    let wr_id = match get_workflow_run_id(conn, skill_name)? {
+    let wr_id = match get_workflow_run_id_by_skill_id(conn, skill_id)? {
         Some(id) => id,
         None => return Ok(()),
     };
@@ -316,7 +366,34 @@ pub fn reset_workflow_steps_from(
     Ok(())
 }
 
+pub fn reset_workflow_steps_from(
+    conn: &Connection,
+    skill_name: &str,
+    from_step: i32,
+) -> Result<(), String> {
+    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
+        return Ok(());
+    };
+    reset_workflow_steps_from_by_skill_id(conn, skill_id, from_step)
+}
+
 // --- Workflow Sessions ---
+
+pub fn create_workflow_session_by_skill_id(
+    conn: &Connection,
+    session_id: &str,
+    skill_id: i64,
+    pid: u32,
+) -> Result<(), String> {
+    let skill = get_skill_master_by_id(conn, skill_id)?
+        .ok_or_else(|| format!("Skill id {} not found", skill_id))?;
+    conn.execute(
+        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![session_id, skill.name, skill_id, pid as i64],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
 
 pub fn create_workflow_session(
     conn: &Connection,
@@ -324,13 +401,9 @@ pub fn create_workflow_session(
     skill_name: &str,
     pid: u32,
 ) -> Result<(), String> {
-    let skill_master_id = get_skill_master_id_any_plugin(conn, skill_name)?;
-    conn.execute(
-        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![session_id, skill_name, skill_master_id, pid as i64],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    let skill_id = get_skill_master_id_any_plugin(conn, skill_name)?
+        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
+    create_workflow_session_by_skill_id(conn, session_id, skill_id, pid)
 }
 
 pub fn end_workflow_session(conn: &Connection, session_id: &str) -> Result<(), String> {

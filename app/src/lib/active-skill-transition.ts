@@ -13,6 +13,7 @@ import { useRefineStore } from "@/stores/refine-store";
 import { useSkillStore } from "@/stores/skill-store";
 
 interface ActiveSkillSession {
+  skillId: number | null;
   skillName: string;
   pluginSlug: string;
   conversationId: string | null;
@@ -38,6 +39,7 @@ function getActiveSkillSession(): ActiveSkillSession | null {
   );
 
   return {
+    skillId: selectedSkill.id ?? null,
     skillName: selectedSkill.name,
     pluginSlug: selectedSkill.plugin_slug,
     conversationId: refineStore.conversationId,
@@ -73,7 +75,9 @@ export async function leaveCurrentSkill(
   }
 
   if (session) {
-    await releaseLock(session.skillName);
+    if (session.skillId != null) {
+      await releaseLock(session.skillId);
+    }
   }
 
   clearActiveSkillUiState();
@@ -84,7 +88,10 @@ export async function enterSkill(
   skill: EditableSkill,
   workspacePath: string,
 ): Promise<void> {
-  await acquireLock(skill.name);
+  if (skill.id == null) {
+    throw new Error(`Missing DB skill ID for '${skill.name}'`);
+  }
+  await acquireLock(skill.id);
   try {
     const session = await selectSkillOpenHandsSession(
       skill.name,
@@ -93,7 +100,7 @@ export async function enterSkill(
     );
     hydrateSelectedSkillOpenHandsSession(skill, session);
   } catch (error) {
-    await releaseLock(skill.name).catch(() => {});
+    await releaseLock(skill.id).catch(() => {});
     throw error;
   }
 }

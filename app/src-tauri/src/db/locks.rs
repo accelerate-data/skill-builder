@@ -1,12 +1,12 @@
 use rusqlite::Connection;
 
-use super::skills::get_skill_master_id_any_plugin;
+use super::skills::{get_skill_master_by_id, get_skill_master_id_any_plugin};
 
 // --- Skill Locks ---
 
-pub fn acquire_skill_lock(
+pub fn acquire_skill_lock_by_skill_id(
     conn: &Connection,
-    skill_name: &str,
+    skill_id: i64,
     instance_id: &str,
     pid: u32,
 ) -> Result<(), String> {
@@ -16,9 +16,9 @@ pub fn acquire_skill_lock(
         .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(), String> {
-        let s_id = get_skill_master_id_any_plugin(conn, skill_name)?
+        let skill = get_skill_master_by_id(conn, skill_id)?
             .ok_or_else(|| "Skill not found in skills master".to_string())?;
-        if let Some(existing) = get_skill_lock(conn, skill_name)? {
+        if let Some(existing) = get_skill_lock_by_skill_id(conn, skill_id)? {
             if existing.instance_id == instance_id {
                 return Ok(()); // Already locked by us
             }
@@ -26,26 +26,26 @@ pub fn acquire_skill_lock(
                 // Dead process — reclaim using skill_id FK
                 conn.execute(
                     "DELETE FROM skill_locks WHERE skill_id = ?1",
-                    rusqlite::params![s_id],
+                    rusqlite::params![skill_id],
                 )
                 .map_err(|e| e.to_string())?;
             } else {
                 return Err(format!(
                     "Skill '{}' is being edited in another instance",
-                    skill_name
+                    skill.name
                 ));
             }
         }
 
         conn.execute(
             "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![skill_name, s_id, instance_id, pid as i64],
+            rusqlite::params![skill.name, skill_id, instance_id, pid as i64],
         )
         .map_err(|e| {
             if e.to_string().contains("UNIQUE") {
                 format!(
                     "Skill '{}' is being edited in another instance",
-                    skill_name
+                    skill.name
                 )
             } else {
                 e.to_string()
@@ -62,21 +62,39 @@ pub fn acquire_skill_lock(
     result
 }
 
+pub fn acquire_skill_lock(
+    conn: &Connection,
+    skill_name: &str,
+    instance_id: &str,
+    pid: u32,
+) -> Result<(), String> {
+    let skill_id = get_skill_master_id_any_plugin(conn, skill_name)?
+        .ok_or_else(|| "Skill not found in skills master".to_string())?;
+    acquire_skill_lock_by_skill_id(conn, skill_id, instance_id, pid)
+}
+
+pub fn release_skill_lock_by_skill_id(
+    conn: &Connection,
+    skill_id: i64,
+    instance_id: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM skill_locks WHERE skill_id = ?1 AND instance_id = ?2",
+        rusqlite::params![skill_id, instance_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn release_skill_lock(
     conn: &Connection,
     skill_name: &str,
     instance_id: &str,
 ) -> Result<(), String> {
-    let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
-        Some(id) => id,
-        None => return Ok(()), // Lock doesn't exist — nothing to release
+    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
+        return Ok(());
     };
-    conn.execute(
-        "DELETE FROM skill_locks WHERE skill_id = ?1 AND instance_id = ?2",
-        rusqlite::params![s_id, instance_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    release_skill_lock_by_skill_id(conn, skill_id, instance_id)
 }
 
 pub fn release_all_instance_locks(conn: &Connection, instance_id: &str) -> Result<u32, String> {
@@ -89,21 +107,16 @@ pub fn release_all_instance_locks(conn: &Connection, instance_id: &str) -> Resul
     Ok(count as u32)
 }
 
-pub fn get_skill_lock(
+pub fn get_skill_lock_by_skill_id(
     conn: &Connection,
-    skill_name: &str,
+    skill_id: i64,
 ) -> Result<Option<crate::types::SkillLock>, String> {
-    let s_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
-        Some(id) => id,
-        None => return Ok(None),
-    };
-
     let mut stmt = conn
         .prepare(
             "SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_id = ?1",
         )
         .map_err(|e| e.to_string())?;
-    let result = stmt.query_row(rusqlite::params![s_id], |row| {
+    let result = stmt.query_row(rusqlite::params![skill_id], |row| {
         Ok(crate::types::SkillLock {
             skill_name: row.get(0)?,
             instance_id: row.get(1)?,
@@ -117,6 +130,16 @@ pub fn get_skill_lock(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+pub fn get_skill_lock(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<crate::types::SkillLock>, String> {
+    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
+        return Ok(None);
+    };
+    get_skill_lock_by_skill_id(conn, skill_id)
 }
 
 pub fn get_all_skill_locks(conn: &Connection) -> Result<Vec<crate::types::SkillLock>, String> {
@@ -144,21 +167,11 @@ pub fn reclaim_dead_locks(conn: &Connection) -> Result<u32, String> {
     let mut reclaimed = 0u32;
     for lock in locks {
         if !check_pid_alive(lock.pid) {
-            // Use skill_id FK; fall back to skill_name only as a last-resort
-            // defensive cleanup (reclaim is best-effort and must not abort on lookup failure).
-            if let Ok(Some(s_id)) = get_skill_master_id_any_plugin(conn, &lock.skill_name) {
-                conn.execute(
-                    "DELETE FROM skill_locks WHERE skill_id = ?1",
-                    rusqlite::params![s_id],
-                )
-                .map_err(|e| e.to_string())?;
-            } else {
-                conn.execute(
-                    "DELETE FROM skill_locks WHERE skill_name = ?1",
-                    [&lock.skill_name],
-                )
-                .map_err(|e| e.to_string())?;
-            }
+            conn.execute(
+                "DELETE FROM skill_locks WHERE skill_name = ?1 AND instance_id = ?2",
+                rusqlite::params![lock.skill_name, lock.instance_id],
+            )
+            .map_err(|e| e.to_string())?;
             reclaimed += 1;
         }
     }

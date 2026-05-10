@@ -16,7 +16,7 @@ const mockBlocker = vi.hoisted(() => ({
 const mockNavigate = vi.hoisted(() => vi.fn());
 const mockLocation = vi.hoisted(() => ({ state: {} as Record<string, unknown> }));
 vi.mock("@tanstack/react-router", () => ({
-  useParams: () => ({ skillName: "test-skill" }),
+  useParams: () => ({ skillId: "1" }),
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   useBlocker: () => mockBlocker,
   useNavigate: () => mockNavigate,
@@ -58,7 +58,24 @@ vi.mock("@/lib/tauri", () => ({
   logGateDecision: vi.fn(() => Promise.resolve()),
   navigateBackToStepDb: vi.fn(() => Promise.resolve()),
   getContextFileContent: vi.fn(() => Promise.resolve(null)),
-  listSkills: vi.fn().mockResolvedValue([]),
+  listSkills: vi.fn().mockResolvedValue([{
+    id: 1,
+    name: "test-skill",
+    library_key: "test-skill",
+    current_step: "Step 1",
+    status: "in_progress",
+    last_modified: null,
+    tags: [],
+    purpose: null,
+    author_login: null,
+    author_avatar: null,
+    intake_json: null,
+    source: "created",
+    skill_source: "skill-builder",
+    plugin_slug: "default",
+    plugin_display_name: "Skill Builder",
+    is_default_plugin: true,
+  }]),
   logFrontend: vi.fn(),
   invokeCommand: vi.fn((command: string) =>
     Promise.resolve(command === "get_clarifications" ? null : undefined),
@@ -198,6 +215,7 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
 beforeEach(() => {
   mockLocation.state = {};
   useRefineStore.getState().selectSkill({
+    id: 1,
     name: "test-skill",
     plugin_slug: "default",
     skill_source: "skill-builder",
@@ -219,6 +237,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
     useRefineStore.getState().selectSkill({
+      id: 1,
       name: "test-skill",
       plugin_slug: "default",
       skill_source: "skill-builder",
@@ -271,7 +290,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
   it("stays on completion screen after agent step 0 completes (clarificationsEditable)", async () => {
     // Simulate: step 0 is running an agent
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -322,7 +341,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   });
 
   it("marks step as error when agent fails — no cascade", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -418,7 +437,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("does not complete a step that is not in_progress", async () => {
     // Edge case: agent completion arrives but step is already completed
     // (e.g., from a stale agent)
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -445,7 +464,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   });
 
   it("does not revert step on unmount when running (route coordinator owns exits)", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -466,7 +485,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   });
 
   it("does not revert step on unmount when not running", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setRunning(false);
@@ -484,7 +503,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("does not call endWorkflowSession on unmount (route coordinator owns exits)", async () => {
     vi.mocked(endWorkflowSession).mockClear();
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -503,7 +522,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("does not call endWorkflowSession on unmount when session is active", async () => {
     vi.mocked(endWorkflowSession).mockClear();
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setRunning(true);
 
@@ -520,7 +539,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("cleans up workflow session on unmount even when not running", async () => {
     vi.mocked(endWorkflowSession).mockClear();
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setRunning(false);
@@ -539,7 +558,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   });
 
   it("shows nav guard dialog when blocker status is blocked", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -592,7 +611,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
   it("renders completion screen on last step (step 3)", async () => {
     // Simulate all steps complete, on step 3 (the last step)
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 4; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
@@ -647,7 +666,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
 
   it("loads clarifications from skillsPath when step 0 is completed", async () => {
     // Step 0 completed — clarifications are now loaded from DB via invokeCommand("get_clarifications")
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default from initWorkflow) — keeps currentStep stable
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -666,13 +685,13 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
     // (step 0 has clarificationsEditable=true and status=completed → useClarifications hook fires)
     expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
       "get_clarifications",
-      expect.objectContaining({ skillId: "test-skill" }),
+      expect.objectContaining({ skillId: "1" }),
     );
   });
 
   it("loads clarifications from skillsPath when step 1 is completed", async () => {
     // Step 1 (detailed research) also has clarificationsEditable
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default) — prevents auto-advance
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -690,7 +709,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
     // Clarifications loaded from DB for step 1 as well
     expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
       "get_clarifications",
-      expect.objectContaining({ skillId: "test-skill" }),
+      expect.objectContaining({ skillId: "1" }),
     );
   });
 });
@@ -737,7 +756,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
   it("step 0 completes and stays on completion screen with editable clarifications", async () => {
     // Simulate: step 0 is running an agent
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -786,7 +805,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
   it("step 1 completes and stays on completion screen with editable clarifications", async () => {
     // Simulate: step 1 running
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -839,7 +858,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("step 0 completes from verified backend materialized output without frontend materialization", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -872,7 +891,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -920,7 +939,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(verifyStepOutput).mockRejectedValue(new Error("disk busy"));
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -967,7 +986,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -1003,7 +1022,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("passes step 1 structured payload to backend materialization", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -1054,7 +1073,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("step 1 errors when structured output payload is missing", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -1076,7 +1095,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("step 1 errors when structured output payload is not an object", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -1108,7 +1127,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   it("step 0 does not require legacy structured output when backend output verifies", async () => {
     vi.mocked(verifyStepOutput).mockResolvedValue(true);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -1139,7 +1158,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       return Promise.resolve(vi.fn());
     });
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -1175,7 +1194,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("passes step 3 structured payload to backend materialization", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
@@ -1217,7 +1236,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("step 3 errors when structured output payload is missing", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
@@ -1241,7 +1260,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   });
 
   it("gate evaluator triggers on step 0 Continue", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default) — prevents reposition effect from auto-advancing
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1258,7 +1277,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     // Clarifications are now loaded from DB via invokeCommand("get_clarifications")
     expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
       "get_clarifications",
-      expect.objectContaining({ skillId: "test-skill" }),
+      expect.objectContaining({ skillId: "1" }),
     );
   });
 
@@ -1273,7 +1292,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1304,7 +1323,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     const wf = useWorkflowStore.getState();
     expect(wf.currentStep).toBe(0);
-    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalledWith("test-skill", 1, "/test/workspace");
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalledWith(1, "test-skill", 1, "/test/workspace");
 
   });
 
@@ -1331,7 +1350,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1400,7 +1419,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-openhands-result-text");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1464,7 +1483,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-openhands-prose-result-text");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1532,7 +1551,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-missing-structured");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1587,7 +1606,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-2");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1648,7 +1667,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-4");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1711,7 +1730,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-3");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1753,7 +1772,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
   it("skipToDecisions from step 0 skips to step 2 (Confirm Decisions)", async () => {
     // Set up step 0 completed
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1796,7 +1815,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-sufficient");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1881,7 +1900,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
   it("calls endWorkflowSession on error state reset button", async () => {
     // Set up workflow with an active session
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().setRunning(true); // creates a session ID
@@ -1914,7 +1933,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
   it("calls endWorkflowSession on reset confirmation dialog", async () => {
     // Set up workflow with an active session
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().setRunning(true); // creates a session ID
@@ -1968,7 +1987,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     vi.mocked(previewStepReset).mockResolvedValue([]);
 
     // Set up workflow with an active session
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().setRunning(true); // creates a session ID
@@ -2011,7 +2030,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
   });
 
   it("shows inline Retry button on error and calls runWorkflowStep when clicked", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
 
@@ -2093,7 +2112,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
       return Promise.reject("not found");
     });
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default) — prevents reposition effect from auto-advancing
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -2126,7 +2145,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
   });
 
   it("shows nav guard with agent running text when agent is running", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
@@ -2188,7 +2207,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
   it("autosave saves clarification answer immediately on completed clarificationsEditable step", async () => {
     const clarJson = makeClarificationsJson();
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(0);
@@ -2221,7 +2240,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
     await waitFor(() => {
       expect(vi.mocked(invokeCommand)).toHaveBeenCalledWith(
         "update_clarification_answer",
-        expect.objectContaining({ skillId: "test-skill", questionId: "Q1", answerChoice: "A" }),
+        expect.objectContaining({ skillId: "1", questionId: "Q1", answerChoice: "A" }),
       );
     });
 
@@ -2235,7 +2254,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
 
     // Set up step 0 as pending (not completed, no clarificationsEditable trigger)
     vi.mocked(readFile).mockRejectedValue("not found");
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().setCurrentStep(0);
@@ -2256,7 +2275,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
 
     // Set up step 2 (Confirm Decisions — no clarificationsEditable)
     vi.mocked(readFile).mockRejectedValue("not found");
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -2307,7 +2326,7 @@ describe("WorkflowPage — review mode default state", () => {
   });
 
   it("shows 'Switch to Update mode' message in review mode on pending agent step", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode defaults to true from initWorkflow
 
@@ -2399,7 +2418,7 @@ describe("step reset behavior regressions", () => {
 
   it("onResetStep on step 1 calls resetWorkflowStep with stepId 0 (rerun from research)", async () => {
     // Detailed-research rerun resets from step 0, clearing clarifications.json.
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -2440,7 +2459,7 @@ describe("step reset behavior regressions", () => {
   });
 
   it("onResetStep on step 1 resets all steps from 0 onward", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -2483,7 +2502,7 @@ describe("step reset behavior regressions", () => {
     // start the agent — no need to navigate away and back.
     vi.mocked(runWorkflowStep).mockResolvedValue("agent-reset-auto");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -2513,6 +2532,7 @@ describe("step reset behavior regressions", () => {
     // Agent should auto-start: runWorkflowStep called, step transitions to in_progress
     await waitFor(() => {
       expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledWith(
+        1,
         "test-skill",
         0,
         "/test/workspace",
@@ -2526,7 +2546,7 @@ describe("step reset behavior regressions", () => {
   it("Reset Step button on error state auto-starts the agent (VU-1021)", async () => {
     vi.mocked(runWorkflowStep).mockResolvedValue("agent-error-retry");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "error");
@@ -2550,6 +2570,7 @@ describe("step reset behavior regressions", () => {
     // Agent should auto-start after reset
     await waitFor(() => {
       expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledWith(
+        1,
         "test-skill",
         0,
         "/test/workspace",
@@ -2573,7 +2594,7 @@ describe("step reset behavior regressions", () => {
     vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
 
     // Steps 0 and 1 completed, currently on step 1
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -2630,7 +2651,7 @@ describe("step reset behavior regressions", () => {
     vi.mocked(previewStepReset).mockResolvedValue([]);
 
     // Steps 0, 1, 2 all completed, currently on step 2
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -2668,7 +2689,7 @@ describe("step reset behavior regressions", () => {
   it("WorkflowStepComplete receives onResetStep prop in update mode (non-review)", async () => {
     // Verify that onResetStep is wired through to WorkflowStepComplete when reviewMode=false.
     // The prop must be defined so the Reset Step button is available on the completion screen.
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=false (update mode)
     useWorkflowStore.getState().setReviewMode(false);
@@ -2748,7 +2769,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
   it("refreshes disabled steps after step 2 completion (contradictions guard)", async () => {
     vi.mocked(getDisabledSteps).mockResolvedValue([3]);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 2; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
     useWorkflowStore.getState().setCurrentStep(2);
@@ -2776,13 +2797,13 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     });
 
     // getDisabledSteps must have been called after step 2 completion
-    expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith("test-skill");
+    expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith(1);
     expect(useWorkflowStore.getState().disabledSteps).toEqual([3]);
   });
 
   // --- Scenario 2: advanceToNextStep blocked when next step is disabled ---
   it("advanceToNextStep does not advance when next step is disabled", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 3; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
     useWorkflowStore.getState().setCurrentStep(2);
@@ -2808,7 +2829,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
   it("performStepReset does not auto-start a disabled step", async () => {
     vi.mocked(getDisabledSteps).mockResolvedValue([3]);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 3; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
     useWorkflowStore.getState().setCurrentStep(3);
@@ -2839,7 +2860,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     await act(async () => {
       await resetWorkflowStep("/test/workspace", "test-skill", 3);
       useWorkflowStore.getState().resetToStep(3);
-      const disabled = await getDisabledSteps("test-skill");
+      const disabled = await getDisabledSteps(1);
       useWorkflowStore.getState().setDisabledSteps(disabled);
     });
 
@@ -2890,7 +2911,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
   // --- Scenario 5: Auto-start after reset respects disabled steps ---
   it("autoStartAfterReset skips disabled steps (defense-in-depth)", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setDisabledSteps([3]);
     useWorkflowStore.getState().setCurrentStep(3);
@@ -2937,6 +2958,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     // The auto-start effect should fire for step 0 (first pending step)
     await waitFor(() => {
       expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledWith(
+        1,
         "test-skill",
         0,
         "/test/workspace",
@@ -2950,7 +2972,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
   it("does not auto-advance to step 3 when step 2 completes with contradictions", async () => {
     vi.mocked(getDisabledSteps).mockResolvedValue([3]);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 2; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
     useWorkflowStore.getState().setCurrentStep(2);
@@ -3021,7 +3043,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     // After navigate-back, disabledSteps is cleared then re-evaluated
     vi.mocked(getDisabledSteps).mockResolvedValue([3]);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 3; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
     useWorkflowStore.getState().setCurrentStep(2);
@@ -3036,7 +3058,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
     // Re-evaluate (as Fix 3 does)
     await act(async () => {
-      const disabled = await getDisabledSteps("test-skill");
+      const disabled = await getDisabledSteps(1);
       useWorkflowStore.getState().setDisabledSteps(disabled);
     });
 
@@ -3052,7 +3074,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
   it("re-evaluates guards in onReset callback after navigate-back", async () => {
     vi.mocked(getDisabledSteps).mockResolvedValue([3]);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 3; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
     useWorkflowStore.getState().setCurrentStep(3);
@@ -3069,19 +3091,19 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
     // The onReset callback calls getDisabledSteps afterward (Fix 3)
     await act(async () => {
-      const disabled = await getDisabledSteps("test-skill");
+      const disabled = await getDisabledSteps(1);
       useWorkflowStore.getState().setDisabledSteps(disabled);
     });
 
     expect(useWorkflowStore.getState().disabledSteps).toEqual([3]);
-    expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith("test-skill");
+    expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith(1);
   });
 
   // --- Scenario 10: getDisabledSteps called after every step, not just step 0 ---
   it("calls getDisabledSteps after step 1 completion (general refresh)", async () => {
     vi.mocked(getDisabledSteps).mockResolvedValue([]);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -3111,7 +3133,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     });
 
     // getDisabledSteps should have been called after step 1
-    expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith("test-skill");
+    expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith(1);
   });
 });
 
@@ -3157,7 +3179,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
   it("pauses on completion screen after step 3 (generate)", async () => {
     // Simulate: steps 0-2 completed, step 3 running
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 3; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
@@ -3263,7 +3285,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-handler-test");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3302,7 +3324,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue(agentId);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3446,7 +3468,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-ref-test");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3534,7 +3556,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-step1-bad-json");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3613,7 +3635,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
   it("runGateOrAdvance falls through to advanceToNextStep when step is not 0 or 1", async () => {
     // Step 2 completed in review mode — runGateOrAdvance should just advance, not run gate evaluation.
     // Use review mode to prevent the reposition effect from moving currentStep away from step 2.
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     // reviewMode=true (default from initWorkflow) — keeps currentStep stable
     for (let i = 0; i < 3; i++) useWorkflowStore.getState().updateStepStatus(i, "completed");
@@ -3663,7 +3685,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-disabled-test");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(0);
@@ -3717,7 +3739,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-bad-json");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3771,7 +3793,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-bad-verdict");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3804,7 +3826,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
   it("step 0 gate agent error keeps the workflow on the current step", async () => {
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-error-agent");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3866,7 +3888,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-verdicts");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3930,7 +3952,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-no-reason");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -3990,7 +4012,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-clear");
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -4081,7 +4103,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
   it("step 1 errors before file verification when structured output is missing", async () => {
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -4110,7 +4132,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
   it("step 1 errors when verifyStepOutput returns false even with valid structured output", async () => {
     vi.mocked(verifyStepOutput).mockResolvedValue(false);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
@@ -4159,7 +4181,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     // Step 2 is "reasoning" type with no requiresStructuredOutput
     vi.mocked(verifyStepOutput).mockResolvedValue(true);
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
@@ -4185,7 +4207,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
   it("step 3 (requiresStructuredOutput) errors when structuredOutput is null", async () => {
     // Step 3 has requiresStructuredOutput: true
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
@@ -4216,7 +4238,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
   it("step errors when materializeWorkflowStepOutput throws", async () => {
     vi.mocked(materializeWorkflowStepOutput).mockRejectedValueOnce(new Error("validation failed"));
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
@@ -4259,7 +4281,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     // Steps 1-3 keep the legacy optimistic behavior for verification exceptions.
     vi.mocked(verifyStepOutput).mockRejectedValue(new Error("disk error"));
 
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
@@ -4282,7 +4304,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
   });
 
   it("step 1 with requiresStructuredOutput errors when structured output is an array", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);

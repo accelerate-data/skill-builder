@@ -4,7 +4,7 @@ use crate::types::{
 use rusqlite::Connection;
 
 use super::skills::get_skill_master_id_in_plugin;
-use super::workflow::get_workflow_run_id;
+use super::workflow::{get_workflow_run_id, get_workflow_run_id_by_skill_id};
 
 pub(crate) fn step_name(step_id: i32) -> String {
     match step_id {
@@ -492,6 +492,63 @@ pub fn get_session_agent_runs(
         .map_err(|e| e.to_string())
 }
 
+pub fn get_step_agent_runs_by_skill_id(
+    conn: &Connection,
+    skill_id: i64,
+    step_id: i32,
+) -> Result<Vec<AgentRunRecord>, String> {
+    let wr_id = match get_workflow_run_id_by_skill_id(conn, skill_id)? {
+        Some(id) => id,
+        None => return Ok(vec![]),
+    };
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT agent_id, skill_name, step_id, model, status,
+                    COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+                    COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
+                    COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                    COALESCE(num_turns, 0), stop_reason, duration_api_ms,
+                    COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
+                    session_id, started_at, completed_at
+             FROM agent_runs
+             WHERE workflow_run_id = ?1 AND step_id = ?2
+               AND status IN ('completed', 'error')
+               AND reset_marker IS NULL
+             ORDER BY completed_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![wr_id, step_id], |row| {
+            Ok(AgentRunRecord {
+                agent_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                step_id: row.get(2)?,
+                model: row.get(3)?,
+                status: row.get(4)?,
+                input_tokens: row.get(5)?,
+                output_tokens: row.get(6)?,
+                cache_read_tokens: row.get(7)?,
+                cache_write_tokens: row.get(8)?,
+                total_cost: row.get(9)?,
+                duration_ms: row.get(10)?,
+                num_turns: row.get(11)?,
+                stop_reason: row.get(12)?,
+                duration_api_ms: row.get(13)?,
+                tool_use_count: row.get(14)?,
+                compaction_count: row.get(15)?,
+                session_id: row.get(16)?,
+                started_at: row.get(17)?,
+                completed_at: row.get(18)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 pub fn get_step_agent_runs(
     conn: &Connection,
     skill_name: &str,
@@ -518,7 +575,6 @@ pub fn get_step_agent_runs(
              ORDER BY completed_at DESC",
         )
         .map_err(|e| e.to_string())?;
-
     let rows = stmt
         .query_map(rusqlite::params![wr_id, step_id], |row| {
             Ok(AgentRunRecord {

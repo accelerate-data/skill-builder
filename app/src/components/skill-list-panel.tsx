@@ -26,7 +26,6 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   useUnifiedSkills,
-  isSkillComplete,
 } from "@/hooks/use-unified-skills";
 import type { UnifiedSkill } from "@/hooks/use-unified-skills";
 import type { SkillSummary } from "@/lib/types";
@@ -51,7 +50,7 @@ import {
 
 export interface SkillListPanelProps {
   onSelectSkill?: (name: string, tab?: string) => Promise<void> | void;
-  onActivateSkill?: (name: string) => Promise<void> | void;
+  onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   onCreateSkill?: () => void;
   onCollapse?: () => void;
   className?: string;
@@ -83,7 +82,7 @@ export function SkillListPanel({
   const [deletingPlugin, setDeletingPlugin] = useState(false);
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const selectedSkill = useSkillStore((s) => s.activeSkill);
+  const selectedSkillId = useSkillStore((s) => s.activeSkillId);
   const setSelectedSkill = useSkillStore((s) => s.setActiveSkill);
   const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
   const { data: importedSkills = [] } = useImportedSkillsQuery();
@@ -104,14 +103,16 @@ export function SkillListPanel({
 
   // Default selection once query data is available.
   useEffect(() => {
-    if (unifiedSkills.length === 0 || selectedSkill) return;
+    if (unifiedSkills.length === 0 || selectedSkillId) return;
     const stored = localStorage.getItem("last-selected-skill");
     const key = stored && unifiedSkills.some((s) => s.key === stored)
       ? stored
       : unifiedSkills[0].key;
-    setSelectedSkill(key);
+    const skill = unifiedSkills.find((candidate) => candidate.key === key);
+    if (!skill) return;
+    setSelectedSkill(skill.skillId);
     void onActivateSkill?.(key);
-  }, [onActivateSkill, selectedSkill, setSelectedSkill, unifiedSkills]);
+  }, [onActivateSkill, selectedSkillId, setSelectedSkill, unifiedSkills]);
 
   const runningAgent = Object.values(runs).find(
     (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),
@@ -132,6 +133,9 @@ export function SkillListPanel({
       ),
     [unifiedSkills],
   );
+  const redoSkill = redoTarget
+    ? unifiedSkills.find((candidate) => candidate.key === redoTarget) ?? null
+    : null;
 
   async function handleRowClick(skill: UnifiedSkill) {
     // All other rows are locked while a workflow or refine agent runs
@@ -143,7 +147,7 @@ export function SkillListPanel({
 
     console.log("event=skill_selected skill=%s", skill.name);
     localStorage.setItem("last-selected-skill", skill.key);
-    setSelectedSkill(skill.key);
+    setSelectedSkill(skill.skillId);
     await onSelectSkill?.(skill.key);
   }
 
@@ -171,9 +175,9 @@ export function SkillListPanel({
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
       localStorage.setItem("last-selected-skill", skill.key);
-      setSelectedSkill(skill.key);
+      setSelectedSkill(skill.skillId);
       setRedoTarget(null);
-      // Navigation is handled by onActivateSkill in AppLayout.
+      await onActivateSkill?.(skill.key, "workflow");
     } catch (err) {
       toast.error(`Failed to reset workflow: ${err instanceof Error ? err.message : String(err)}`);
       console.error("event=skill_redo_failed skill=%s error=%s", skill.name, err);
@@ -198,15 +202,15 @@ export function SkillListPanel({
   async function handleReview(skill: UnifiedSkill) {
     console.log("event=skill_review skill=%s", skill.name);
     localStorage.setItem("last-selected-skill", skill.key);
-    setSelectedSkill(skill.key);
-    await onActivateSkill?.(skill.key);
+    setSelectedSkill(skill.skillId);
+    await onActivateSkill?.(skill.key, "workflow");
   }
 
   async function handleContinueBuilding(skill: UnifiedSkill) {
     console.log("event=skill_continue skill=%s", skill.name);
     localStorage.setItem("last-selected-skill", skill.key);
-    setSelectedSkill(skill.key);
-    await onActivateSkill?.(skill.key);
+    setSelectedSkill(skill.skillId);
+    await onActivateSkill?.(skill.key, "workflow");
   }
 
   function handleDelete(skill: UnifiedSkill) {
@@ -369,7 +373,7 @@ export function SkillListPanel({
         {filteredSkills.map((skill, index) => {
           const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || externalLockedSkills.has(skill.name);
           const isRunning = skill.name === runningSkillName;
-          const isSelected = skill.key === selectedSkill;
+          const isSelected = skill.skillId === selectedSkillId;
           const showPluginHeader = index === 0 || filteredSkills[index - 1]?.pluginSlug !== skill.pluginSlug;
 
           return (
@@ -406,9 +410,9 @@ export function SkillListPanel({
           workspacePath={workspacePath}
           open={createOpen}
           onOpenChange={setCreateOpen}
-          onCreated={async (createdName) => {
-            localStorage.setItem("last-selected-skill", createdName);
-            setSelectedSkill(createdName);
+          onCreated={async (createdSkillId) => {
+            localStorage.setItem("last-selected-skill", createdSkillId);
+            useSkillStore.getState().setActiveSkill(createdSkillId);
             await invalidateSkillQueries();
           }}
         />
@@ -430,7 +434,7 @@ export function SkillListPanel({
           <DialogHeader>
             <DialogTitle>Redo Workflow?</DialogTitle>
             <DialogDescription>
-              This will reset the workflow to Step 1 and overwrite all generated artifacts and files for &ldquo;{redoTarget}&rdquo;. This cannot be undone.
+              This will reset the workflow to Step 1 and overwrite all generated artifacts and files for &ldquo;{redoSkill?.name ?? redoTarget}&rdquo;. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -439,7 +443,7 @@ export function SkillListPanel({
               variant="destructive"
               onClick={() => {
                 if (!redoTarget) return;
-                const skill = unifiedSkills.find((candidate) => candidate.key === redoTarget);
+                const skill = redoSkill;
                 if (!skill) {
                   toast.error(`Failed to reset workflow: Skill '${redoTarget}' is not available`);
                   return;

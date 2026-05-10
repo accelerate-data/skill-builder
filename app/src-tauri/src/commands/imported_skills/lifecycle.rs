@@ -142,7 +142,23 @@ fn resolve_skill_target(
     conn: &rusqlite::Connection,
     skill_key: &str,
 ) -> Result<(String, String, Option<String>), String> {
-    // Imported skill key
+    if let Some(imported) = crate::db::get_imported_skill_by_id(conn, skill_key)? {
+        return Ok((
+            imported.skill_name,
+            imported
+                .plugin_slug
+                .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()),
+            Some(skill_key.to_string()),
+        ));
+    }
+
+    if let Ok(builder_skill_id) = skill_key.parse::<i64>() {
+        if let Some(skill) = crate::db::get_skill_master_by_id(conn, builder_skill_id)? {
+            return Ok((skill.name, skill.plugin_slug, None));
+        }
+    }
+
+    // Legacy imported skill key
     if let Some(skill_id) = skill_key.strip_prefix("imported:") {
         let imported = crate::db::get_imported_skill_by_id(conn, skill_id)?
             .ok_or_else(|| format!("Imported skill '{}' not found", skill_id))?;

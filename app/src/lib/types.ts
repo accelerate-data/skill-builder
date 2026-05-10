@@ -118,6 +118,7 @@ export type GitHubAuthResult =
   | { status: 'success'; user: GitHubUser }
 
 export interface SkillSummary {
+  id: number
   name: string
   library_key?: string | null
   current_step: string | null
@@ -405,6 +406,7 @@ export interface LibraryPlugin {
  * are null for marketplace/imported skills.
  */
 export interface EditableSkill {
+  id?: number | null
   name: string
   plugin_slug: string
   skill_source?: string | null
@@ -422,6 +424,7 @@ export interface EditableSkill {
 /** Convert an ImportedSkill to the EditableSkill shape expected by SkillDialog. */
 export function toEditableSkill(skill: ImportedSkill): EditableSkill {
   return {
+    id: null,
     name: skill.skill_name,
     plugin_slug: skill.plugin_slug,
     skill_source: skill.marketplace_source_url ? 'marketplace' : 'imported',

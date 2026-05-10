@@ -11,6 +11,8 @@ import type { AppSettings, ReconciliationResult } from "@/lib/types";
 
 const mockNavigate = vi.fn();
 const mockRouter = { navigate: vi.fn() };
+const SALES_SKILL_ID = "1";
+const FINANCE_SKILL_ID = "2";
 
 // Mock @tanstack/react-router
 vi.mock("@tanstack/react-router", () => ({
@@ -47,14 +49,21 @@ vi.mock("@/components/skill-list-panel", () => ({
     onActivateSkill,
   }: {
     onSelectSkill?: (name: string, tab?: string) => void;
-    onActivateSkill?: (name: string) => Promise<void> | void;
+    onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   }) => (
     <div data-testid="skill-list-panel">
-      <button onClick={() => onSelectSkill?.("sales-skill", "refine")}>Select sales</button>
-      <button onClick={() => onSelectSkill?.("finance-skill", "refine")}>Select finance</button>
+      <button onClick={() => onSelectSkill?.(SALES_SKILL_ID, "refine")}>Select sales</button>
+      <button onClick={() => onSelectSkill?.(FINANCE_SKILL_ID, "refine")}>Select finance</button>
       <button
         onClick={() => {
-          void Promise.resolve(onActivateSkill?.("sales-skill")).catch(() => {});
+          void Promise.resolve(onActivateSkill?.(SALES_SKILL_ID, "workflow")).catch(() => {});
+        }}
+      >
+        Review sales
+      </button>
+      <button
+        onClick={() => {
+          void Promise.resolve(onActivateSkill?.(SALES_SKILL_ID)).catch(() => {});
         }}
       >
         Startup activate sales
@@ -365,7 +374,9 @@ describe("AppLayout", () => {
         },
       });
     });
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(
+      mockInvoke.mock.calls.filter(([cmd]) => cmd === "pause_openhands_session"),
+    ).toHaveLength(1);
   });
 
   it("pauses the workflow conversation when Escape is pressed during workflow streaming", async () => {
@@ -505,6 +516,68 @@ describe("AppLayout", () => {
     expect(useRefineStore.getState().isStopping).toBe(true);
   });
 
+  it("still pauses refine when a nested element stops Escape propagation", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+      pause_openhands_session: true,
+    });
+    useRefineStore.setState({
+      isRunning: true,
+      isStopping: false,
+      activeAgentId: "refine-agent-1",
+      selectedSkill: {
+        name: "my-skill",
+        status: "completed",
+        current_step: null,
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      conversationId: "conv-refine-1",
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    const nested = document.createElement("button");
+    nested.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+      }
+    });
+    document.body.appendChild(nested);
+
+    try {
+      mockInvoke.mockClear();
+      nested.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("pause_openhands_session", {
+          input: {
+            skillName: "my-skill",
+            pluginSlug: "skills",
+            conversationId: "conv-refine-1",
+            agentId: "refine-agent-1",
+          },
+        });
+      });
+      expect(useRefineStore.getState().isStopping).toBe(true);
+    } finally {
+      nested.remove();
+    }
+  });
+
   it("does not call cancel again when Escape is pressed during refine stopping state", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
@@ -594,6 +667,58 @@ describe("AppLayout", () => {
     expect(useWorkflowStore.getState().isStopping).toBe(true);
   });
 
+  it("pauses workflow from the active skill session even when no workflow run record exists yet", async () => {
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: emptyReconciliation,
+      pause_openhands_session: true,
+      log_frontend: null,
+    });
+    useRefineStore.setState({
+      selectedSkill: {
+        id: 2740,
+        name: "my-skill",
+        status: "in_progress",
+        current_step: "1",
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      conversationId: "conv-workflow-fallback",
+    });
+    useAgentStore.getState().setActiveAgent("workflow-agent-pending");
+    useWorkflowStore.getState().setRunning(true);
+    useWorkflowStore.getState().setStopping(false);
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+
+    mockInvoke.mockClear();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    expect(useWorkflowStore.getState().isStopping).toBe(true);
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("pause_openhands_session", {
+        input: {
+          skillName: "my-skill",
+          pluginSlug: "skills",
+          conversationId: "conv-workflow-fallback",
+          agentId: "workflow-agent-pending",
+        },
+      });
+    });
+  });
+
   it("sets evals isStopping immediately when Escape is pressed during eval run", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
@@ -651,6 +776,7 @@ describe("AppLayout", () => {
       if (cmd === "list_skills") {
         return Promise.resolve([
           {
+            id: 1,
             name: "sales-skill",
             current_step: null,
             status: "completed",
@@ -699,7 +825,7 @@ describe("AppLayout", () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
-        skillName: "sales-skill",
+        skillId: 1,
       });
       expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
         skillName: "sales-skill",
@@ -711,10 +837,80 @@ describe("AppLayout", () => {
     expect(useRefineStore.getState().conversationId).toBe("conv-sales");
   });
 
+  it("navigates to the workflow page for an already-active skill when explicitly requested", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            id: 1,
+            name: "sales-skill",
+            current_step: null,
+            status: "completed",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "github_get_user") return Promise.resolve(null);
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+
+    useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
+    useRefineStore.setState({
+      selectedSkill: {
+        id: 1,
+        name: "sales-skill",
+        status: "completed",
+        current_step: null,
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      conversationId: "conv-sales",
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Review sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Review sales"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/workflow/$skillId",
+        params: { skillId: SALES_SKILL_ID },
+      });
+    });
+  });
+
   it("pauses the current skill conversation before switching skills", async () => {
     const commandOrder: string[] = [];
     const skills = [
       {
+        id: 1,
         name: "sales-skill",
         current_step: null,
         status: "completed",
@@ -734,6 +930,7 @@ describe("AppLayout", () => {
         is_default_plugin: true,
       },
       {
+        id: 2,
         name: "finance-skill",
         current_step: null,
         status: "completed",
@@ -779,9 +976,10 @@ describe("AppLayout", () => {
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
-    useSkillStore.getState().setActiveSkill("sales-skill");
+    useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
     useRefineStore.setState({
       selectedSkill: {
+        id: 1,
         name: "sales-skill",
         status: "completed",
         current_step: null,
@@ -820,7 +1018,7 @@ describe("AppLayout", () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("release_lock", {
-        skillName: "sales-skill",
+        skillId: 1,
       });
     });
 
@@ -830,7 +1028,7 @@ describe("AppLayout", () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", {
-        skillName: "finance-skill",
+        skillId: 2,
       });
       expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
         skillName: "finance-skill",
@@ -853,6 +1051,7 @@ describe("AppLayout", () => {
   it("does not bootstrap the next skill when pause fails", async () => {
     const skills = [
       {
+        id: 1,
         name: "sales-skill",
         current_step: null,
         status: "completed",
@@ -872,6 +1071,7 @@ describe("AppLayout", () => {
         is_default_plugin: true,
       },
       {
+        id: 2,
         name: "finance-skill",
         current_step: null,
         status: "completed",
@@ -904,10 +1104,10 @@ describe("AppLayout", () => {
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
-    useSkillStore.getState().setActiveSkill("sales-skill");
-    useSkillStore.getState().setActiveSessionSkillName("sales-skill");
+    useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
     useRefineStore.setState({
       selectedSkill: {
+        id: 1,
         name: "sales-skill",
         status: "completed",
         current_step: null,
@@ -936,7 +1136,7 @@ describe("AppLayout", () => {
     // Should not proceed to acquire_lock for the next skill
     await new Promise((r) => setTimeout(r, 100));
     expect(mockInvoke).not.toHaveBeenCalledWith("acquire_lock", {
-      skillName: "finance-skill",
+      skillId: 2,
     });
   });
 
@@ -1123,6 +1323,7 @@ describe("AppLayout", () => {
 
   describe("startup routing", () => {
     const baseSkill = {
+      id: 1,
       name: "sales-skill",
       current_step: null,
       last_modified: null,
@@ -1165,7 +1366,7 @@ describe("AppLayout", () => {
       });
     };
 
-    it("navigates to '/workspace/$skillName' when the pre-selected skill has status 'completed'", async () => {
+    it("navigates to '/workspace/$skillId' when the pre-selected skill has status 'completed'", async () => {
       setupMock({ status: "completed" });
       render(<AppLayout />);
 
@@ -1174,14 +1375,14 @@ describe("AppLayout", () => {
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith({
-          to: "/workspace/$skillName",
-          params: { skillName: "sales-skill" },
+          to: "/workspace/$skillId",
+          params: { skillId: SALES_SKILL_ID },
           search: { tab: undefined },
         });
       });
     });
 
-    it("navigates to '/workflow/$skillName' when the pre-selected skill has status 'in_progress'", async () => {
+    it("navigates to '/workflow/$skillId' when the pre-selected skill has status 'in_progress'", async () => {
       setupMock({ status: "in_progress" });
       render(<AppLayout />);
 
@@ -1190,8 +1391,8 @@ describe("AppLayout", () => {
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith({
-          to: "/workflow/$skillName",
-          params: { skillName: "sales-skill" },
+          to: "/workflow/$skillId",
+          params: { skillId: SALES_SKILL_ID },
         });
       });
     });
@@ -1205,16 +1406,16 @@ describe("AppLayout", () => {
 
       // Wait for bootstrap attempt, then for error cleanup (activeSkill reset to null)
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", { skillName: "sales-skill" });
+        expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", { skillId: 1 });
       });
       await waitFor(() => {
-        expect(useSkillStore.getState().activeSkill).toBeNull();
+        expect(useSkillStore.getState().activeSkillId).toBeNull();
       });
 
       expect(mockNavigate).not.toHaveBeenCalled();
     });
 
-    it("clears selectedWorkspaceSkillName when bootstrap throws", async () => {
+    it("clears selected workspace skill when bootstrap throws", async () => {
       setupMock({ status: "completed" }, () => Promise.reject(new Error("lock failed")));
       render(<AppLayout />);
 
@@ -1222,10 +1423,10 @@ describe("AppLayout", () => {
       await userEvent.click(screen.getByText("Startup activate sales"));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", { skillName: "sales-skill" });
+        expect(mockInvoke).toHaveBeenCalledWith("acquire_lock", { skillId: 1 });
       });
       await waitFor(() => {
-        expect(useSkillStore.getState().activeSkill).toBeNull();
+        expect(useSkillStore.getState().activeSkillId).toBeNull();
       });
     });
   });

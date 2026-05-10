@@ -13,7 +13,11 @@ export function useScopeBlocked(
       setScopeBlocked(false);
       return;
     }
-    getDisabledSteps(selectedSkill.name)
+    if (selectedSkill.id == null) {
+      setScopeBlocked(false);
+      return;
+    }
+    getDisabledSteps(selectedSkill.id)
       .then((disabled) => {
         const blocked = disabled.length > 0;
         setScopeBlocked(blocked);
