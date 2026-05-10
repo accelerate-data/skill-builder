@@ -23,6 +23,15 @@ fn migrate_flatten_openhands_dir(app_data_root: &Path) {
         return;
     }
 
+    if let Err(e) = fs::create_dir_all(&new_openhands) {
+        log::warn!(
+            "[migrate] failed to create destination dir {}: {} — aborting migration",
+            new_openhands.display(),
+            e
+        );
+        return;
+    }
+
     // Move each known subdirectory: logs/, conversations/, bash_events/
     for subdir in &["logs", "conversations", "bash_events"] {
         let src = old_openhands.join(subdir);
@@ -30,7 +39,12 @@ fn migrate_flatten_openhands_dir(app_data_root: &Path) {
             let dst = new_openhands.join(subdir);
             if !dst.exists() {
                 if let Err(e) = fs::rename(&src, &dst) {
-                    log::warn!("[migrate] failed to move {} → {}: {}", src.display(), dst.display(), e);
+                    log::warn!(
+                        "[migrate] failed to move {} → {}: {}",
+                        src.display(),
+                        dst.display(),
+                        e
+                    );
                 } else {
                     log::info!("[migrate] moved {} → {}", src.display(), dst.display());
                 }
@@ -41,9 +55,16 @@ fn migrate_flatten_openhands_dir(app_data_root: &Path) {
     // Remove the old workspace/ wrapper after moving
     let old_workspace = app_data_root.join(WORKSPACE_SUBDIR);
     if let Err(e) = fs::remove_dir_all(&old_workspace) {
-        log::warn!("[migrate] failed to remove legacy workspace dir {}: {}", old_workspace.display(), e);
+        log::warn!(
+            "[migrate] failed to remove legacy workspace dir {}: {}",
+            old_workspace.display(),
+            e
+        );
     } else {
-        log::info!("[migrate] removed legacy workspace dir {}", old_workspace.display());
+        log::info!(
+            "[migrate] removed legacy workspace dir {}",
+            old_workspace.display()
+        );
     }
 }
 
@@ -533,8 +554,7 @@ pub fn init_workspace(
                             &skill.name,
                         );
                         if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
-                            app,
-                            &skill_dir,
+                            app, &skill_dir,
                         ) {
                             log::warn!(
                                 "[init_workspace] failed to seed .agents/ for skill {}/{}: {}",
