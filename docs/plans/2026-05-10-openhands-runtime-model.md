@@ -1567,24 +1567,46 @@ runtime state lives directly under the app data root:
 ```
 
 Remove the extra `{app_data_root}/workspace/` wrapper from the target layout.
-Add a one-time migration that runs on startup (alongside the existing `migrate_workspace_layout` calls):
+Add a one-time migration that runs on startup (alongside the existing `migrate_workspace_layout` calls). It moves the conversations and bash_events subdirectories to the new flat location, then removes the old workspace wrapper:
 
 ```rust
-/// One-time: remove the legacy workspace/ wrapper if it still exists.
-/// The conversations and bash_events directories moved to {app_data_root}/openhands/.
-fn migrate_remove_workspace_wrapper(app_data_root: &Path) {
-    let old_workspace = app_data_root.join("workspace");
-    if old_workspace.exists() {
-        if let Err(e) = std::fs::remove_dir_all(&old_workspace) {
-            log::warn!("[migrate] failed to remove legacy workspace dir {}: {}", old_workspace.display(), e);
-        } else {
-            log::info!("[migrate] removed legacy workspace dir {}", old_workspace.display());
+/// One-time: move conversations/bash_events from workspace/.openhands/ to openhands/,
+/// then remove the legacy workspace/ wrapper.
+/// Preserves in-flight conversation directories so DB conversation IDs remain valid.
+fn migrate_flatten_openhands_dir(app_data_root: &Path) {
+    let old_openhands = app_data_root.join("workspace").join(".openhands");
+    let new_openhands = app_data_root.join("openhands");
+
+    if !old_openhands.exists() {
+        return;
+    }
+
+    // Move each known subdirectory: conversations/, bash_events/
+    for subdir in &["conversations", "bash_events"] {
+        let src = old_openhands.join(subdir);
+        if src.exists() {
+            let dst = new_openhands.join(subdir);
+            if !dst.exists() {
+                if let Err(e) = std::fs::rename(&src, &dst) {
+                    log::warn!("[migrate] failed to move {} → {}: {}", src.display(), dst.display(), e);
+                } else {
+                    log::info!("[migrate] moved {} → {}", src.display(), dst.display());
+                }
+            }
         }
+    }
+
+    // Remove the old workspace/ wrapper after moving
+    let old_workspace = app_data_root.join("workspace");
+    if let Err(e) = std::fs::remove_dir_all(&old_workspace) {
+        log::warn!("[migrate] failed to remove legacy workspace dir {}: {}", old_workspace.display(), e);
+    } else {
+        log::info!("[migrate] removed legacy workspace dir {}", old_workspace.display());
     }
 }
 ```
 
-Call this after the new path helpers are in place so the old directory is guaranteed to be unused before deletion.
+Call this after the new path helpers are in place so all callers are already writing to the new location before the old directory is removed.
 
 - [ ] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
 
