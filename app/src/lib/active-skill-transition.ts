@@ -4,7 +4,6 @@ import {
   pauseOpenHandsSession,
   releaseLock,
   selectSkillOpenHandsSession,
-  stopOpenHandsServer,
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
@@ -81,7 +80,6 @@ export async function leaveCurrentSkill(
   }
 
   clearActiveSkillUiState();
-  await stopOpenHandsServer();
 }
 
 export async function enterSkill(
