@@ -68,7 +68,14 @@ Product-specific Tauri commands and orchestration. Responsible for:
 - choosing persistent vs throwaway session behavior
 - parsing terminal outputs into app-owned result contracts
 
-`ensure_skill_runtime_ready` lives here (not in Layer 2) because it reads from the DB and ensures workspace dirs — app concerns that Layer 2 must not know about.
+Layer 3 exports:
+
+| Export | Location | Purpose |
+|---|---|---|
+| `ensure_skill_runtime_ready` | `commands/skill_session.rs` | Validates workspace is initialized, ensures prompts are deployed, creates skill workspace dir. Returns `InitializedRuntimeContext` (workspace path + LLM config). Layer 3 concern because it reads from the DB and touches workspace dirs. |
+| `build_skill_session_config` | `commands/skill_session.rs` | Thin wrapper over `skill_creator::build_skill_creator_config` with refine-fixed params: `task_kind: "refine"`, `step_id: -10`, `allowed_tools: ["file_editor", "terminal"]`, `max_turns: 500`, `run_source: "refine"`. |
+
+**Dispatch exception:** Layer 3 may call Layer 1 dispatch primitives (`send_openhands_message`, `pause_openhands_conversation`) directly for one-shot turn operations. These do not need Layer 2 helpers — they operate on an already-booted session and only append/pause. Layer 2 is required for session boot (`ensure_skill_session`) and config construction (`build_skill_creator_config`), not for individual turn dispatch.
 
 ## Persistent vs Throwaway Sessions
 

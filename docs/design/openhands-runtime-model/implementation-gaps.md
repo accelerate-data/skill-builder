@@ -115,6 +115,17 @@ thin Layer 3 caller with no config builders or re-exports of `Refine*` names.
 `skill_creator::ensure_skill_session` instead of
 `ensure_openhands_server` + `start_openhands_session`.
 
+Signature:
+```rust
+pub fn build_skill_session_config(
+    skill_name: &str,
+    plugin_slug: &str,
+    prompt: &str,
+    workspace_path: &str,
+    llm: WorkflowLlmConfig,
+) -> OpenHandsRuntimeConfig
+```
+
 **Fix in `commands/refine/mod.rs`:** Update re-exports to the renamed symbols.
 
 **Callers across the codebase:**
@@ -235,17 +246,13 @@ non-`FullHistory` mode are updated to use `FullHistory`.
 
 **Target:** The `app/sidecar/` package is removed. The Rust process and
 OpenHands Agent Server are the only runtime. TypeScript contract ownership is
-explicit without any dependency on `app/sidecar/`. Rust modules use
-runtime-oriented names instead of `sidecar`.
+explicit without any dependency on `app/sidecar/`.
 
-**Current state:** `app/sidecar/` still exists. Packaging, CI, and release
-scripts still reference it. Some Rust module names (`agents/sidecar.rs`,
-`SidecarConfig`, etc.) still use `sidecar` terminology.
+**Current state:** `app/sidecar/` still exists (with `node_modules/`). Packaging, CI, and release
+scripts still reference it.
 
-**Fix (separate PR):** Delete `app/sidecar/`. Update packaging and CI. Rename
-Rust modules and types to remove `sidecar` in favor of runtime-oriented names
-(`runtime_config.rs`, `OpenHandsRuntimeConfig`, etc.). Update docs, repo-map,
-TEST_MAP, and AGENTS.md.
+**Fix (separate PR):** Delete `app/sidecar/`. Update packaging and CI.
+Update docs, repo-map, TEST_MAP, and AGENTS.md.
 
 ---
 
