@@ -1466,13 +1466,13 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 
 **Smoke 3 — Artifacts on disk are under workspace root**
 
-1. After Smoke 2, find your workspace root (default: `~/.vibedata/`)
+1. After Smoke 2, find your workspace root in **Settings → Workspace Path** (shown as `{workspace_root}` below)
 2. Check the filesystem:
    ```bash
-   ls ~/.vibedata/.openhands/conversations/
-   ls ~/.vibedata/.openhands/bash_events/
+   ls {workspace_root}/.openhands/conversations/
+   ls {workspace_root}/.openhands/bash_events/
    ```
-3. **Verify:** Both directories exist and contain entries. No `conversations/` directory exists under `~/.vibedata/{plugin}/skills/{skill_name}/`.
+3. **Verify:** Both directories exist and contain entries. No `conversations/` directory exists under `{workspace_root}/{plugin}/skills/{skill_name}/`.
 
 **Smoke 4 — Conversation survives app quit + restart**
 
@@ -1488,25 +1488,27 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 **Goal:** Finish the runtime-model clean break after PR 6. Every skill-scoped
 conversation should use the canonical skill directory as `workspace.working_dir`
 and `.agents` root; the app-local data dir should no longer hide runtime state
-inside a `workspace/` wrapper. In the same PR, `reset_workflow_step` pauses the
-skill's active conversation before clearing the DB record, and the
-`remove_dir_all` on the conversations folder is removed entirely — conversation
-directories are never deleted on reset; orphaned conversation files are
-harmless once the DB record is gone.
+inside a `workspace/` wrapper — runtime state moves to `{app_data_root}/openhands/`
+directly. In the same PR, `reset_workflow_step` pauses the skill's active
+conversation before clearing the DB record and deletes the specific conversation
+directory by ID; the old blanket `remove_dir_all` on the whole conversations
+folder is removed.
 
 **Architecture:** Two halves of the same folder-model cleanup. Phase 1
 canonicalizes runtime roots and skill working directories: remove the
 `workspaceSkillDir` contract, point OpenHands CWD at the canonical skill
 directory, flatten app-local storage to root-level `openhands/`, DB, and
-documents, and make canonical skill dirs the only runtime `.agents` location.
+documents, delete the now-empty `workspace/` wrapper on first launch, and make
+canonical skill dirs the only runtime `.agents` location.
 Phase 2 keeps the existing reset cleanup work: (1) add
 `try_get_cached_server_handle` to `process.rs`, (2) add
 `pause_conversation_if_server_running` to `mod.rs`, and (3) refactor
-`clear_persistent_skill_conversation_state` in `evaluation.rs` to remove
-`remove_dir_all`, split into a sync ID-collection step and a sync DB-clear step
-so the DB lock is never held across the async pause.
+`clear_persistent_skill_conversation_state` in `evaluation.rs` to pause then
+delete the specific `openhands/conversations/{conv_id}/` directory, split into a
+sync ID-collection step and a sync DB-clear step so the DB lock is never held
+across the async pause.
 
-**Why no directory deletion:** After the DB record is cleared, the old conversation directory is an unreferenced orphan. It does not interfere with future conversations (each has its own ID-keyed subdirectory). Deleting the whole conversations folder on reset is dangerous once PR 6's shared `{workspace_root}/.openhands/conversations/` path is in place — it would wipe every skill's conversation state.
+**On directory deletion:** We delete the specific conversation directory by ID after pausing — `{app_data_root}/openhands/conversations/{conv_id}/`. This is safe because each conversation lives in its own ID-keyed subdirectory; deleting one does not affect others. The old concern (wiping every skill's state) applied only to deleting the shared conversations root, not individual entries.
 
 ---
 
@@ -1553,7 +1555,7 @@ Change `agents/skill_creator.rs` and any Layer 3 wrappers so they compute
 Pre-create and throwaway flows should create that directory up front when
 needed and then use the same path as the OpenHands working dir.
 
-- [ ] **Step 3: Flatten app-local path resolution**
+- [ ] **Step 3: Flatten app-local path resolution and delete the old `workspace/` wrapper**
 
 Update `commands/workspace.rs` and any path helpers/callers so app-local
 runtime state lives directly under the app data root:
@@ -1565,8 +1567,24 @@ runtime state lives directly under the app data root:
 ```
 
 Remove the extra `{app_data_root}/workspace/` wrapper from the target layout.
-Preserve one-time cleanup/migration behavior for older installs if needed, but
-the steady-state layout must be flat.
+Add a one-time migration that runs on startup (alongside the existing `migrate_workspace_layout` calls):
+
+```rust
+/// One-time: remove the legacy workspace/ wrapper if it still exists.
+/// The conversations and bash_events directories moved to {app_data_root}/openhands/.
+fn migrate_remove_workspace_wrapper(app_data_root: &Path) {
+    let old_workspace = app_data_root.join("workspace");
+    if old_workspace.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&old_workspace) {
+            log::warn!("[migrate] failed to remove legacy workspace dir {}: {}", old_workspace.display(), e);
+        } else {
+            log::info!("[migrate] removed legacy workspace dir {}", old_workspace.display());
+        }
+    }
+}
+```
+
+Call this after the new path helpers are in place so the old directory is guaranteed to be unused before deletion.
 
 - [ ] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
 
@@ -1850,9 +1868,19 @@ let conversation_ids = {
     collect_skill_conversation_ids(&conn, &plugin_slug, &skill_name)
 };
 
-// Best-effort pause — does not hold the DB lock.
+// Best-effort pause then delete per-conversation directory.
+// All errors are logged and swallowed — reset must not fail due to server state.
+let openhands_conversations_dir = crate::commands::workspace::resolve_openhands_conversations_dir(&app_handle);
 for (_, conv_id) in &conversation_ids {
     crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
+    let conv_dir = openhands_conversations_dir.join(conv_id);
+    if conv_dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&conv_dir) {
+            log::warn!("[reset_workflow_step] failed to delete conversation dir {}: {}", conv_dir.display(), e);
+        } else {
+            log::info!("[reset_workflow_step] deleted conversation dir {}", conv_dir.display());
+        }
+    }
 }
 
 // Reset steps in SQLite
@@ -1862,7 +1890,7 @@ clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
 crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
 ```
 
-Remove the `// Reset steps in SQLite` comment and the existing `let conn = db.0.lock()` line that preceded the old call — they are replaced by the block above. Keep the `save_workflow_run` block unchanged.
+Remove the `// Reset steps in SQLite` comment and the existing `let conn = db.0.lock()` line that preceded the old call — they are replaced by the block above. Add `app_handle: tauri::AppHandle` to `reset_workflow_step`'s parameter list so it can resolve the conversations dir. Keep the `save_workflow_run` block unchanged.
 
 - [ ] **Step 5: Run the filesystem test**
 
@@ -1905,9 +1933,9 @@ git commit -m "feat: pause conversation before workflow reset; remove conversati
 
 1. Open a skill, start a workflow step so the agent is running
 2. While the agent is running, click Reset Workflow
-3. **Verify:** The reset completes cleanly. No error toast. Rust logs show `paused conversation <id> before reset`.
+3. **Verify:** The reset completes cleanly. No error toast. Rust logs show `paused conversation <id>` and `deleted conversation dir`.
 4. Re-open the skill. **Verify:** Workflow starts fresh (step 0, no history).
-5. Check `~/.vibedata/.openhands/conversations/` — the old conversation directory may still be present on disk, which is expected and correct.
+5. Check `{app_data_root}/openhands/conversations/` (find `app_data_root` via `tauri::api::path::app_data_dir()` or the Settings debug panel) — the old conversation directory for the reset skill must be **gone**. Other skills' conversation directories must still be present.
 
 ---
 
