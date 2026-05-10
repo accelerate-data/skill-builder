@@ -79,16 +79,49 @@ Layer 3 exports:
 
 ## Runtime Roots
 
-The target model has two durable roots:
+The runtime has three distinct directory roots. Confusing them causes wrong conversation paths, missing agents, or misdirected file edits. Each root has a single authoritative resolver — never construct these paths by hand.
 
-| Root | Purpose |
+| Root | Resolved by | macOS default |
+|---|---|---|
+| `{app_data_root}` | `app_handle.path().app_data_dir()` | `~/Library/Application Support/com.vibedata.skill-builder/` |
+| `{skills_root}` | `resolve_skills_path(&db)` → `settings.skills_path` | `~/skill-builder/` (user-configured in Settings) |
+| `{skill_dir}` | `skill_paths::resolve_skill_dir(skills_root, plugin_slug, skill_name)` | `{skills_root}/{plugin_slug}/skills/{skill_name}` |
+
+### `app_data_root`
+
+App-owned runtime state. Never user-configured — Tauri derives it from the OS app data directory. All durable server state lives here regardless of which skill is active.
+
+| Path | Purpose |
 |---|---|
-| `{app_data_root}` | App-owned runtime state. Contains `openhands/`, the SQLite DB, and app documents directly at the root. There is no extra `workspace/` wrapper directory. |
-| `{skills_root}` | Canonical authored skill tree. OpenHands conversations set `workspace.working_dir` to a canonical skill directory under this root. |
+| `openhands/conversations/` | All skill conversations. Set as `OH_CONVERSATIONS_PATH`. Each conversation gets its own UUID-named subdirectory. |
+| `openhands/bash_events/` | Bash event logs for all conversations. Set as `OH_BASH_EVENTS_DIR`. |
+| `openhands/logs/` | Agent Server stderr logs. |
+| `openhands/secret.key` | Stable encryption key. Shared across all skills and survives Agent Server restarts. |
+| `skill-builder.db` | Durable metadata and conversation ID bindings. |
+| `documents/` | App-managed document artifacts. |
 
-`workspaceSkillDir` is not part of the target model. A skill conversation works directly in the canonical skill directory:
+There is no `workspace/` wrapper directory. Existing installs that still have `{app_data_root}/workspace/.openhands/` are migrated on first launch by `migrate_flatten_openhands_dir`, which moves `conversations/`, `bash_events/`, and `logs/` to the flat layout and then removes the old wrapper.
 
-`{skills_root}/{plugin_slug}/skills/{skill_name}`
+### `skills_root`
+
+Canonical authored skill tree. User-configured via Settings → Skills Path. Resolved by `resolve_skills_path(&db)` → `settings.skills_path`. Never falls back to the workspace path — an unconfigured `skills_path` is an error. Contains all plugin/skill files organized as `{skills_root}/{plugin_slug}/skills/{skill_name}/`.
+
+### `skill_dir`
+
+The per-skill directory OpenHands uses as `workspace.working_dir`. Always:
+
+```text
+{skills_root}/{plugin_slug}/skills/{skill_name}
+```
+
+This is the only directory OpenHands can read and edit skill files in. Skill Builder seeds a `.agents/` subtree here so OpenHands can find agent definitions:
+
+| Path | Source | Purpose |
+|---|---|---|
+| `{skill_dir}/.agents/agents/` | `agent-sources/workspace/agents/` | Agent instruction files (e.g., `skill-creator.md`). |
+| `{skill_dir}/.agents/skills/` | `agent-sources/workspace/skills/` | File-based skill definitions. |
+
+`.agents/` is seeded by `seed_skill_agents_dir` (in `commands/workflow/deploy.rs`) on app startup for all existing skills and immediately after a new skill is created. The copy is SHA-gated and skipped when the bundled source content has not changed since the last deployment to that skill dir.
 
 ## Persistent vs Throwaway Sessions
 
@@ -130,7 +163,7 @@ Selected-skill activation owns the persistent session bootstrap sequence:
 2. call `ensure_skill_session` with the saved `conversation_id` from the DB
 3. restore visible transcript history from the conversation events
 
-The runtime is app-scoped: `OH_CONVERSATIONS_PATH` points at `{app_data_root}/openhands/conversations/` and `OH_BASH_EVENTS_DIR` points at `{app_data_root}/openhands/bash_events/`. Both are fixed for the lifetime of the app data root — they do not change between skill switches. The cached Agent Server is reused across skill switches; it only restarts on process crash or failed health probe. Skill-specific file access is provided by `workspace.working_dir` in each conversation's `POST /api/conversations` body, and that working dir is always the canonical skill directory. The DB is the durable source of truth for the saved `conversation_id`.
+The runtime is app-scoped: `OH_CONVERSATIONS_PATH` points at `{app_data_root}/openhands/conversations/` and `OH_BASH_EVENTS_DIR` points at `{app_data_root}/openhands/bash_events/`. Both are fixed for the lifetime of the app data root and do not change between skill switches. The cached Agent Server is reused across skill switches; it only restarts on process crash or failed health probe. Skill-specific file access is provided by `workspace.working_dir` in each conversation's `POST /api/conversations` body, and that working dir is always `skill_dir` — `{skills_root}/{plugin_slug}/skills/{skill_name}`. The DB is the durable source of truth for the saved `conversation_id`.
 
 See [optimistic-session-activation.md](optimistic-session-activation.md) for the async optimization of this sequence.
 
@@ -164,13 +197,15 @@ Persistent conversations depend on an app-scoped encryption key at `{app_data_ro
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `{app_data_root}/openhands/secret.key` | Rust process lifecycle | Stable encryption key across all skills. |
-| `{app_data_root}/openhands/conversations/` | Rust + Agent Server | All skill conversations (`OH_CONVERSATIONS_PATH`). Conversation identity is shared here; skill-specific file access comes from `workspace.working_dir`. |
+| `{app_data_root}/openhands/secret.key` | Rust process lifecycle | Stable encryption key across all skills and server restarts. |
+| `{app_data_root}/openhands/conversations/` | Rust + Agent Server | All skill conversations (`OH_CONVERSATIONS_PATH`). Per-conversation UUID subdirectory; skill-specific access comes from `workspace.working_dir` in the conversation body, not from this path. |
 | `{app_data_root}/openhands/bash_events/` | Rust + Agent Server | Bash event logs for all conversations (`OH_BASH_EVENTS_DIR`). |
 | `{app_data_root}/openhands/logs/` | Rust | Agent Server stderr logs. |
-| `{skills_root}/{plugin_slug}/skills/{skill_name}` | Product-owned authored content | Canonical skill directory. OpenHands sets this as `workspace.working_dir`, reads `.agents/` here, and edits skill files here directly. |
-| `{app_data_root}/skill-builder.db` | Rust + SQLite | Durable metadata and conversation bindings. |
+| `{app_data_root}/skill-builder.db` | Rust + SQLite | Durable metadata and conversation ID bindings. |
 | `{app_data_root}/documents/` | Rust product lifecycle | App-managed document artifacts. |
+| `{skill_dir}` (`{skills_root}/{plugin_slug}/skills/{skill_name}`) | Product-owned authored content | Canonical skill directory. Set as `workspace.working_dir`. OpenHands reads and edits skill files here. |
+| `{skill_dir}/.agents/agents/` | Rust (seeded from `agent-sources/workspace/agents/`) | Agent instruction files visible to OpenHands (e.g., `skill-creator.md`). SHA-gated copy on startup and skill create. |
+| `{skill_dir}/.agents/skills/` | Rust (seeded from `agent-sources/workspace/skills/`) | File-based skill definitions visible to OpenHands. SHA-gated copy on startup and skill create. |
 
 ## Agent Construction Contract
 
