@@ -549,6 +549,7 @@ pub fn get_step_agent_runs_by_skill_id(
         .map_err(|e| e.to_string())
 }
 
+#[allow(dead_code)]
 pub fn get_step_agent_runs(
     conn: &Connection,
     skill_name: &str,

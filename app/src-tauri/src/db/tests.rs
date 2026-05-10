@@ -155,8 +155,8 @@ fn test_skill_hard_delete_cleanup_migration_purges_soft_deleted_rows() {
     assert_eq!(decisions_count, 0, "stale decisions should be purged");
 
     assert!(table_has_column(&conn, "skill_conversations", "skill_id").unwrap());
-    assert!(table_has_column(&conn, "clarifications", "skill_master_id").unwrap());
-    assert!(table_has_column(&conn, "decisions", "skill_master_id").unwrap());
+    assert!(!table_has_column(&conn, "clarifications", "skill_master_id").unwrap());
+    assert!(!table_has_column(&conn, "decisions", "skill_master_id").unwrap());
 }
 
 #[test]
@@ -1649,6 +1649,7 @@ fn test_persist_agent_run_shutdown_overwrites_running() {
 #[test]
 fn test_get_usage_summary_correct_aggregates() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-1");
     create_workflow_session(&conn, "wf-session-1", "skill-a", 1000).unwrap();
     persist_agent_run(
@@ -1741,6 +1742,7 @@ fn test_get_usage_summary_empty() {
 #[test]
 fn test_reset_usage_marks_runs() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-r");
     create_workflow_session(&conn, "wf-session-r", "skill-a", 1000).unwrap();
     persist_agent_run(
@@ -1806,6 +1808,7 @@ fn test_reset_usage_marks_runs() {
     assert!(sessions.is_empty());
 
     // New runs after reset should still be visible
+    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "wf-session-r2", "skill-b", 1000).unwrap();
     persist_agent_run(
         &conn,
@@ -1839,6 +1842,7 @@ fn test_reset_usage_marks_runs() {
 #[test]
 fn test_get_usage_by_step_groups_correctly() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-s");
     create_workflow_session(&conn, "wf-session-s", "skill-a", 1000).unwrap();
     persist_agent_run(
@@ -1929,6 +1933,7 @@ fn test_get_usage_by_step_groups_correctly() {
 #[test]
 fn test_get_usage_by_model_groups_correctly() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-m");
     create_workflow_session(&conn, "wf-session-m", "skill-a", 1000).unwrap();
     persist_agent_run(
@@ -2018,6 +2023,7 @@ fn test_get_usage_by_model_groups_correctly() {
 fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
     // Verify model filtering matches the persisted provider model string directly.
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-mf");
     create_workflow_session(&conn, "wf-session-mf", "skill-a", 1000).unwrap();
 
@@ -2124,6 +2130,7 @@ fn test_persist_agent_run_stores_model_exactly() {
     // Runtime callers are responsible for passing the Settings-selected provider
     // model ID. Persistence stores whatever it receives without alias mapping.
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-x", "skill-builder", "domain").unwrap();
     let ws = Some("wf-norm");
     create_workflow_session(&conn, "wf-norm", "skill-x", 1000).unwrap();
 
@@ -2218,6 +2225,7 @@ fn test_migration_32_preserves_existing_models() {
     // Migration 32 is a reserved historical slot; clean-break model routing does
     // not rewrite persisted model values.
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-y", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "wf-mig32", "skill-y", 1000).unwrap();
     conn.execute(
         "INSERT INTO agent_runs (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id)
@@ -2381,6 +2389,7 @@ fn test_reset_usage_excludes_from_by_step_and_by_model() {
 #[test]
 fn test_composite_pk_allows_same_agent_different_models() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-cpk");
     create_workflow_session(&conn, "wf-session-cpk", "skill-a", 1000).unwrap();
 
@@ -2536,6 +2545,7 @@ fn test_composite_pk_migration_is_idempotent() {
 #[test]
 fn test_composite_pk_session_agent_count_uses_distinct() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-distinct");
     create_workflow_session(&conn, "wf-session-distinct", "skill-a", 1000).unwrap();
 
@@ -2638,6 +2648,7 @@ fn test_step_name_mapping() {
 #[test]
 fn test_create_workflow_session() {
     let conn = create_test_db();
+    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
 
     let ended_at: Option<String> = conn
@@ -2653,6 +2664,7 @@ fn test_create_workflow_session() {
 #[test]
 fn test_create_workflow_session_idempotent() {
     let conn = create_test_db();
+    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
     // Second insert with same ID should be ignored (INSERT OR IGNORE)
     create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
@@ -2670,6 +2682,7 @@ fn test_create_workflow_session_idempotent() {
 #[test]
 fn test_end_workflow_session() {
     let conn = create_test_db();
+    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
     end_workflow_session(&conn, "sess-1").unwrap();
 
@@ -2686,6 +2699,7 @@ fn test_end_workflow_session() {
 #[test]
 fn test_end_workflow_session_idempotent() {
     let conn = create_test_db();
+    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
     end_workflow_session(&conn, "sess-1").unwrap();
 
@@ -2713,6 +2727,9 @@ fn test_end_workflow_session_idempotent() {
 #[test]
 fn test_end_all_sessions_for_pid() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "skill-a", 100).unwrap();
     create_workflow_session(&conn, "sess-2", "skill-b", 100).unwrap();
     create_workflow_session(&conn, "sess-3", "skill-c", 200).unwrap();
@@ -2734,6 +2751,8 @@ fn test_end_all_sessions_for_pid() {
 #[test]
 fn test_end_active_workflow_sessions_for_skill() {
     let conn = create_test_db();
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "skill-a", 100).unwrap();
     create_workflow_session(&conn, "sess-2", "skill-a", 200).unwrap();
     create_workflow_session(&conn, "sess-3", "skill-b", 100).unwrap();
@@ -2774,6 +2793,7 @@ fn test_end_active_workflow_sessions_for_skill() {
 fn test_reconcile_orphaned_sessions_dead_pid() {
     let conn = create_test_db();
     // PID 99999999 is dead
+    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", 99999999).unwrap();
 
     let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
@@ -2793,7 +2813,7 @@ fn test_reconcile_orphaned_sessions_dead_pid() {
 #[test]
 fn test_delete_workflow_run_non_default_plugin() {
     let conn = create_test_db();
-    // Create a non-default plugin and a skill in it.
+    // Create a non-default plugin.
     ensure_plugin(
         &conn,
         "mkt-del",
@@ -2804,18 +2824,13 @@ fn test_delete_workflow_run_non_default_plugin() {
         false,
     )
     .expect("ensure_plugin");
-    upsert_skill_in_plugin(&conn, "mkt-skill-del", "marketplace", "domain", "mkt-del")
-        .expect("upsert skill in non-default plugin");
-    // Insert workflow_run directly — save_workflow_run would create a duplicate skill in the
-    // default plugin via upsert_skill, which is not the scenario we're testing.
-    conn.execute(
-        "INSERT INTO workflow_runs (skill_name, current_step, status, purpose) VALUES (?1, 0, 'pending', 'domain')",
-        rusqlite::params!["mkt-skill-del"],
-    ).unwrap();
-    set_skill_tags(&conn, "mkt-skill-del", "mkt-del", &["mkt-tag".into()]).unwrap();
+    // save_workflow_run always places skills in the default plugin (handles redo
+    // workflow case). Use it to create the workflow run + skill.
+    save_workflow_run(&conn, "mkt-skill-del", 0, "pending", "domain").unwrap();
+    set_skill_tags(&conn, "mkt-skill-del", crate::skill_paths::DEFAULT_PLUGIN_SLUG, &["mkt-tag".into()]).unwrap();
 
-    // delete_workflow_run with the correct plugin_slug should succeed
-    delete_workflow_run(&conn, "mkt-skill-del", "mkt-del").unwrap();
+    // delete_workflow_run with the default plugin_slug should succeed
+    delete_workflow_run(&conn, "mkt-skill-del", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Workflow run should be gone
     assert!(get_workflow_run(&conn, "mkt-skill-del").unwrap().is_none());
@@ -2888,6 +2903,7 @@ fn test_delete_imported_skill_by_name_non_default_plugin() {
 fn test_reconcile_orphaned_sessions_live_pid() {
     let conn = create_test_db();
     let pid = std::process::id();
+    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", pid).unwrap();
 
     let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
@@ -2908,6 +2924,7 @@ fn test_reconcile_orphaned_sessions_live_pid() {
 fn test_delete_workflow_run_preserves_usage_sessions() {
     let conn = create_test_db();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
+    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
 
     delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
@@ -2936,6 +2953,7 @@ fn test_get_usage_summary_hide_cancelled() {
     let conn = create_test_db();
 
     // Session with real cost
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-cost", "skill-a", 1000).unwrap();
     persist_agent_run(
         &conn,
@@ -2962,6 +2980,7 @@ fn test_get_usage_summary_hide_cancelled() {
     .unwrap();
 
     // Session with zero cost (cancelled)
+    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-zero", "skill-b", 2000).unwrap();
     persist_agent_run(
         &conn,
@@ -2997,6 +3016,7 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
     let conn = create_test_db();
 
     // Session 1
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
     persist_agent_run(
         &conn,
@@ -3023,6 +3043,7 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
     .unwrap();
 
     // Session 2
+    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
     persist_agent_run(
         &conn,
@@ -3070,6 +3091,7 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
     let conn = create_test_db();
 
     // Session with cost
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-good", "skill-a", 1000).unwrap();
     persist_agent_run(
         &conn,
@@ -3096,6 +3118,7 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
     .unwrap();
 
     // Session with zero cost
+    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-cancelled", "skill-b", 2000).unwrap();
     persist_agent_run(
         &conn,
@@ -3131,6 +3154,7 @@ fn test_get_usage_summary_multiple_sessions() {
     let conn = create_test_db();
 
     // Session 1: two agent runs
+    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
     persist_agent_run(
         &conn,
@@ -3180,6 +3204,7 @@ fn test_get_usage_summary_multiple_sessions() {
     .unwrap();
 
     // Session 2: one agent run
+    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
     persist_agent_run(
         &conn,
@@ -3206,6 +3231,7 @@ fn test_get_usage_summary_multiple_sessions() {
     .unwrap();
 
     // Session 3: two agent runs
+    upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
     create_workflow_session(&conn, "sess-3", "skill-c", 3000).unwrap();
     persist_agent_run(
         &conn,
@@ -4038,7 +4064,7 @@ fn test_list_imported_skills_filtered() {
 fn test_get_imported_skill_by_id() {
     let conn = create_test_db();
     let skill = ImportedSkill {
-        skill_id: 402,
+        skill_id: 1,
         skill_name: "test-byid".to_string(),
         library_key: Some("imported:imp-test-byid".to_string()),
         is_active: true,
@@ -4060,7 +4086,7 @@ fn test_get_imported_skill_by_id() {
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
 
-    let found = get_imported_skill_by_id(&conn, 402).unwrap();
+    let found = get_imported_skill_by_id(&conn, skill.skill_id).unwrap();
     assert!(found.is_some());
     assert_eq!(found.unwrap().skill_name, "test-byid");
 
@@ -4072,7 +4098,7 @@ fn test_get_imported_skill_by_id() {
 fn test_delete_imported_skill_by_skill_id() {
     let conn = create_test_db();
     let skill = ImportedSkill {
-        skill_id: 403,
+        skill_id: 1,
         skill_name: "test-del".to_string(),
         library_key: Some("imported:imp-test-del".to_string()),
         is_active: true,
@@ -4093,12 +4119,12 @@ fn test_delete_imported_skill_by_skill_id() {
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
-    assert!(get_imported_skill_by_id(&conn, 403)
+    assert!(get_imported_skill_by_id(&conn, skill.skill_id)
         .unwrap()
         .is_some());
 
-    delete_imported_skill_by_skill_id(&conn, 403).unwrap();
-    assert!(get_imported_skill_by_id(&conn, 403)
+    delete_imported_skill_by_skill_id(&conn, skill.skill_id).unwrap();
+    assert!(get_imported_skill_by_id(&conn, skill.skill_id)
         .unwrap()
         .is_none());
 }
