@@ -226,6 +226,30 @@ fn repair_missing_research_section_closers(text: &str) -> Option<String> {
     changed.then_some(repaired)
 }
 
+fn normalize_decisions_output_missing_statuses(
+    structured_output: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let mut normalized = structured_output.clone();
+    let decisions = normalized.get_mut("decisions")?.as_array_mut()?;
+    let mut changed = false;
+
+    for decision in decisions {
+        let Some(object) = decision.as_object_mut() else {
+            continue;
+        };
+        if object.contains_key("status") {
+            continue;
+        }
+        object.insert(
+            "status".to_string(),
+            serde_json::Value::String("resolved".to_string()),
+        );
+        changed = true;
+    }
+
+    changed.then_some(normalized)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum JsonContainer {
     Object,
@@ -775,8 +799,25 @@ pub(crate) fn materialize_workflow_step_output_value(
             persist_clarifications(db, &record)
         }
         2 => {
-            let parsed = serde_json::from_value::<DecisionsOutput>(structured_output.clone())
-                .map_err(|e| format!("invalid decisions output: {}", e))?;
+            let parsed = match serde_json::from_value::<DecisionsOutput>(structured_output.clone()) {
+                Ok(parsed) => parsed,
+                Err(parse_error) => {
+                    if let Some(normalized) =
+                        normalize_decisions_output_missing_statuses(structured_output)
+                    {
+                        if let Ok(parsed) = serde_json::from_value::<DecisionsOutput>(normalized) {
+                            log::warn!(
+                                "[materialize_step] repaired OpenHands decisions output with missing decision status fields"
+                            );
+                            parsed
+                        } else {
+                            return Err(format!("invalid decisions output: {}", parse_error));
+                        }
+                    } else {
+                        return Err(format!("invalid decisions output: {}", parse_error));
+                    }
+                }
+            };
 
             log::info!(
                 "[materialize_step] step=2 decisions version={} skill_id={} decision_count={}",

@@ -1977,6 +1977,50 @@ fn test_materialize_step2_writes_decisions() {
 }
 
 #[test]
+fn test_materialize_step2_repairs_missing_statuses_to_resolved() {
+    let db = db_with_seeded_skill("my-skill");
+    let payload = serde_json::json!({
+        "version": "1",
+        "metadata": { "decision_count": 3, "conflicts_resolved": 0, "round": 1 },
+        "decisions": [
+            {
+                "id": "D1",
+                "title": "Capability",
+                "original_question": "What should this skill enable the assistant to do?",
+                "decision": "Guide weighted pipeline logic.",
+                "implication": "Needs direct user review before skill generation.",
+                "status": "needs-review"
+            },
+            {
+                "id": "D2",
+                "title": "Pipeline Scope",
+                "original_question": "What type of pipeline applies?",
+                "decision": "Sales opportunity pipeline only.",
+                "implication": "Ignore service delivery and revenue forecast pipelines."
+            },
+            {
+                "id": "D3",
+                "title": "Probability Weighting",
+                "original_question": "How should win probability be determined?",
+                "decision": "Use stage-based percentages.",
+                "implication": "Treat percentages as organization-configurable defaults."
+            }
+        ]
+    });
+
+    materialize_workflow_step_output_value(&db, "my-skill", 2, &payload).unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_decisions(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.items.len(), 3);
+    assert_eq!(record.items[0].status, "needs-review");
+    assert_eq!(record.items[1].status, "resolved");
+    assert_eq!(record.items[2].status, "resolved");
+}
+
+#[test]
 fn test_materialize_step2_writes_scope_guard_stub_decisions() {
     let db = db_with_seeded_skill("my-skill");
     let payload = serde_json::json!({
