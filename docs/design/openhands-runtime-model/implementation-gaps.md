@@ -4,25 +4,69 @@ This document tracks the delta between the target architecture (described in
 [README.md](README.md)) and the current codebase. Use it to scope implementation
 PRs and to verify when the target state has been reached.
 
-See [skill-creator-config-unification.md](skill-creator-config-unification.md)
-for the full implementation spec covering gaps 1–5.
-
 ---
 
 ## Gap 1 — `agents/skill_creator.rs` does not exist
 
 **Target:** Layer 2 (`agents/skill_creator.rs`) is the single place that knows
-how to configure and launch the skill-creator agent. It exports
-`SkillCreatorConfigParams`, `build_skill_creator_config`,
-`ensure_skill_session`, and `SKILL_CREATOR_USER_SUFFIX`.
+how to configure and launch the skill-creator agent. No deps on `commands::` —
+imports only from `agents/openhands_server/`, `agents/runtime_config`, and
+`skill_paths`.
 
 **Current state:** This file does not exist. The two config builders
 (`build_refine_openhands_config` in `commands/refine/mod.rs` and
 `build_skill_creator_workflow_runtime_config` in
 `commands/workflow/runtime.rs`) are separate, diverged, and live in Layer 3.
 
-**Fix:** Create `app/src-tauri/src/agents/skill_creator.rs` with the unified
-struct and builders. Delete the diverged Layer 3 builders.
+**Fix:** Create `app/src-tauri/src/agents/skill_creator.rs` exporting:
+
+`SKILL_CREATOR_USER_SUFFIX` — moves here from `commands/refine/mod.rs`.
+
+`SkillCreatorConfigParams`:
+
+```rust
+pub struct SkillCreatorConfigParams<'a> {
+    pub skill_name: &'a str,
+    pub prompt: &'a str,
+    pub workspace_path: &'a str,
+    pub plugin_slug: &'a str,
+    pub llm: WorkflowLlmConfig,
+    pub task_kind: &'a str,
+    pub run_source: &'a str,
+    pub allowed_tools: Vec<String>,
+    pub max_turns: u32,
+    pub step_id: i32,
+    pub output_format: Option<serde_json::Value>,
+}
+```
+
+`step_id` convention is in [README.md](README.md#step_id-convention).
+`workflow_session_id` is intentionally absent — cost queries group by
+`skill_name + step_id` only.
+
+`build_skill_creator_config`:
+
+```rust
+pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenHandsRuntimeConfig
+```
+
+Derives `workspace_run_dir` from `workspace_skill_dir(workspace_path, plugin_slug, skill_name)`,
+sets `agent_name: "skill-creator"`, applies `SKILL_CREATOR_USER_SUFFIX`,
+delegates to `build_openhands_runtime_config`.
+
+`ensure_skill_session`:
+
+```rust
+pub async fn ensure_skill_session(
+    app: &tauri::AppHandle,
+    config: OpenHandsRuntimeConfig,
+    saved_conversation_id: Option<String>,
+) -> Result<String, String>
+```
+
+Wraps `ensure_openhands_server` + `start_openhands_session` in the correct
+sequence. All callers use this instead of calling `start_openhands_session`
+directly.
 
 ---
 
@@ -41,10 +85,11 @@ skipping the server lifecycle check.
 
 ---
 
-## Gap 3 — Naming: `skill_session.rs` still uses `Refine*` names
+## Gap 3 — `skill_session.rs` and `refine/mod.rs` still use `Refine*` names
 
 **Target:** All session management types and helpers in
-`commands/skill_session.rs` use `Skill*` names.
+`commands/skill_session.rs` use `Skill*` names. `commands/refine/mod.rs` is a
+thin Layer 3 caller with no config builders or re-exports of `Refine*` names.
 
 **Current state:**
 
@@ -57,12 +102,30 @@ skipping the server lifecycle check.
 | `remove_refine_sessions_for_skill` | `remove_skill_sessions` |
 | `restore_refine_conversation_state` | `restore_skill_conversation_state` |
 
-**Callers to update:** `lib.rs`, `commands/skill/crud.rs`,
-`commands/refine/output.rs`, `commands/refine/mod.rs` (re-exports).
+**Fix in `commands/skill_session.rs`:** Apply the renames above. Add
+`build_skill_session_config` as a thin wrapper over
+`skill_creator::build_skill_creator_config` with workspace-fixed params:
+`task_kind: "refine"`, `step_id: -10`,
+`allowed_tools: ["file_editor", "terminal"]`, `max_turns: 500`,
+`run_source: "refine"`. Update `select_skill_openhands_session` to call
+`skill_creator::ensure_skill_session` instead of
+`ensure_openhands_server` + `start_openhands_session`.
+
+**Fix in `commands/refine/mod.rs`:** Update re-exports to the renamed symbols.
+
+**Callers across the codebase:**
+
+| File | Change |
+|---|---|
+| `lib.rs` | `RefineSessionManager` → `SkillSessionManager` |
+| `commands/skill/crud.rs` | `RefineSessionManager` → `SkillSessionManager` |
+| `commands/refine/output.rs` | `RefineSessionManager` → `SkillSessionManager` |
+| `commands/refine/tests.rs` | `build_refine_openhands_config` → `build_skill_session_config` |
+| `skill_session.rs` unit tests | test function names updated to match renamed helpers |
 
 ---
 
-## Gap 4 — `commands/refine/mod.rs` has Layer 2 and Layer 3 code mixed
+## Gap 4 — `commands/refine/mod.rs` owns Layer 2 code
 
 **Target:** `commands/refine/mod.rs` is a thin Layer 3 caller. It does not own
 the OpenHands config builder, the runtime-ready check, or the user suffix.
@@ -74,9 +137,10 @@ the OpenHands config builder, the runtime-ready check, or the user suffix.
   stays in Layer 3 but moves to `commands/skill_session.rs`
 - `SKILL_CREATOR_USER_SUFFIX` — belongs in `agents/skill_creator.rs`
 
-**Fix:** Delete `build_refine_openhands_config` (replaced by the unified
-builder). Move `ensure_refine_runtime_ready` → `ensure_skill_runtime_ready`
-into `commands/skill_session.rs`. Move `SKILL_CREATOR_USER_SUFFIX` into
+**Fix:** Delete `build_refine_openhands_config` (replaced by
+`skill_creator::build_skill_creator_config`). Move
+`ensure_refine_runtime_ready` → `ensure_skill_runtime_ready` into
+`commands/skill_session.rs`. Move `SKILL_CREATOR_USER_SUFFIX` into
 `agents/skill_creator.rs`.
 
 ---
@@ -93,29 +157,37 @@ implementation of the config builder that lives entirely in
 `commands/workflow/runtime.rs`.
 
 **Fix:** Delete `SkillCreatorWorkflowConfigParams` and
-`build_skill_creator_workflow_runtime_config`. Update the five step wrappers
-(`build_workflow_research_runtime_config`,
-`build_workflow_detailed_research_runtime_config`,
-`build_workflow_confirm_decisions_runtime_config`,
-`build_workflow_generate_skill_runtime_config`,
-`build_answer_evaluator_runtime_config`) to call
-`skill_creator::build_skill_creator_config` directly.
+`build_skill_creator_workflow_runtime_config`. The five step wrappers stay but
+delegate to `skill_creator::build_skill_creator_config`:
+
+- `build_workflow_research_runtime_config`
+- `build_workflow_detailed_research_runtime_config`
+- `build_workflow_confirm_decisions_runtime_config`
+- `build_workflow_generate_skill_runtime_config`
+- `build_answer_evaluator_runtime_config`
+
+## PR 1 scope note
+
+Gaps 1–5 are one PR. All Tauri command names, IPC contracts, frontend code,
+agent behavior, and runtime semantics are unchanged — this is a pure structural
+refactor. The one functional change is that `dispatch_persistent_skill_turn`
+now calls `ensure_openhands_server` via `ensure_skill_session`, correcting a
+pre-existing gap rather than changing intended behavior.
 
 ---
 
-## Gap 6 — `leaveCurrentSkill` still stops the Agent Server (deferred PR 2)
+## Gap 6 — `leaveCurrentSkill` still stops the Agent Server (deferred)
 
 **Target:** `leaveCurrentSkill` is three steps: pause conversation, release
 lock, clear UI. The server stays alive between skill switches.
 
 **Current state:** `leaveCurrentSkill` in
 `app/src/lib/active-skill-transition.ts` calls `stopOpenHandsServer()` as a
-fourth step. The frontend `stop_openhands_server` Tauri command in
+fourth step. The `stop_openhands_server` Tauri command in
 `commands/runtime_lifecycle.rs` becomes dead code once this is removed.
 
-**Fix (deferred):** Remove the `stopOpenHandsServer()` call from
-`leaveCurrentSkill`. Delete the `stop_openhands_server` Tauri command and its
-registration.
+**Fix (deferred PR 2):** Remove `stopOpenHandsServer()` from `leaveCurrentSkill`.
+Delete the `stop_openhands_server` Tauri command and its registration.
 
 ---
 
@@ -131,8 +203,8 @@ passed through the runtime config to OpenHands but provides no query value
 beyond `skill_name + step_id`.
 
 **Fix (follow-on codegen PR):** Remove `workflow_session_id` from the contracts
-struct, run codegen to regenerate TypeScript types and the Rust schema, and
-update all callers.
+struct, run `npm run codegen` to regenerate TypeScript types and the Rust
+schema, and update all callers.
 
 ---
 

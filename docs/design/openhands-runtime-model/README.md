@@ -56,7 +56,7 @@ The single place that knows how to configure and launch the skill-creator agent.
 
 `ensure_skill_session` is the enforced entry point. All product surfaces call it instead of the Layer 1 primitives directly — this guarantees the server lifecycle check always runs before a session is opened.
 
-See [skill-creator-config-unification.md](skill-creator-config-unification.md) for the full spec.
+See [implementation-gaps.md](implementation-gaps.md) Gap 1 for the struct definition and function signatures.
 
 ### Layer 3 — App Commands (`commands/`)
 
@@ -218,7 +218,6 @@ Cost and usage queries group by `skill_name + step_id`. A per-invocation session
 
 | Doc | Purpose |
 |---|---|
-| [skill-creator-config-unification.md](skill-creator-config-unification.md) | Implementation spec for the Layer 2 creation PR — struct, function signatures, per-file changes (Gaps 1–5). |
 | [send-turn-semantics.md](send-turn-semantics.md) | Contract for `OpenHandsSendMessage` — turn envelope, recovery, and transcript consistency. |
 | [optimistic-session-activation.md](optimistic-session-activation.md) | Async skill bootstrap optimization: navigate before server ready. |
 | [tools-included.md](tools-included.md) | Tool policy for OpenHands requests. |
