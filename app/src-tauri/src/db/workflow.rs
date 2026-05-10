@@ -59,10 +59,15 @@ pub fn save_workflow_run(
     status: &str,
     purpose: &str,
 ) -> Result<(), String> {
-    let skill_id = match get_skill_master_id_any_plugin(conn, skill_name)? {
-        Some(skill_id) => skill_id,
-        None => super::skills::upsert_skill(conn, skill_name, "skill-builder", purpose)?,
-    };
+    // Ensure the skill exists in the default plugin (handles redo workflow case
+    // where a skill may have been in a non-default plugin).
+    let skill_id = super::skills::upsert_skill(conn, skill_name, "skill-builder", purpose)?;
+    // Remove any duplicate rows from non-default plugins.
+    conn.execute(
+        "DELETE FROM skills WHERE name = ?1 AND plugin_id != (SELECT id FROM plugins WHERE slug = 'default')",
+        rusqlite::params![skill_name],
+    )
+    .map_err(|e| e.to_string())?;
     save_workflow_run_by_skill_id(conn, skill_id, current_step, status, purpose)
 }
 

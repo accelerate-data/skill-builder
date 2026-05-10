@@ -9,14 +9,15 @@ use std::path::Path;
 /// not reset it to step 0. Use this in any test that sets up a skill at
 /// current_step >= 1 and asserts that the skill is NOT reset by the consistency
 /// check.
-fn insert_stub_clarifications(conn: &rusqlite::Connection, skill_id: &str) {
-    crate::db::upsert_skill(conn, skill_id, "skill-builder", "domain").unwrap();
+fn insert_stub_clarifications(conn: &rusqlite::Connection, skill_name: &str) {
+    let skill_id = crate::db::upsert_skill(conn, skill_name, "skill-builder", "domain")
+        .unwrap_or_else(|e| panic!("upsert_skill failed for {}: {}", skill_name, e));
     conn.execute(
-        "INSERT INTO clarifications (skill_id, skill_master_id, version, title, created_at, updated_at)
-         VALUES (?1, (SELECT id FROM skills WHERE name = ?1 LIMIT 1), '1', 'Test Skill', 0, 0)",
+        "INSERT INTO clarifications (skill_id, version, title, created_at, updated_at)
+         VALUES (?1, '1', 'Test Skill', 0, 0)",
         rusqlite::params![skill_id],
     )
-    .unwrap();
+    .unwrap_or_else(|e| panic!("insert clarifications failed for {}: {}", skill_name, e));
 }
 
 /// Insert a minimal decisions row for a skill so the DB consistency check does
@@ -24,14 +25,15 @@ fn insert_stub_clarifications(conn: &rusqlite::Connection, skill_id: &str) {
 /// `insert_stub_clarifications` in any test that sets up a skill at
 /// current_step >= 3 and asserts that the skill is NOT reset by the consistency
 /// check.
-fn insert_stub_decisions(conn: &rusqlite::Connection, skill_id: &str) {
-    crate::db::upsert_skill(conn, skill_id, "skill-builder", "domain").unwrap();
+fn insert_stub_decisions(conn: &rusqlite::Connection, skill_name: &str) {
+    let skill_id = crate::db::upsert_skill(conn, skill_name, "skill-builder", "domain")
+        .unwrap_or_else(|e| panic!("upsert_skill failed for {}: {}", skill_name, e));
     conn.execute(
-        "INSERT INTO decisions (skill_id, skill_master_id, version, created_at, updated_at)
-         VALUES (?1, (SELECT id FROM skills WHERE name = ?1 LIMIT 1), '1', 0, 0)",
+        "INSERT INTO decisions (skill_id, version, created_at, updated_at)
+         VALUES (?1, '1', 0, 0)",
         rusqlite::params![skill_id],
     )
-    .unwrap();
+    .unwrap_or_else(|e| panic!("insert decisions failed for {}: {}", skill_name, e));
 }
 
 /// Create a skill working directory on disk with a context/ dir.

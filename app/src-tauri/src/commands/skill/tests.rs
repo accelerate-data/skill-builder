@@ -331,6 +331,8 @@ fn test_delete_skill_db_phase_does_not_delete_filesystem_dirs() {
 #[test]
 fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() {
     let conn = create_test_db();
+    crate::db::upsert_skill(&conn, "active-skill", "skill-builder", "domain").unwrap();
+    crate::db::upsert_skill(&conn, "other-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run(&conn, "active-skill", 0, "pending", "domain").unwrap();
     crate::db::create_workflow_session(&conn, "sess-active", "active-skill", 4321).unwrap();
     crate::db::create_workflow_session(&conn, "sess-other", "other-skill", 4321).unwrap();
