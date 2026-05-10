@@ -323,7 +323,7 @@ git commit -m "fix: dispatch_persistent_skill_turn calls ensure_skill_session (G
 **Files:**
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 
-- [ ] **Step 1: Apply renames in `skill_session.rs`**
+- [x] **Step 1: Apply renames in `skill_session.rs`**
 
 Replace all occurrences:
 - `RefineSession` → `SkillSession`
@@ -348,7 +348,7 @@ Also rename test functions:
 
 Rename `new_refine_usage_session_id` → `new_skill_usage_session_id` but keep the output format `"synthetic:refine:{skill_name}:{uuid}"` unchanged (durable DB data).
 
-- [ ] **Step 2: Run skill_session tests**
+- [x] **Step 2: Run skill_session tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::skill_session
@@ -364,7 +364,7 @@ Expected: All tests pass with renamed names.
 - Modify: `app/src-tauri/src/commands/refine/output.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 3: Update `lib.rs`**
+- [x] **Step 3: Update `lib.rs`**
 
 Replace:
 ```rust
@@ -375,15 +375,15 @@ with:
 .manage(commands::skill_session::SkillSessionManager::new())
 ```
 
-- [ ] **Step 4: Update `commands/skill/crud.rs`**
+- [x] **Step 4: Update `commands/skill/crud.rs`**
 
 Replace all `RefineSessionManager` → `SkillSessionManager`.
 
-- [ ] **Step 5: Update `commands/refine/output.rs`**
+- [x] **Step 5: Update `commands/refine/output.rs`**
 
 Replace all `RefineSessionManager` → `SkillSessionManager`.
 
-- [ ] **Step 6: Update `commands/refine/mod.rs`**
+- [x] **Step 6: Update `commands/refine/mod.rs`**
 
 Replace re-exports:
 ```rust
@@ -391,7 +391,7 @@ pub use crate::commands::skill_session::{SkillSession, SkillSessionManager};
 pub(crate) use crate::commands::skill_session::skill_session_key;
 ```
 
-- [ ] **Step 7: Run all Rust tests**
+- [x] **Step 7: Run all Rust tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -399,7 +399,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/lib.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/refine/output.rs app/src-tauri/src/commands/refine/mod.rs
@@ -419,7 +419,7 @@ git commit -m "refactor: rename Refine* to Skill* types and functions (Gap 3)"
 **Files:**
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 
-- [ ] **Step 1: Add `build_skill_session_config` to `skill_session.rs`**
+- [x] **Step 1: Add `build_skill_session_config` to `skill_session.rs`**
 
 Add after the existing imports:
 
@@ -449,7 +449,7 @@ pub fn build_skill_session_config(
 }
 ```
 
-- [ ] **Step 2: Add `ensure_skill_runtime_ready` to `skill_session.rs`**
+- [x] **Step 2: Add `ensure_skill_runtime_ready` to `skill_session.rs`**
 
 Move from `commands/refine/mod.rs` and rename:
 
@@ -471,14 +471,14 @@ pub(crate) async fn ensure_skill_runtime_ready(
 }
 ```
 
-- [ ] **Step 3: Update `select_skill_openhands_session` to use new helpers**
+- [x] **Step 3: Update `select_skill_openhands_session` to use new helpers**
 
 Replace the body of `select_skill_openhands_session`:
 - `crate::commands::refine::ensure_refine_runtime_ready` → `ensure_skill_runtime_ready`
 - `crate::commands::refine::build_refine_openhands_config` → `build_skill_session_config`
 - `crate::agents::openhands_server::ensure_openhands_server` + `start_openhands_session` → `crate::agents::skill_creator::ensure_skill_session`
 
-- [ ] **Step 4: Update `pause_openhands_session` to use `build_skill_session_config`**
+- [x] **Step 4: Update `pause_openhands_session` to use `build_skill_session_config`**
 
 Replace `crate::commands::refine::build_refine_openhands_config` → `build_skill_session_config`.
 
@@ -487,7 +487,7 @@ Replace `crate::commands::refine::build_refine_openhands_config` → `build_skil
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 5: Remove Layer 2 code from `refine/mod.rs`**
+- [x] **Step 5: Remove Layer 2 code from `refine/mod.rs`**
 
 Delete:
 - `SKILL_CREATOR_USER_SUFFIX` constant
@@ -512,11 +512,11 @@ pub(crate) use crate::commands::skill_session::skill_session_key;
 pub use crate::commands::skill_session::{SkillSession, SkillSessionManager};
 ```
 
-- [ ] **Step 6: Update `refine/tests.rs`**
+- [x] **Step 6: Update `refine/tests.rs`**
 
 Replace `build_refine_openhands_config` → `build_skill_session_config` in any test that uses it.
 
-- [ ] **Step 7: Run all tests**
+- [x] **Step 7: Run all tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -524,7 +524,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 8: Run clippy**
+- [x] **Step 8: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -532,7 +532,7 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: Clean.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/refine/tests.rs
