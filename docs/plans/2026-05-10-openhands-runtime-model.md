@@ -242,7 +242,7 @@ git commit -m "feat: add agents/skill_creator.rs Layer 2 module (Gap 1)"
 **Files:**
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
 
-- [ ] **Step 1: Replace direct `start_openhands_session` call**
+- [x] **Step 1: Replace direct `start_openhands_session` call**
 
 In `dispatch_persistent_skill_turn` (around line 242-273), replace:
 
@@ -279,7 +279,7 @@ async fn dispatch_persistent_skill_turn(
 
 Remove the old inline comment about `start_openhands_session` since the new code handles it.
 
-- [ ] **Step 2: Run workflow tests**
+- [x] **Step 2: Run workflow tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::workflow
@@ -287,7 +287,7 @@ cd app/src-tauri && cargo test commands::workflow
 
 Expected: All existing workflow tests pass.
 
-- [ ] **Step 3: Run full cargo test**
+- [x] **Step 3: Run full cargo test**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -295,7 +295,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 4: Run clippy**
+- [x] **Step 4: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -303,7 +303,7 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: Clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/runtime.rs
