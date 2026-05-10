@@ -248,7 +248,6 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       0,
       "/workspace",
-      undefined,
     );
     expect(mockAgentStartRun).toHaveBeenCalledWith(
       "agent-abc",
@@ -393,7 +392,6 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       0,
       "/workspace",
-      undefined,
     );
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
@@ -445,7 +443,6 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       2,
       "/workspace",
-      undefined,
     );
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(2, "in_progress");
   });
@@ -589,13 +586,12 @@ describe("useWorkflowStateMachine", () => {
 
     // The toggle effect sets pendingAutoStartStep, then the auto-start effect fires
     await waitFor(() => {
-      expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-        1,
-        "test-skill",
-        0,
-        "/workspace",
-        undefined,
-      );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+      1,
+      "test-skill",
+      0,
+      "/workspace",
+    );
     });
 
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");

@@ -51,7 +51,6 @@ void invokeCommand("run_workflow_step", {
   skillName: "demo",
   stepId: 1,
   workspacePath: "/tmp/workspace",
-  workflowSessionId: null,
 });
 
 void invokeCommand("get_workspace_path", {});
@@ -60,15 +59,6 @@ void invokeCommand("resolve_discovery", {
   skillName: "demo",
   action: "add-skill-builder",
   pluginSlug: null,
-});
-
-// @ts-expect-error run_workflow_step requires workflowSessionId to be string or null, not number
-void invokeCommand("run_workflow_step", {
-  skillId: 1,
-  skillName: "demo",
-  stepId: 1,
-  workspacePath: "/tmp/workspace",
-  workflowSessionId: 123,
 });
 
 // @ts-expect-error get_workspace_path uses the typed no-args convention

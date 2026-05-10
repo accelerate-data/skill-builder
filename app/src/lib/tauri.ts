@@ -97,8 +97,7 @@ export const runWorkflowStep = (
   skillName: string,
   stepId: number,
   workspacePath: string,
-  workflowSessionId?: string,
-) => invokeCommand("run_workflow_step", { skillId, skillName, stepId, workspacePath, workflowSessionId: workflowSessionId ?? null });
+) => invokeCommand("run_workflow_step", { skillId, skillName, stepId, workspacePath });
 
 export const materializeWorkflowStepOutput = (
   skillName: string,

@@ -712,16 +712,11 @@ export function useWorkflowStateMachine({
         console.log(
           `[workflow] Starting step ${targetStep} for skill "${skillName}"`,
         );
-        const sessionId = useWorkflowStore.getState().workflowSessionId;
-        if (skillId == null) {
-          throw new Error("Missing skill ID");
-        }
         const agentId = await runWorkflowStep(
-          skillId,
+          skillId!,
           skillName,
           targetStep,
           workspacePath,
-          sessionId ?? undefined,
         );
         agentStartRun(agentId, model);
       } catch (err) {
