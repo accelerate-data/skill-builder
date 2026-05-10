@@ -1100,7 +1100,25 @@ fn cached_server_reuse_does_not_depend_on_conversations_path() {
 
 (This test already passes since `should_reuse_cached_server` is unchanged — it just documents the intent.)
 
-- [ ] **Step 2: Replace the `ensure_agent_server` signature and body**
+- [ ] **Step 2: Add a structural compile-time test that `conversations_path` is gone from the handle**
+
+Add this test immediately after the one above. It is a compile-time proof: if `conversations_path` still exists on `OpenHandsAgentServerHandle`, the struct literal will fail to compile.
+
+```rust
+#[test]
+fn ensure_agent_server_handle_has_no_conversations_path_field() {
+    // Compile-time proof that conversations_path was removed.
+    // If this test compiles, the path comparison is structurally impossible.
+    let handle = OpenHandsAgentServerHandle {
+        port: 8080,
+        session_api_key: "test".to_string(),
+        stderr_tail: Arc::new(AsyncMutex::new(VecDeque::new())),
+    };
+    assert_eq!(handle.port, 8080);
+}
+```
+
+- [ ] **Step 3: Replace the `ensure_agent_server` signature and body**
 
 Replace the full function:
 
@@ -1341,7 +1359,52 @@ git add app/src-tauri/src/agents/openhands_server/process.rs \
 git commit -m "refactor: consolidate OH artifacts to workspace root, add OH_BASH_EVENTS_DIR, remove skill-switch restart"
 ```
 
-**Manual smoke:** Start the app. Open skill A (note the server PID if possible via Activity Monitor). Open skill B. Verify the server does **not** restart (PID unchanged). Send a message in skill B, verify it completes. Check that `{workspace_root}/.openhands/conversations/` exists and contains conversation subdirectories. Check that `{workspace_root}/.openhands/bash_events/` exists.
+**Manual smoke:**
+
+> E2E tests mock Tauri commands and cannot verify real server lifecycle or filesystem state. Run these manually against the live app.
+
+**Smoke 1 — Server PID unchanged across skill switch (core PR5b invariant)**
+
+1. Start the app, open skill A
+2. Record the server PID:
+   ```bash
+   ps aux | grep openhands-agent-server | grep -v grep
+   ```
+3. Switch to skill B
+4. Run the same `ps aux` command again
+5. **Verify:** PID is **unchanged**. No server restart flash in the UI.
+
+**Smoke 2 — Message in skill B after switching**
+
+1. After Smoke 1, send a message in skill B's Refine/Chat tab
+2. **Verify:** Agent responds normally. Full transcript replays. No errors in Rust logs.
+
+**Smoke 3 — Artifacts on disk are under workspace root**
+
+1. After Smoke 2, find your workspace root (default: `~/.vibedata/`)
+2. Check the filesystem:
+   ```bash
+   ls ~/.vibedata/.openhands/conversations/
+   ls ~/.vibedata/.openhands/bash_events/
+   ```
+3. **Verify:** Both directories exist and contain entries. No `conversations/` directory exists under `~/.vibedata/{plugin}/skills/{skill_name}/`.
+
+**Smoke 4 — Conversation survives app quit + restart**
+
+1. Send a message in skill A, wait for the response to complete
+2. Quit the app completely (Cmd+Q)
+3. Restart the app, open skill A
+4. **Verify:** Previous conversation transcript is restored. No errors.
+
+**Failure triage**
+
+| Symptom | Likely cause |
+|---|---|
+| Server restarts on skill switch | `ensure_agent_server` still compares paths — check `process.rs` lines touching `conversations_path` |
+| `OH_CONVERSATIONS_PATH` points to skill dir | Call site in `mod.rs` still passes `runtime_run_dir()` instead of `workspace_root_dir` |
+| `OH_BASH_EVENTS_DIR` not set | `apply_session_env` call in `start_once` missing fifth argument |
+| Conversation not restored after restart | `secret.key` path wrong, or conversations dir not under `.openhands/` at workspace root |
+| Compile error on handle construction | `conversations_path` field still present — Task 5b.3 not applied |
 
 ---
 
