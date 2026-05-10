@@ -2447,6 +2447,168 @@ git commit -m "feat: seed .agents/ into skill_dir on startup and create; rename 
 
 ---
 
+### Task 7.6 — Pause conversation before `delete_skill` filesystem/DB cleanup
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/skill/crud.rs`
+
+**Context:** `delete_skill` calls `terminate_openhands_session` (kills the local Tauri task) but never sends an HTTP pause to the OpenHands server. The server retains an `owner_lease.json` for the conversation for up to 45 seconds. The fix collects the skill's saved conversation IDs from the DB and calls `pause_conversation_if_server_running` before any filesystem or DB cleanup. No conversation directory is deleted — the orphaned directory is harmless once the DB record is gone.
+
+- [ ] **Step 1: Collect conversation IDs and pause before cleanup**
+
+In `delete_skill`, locate the block that ends with:
+
+```rust
+let shutdown_plan = {
+    let conn = db.0.lock()...
+    prepare_skill_runtime_shutdown_inner(...)
+};
+```
+
+Immediately after that block (before the `for agent_id in &shutdown_plan.agent_ids` loop), add:
+
+```rust
+// Best-effort HTTP pause — swallows all errors so delete cannot be blocked
+// by server state. collect IDs while holding the lock, then pause outside it.
+let conversation_ids: Vec<String> = {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut ids = Vec::new();
+    // Check the skill's current plugin slug and the default slug (legacy fallback).
+    let slugs_to_check = if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        vec![plugin_slug.clone(), crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()]
+    } else {
+        vec![plugin_slug.clone()]
+    };
+    for slug in &slugs_to_check {
+        if let Ok(Some(id)) = crate::db::get_skill_conversation_id(&conn, slug, &name) {
+            ids.push(id);
+        }
+    }
+    ids
+};
+for conv_id in &conversation_ids {
+    crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
+    log::info!(
+        "[delete_skill] paused conversation {} for skill={}",
+        conv_id,
+        name
+    );
+}
+```
+
+- [ ] **Step 2: Build and verify**
+
+```bash
+cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
+cd app/src-tauri && cargo test commands::skill 2>&1 | tail -10
+cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
+```
+
+Expected: clean.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add app/src-tauri/src/commands/skill/crud.rs
+git commit -m "fix: pause OpenHands conversation before delete_skill filesystem cleanup"
+```
+
+---
+
+### Task 7.7 — Remove `clear_persistent_skill_conversation_state`; replace with DB-only clear
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
+
+**Context:** `clear_persistent_skill_conversation_state` (lines 33–61) still calls `remove_dir_all` on `workspace_skill_dir/conversations/`. Task 7.3 said to remove it entirely and replace its one call site in `navigate_back_to_step_impl` with `clear_skill_conversation_db_records` (which already exists in the same file). The old test `test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state` contradicts the plan and must be replaced with a test that asserts no filesystem deletion.
+
+- [ ] **Step 1: Remove the function**
+
+Delete the entire `fn clear_persistent_skill_conversation_state` block (lines 33–61, from `fn clear_persistent_skill_conversation_state` through the closing `}`).
+
+- [ ] **Step 2: Replace the call site in `navigate_back_to_step_impl`**
+
+Find (line ~181):
+```rust
+if target_step_id == 0 {
+    clear_persistent_skill_conversation_state(conn, workspace_path, &plugin_slug, skill_name)?;
+}
+```
+
+Replace with:
+```rust
+if target_step_id == 0 {
+    clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
+}
+```
+
+Note: `workspace_path` is no longer needed inside this branch. If it is only used for `clear_persistent_skill_conversation_state`, remove it from the call site too (it is still used by `delete_step_output_files` above, so keep the parameter on `navigate_back_to_step_impl` itself).
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
+
+- [ ] **Step 3: Delete the old test and add the replacement**
+
+Delete the entire test function `test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state` (from its `#[test]` line through its closing `}`).
+
+Add this test in the same `#[cfg(test)]` block:
+
+```rust
+#[test]
+fn clear_skill_conversation_db_records_does_not_touch_filesystem() {
+    let conn = create_test_db();
+    let tmp = tempdir().unwrap();
+    let skill_name = "reset-me";
+    let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+    // Insert a skill and a saved conversation ID.
+    crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+        .unwrap();
+    crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-abc")
+        .unwrap();
+
+    // Create a sentinel file representing an orphaned conversation directory.
+    let sentinel = tmp
+        .path()
+        .join(default_slug)
+        .join("skills")
+        .join(skill_name)
+        .join("conversations")
+        .join("sentinel.txt");
+    std::fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
+    std::fs::write(&sentinel, b"keep me").unwrap();
+
+    // clear_skill_conversation_db_records must only clear the DB record.
+    clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
+
+    // DB record cleared.
+    assert_eq!(
+        crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
+        None
+    );
+    // Sentinel file must still exist — no filesystem deletion.
+    assert!(sentinel.exists(), "conversations directory must not be deleted");
+}
+```
+
+- [ ] **Step 4: Build and test**
+
+```bash
+cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
+cd app/src-tauri && cargo test commands::workflow::evaluation 2>&1 | tail -10
+cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
+```
+
+Expected: clean; new test passes; old test is gone.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src-tauri/src/commands/workflow/evaluation.rs
+git commit -m "fix: remove clear_persistent_skill_conversation_state; replace with DB-only clear in navigate_back_to_step"
+```
+
+---
+
 ## PR 8 — Collapse event recovery to always-FullHistory (Gap 8)
 
 **Goal:** Single event replay path. Delete `EventRecoveryMode` enum entirely. Every `OpenHandsSendMessage` always replays full conversation history.
