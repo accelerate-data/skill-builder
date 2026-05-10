@@ -23,7 +23,7 @@ describe("getSkillSurface", () => {
   });
 
   it("returns workspace for an ImportedSkill (no skill_source field)", () => {
-    expect(getSkillSurface({ skill_id: "1", skill_name: "test", library_key: null, description: null, is_active: true, disk_path: "", imported_at: "", is_bundled: false, purpose: null, version: null, user_invocable: null, disable_model_invocation: null, marketplace_source_url: null, plugin_slug: "skills", plugin_display_name: "Skills", is_default_plugin: true })).toBe("workspace");
+    expect(getSkillSurface({ skill_id: 1, skill_name: "test", library_key: null, description: null, is_active: true, disk_path: "", imported_at: "", is_bundled: false, purpose: null, version: null, user_invocable: null, disable_model_invocation: null, marketplace_source_url: null, plugin_slug: "skills", plugin_display_name: "Skills", is_default_plugin: true })).toBe("workspace");
   });
 
   it("returns workspace when skill_source is null", () => {

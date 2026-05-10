@@ -142,10 +142,10 @@ describe("WorkspaceRoutePage", () => {
   });
 
   it("finds imported skill by skill_id", () => {
-    mockUseParams.mockReturnValue({ skillId: "uuid-123" });
+    mockUseParams.mockReturnValue({ skillId: "123" });
     mockImportedSkills = [
       {
-        skill_id: "uuid-123",
+        skill_id: 123,
         skill_name: "petstore-imported",
         library_key: "imported-petstore",
         plugin_slug: "default",
@@ -167,10 +167,10 @@ describe("WorkspaceRoutePage", () => {
   });
 
   it("finds imported skill by skill_id when library_key is null", () => {
-    mockUseParams.mockReturnValue({ skillId: "uuid-123" });
+    mockUseParams.mockReturnValue({ skillId: "123" });
     mockImportedSkills = [
       {
-        skill_id: "uuid-123",
+        skill_id: 123,
         skill_name: "some-skill",
         library_key: null,
         plugin_slug: "default",
@@ -192,10 +192,10 @@ describe("WorkspaceRoutePage", () => {
   });
 
   it("passes skillType='marketplace' for marketplace-imported skills", () => {
-    mockUseParams.mockReturnValue({ skillId: "uuid-mkt-1" });
+    mockUseParams.mockReturnValue({ skillId: "201" });
     mockImportedSkills = [
       {
-        skill_id: "uuid-mkt-1",
+        skill_id: 201,
         skill_name: "marketplace-plugin-skill",
         library_key: "imported:uuid-mkt-1",
         plugin_slug: "analytics-pack",

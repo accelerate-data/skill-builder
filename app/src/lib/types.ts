@@ -370,7 +370,7 @@ export interface UsageByDay {
 }
 
 export interface ImportedSkill {
-  skill_id: string
+  skill_id: number
   skill_name: string
   library_key: string | null
   description: string | null
@@ -424,7 +424,7 @@ export interface EditableSkill {
 /** Convert an ImportedSkill to the EditableSkill shape expected by SkillDialog. */
 export function toEditableSkill(skill: ImportedSkill): EditableSkill {
   return {
-    id: null,
+    id: skill.skill_id,
     name: skill.skill_name,
     plugin_slug: skill.plugin_slug,
     skill_source: skill.marketplace_source_url ? 'marketplace' : 'imported',

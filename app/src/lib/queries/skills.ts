@@ -32,7 +32,7 @@ export function useDeleteImportedSkillMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (skillId: string) => deleteImportedSkill(skillId),
+    mutationFn: (skillId: number) => deleteImportedSkill(skillId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.skills.imported() });
     },

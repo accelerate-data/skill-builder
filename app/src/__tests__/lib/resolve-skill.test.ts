@@ -24,7 +24,7 @@ function makeBuilderSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
 
 function makeImportedSkill(overrides: Partial<ImportedSkill> = {}): ImportedSkill {
   return {
-    skill_id: "uuid-1",
+    skill_id: 101,
     skill_name: "imported-skill",
     library_key: null,
     plugin_slug: "default",
@@ -85,16 +85,16 @@ describe("resolveSkill", () => {
     const skills = [
       makeImportedSkill({ skill_name: "my-import", library_key: "custom-key" }),
     ];
-    const result = resolveSkill("uuid-1", [], skills);
+    const result = resolveSkill("101", [], skills);
     expect(result).not.toBeNull();
     expect(result?.name).toBe("my-import");
   });
 
   it("finds imported skill by skill_id when library_key is null", () => {
     const skills = [
-      makeImportedSkill({ skill_id: "abc-123", skill_name: "my-import" }),
+      makeImportedSkill({ skill_id: 123, skill_name: "my-import" }),
     ];
-    const result = resolveSkill("abc-123", [], skills);
+    const result = resolveSkill("123", [], skills);
     expect(result).not.toBeNull();
     expect(result?.name).toBe("my-import");
   });
@@ -113,8 +113,9 @@ describe("resolveSkill", () => {
 
   it("returns EditableSkill shape for imported skills", () => {
     const skills = [makeImportedSkill({ skill_name: "imp" })];
-    const result = resolveSkill("uuid-1", [], skills);
+    const result = resolveSkill("101", [], skills);
     expect(result).toHaveProperty("name", "imp");
     expect(result).toHaveProperty("plugin_slug", "default");
+    expect(result).toHaveProperty("id", 101);
   });
 });

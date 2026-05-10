@@ -49,6 +49,7 @@ import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 let nextBuilderId = 1;
+let nextImportedId = 1000;
 
 function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
   const base: SkillSummary = {
@@ -87,7 +88,7 @@ function makeImportedSkill(
   overrides: Partial<ImportedSkill> & { skill_name: string },
 ): ImportedSkill {
   const base: ImportedSkill = {
-    skill_id: `id-${overrides.skill_name}`,
+    skill_id: nextImportedId++,
     skill_name: overrides.skill_name,
     library_key: `imported:id-${overrides.skill_name}`,
     description: null,
@@ -167,6 +168,7 @@ const importedSkill = makeImportedSkill({
 describe("SkillListPanel", () => {
   beforeEach(() => {
     nextBuilderId = 1000;
+    nextImportedId = 2000;
     setBuilderSkills([]);
     setImportedSkills([]);
     useSkillStore.setState({
@@ -290,7 +292,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-id-imp-skill");
+    const dot = screen.getByLabelText(`status-dot-${skill.skill_id}`);
     expect(dot.style.backgroundColor).toBe("var(--color-violet)");
   });
 
@@ -303,7 +305,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-id-mkt-skill");
+    const dot = screen.getByLabelText(`status-dot-${skill.skill_id}`);
     expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
   });
 
@@ -553,7 +555,7 @@ describe("SkillListPanel", () => {
     renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("my-import").closest('[role="button"]')!);
 
-    expect(onSelectSkill).toHaveBeenCalledWith("id-my-import");
+    expect(onSelectSkill).toHaveBeenCalledWith(String(skill.skill_id));
   });
 
   it("does not navigate or call onSelectSkill when clicking a locked row", () => {

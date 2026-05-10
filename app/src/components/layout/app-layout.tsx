@@ -189,7 +189,7 @@ export function AppLayout() {
       }
 
       const importedSkill = importedSkills.find(
-        (skill) => skill.skill_id === skillId,
+        (skill) => String(skill.skill_id) === skillId,
       );
       if (importedSkill) {
         return {

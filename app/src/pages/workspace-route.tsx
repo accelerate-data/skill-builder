@@ -28,7 +28,7 @@ export default function WorkspaceRoutePage() {
     (s) => s.skill_source === "skill-builder" && String(s.id) === skillId,
   );
   const selectedImportedSkill = importedSkills.find(
-    (s) => s.skill_id === skillId,
+    (s) => String(s.skill_id) === skillId,
   );
   const skill = selectedBuilderSkill ?? selectedImportedSkill ?? null;
   const skillType = selectedBuilderSkill

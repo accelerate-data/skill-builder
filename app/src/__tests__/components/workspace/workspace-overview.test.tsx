@@ -50,7 +50,7 @@ const baseSkill: SkillSummary = {
 };
 
 const baseImportedSkill: ImportedSkill = {
-  skill_id: "imp-1",
+  skill_id: 1,
   skill_name: "crm-connector",
   library_key: null,
   description: "Connects to CRM systems",

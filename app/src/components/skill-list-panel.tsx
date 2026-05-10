@@ -216,7 +216,7 @@ export function SkillListPanel({
   function handleDelete(skill: UnifiedSkill) {
     if (skill.importedSkillId) {
       const toastId = toast.loading(`Deleting "${skill.name}"...`);
-      deleteImportedSkillMutation.mutateAsync(skill.importedSkillId)
+      deleteImportedSkillMutation.mutateAsync(Number(skill.importedSkillId))
         .then(() => toast.success(`Deleted "${skill.name}"`, { id: toastId }))
         .catch((err) => toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId }));
       return;

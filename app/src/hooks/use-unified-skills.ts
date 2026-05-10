@@ -85,8 +85,8 @@ export function mergeSkills(
     }));
 
   const fromImported: UnifiedSkill[] = importedSkills.map((s) => ({
-    skillId: s.skill_id,
-    key: s.skill_id,
+    skillId: String(s.skill_id),
+    key: String(s.skill_id),
     name: s.skill_name,
     description: s.description,
     purpose: s.purpose,
@@ -96,7 +96,7 @@ export function mergeSkills(
     pluginSlug: s.plugin_slug,
     pluginDisplayName: s.plugin_display_name,
     isDefaultPlugin: s.is_default_plugin,
-    importedSkillId: s.skill_id,
+    importedSkillId: String(s.skill_id),
     status: null,
     currentStep: null,
   }));

@@ -12,7 +12,7 @@ export function resolveSkill(
     (s) => s.skill_source === "skill-builder" && String(s.id) === skillId,
   );
   const imported = importedSkills.find(
-    (s) => s.skill_id === skillId,
+    (s) => String(s.skill_id) === skillId,
   );
   const skill = builder ?? imported ?? null;
   if (!skill) return null;

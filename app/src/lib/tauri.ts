@@ -344,7 +344,7 @@ export async function listSkills(workspacePath: string, sourceUrl?: string | nul
 export const listImportedSkills = (sourceUrl?: string | null) =>
   invokeCommand("list_imported_skills", { sourceUrl: sourceUrl ?? null })
 
-export const deleteImportedSkill = (skillId: string) =>
+export const deleteImportedSkill = (skillId: number) =>
   invokeCommand("delete_imported_skill", { skillId })
 
 export const listPlugins = () =>

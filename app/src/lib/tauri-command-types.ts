@@ -265,7 +265,7 @@ export interface TauriCommandMap {
   get_dashboard_skill_names: { args: NoArgs; result: string[] };
   list_skills: { args: { workspacePath: string; sourceUrl: string | null }; result: SkillSummary[] };
   list_imported_skills: { args: { sourceUrl: string | null }; result: ImportedSkill[] };
-  delete_imported_skill: { args: { skillId: string }; result: void };
+  delete_imported_skill: { args: { skillId: number }; result: void };
   list_plugins: { args: NoArgs; result: LibraryPlugin[] };
   delete_plugin: { args: { pluginSlug: string }; result: void };
   set_plugin_upgrade_lock: { args: { pluginSlug: string; locked: boolean }; result: void };

@@ -658,15 +658,17 @@ async fn import_marketplace_entries_to_library(
 
                 // Step 2a: Create/update skill master row (with plugin FK)
                 // Step 2b: Create/update imported_skills row (with skill master FK)
-                let purpose_for_master = skill.purpose.as_deref().unwrap_or("domain");
+                let purpose_for_master =
+                    skill.purpose.clone().unwrap_or_else(|| "domain".to_string());
                 let db_result: Result<(), String> = (|| {
                     let skill_master_id = crate::db::upsert_skill_in_plugin(
                         &conn,
                         &skill.skill_name,
                         "marketplace",
-                        purpose_for_master,
+                        &purpose_for_master,
                         &plugin_slug,
                     )?;
+                    skill.skill_id = skill_master_id;
                     crate::db::upsert_imported_skill(&conn, &skill, skill_master_id)?;
                     Ok(())
                 })();
@@ -916,9 +918,8 @@ pub async fn import_marketplace_plugin_to_library(
         );
 
         // Step 4b: Create imported_skills row (with skill master FK)
-        let skill_id = crate::commands::imported_skills::generate_skill_id(skill_name);
         let imported_skill = crate::types::ImportedSkill {
-            skill_id,
+            skill_id: skill_master_id,
             skill_name: skill_name.clone(),
             library_key: None,
             is_active: true,

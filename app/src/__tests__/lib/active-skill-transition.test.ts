@@ -31,6 +31,7 @@ vi.mock("@/lib/workflow-teardown", () => ({
 
 const refineState = vi.hoisted(() => ({
   selectedSkill: {
+    id: 7,
     name: "sales-skill",
     plugin_slug: "skills",
   },
@@ -74,6 +75,7 @@ vi.mock("@/stores/agent-store", () => ({
 
 function makeSkill(name: string): EditableSkill {
   return {
+    id: 11,
     name,
     plugin_slug: "skills",
     skill_source: "skill-builder",
@@ -105,6 +107,7 @@ describe("active-skill-transition", () => {
     });
     tauriMocks.stopOpenHandsServer.mockResolvedValue(undefined);
     refineState.selectedSkill = {
+      id: 7,
       name: "sales-skill",
       plugin_slug: "skills",
     };
@@ -182,7 +185,7 @@ describe("active-skill-transition", () => {
 
     await enterSkill(skill, "/workspace");
 
-    expect(tauriMocks.acquireLock).toHaveBeenCalledWith("finance-skill");
+    expect(tauriMocks.acquireLock).toHaveBeenCalledWith(11);
     expect(tauriMocks.selectSkillOpenHandsSession).toHaveBeenCalledWith(
       "finance-skill",
       "/workspace",
@@ -203,7 +206,7 @@ describe("active-skill-transition", () => {
     await expect(enterSkill(skill, "/workspace")).rejects.toThrow(
       "bootstrap failed",
     );
-    expect(tauriMocks.releaseLock).toHaveBeenCalledWith("finance-skill");
+    expect(tauriMocks.releaseLock).toHaveBeenCalledWith(11);
     expect(hydrateSelectedSkillOpenHandsSession).not.toHaveBeenCalled();
   });
 
@@ -227,6 +230,6 @@ describe("active-skill-transition", () => {
     await expect(enterSkill(skill, "/workspace")).rejects.toThrow(
       "bootstrap failed",
     );
-    expect(tauriMocks.releaseLock).toHaveBeenCalledWith("finance-skill");
+    expect(tauriMocks.releaseLock).toHaveBeenCalledWith(11);
   });
 });

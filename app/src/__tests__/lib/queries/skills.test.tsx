@@ -20,9 +20,9 @@ function wrapper() {
 
 function makeImportedSkill(overrides?: Partial<ImportedSkill>): ImportedSkill {
   return {
-    skill_id: "imported-1",
+    skill_id: 1,
     skill_name: "imported-skill",
-    library_key: "imported:imported-1",
+    library_key: "1",
     description: "Imported skill",
     is_active: true,
     disk_path: "/skills/imported-skill",
