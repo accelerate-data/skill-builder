@@ -1,3 +1,7 @@
+---
+functional-specs: [custom-plugin-management]
+---
+
 # Implementation Gaps
 
 This document tracks the delta between the target architecture (described in

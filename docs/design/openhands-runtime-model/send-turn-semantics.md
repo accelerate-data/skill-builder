@@ -1,5 +1,5 @@
 ---
-functional-specs: []
+functional-specs: [custom-plugin-management]
 ---
 
 # OpenHands Turn Dispatch Semantics
