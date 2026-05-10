@@ -2550,7 +2550,6 @@ mod tests {
                     output_cost_per_token: None,
                     usage_id: None,
                 },
-                Some("workflow-session".to_string()),
             );
         let answer_evaluator_config =
             crate::commands::workflow::runtime::build_answer_evaluator_runtime_config(

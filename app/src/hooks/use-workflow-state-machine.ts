@@ -7,7 +7,6 @@ import {
   runWorkflowStep,
   verifyStepOutput,
   getDisabledSteps,
-  materializeWorkflowStepOutput,
   resetWorkflowStep,
   endWorkflowSession,
   logFrontend,
@@ -18,7 +17,7 @@ import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
 import { useWorkflowGate } from "@/hooks/use-workflow-gate";
 
-const RESEARCH_MATERIALIZATION_WAIT_MS = 5000;
+const WORKFLOW_MATERIALIZATION_WAIT_MS = 5000;
 
 interface WorkflowStepMaterializedPayload {
   agentId: string;
@@ -238,13 +237,13 @@ export function useWorkflowStateMachine({
 
   // Refs for cross-effect communication
   const prevReviewModeRef = useRef<boolean | null>(null);
-  const researchMaterializationRef = useRef<
+  const workflowMaterializationRef = useRef<
     Record<string, WorkflowStepMaterializedPayload>
   >({});
-  const pendingResearchCompletionRef = useRef<Record<string, { step: number }>>(
+  const pendingWorkflowCompletionRef = useRef<Record<string, { step: number }>>(
     {},
   );
-  const researchMaterializationTimeoutsRef = useRef<
+  const workflowMaterializationTimeoutsRef = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({});
 
@@ -293,11 +292,11 @@ export function useWorkflowStateMachine({
     [],
   );
 
-  const clearResearchMaterializationTimeout = useCallback((agentId: string) => {
-    const timeout = researchMaterializationTimeoutsRef.current[agentId];
+  const clearWorkflowMaterializationTimeout = useCallback((agentId: string) => {
+    const timeout = workflowMaterializationTimeoutsRef.current[agentId];
     if (timeout) {
       clearTimeout(timeout);
-      delete researchMaterializationTimeoutsRef.current[agentId];
+      delete workflowMaterializationTimeoutsRef.current[agentId];
     }
   }, []);
 
@@ -368,12 +367,12 @@ export function useWorkflowStateMachine({
     [skillName, setRunning, setStopping, updateStepStatus],
   );
 
-  const resolveResearchCompletion = useCallback(
+  const resolveWorkflowStepCompletion = useCallback(
     async (agentId: string, step: number) => {
-      clearResearchMaterializationTimeout(agentId);
-      delete pendingResearchCompletionRef.current[agentId];
+      clearWorkflowMaterializationTimeout(agentId);
+      delete pendingWorkflowCompletionRef.current[agentId];
 
-      const materialization = researchMaterializationRef.current[agentId];
+      const materialization = workflowMaterializationRef.current[agentId];
       if (materialization?.success === false) {
         failWorkflowStep(
           step,
@@ -397,13 +396,13 @@ export function useWorkflowStateMachine({
         return;
       }
 
-      pendingResearchCompletionRef.current[agentId] = { step };
-      researchMaterializationTimeoutsRef.current[agentId] = setTimeout(() => {
+      pendingWorkflowCompletionRef.current[agentId] = { step };
+      workflowMaterializationTimeoutsRef.current[agentId] = setTimeout(() => {
         void (async () => {
-          delete pendingResearchCompletionRef.current[agentId];
-          delete researchMaterializationTimeoutsRef.current[agentId];
+          delete pendingWorkflowCompletionRef.current[agentId];
+          delete workflowMaterializationTimeoutsRef.current[agentId];
 
-          const latest = researchMaterializationRef.current[agentId];
+          const latest = workflowMaterializationRef.current[agentId];
           if (latest?.success === false) {
             failWorkflowStep(
               step,
@@ -425,10 +424,10 @@ export function useWorkflowStateMachine({
             `Step ${step + 1} completed but backend materialization did not produce output files`,
           );
         })();
-      }, RESEARCH_MATERIALIZATION_WAIT_MS);
+      }, WORKFLOW_MATERIALIZATION_WAIT_MS);
     },
     [
-      clearResearchMaterializationTimeout,
+      clearWorkflowMaterializationTimeout,
       failWorkflowStep,
       finalizeCompletedStep,
       verifyOutputFiles,
@@ -438,12 +437,12 @@ export function useWorkflowStateMachine({
   useEffect(
     () => () => {
       for (const timeout of Object.values(
-        researchMaterializationTimeoutsRef.current,
+        workflowMaterializationTimeoutsRef.current,
       )) {
         clearTimeout(timeout);
       }
-      researchMaterializationTimeoutsRef.current = {};
-      pendingResearchCompletionRef.current = {};
+      workflowMaterializationTimeoutsRef.current = {};
+      pendingWorkflowCompletionRef.current = {};
     },
     [],
   );
@@ -454,25 +453,26 @@ export function useWorkflowStateMachine({
 
     listen<unknown>("workflow-step-materialized", (event) => {
       const payload = normalizeWorkflowStepMaterializedPayload(event.payload);
-      if (!payload || payload.stepId !== 0) return;
+      if (!payload || payload.stepId < 0 || payload.stepId > 3) return;
       if (payload.skillName && payload.skillName !== skillName) return;
 
-      researchMaterializationRef.current[payload.agentId] = payload;
-      const pending = pendingResearchCompletionRef.current[payload.agentId];
+      workflowMaterializationRef.current[payload.agentId] = payload;
+      const pending = pendingWorkflowCompletionRef.current[payload.agentId];
       if (payload.success && pending) {
-        void resolveResearchCompletion(payload.agentId, pending.step);
+        void resolveWorkflowStepCompletion(payload.agentId, pending.step);
         return;
       }
 
       if (!payload.success) {
-        clearResearchMaterializationTimeout(payload.agentId);
-        delete pendingResearchCompletionRef.current[payload.agentId];
+        clearWorkflowMaterializationTimeout(payload.agentId);
+        delete pendingWorkflowCompletionRef.current[payload.agentId];
         const { currentStep: step, steps: currentSteps } =
           useWorkflowStore.getState();
         if (
           pending ||
           (currentSteps[step]?.status === "in_progress" &&
-            useAgentStore.getState().activeAgentId === payload.agentId)
+            useAgentStore.getState().activeAgentId === payload.agentId &&
+            payload.stepId === step)
         ) {
           const failedStep = pending?.step ?? step;
           failWorkflowStep(
@@ -496,9 +496,9 @@ export function useWorkflowStateMachine({
       unlisten?.();
     };
   }, [
-    clearResearchMaterializationTimeout,
+    clearWorkflowMaterializationTimeout,
     failWorkflowStep,
-    resolveResearchCompletion,
+    resolveWorkflowStepCompletion,
     skillName,
   ]);
 
@@ -701,60 +701,7 @@ export function useWorkflowStateMachine({
       setActiveAgent(null);
 
       const finish = async () => {
-        if (step === 0) {
-          await resolveResearchCompletion(completedAgentId, step);
-          return;
-        }
-
-        const cfg = stepConfigs[step];
-        if (cfg && completedAgentId) {
-          const structuredOutput =
-            extractStructuredResultPayload(completedAgentId);
-          if (
-            structuredOutput == null ||
-            typeof structuredOutput !== "object" ||
-            Array.isArray(structuredOutput)
-          ) {
-            if (cfg.requiresStructuredOutput) {
-              updateStepStatus(step, "error");
-              setRunning(false);
-              toast.error(
-                `Step ${step + 1} completed but produced no structured output`,
-                { duration: Infinity },
-              );
-              return;
-            }
-          } else {
-            try {
-              await materializeWorkflowStepOutput(
-                skillName,
-                step as 0 | 1 | 2 | 3,
-                structuredOutput as import("@/lib/types").WorkflowStepStructuredOutput,
-              );
-            } catch (err) {
-              updateStepStatus(step, "error");
-              setRunning(false);
-              toast.error(
-                `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
-                { duration: Infinity },
-              );
-              return;
-            }
-          }
-        }
-
-        const hasOutput = await verifyOutputFiles(step);
-        if (!hasOutput) {
-          updateStepStatus(step, "error");
-          setRunning(false);
-          toast.error(
-            `Step ${step + 1} completed but produced no output files`,
-            { duration: Infinity },
-          );
-          return;
-        }
-
-        await finalizeCompletedStep(step);
+        await resolveWorkflowStepCompletion(completedAgentId, step);
       };
 
       finish();
@@ -786,10 +733,7 @@ export function useWorkflowStateMachine({
   }, [
     activeRunStatus,
     activeAgentId,
-    extractStructuredResultPayload,
-    resolveResearchCompletion,
-    verifyOutputFiles,
-    finalizeCompletedStep,
+    resolveWorkflowStepCompletion,
     updateStepStatus,
     setRunning,
     setStopping,

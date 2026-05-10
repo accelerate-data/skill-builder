@@ -192,6 +192,7 @@ vi.mock("@/stores/settings-store", () => ({
 describe("useWorkflowStateMachine", () => {
   const mockRestartOpenHandsSession = vi.fn(() => Promise.resolve());
   const defaultOptions = {
+    skillId: 1,
     skillName: "test-skill",
     workspacePath: "/workspace",
     skillsPath: "/skills",
@@ -243,6 +244,7 @@ describe("useWorkflowStateMachine", () => {
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
     expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+      1,
       "test-skill",
       0,
       "/workspace",
@@ -387,6 +389,7 @@ describe("useWorkflowStateMachine", () => {
 
     expect(mockResetToStep).toHaveBeenCalledWith(0);
     expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+      1,
       "test-skill",
       0,
       "/workspace",
@@ -438,6 +441,7 @@ describe("useWorkflowStateMachine", () => {
     });
 
     expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+      1,
       "test-skill",
       2,
       "/workspace",
@@ -588,6 +592,7 @@ describe("useWorkflowStateMachine", () => {
     // The toggle effect sets pendingAutoStartStep, then the auto-start effect fires
     await waitFor(() => {
       expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+        1,
         "test-skill",
         0,
         "/workspace",

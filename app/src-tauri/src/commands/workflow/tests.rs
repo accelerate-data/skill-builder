@@ -6,8 +6,8 @@ use super::evaluation::get_step_output_files;
 use super::guards::{make_agent_id, workflow_step_runtime_label};
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
-    materialize_answer_evaluation_output_value, materialize_workflow_step_output_value,
-    publish_commit_and_tag_generated_skill,
+    extract_workflow_json_from_conversation_state, materialize_answer_evaluation_output_value,
+    materialize_workflow_step_output_value, publish_commit_and_tag_generated_skill,
 };
 use super::prompt::format_user_context;
 use super::prompt::{
@@ -228,7 +228,6 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
     let events = Arc::new(Mutex::new(Vec::<String>::new()));
     let send_events = Arc::clone(&events);
@@ -344,7 +343,6 @@ fn research_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -377,7 +375,6 @@ fn research_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 #[test]
@@ -460,7 +457,6 @@ fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -490,7 +486,6 @@ fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 #[test]
@@ -544,7 +539,7 @@ fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands answer evaluation should rely on workspace .agents skills"
     );
-    assert!(config.step_id.is_none());
+    assert_eq!(config.step_id, Some(-1));
 }
 
 #[test]
@@ -555,7 +550,6 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("workflow-session".to_string()),
     );
     let answer_evaluator_config = build_answer_evaluator_runtime_config(
         "sales-analytics",
@@ -722,6 +716,27 @@ fn research_json_extraction_repairs_missing_section_closers_before_notes() {
 }
 
 #[test]
+fn workflow_json_extraction_repairs_missing_section_closers_before_next_section() {
+    let state = serde_json::json!({
+        "type": "conversation_state",
+        "status": "completed",
+        "result_text": r#"{"status":"detailed_research_complete","refinement_count":3,"section_count":5,"clarifications_json":{"version":"1","metadata":{"question_count":7,"section_count":5,"refinement_count":3,"must_answer_count":5,"priority_questions":["Q1","Q2","Q3","Q5","R4.1"],"scope_recommendation":false,"scope_reason":null,"scope_next_action":null,"duplicates_removed":0,"warning":null,"error":null},"notes":[],"answer_evaluator_notes":[],"sections":[{"id":1,"title":"Pipeline Scope and Definition","questions":[{"id":"Q1","title":"Pipeline type","text":"What type?","must_answer":true,"choices":[{"id":"C1","text":"Sales","is_other":false}],"answer_choice":"C1","answer_text":"Sales","refinements":[]},{"id":"Q2","title":"Pipeline stages","text":"What stages?","must_answer":true,"choices":[{"id":"C1","text":"Standard","is_other":false}],"answer_choice":"C1","answer_text":"Standard","refinements":[]}]},{"id":2,"title":"Value Metrics and Calculation Logic","questions":[{"id":"Q3","title":"Value measures","text":"Which measures?","must_answer":true,"choices":[{"id":"C1","text":"All","is_other":false}],"answer_choice":"C1","answer_text":"All","refinements":[]},{"id":"Q4","title":"Probability weighting method","text":"How weighted?","must_answer":false,"choices":[{"id":"C1","text":"Fixed","is_other":false}],"answer_choice":"C1","answer_text":"Fixed","refinements":[{"id":"R4.1","title":"Stage probability values","text":"What fixed percentages?","must_answer":true,"choices":[{"id":"C1","text":"10/25/50/75/100","is_other":false}],"refinements":[]}]},{"id":4,"title":"Business Rules and Edge Cases","questions":[{"id":"Q6","title":"Material business rules","text":"Which rules?","must_answer":false,"choices":[{"id":"C1","text":"All of the above","is_other":false}],"answer_choice":"C1","answer_text":"All of the above","refinements":[{"id":"R6.1","title":"Value allocation method","text":"How allocate?","must_answer":false,"choices":[{"id":"C1","text":"Proportional split","is_other":false}],"refinements":[]},{"id":"R6.2","title":"Aging threshold and write-off","text":"What aging threshold?","must_answer":false,"choices":[{"id":"C1","text":"90 days excluded","is_other":false}],"refinements":[]}]},{"id":5,"title":"Reconciliation and Validation","questions":[{"id":"Q7","title":"Reconciliation expectations","text":"What reconcile?","must_answer":false,"choices":[{"id":"C1","text":"All of the above","is_other":false}],"answer_choice":"C1","answer_text":"All of the above","refinements":[]}]},{"id":3,"title":"Grain and Dimensional Hierarchy","questions":[{"id":"Q5","title":"Measurement grain","text":"At what grain?","must_answer":true,"choices":[{"id":"C1","text":"Nested hierarchy","is_other":false}],"answer_choice":"C1","answer_text":"Nested hierarchy","refinements":[]}]}]}}"#
+    });
+
+    let parsed =
+        extract_workflow_json_from_conversation_state(&state, "detailed research").unwrap();
+
+    assert_eq!(parsed["status"], "detailed_research_complete");
+    assert_eq!(
+        parsed["clarifications_json"]["sections"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+}
+
+#[test]
 fn research_json_extraction_rejects_missing_empty_non_object_error_and_invalid_json() {
     let missing = serde_json::json!({
         "type": "conversation_state",
@@ -780,7 +795,6 @@ mod research {
             "/tmp/workspace",
             DEFAULT_PLUGIN_SLUG,
             test_workflow_llm_config(),
-            None,
         );
         assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
         assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
@@ -804,6 +818,154 @@ mod research {
             crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill")
                 .unwrap()
                 .is_some()
+        );
+    }
+}
+
+mod backend_materialization {
+    use super::*;
+
+    #[test]
+    fn detailed_research_terminal_materialization_smoke() {
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": serde_json::to_string(&payload).unwrap()
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+        let db = db_with_seeded_skill("rt-step1-materialization");
+        materialize_workflow_step_output_value(&db, "rt-step1-materialization", 1, &parsed)
+            .unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let clarifications = crate::db::workflow_artifacts::read_clarifications(
+            &conn,
+            "rt-step1-materialization",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(clarifications.refinement_count, 1);
+    }
+
+    #[test]
+    fn confirm_decisions_terminal_materialization_smoke() {
+        let payload = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "decision_count": 1,
+                "conflicts_resolved": 0,
+                "round": 1
+            },
+            "decisions": [{
+                "id": "D1",
+                "title": "Use weighted pipeline value",
+                "original_question": "How should pipeline value be measured?",
+                "decision": "Use weighted pipeline value",
+                "implication": "Downstream calculations use stage probability weighting.",
+                "status": "resolved"
+            }]
+        });
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": serde_json::to_string(&payload).unwrap()
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state).unwrap();
+        let db = db_with_seeded_skill("rt-step2-materialization");
+        materialize_workflow_step_output_value(&db, "rt-step2-materialization", 2, &parsed)
+            .unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let decisions = crate::db::workflow_artifacts::read_decisions(
+            &conn,
+            "rt-step2-materialization",
+        )
+        .unwrap();
+        assert!(decisions.is_some());
+    }
+
+    #[test]
+    fn generate_skill_terminal_materialization_smoke() {
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let conn = crate::db::create_test_db_for_tests();
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, plugin_id) \
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+            rusqlite::params!["rt-step3-materialization", DEFAULT_PLUGIN_SLUG],
+        )
+        .unwrap();
+        crate::db::write_settings(
+            &conn,
+            &crate::types::AppSettings {
+                skills_path: Some(skills_tmp.path().to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let db = crate::db::Db(std::sync::Mutex::new(conn));
+
+        let workspace_skill_root = crate::skill_paths::workspace_skill_dir(
+            workspace_tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "rt-step3-materialization",
+        );
+        std::fs::create_dir_all(workspace_skill_root.join("skill")).unwrap();
+        std::fs::write(
+            workspace_skill_root.join("skill").join("SKILL.md"),
+            r#"---
+name: measuring-pipeline-value
+description: Use when measuring weighted pipeline value.
+---
+
+# Measuring Pipeline Value
+"#,
+        )
+        .unwrap();
+
+        let payload = serde_json::json!({
+            "status": "generated",
+            "benchmark_path": null,
+            "skipped": false,
+            "commit_summary": "Create skill package with SKILL.md",
+            "call_trace": [
+                "read-user-context",
+                "read-decisions",
+                "read-clarifications",
+                "synthesize-generation-brief",
+                "use-creating-skills",
+                "write-skill",
+                "fresh-context-verifier-review"
+            ]
+        });
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": serde_json::to_string(&payload).unwrap()
+        });
+
+        let parsed =
+            extract_workflow_json_from_conversation_state(&state, "generate-skill").unwrap();
+        materialize_workflow_step_output_value(&db, "rt-step3-materialization", 3, &parsed)
+            .unwrap();
+
+        let published_skill = crate::skill_paths::resolve_skill_dir(
+            skills_tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "rt-step3-materialization",
+        )
+        .join("SKILL.md");
+        assert!(
+            !published_skill.exists(),
+            "step 3 generate materialization validates output but does not publish files"
         );
     }
 }
@@ -884,7 +1046,6 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -911,7 +1072,6 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 #[test]
@@ -989,7 +1149,6 @@ fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
         "/tmp/workspace",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
-        Some("session-1".to_string()),
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -1021,7 +1180,6 @@ fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
         config.required_plugins.is_none(),
         "OpenHands runtime config should rely on workspace .agents layout"
     );
-    assert_eq!(config.workflow_session_id.as_deref(), Some("session-1"));
 }
 
 /// Steps 0–2 use inline schemas: all $ref resolved, no definitions block,
@@ -1816,6 +1974,50 @@ fn test_materialize_step2_writes_decisions() {
     assert_eq!(record.items.len(), 1);
     assert_eq!(record.items[0].decision_id, "D1");
     assert_eq!(record.items[0].status, "resolved");
+}
+
+#[test]
+fn test_materialize_step2_repairs_missing_statuses_to_resolved() {
+    let db = db_with_seeded_skill("my-skill");
+    let payload = serde_json::json!({
+        "version": "1",
+        "metadata": { "decision_count": 3, "conflicts_resolved": 0, "round": 1 },
+        "decisions": [
+            {
+                "id": "D1",
+                "title": "Capability",
+                "original_question": "What should this skill enable the assistant to do?",
+                "decision": "Guide weighted pipeline logic.",
+                "implication": "Needs direct user review before skill generation.",
+                "status": "needs-review"
+            },
+            {
+                "id": "D2",
+                "title": "Pipeline Scope",
+                "original_question": "What type of pipeline applies?",
+                "decision": "Sales opportunity pipeline only.",
+                "implication": "Ignore service delivery and revenue forecast pipelines."
+            },
+            {
+                "id": "D3",
+                "title": "Probability Weighting",
+                "original_question": "How should win probability be determined?",
+                "decision": "Use stage-based percentages.",
+                "implication": "Treat percentages as organization-configurable defaults."
+            }
+        ]
+    });
+
+    materialize_workflow_step_output_value(&db, "my-skill", 2, &payload).unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let record = crate::db::workflow_artifacts::read_decisions(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.items.len(), 3);
+    assert_eq!(record.items[0].status, "needs-review");
+    assert_eq!(record.items[1].status, "resolved");
+    assert_eq!(record.items[2].status, "resolved");
 }
 
 #[test]

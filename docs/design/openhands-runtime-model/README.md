@@ -117,7 +117,7 @@ Selected-skill activation owns the persistent session bootstrap sequence:
 2. call `ensure_skill_session` with the saved `conversation_id` from the DB
 3. restore visible transcript history from the conversation events
 
-The runtime is skill-scoped: `OH_CONVERSATIONS_PATH` points at the selected skill's `conversations/` directory. Switching skills may restart the cached Agent Server when the conversations root changes. The DB is the durable source of truth for the saved `conversation_id`.
+The runtime is workspace-scoped: `OH_CONVERSATIONS_PATH` points at `{workspace}/.openhands/conversations/` and `OH_BASH_EVENTS_DIR` points at `{workspace}/.openhands/bash_events/`. Both are fixed for the lifetime of the workspace — they do not change between skill switches. The cached Agent Server is reused across skill switches; it only restarts on process crash or failed health probe. Per-skill file isolation is provided by `workspace.working_dir` in each conversation's `POST /api/conversations` body. The DB is the durable source of truth for the saved `conversation_id`.
 
 See [optimistic-session-activation.md](optimistic-session-activation.md) for the async optimization of this sequence.
 
@@ -151,9 +151,11 @@ Persistent conversations depend on a workspace-level encryption key at `{workspa
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `{workspace}/.openhands/secret.key` | Rust process lifecycle | Stable persistence key across all skills. |
-| `{workspace}/{plugin_slug}/{skill_name}` | Rust product lifecycle | Skill-scoped working directory. |
-| `{workspace_skill_dir}/conversations` | Rust + Agent Server | Persistent conversation storage. |
+| `{workspace}/.openhands/secret.key` | Rust process lifecycle | Stable encryption key across all skills. |
+| `{workspace}/.openhands/conversations/` | Rust + Agent Server | All skill conversations (`OH_CONVERSATIONS_PATH`). Per-skill isolation comes from `workspace.working_dir` in each conversation's REST body, not from this directory. |
+| `{workspace}/.openhands/bash_events/` | Rust + Agent Server | Bash event logs for all conversations (`OH_BASH_EVENTS_DIR`). |
+| `{workspace}/.openhands/logs/` | Rust | Agent Server stderr logs. |
+| `{workspace}/{plugin_slug}/{skill_name}` | Rust product lifecycle | Skill-scoped working directory — set as `workspace.working_dir` in `POST /api/conversations`. |
 | `{workspace}/.openhands/throwaway/{surface}/{run_id}` | Rust | Isolated throwaway runtime roots. |
 
 ## Agent Construction Contract

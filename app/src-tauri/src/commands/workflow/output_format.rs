@@ -13,11 +13,14 @@ use crate::db::workflow_artifacts as db_artifacts;
 use crate::db::workflow_artifacts::{ClarificationsRecord, DecisionsRecord};
 use crate::db::Db;
 
-pub(crate) fn extract_research_json_from_conversation_state(
+pub(crate) fn extract_workflow_json_from_conversation_state(
     state: &serde_json::Value,
+    workflow_label: &str,
 ) -> Result<serde_json::Value, String> {
     if state.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
-        return Err("OpenHands research result was not a conversation_state".to_string());
+        return Err(format!(
+            "OpenHands {workflow_label} result was not a conversation_state"
+        ));
     }
 
     match state.get("status").and_then(|v| v.as_str()) {
@@ -28,9 +31,9 @@ pub(crate) fn extract_research_json_from_conversation_state(
                 .or_else(|| state.get("errorDetail"))
                 .and_then(|v| v.as_str())
                 .filter(|detail| !detail.trim().is_empty())
-                .unwrap_or("OpenHands research run failed");
+                .unwrap_or("OpenHands workflow run failed");
             return Err(format!(
-                "OpenHands research conversation_state failed: {}",
+                "OpenHands {workflow_label} conversation_state failed: {}",
                 detail
             ));
         }
@@ -40,20 +43,22 @@ pub(crate) fn extract_research_json_from_conversation_state(
                 .or_else(|| state.get("errorDetail"))
                 .and_then(|v| v.as_str())
                 .filter(|detail| !detail.trim().is_empty())
-                .unwrap_or("OpenHands research run cancelled");
+                .unwrap_or("OpenHands workflow run cancelled");
             return Err(format!(
-                "OpenHands research conversation_state cancelled: {}",
+                "OpenHands {workflow_label} conversation_state cancelled: {}",
                 detail
             ));
         }
         Some(status) => {
             return Err(format!(
-                "OpenHands research conversation_state status must be completed but got '{}'",
+                "OpenHands {workflow_label} conversation_state status must be completed but got '{}'",
                 status
             ));
         }
         None => {
-            return Err("OpenHands research conversation_state missing status".to_string());
+            return Err(format!(
+                "OpenHands {workflow_label} conversation_state missing status"
+            ));
         }
     }
 
@@ -62,23 +67,39 @@ pub(crate) fn extract_research_json_from_conversation_state(
         .or_else(|| state.get("resultText"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
-            "OpenHands research conversation_state missing result_text/resultText".to_string()
+            format!(
+                "OpenHands {workflow_label} conversation_state missing result_text/resultText"
+            )
         })?;
 
     let trimmed = result_text.trim();
     if trimmed.is_empty() {
-        return Err("OpenHands research conversation_state has empty result_text".to_string());
+        return Err(format!(
+            "OpenHands {workflow_label} conversation_state has empty result_text"
+        ));
     }
 
-    let parsed = parse_research_result_text(trimmed)?;
+    let parsed = parse_research_result_text(trimmed, workflow_label)?;
     if !parsed.is_object() {
-        return Err("OpenHands research result_text must be a JSON object".to_string());
+        return Err(format!(
+            "OpenHands {workflow_label} result_text must be a JSON object"
+        ));
     }
 
     Ok(parsed)
 }
 
-fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
+#[cfg(test)]
+pub(crate) fn extract_research_json_from_conversation_state(
+    state: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    extract_workflow_json_from_conversation_state(state, "research")
+}
+
+fn parse_research_result_text(
+    text: &str,
+    workflow_label: &str,
+) -> Result<serde_json::Value, String> {
     let json_text = strip_single_json_markdown_fence(text);
     match serde_json::from_str::<serde_json::Value>(json_text) {
         Ok(parsed) => Ok(parsed),
@@ -130,7 +151,7 @@ fn parse_research_result_text(text: &str) -> Result<serde_json::Value, String> {
             }
 
             Err(format!(
-                "OpenHands research result_text invalid JSON: {}",
+                "OpenHands {workflow_label} result_text invalid JSON: {}",
                 parse_error
             ))
         }
@@ -197,7 +218,145 @@ fn repair_missing_research_section_closers(text: &str) -> Option<String> {
         }
     }
 
+    if let Some(nested_repaired) = repair_nested_numeric_sections_in_questions(&repaired) {
+        repaired = nested_repaired;
+        changed = true;
+    }
+
     changed.then_some(repaired)
+}
+
+fn normalize_decisions_output_missing_statuses(
+    structured_output: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let mut normalized = structured_output.clone();
+    let decisions = normalized.get_mut("decisions")?.as_array_mut()?;
+    let mut changed = false;
+
+    for decision in decisions {
+        let Some(object) = decision.as_object_mut() else {
+            continue;
+        };
+        if object.contains_key("status") {
+            continue;
+        }
+        object.insert(
+            "status".to_string(),
+            serde_json::Value::String("resolved".to_string()),
+        );
+        changed = true;
+    }
+
+    changed.then_some(normalized)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JsonContainer {
+    Object,
+    Array { is_questions: bool },
+}
+
+fn repair_nested_numeric_sections_in_questions(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut repaired = String::with_capacity(text.len() + 32);
+    let mut stack: Vec<JsonContainer> = Vec::new();
+    let mut next_array_is_questions = false;
+    let mut changed = false;
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            let start = i;
+            i += 1;
+            let mut escaped = false;
+            while i < bytes.len() {
+                let ch = bytes[i];
+                i += 1;
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                if ch == b'\\' {
+                    escaped = true;
+                    continue;
+                }
+                if ch == b'"' {
+                    break;
+                }
+            }
+
+            repaired.push_str(&text[start..i]);
+
+            if &text[start..i] == r#""questions""# {
+                let mut cursor = i;
+                while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                    cursor += 1;
+                }
+                if cursor < bytes.len() && bytes[cursor] == b':' {
+                    cursor += 1;
+                    while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                        cursor += 1;
+                    }
+                    if cursor < bytes.len() && bytes[cursor] == b'[' {
+                        next_array_is_questions = true;
+                    }
+                }
+            }
+            continue;
+        }
+
+        if starts_numeric_section_entry(bytes, i)
+            && stack
+                .iter()
+                .any(|container| matches!(container, JsonContainer::Array { is_questions: true }))
+        {
+            while matches!(
+                stack.last(),
+                Some(JsonContainer::Array { is_questions: true })
+            ) {
+                stack.pop();
+                repaired.push(']');
+                if matches!(stack.last(), Some(JsonContainer::Object)) {
+                    stack.pop();
+                    repaired.push('}');
+                }
+                changed = true;
+            }
+        }
+
+        match bytes[i] {
+            b'{' => stack.push(JsonContainer::Object),
+            b'[' => {
+                stack.push(JsonContainer::Array {
+                    is_questions: next_array_is_questions,
+                });
+                next_array_is_questions = false;
+            }
+            b'}' | b']' => {
+                stack.pop();
+            }
+            _ => {}
+        }
+
+        repaired.push(bytes[i] as char);
+        i += 1;
+    }
+
+    changed.then_some(repaired)
+}
+
+fn starts_numeric_section_entry(bytes: &[u8], index: usize) -> bool {
+    if !bytes[index..].starts_with(br#",{"id":"#) {
+        return false;
+    }
+
+    let mut cursor = index + br#",{"id":"#.len();
+    let digit_start = cursor;
+    while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
+        cursor += 1;
+    }
+
+    cursor > digit_start && bytes[cursor..].starts_with(br#","title":"#)
 }
 
 fn json_value_can_start(ch: char) -> bool {
@@ -640,8 +799,25 @@ pub(crate) fn materialize_workflow_step_output_value(
             persist_clarifications(db, &record)
         }
         2 => {
-            let parsed = serde_json::from_value::<DecisionsOutput>(structured_output.clone())
-                .map_err(|e| format!("invalid decisions output: {}", e))?;
+            let parsed = match serde_json::from_value::<DecisionsOutput>(structured_output.clone()) {
+                Ok(parsed) => parsed,
+                Err(parse_error) => {
+                    if let Some(normalized) =
+                        normalize_decisions_output_missing_statuses(structured_output)
+                    {
+                        if let Ok(parsed) = serde_json::from_value::<DecisionsOutput>(normalized) {
+                            log::warn!(
+                                "[materialize_step] repaired OpenHands decisions output with missing decision status fields"
+                            );
+                            parsed
+                        } else {
+                            return Err(format!("invalid decisions output: {}", parse_error));
+                        }
+                    } else {
+                        return Err(format!("invalid decisions output: {}", parse_error));
+                    }
+                }
+            };
 
             log::info!(
                 "[materialize_step] step=2 decisions version={} skill_id={} decision_count={}",

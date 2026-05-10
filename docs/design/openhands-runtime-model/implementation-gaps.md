@@ -270,3 +270,42 @@ blocks for 2–5s on a cold Agent Server start before the target page appears.
 state in `WorkflowPage` and `WorkspaceRoutePage` so they hold the skeleton
 until the background boot completes. On failure: toast, navigate to `/`,
 release lock.
+
+---
+
+## Gap 11 — Server artifacts are per-skill and skill switches restart the server
+
+**Target:** All persistent OpenHands server artifacts (`conversations/`,
+`bash_events/`, server logs) live under `{workspace_root}/.openhands/`.
+`OH_CONVERSATIONS_PATH` and `OH_BASH_EVENTS_DIR` are fixed for the workspace
+lifetime and do not change between skill switches. The cached Agent Server is
+reused across skill switches; it only restarts on process crash or health
+failure. Per-skill file isolation is provided by `workspace.working_dir` in each
+conversation's REST body, not by separate artifact directories.
+
+**Current state:**
+- `OH_CONVERSATIONS_PATH` is set to `{workspace_skill_dir}/conversations` — a
+  per-skill path. `ensure_agent_server` compares the incoming skill's
+  conversations path against the cached server's path and restarts whenever they
+  differ, causing a server restart on every skill switch.
+- `OH_BASH_EVENTS_DIR` is not set at all. The server default resolves relative
+  to the process CWD (a throwaway `tempfile::TempDir`), so bash events are
+  written to a directory that is deleted when the process struct drops.
+
+**Fix (PR 5b):**
+- Change `compute_conversations_path` to take `workspace_root: &Path` and return
+  `workspace_root.join(".openhands").join("conversations")`.
+- Add `compute_bash_events_path(workspace_root)` returning
+  `workspace_root.join(".openhands").join("bash_events")`.
+- Add `bash_events_path: Option<&str>` to `apply_session_env`; set
+  `OH_BASH_EVENTS_DIR` when present.
+- Simplify `openhands_secret_path` and `read_or_create_openhands_secret` to
+  accept `workspace_root` directly (no directory traversal needed).
+- Update `open_server_log_file` to write logs to
+  `workspace_root/.openhands/logs/`.
+- Remove `conversations_path` from `OpenHandsAgentServerHandle`.
+- Remove the skill-switch restart condition from `ensure_agent_server`; keep
+  only the health/liveness gate.
+- Update all five `ensure_agent_server_process` call sites in `mod.rs` to pass
+  `Path::new(&request.workspace_root_dir)` instead of
+  `request.runtime_run_dir()`.

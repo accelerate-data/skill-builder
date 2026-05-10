@@ -6,9 +6,8 @@ use serde::Serialize;
 use tauri::{Emitter, Listener, Manager};
 
 use crate::agents::openhands_server;
-use crate::agents::runtime_config::{BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig};
+use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::db::Db;
-use crate::skill_paths::resolve_workspace_skill_dir;
 
 use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
@@ -17,7 +16,7 @@ use super::guards::{
     workflow_step_runtime_label,
 };
 use super::output_format::{
-    answer_evaluator_output_format, extract_research_json_from_conversation_state,
+    answer_evaluator_output_format, extract_workflow_json_from_conversation_state,
     materialize_workflow_step_output_value,
 };
 use super::prompt::{
@@ -58,25 +57,27 @@ struct WorkflowStepMaterializedPayload {
     error_detail: Option<String>,
 }
 
+use crate::agents::skill_creator::{build_skill_creator_config, SkillCreatorConfigParams};
+
 pub(crate) fn build_workflow_research_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
-    workflow_session_id: Option<String>,
 ) -> OpenHandsRuntimeConfig {
-    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
+    build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
         workspace_path,
         plugin_slug,
         llm,
-        workflow_session_id,
-        step_id: 0,
         task_kind: "workflow.research",
+        run_source: "workflow",
         allowed_tools: research_workflow_tools(),
         max_turns: 50,
+        step_id: 0,
+        output_format: workflow_output_format_for_step(0),
     })
 }
 
@@ -86,19 +87,19 @@ pub(crate) fn build_workflow_detailed_research_runtime_config(
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
-    workflow_session_id: Option<String>,
 ) -> OpenHandsRuntimeConfig {
-    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
+    build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
         workspace_path,
         plugin_slug,
         llm,
-        workflow_session_id,
-        step_id: 1,
         task_kind: "workflow.detailed_research",
+        run_source: "workflow",
         allowed_tools: research_workflow_tools(),
         max_turns: 50,
+        step_id: 1,
+        output_format: workflow_output_format_for_step(1),
     })
 }
 
@@ -108,19 +109,19 @@ pub(crate) fn build_workflow_confirm_decisions_runtime_config(
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
-    workflow_session_id: Option<String>,
 ) -> OpenHandsRuntimeConfig {
-    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
+    build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
         workspace_path,
         plugin_slug,
         llm,
-        workflow_session_id,
-        step_id: 2,
         task_kind: "workflow.confirm_decisions",
+        run_source: "workflow",
         allowed_tools: confirm_decisions_workflow_tools(),
         max_turns: 100,
+        step_id: 2,
+        output_format: workflow_output_format_for_step(2),
     })
 }
 
@@ -130,78 +131,20 @@ pub(crate) fn build_workflow_generate_skill_runtime_config(
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
-    workflow_session_id: Option<String>,
 ) -> OpenHandsRuntimeConfig {
-    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
+    build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
         workspace_path,
         plugin_slug,
         llm,
-        workflow_session_id,
-        step_id: 3,
         task_kind: "workflow.skill_generation",
+        run_source: "workflow",
         allowed_tools: skill_generation_workflow_tools(),
         max_turns: 500,
+        step_id: 3,
+        output_format: workflow_output_format_for_step(3),
     })
-}
-
-struct SkillCreatorWorkflowConfigParams<'a> {
-    skill_name: &'a str,
-    prompt: &'a str,
-    workspace_path: &'a str,
-    plugin_slug: &'a str,
-    llm: crate::types::WorkflowLlmConfig,
-    workflow_session_id: Option<String>,
-    step_id: u32,
-    task_kind: &'a str,
-    allowed_tools: Vec<String>,
-    max_turns: u32,
-}
-
-fn build_skill_creator_workflow_runtime_config(
-    params: SkillCreatorWorkflowConfigParams<'_>,
-) -> OpenHandsRuntimeConfig {
-    let SkillCreatorWorkflowConfigParams {
-        skill_name,
-        prompt,
-        workspace_path,
-        plugin_slug,
-        llm,
-        workflow_session_id,
-        step_id,
-        task_kind,
-        allowed_tools,
-        max_turns,
-    } = params;
-
-    let workspace_root_dir = workspace_path.replace('\\', "/");
-    let workspace_run_dir =
-        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
-            .to_string_lossy()
-            .replace('\\', "/");
-
-    let mut config = crate::agents::runtime_config::build_openhands_runtime_config(
-        BuildOpenHandsRuntimeConfigParams {
-            prompt: prompt.to_string(),
-            llm,
-            workspace_root_dir,
-            workspace_run_dir,
-            mode: None,
-            agent_name: "skill-creator".to_string(),
-            task_kind: Some(task_kind.to_string()),
-            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-            allowed_tools,
-            max_turns,
-            output_format: workflow_output_format_for_step(step_id),
-            skill_name: Some(skill_name.to_string()),
-            step_id: Some(step_id as i32),
-            run_source: Some("workflow".to_string()),
-            plugin_slug: plugin_slug.to_string(),
-        },
-    );
-    config.workflow_session_id = workflow_session_id;
-    config
 }
 
 pub(crate) fn build_answer_evaluator_runtime_config(
@@ -211,32 +154,19 @@ pub(crate) fn build_answer_evaluator_runtime_config(
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
-    let workspace_root_dir = workspace_path.replace('\\', "/");
-    let workspace_run_dir =
-        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
-            .to_string_lossy()
-            .replace('\\', "/");
-
-    crate::agents::runtime_config::build_openhands_runtime_config(
-        BuildOpenHandsRuntimeConfigParams {
-            prompt: prompt.to_string(),
-            llm,
-            workspace_root_dir,
-            workspace_run_dir,
-            mode: None,
-            agent_name: "skill-creator".to_string(),
-            task_kind: Some("workflow.answer_evaluator".to_string()),
-            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-            allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(
-            ),
-            max_turns: 20,
-            output_format: Some(answer_evaluator_output_format()),
-            skill_name: Some(skill_name.to_string()),
-            step_id: None,
-            run_source: Some("gate-eval".to_string()),
-            plugin_slug: plugin_slug.to_string(),
-        },
-    )
+    build_skill_creator_config(SkillCreatorConfigParams {
+        skill_name,
+        prompt,
+        workspace_path,
+        plugin_slug,
+        llm,
+        task_kind: "workflow.answer_evaluator",
+        run_source: "gate-eval",
+        allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
+        max_turns: 20,
+        step_id: -1,
+        output_format: Some(answer_evaluator_output_format()),
+    })
 }
 
 async fn dispatch_persistent_skill_turn(
@@ -282,11 +212,6 @@ where
     Ok(conversation_id)
 }
 
-const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
-));
-
 fn parse_target_conversation_state(
     payload: &str,
     target_agent_id: &str,
@@ -307,11 +232,12 @@ fn parse_target_conversation_state(
     }
 }
 
-fn install_research_materialization_listener(
+fn install_workflow_step_materialization_listener(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
     agent_id: &str,
     skill_name: &str,
+    step_id: u32,
 ) -> tauri::EventId {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
     let target_agent_id = agent_id.to_string();
@@ -332,16 +258,29 @@ fn install_research_materialization_listener(
         let result = match rx.recv().await {
             Some(state) => {
                 let db = app_handle.state::<Db>();
-                extract_research_json_from_conversation_state(&state).and_then(|payload| {
-                    materialize_workflow_step_output_value(
-                        db.inner(),
-                        &skill_id_for_db,
-                        0,
-                        &payload,
+                let workflow_label = workflow_step_log_name(step_id as i32);
+                extract_workflow_json_from_conversation_state(&state, &workflow_label).and_then(
+                    |payload| {
+                        materialize_workflow_step_output_value(
+                            db.inner(),
+                            &skill_id_for_db,
+                            step_id,
+                            &payload,
+                        )
+                    },
+                )
+                .map_err(|err| {
+                    format!(
+                        "{} materialization failed: {}",
+                        workflow_step_log_name(step_id as i32),
+                        err
                     )
                 })
             }
-            None => Err("Workflow research materialization listener closed".to_string()),
+            None => Err(format!(
+                "{} materialization listener closed",
+                workflow_step_log_name(step_id as i32)
+            )),
         };
 
         app_handle.unlisten(listener_to_remove);
@@ -352,15 +291,14 @@ fn install_research_materialization_listener(
         let payload = WorkflowStepMaterializedPayload {
             agent_id: agent_id.clone(),
             skill_name,
-            step_id: 0,
+            step_id,
             success: result.is_ok(),
             error_detail: result.err(),
         };
         if let Err(e) = app_handle.emit("workflow-step-materialized", &payload) {
             log::warn!(
-                "[workflow_research_materialize] failed to emit event for agent={}: {}",
-                agent_id,
-                e
+                "[workflow_materialize] failed to emit event for agent={} step_id={}: {}",
+                agent_id, step_id, e
             );
         }
     });
@@ -381,7 +319,7 @@ async fn run_workflow_step_inner(
     step_id: u32,
     workspace_path: &str,
     settings: &WorkflowSettings,
-    workflow_session_id: Option<String>,
+    _workflow_session_id: Option<String>,
     db: &Db,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
@@ -512,7 +450,6 @@ async fn run_workflow_step_inner(
             workspace_path,
             &settings.plugin_slug,
             settings.llm.clone(),
-            workflow_session_id,
         ),
         1 => build_workflow_detailed_research_runtime_config(
             skill_name,
@@ -520,7 +457,6 @@ async fn run_workflow_step_inner(
             workspace_path,
             &settings.plugin_slug,
             settings.llm.clone(),
-            workflow_session_id,
         ),
         2 => build_workflow_confirm_decisions_runtime_config(
             skill_name,
@@ -528,7 +464,6 @@ async fn run_workflow_step_inner(
             workspace_path,
             &settings.plugin_slug,
             settings.llm.clone(),
-            workflow_session_id,
         ),
         3 => build_workflow_generate_skill_runtime_config(
             skill_name,
@@ -536,7 +471,6 @@ async fn run_workflow_step_inner(
             workspace_path,
             &settings.plugin_slug,
             settings.llm.clone(),
-            workflow_session_id,
         ),
         _ => {
             return Err(format!(
@@ -551,13 +485,9 @@ async fn run_workflow_step_inner(
         config.workspace_skill_dir,
     );
 
-    let materialization_listener = if step_id == 0 {
-        Some(install_research_materialization_listener(
-            app, runs, &agent_id, skill_name,
-        ))
-    } else {
-        None
-    };
+    let materialization_listener = Some(install_workflow_step_materialization_listener(
+        app, runs, &agent_id, skill_name, step_id,
+    ));
 
     // Register before dispatch so a fast terminal conversation_state can clean
     // up the active run entry through the backend materialization listener.
