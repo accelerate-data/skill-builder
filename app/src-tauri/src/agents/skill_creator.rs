@@ -14,6 +14,7 @@ pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
 ));
 
 pub struct SkillCreatorConfigParams<'a> {
+    pub app_data_root: &'a str,
     pub skill_name: &'a str,
     pub prompt: &'a str,
     pub skills_root: &'a str,
@@ -28,7 +29,7 @@ pub struct SkillCreatorConfigParams<'a> {
 }
 
 pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenHandsRuntimeConfig {
-    let workspace_skill_dir = resolve_skill_dir(
+    let skill_dir = resolve_skill_dir(
         Path::new(params.skills_root),
         params.plugin_slug,
         params.skill_name,
@@ -39,8 +40,9 @@ pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenH
     build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: params.prompt.to_string(),
         llm: params.llm,
-        workspace_root_dir: params.skills_root.replace('\\', "/"),
-        workspace_skill_dir,
+        app_data_root: params.app_data_root.to_string(),
+        skills_root: params.skills_root.replace('\\', "/"),
+        skill_dir,
         mode: None,
         agent_name: "skill-creator".to_string(),
         task_kind: Some(params.task_kind.to_string()),
@@ -94,6 +96,7 @@ mod tests {
     #[test]
     fn test_build_skill_creator_config_sets_correct_fields() {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
+            app_data_root: "/tmp/app-data",
             skill_name: "test-skill",
             prompt: "do something",
             skills_root: "/tmp/skills",
@@ -119,14 +122,15 @@ mod tests {
             Some(vec!["file_editor".to_string(), "terminal".to_string()])
         );
         assert!(config.user_message_suffix.is_some());
-        assert!(config.workspace_skill_dir.contains("default"));
-        assert!(config.workspace_skill_dir.contains("skills"));
-        assert!(config.workspace_skill_dir.contains("test-skill"));
+        assert!(config.skill_dir.contains("default"));
+        assert!(config.skill_dir.contains("skills"));
+        assert!(config.skill_dir.contains("test-skill"));
     }
 
     #[test]
     fn test_build_skill_creator_config_workflow_step() {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
+            app_data_root: "/tmp/app-data",
             skill_name: "my-skill",
             prompt: "research",
             skills_root: "/tmp/skills",
@@ -148,6 +152,7 @@ mod tests {
     #[test]
     fn test_build_skill_creator_config_answer_evaluator() {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
+            app_data_root: "/tmp/app-data",
             skill_name: "my-skill",
             prompt: "evaluate",
             skills_root: "/tmp/skills",

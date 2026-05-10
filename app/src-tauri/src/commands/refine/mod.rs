@@ -4,6 +4,7 @@ pub mod output;
 pub(crate) mod protocol;
 
 use serde::Deserialize;
+use tauri::Manager;
 
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
@@ -344,10 +345,17 @@ pub async fn send_refine_message(
     };
 
     let skills_path = resolve_skills_path(&db)?;
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
     let config = crate::commands::skill_session::build_skill_session_config(
         &skill_name,
         &plugin_slug,
         &prompt,
+        &app_data_root,
         &skills_path,
         runtime_ctx.llm.clone(),
     );

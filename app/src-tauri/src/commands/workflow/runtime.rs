@@ -60,6 +60,7 @@ struct WorkflowStepMaterializedPayload {
 use crate::agents::skill_creator::{build_skill_creator_config, SkillCreatorConfigParams};
 
 pub(crate) fn build_workflow_research_runtime_config(
+    app_data_root: &str,
     skill_name: &str,
     prompt: &str,
     skills_root: &str,
@@ -67,6 +68,7 @@ pub(crate) fn build_workflow_research_runtime_config(
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
+        app_data_root,
         skill_name,
         prompt,
         skills_root,
@@ -82,6 +84,7 @@ pub(crate) fn build_workflow_research_runtime_config(
 }
 
 pub(crate) fn build_workflow_detailed_research_runtime_config(
+    app_data_root: &str,
     skill_name: &str,
     prompt: &str,
     skills_root: &str,
@@ -89,6 +92,7 @@ pub(crate) fn build_workflow_detailed_research_runtime_config(
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
+        app_data_root,
         skill_name,
         prompt,
         skills_root,
@@ -104,6 +108,7 @@ pub(crate) fn build_workflow_detailed_research_runtime_config(
 }
 
 pub(crate) fn build_workflow_confirm_decisions_runtime_config(
+    app_data_root: &str,
     skill_name: &str,
     prompt: &str,
     skills_root: &str,
@@ -111,6 +116,7 @@ pub(crate) fn build_workflow_confirm_decisions_runtime_config(
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
+        app_data_root,
         skill_name,
         prompt,
         skills_root,
@@ -126,6 +132,7 @@ pub(crate) fn build_workflow_confirm_decisions_runtime_config(
 }
 
 pub(crate) fn build_workflow_generate_skill_runtime_config(
+    app_data_root: &str,
     skill_name: &str,
     prompt: &str,
     skills_root: &str,
@@ -133,6 +140,7 @@ pub(crate) fn build_workflow_generate_skill_runtime_config(
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
+        app_data_root,
         skill_name,
         prompt,
         skills_root,
@@ -148,6 +156,7 @@ pub(crate) fn build_workflow_generate_skill_runtime_config(
 }
 
 pub(crate) fn build_answer_evaluator_runtime_config(
+    app_data_root: &str,
     skill_name: &str,
     prompt: &str,
     skills_root: &str,
@@ -155,6 +164,7 @@ pub(crate) fn build_answer_evaluator_runtime_config(
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
+        app_data_root,
         skill_name,
         prompt,
         skills_root,
@@ -443,8 +453,16 @@ async fn run_workflow_step_inner(
         step_id
     );
 
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
+
     let config = match step_id {
         0 => build_workflow_research_runtime_config(
+            &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
@@ -452,6 +470,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
         ),
         1 => build_workflow_detailed_research_runtime_config(
+            &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
@@ -459,6 +478,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
         ),
         2 => build_workflow_confirm_decisions_runtime_config(
+            &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
@@ -466,6 +486,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
         ),
         3 => build_workflow_generate_skill_runtime_config(
+            &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
@@ -480,9 +501,9 @@ async fn run_workflow_step_inner(
     };
 
     log::debug!(
-        "[run_workflow_step] starting persistent request agent={} workspace_skill_dir={}",
+        "[run_workflow_step] starting persistent request agent={} skill_dir={}",
         agent_id,
-        config.workspace_skill_dir,
+        config.skill_dir,
     );
 
     let materialization_listener = Some(install_workflow_step_materialization_listener(
@@ -733,7 +754,15 @@ pub async fn run_answer_evaluator(
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
+
     let config = build_answer_evaluator_runtime_config(
+        &app_data_root,
         &skill_name,
         &prompt,
         &settings.skills_path,
@@ -742,9 +771,9 @@ pub async fn run_answer_evaluator(
     );
 
     log::debug!(
-        "[run_answer_evaluator] starting persistent request agent={} workspace_skill_dir={}",
+        "[run_answer_evaluator] starting persistent request agent={} skill_dir={}",
         agent_id,
-        config.workspace_skill_dir,
+        config.skill_dir,
     );
 
     // Register before dispatch so cancellation can route to the native OpenHands

@@ -223,6 +223,7 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 #[test]
 fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() {
     let config = build_workflow_research_runtime_config(
+        "/tmp/app-data",
         "lead-conversion",
         "prompt",
         "/tmp/workspace",
@@ -338,6 +339,7 @@ fn research_prompt_includes_user_context_block_when_provided() {
 #[test]
 fn research_runtime_config_uses_skill_creator_openhands_contract() {
     let config = build_workflow_research_runtime_config(
+        "/tmp/app-data",
         "lead-conversion",
         "prompt",
         "/tmp/skills",
@@ -360,11 +362,11 @@ fn research_runtime_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.step_id, Some(0));
     assert_eq!(config.run_source.as_deref(), Some("workflow"));
     assert_eq!(
-        config.workspace_root_dir, "/tmp/skills",
+        config.skills_root, "/tmp/skills",
         "workspace_root_dir must be the skills root"
     );
     assert_eq!(
-        config.workspace_skill_dir, "/tmp/skills/default/skills/lead-conversion",
+        config.skill_dir, "/tmp/skills/default/skills/lead-conversion",
         "workspace run dir must be the skill-scoped workspace"
     );
     assert!(
@@ -452,6 +454,7 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
 #[test]
 fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
     let config = build_workflow_detailed_research_runtime_config(
+        "/tmp/app-data",
         "pipeline-value",
         "prompt",
         "/tmp/skills",
@@ -476,9 +479,9 @@ fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.skill_name.as_deref(), Some("pipeline-value"));
     assert_eq!(config.step_id, Some(1));
     assert_eq!(config.run_source.as_deref(), Some("workflow"));
-    assert_eq!(config.workspace_root_dir, "/tmp/skills");
+    assert_eq!(config.skills_root, "/tmp/skills");
     assert_eq!(
-        config.workspace_skill_dir, "/tmp/skills/default/skills/pipeline-value",
+        config.skill_dir, "/tmp/skills/default/skills/pipeline-value",
         "workspace run dir must be the canonical skill directory"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(1));
@@ -515,6 +518,7 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
 #[test]
 fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
     let config = build_answer_evaluator_runtime_config(
+        "/tmp/app-data",
         "sales-analytics",
         "prompt",
         "/tmp/skills",
@@ -545,6 +549,7 @@ fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
 #[test]
 fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow() {
     let workflow_config = build_workflow_generate_skill_runtime_config(
+        "/tmp/app-data",
         "sales-analytics",
         "generate the skill",
         "/tmp/skills",
@@ -552,6 +557,7 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
         test_workflow_llm_config(),
     );
     let answer_evaluator_config = build_answer_evaluator_runtime_config(
+        "/tmp/app-data",
         "sales-analytics",
         "evaluate the answers",
         "/tmp/skills",
@@ -579,12 +585,12 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
         workflow_request.skill_name
     );
     assert_eq!(
-        answer_evaluator_request.workspace_root_dir,
-        workflow_request.workspace_root_dir
+        answer_evaluator_request.skills_root,
+        workflow_request.skills_root
     );
     assert_eq!(
-        answer_evaluator_request.workspace_skill_dir,
-        workflow_request.workspace_skill_dir
+        answer_evaluator_request.skill_dir,
+        workflow_request.skill_dir
     );
     assert_eq!(
         answer_evaluator_request.system_message_suffix,
@@ -790,6 +796,7 @@ mod research {
     #[test]
     fn openhands_contract_and_terminal_materialization_smoke() {
     let config = build_workflow_research_runtime_config(
+        "/tmp/app-data",
         "lead-conversion",
         "prompt",
         "/tmp/skills",
@@ -1041,6 +1048,7 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
 #[test]
 fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
     let config = build_workflow_confirm_decisions_runtime_config(
+        "/tmp/app-data",
         "lead-conversion",
         "prompt",
         "/tmp/skills",
@@ -1062,9 +1070,9 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.skill_name.as_deref(), Some("lead-conversion"));
     assert_eq!(config.step_id, Some(2));
     assert_eq!(config.run_source.as_deref(), Some("workflow"));
-    assert_eq!(config.workspace_root_dir, "/tmp/skills");
+    assert_eq!(config.skills_root, "/tmp/skills");
     assert_eq!(
-        config.workspace_skill_dir, "/tmp/skills/default/skills/lead-conversion",
+        config.skill_dir, "/tmp/skills/default/skills/lead-conversion",
         "workspace run dir must be the canonical skill directory"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(2));
@@ -1144,6 +1152,7 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
 #[test]
 fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
     let config = build_workflow_generate_skill_runtime_config(
+        "/tmp/app-data",
         "pipeline-value",
         "prompt",
         "/tmp/skills",
@@ -1165,9 +1174,9 @@ fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.skill_name.as_deref(), Some("pipeline-value"));
     assert_eq!(config.step_id, Some(3));
     assert_eq!(config.run_source.as_deref(), Some("workflow"));
-    assert_eq!(config.workspace_root_dir, "/tmp/skills");
+    assert_eq!(config.skills_root, "/tmp/skills");
     assert_eq!(
-        config.workspace_skill_dir,
+        config.skill_dir,
         "/tmp/skills/default/skills/pipeline-value"
     );
     assert_eq!(config.output_format, workflow_output_format_for_step(3));

@@ -189,7 +189,7 @@ impl OpenHandsRunSummaryContext {
             session_id: conversation_id.to_string(),
             model: request.llm.model.clone(),
             plugin_slug: request.plugin_slug.clone(),
-            workspace_path: request.workspace_skill_dir.clone(),
+            workspace_path: request.skill_dir.clone(),
             started_at: Instant::now(),
         }
     }
@@ -747,7 +747,7 @@ fn log_session_resolution(
                 "[openhands-agent-server] session_resolved action=reuse selection={:?} conversation_id={} run_dir={}",
                 selection,
                 conversation_id,
-                request.runtime_run_dir().display()
+                request.skill_dir_path().display()
             );
         }
         OpenHandsConversationResolution::Create { reason } => {
@@ -755,14 +755,14 @@ fn log_session_resolution(
                 "[openhands-agent-server] session_resolved action=create reason={} selection={:?} run_dir={}",
                 reason.as_str(),
                 selection,
-                request.runtime_run_dir().display()
+                request.skill_dir_path().display()
             );
         }
         OpenHandsConversationResolution::Error(error) => {
             log::warn!(
                 "[openhands-agent-server] session_resolved action=error selection={:?} run_dir={} error={}",
                 selection,
-                request.runtime_run_dir().display(),
+                request.skill_dir_path().display(),
                 error
             );
         }
@@ -800,7 +800,7 @@ async fn resolve_openhands_conversation_id(
     include_initial_message_on_create: bool,
 ) -> Result<String, String> {
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -890,7 +890,7 @@ async fn resolve_openhands_conversation_id(
 
 pub async fn ensure_openhands_server(config: &OpenHandsRuntimeConfig) -> Result<(), String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
-    ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir))
+    ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
         .await
         .map(|_| ())
 }
@@ -919,7 +919,7 @@ pub async fn list_openhands_conversation_events(
 ) -> Result<Vec<serde_json::Value>, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -1011,7 +1011,7 @@ pub async fn pause_openhands_conversation(
 ) -> Result<bool, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -1256,7 +1256,7 @@ async fn dispatch_openhands_turn_with_request(
     )
     .await?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.workspace_root_dir)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
     let client = OpenHandsServerClient::new(
         server
             .base_url()
@@ -2430,8 +2430,9 @@ mod tests {
                 output_cost_per_token: None,
                 usage_id: None,
             },
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_dir: "/tmp/skills/default/skills/my-skill".to_string(),
             allowed_tools: vec![],
             max_turns: 50,
             user_message_suffix: Some("# Skill Creator User".to_string()),
@@ -2473,8 +2474,9 @@ mod tests {
                 output_cost_per_token: None,
                 usage_id: None,
             },
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_dir: "/tmp/skills/default/skills/my-skill".to_string(),
             allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
             max_turns: 50,
             user_message_suffix: Some(
@@ -2528,8 +2530,9 @@ mod tests {
         let workflow_request = OpenHandsRuntimeRequest {
             prompt: "workflow".to_string(),
             llm: llm.clone(),
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_dir: "/tmp/skills/default/skills/my-skill".to_string(),
             allowed_tools: vec![],
             max_turns: 50,
             user_message_suffix: None,
@@ -2545,8 +2548,9 @@ mod tests {
         let refine_request = OpenHandsRuntimeRequest {
             prompt: "refine".to_string(),
             llm,
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_dir: "/tmp/skills/default/skills/my-skill".to_string(),
             allowed_tools: vec![],
             max_turns: 50,
             user_message_suffix: None,
@@ -2568,6 +2572,7 @@ mod tests {
     fn answer_evaluator_requests_match_existing_skill_creator_conversations() {
         let workflow_config =
             crate::commands::workflow::runtime::build_workflow_generate_skill_runtime_config(
+                "/tmp/app-data",
                 "my-skill",
                 "Generate the skill",
                 "/tmp/skills",
@@ -2590,6 +2595,7 @@ mod tests {
             );
         let answer_evaluator_config =
             crate::commands::workflow::runtime::build_answer_evaluator_runtime_config(
+                "/tmp/app-data",
                 "my-skill",
                 "Evaluate answers",
                 "/tmp/skills",
@@ -2633,8 +2639,8 @@ mod tests {
             workflow_request.skill_name
         );
         assert_eq!(
-            answer_evaluator_request.workspace_skill_dir,
-            workflow_request.workspace_skill_dir
+            answer_evaluator_request.skill_dir,
+            workflow_request.skill_dir
         );
         assert!(
             conversation_matches_request(&existing_conversation, &answer_evaluator_request),

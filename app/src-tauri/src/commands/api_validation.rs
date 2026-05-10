@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
 use crate::agents::runtime_config::{
@@ -47,7 +47,13 @@ pub async fn test_model_connection(
         )
         .clamp(5, MODEL_CONNECTION_TEST_TIMEOUT_SECS),
     );
-    let config = build_model_connection_test_config(&workspace_path, &runtime_run_dir, llm);
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let config = build_model_connection_test_config(&app_data_root, &workspace_path, &runtime_run_dir, llm);
     let run = openhands_server::run_throwaway_openhands_session(
         &app,
         OpenHandsThrowawayRunParams {
@@ -90,6 +96,7 @@ fn read_initialized_workspace_path(db: &Db) -> Result<String, String> {
 }
 
 fn build_model_connection_test_config(
+    app_data_root: &str,
     skills_path: &str,
     runtime_run_dir: &std::path::Path,
     llm: crate::types::WorkflowLlmConfig,
@@ -98,8 +105,9 @@ fn build_model_connection_test_config(
         BuildOpenHandsRuntimeConfigParams {
             prompt: MODEL_CONNECTION_TEST_PROMPT.to_string(),
             llm,
-            workspace_root_dir: skills_path.replace('\\', "/"),
-            workspace_skill_dir: runtime_run_dir.to_string_lossy().replace('\\', "/"),
+            app_data_root: app_data_root.to_string(),
+            skills_root: skills_path.replace('\\', "/"),
+            skill_dir: runtime_run_dir.to_string_lossy().replace('\\', "/"),
             mode: Some(OpenHandsRuntimeMode::Throwaway),
             agent_name: "settings-model-test".to_string(),
             task_kind: Some("settings.model_connection_test".to_string()),

@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use serde::Deserialize;
+use tauri::Manager;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
@@ -12,11 +13,13 @@ pub fn build_skill_session_config(
     skill_name: &str,
     plugin_slug: &str,
     prompt: &str,
+    app_data_root: &str,
     skills_root: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
     crate::agents::skill_creator::build_skill_creator_config(
         crate::agents::skill_creator::SkillCreatorConfigParams {
+            app_data_root,
             skill_name,
             prompt,
             skills_root,
@@ -156,10 +159,17 @@ pub async fn select_skill_openhands_session(
     };
 
     let skills_path = resolve_skills_path(&db)?;
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
     let session_config = build_skill_session_config(
         &skill_name,
         &plugin_slug,
         "",
+        &app_data_root,
         &skills_path,
         runtime_ctx.llm.clone(),
     );
@@ -240,6 +250,7 @@ pub struct PauseOpenHandsSessionInput {
 
 #[tauri::command]
 pub async fn pause_openhands_session(
+    app: tauri::AppHandle,
     input: PauseOpenHandsSessionInput,
     db: tauri::State<'_, Db>,
     sessions: tauri::State<'_, SkillSessionManager>,
@@ -263,10 +274,17 @@ pub async fn pause_openhands_session(
     );
 
     let skills_path = resolve_skills_path(&db)?;
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
     let config = build_skill_session_config(
         &skill_name,
         &plugin_slug,
         "",
+        &app_data_root,
         &skills_path,
         runtime_ctx.llm.clone(),
     );

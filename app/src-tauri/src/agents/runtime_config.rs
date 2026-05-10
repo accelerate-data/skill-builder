@@ -39,14 +39,17 @@ pub struct OpenHandsRuntimeConfig {
     pub model_base_url: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: SecretString,
-    /// Workspace root directory (`{app_data_root}`). Used for app-local runtime
-    /// state (openhands/, DB, documents).
-    #[serde(rename = "workspaceRootDir")]
-    pub workspace_root_dir: String,
+    /// App-local data directory (`~/Library/Application Support/com.vibedata.skill-builder/`).
+    /// Owns `openhands/` (conversations, bash_events, logs, secret.key), the SQLite DB, and documents.
+    #[serde(rename = "appDataRoot")]
+    pub app_data_root: String,
+    /// Skills tree root directory — owns all plugin/skill files.
+    #[serde(rename = "skillsRoot")]
+    pub skills_root: String,
     /// Canonical skill directory where OpenHands operates (`workspace.working_dir`).
     /// Shape: `{skills_root}/{plugin_slug}/skills/{skill_name}`.
-    #[serde(rename = "workspaceSkillDir")]
-    pub workspace_skill_dir: String,
+    #[serde(rename = "skillDir")]
+    pub skill_dir: String,
     #[serde(rename = "allowedTools", skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<Vec<String>>,
     #[serde(rename = "maxTurns", skip_serializing_if = "Option::is_none")]
@@ -118,8 +121,9 @@ impl std::fmt::Debug for OpenHandsRuntimeConfig {
             .field("llm", &self.llm)
             .field("model_base_url", &self.model_base_url)
             .field("api_key", &"[redacted]")
-            .field("workspace_root_dir", &self.workspace_root_dir)
-            .field("workspace_skill_dir", &self.workspace_skill_dir)
+            .field("app_data_root", &self.app_data_root)
+            .field("skills_root", &self.skills_root)
+            .field("skill_dir", &self.skill_dir)
             .field("allowed_tools", &self.allowed_tools)
             .field("max_turns", &self.max_turns)
             .field("permission_mode", &self.permission_mode)
@@ -146,8 +150,9 @@ impl std::fmt::Debug for OpenHandsRuntimeConfig {
 pub struct BuildOpenHandsRuntimeConfigParams {
     pub prompt: String,
     pub llm: crate::types::WorkflowLlmConfig,
-    pub workspace_root_dir: String,
-    pub workspace_skill_dir: String,
+    pub app_data_root: String,
+    pub skills_root: String,
+    pub skill_dir: String,
     pub mode: Option<OpenHandsRuntimeMode>,
     pub agent_name: String,
     pub task_kind: Option<String>,
@@ -192,8 +197,9 @@ pub fn build_openhands_runtime_config(
         llm: Some(params.llm),
         model_base_url: None,
         api_key: SecretString::new("openhands-llm-config".to_string()),
-        workspace_root_dir: params.workspace_root_dir.replace('\\', "/"),
-        workspace_skill_dir: params.workspace_skill_dir.replace('\\', "/"),
+        app_data_root: params.app_data_root.replace('\\', "/"),
+        skills_root: params.skills_root.replace('\\', "/"),
+        skill_dir: params.skill_dir.replace('\\', "/"),
         allowed_tools: Some(params.allowed_tools),
         max_turns: Some(params.max_turns),
         permission_mode: None,
@@ -232,8 +238,9 @@ mod tests {
             llm: None,
             model_base_url: Some("https://models.example.com/v1".to_string()),
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            workspace_root_dir: "/home/user/project".to_string(),
-            workspace_skill_dir: "/home/user/project".to_string(),
+            app_data_root: "/home/user/app-data".to_string(),
+            skills_root: "/home/user/project".to_string(),
+            skill_dir: "/home/user/project".to_string(),
             allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
             max_turns: Some(25),
             permission_mode: Some("bypassPermissions".to_string()),
@@ -285,8 +292,9 @@ mod tests {
             llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            workspace_root_dir: "/home/user/project".to_string(),
-            workspace_skill_dir: "/home/user/project".to_string(),
+            app_data_root: "/home/user/app-data".to_string(),
+            skills_root: "/home/user/project".to_string(),
+            skill_dir: "/home/user/project".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -332,8 +340,9 @@ mod tests {
             llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            workspace_root_dir: "/tmp".to_string(),
-            workspace_skill_dir: "/tmp".to_string(),
+            app_data_root: "/tmp".to_string(),
+            skills_root: "/tmp".to_string(),
+            skill_dir: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -379,8 +388,9 @@ mod tests {
             llm: None,
             model_base_url: None,
             api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
-            workspace_root_dir: "/tmp".to_string(),
-            workspace_skill_dir: "/tmp".to_string(),
+            app_data_root: "/tmp".to_string(),
+            skills_root: "/tmp".to_string(),
+            skill_dir: "/tmp".to_string(),
             allowed_tools: None,
             max_turns: None,
             permission_mode: None,
@@ -435,8 +445,9 @@ mod tests {
             }),
             model_base_url: None,
             api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace/skills/new-skill".to_string(),
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/workspace".to_string(),
+            skill_dir: "/tmp/workspace/skills/new-skill".to_string(),
             allowed_tools: Some(vec!["file_editor".to_string()]),
             max_turns: Some(4),
             permission_mode: None,
@@ -501,8 +512,9 @@ mod tests {
                 output_cost_per_token: None,
                 usage_id: Some("workflow".to_string()),
             },
-            workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_skill_dir: "/tmp/workspace".to_string(),
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/workspace".to_string(),
+            skill_dir: "/tmp/workspace".to_string(),
             mode: None,
             agent_name: "answer-evaluator".to_string(),
             task_kind: Some("workflow.answer_evaluator".to_string()),

@@ -8,8 +8,9 @@ use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 pub struct OpenHandsRuntimeRequest {
     pub prompt: String,
     pub llm: crate::types::WorkflowLlmConfig,
-    pub workspace_root_dir: String,
-    pub workspace_skill_dir: String,
+    pub app_data_root: String,
+    pub skills_root: String,
+    pub skill_dir: String,
     pub allowed_tools: Vec<String>,
     pub max_turns: u32,
     pub user_message_suffix: Option<String>,
@@ -34,8 +35,9 @@ impl OpenHandsRuntimeRequest {
         Ok(Self {
             prompt: config.prompt.clone(),
             llm,
-            workspace_root_dir: config.workspace_root_dir.clone(),
-            workspace_skill_dir: config.workspace_skill_dir.clone(),
+            app_data_root: config.app_data_root.clone(),
+            skills_root: config.skills_root.clone(),
+            skill_dir: config.skill_dir.clone(),
             allowed_tools: config.allowed_tools.clone().unwrap_or_default(),
             max_turns: config.max_turns.unwrap_or(50),
             user_message_suffix: config.user_message_suffix.clone(),
@@ -51,8 +53,8 @@ impl OpenHandsRuntimeRequest {
     }
 
     /// Returns the canonical skill directory — the OpenHands working directory.
-    pub fn runtime_run_dir(&self) -> &Path {
-        Path::new(&self.workspace_skill_dir)
+    pub fn skill_dir_path(&self) -> &Path {
+        Path::new(&self.skill_dir)
     }
 }
 
@@ -84,7 +86,7 @@ pub struct ConversationMetadata {
     #[serde(rename = "session", skip_serializing_if = "Option::is_none")]
     pub workflow_session_id: Option<String>,
     #[serde(rename = "workspace", skip_serializing_if = "Option::is_none")]
-    pub workspace_root_dir: Option<String>,
+    pub skills_root: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,7 +200,7 @@ impl StartConversationRequest {
         request: &OpenHandsRuntimeRequest,
         include_initial_message: bool,
     ) -> Self {
-        Self::from_runtime_run_dir(request, request.runtime_run_dir(), include_initial_message)
+        Self::from_runtime_run_dir(request, request.skill_dir_path(), include_initial_message)
     }
 
     pub fn from_runtime_run_dir(
@@ -228,12 +230,12 @@ impl StartConversationRequest {
                     .workflow_session_id
                     .as_deref()
                     .map(openhands_tag_value),
-                workspace_root_dir: Some(openhands_tag_value(&request.workspace_root_dir)),
+                skills_root: Some(openhands_tag_value(&request.skills_root)),
             },
             agent: OpenHandsAgent {
                 kind: "Agent".to_string(),
                 llm: openhands_llm_json(&request.llm),
-                tools: openhands_tools(&request.workspace_skill_dir, &request.allowed_tools),
+                tools: openhands_tools(&request.skill_dir, &request.allowed_tools),
                 // `include_default_tools` only resolves names in the SDK's
                 // BUILT_IN_TOOL_CLASSES map: FinishTool, ThinkTool,
                 // InvokeSkillTool. InvokeSkillTool is auto-attached by the
@@ -373,8 +375,8 @@ fn openhands_litellm_model(model: &str, base_url: Option<&str>) -> String {
 /// model_validator on `AgentContext` — project skills under `.agents/skills/`
 /// are *not* auto-loaded into a conversation, so we have to surface them in
 /// the request payload.
-pub(crate) fn discover_agentskills(workspace_skill_dir: &Path) -> Vec<OpenHandsSkill> {
-    let skills_root = workspace_skill_dir.join(".agents").join("skills");
+pub(crate) fn discover_agentskills(skill_dir: &Path) -> Vec<OpenHandsSkill> {
+    let skills_root = skill_dir.join(".agents").join("skills");
     let entries = match std::fs::read_dir(&skills_root) {
         Ok(entries) => entries,
         Err(_) => return Vec::new(),
