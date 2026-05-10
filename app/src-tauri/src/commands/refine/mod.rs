@@ -343,11 +343,12 @@ pub async fn send_refine_message(
         user_message.clone()
     };
 
+    let skills_path = resolve_skills_path(&db)?;
     let config = crate::commands::skill_session::build_skill_session_config(
         &skill_name,
         &plugin_slug,
         &prompt,
-        &runtime_ctx.workspace_path,
+        &skills_path,
         runtime_ctx.llm.clone(),
     );
     let agent_id = format!(

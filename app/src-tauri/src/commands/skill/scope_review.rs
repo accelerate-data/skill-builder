@@ -41,7 +41,7 @@ pub(crate) struct ScopeReviewRuntimeConfigParams<'a> {
     pub skill_name: &'a str,
     pub prompt: &'a str,
     pub workspace_path: &'a str,
-    pub workspace_run_dir: &'a str,
+    pub workspace_skill_dir: &'a str,
     pub llm: crate::types::WorkflowLlmConfig,
 }
 
@@ -127,14 +127,14 @@ pub(crate) fn build_scope_review_runtime_config(
     params: ScopeReviewRuntimeConfigParams<'_>,
 ) -> OpenHandsRuntimeConfig {
     let workspace_root_dir = params.workspace_path.replace('\\', "/");
-    let workspace_run_dir = params.workspace_run_dir.replace('\\', "/");
+    let workspace_skill_dir = params.workspace_skill_dir.replace('\\', "/");
 
     crate::agents::runtime_config::build_openhands_runtime_config(
         BuildOpenHandsRuntimeConfigParams {
             prompt: params.prompt.to_string(),
             llm: params.llm,
             workspace_root_dir,
-            workspace_run_dir,
+            workspace_skill_dir,
             mode: Some(OpenHandsRuntimeMode::Throwaway),
             agent_name: "skill-creator".to_string(),
             task_kind: Some("scope_review".to_string()),
@@ -220,7 +220,7 @@ pub async fn review_skill_scope(
         skill_name: &skill_name,
         prompt: &prompt,
         workspace_path: &runtime_context.workspace_path,
-        workspace_run_dir: &runtime_run_dir.to_string_lossy(),
+        workspace_skill_dir: &runtime_run_dir.to_string_lossy(),
         llm: runtime_context.llm,
     });
 
@@ -389,9 +389,9 @@ mod tests {
         let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
             skill_name: "forecasting-churned-customers",
             prompt: "rendered prompt",
-            workspace_path: "/tmp/skill-builder/workspace",
-            workspace_run_dir:
-                "/tmp/skill-builder/workspace/.openhands/throwaway/scope-review/run-1",
+            workspace_path: "/tmp/skills",
+            workspace_skill_dir:
+                "/tmp/skills/.openhands/throwaway/scope-review/run-1",
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),
                 api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
@@ -425,14 +425,11 @@ mod tests {
         assert_eq!(json["llm"]["model"], "anthropic/claude-sonnet-4-5");
         assert!(json.get("model").is_none());
         assert_eq!(json["apiKey"], "openhands-llm-config");
-        assert!(json["workspaceRootDir"]
-            .as_str()
-            .unwrap()
-            .ends_with("/workspace"));
+        assert_eq!(json["workspaceRootDir"], "/tmp/skills");
         assert!(json["workspaceSkillDir"]
             .as_str()
             .unwrap()
-            .ends_with("/workspace/.openhands/throwaway/scope-review/run-1"));
+            .ends_with("/.openhands/throwaway/scope-review/run-1"));
         assert_eq!(json["allowedTools"], serde_json::json!(["file_editor"]));
         assert_eq!(json["maxTurns"], 4);
         assert!(json["outputFormat"]["schema"]["required"]

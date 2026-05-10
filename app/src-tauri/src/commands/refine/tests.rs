@@ -1767,7 +1767,7 @@ fn test_refine_openhands_config_uses_skill_creator_system_message_suffix() {
         "my-skill",
         DEFAULT_PLUGIN_SLUG,
         "Refine the skill",
-        "/tmp/workspace",
+        "/tmp/skills",
         crate::types::WorkflowLlmConfig {
             model: "anthropic/claude-sonnet-4-5".to_string(),
             api_key: Some(crate::types::SecretString::new("sk-test".to_string())),

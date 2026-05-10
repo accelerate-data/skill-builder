@@ -39,13 +39,12 @@ pub struct OpenHandsRuntimeConfig {
     pub model_base_url: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: SecretString,
-    /// Workspace root directory (`{data_dir}/workspace`). Used for workspace
-    /// scratch data and `.agents/` deployment.
+    /// Workspace root directory (`{app_data_root}`). Used for app-local runtime
+    /// state (openhands/, DB, documents).
     #[serde(rename = "workspaceRootDir")]
     pub workspace_root_dir: String,
-    /// OpenHands local workspace for this run. Existing-skill workflows use the
-    /// skill-scoped directory (`{workspace}/{plugin_slug}/{skill_name}`), while
-    /// pre-create tasks such as scope validation use the initialized workspace root.
+    /// Canonical skill directory where OpenHands operates (`workspace.working_dir`).
+    /// Shape: `{skills_root}/{plugin_slug}/skills/{skill_name}`.
     #[serde(rename = "workspaceSkillDir")]
     pub workspace_skill_dir: String,
     #[serde(rename = "allowedTools", skip_serializing_if = "Option::is_none")]
@@ -148,7 +147,7 @@ pub struct BuildOpenHandsRuntimeConfigParams {
     pub prompt: String,
     pub llm: crate::types::WorkflowLlmConfig,
     pub workspace_root_dir: String,
-    pub workspace_run_dir: String,
+    pub workspace_skill_dir: String,
     pub mode: Option<OpenHandsRuntimeMode>,
     pub agent_name: String,
     pub task_kind: Option<String>,
@@ -194,7 +193,7 @@ pub fn build_openhands_runtime_config(
         model_base_url: None,
         api_key: SecretString::new("openhands-llm-config".to_string()),
         workspace_root_dir: params.workspace_root_dir.replace('\\', "/"),
-        workspace_skill_dir: params.workspace_run_dir.replace('\\', "/"),
+        workspace_skill_dir: params.workspace_skill_dir.replace('\\', "/"),
         allowed_tools: Some(params.allowed_tools),
         max_turns: Some(params.max_turns),
         permission_mode: None,
@@ -503,7 +502,7 @@ mod tests {
                 usage_id: Some("workflow".to_string()),
             },
             workspace_root_dir: "/tmp/workspace".to_string(),
-            workspace_run_dir: "/tmp/workspace".to_string(),
+            workspace_skill_dir: "/tmp/workspace".to_string(),
             mode: None,
             agent_name: "answer-evaluator".to_string(),
             task_kind: Some("workflow.answer_evaluator".to_string()),

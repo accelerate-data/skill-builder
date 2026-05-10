@@ -50,6 +50,7 @@ impl OpenHandsRuntimeRequest {
         })
     }
 
+    /// Returns the canonical skill directory — the OpenHands working directory.
     pub fn runtime_run_dir(&self) -> &Path {
         Path::new(&self.workspace_skill_dir)
     }

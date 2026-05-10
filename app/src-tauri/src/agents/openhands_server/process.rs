@@ -307,6 +307,15 @@ pub async fn ensure_agent_server(
     Ok(handle)
 }
 
+/// Returns the cached agent server handle if one exists.
+/// Does NOT start a new server — callers that only need the handle for
+/// best-effort operations (e.g. pause before delete) use this instead of
+/// `ensure_agent_server`.
+pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle> {
+    let registry = agent_server_registry().lock().await;
+    registry.as_ref().map(|s| s.handle.clone())
+}
+
 pub async fn shutdown_agent_server() -> Result<(), String> {
     let mut registry = agent_server_registry().lock().await;
     if let Some(mut server) = registry.take() {
@@ -880,6 +889,14 @@ mod tests {
             true,
             Err("unhealthy".to_string())
         ));
+    }
+
+    #[tokio::test]
+    async fn try_get_cached_server_handle_returns_none_when_no_server_cached() {
+        // Registry starts empty in a fresh process; this should always be None.
+        // (Other tests that start a real server must not run in the same process.)
+        let handle = try_get_cached_server_handle().await;
+        assert!(handle.is_none());
     }
 
     #[test]

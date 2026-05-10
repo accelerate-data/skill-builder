@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::agents::runtime_config::{
     build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig,
 };
-use crate::skill_paths::workspace_skill_dir;
+use crate::skill_paths::resolve_skill_dir;
 use crate::types::WorkflowLlmConfig;
 
 pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -16,7 +16,7 @@ pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
 pub struct SkillCreatorConfigParams<'a> {
     pub skill_name: &'a str,
     pub prompt: &'a str,
-    pub workspace_path: &'a str,
+    pub skills_root: &'a str,
     pub plugin_slug: &'a str,
     pub llm: WorkflowLlmConfig,
     pub task_kind: &'a str,
@@ -28,8 +28,8 @@ pub struct SkillCreatorConfigParams<'a> {
 }
 
 pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenHandsRuntimeConfig {
-    let workspace_run_dir = workspace_skill_dir(
-        Path::new(params.workspace_path),
+    let workspace_skill_dir = resolve_skill_dir(
+        Path::new(params.skills_root),
         params.plugin_slug,
         params.skill_name,
     )
@@ -39,8 +39,8 @@ pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenH
     build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: params.prompt.to_string(),
         llm: params.llm,
-        workspace_root_dir: params.workspace_path.replace('\\', "/"),
-        workspace_run_dir,
+        workspace_root_dir: params.skills_root.replace('\\', "/"),
+        workspace_skill_dir,
         mode: None,
         agent_name: "skill-creator".to_string(),
         task_kind: Some(params.task_kind.to_string()),
@@ -96,7 +96,7 @@ mod tests {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
             skill_name: "test-skill",
             prompt: "do something",
-            workspace_path: "/tmp/workspace",
+            skills_root: "/tmp/skills",
             plugin_slug: "default",
             llm: test_llm_config(),
             task_kind: "refine",
@@ -120,6 +120,7 @@ mod tests {
         );
         assert!(config.user_message_suffix.is_some());
         assert!(config.workspace_skill_dir.contains("default"));
+        assert!(config.workspace_skill_dir.contains("skills"));
         assert!(config.workspace_skill_dir.contains("test-skill"));
     }
 
@@ -128,7 +129,7 @@ mod tests {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
             skill_name: "my-skill",
             prompt: "research",
-            workspace_path: "/tmp/ws",
+            skills_root: "/tmp/skills",
             plugin_slug: "plugins",
             llm: test_llm_config(),
             task_kind: "workflow.research",
@@ -149,7 +150,7 @@ mod tests {
         let config = build_skill_creator_config(SkillCreatorConfigParams {
             skill_name: "my-skill",
             prompt: "evaluate",
-            workspace_path: "/tmp/ws",
+            skills_root: "/tmp/skills",
             plugin_slug: "default",
             llm: test_llm_config(),
             task_kind: "workflow.answer_evaluator",

@@ -267,7 +267,7 @@ fn build_generation_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_root_dir: &str,
-    workspace_run_dir: &str,
+    workspace_skill_dir: &str,
     output_format: Value,
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
 ) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
@@ -275,7 +275,7 @@ fn build_generation_runtime_config(
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
         workspace_root_dir: workspace_root_dir.replace('\\', "/"),
-        workspace_run_dir: workspace_run_dir.replace('\\', "/"),
+        workspace_skill_dir: workspace_skill_dir.replace('\\', "/"),
         mode: Some(OpenHandsRuntimeMode::Throwaway),
         agent_name: "skill-creator".to_string(),
         task_kind: Some("scenario-suggest".to_string()),

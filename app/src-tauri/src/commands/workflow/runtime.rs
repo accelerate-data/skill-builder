@@ -62,14 +62,14 @@ use crate::agents::skill_creator::{build_skill_creator_config, SkillCreatorConfi
 pub(crate) fn build_workflow_research_runtime_config(
     skill_name: &str,
     prompt: &str,
-    workspace_path: &str,
+    skills_root: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
-        workspace_path,
+        skills_root,
         plugin_slug,
         llm,
         task_kind: "workflow.research",
@@ -84,14 +84,14 @@ pub(crate) fn build_workflow_research_runtime_config(
 pub(crate) fn build_workflow_detailed_research_runtime_config(
     skill_name: &str,
     prompt: &str,
-    workspace_path: &str,
+    skills_root: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
-        workspace_path,
+        skills_root,
         plugin_slug,
         llm,
         task_kind: "workflow.detailed_research",
@@ -106,14 +106,14 @@ pub(crate) fn build_workflow_detailed_research_runtime_config(
 pub(crate) fn build_workflow_confirm_decisions_runtime_config(
     skill_name: &str,
     prompt: &str,
-    workspace_path: &str,
+    skills_root: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
-        workspace_path,
+        skills_root,
         plugin_slug,
         llm,
         task_kind: "workflow.confirm_decisions",
@@ -128,14 +128,14 @@ pub(crate) fn build_workflow_confirm_decisions_runtime_config(
 pub(crate) fn build_workflow_generate_skill_runtime_config(
     skill_name: &str,
     prompt: &str,
-    workspace_path: &str,
+    skills_root: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
-        workspace_path,
+        skills_root,
         plugin_slug,
         llm,
         task_kind: "workflow.skill_generation",
@@ -150,14 +150,14 @@ pub(crate) fn build_workflow_generate_skill_runtime_config(
 pub(crate) fn build_answer_evaluator_runtime_config(
     skill_name: &str,
     prompt: &str,
-    workspace_path: &str,
+    skills_root: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
     build_skill_creator_config(SkillCreatorConfigParams {
         skill_name,
         prompt,
-        workspace_path,
+        skills_root,
         plugin_slug,
         llm,
         task_kind: "workflow.answer_evaluator",
@@ -447,28 +447,28 @@ async fn run_workflow_step_inner(
         0 => build_workflow_research_runtime_config(
             skill_name,
             &prompt,
-            workspace_path,
+            &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
         ),
         1 => build_workflow_detailed_research_runtime_config(
             skill_name,
             &prompt,
-            workspace_path,
+            &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
         ),
         2 => build_workflow_confirm_decisions_runtime_config(
             skill_name,
             &prompt,
-            workspace_path,
+            &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
         ),
         3 => build_workflow_generate_skill_runtime_config(
             skill_name,
             &prompt,
-            workspace_path,
+            &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
         ),
@@ -736,7 +736,7 @@ pub async fn run_answer_evaluator(
     let config = build_answer_evaluator_runtime_config(
         &skill_name,
         &prompt,
-        &workspace_path,
+        &settings.skills_path,
         &settings.plugin_slug,
         settings.llm,
     );

@@ -12,14 +12,14 @@ pub fn build_skill_session_config(
     skill_name: &str,
     plugin_slug: &str,
     prompt: &str,
-    workspace_path: &str,
+    skills_root: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
     crate::agents::skill_creator::build_skill_creator_config(
         crate::agents::skill_creator::SkillCreatorConfigParams {
             skill_name,
             prompt,
-            workspace_path,
+            skills_root,
             plugin_slug,
             llm,
             task_kind: "refine",
@@ -155,11 +155,12 @@ pub async fn select_skill_openhands_session(
         crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
     };
 
+    let skills_path = resolve_skills_path(&db)?;
     let session_config = build_skill_session_config(
         &skill_name,
         &plugin_slug,
         "",
-        &runtime_ctx.workspace_path,
+        &skills_path,
         runtime_ctx.llm.clone(),
     );
     let active_conversation_id =
@@ -194,7 +195,6 @@ pub async fn select_skill_openhands_session(
         skill_name
     );
 
-    let skills_path = resolve_skills_path(&db)?;
     let head_sha_at_start = git2::Repository::open(Path::new(&skills_path))
         .ok()
         .and_then(|repo| {
@@ -262,11 +262,12 @@ pub async fn pause_openhands_session(
         &skill_name,
     );
 
+    let skills_path = resolve_skills_path(&db)?;
     let config = build_skill_session_config(
         &skill_name,
         &plugin_slug,
         "",
-        &runtime_ctx.workspace_path,
+        &skills_path,
         runtime_ctx.llm.clone(),
     );
 

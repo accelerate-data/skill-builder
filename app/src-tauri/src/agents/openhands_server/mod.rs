@@ -1041,6 +1041,43 @@ pub async fn pause_openhands_conversation(
     Ok(signaled)
 }
 
+/// Best-effort pause of a conversation using the cached server handle.
+/// Does NOT start a new server. If no server is cached, or the pause call
+/// fails, logs and returns — the caller proceeds with cleanup regardless.
+pub async fn pause_conversation_if_server_running(conversation_id: &str) {
+    let Some(handle) =
+        crate::agents::openhands_server::process::try_get_cached_server_handle().await
+    else {
+        log::debug!(
+            "[openhands-agent-server] no cached server; skipping pause for conversation {}",
+            conversation_id
+        );
+        return;
+    };
+    let url = match handle.base_url().parse::<reqwest::Url>() {
+        Ok(u) => u,
+        Err(e) => {
+            log::warn!(
+                "[openhands-agent-server] invalid server URL for pause of {}: {}",
+                conversation_id, e
+            );
+            return;
+        }
+    };
+    let client = OpenHandsServerClient::new(url, Some(handle.session_api_key));
+    if let Err(e) = client.pause_conversation(conversation_id).await {
+        log::warn!(
+            "[openhands-agent-server] best-effort pause of conversation {} failed (non-fatal): {}",
+            conversation_id, e
+        );
+    } else {
+        log::info!(
+            "[openhands-agent-server] paused conversation {} before reset",
+            conversation_id
+        );
+    }
+}
+
 pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
     // Signal the in-process task to stop gracefully before the force-abort timeout.
     let mut found = send_cancel_signal(agent_id);
@@ -2533,7 +2570,7 @@ mod tests {
             crate::commands::workflow::runtime::build_workflow_generate_skill_runtime_config(
                 "my-skill",
                 "Generate the skill",
-                "/tmp/workspace",
+                "/tmp/skills",
                 "default",
                 crate::types::WorkflowLlmConfig {
                     model: "anthropic/claude-sonnet-4-5".to_string(),
@@ -2555,7 +2592,7 @@ mod tests {
             crate::commands::workflow::runtime::build_answer_evaluator_runtime_config(
                 "my-skill",
                 "Evaluate answers",
-                "/tmp/workspace",
+                "/tmp/skills",
                 "default",
                 crate::types::WorkflowLlmConfig {
                     model: "anthropic/claude-sonnet-4-5".to_string(),

@@ -60,6 +60,44 @@ fn clear_persistent_skill_conversation_state(
     Ok(())
 }
 
+/// Collect the saved conversation IDs for a skill (and its legacy default-plugin
+/// entry if the skill moved plugins). Returns (plugin_slug, conversation_id) pairs.
+fn collect_skill_conversation_ids(
+    conn: &rusqlite::Connection,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Vec<(String, String)> {
+    let mut plugin_slugs = vec![plugin_slug.to_string()];
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    }
+    plugin_slugs
+        .into_iter()
+        .filter_map(|slug| {
+            crate::db::get_skill_conversation_id(conn, &slug, skill_name)
+                .ok()
+                .flatten()
+                .map(|id| (slug, id))
+        })
+        .collect()
+}
+
+/// Clear conversation DB records for a skill. Does not touch the filesystem.
+fn clear_skill_conversation_db_records(
+    conn: &rusqlite::Connection,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<(), String> {
+    let mut plugin_slugs = vec![plugin_slug.to_string()];
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    }
+    for slug in plugin_slugs {
+        crate::db::clear_skill_conversation_id(conn, &slug, skill_name)?;
+    }
+    Ok(())
+}
+
 /// Delete stale clarifications and decisions based on which step is being reset.
 /// Steps re-run = from_step_id and all subsequent steps.
 /// - from_step_id 0 or 1: re-runs steps that produce clarifications (0,1) and decisions (2) → delete both
@@ -661,19 +699,18 @@ pub fn get_disabled_steps(
 }
 
 #[tauri::command]
-pub fn reset_workflow_step(
-    workspace_path: String,
+pub async fn reset_workflow_step(
+    app_handle: tauri::AppHandle,
     skill_name: String,
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     validate_skill_name(&skill_name)?;
     log::info!(
-        "[reset_workflow_step] CALLED skill={} from_step={} from_step_id={} workspace={}",
+        "[reset_workflow_step] CALLED skill={} from_step={} from_step_id={}",
         skill_name,
         workflow_step_log_name(from_step_id as i32),
         from_step_id,
-        workspace_path
     );
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
@@ -703,43 +740,34 @@ pub fn reset_workflow_step(
         );
     }
 
-    crate::cleanup::delete_step_output_files(
-        &workspace_path,
-        &skill_name,
-        &plugin_slug,
-        from_step_id,
-        &skills_path,
-    );
+    // Collect conversation IDs before clearing the DB (sync, brief lock).
+    let conversation_ids = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        collect_skill_conversation_ids(&conn, &plugin_slug, &skill_name)
+    };
 
-    // If the skill is in a non-default plugin, remove the entire workspace skill dir.
-    // save_workflow_run (below) moves the DB record back to the default plugin, so the
-    // old workspace dir at {workspace_path}/{plugin_slug}/{skill_name}/ would become an
-    // orphan. Remove it now while we still know its path.
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        let old_workspace_dir = crate::skill_paths::workspace_skill_dir(
-            std::path::Path::new(&workspace_path),
-            &plugin_slug,
-            &skill_name,
-        );
-        if old_workspace_dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&old_workspace_dir) {
-                log::warn!(
-                    "[reset_workflow_step] failed to remove old workspace dir {}: {}",
-                    old_workspace_dir.display(),
-                    e
-                );
+    // Best-effort pause then delete per-conversation directory.
+    // All errors are logged and swallowed — reset must not fail due to server state.
+    use tauri::Manager;
+    let data_dir = app_handle.path().app_data_dir().map_err(|e| {
+        format!("Failed to resolve app data dir: {e}")
+    })?;
+    let openhands_conversations_dir = crate::commands::workspace::resolve_openhands_conversations_dir(&data_dir);
+    for (_, conv_id) in &conversation_ids {
+        crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
+        let conv_dir = openhands_conversations_dir.join(conv_id);
+        if conv_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&conv_dir) {
+                log::warn!("[reset_workflow_step] failed to delete conversation dir {}: {}", conv_dir.display(), e);
             } else {
-                log::info!(
-                    "[reset_workflow_step] removed old workspace dir {} (skill moving to default plugin)",
-                    old_workspace_dir.display()
-                );
+                log::info!("[reset_workflow_step] deleted conversation dir {}", conv_dir.display());
             }
         }
     }
 
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    clear_persistent_skill_conversation_state(&conn, &workspace_path, &plugin_slug, &skill_name)?;
+    clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
     clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
     crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
 
