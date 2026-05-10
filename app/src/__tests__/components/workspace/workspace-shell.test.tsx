@@ -249,7 +249,7 @@ describe("WorkspaceShell", () => {
   });
 
   it("keeps eval workbench performance-only with no trigger authoring tab", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Trigger" })).not.toBeInTheDocument();
@@ -257,14 +257,14 @@ describe("WorkspaceShell", () => {
   });
 
   it("renders scenarios inside one owning eval panel", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
 
     const panel = await screen.findByTestId("eval-workbench-panel");
     expect(within(panel).getByRole("heading", { name: "Scenarios" })).toBeInTheDocument();
   });
 
   it("gives the eval panel a flex parent so it can expand to the full tab height", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
 
     const panel = await screen.findByTestId("eval-workbench-panel");
     const panelParent = panel.parentElement;
@@ -275,7 +275,7 @@ describe("WorkspaceShell", () => {
   });
 
   it("does not pad the outer eval workbench wrapper, keeping the panel flush with the tab area", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />);
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
 
     const panel = await screen.findByTestId("eval-workbench-panel");
     const wrapper = panel.parentElement?.parentElement;
@@ -290,7 +290,7 @@ describe("WorkspaceShell", () => {
     refineState.isRunning = true;
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="refine" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" />,
     );
 
     const refineTab = container.querySelector('[role="tab"][data-state="active"]');
@@ -311,9 +311,10 @@ describe("WorkspaceShell", () => {
   it("switches tab after confirming Leave in the guard dialog", async () => {
     const user = userEvent.setup();
     refineState.isRunning = true;
+    const onNavigateSurface = vi.fn();
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="refine" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" onNavigateSurface={onNavigateSurface} />,
     );
 
     const overviewTab = container.querySelector('[role="tab"]');
@@ -322,8 +323,7 @@ describe("WorkspaceShell", () => {
 
     await user.click(screen.getByRole("button", { name: "Leave" }));
 
-    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Overview");
+    expect(onNavigateSurface).toHaveBeenCalledWith("overview");
 
     refineState.isRunning = false;
   });
@@ -333,7 +333,7 @@ describe("WorkspaceShell", () => {
     refineState.isRunning = true;
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="refine" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" />,
     );
 
     const overviewTab = container.querySelector('[role="tab"]');
@@ -373,7 +373,7 @@ describe("WorkspaceShell", () => {
     );
 
     render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
     );
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
@@ -401,7 +401,7 @@ describe("WorkspaceShell", () => {
     });
 
     render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
     );
 
     await screen.findByText("Regression");
@@ -412,7 +412,7 @@ describe("WorkspaceShell", () => {
 
   it("does not render a scenario editor until the user expands or creates a scenario", async () => {
     render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
     );
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
@@ -423,7 +423,7 @@ describe("WorkspaceShell", () => {
     const user = userEvent.setup();
 
     render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
     );
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
@@ -459,7 +459,7 @@ describe("WorkspaceShell", () => {
     );
 
     render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
     );
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
@@ -503,7 +503,7 @@ describe("WorkspaceShell", () => {
     });
 
     render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialTab="evals" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
     );
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();

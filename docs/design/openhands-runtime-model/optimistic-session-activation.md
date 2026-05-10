@@ -1,0 +1,241 @@
+---
+functional-specs: []
+---
+
+# Optimistic Session Activation
+
+> **Status:** Draft
+> **Functional specs:** Not applicable; this design proposes a UI-latency
+> optimization for the selected-skill bootstrap sequence.
+> **Parent design:** [openhands-runtime-model/README.md](README.md)
+
+## Overview
+
+This design splits the selected-skill bootstrap sequence into a synchronous
+navigation phase and an asynchronous session-boot phase, so the UI responds
+immediately to user input instead of blocking on Agent Server startup.
+
+It extends the [Selected-Skill Bootstrap Contract](README.md#selected-skill-bootstrap-contract)
+from the parent runtime model by decoupling the lock + navigation steps (which
+must be synchronous to prevent races) from the server ensure + conversation
+resolve steps (which can run in the background).
+
+## Design Scope
+
+**Covers**
+
+- The sync/async split of `activateSkill` and its interaction with the
+  two-layer runtime contract.
+- Page loading states that wait for `conversationId` hydration.
+- Failure handling and lock cleanup when background boot fails.
+- Race conditions: double-click, navigate-away, concurrent skill switches.
+- How the optimistic flow preserves the Active Skill Leave Contract.
+
+**Does not cover**
+
+- Changes to the backend `select_skill_openhands_session` command or runtime
+  primitives. The backend contract is unchanged.
+- Agent Server lifecycle or workspace path resolution — owned by the parent
+  runtime model.
+- Implementation task sequencing.
+
+## Key Decisions
+
+| Decision | Rationale |
+|---|---|
+| Lock acquisition stays synchronous. | `acquireLock` prevents double-activation races and must complete before navigation. It is a fast SQLite operation (<50ms). |
+| Navigation happens before session boot. | The target page already has loading skeletons. Navigating immediately eliminates the visible idle window while the Agent Server starts. |
+| `leaveCurrentSkill` stays synchronous in `handleSelectSkill`. | The leave sequence (pause → release lock → clear UI → stop server) must complete before the new skill's lock is acquired. Moving leave into the background would create a window where two skills appear active simultaneously. |
+| Background boot errors navigate back to dashboard. | The user sees a brief skeleton flash, then an error toast and a return to `/`. This is preferable to leaving the page in a broken state with no conversation. |
+| Stale hydration is harmless. | If the user navigates to a different skill before the background boot completes, the new skill's activation overwrites the refine store. The old hydration lands on inactive state. |
+
+## Architecture / How It Works
+
+### Current Flow (Blocking)
+
+```
+click skill → acquireLock → selectSkillOpenHandsSession → hydrate → navigate
+```
+
+`selectSkillOpenHandsSession` is the bottleneck. It calls the backend product
+command which:
+1. Ensures the Agent Server process is running (2-5s cold start)
+2. Resolves or creates the persistent conversation
+3. Restores transcript history from the server
+
+The UI sits idle during this entire window.
+
+### Proposed Flow (Optimistic)
+
+```
+click skill → acquireLock → navigate → page shows skeleton
+                                           ↓
+                              background: selectSkillOpenHandsSession
+                                           ↓
+                              hydrate refine store → page shows content
+```
+
+### Sync Phase (blocks navigation)
+
+| Step | Duration | Rationale |
+|---|---|---|
+| `acquireLock` | <50ms | Must be sync — prevents double-activation races. Maps to the "acquire the next skill lock" step in the [enter sequence](README.md#active-skill-leave-contract). |
+| `setSelectedWorkspaceSkillName` | sync | Store update, no I/O. |
+| `navigate` | sync | Route change is instant. The target page shows its existing loading skeleton. |
+
+### Async Phase (background)
+
+| Step | Duration | Rationale |
+|---|---|---|
+| `selectSkillOpenHandsSession` | 2-5s cold, <500ms warm | Backend product command. Ensures server, resolves conversation, restores history. Unchanged from the current contract. |
+| `hydrateSelectedSkillOpenHandsSession` | <50ms | Store writes, no I/O. Populates `refineStore.conversationId`, `selectedSkill`, `messages`, and `availableAgents`. |
+| `setActiveSessionSkillName` | sync | Marks the session as fully active. |
+
+### Interaction with the Two-Layer Model
+
+The optimistic flow preserves the [two-layer runtime contract](README.md#two-layer-model):
+
+- **Frontend → Backend**: `selectSkillOpenHandsSession` is still called as a
+  single product command. The frontend does not call runtime primitives
+  directly.
+- **Backend → OpenHands**: The backend still owns server ensure, conversation
+  resolution, and event normalization. No changes to the runtime primitive
+  layer.
+
+The only change is *when* the product command is called relative to navigation,
+not *what* it does.
+
+### Interaction with the Active Skill Leave Contract
+
+The [leave sequence](README.md#active-skill-leave-contract) remains unchanged
+and synchronous in `handleSelectSkill`:
+
+1. Pause the current persistent conversation (`pause_openhands_session`)
+2. Release the current skill lock (`release_lock`)
+3. Clear app-level UI state (`teardownWorkflowSession`, `selectSkill(null)`, `setActiveSkill(null)`)
+4. Stop the OpenHands Agent Server (`shutdown_agent_server`)
+
+Only after leave completes does the new skill's sync phase begin:
+
+1. Acquire the new skill lock
+2. Navigate immediately
+3. Background: call `select_skill_openhands_session`
+
+This ordering prevents a window where two skills appear active simultaneously.
+
+### Page Loading States
+
+`WorkflowPage` and `WorkspaceRoutePage` already show skeletons when
+`isLoaded === false`. The `useWorkflowPersistence` hook sets `isLoaded = true`
+after `getWorkflowState` resolves from the database.
+
+For the optimistic flow, the page must also wait for
+`refineStore.conversationId` to be non-null before showing content. This
+prevents the page from rendering with an empty chat panel or missing transcript
+history.
+
+```typescript
+// In WorkflowPage
+const conversationId = useRefineStore((s) => s.conversationId);
+const sessionReady = isLoaded && !!conversationId;
+
+if (!sessionReady) {
+  return <WorkflowLoadingSkeleton />;
+}
+```
+
+The same pattern applies to `WorkspaceRoutePage` for the refine tab.
+
+## Failure Handling
+
+If the background session boot fails:
+
+1. Show an error toast with the failure reason
+2. Navigate back to the dashboard (`/`)
+3. Clear `activeSessionSkillName` and `selectedWorkspaceSkillName`
+4. Release the lock (best-effort, fire-and-forget)
+
+The user sees a brief flash of the workflow/workspace skeleton, then an error
+toast and a return to the dashboard. This is acceptable because:
+- The lock prevents other tabs from activating the same skill
+- The error is surfaced immediately
+- The user can retry with a single click
+
+This failure policy is consistent with the parent runtime model's principle
+that "if server stop fails after UI clear, the leave operation fails and the
+next skill does not bootstrap." Here, if session boot fails after navigation,
+the user is returned to a safe state (dashboard).
+
+## Race Conditions
+
+### Double-click on same skill
+
+The lock acquisition in `acquireLock` is idempotent within the same app
+instance — a second click while the first is still booting will see the lock
+already held and return early. The existing `sessionAlreadyActive` check in
+`activateSkill` also short-circuits if the session is already hydrated.
+
+### Navigate away before session ready
+
+If the user clicks a different skill before the background boot completes:
+- The new skill's `handleSelectSkill` calls `leaveCurrentSkill` synchronously,
+  which pauses the in-progress conversation (if any) and stops the server
+- The background `selectSkillOpenHandsSession` for the old skill will either
+  succeed (and hydrate a store that's no longer active) or fail (and show a
+  toast that the user has already navigated away from)
+- The stale hydration is harmless — the new skill's activation will overwrite
+  the refine store state
+
+### Concurrent skill switches
+
+The `pendingSkillSwitch` dialog already gates rapid switches when an agent is
+running. For the optimistic flow, this dialog should still appear if the user
+clicks a different skill while the background boot is in progress — but the
+dialog should offer "Switch now" which cancels the in-progress boot and
+activates the new skill.
+
+## States / Transitions
+
+```
+idle ──click──> locking ──lock acquired──> navigating ──navigate──> loading
+                                                                          │
+loading ──session ready──> active ────────────────────────────────────────┘
+     │
+     └──session failed──> error ──toast + navigate──> idle
+```
+
+| State | Visible UI | Store state |
+|---|---|---|
+| `idle` | Dashboard or previous skill | `activeSessionSkillName = null` |
+| `locking` | Same as idle | `selectedWorkspaceSkillName` set |
+| `navigating` | Brief flash of previous route | Route changing |
+| `loading` | Skeleton (workflow or workspace) | `conversationId = null` |
+| `active` | Full content | `conversationId` set, `activeSessionSkillName` set |
+| `error` | Toast + dashboard | `activeSessionSkillName = null` |
+
+## Relationship to Existing Design Specs
+
+| Spec | Relationship |
+|---|---|
+| [README.md](README.md) | Parent runtime model. This spec extends the Selected-Skill Bootstrap Contract with an optimistic navigation phase. |
+| [send-turn-semantics.md](send-turn-semantics.md) | Unaffected. Message dispatch happens after session is active. |
+
+## Key Source Files
+
+| File | Purpose |
+|---|---|
+| `app/src/components/layout/app-layout.tsx` | `activateSkill` and `handleSelectSkill` — sync/async split lives here. |
+| `app/src/pages/workflow.tsx` | `WorkflowPage` — adds `conversationId` guard to loading state. |
+| `app/src/pages/workspace-route.tsx` | `WorkspaceRoutePage` — adds `conversationId` guard for refine tab. |
+| `app/src/hooks/use-workflow-persistence.ts` | Sets `isLoaded` after DB hydration; unchanged. |
+| `app/src/stores/refine-store.ts` | `conversationId` is the signal that session boot is complete. |
+| `app/src-tauri/src/commands/skill_session.rs` | `select_skill_openhands_session` backend command — unchanged. |
+
+## Open Questions
+
+1. `[design]` Should the `pendingSkillSwitch` dialog offer a "Switch now"
+   option that cancels the in-progress background boot, or should it simply
+   wait for the current boot to complete before switching?
+2. `[design]` Should we add a cancellation token to `selectSkillOpenHandsSession`
+   so the background boot can be aborted early when the user navigates away,
+   rather than letting it complete and hydrate stale state?

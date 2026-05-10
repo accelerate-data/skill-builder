@@ -4,6 +4,11 @@ import { WorkspaceRefine } from "@/components/workspace/workspace-refine";
 import type { SkillSummary } from "@/lib/types";
 import { toast } from "@/lib/toast";
 
+const mockLeaveCurrentSkill = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/active-skill-transition", () => ({
+  leaveCurrentSkill: (options?: unknown) => mockLeaveCurrentSkill(options),
+}));
+
 // --- Tauri mock ---
 const tauriMocks = vi.hoisted(() => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),
@@ -98,11 +103,18 @@ vi.mock("@/stores/agent-store", () => ({
 }));
 
 // --- Hook mocks ---
+const leaveGuardCapture = vi.hoisted(() => ({
+  onLeave: undefined as ((proceed: () => void) => void) | undefined,
+}));
+
 vi.mock("@/hooks/use-leave-guard", () => ({
-  useLeaveGuard: () => ({
-    blockerStatus: "idle",
-    handleNavStay: vi.fn(),
-    handleNavLeave: vi.fn(),
+  useLeaveGuard: vi.fn().mockImplementation(({ onLeave }: { onLeave: (proceed: () => void) => void }) => {
+    leaveGuardCapture.onLeave = onLeave;
+    return {
+      blockerStatus: "idle",
+      handleNavStay: vi.fn(),
+      handleNavLeave: vi.fn(),
+    };
   }),
 }));
 
@@ -157,6 +169,7 @@ describe("WorkspaceRefine", () => {
     refineStoreState.isRunning = false;
     refineStoreState.activeAgentId = null;
     settingsStoreState.modelSettings.model = null;
+    leaveGuardCapture.onLeave = undefined;
   });
 
   it("renders the chat panel by default for the selected skill", async () => {
@@ -306,4 +319,31 @@ describe("WorkspaceRefine", () => {
     expect(tauriMocks.sendRefineMessage).not.toHaveBeenCalled();
   });
 
+  it("delegates leave confirmation cleanup to leaveCurrentSkill", async () => {
+    const skill = makeSkill("my-skill");
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    const proceed = vi.fn();
+    await act(async () => {
+      leaveGuardCapture.onLeave?.(proceed);
+    });
+
+    expect(proceed).toHaveBeenCalledTimes(1);
+  });
+
+  it("tracks pending followup message for steer-after-interrupt flow", async () => {
+    const skill = makeSkill("my-skill");
+    refineStoreState.selectedSkill = skill;
+    refineStoreState.conversationId = "conv-steer";
+    refineStoreState.pendingFollowupMessage = "Now fix the tests";
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    expect(refineStoreState.pendingFollowupMessage).toBe("Now fix the tests");
+  });
 });

@@ -40,7 +40,7 @@ Primary code:
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
 | Parser-facing fixtures | `cd app && npm run test:unit` |
 | Rust contract or extraction logic | `cd app && cargo test --manifest-path src-tauri/Cargo.toml commands::workflow` |
-| Generated schemas/types | `cd app && npm run codegen && git diff --exit-code src/generated/ sidecar/generated/ src-tauri/src/generated/` |
+| Generated schemas/types | `cd app && npm run codegen && git diff --exit-code src/generated/ src-tauri/src/generated/` |
 
 ## Active Workflow Outputs
 
@@ -283,7 +283,7 @@ Current per-question verdict values:
 
 ## Event Contracts
 
-The old sidecar event model is no longer the active runtime contract.
+The old legacy agent event model is no longer the active runtime contract.
 
 Current event contracts are defined in:
 
@@ -301,7 +301,7 @@ These are no longer documented as active contracts here:
 - `user-context.md` as a canonical persisted workflow artifact
 - `test-skill.md`
 - `agent-validation-log.md`
-- Claude-sidecar JSONL transcript config/event envelopes
+- Claude-runtime JSONL transcript config/event envelopes
 
 Those either belong to historical fixtures or to other docs, not to the active
 workflow artifact contract.

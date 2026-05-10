@@ -116,22 +116,6 @@ bootstrap_app_dependencies() {
     "Run 'cd $app_dir && $npm_command_str' to repair app dependencies, then rerun the worktree command."
 }
 
-bootstrap_sidecar_dist() {
-  local sidecar_src="$repo_root/app/sidecar/dist"
-  local sidecar_dst="$worktree_path/app/sidecar/dist"
-
-  if [[ ! -d "$sidecar_src" ]]; then
-    echo "sidecar: skipped dist bootstrap (missing $sidecar_src)"
-    return
-  fi
-
-  mkdir -p "$(dirname "$sidecar_dst")"
-  rm -rf "$sidecar_dst"
-  cp -R "$sidecar_src" "$sidecar_dst"
-  echo "sidecar: copied dist bundle to $sidecar_dst"
-}
-
-
 existing_branch_worktree() {
   local target_branch="$1"
   local current_path=""
@@ -160,7 +144,6 @@ existing_branch_worktree() {
 bootstrap_worktree() {
   link_env_file
   bootstrap_app_dependencies
-  bootstrap_sidecar_dist
 }
 
 ensure_worktree_base() {

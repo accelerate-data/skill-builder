@@ -44,6 +44,7 @@ import {
 } from "@/lib/tauri";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 import { useWorkflowPersistence } from "@/hooks/use-workflow-persistence";
+import { WorkflowLoadingSkeleton } from "@/components/workflow-loading-skeleton";
 import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
@@ -158,7 +159,7 @@ function WorkflowMainHeader({ skillName, currentStep, stepStatus }: WorkflowMain
 }
 
 export default function WorkflowPage() {
-  const { skillName } = useParams({ from: "/skill/$skillName" });
+  const { skillId } = useParams({ from: "/workflow/$skillId" });
   const navigate = useNavigate();
   const location = useLocation();
   const autoStart = location.state?.autoStart === true;
@@ -187,15 +188,27 @@ export default function WorkflowPage() {
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );
   const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
-  const currentSkill = builderSkills.find((sk) => sk.name === skillName);
-  const pluginSlug = currentSkill?.plugin_slug ?? refineSelectedSkill?.plugin_slug;
-  const skillLibraryKey = currentSkill?.library_key;
+  const currentSkill = builderSkills.find(
+    (sk) => String(sk.id) === skillId,
+  );
+  const selectedSkillMatchesRoute =
+    refineSelectedSkill != null && String(refineSelectedSkill.id ?? "") === skillId;
+  const currentSkillId = currentSkill?.id ?? (
+    selectedSkillMatchesRoute ? refineSelectedSkill?.id ?? null : null
+  );
+  const pluginSlug = currentSkill?.plugin_slug ?? (
+    selectedSkillMatchesRoute ? refineSelectedSkill?.plugin_slug : undefined
+  );
+  const actualSkillName = currentSkill?.name ?? (
+    selectedSkillMatchesRoute ? refineSelectedSkill?.name : skillId
+  );
 
   const stepConfig = STEP_CONFIGS[currentStep];
 
   // 1. Persistence — initializes hydrated state, tracks error artifacts
-  const { errorHasArtifacts } = useWorkflowPersistence({
-    skillName,
+  const { errorHasArtifacts, isLoaded } = useWorkflowPersistence({
+    skillName: actualSkillName,
+    skillId: currentSkillId,
     skillsPath,
     stepConfig,
     currentStep,
@@ -209,7 +222,9 @@ export default function WorkflowPage() {
   const isClarificationsEditable = !!stepConfig?.clarificationsEditable;
   const isStepCompleted = steps[currentStep]?.status === "completed";
   const { data: clarificationsDto } = useClarifications(
-    isClarificationsEditable && isStepCompleted ? skillName : null,
+    isClarificationsEditable && isStepCompleted && currentSkillId != null
+      ? String(currentSkillId)
+      : null,
   );
   const dbClarificationsData = useMemo(
     () => clarificationsDto ? mapClarificationsDtoToFile(clarificationsDto) : null,
@@ -225,7 +240,7 @@ export default function WorkflowPage() {
     handleClarificationsChange,
     handleSave,
   } = useWorkflowAutosave({
-    skillName,
+    skillId: currentSkillId,
     clarificationsEditable: stepConfig?.clarificationsEditable,
     currentStepStatus: steps[currentStep]?.status,
     dbClarificationsData,
@@ -233,27 +248,25 @@ export default function WorkflowPage() {
 
   // 3. Session cleanup and navigation blocking
   const { blockerStatus, handleNavStay, handleNavLeave } = useWorkflowSession({
-    skillName,
+    skillName: actualSkillName,
     shouldBlock: () => {
       const s = useWorkflowStore.getState();
       return s.isRunning || s.gateLoading || hasUnsavedChangesRef.current;
     },
     hasUnsavedChanges: editorDirty && !!stepConfig?.clarificationsEditable,
-    currentStep,
-    steps,
   });
 
   const restartSelectedSkillSession = useCallback(async () => {
     const restartSkill =
-      refineSelectedSkill?.name === skillName ? refineSelectedSkill : null;
+      String(refineSelectedSkill?.id ?? "") === skillId ? refineSelectedSkill : null;
 
     if (!workspacePath || !restartSkill) {
       throw new Error(
-        `No active selected skill session is available for workflow skill '${skillName}'`,
+        `No active selected skill session is available for workflow skill '${skillId}'`,
       );
     }
     await restartSkillOpenHandsSession(restartSkill, workspacePath);
-  }, [refineSelectedSkill, skillName, workspacePath]);
+  }, [refineSelectedSkill, skillId, workspacePath]);
 
   // 4. State machine — step transitions, agent orchestration, gate evaluation
   const {
@@ -268,7 +281,8 @@ export default function WorkflowPage() {
     handleReviewContinue,
     performStepReset,
   } = useWorkflowStateMachine({
-    skillName,
+    skillId: currentSkillId,
+    skillName: actualSkillName,
     pluginSlug,
     workspacePath,
     skillsPath,
@@ -285,7 +299,7 @@ export default function WorkflowPage() {
   });
 
   // Local callback: abandon agent and switch to a different step.
-  // Unlike handleNavLeave, we do NOT release the skill lock or shut down the sidecar
+  // Unlike handleNavLeave, we do NOT release the skill lock or shut down the runtime
   // because the user is still in the workflow.
   const handleStepSwitchLeave = useCallback(() => {
     const targetStep = pendingStepSwitch;
@@ -307,11 +321,12 @@ export default function WorkflowPage() {
     const nextStepBlocked = !isTerminalStep && disabledSteps.includes(nextStep);
     const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
     const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
-    const handleClose = () => navigate({ to: "/", search: { tab: undefined } });
+    const handleClose = () => navigate({ to: "/workspace/$skillId", params: { skillId }, search: { tab: undefined } });
     const handleEval = () => {
-      // Use library_key so app-layout can match the skill in the store.
-      useSkillStore.getState().setActiveSkill(skillLibraryKey ?? skillName);
-      navigate({ to: "/", search: { tab: "evals" } });
+      useSkillStore.getState().setActiveSkill(
+        currentSkillId != null ? String(currentSkillId) : null,
+      );
+      navigate({ to: "/workspace/$skillId/evals", params: { skillId }, search: { tab: "evals" } });
     };
     const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 
@@ -330,7 +345,8 @@ export default function WorkflowPage() {
         nextStepBlocked={showDecisionConflictResolution}
         nextStepLabel={nextStepLabel}
         reviewMode={reviewMode}
-        skillName={skillName}
+        skillName={actualSkillName}
+        skillId={currentSkillId}
         pluginSlug={pluginSlug}
         skillsPath={skillsPath}
         clarificationsEditable={!!stepConfig?.clarificationsEditable && !reviewMode}
@@ -445,6 +461,10 @@ export default function WorkflowPage() {
     return "You have unsaved edits that will be lost if you leave.";
   };
 
+  if (!isLoaded) {
+    return <WorkflowLoadingSkeleton />;
+  }
+
   return (
     <>
       {/* Navigation guard dialog */}
@@ -500,13 +520,13 @@ export default function WorkflowPage() {
         targetStep={resetTarget}
         deleteFromStep={resetTarget !== null ? resetTarget + 1 : undefined}
         workspacePath={workspacePath ?? ""}
-        skillName={skillName}
+        skillName={actualSkillName}
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
         executeReset={resetTarget !== null
           ? resetTarget === 0
-            ? () => resetWorkflowStep(workspacePath ?? "", skillName, 0)
-            : () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
+            ? () => resetWorkflowStep(workspacePath ?? "", actualSkillName, 0)
+            : () => navigateBackToStepDb(workspacePath ?? "", actualSkillName, resetTarget)
           : undefined}
         onReset={() => {
           if (resetTarget !== null) {
@@ -518,8 +538,8 @@ export default function WorkflowPage() {
               } else {
                 navigateBackToStep(resetTarget);
               }
-              if (skillName) {
-                getDisabledSteps(skillName)
+              if (currentSkillId != null) {
+                getDisabledSteps(currentSkillId)
                   .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
                   .catch(() => { /* non-fatal */ });
               }
@@ -573,7 +593,7 @@ export default function WorkflowPage() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Main header — skill name + status */}
         <WorkflowMainHeader
-          skillName={skillName}
+          skillName={`${currentSkill?.plugin_display_name ?? "Skill Builder"} · ${actualSkillName}`}
           currentStep={currentStep}
           stepStatus={currentStepDef?.status}
         />
@@ -616,12 +636,10 @@ export default function WorkflowPage() {
             </div>
 
             {/* Content area */}
-            <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
+            <div className={`flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in duration-200 ${
               activeAgentId ? "" : "p-4"
             }`}>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                {renderContent()}
-              </div>
+              {renderContent()}
             </div>
           </div>
         </div>

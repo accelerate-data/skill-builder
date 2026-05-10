@@ -115,8 +115,8 @@ mod tests {
     }
 
     #[test]
-    fn test_sidecar_config_serde() {
-        let config = crate::agents::sidecar::SidecarConfig {
+    fn test_runtime_config_serde() {
+        let config = crate::agents::runtime_config::OpenHandsRuntimeConfig {
             mode: None,
             prompt: "test prompt".to_string(),
             system_prompt: None,

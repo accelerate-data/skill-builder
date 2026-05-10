@@ -2,21 +2,13 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 
-vi.mock("@tanstack/react-router", () => ({
-  useBlocker: vi.fn().mockReturnValue({ proceed: vi.fn(), reset: vi.fn(), status: "idle" }),
-}));
-
-const mockEndWorkflowSession = vi.fn((_arg?: unknown) => Promise.resolve());
-vi.mock("@/lib/tauri", () => ({
-  endWorkflowSession: (sessionId: string) => mockEndWorkflowSession(sessionId),
-}));
-
 const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture } = vi.hoisted(() => {
   let mockWorkflowState = {
     workflowSessionId: "session-uuid-123",
     currentStep: 0,
     steps: [{ status: "pending" }],
     setRunning: vi.fn(),
+    setStopping: vi.fn(),
     setGateLoading: vi.fn(),
     clearInitializing: vi.fn(),
     clearRuntimeError: vi.fn(),
@@ -39,7 +31,6 @@ const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapt
     { getState: vi.fn(() => ({ clearRuns: mockClearRuns })) }
   );
 
-  // Captures the onLeave callback so tests can invoke it directly.
   const leaveGuardCapture = {
     onLeave: undefined as ((proceed: () => void) => void) | undefined,
   };
@@ -55,7 +46,6 @@ vi.mock("@/stores/agent-store", () => ({
   useAgentStore: mockAgentStoreMock,
 }));
 
-// Mock useLeaveGuard — captures onLeave so tests can invoke it directly
 vi.mock("@/hooks/use-leave-guard", () => ({
   useLeaveGuard: vi.fn().mockImplementation(({ onLeave }: { onLeave: (proceed: () => void) => void }) => {
     leaveGuardCapture.onLeave = onLeave;
@@ -63,11 +53,16 @@ vi.mock("@/hooks/use-leave-guard", () => ({
   }),
 }));
 
+vi.mock("@tanstack/react-router", () => ({
+  useBlocker: vi.fn().mockReturnValue({ proceed: vi.fn(), reset: vi.fn(), status: "idle" }),
+}));
+
 let mockWorkflowState = {
   workflowSessionId: "session-uuid-123",
   currentStep: 0,
   steps: [{ status: "pending" }],
   setRunning: vi.fn(),
+  setStopping: vi.fn(),
   setGateLoading: vi.fn(),
   clearInitializing: vi.fn(),
   clearRuntimeError: vi.fn(),
@@ -90,6 +85,7 @@ describe("useWorkflowSession", () => {
       currentStep: 0,
       steps: [{ status: "pending" }],
       setRunning: vi.fn(),
+      setStopping: vi.fn(),
       setGateLoading: vi.fn(),
       clearInitializing: vi.fn(),
       clearRuntimeError: vi.fn(),
@@ -99,32 +95,14 @@ describe("useWorkflowSession", () => {
     mockWorkflowStoreMock.mockImplementation(() => mockWorkflowState);
   });
 
-  it("ends workflow session with UUID on unmount", () => {
-    const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
-    unmount();
-    expect(mockEndWorkflowSession).toHaveBeenCalledWith("session-uuid-123");
-  });
-
-  it("does not call endWorkflowSession if sessionId is null on unmount", () => {
-    mockWorkflowState.workflowSessionId = null as unknown as string;
-    const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
-    unmount();
-    expect(mockEndWorkflowSession).not.toHaveBeenCalled();
-  });
-
   it("returns blockerStatus from useLeaveGuard", () => {
     const { result } = renderHook(() => useWorkflowSession(defaultOptions));
     expect(result.current.blockerStatus).toBe("idle");
   });
 
-  it("onLeave runs all cleanup steps and calls proceed", async () => {
-    // Set an in-progress step so updateStepStatus gets exercised
-    mockWorkflowState.steps = [{ status: "in_progress" }];
-    const sessionId = mockWorkflowState.workflowSessionId;
-
+  it("onLeave calls proceed without teardown (route coordinator owns exits)", async () => {
     renderHook(() => useWorkflowSession(defaultOptions));
 
-    // Wait for onLeave to be captured by the useLeaveGuard mock
     await waitFor(() => {
       expect(leaveGuardCapture.onLeave).toBeDefined();
     });
@@ -134,18 +112,13 @@ describe("useWorkflowSession", () => {
       leaveGuardCapture.onLeave!(proceed);
     });
 
-    // Step reverted to pending
-    expect(mockWorkflowState.updateStepStatus).toHaveBeenCalledWith(0, "pending");
-    // Running/gate state cleared
-    expect(mockWorkflowState.setRunning).toHaveBeenCalledWith(false);
-    expect(mockWorkflowState.setGateLoading).toHaveBeenCalledWith(false);
-    // Session ID cleared
-    expect(mockWorkflowStoreMock.setState).toHaveBeenCalledWith({ workflowSessionId: null });
-    // Agent runs cleared
-    expect(mockClearRuns).toHaveBeenCalled();
-    // Session ended
-    expect(mockEndWorkflowSession).toHaveBeenCalledWith(sessionId);
-    // Navigation allowed to proceed
-    expect(proceed).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(proceed).toHaveBeenCalled();
+    });
+  });
+
+  it("does not call leaveCurrentSkill on unmount (route coordinator owns exits)", () => {
+    const { unmount } = renderHook(() => useWorkflowSession(defaultOptions));
+    unmount();
   });
 });

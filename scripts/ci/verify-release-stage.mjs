@@ -6,12 +6,6 @@ import { fileURLToPath } from "node:url";
 const REQUIRED_BY_PLATFORM = {
   windows: [
     "skill-builder.exe",
-    "sidecar/dist/package.json",
-    "sidecar/dist/bootstrap.js",
-    "sidecar/dist/agent-runner.js",
-    "promptfoo-sidecar/package.json",
-    "promptfoo-sidecar/dist/runner.js",
-    "promptfoo-sidecar/node_modules/promptfoo/package.json",
     "agent-sources/plugins/skill-creator/LICENSE.txt",
     "agent-sources/skills/skill-test/SKILL.md",
     "workspace/CLAUDE.md",
@@ -19,12 +13,6 @@ const REQUIRED_BY_PLATFORM = {
   macos: [
     "Skill Builder.app",
     "run.sh",
-    "Skill Builder.app/Contents/Resources/sidecar/dist/package.json",
-    "Skill Builder.app/Contents/Resources/sidecar/dist/bootstrap.js",
-    "Skill Builder.app/Contents/Resources/sidecar/dist/agent-runner.js",
-    "Skill Builder.app/Contents/Resources/promptfoo-sidecar/package.json",
-    "Skill Builder.app/Contents/Resources/promptfoo-sidecar/dist/runner.js",
-    "Skill Builder.app/Contents/Resources/promptfoo-sidecar/node_modules/promptfoo/package.json",
     "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
     "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
     "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",

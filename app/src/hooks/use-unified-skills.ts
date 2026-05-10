@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 
 export interface UnifiedSkill {
+  skillId: string;
   key: string;
   name: string;
   description: string | null;
@@ -67,7 +68,8 @@ export function mergeSkills(
   const fromBuilder: UnifiedSkill[] = builderSkills
     .filter((s) => s.skill_source === "skill-builder")
     .map((s) => ({
-      key: s.library_key ?? s.name,
+      skillId: String(s.id),
+      key: String(s.id),
       name: s.name,
       description: s.description ?? null,
       purpose: s.purpose,
@@ -83,7 +85,8 @@ export function mergeSkills(
     }));
 
   const fromImported: UnifiedSkill[] = importedSkills.map((s) => ({
-    key: s.library_key ?? `imported:${s.skill_id}`,
+    skillId: String(s.skill_id),
+    key: String(s.skill_id),
     name: s.skill_name,
     description: s.description,
     purpose: s.purpose,
@@ -93,7 +96,7 @@ export function mergeSkills(
     pluginSlug: s.plugin_slug,
     pluginDisplayName: s.plugin_display_name,
     isDefaultPlugin: s.is_default_plugin,
-    importedSkillId: s.skill_id,
+    importedSkillId: String(s.skill_id),
     status: null,
     currentStep: null,
   }));

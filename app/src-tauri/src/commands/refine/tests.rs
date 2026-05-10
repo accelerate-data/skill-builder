@@ -407,7 +407,9 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
         allowed_tools: vec![],
         max_turns: 20,
         user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        system_message_suffix: Some(crate::agents::sidecar::skill_creator_system_message_suffix()),
+        system_message_suffix: Some(
+            crate::agents::runtime_config::skill_creator_system_message_suffix(),
+        ),
         task_kind: Some("refine".to_string()),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
         skill_name: Some("my-skill".to_string()),
@@ -1783,7 +1785,7 @@ fn test_refine_openhands_config_uses_skill_creator_system_message_suffix() {
         },
     );
 
-    let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+    let expected_suffix = crate::agents::runtime_config::skill_creator_system_message_suffix();
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(config.task_kind.as_deref(), Some("refine"));
     assert_eq!(

@@ -32,7 +32,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: |
             app/package-lock.json
-            app/sidecar/package-lock.json
 
       - name: Pin npm version
         run: npm install -g npm@11.11.0
@@ -57,10 +56,6 @@ jobs:
 
       - name: Install npm dependencies
         working-directory: app
-        run: npm ci
-
-      - name: Install sidecar dependencies
-        working-directory: app/sidecar
         run: npm ci
 
       - name: Stamp version into config files
@@ -149,11 +144,6 @@ jobs:
           STAGE="SkillBuilder-v${VERSION}-windows"
           mkdir -p "$STAGE"
           cp "app/src-tauri/target/release/skill-builder.exe" "$STAGE/"
-
-          # Copy runtime JS bundles. The Rust exe-relative fallbacks look for
-          # {exe_dir}/sidecar/dist/...
-          mkdir -p "$STAGE/sidecar/dist"
-          cp -R "app/sidecar/dist/." "$STAGE/sidecar/dist/"
 
           mkdir -p "$STAGE/agent-sources" "$STAGE/workspace"
           cp -r "agent-sources/skills" "$STAGE/agent-sources/skills"

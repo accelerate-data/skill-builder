@@ -6,7 +6,7 @@ use super::skills::{get_skill_master_id_any_plugin, get_skill_master_id_in_plugi
 
 fn imported_skill_select(prefix: &str) -> String {
     format!(
-        "SELECT {p}.skill_id, {p}.skill_name, {p}.is_active, {p}.disk_path, {p}.imported_at, {p}.is_bundled,
+        "SELECT s.id, {p}.skill_name, {p}.is_active, {p}.disk_path, {p}.imported_at, {p}.is_bundled,
                 {p}.purpose, {p}.version, {p}.user_invocable,
                 {p}.disable_model_invocation, {p}.marketplace_source_url,
                 pl.slug, pl.display_name, pl.is_default
@@ -18,9 +18,9 @@ fn imported_skill_select(prefix: &str) -> String {
 }
 
 fn row_to_imported_skill(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImportedSkill> {
-    let skill_id: String = row.get(0)?;
+    let skill_id: i64 = row.get(0)?;
     Ok(ImportedSkill {
-        library_key: Some(format!("imported:{skill_id}")),
+        library_key: Some(skill_id.to_string()),
         skill_id,
         skill_name: row.get(1)?,
         is_active: row.get::<_, i32>(2)? != 0,
@@ -77,7 +77,7 @@ pub fn insert_imported_skill(
              purpose, version, user_invocable, disable_model_invocation, skill_master_id, marketplace_source_url)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![
-            skill.skill_id,
+            crate::commands::imported_skills::generate_skill_id(&skill.skill_name),
             skill.skill_name,
             skill.is_active as i32,
             skill.disk_path,
@@ -127,7 +127,7 @@ pub fn upsert_imported_skill(
              skill_master_id = excluded.skill_master_id,
              marketplace_source_url = excluded.marketplace_source_url",
         rusqlite::params![
-            skill.skill_id,
+            crate::commands::imported_skills::generate_skill_id(&skill.skill_name),
             skill.skill_name,
             skill.is_active as i32,
             skill.disk_path,
@@ -266,13 +266,13 @@ pub fn list_imported_skills_filtered(
     Ok(skills)
 }
 
-/// Get an imported skill by its skill_id primary key.
+/// Get an imported skill by its parent skills.id primary key.
 pub fn get_imported_skill_by_id(
     conn: &Connection,
-    skill_id: &str,
+    skill_id: i64,
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
-        .prepare(&(imported_skill_select("i") + " WHERE i.skill_id = ?1"))
+        .prepare(&(imported_skill_select("i") + " WHERE i.skill_master_id = ?1"))
         .map_err(|e| format!("get_imported_skill_by_id: {}", e))?;
 
     let result = stmt.query_row(rusqlite::params![skill_id], row_to_imported_skill);
@@ -284,10 +284,10 @@ pub fn get_imported_skill_by_id(
     }
 }
 
-/// Delete an imported skill by its skill_id primary key.
-pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: &str) -> Result<(), String> {
+/// Delete an imported skill by its parent skills.id primary key.
+pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: i64) -> Result<(), String> {
     conn.execute(
-        "DELETE FROM imported_skills WHERE skill_id = ?1",
+        "DELETE FROM imported_skills WHERE skill_master_id = ?1",
         rusqlite::params![skill_id],
     )
     .map_err(|e| format!("delete_imported_skill_by_skill_id: {}", e))?;
@@ -296,11 +296,11 @@ pub fn delete_imported_skill_by_skill_id(conn: &Connection, skill_id: &str) -> R
 
 pub fn update_imported_skill_disk_path(
     conn: &Connection,
-    skill_id: &str,
+    skill_id: i64,
     disk_path: &str,
 ) -> Result<(), String> {
     conn.execute(
-        "UPDATE imported_skills SET disk_path = ?2 WHERE skill_id = ?1",
+        "UPDATE imported_skills SET disk_path = ?2 WHERE skill_master_id = ?1",
         rusqlite::params![skill_id, disk_path],
     )
     .map_err(|e| format!("update_imported_skill_disk_path: {}", e))?;

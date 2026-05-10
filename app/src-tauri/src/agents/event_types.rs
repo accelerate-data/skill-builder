@@ -6,7 +6,7 @@ pub struct AgentEvent {
     pub message: serde_json::Value,
 }
 
-/// Payload emitted as the `agent-exit` Tauri event when a sidecar process terminates.
+/// Payload emitted as the `agent-exit` Tauri event when a runtime agent process terminates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentExitPayload {
     pub agent_id: String,
@@ -22,7 +22,7 @@ pub struct AgentShutdownPayload {
     pub agent_id: String,
 }
 
-/// Payload for sidecar startup error events sent to the frontend.
+/// Payload for runtime startup error events sent to the frontend.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInitError {
@@ -31,9 +31,9 @@ pub struct AgentInitError {
     pub fix_hint: String,
 }
 
-/// Per-model usage entry from sidecar run_result.
+/// Per-model usage entry from a runtime `run_result`.
 #[derive(Debug, Clone, Deserialize)]
-pub struct SidecarModelUsageEntry {
+pub struct RuntimeModelUsageEntry {
     pub model: String,
     #[serde(rename = "inputTokens")]
     pub input_tokens: i32,
@@ -46,12 +46,12 @@ pub struct SidecarModelUsageEntry {
     pub cost: f64,
 }
 
-/// Self-contained run_result from the sidecar.
+/// Self-contained `run_result` from the runtime.
 /// Some fields are deserialized for protocol completeness but not yet
 /// persisted to DB — suppress dead_code until the insert is wired up.
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
-pub struct SidecarRunSummary {
+pub struct RuntimeRunSummary {
     #[serde(rename = "skillName")]
     pub skill_name: String,
     #[serde(rename = "stepId")]
@@ -76,7 +76,7 @@ pub struct SidecarRunSummary {
     #[serde(rename = "totalCostUsd")]
     pub total_cost_usd: f64,
     #[serde(rename = "modelUsageBreakdown")]
-    pub model_usage_breakdown: Vec<SidecarModelUsageEntry>,
+    pub model_usage_breakdown: Vec<RuntimeModelUsageEntry>,
     #[serde(rename = "contextWindow")]
     pub context_window: i64,
     #[serde(rename = "resultSubtype")]

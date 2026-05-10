@@ -231,7 +231,7 @@ describe("AgentOutputPanel", () => {
 
   it("shows token usage and cost in footer when run is completed", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    // Simulate token usage and cost being set (normally via sidecar persistence)
+    // Simulate token usage and cost being set (normally via runtime persistence)
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,

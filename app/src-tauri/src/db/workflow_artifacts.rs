@@ -160,12 +160,32 @@ fn opt_int_to_bool(v: Option<i64>) -> Option<bool> {
     v.map(|n| n != 0)
 }
 
-fn resolve_skill_master_id(conn: &Connection, skill_name: &str) -> Result<i64, rusqlite::Error> {
-    conn.query_row(
-        "SELECT id FROM skills WHERE name = ?1 LIMIT 1",
-        rusqlite::params![skill_name],
-        |row| row.get(0),
-    )
+fn resolve_skill_db_id(conn: &Connection, skill_identifier: &str) -> Result<i64, rusqlite::Error> {
+    crate::db::resolve_skill_master_id_from_identifier(conn, skill_identifier)
+        .map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                e,
+            )))
+        })?
+        .ok_or_else(|| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("skill identifier '{}' not found", skill_identifier),
+            )))
+        })
+}
+
+fn resolve_skill_db_id_optional(
+    conn: &Connection,
+    skill_identifier: &str,
+) -> Result<Option<i64>, rusqlite::Error> {
+    crate::db::resolve_skill_master_id_from_identifier(conn, skill_identifier).map_err(|e| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            e,
+        )))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +202,8 @@ pub fn upsert_clarifications(
     tx: &Transaction<'_>,
     record: &ClarificationsRecord,
 ) -> Result<(), rusqlite::Error> {
-    let skill_id = &record.skill_id;
+    let skill_identifier = &record.skill_id;
+    let skill_id = resolve_skill_db_id(tx, skill_identifier)?;
 
     // Wipe existing children. ON DELETE CASCADE on the parent would do this
     // for us if we were deleting the parent, but we're upserting the parent
@@ -208,16 +229,15 @@ pub fn upsert_clarifications(
     // Parent row: INSERT OR REPLACE keeps the schema simple (PK is skill_id).
     tx.execute(
         "INSERT INTO clarifications (
-            skill_id, skill_master_id, version, refinement_count, must_answer_count, question_count,
+            skill_id, version, refinement_count, must_answer_count, question_count,
             section_count, title, scope_recommendation, scope_reason, scope_next_action,
             error_code, error_message, warning_code, warning_message,
             eval_verdict, eval_reasoning, eval_at,
             eval_answered_count, eval_empty_count, eval_vague_count, eval_contradictory_count,
             created_at, updated_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
         ON CONFLICT(skill_id) DO UPDATE SET
-            skill_master_id = excluded.skill_master_id,
             version = excluded.version,
             refinement_count = excluded.refinement_count,
             must_answer_count = excluded.must_answer_count,
@@ -241,7 +261,6 @@ pub fn upsert_clarifications(
             updated_at = excluded.updated_at",
         rusqlite::params![
             skill_id,
-            resolve_skill_master_id(tx, skill_id)?,
             record.version,
             record.refinement_count,
             record.must_answer_count,
@@ -307,7 +326,7 @@ pub fn upsert_clarifications(
 
 fn insert_question_recursive(
     tx: &Transaction<'_>,
-    skill_id: &str,
+    skill_id: i64,
     parent_question_id: Option<&str>,
     question: &ClarificationQuestion,
 ) -> Result<(), rusqlite::Error> {
@@ -365,8 +384,11 @@ fn insert_question_recursive(
 /// them, regardless of depth.
 pub fn read_clarifications(
     conn: &Connection,
-    skill_id: &str,
+    skill_identifier: &str,
 ) -> Result<Option<ClarificationsRecord>, rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(None);
+    };
     let parent: Option<ClarificationsRecord> = conn
         .query_row(
             "SELECT skill_id, version, refinement_count, must_answer_count, question_count,
@@ -379,7 +401,7 @@ pub fn read_clarifications(
             rusqlite::params![skill_id],
             |row| {
                 Ok(ClarificationsRecord {
-                    skill_id: row.get(0)?,
+                    skill_id: skill_identifier.to_string(),
                     version: row.get(1)?,
                     refinement_count: row.get(2)?,
                     must_answer_count: row.get(3)?,
@@ -567,12 +589,15 @@ pub fn read_clarifications(
 /// skipped (no-op match), matching the partial-update semantics.
 pub fn update_question_verdicts(
     conn: &mut Connection,
-    skill_id: &str,
+    skill_identifier: &str,
     updates: &[(String, Option<String>, Option<String>)],
 ) -> Result<(), rusqlite::Error> {
     if updates.is_empty() {
         return Ok(());
     }
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
     let tx = conn.transaction()?;
     for (question_id, verdict, reason) in updates {
         tx.execute(
@@ -590,11 +615,14 @@ pub fn update_question_verdicts(
 /// values explicitly clear the column.
 pub fn update_question_answer(
     conn: &Connection,
-    skill_id: &str,
+    skill_identifier: &str,
     question_id: &str,
     answer_choice: Option<&str>,
     answer_text: Option<&str>,
 ) -> Result<(), rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
     conn.execute(
         "UPDATE clarification_questions
          SET answer_choice = ?3, answer_text = ?4
@@ -605,7 +633,13 @@ pub fn update_question_answer(
 }
 
 /// Delete clarifications and all child rows for a skill. Idempotent.
-pub fn delete_clarifications(conn: &Connection, skill_id: &str) -> Result<(), rusqlite::Error> {
+pub fn delete_clarifications(
+    conn: &Connection,
+    skill_identifier: &str,
+) -> Result<(), rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
     // Children are CASCADE-deleted by FK, but we don't depend on FK
     // enforcement being on (see db/mod.rs comment). Delete explicitly so the
     // call works regardless of pragma state.
@@ -641,7 +675,8 @@ pub fn upsert_decisions(
     tx: &Transaction<'_>,
     record: &DecisionsRecord,
 ) -> Result<(), rusqlite::Error> {
-    let skill_id = &record.skill_id;
+    let skill_identifier = &record.skill_id;
+    let skill_id = resolve_skill_db_id(tx, skill_identifier)?;
 
     tx.execute(
         "DELETE FROM decision_items WHERE skill_id = ?1",
@@ -650,12 +685,11 @@ pub fn upsert_decisions(
 
     tx.execute(
         "INSERT INTO decisions (
-            skill_id, skill_master_id, version, round, decision_count, conflicts_resolved,
+            skill_id, version, round, decision_count, conflicts_resolved,
             contradictory_inputs_state, scope_recommendation, created_at, updated_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         ON CONFLICT(skill_id) DO UPDATE SET
-            skill_master_id = excluded.skill_master_id,
             version = excluded.version,
             round = excluded.round,
             decision_count = excluded.decision_count,
@@ -665,7 +699,6 @@ pub fn upsert_decisions(
             updated_at = excluded.updated_at",
         rusqlite::params![
             skill_id,
-            resolve_skill_master_id(tx, skill_id)?,
             record.version,
             record.round,
             record.decision_count,
@@ -703,8 +736,11 @@ pub fn upsert_decisions(
 /// Read the full decisions record for a skill.
 pub fn read_decisions(
     conn: &Connection,
-    skill_id: &str,
+    skill_identifier: &str,
 ) -> Result<Option<DecisionsRecord>, rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(None);
+    };
     let parent: Option<DecisionsRecord> = conn
         .query_row(
             "SELECT skill_id, version, round, decision_count, conflicts_resolved,
@@ -713,7 +749,7 @@ pub fn read_decisions(
             rusqlite::params![skill_id],
             |row| {
                 Ok(DecisionsRecord {
-                    skill_id: row.get(0)?,
+                    skill_id: skill_identifier.to_string(),
                     version: row.get(1)?,
                     round: row.get(2)?,
                     decision_count: row.get(3)?,
@@ -768,9 +804,12 @@ pub struct DecisionItemEdit {
 /// supplied items, then recompute the parent row's aggregated metadata.
 pub fn update_decision_items_edit(
     conn: &mut Connection,
-    skill_id: &str,
+    skill_identifier: &str,
     items: &[DecisionItemEdit],
 ) -> Result<(), rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
     let tx = conn.transaction()?;
     for item in items {
         tx.execute(
@@ -808,7 +847,10 @@ pub fn update_decision_items_edit(
 }
 
 /// Delete decisions and all child items for a skill. Idempotent.
-pub fn delete_decisions(conn: &Connection, skill_id: &str) -> Result<(), rusqlite::Error> {
+pub fn delete_decisions(conn: &Connection, skill_identifier: &str) -> Result<(), rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
     conn.execute(
         "DELETE FROM decision_items WHERE skill_id = ?1",
         rusqlite::params![skill_id],
@@ -830,17 +872,20 @@ mod tests {
     use crate::db::create_test_db_for_tests;
     use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-    fn seed_skill(conn: &Connection, name: &str) {
-        // Insert a skills row in the default plugin so other code
-        // paths that join through `skills` can resolve this skill_id. The
-        // workflow-artifact tables themselves use `skill_id TEXT` with no FK
-        // (see migration 44 comment), so the skill row is informational here.
+    fn seed_skill(conn: &Connection, name: &str) -> i64 {
         conn.execute(
             "INSERT INTO skills (name, skill_source, plugin_id)
              VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
             rusqlite::params![name, DEFAULT_PLUGIN_SLUG],
         )
         .unwrap();
+        crate::db::get_skill_master_id_in_plugin(conn, name, DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap()
+    }
+
+    fn skill_row_id(conn: &Connection, identifier: &str) -> i64 {
+        resolve_skill_db_id(conn, identifier).unwrap()
     }
 
     fn sample_record(skill_id: &str) -> ClarificationsRecord {
@@ -958,9 +1003,25 @@ mod tests {
     }
 
     #[test]
+    fn roundtrip_clarifications_accepts_builder_library_key_identifier() {
+        let mut conn = create_test_db_for_tests();
+        seed_skill(&conn, "library-key-skill");
+
+        let identifier = "skill-builder:default:library-key-skill";
+        let record = sample_record(identifier);
+        let tx = conn.transaction().unwrap();
+        upsert_clarifications(&tx, &record).unwrap();
+        tx.commit().unwrap();
+
+        let read_back = read_clarifications(&conn, identifier).unwrap().unwrap();
+        assert_eq!(read_back.skill_id, identifier);
+        assert_eq!(read_back.question_count, 2);
+    }
+
+    #[test]
     fn delete_clarifications_cascades_to_children() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-b");
+        let skill_id = seed_skill(&conn, "skill-b");
 
         let record = sample_record("skill-b");
         let tx = conn.transaction().unwrap();
@@ -973,35 +1034,35 @@ mod tests {
         let parent_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM clarifications WHERE skill_id = ?1",
-                rusqlite::params!["skill-b"],
+                rusqlite::params![skill_id],
                 |row| row.get(0),
             )
             .unwrap();
         let section_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM clarification_sections WHERE skill_id = ?1",
-                rusqlite::params!["skill-b"],
+                rusqlite::params![skill_id],
                 |row| row.get(0),
             )
             .unwrap();
         let question_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM clarification_questions WHERE skill_id = ?1",
-                rusqlite::params!["skill-b"],
+                rusqlite::params![skill_id],
                 |row| row.get(0),
             )
             .unwrap();
         let choice_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM clarification_choices WHERE skill_id = ?1",
-                rusqlite::params!["skill-b"],
+                rusqlite::params![skill_id],
                 |row| row.get(0),
             )
             .unwrap();
         let note_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM clarification_notes WHERE skill_id = ?1",
-                rusqlite::params!["skill-b"],
+                rusqlite::params![skill_id],
                 |row| row.get(0),
             )
             .unwrap();
@@ -1067,7 +1128,7 @@ mod tests {
     #[test]
     fn recursive_refinement_insert_and_read() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-d");
+        let skill_id = seed_skill(&conn, "skill-d");
 
         let mut record = sample_record("skill-d");
         // Add a refinement under q1.
@@ -1102,7 +1163,7 @@ mod tests {
         let row_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM clarification_questions WHERE skill_id = ?1",
-                rusqlite::params!["skill-d"],
+                rusqlite::params![skill_id],
                 |row| row.get(0),
             )
             .unwrap();
@@ -1112,7 +1173,7 @@ mod tests {
             .query_row(
                 "SELECT parent_question_id FROM clarification_questions
                  WHERE skill_id = ?1 AND question_id = ?2",
-                rusqlite::params!["skill-d", "q1.r1"],
+                rusqlite::params![skill_id, "q1.r1"],
                 |row| row.get(0),
             )
             .unwrap();
@@ -1123,7 +1184,7 @@ mod tests {
             .query_row(
                 "SELECT parent_question_id FROM clarification_questions
                  WHERE skill_id = ?1 AND question_id = ?2",
-                rusqlite::params!["skill-d", "q1"],
+                rusqlite::params![skill_id, "q1"],
                 |row| row.get(0),
             )
             .unwrap();
@@ -1145,7 +1206,7 @@ mod tests {
     #[test]
     fn decisions_roundtrip_and_delete() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-e");
+        let skill_id = seed_skill(&conn, "skill-e");
 
         let record = DecisionsRecord {
             skill_id: "skill-e".to_string(),
@@ -1191,7 +1252,7 @@ mod tests {
         let item_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM decision_items WHERE skill_id = ?1",
-                rusqlite::params!["skill-e"],
+                rusqlite::params![skill_id],
                 |row| row.get(0),
             )
             .unwrap();
@@ -1234,7 +1295,7 @@ mod tests {
     #[test]
     fn delete_skill_purges_artifact_rows() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "purge-test-skill");
+        let skill_id = seed_skill(&conn, "purge-test-skill");
 
         // Write a clarifications row.
         let clar = sample_record("purge-test-skill");
@@ -1273,6 +1334,9 @@ mod tests {
             .is_some());
         assert!(read_decisions(&conn, "purge-test-skill").unwrap().is_some());
 
+        let parent_skill_id = skill_row_id(&conn, "purge-test-skill");
+        assert_eq!(parent_skill_id, skill_id);
+
         // Delete via the skill-deletion DB hook.
         crate::commands::skill::delete_skill_db_records_inner(
             &conn,
@@ -1296,5 +1360,66 @@ mod tests {
             read_decisions(&conn, "purge-test-skill").unwrap().is_none(),
             "delete_skill must purge decisions rows"
         );
+    }
+
+    #[test]
+    fn deleting_skill_row_cascades_to_artifact_tables() {
+        let mut conn = create_test_db_for_tests();
+        let skill_id = seed_skill(&conn, "cascade-test-skill");
+
+        let clar = sample_record("cascade-test-skill");
+        let tx = conn.transaction().unwrap();
+        upsert_clarifications(&tx, &clar).unwrap();
+        tx.commit().unwrap();
+
+        let decisions = DecisionsRecord {
+            skill_id: "cascade-test-skill".to_string(),
+            version: "1".to_string(),
+            round: 0,
+            decision_count: 1,
+            conflicts_resolved: 0,
+            contradictory_inputs_state: None,
+            scope_recommendation: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            items: vec![DecisionItem {
+                decision_id: "d1".to_string(),
+                ordinal: 0,
+                title: "D1".to_string(),
+                original_question: "Q?".to_string(),
+                decision: "Yes".to_string(),
+                implication: "None".to_string(),
+                status: "resolved".to_string(),
+            }],
+        };
+        let tx = conn.transaction().unwrap();
+        upsert_decisions(&tx, &decisions).unwrap();
+        tx.commit().unwrap();
+
+        conn.execute(
+            "DELETE FROM skills WHERE id = ?1",
+            rusqlite::params![skill_id],
+        )
+        .unwrap();
+
+        let clar_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clarifications", [], |row| row.get(0))
+            .unwrap();
+        let decision_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM decisions", [], |row| row.get(0))
+            .unwrap();
+        let choice_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clarification_choices", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let item_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM decision_items", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(clar_count, 0);
+        assert_eq!(decision_count, 0);
+        assert_eq!(choice_count, 0);
+        assert_eq!(item_count, 0);
     }
 }

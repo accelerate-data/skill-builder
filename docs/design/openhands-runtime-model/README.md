@@ -100,7 +100,7 @@ Each command is responsible for:
 
 - validating user-facing inputs
 - loading backend-owned workspace and model context
-- building the correct task prompt and `SidecarConfig`
+- building the correct task prompt and `OpenHandsRuntimeConfig`
 - choosing persistent versus throwaway session behavior
 - parsing terminal outputs into app-owned result contracts
 
@@ -257,6 +257,40 @@ The runtime is intentionally skill-scoped:
   saved `conversation_id`
 - stale or incompatible saved ids are cleared during selected-skill bootstrap
   before a new persistent conversation is created
+
+### Active Skill Leave Contract
+
+Leaving the current skill and entering the next skill are separate lifecycle
+events.
+
+Every UI path that leaves the current skill uses the same shared leave
+sequence:
+
+1. pause the current persistent conversation
+2. release the current skill lock
+3. clear app-level UI state for the active skill
+4. stop the OpenHands Agent Server
+
+That leave sequence is shared by:
+
+- skill-list switching
+- workflow leave/unmount cleanup
+- refine leave/unmount cleanup
+
+The next skill bootstrap is a separate enter sequence:
+
+1. acquire the next skill lock
+2. call `select_skill_openhands_session`
+3. hydrate the selected skill session into frontend state
+
+Failure policy:
+
+- if pause fails, the current skill stays visible and the next skill does not
+  bootstrap
+- if lock release fails, the current skill stays visible and the next skill
+  does not bootstrap
+- if server stop fails after UI clear, the leave operation fails and the next
+  skill does not bootstrap
 
 ### Stable Persistence Secret
 
@@ -538,7 +572,7 @@ remaining cleanup residue is narrower:
 | `app/src-tauri/src/agents/openhands_server/mod.rs` | OpenHands runtime primitives, persistence policy, event orchestration, and throwaway/persistent session helpers. |
 | `app/src-tauri/src/agents/openhands_server/process.rs` | Agent Server process lifecycle and environment wiring. |
 | `app/src-tauri/src/agents/openhands_server/types.rs` | OpenHands request shape, tool list, suffix wiring, and agent definitions. |
-| `app/src-tauri/src/agents/sidecar.rs` | Backend-owned request/config builder used by product commands. |
+| `app/src-tauri/src/agents/runtime_config.rs` | Backend-owned request/config builder used by product commands. |
 | `app/src-tauri/src/skill_paths.rs` | Runtime workspace path resolution for persistent skill workspaces and implemented throwaway runtime directories. |
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Workflow product command orchestration. |
 | `app/src-tauri/src/commands/refine/mod.rs` | Refine product command orchestration and restore/event helpers. |

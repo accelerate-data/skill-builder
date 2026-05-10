@@ -4,7 +4,6 @@ import { PanelRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconRail } from "./sidebar";
 import { SkillListPanel } from "@/components/skill-list-panel";
-import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import { SetupScreen } from "@/components/setup-screen";
@@ -15,23 +14,24 @@ import { toast } from "@/lib/toast";
 import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import {
-  acquireLock,
-  cancelAgentRun,
-  cancelWorkflowStep,
+  logFrontend,
   pauseOpenHandsSession,
-  selectSkillOpenHandsSession,
-  releaseLock,
 } from "@/lib/tauri";
 import {
   getEvalsRunning,
+  getEvalsStopping,
   requestEvalsCancel,
+  setEvalsStopping,
   subscribeEvalsRunning,
 } from "@/lib/eval-running-state";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
-import { toEditableSkill, type EditableSkill } from "@/lib/types";
-import { hydrateSelectedSkillOpenHandsSession } from "@/lib/skill-openhands-session";
+import { type EditableSkill, toEditableSkill } from "@/lib/types";
+import { getSkillSurface } from "@/lib/skill-routing";
+import { enterSkill, leaveCurrentSkill } from "@/lib/active-skill-transition";
+
 import {
   Dialog,
   DialogContent,
@@ -46,9 +46,8 @@ export function AppLayout() {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
   const { data: importedSkills = [] } = useImportedSkillsQuery();
-  const selectedWorkspaceSkillName = useSkillStore((s) => s.activeSkill);
-  const setSelectedWorkspaceSkillName = useSkillStore((s) => s.setActiveSkill);
-  const refineRunning = useRefineStore((s) => s.isRunning);
+  const selectedWorkspaceSkillId = useSkillStore((s) => s.activeSkillId);
+  const setSelectedWorkspaceSkill = useSkillStore((s) => s.setActiveSkill);
   const runs = useAgentStore((s) => s.runs);
   const [evalsRunningReactive, setEvalsRunningReactive] = useState(getEvalsRunning);
   useEffect(() => subscribeEvalsRunning(setEvalsRunningReactive), []);
@@ -56,19 +55,19 @@ export function AppLayout() {
     (r): r is typeof r & { skillName: string } =>
       r.status === "running" && r.runSource === "workflow" && !!r.skillName,
   );
+  const refineRunning = useRefineStore((s) => s.isRunning);
   const agentRunning = refineRunning || evalsRunningReactive || Boolean(runningWorkflow);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const workspaceInitialTab = useRouterState({
-    select: (s) => {
-      if (s.location.pathname !== "/") return undefined;
-      const search = s.location.search as Record<string, string>;
-      return typeof search.tab === "string" ? search.tab : undefined;
-    },
-  });
 
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [nodeReady, setNodeReady] = useState(false);
+
+  // Keep refs for Escape handler to avoid stale closure over skills query data
+  const builderSkillsRef = useRef(builderSkills);
+  builderSkillsRef.current = builderSkills;
+  const importedSkillsRef = useRef(importedSkills);
+  importedSkillsRef.current = importedSkills;
 
   const {
     settingsLoaded,
@@ -93,189 +92,205 @@ export function AppLayout() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "1") {
         e.preventDefault();
-        navigate({ to: "/", search: { tab: undefined } });
+        navigate({ to: "/" });
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault();
         setPanelCollapsed((prev) => !prev);
       }
       if (e.key === "Escape") {
-        // Refine (streaming): pause via session UUID from RefineSessionManager.
+        logFrontend("debug", "[app-layout] escape pressed");
         const refineStore = useRefineStore.getState();
-        if (refineStore.isRunning && refineStore.activeAgentId) {
-          cancelAgentRun(refineStore.activeAgentId).catch((err) => {
-            console.error("[app-layout] escape: cancel refine run failed", err);
+        if (refineStore.isRunning && !refineStore.isStopping &&
+            refineStore.conversationId && refineStore.selectedSkill) {
+          logFrontend("debug", "[app-layout] escape pausing refine session");
+          refineStore.setStopping(true);
+          pauseOpenHandsSession(
+            refineStore.selectedSkill.name,
+            refineStore.selectedSkill.plugin_slug,
+            refineStore.conversationId,
+            refineStore.activeAgentId,
+          ).catch((err) => {
+            console.error("[app-layout] escape: pause refine conversation failed", err);
             toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
+            refineStore.setStopping(false);
           });
           return;
         }
-        // Workflow step (streaming): cancel via agentId → session lookup in backend.
-        const runs = useAgentStore.getState().runs;
-        const running = Object.values(runs).find(
-          (r): r is typeof r & { skillName: string } =>
-            r.status === "running" && r.runSource === "workflow" && !!r.skillName,
-        );
-        if (running) {
-          cancelWorkflowStep(running.agentId).catch((err) => {
-            console.error("[app-layout] escape: cancel workflow step failed", err);
-          });
+        const workflowStore = useWorkflowStore.getState();
+        if (workflowStore.isRunning && !workflowStore.isStopping) {
+          const selectedSkill = refineStore.selectedSkill;
+          const conversationId = refineStore.conversationId;
+          const runs = useAgentStore.getState().runs;
+          const activeAgentId = useAgentStore.getState().activeAgentId;
+          const running = Object.values(runs).find(
+            (r): r is typeof r & { skillName: string } =>
+              r.status === "running" && r.runSource === "workflow" && !!r.skillName,
+          );
+          const skillName = running?.skillName ?? selectedSkill?.name;
+          const pluginSlug =
+            (skillName
+              ? builderSkillsRef.current.find((skill) => skill.name === skillName)?.plugin_slug ??
+                importedSkillsRef.current.find((skill) => skill.skill_name === skillName)?.plugin_slug
+              : undefined) ??
+            selectedSkill?.plugin_slug;
+          const workflowConversationId = running?.sessionId ?? conversationId;
+          const workflowAgentId = running?.agentId ?? activeAgentId;
+
+          if (skillName && pluginSlug && workflowConversationId) {
+            logFrontend(
+              "debug",
+              `[app-layout] escape pausing workflow session skill=${skillName} has_run=${running ? "true" : "false"}`,
+            );
+            workflowStore.setStopping(true);
+            pauseOpenHandsSession(
+              skillName,
+              pluginSlug,
+              workflowConversationId,
+              workflowAgentId,
+            ).catch((err) => {
+              console.error("[app-layout] escape: pause workflow conversation failed", err);
+              workflowStore.setStopping(false);
+            });
+          } else {
+            logFrontend(
+              "debug",
+              `[app-layout] escape workflow pause skipped skill=${skillName ?? "none"} plugin=${pluginSlug ?? "none"} conversation=${workflowConversationId ?? "none"}`,
+            );
+          }
           return;
         }
-        if (getEvalsRunning()) {
+        if (getEvalsRunning() && !getEvalsStopping()) {
+          setEvalsStopping(true);
           requestEvalsCancel().catch((err) => {
             console.error("[app-layout] escape: cancel eval workbench run failed", err);
+            setEvalsStopping(false);
           });
         }
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [navigate]);
 
   const [pendingSkillSwitch, setPendingSkillSwitch] = useState<string | null>(null);
 
-  const pendingSkillSwitchTabRef = useRef<string | undefined>(undefined);
+  const resolveSkillSelection = useCallback(
+    (skillId: string): { editableSkill: EditableSkill; skillId: string } | null => {
+      const builderSkill = builderSkills.find(
+        (skill) => skill.skill_source === "skill-builder" && String(skill.id) === skillId,
+      );
+      if (builderSkill) {
+        return {
+          editableSkill: builderSkill as EditableSkill,
+          skillId,
+        };
+      }
 
-  const selectedBuilderSkill = builderSkills.find(
-    (s) => s.skill_source === "skill-builder" && (s.library_key ?? s.name) === selectedWorkspaceSkillName,
+      const importedSkill = importedSkills.find(
+        (skill) => String(skill.skill_id) === skillId,
+      );
+      if (importedSkill) {
+        return {
+          editableSkill: toEditableSkill(importedSkill),
+          skillId,
+        };
+      }
+
+      return null;
+    },
+    [builderSkills, importedSkills],
   );
-  const selectedImportedSkill = importedSkills.find(
-    (s) => (s.library_key ?? `imported:${s.skill_id}`) === selectedWorkspaceSkillName,
-  );
-  const selectedSkillData = selectedBuilderSkill ?? selectedImportedSkill ?? null;
-  const selectedSkillType: "builder" | "imported" | "marketplace" = selectedBuilderSkill
-    ? selectedBuilderSkill.skill_source === "marketplace"
-      ? "marketplace"
-      : "builder"
-    : selectedImportedSkill?.marketplace_source_url
-      ? "marketplace"
-      : "imported";
-  const showWorkspace = selectedSkillData !== null && pathname === "/";
 
-  const editableSelectedSkill: EditableSkill | null = selectedSkillData
-    ? "name" in selectedSkillData
-      ? (selectedSkillData as EditableSkill)
-      : toEditableSkill(selectedSkillData)
-    : null;
-
-  const bootstrapSelectedSkillSession = useCallback(
-    async (skill: EditableSkill) => {
+  const activateSkill = useCallback(
+    async (skillId: string, targetSurface?: "workflow" | "workspace") => {
+      const resolvedSkill = resolveSkillSelection(skillId);
+      if (!resolvedSkill) {
+        throw new Error(`Skill '${skillId}' is not available`);
+      }
+      const { editableSkill } = resolvedSkill;
       if (!workspacePath) {
         throw new Error("Workspace path is not configured");
       }
-      await acquireLock(skill.name);
-      try {
-        const session = await selectSkillOpenHandsSession(
-          skill.name,
-          workspacePath,
-          skill.plugin_slug,
-        );
-        hydrateSelectedSkillOpenHandsSession(skill, session);
-      } catch (error) {
-        await releaseLock(skill.name).catch(() => {});
-        throw error;
-      }
-    },
-    [workspacePath],
-  );
 
-  const cleanupCurrentSelectedSkill = useCallback(async () => {
-    const refineStore = useRefineStore.getState();
-    if (runningWorkflow) {
-      await cancelWorkflowStep(runningWorkflow.agentId);
-    }
-    if (getEvalsRunning()) {
-      await requestEvalsCancel();
-    }
-    if (selectedSkillData && refineStore.conversationId) {
-      await pauseOpenHandsSession(
-        "name" in selectedSkillData ? selectedSkillData.name : selectedSkillData.skill_name,
-        selectedSkillData.plugin_slug,
-        refineStore.conversationId,
-        refineStore.activeAgentId,
-      );
-    }
-    if (selectedSkillData) {
-      await releaseLock(
-        "name" in selectedSkillData ? selectedSkillData.name : selectedSkillData.skill_name,
-      ).catch((error) => {
-        console.warn("[app-layout] release lock failed", error);
-      });
-    }
-    refineStore.selectSkill(null);
-    useAgentStore.getState().clearRuns();
-  }, [runningWorkflow, selectedSkillData]);
-
-  const activateSkill = useCallback(
-    async (name: string) => {
-      const targetBuilderSkill = builderSkills.find(
-        (skill) =>
-          skill.skill_source === "skill-builder" &&
-          (skill.library_key ?? skill.name) === name,
-      );
-      const targetImportedSkill = importedSkills.find(
-        (skill) => (skill.library_key ?? `imported:${skill.skill_id}`) === name,
-      );
-      const targetSkill = targetBuilderSkill ?? targetImportedSkill ?? null;
-      if (!targetSkill) {
-        throw new Error(`Skill '${name}' is not available`);
-      }
-      const editableSkill =
-        "name" in targetSkill
-          ? (targetSkill as EditableSkill)
-          : toEditableSkill(targetSkill);
       const refineStore = useRefineStore.getState();
       const sessionAlreadyActive =
         refineStore.selectedSkill?.name === editableSkill.name &&
         refineStore.selectedSkill.plugin_slug === editableSkill.plugin_slug &&
         !!refineStore.conversationId;
+      const surface = targetSurface ?? getSkillSurface(editableSkill);
 
-      if (name === selectedWorkspaceSkillName && sessionAlreadyActive) {
+      if (skillId === selectedWorkspaceSkillId && sessionAlreadyActive) {
+        if (surface === "workflow") {
+          navigate({ to: "/workflow/$skillId", params: { skillId } });
+        } else {
+          navigate({ to: "/workspace/$skillId", params: { skillId }, search: { tab: undefined } });
+        }
         return;
       }
 
-      if (name !== selectedWorkspaceSkillName) {
-        await cleanupCurrentSelectedSkill();
-        setSelectedWorkspaceSkillName(null);
-        setSelectedWorkspaceSkillName(name);
+      if (skillId !== selectedWorkspaceSkillId) {
+        if (getEvalsRunning()) {
+          await requestEvalsCancel();
+          setEvalsStopping(false);
+        }
+        await leaveCurrentSkill();
       }
 
-      await bootstrapSelectedSkillSession(editableSkill);
+      try {
+        setSelectedWorkspaceSkill(skillId);
+        await enterSkill(editableSkill, workspacePath);
+      } catch (err) {
+        setSelectedWorkspaceSkill(null);
+        throw err;
+      }
+
+      if (surface === "workflow") {
+        navigate({ to: "/workflow/$skillId", params: { skillId } });
+      } else {
+        navigate({ to: "/workspace/$skillId", params: { skillId }, search: { tab: undefined } });
+      }
     },
     [
-      bootstrapSelectedSkillSession,
-      builderSkills,
-      cleanupCurrentSelectedSkill,
-      importedSkills,
-      selectedWorkspaceSkillName,
-      setSelectedWorkspaceSkillName,
+      resolveSkillSelection,
+      workspacePath,
+      selectedWorkspaceSkillId,
+      setSelectedWorkspaceSkill,
+      navigate,
     ],
   );
 
   const handleSelectSkill = useCallback(
-    async (name: string, tab?: string) => {
-      if (name === selectedWorkspaceSkillName) {
-        navigate({ to: "/", search: { tab: tab ?? undefined } });
+    async (skillId: string, tab?: string) => {
+      const resolvedSkill = resolveSkillSelection(skillId);
+      if (!resolvedSkill) return;
+      const { editableSkill } = resolvedSkill;
+
+      if (skillId === selectedWorkspaceSkillId) {
+        const surface = getSkillSurface(editableSkill);
+        const route = surface === "workflow"
+          ? { to: "/workflow/$skillId", params: { skillId } }
+          : { to: "/workspace/$skillId", params: { skillId }, search: { tab: tab ?? undefined } };
+        navigate(route);
         return;
       }
-      // Guard: block skill switch while refine or evals are running
+
       const refineRunning = useRefineStore.getState().isRunning;
       const evalsRunning = getEvalsRunning();
       if (refineRunning || evalsRunning || runningWorkflow) {
-        setPendingSkillSwitch(name);
-        pendingSkillSwitchTabRef.current = tab;
+        setPendingSkillSwitch(skillId);
         return;
       }
+
       try {
-        await activateSkill(name);
-        navigate({ to: "/", search: { tab: tab ?? undefined } });
+        await activateSkill(skillId);
       } catch (err) {
         console.error("[app-layout] skill switch cleanup failed", err);
         toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });
       }
     },
-    [activateSkill, navigate, runningWorkflow, selectedWorkspaceSkillName],
+    [activateSkill, resolveSkillSelection, selectedWorkspaceSkillId, runningWorkflow, navigate],
   );
 
   const handleSkillSwitchStay = useCallback(() => {
@@ -285,44 +300,15 @@ export function AppLayout() {
   const handleSkillSwitchLeave = useCallback(() => {
     if (!pendingSkillSwitch) return;
     const nextSkill = pendingSkillSwitch;
-    const tab = pendingSkillSwitchTabRef.current;
     setPendingSkillSwitch(null);
-    pendingSkillSwitchTabRef.current = undefined;
     void (async () => {
       await activateSkill(nextSkill);
       toast.info("Agent paused — skill switched");
-      navigate({ to: "/", search: { tab: tab ?? undefined } });
     })().catch((err) => {
       console.error("[app-layout] skill switch cleanup failed", err);
       toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });
     });
-  }, [activateSkill, navigate, pendingSkillSwitch]);
-
-  useEffect(() => {
-    if (!workspacePath || !editableSelectedSkill) {
-      return;
-    }
-    const existingRefineSkill = useRefineStore.getState().selectedSkill;
-    const existingConversationId = useRefineStore.getState().conversationId;
-    if (
-      existingRefineSkill?.name === editableSelectedSkill.name &&
-      existingRefineSkill.plugin_slug === editableSelectedSkill.plugin_slug &&
-      existingConversationId
-    ) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      if (cancelled) return;
-      await bootstrapSelectedSkillSession(editableSelectedSkill);
-    })().catch((err) => {
-      console.error("[app-layout] failed to bootstrap selected skill session", err);
-      toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [bootstrapSelectedSkillSession, editableSelectedSkill, workspacePath]);
+  }, [activateSkill, pendingSkillSwitch]);
 
   const ready = settingsLoaded && reconciled && nodeReady && ackDone;
 
@@ -385,11 +371,7 @@ export function AppLayout() {
         )
       )}
       <main className="flex flex-1 flex-col overflow-hidden">
-        {ready && isConfigured
-          ? showWorkspace && selectedSkillData
-            ? <WorkspaceShell skill={selectedSkillData} skillType={selectedSkillType} initialTab={workspaceInitialTab} />
-            : <Outlet />
-          : null}
+        {ready && isConfigured ? <Outlet /> : null}
       </main>
       <CloseGuard />
       {pendingSkillSwitch && (

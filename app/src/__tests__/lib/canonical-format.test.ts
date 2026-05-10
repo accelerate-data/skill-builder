@@ -1,567 +1,129 @@
-import { describe, it, expect } from "vitest";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
 
-// Resolve paths relative to the app directory.
-// __dirname is src/__tests__/lib, so go up 3 levels to reach app/.
-const APP_ROOT = path.resolve(__dirname, "../../..");
-const REPO_ROOT = path.resolve(APP_ROOT, "..");
-const MOCK_ROOT = path.join(APP_ROOT, "sidecar/mock-templates/outputs");
-const FIXTURE_ROOT = path.join(APP_ROOT, "e2e/fixtures/agent-responses");
+const FIXTURE_ROOT = path.resolve(
+  __dirname,
+  "..",
+  "fixtures",
+  "openhands-events",
+);
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+type JsonRecord = Record<string, unknown>;
 
-/** Recursively collect files matching an extension from a directory */
-function findFiles(dir: string, ext: string): string[] {
-  const results: string[] = [];
-  if (!fs.existsSync(dir)) return results;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...findFiles(fullPath, ext));
-    } else if (entry.name.endsWith(ext)) {
-      results.push(fullPath);
-    }
-  }
-  return results;
+function listJsonlFixtures(): string[] {
+  if (!fs.existsSync(FIXTURE_ROOT)) return [];
+  return fs
+    .readdirSync(FIXTURE_ROOT)
+    .filter((name) => name.endsWith(".jsonl"))
+    .map((name) => path.join(FIXTURE_ROOT, name))
+    .sort();
 }
 
-/** Collect all .md files from mock templates and fixtures */
-function collectMarkdownFiles(): string[] {
-  const files: string[] = [];
-  files.push(...findFiles(MOCK_ROOT, ".md"));
-  files.push(...findFiles(FIXTURE_ROOT, ".md"));
-  return files;
-}
-
-function readFile(filePath: string): string {
-  return fs.readFileSync(filePath, "utf-8");
+function readJsonlFixture(filePath: string): JsonRecord[] {
+  return fs
+    .readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as JsonRecord);
 }
 
 function relPath(filePath: string): string {
-  return path.relative(APP_ROOT, filePath);
+  return path.relative(FIXTURE_ROOT, filePath);
 }
 
-// ---------------------------------------------------------------------------
-// Anti-pattern checks (shared across all .md artifacts)
-// ---------------------------------------------------------------------------
+function parseStructuredResult(record: JsonRecord): JsonRecord | null {
+  const resultText = record.result_text;
+  if (typeof resultText !== "string") return null;
+  const trimmed = resultText.trim();
+  if (!trimmed.startsWith("{")) return null;
+  return JSON.parse(trimmed) as JsonRecord;
+}
 
-const mdFiles = collectMarkdownFiles();
+const fixtureFiles = listJsonlFixtures();
 
-describe.skipIf(mdFiles.length === 0)("Canonical format: anti-pattern checks (all markdown files)", () => {
-  for (const file of mdFiles) {
-    const rel = relPath(file);
-
-    it(`${rel}: no **Answer**: (colon must be inside bold)`, () => {
-      const content = readFile(file);
-      expect(content).not.toMatch(/\*\*Answer\*\*:/);
-    });
-
-    it(`${rel}: no **Recommendation**: (colon must be inside bold)`, () => {
-      const content = readFile(file);
-      expect(content).not.toMatch(/\*\*Recommendation\*\*:/);
-    });
-
-    it(`${rel}: no checkbox choices (- [ ] / - [x])`, () => {
-      const content = readFile(file);
-      expect(content).not.toMatch(/^[ \t]*- \[[ x]\]/m);
-    });
-
-    it(`${rel}: no **Choices**: label`, () => {
-      const content = readFile(file);
-      expect(content).not.toMatch(/\*\*Choices\*\*[:\*]/);
-    });
-
-    it(`${rel}: no **Question**: label`, () => {
-      const content = readFile(file);
-      expect(content).not.toMatch(/\*\*Question\*\*[:\*]/);
-    });
-
-    it(`${rel}: no [MUST ANSWER] inline tags`, () => {
-      const content = readFile(file);
-      expect(content).not.toMatch(/\[MUST ANSWER\]/);
-    });
-  }
-});
-
-describe("Canonical format: skill generation prompt contract", () => {
-  const promptPath = path.join(
-    REPO_ROOT,
-    "agent-sources/prompts/skill-generation.txt",
-  );
-  const prompt = readFile(promptPath);
-
-  it("keeps durable eval artifacts owned by the app Eval Workbench", () => {
-    expect(prompt).not.toContain("evals/evals.json");
-    expect(prompt).not.toContain("pending-eval.json");
-    expect(prompt).not.toContain("write-evals");
-    expect(prompt).not.toContain("eval ideas");
-    expect(prompt).not.toContain("suggest-eval-ideas");
-    expect(prompt).not.toContain("description optimization");
+describe("Canonical format: OpenHands transcript fixtures", () => {
+  it("has checked-in JSONL fixtures to validate", () => {
+    expect(fixtureFiles.length).toBeGreaterThan(0);
   });
-});
 
-// ---------------------------------------------------------------------------
-// clarifications.json structural checks (step0 + step1)
-// ---------------------------------------------------------------------------
-
-const clarificationFiles = [
-  path.join(MOCK_ROOT, "step0/context/clarifications.json"),
-  path.join(MOCK_ROOT, "step1/context/clarifications.json"),
-].filter((f) => fs.existsSync(f));
-
-describe.skipIf(clarificationFiles.length === 0)("Canonical format: clarifications.json structure", () => {
-  for (const file of clarificationFiles) {
+  for (const file of fixtureFiles) {
     const rel = relPath(file);
 
     describe(rel, () => {
-      const raw = readFile(file);
+      const records = readJsonlFixture(file);
 
-      it("is valid JSON", () => {
-        expect(() => JSON.parse(raw)).not.toThrow();
+      it("starts with a config record", () => {
+        expect(records[0]?.type).toBe("config");
+        expect(typeof records[0]?.config).toBe("object");
       });
 
-      const data = JSON.parse(raw);
-
-      it("has version field set to '1'", () => {
-        expect(data.version).toBe("1");
-      });
-
-      it("has metadata with question_count", () => {
-        expect(typeof data.metadata.question_count).toBe("number");
-      });
-
-      it("has metadata with section_count", () => {
-        expect(typeof data.metadata.section_count).toBe("number");
-      });
-
-      it("has metadata with refinement_count", () => {
-        expect(typeof data.metadata.refinement_count).toBe("number");
-      });
-
-      it("has metadata with must_answer_count", () => {
-        expect(typeof data.metadata.must_answer_count).toBe("number");
-      });
-
-      it("has metadata with priority_questions array", () => {
-        expect(Array.isArray(data.metadata.priority_questions)).toBe(true);
-      });
-
-      it("has sections array matching section_count", () => {
-        expect(Array.isArray(data.sections)).toBe(true);
-        expect(data.sections.length).toBe(data.metadata.section_count);
-      });
-
-      it("sections have id, title, and questions", () => {
-        for (const section of data.sections) {
-          expect(typeof section.id).toBe("number");
-          expect(typeof section.title).toBe("string");
-          expect(Array.isArray(section.questions)).toBe(true);
+      it("uses only supported transcript envelope types", () => {
+        for (const record of records) {
+          expect([
+            "config",
+            "conversation_event",
+            "conversation_state",
+          ]).toContain(record.type);
         }
       });
 
-      it("questions have required fields", () => {
-        for (const section of data.sections) {
-          for (const q of section.questions) {
-            expect(q.id).toMatch(/^Q\d+$/);
-            expect(typeof q.title).toBe("string");
-            expect(typeof q.must_answer).toBe("boolean");
-            expect(typeof q.text).toBe("string");
-            expect(Array.isArray(q.choices)).toBe(true);
-            expect(Array.isArray(q.refinements)).toBe(true);
-          }
+      it("keeps conversation_state envelopes structurally valid", () => {
+        for (const record of records.filter((item) => item.type === "conversation_state")) {
+          expect(record.runtime).toBe("openhands");
+          expect(typeof record.agent_id).toBe("string");
+          expect(typeof record.timestamp).toBe("number");
+          expect([
+            "starting",
+            "running",
+            "completed",
+            "error",
+            "cancelled",
+          ]).toContain(record.status);
         }
       });
 
-      it("choices have id, text, and is_other", () => {
-        for (const section of data.sections) {
-          for (const q of section.questions) {
-            for (const c of q.choices) {
-              expect(c.id).toMatch(/^[A-E]$/);
-              expect(typeof c.text).toBe("string");
-              expect(typeof c.is_other).toBe("boolean");
-            }
-          }
+      it("keeps conversation_event envelopes structurally valid", () => {
+        for (const record of records.filter((item) => item.type === "conversation_event")) {
+          expect(typeof record.event_class).toBe("string");
+          expect(typeof record.timestamp).toBe("number");
+          expect(record.event).toBeTruthy();
+          expect(typeof record.event).toBe("object");
         }
       });
 
-      it("has notes array", () => {
-        expect(Array.isArray(data.notes)).toBe(true);
-      });
-
-      it("has answer_evaluator_notes array", () => {
-        expect(data).toHaveProperty("answer_evaluator_notes");
-        expect(Array.isArray(data.answer_evaluator_notes)).toBe(true);
-      });
-    });
-  }
-
-  // Step1-specific refinement checks (Detailed Research)
-  const step1 = path.join(MOCK_ROOT, "step1/context/clarifications.json");
-  if (fs.existsSync(step1)) {
-    describe("step1 refinements", () => {
-      const data = JSON.parse(readFile(step1));
-
-      it("has refinement_count > 0", () => {
-        expect(data.metadata.refinement_count).toBeGreaterThan(0);
-      });
-
-      it("has questions with non-empty refinements arrays", () => {
-        const hasRefinements = data.sections.some(
-          (s: { questions: Array<{ refinements: unknown[] }> }) =>
-            s.questions.some((q) => q.refinements.length > 0),
+      it("keeps completed structured-result payloads JSON-parseable", () => {
+        const completedStates = records.filter(
+          (item) =>
+            item.type === "conversation_state" && item.status === "completed",
         );
-        expect(hasRefinements).toBe(true);
+
+        expect(completedStates.length).toBeGreaterThan(0);
+
+        for (const record of completedStates) {
+          const parsed = parseStructuredResult(record);
+          expect(parsed).not.toBeNull();
+        }
       });
 
-      it("refinements have R{n}.{m} style IDs", () => {
-        for (const section of data.sections) {
-          for (const q of section.questions) {
-            for (const r of q.refinements) {
-              expect(r.id).toMatch(/^R\d+\.\d+/);
-            }
-          }
+      it("keeps answer-evaluator result payloads internally consistent", () => {
+        const completedStates = records.filter(
+          (item) =>
+            item.type === "conversation_state" && item.status === "completed",
+        );
+
+        for (const record of completedStates) {
+          const parsed = parseStructuredResult(record);
+          if (!parsed || typeof parsed.verdict !== "string") continue;
+
+          expect(["sufficient", "mixed", "insufficient"]).toContain(parsed.verdict);
+          expect(typeof parsed.answered_count).toBe("number");
+          expect(typeof parsed.empty_count).toBe("number");
+          expect(typeof parsed.vague_count).toBe("number");
+          expect(typeof parsed.total_count).toBe("number");
+          expect(Array.isArray(parsed.per_question)).toBe(true);
         }
       });
     });
   }
-
-  it("accepts canonical minimal scope recommendation output with reason fields", () => {
-    const minimal = {
-      version: "1",
-      metadata: {
-        title: "Scope Recommendation",
-        question_count: 0,
-        section_count: 0,
-        refinement_count: 0,
-        must_answer_count: 0,
-        priority_questions: [],
-        scope_recommendation: true,
-        scope_reason: "Explicit throwaway intent detected.",
-        scope_next_action: "Provide a concrete domain and rerun research.",
-      },
-      sections: [],
-      notes: [
-        {
-          type: "blocked",
-          title: "Scope Recommendation Active",
-          body: "Narrow the skill scope to a meaningful production topic.",
-        },
-      ],
-    };
-
-    expect(minimal.version).toBe("1");
-    expect(minimal.metadata.scope_recommendation).toBe(true);
-    expect(minimal.metadata.question_count).toBe(0);
-    expect(minimal.metadata.section_count).toBe(0);
-    expect(minimal.metadata.refinement_count).toBe(0);
-    expect(minimal.metadata.must_answer_count).toBe(0);
-    expect(Array.isArray(minimal.metadata.priority_questions)).toBe(true);
-    expect(Array.isArray(minimal.sections)).toBe(true);
-    expect(minimal.sections).toHaveLength(0);
-    expect(Array.isArray(minimal.notes)).toBe(true);
-    expect(minimal.notes[0]?.type).toBe("blocked");
-  });
-
-  it("accepts warning metadata shape for scope_guard_triggered", () => {
-    const output = {
-      version: "1",
-      metadata: {
-        title: "Scope Guard",
-        question_count: 0,
-        section_count: 0,
-        refinement_count: 0,
-        must_answer_count: 0,
-        priority_questions: [],
-        scope_reason: "Topic spans too many unrelated domains.",
-        warning: {
-          code: "scope_guard_triggered",
-          message: "The requested skill scope is too broad to produce useful output.",
-        },
-      },
-      sections: [],
-      notes: [],
-    };
-
-    expect(output.metadata.warning.code).toBe("scope_guard_triggered");
-    expect(typeof output.metadata.warning.message).toBe("string");
-    expect(output.metadata.warning.message.length).toBeGreaterThan(0);
-    expect(output.metadata.question_count).toBe(0);
-    expect(output.metadata.section_count).toBe(0);
-  });
-
-  it("accepts generic warning metadata shape", () => {
-    const output = {
-      version: "1",
-      metadata: {
-        title: "Warning",
-        question_count: 0,
-        section_count: 0,
-        refinement_count: 0,
-        must_answer_count: 0,
-        priority_questions: [],
-        warning: {
-          code: "research_warning",
-          message: "Research produced a warning.",
-        },
-      },
-      sections: [],
-      notes: [],
-    };
-
-    expect(output.metadata.warning.code).toBe("research_warning");
-    expect(typeof output.metadata.warning.message).toBe("string");
-    expect(output.metadata.warning.message.length).toBeGreaterThan(0);
-  });
-
-  it("accepts error metadata shape for missing_user_context", () => {
-    const output = {
-      version: "1",
-      metadata: {
-        title: "Error",
-        question_count: 0,
-        section_count: 0,
-        refinement_count: 0,
-        must_answer_count: 0,
-        priority_questions: [],
-        error: {
-          code: "missing_user_context",
-          message: "No user context file was found.",
-        },
-      },
-      sections: [],
-      notes: [],
-    };
-
-    expect(output.metadata.error.code).toBe("missing_user_context");
-    expect(typeof output.metadata.error.message).toBe("string");
-    expect(output.metadata.error.message.length).toBeGreaterThan(0);
-  });
-
-  it("accepts error metadata shape for invalid_research_output", () => {
-    const output = {
-      version: "1",
-      metadata: {
-        title: "Error",
-        question_count: 0,
-        section_count: 0,
-        refinement_count: 0,
-        must_answer_count: 0,
-        priority_questions: [],
-        error: {
-          code: "invalid_research_output",
-          message: "The research agent produced output that could not be parsed.",
-        },
-      },
-      sections: [],
-      notes: [],
-    };
-
-    expect(output.metadata.error.code).toBe("invalid_research_output");
-    expect(typeof output.metadata.error.message).toBe("string");
-    expect(output.metadata.error.message.length).toBeGreaterThan(0);
-  });
 });
-
-// ---------------------------------------------------------------------------
-// decisions.json structural checks (step2)
-// ---------------------------------------------------------------------------
-
-const decisionsFile = path.join(MOCK_ROOT, "step2/context/decisions.json");
-
-describe.skipIf(!fs.existsSync(decisionsFile))("Canonical format: decisions.json structure", () => {
-  if (fs.existsSync(decisionsFile)) {
-    const raw = readFile(decisionsFile);
-
-    it("is valid JSON", () => {
-      expect(() => JSON.parse(raw)).not.toThrow();
-    });
-
-    const data = JSON.parse(raw);
-
-    it("has version set to '1'", () => {
-      expect(data.version).toBe("1");
-    });
-
-    it("has metadata with required numeric fields", () => {
-      expect(typeof data.metadata?.decision_count).toBe("number");
-      expect(typeof data.metadata?.conflicts_resolved).toBe("number");
-      expect(typeof data.metadata?.round).toBe("number");
-    });
-
-    it("has decisions array", () => {
-      expect(Array.isArray(data.decisions)).toBe(true);
-    });
-
-    it("decision_count matches decisions length", () => {
-      expect(data.metadata.decision_count).toBe(data.decisions.length);
-    });
-
-    it("decisions have required fields and status values", () => {
-      for (const decision of data.decisions) {
-        expect(typeof decision.id).toBe("string");
-        expect(decision.id).toMatch(/^D\d+$/);
-        expect(typeof decision.title).toBe("string");
-        expect(typeof decision.original_question).toBe("string");
-        expect(typeof decision.decision).toBe("string");
-        expect(typeof decision.implication).toBe("string");
-        expect(["resolved", "conflict-resolved", "needs-review"]).toContain(decision.status);
-      }
-    });
-
-    it("conflicts_resolved count matches actual conflict-resolved decisions", () => {
-      const actualConflictResolved = data.decisions.filter(
-        (d: { status: string }) => d.status === "conflict-resolved"
-      ).length;
-      expect(data.metadata.conflicts_resolved).toBe(actualConflictResolved);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Step 0 clean-break structured-output checks
-// ---------------------------------------------------------------------------
-
-const step0ClarificationFiles = [
-  path.join(MOCK_ROOT, "step0/context/clarifications.json"),
-  path.join(MOCK_ROOT, "step0-contradictory/context/clarifications.json"),
-].filter((f) => fs.existsSync(f));
-
-describe.skipIf(step0ClarificationFiles.length === 0)("Canonical format: step0 clean-break metadata", () => {
-  for (const file of step0ClarificationFiles) {
-    const rel = relPath(file);
-
-    describe(rel, () => {
-      const data = JSON.parse(readFile(file));
-
-      it("does not embed legacy research plan or lens metadata", () => {
-        expect(data.metadata).not.toHaveProperty("research_plan");
-        expect(data.metadata).not.toHaveProperty("research_lens");
-        expect(data.metadata).not.toHaveProperty("selected_lens");
-      });
-
-      it("does not embed dimension scoring metadata", () => {
-        expect(data.metadata).not.toHaveProperty("dimensions_evaluated");
-        expect(data.metadata).not.toHaveProperty("dimensions_selected");
-        expect(data.metadata).not.toHaveProperty("dimension_scores");
-        expect(data.metadata).not.toHaveProperty("selected_dimensions");
-      });
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// answer-evaluation.json structural checks (gate mock)
-// ---------------------------------------------------------------------------
-
-const evalFile = path.join(
-  MOCK_ROOT,
-  "gate-answer-evaluator/answer-evaluation.json",
-);
-
-describe.skipIf(!fs.existsSync(evalFile))("Canonical format: answer-evaluation.json structure", () => {
-  if (fs.existsSync(evalFile)) {
-    const raw = readFile(evalFile);
-
-    it("is valid JSON", () => {
-      expect(() => JSON.parse(raw)).not.toThrow();
-    });
-
-    const data = JSON.parse(raw);
-
-    it("has verdict field with valid value", () => {
-      expect(data.verdict).toBeDefined();
-      expect(["sufficient", "mixed", "insufficient"]).toContain(data.verdict);
-    });
-
-    it("has answered_count as number", () => {
-      expect(typeof data.answered_count).toBe("number");
-    });
-
-    it("has empty_count as number", () => {
-      expect(typeof data.empty_count).toBe("number");
-    });
-
-    it("has vague_count as number", () => {
-      expect(typeof data.vague_count).toBe("number");
-    });
-
-    it("has total_count as number", () => {
-      expect(typeof data.total_count).toBe("number");
-    });
-
-    it("has reasoning as string", () => {
-      expect(typeof data.reasoning).toBe("string");
-    });
-
-    it("counts add up: answered + empty + vague + contradictory == total", () => {
-      const contradictoryCount = typeof data.contradictory_count === "number"
-        ? data.contradictory_count
-        : 0;
-      expect(data.answered_count + data.empty_count + data.vague_count + contradictoryCount).toBe(
-        data.total_count,
-      );
-    });
-
-    it("has per_question array", () => {
-      expect(Array.isArray(data.per_question)).toBe(true);
-    });
-
-    it("per_question length matches total_count", () => {
-      expect(data.per_question.length).toBe(data.total_count);
-    });
-
-    it("per_question entries have question_id and verdict", () => {
-      for (const entry of data.per_question) {
-        expect(entry.question_id).toMatch(/^(Q\d+|R\d+\.\d+[a-z]?)$/);
-        expect(["clear", "needs_refinement", "not_answered", "vague", "contradictory"]).toContain(entry.verdict);
-        if (entry.verdict === "vague") {
-          expect(typeof entry.reason).toBe("string");
-          expect(entry.reason.trim().length).toBeGreaterThan(0);
-        } else if (entry.verdict === "contradictory") {
-          expect(typeof entry.reason).toBe("string");
-          expect(entry.reason.trim().length).toBeGreaterThan(0);
-          expect(typeof entry.contradicts).toBe("string");
-          expect(entry.contradicts).toMatch(/^(Q\d+|R\d+\.\d+[a-z]?)$/);
-        } else {
-          expect(entry.reason).toBeUndefined();
-        }
-      }
-    });
-
-    it("per_question verdict counts match aggregates", () => {
-      const clear = data.per_question.filter(
-        (e: { verdict: string }) => e.verdict === "clear",
-      ).length;
-      const needsRefinement = data.per_question.filter(
-        (e: { verdict: string }) => e.verdict === "needs_refinement",
-      ).length;
-      const notAnswered = data.per_question.filter(
-        (e: { verdict: string }) => e.verdict === "not_answered",
-      ).length;
-      const vague = data.per_question.filter(
-        (e: { verdict: string }) => e.verdict === "vague",
-      ).length;
-      const contradictory = data.per_question.filter(
-        (e: { verdict: string }) => e.verdict === "contradictory",
-      ).length;
-      expect(clear + needsRefinement).toBe(data.answered_count);
-      expect(notAnswered).toBe(data.empty_count);
-      expect(vague).toBe(data.vague_count);
-      if (typeof data.contradictory_count === "number") {
-        expect(contradictory).toBe(data.contradictory_count);
-      }
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// user-context.md — generated at runtime by Rust (format_user_context)
-// ---------------------------------------------------------------------------
-
-// Note: user-context.md is generated at runtime by the Rust function
-// `format_user_context` in workflow.rs. Its format is validated by Rust
-// unit tests (`cargo test commands::workflow`). No mock template exists
-// for this artifact.

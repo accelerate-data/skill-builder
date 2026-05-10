@@ -18,6 +18,7 @@ const {
     steps: [{ status: "completed" }, { status: "in_progress" }],
     updateStepStatus: vi.fn(),
     setRunning: vi.fn(),
+    setStopping: vi.fn(),
     setGateLoading: vi.fn(),
     clearInitializing: vi.fn(),
     clearRuntimeError: vi.fn(),
@@ -58,6 +59,7 @@ describe("teardownWorkflowSession", () => {
       steps: [{ status: "completed" }, { status: "in_progress" }],
       updateStepStatus: vi.fn(),
       setRunning: vi.fn(),
+      setStopping: vi.fn(),
       setGateLoading: vi.fn(),
       clearInitializing: vi.fn(),
       clearRuntimeError: vi.fn(),
@@ -70,6 +72,7 @@ describe("teardownWorkflowSession", () => {
     const state = mockWorkflowStore.getState();
     expect(state.updateStepStatus).toHaveBeenCalledWith(1, "pending");
     expect(state.setRunning).toHaveBeenCalledWith(false);
+    expect(state.setStopping).toHaveBeenCalledWith(false);
     expect(state.setGateLoading).toHaveBeenCalledWith(false);
     expect(state.clearInitializing).toHaveBeenCalled();
     expect(state.clearRuntimeError).toHaveBeenCalled();
@@ -91,6 +94,7 @@ describe("teardownWorkflowSession", () => {
       steps: [{ status: "completed" }, { status: "pending" }],
       updateStepStatus: vi.fn(),
       setRunning: vi.fn(),
+      setStopping: vi.fn(),
       setGateLoading: vi.fn(),
       clearInitializing: vi.fn(),
       clearRuntimeError: vi.fn(),

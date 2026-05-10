@@ -37,7 +37,7 @@ This design replaces the current `scenario -> many cases` authoring model with a
 - the repo-owned `tests/evals/` engineering harness;
 - Promptfoo red-team scans;
 - remote or shared run-history storage;
-- replacing the Promptfoo sidecar or OpenHands runtime boundary.
+- replacing the Promptfoo eval runtime or OpenHands runtime boundary.
 
 ## Key Decisions
 
@@ -224,7 +224,7 @@ The user-facing authoring model is simplified, but the broader runtime boundary 
 
 - scenario files are the source of truth for authored eval assets;
 - Rust/Tauri owns scenario CRUD, run preparation, and validation;
-- the Promptfoo sidecar owns eval execution orchestration and translates expectations into one `llm-rubric` per expectation;
+- the Promptfoo eval runtime owns eval execution orchestration and translates expectations into one `llm-rubric` per expectation;
 - app-local Promptfoo state owns run history;
 - Refine remains the editing surface after evaluation.
 
@@ -244,7 +244,7 @@ The implementation may use compatibility adapters internally while migrating, bu
 
 This document replaces the following deleted design docs:
 
-- `docs/design/eval-workbench-promptfoo-sidecar/README.md`
+- legacy Promptfoo execution design doc
 - `docs/design/eval-workbench-scenarios/README.md`
 - `docs/design/eval-workbench-scenarios-remediation/README.md`
 

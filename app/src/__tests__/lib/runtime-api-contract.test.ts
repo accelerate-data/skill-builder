@@ -13,7 +13,7 @@ describe("runtime API contract", () => {
     const source = readSource("lib/tauri.ts");
 
     expect(source).toContain("export const sendRefineMessage");
-    expect(source).toContain("export const cancelAgentRun");
+    expect(source).not.toContain("export const cancelAgentRun");
     expect(source).not.toContain("export const pauseRefineSession");
     // start_agent Tauri command has been removed — neither the old raw binding
     // nor the removed legacy wrapper should appear.

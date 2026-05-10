@@ -4,4 +4,4 @@ pub mod events;
 pub mod node_resolver;
 pub mod openhands_server;
 pub mod run_persist;
-pub mod sidecar;
+pub mod runtime_config;

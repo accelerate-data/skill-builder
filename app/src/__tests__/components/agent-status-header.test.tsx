@@ -152,7 +152,7 @@ describe("AgentStatusHeader", () => {
 
   it("shows cost badge when totalCost is available", () => {
     useAgentStore.getState().startRun("test-agent", "opus");
-    // Simulate token usage and cost (now set via sidecar persistence)
+    // Simulate token usage and cost (now set via runtime persistence)
     useAgentStore.setState((state) => ({
       runs: {
         ...state.runs,

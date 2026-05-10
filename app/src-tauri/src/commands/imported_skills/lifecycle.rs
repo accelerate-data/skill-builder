@@ -73,7 +73,7 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
 
 pub(crate) fn delete_imported_skill_inner(
     conn: &rusqlite::Connection,
-    skill_id: &str,
+    skill_id: i64,
     workspace_path: &str,
 ) -> Result<(), String> {
     // Look up skill
@@ -132,7 +132,7 @@ pub(crate) fn delete_imported_skill_inner(
     Ok(())
 }
 
-/// Parse a skill key into (skill_name, plugin_slug, imported_skill_id).
+/// Parse a skill key into (skill_name, plugin_slug, imported_skill_parent_id).
 ///
 /// Key formats:
 /// - `imported:{skill_id}` → look up imported skill
@@ -141,9 +141,27 @@ pub(crate) fn delete_imported_skill_inner(
 fn resolve_skill_target(
     conn: &rusqlite::Connection,
     skill_key: &str,
-) -> Result<(String, String, Option<String>), String> {
-    // Imported skill key
+) -> Result<(String, String, Option<i64>), String> {
+    if let Ok(builder_skill_id) = skill_key.parse::<i64>() {
+        if let Some(imported) = crate::db::get_imported_skill_by_id(conn, builder_skill_id)? {
+            return Ok((
+                imported.skill_name,
+                imported
+                    .plugin_slug
+                    .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()),
+                Some(builder_skill_id),
+            ));
+        }
+        if let Some(skill) = crate::db::get_skill_master_by_id(conn, builder_skill_id)? {
+            return Ok((skill.name, skill.plugin_slug, None));
+        }
+    }
+
+    // Legacy imported skill key
     if let Some(skill_id) = skill_key.strip_prefix("imported:") {
+        let skill_id = skill_id
+            .parse::<i64>()
+            .map_err(|_| format!("Imported skill key '{}' is not a valid skill id", skill_key))?;
         let imported = crate::db::get_imported_skill_by_id(conn, skill_id)?
             .ok_or_else(|| format!("Imported skill '{}' not found", skill_id))?;
         return Ok((
@@ -151,7 +169,7 @@ fn resolve_skill_target(
             imported
                 .plugin_slug
                 .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string()),
-            Some(skill_id.to_string()),
+            Some(skill_id),
         ));
     }
     // Library key: skill-builder:{plugin_slug}:{skill_name}
@@ -410,7 +428,7 @@ pub fn create_plugin_from_skills(
         )?;
         crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
         if let (Some(skill_id), Some(disk_path)) =
-            (imported_skill_id.as_deref(), skills_target.as_deref())
+            (imported_skill_id, skills_target.as_deref())
         {
             crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
         }
@@ -444,7 +462,7 @@ pub fn move_skill_to_plugin(
         &plugin_slug,
     )?;
     if let (Some(skill_id), Some(disk_path)) =
-        (imported_skill_id.as_deref(), skills_target.as_deref())
+        (imported_skill_id, skills_target.as_deref())
     {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
     }
@@ -483,7 +501,7 @@ pub fn remove_skill_from_plugin(skill_key: String, db: tauri::State<'_, Db>) -> 
         DEFAULT_PLUGIN_SLUG,
     )?;
     if let (Some(skill_id), Some(disk_path)) =
-        (imported_skill_id.as_deref(), skills_target.as_deref())
+        (imported_skill_id, skills_target.as_deref())
     {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
     }
@@ -520,14 +538,16 @@ pub fn set_plugin_upgrade_lock(
 
 #[tauri::command]
 pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Result<(), String> {
+    let skill_id = skill_id
+        .parse::<i64>()
+        .map_err(|_| format!("Invalid skill id '{}'", skill_id))?;
     log::info!("delete_imported_skill: skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[delete_imported_skill] Failed to acquire DB lock: {}", e);
+        log::error!("delete_imported_skill: failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let settings = crate::db::read_settings(&conn)?;
-    let workspace_path = settings.workspace_path.unwrap_or_default();
-    delete_imported_skill_inner(&conn, &skill_id, &workspace_path)?;
+    let workspace_path = crate::db::read_settings(&conn)?.workspace_path.unwrap_or_default();
+    delete_imported_skill_inner(&conn, skill_id, &workspace_path)?;
     Ok(())
 }
 
@@ -538,11 +558,11 @@ mod tests {
     use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
     use crate::types::ImportedSkill;
 
-    fn make_test_skill(id: &str, name: &str) -> ImportedSkill {
+    fn make_test_skill(id: i64, name: &str) -> ImportedSkill {
         ImportedSkill {
-            skill_id: id.to_string(),
+            skill_id: id,
             skill_name: name.to_string(),
-            library_key: Some(format!("imported:{id}")),
+            library_key: Some(id.to_string()),
             is_active: true,
             disk_path: std::env::temp_dir()
                 .join(name)
@@ -566,12 +586,15 @@ mod tests {
     fn test_delete_imported_skill_inner_happy_path() {
         let conn = create_test_db_for_tests();
         crate::db::upsert_skill(&conn, "del-happy", "imported", "domain").unwrap();
-        let skill = make_test_skill("del-happy-id", "del-happy");
+        let skill = make_test_skill(101, "del-happy");
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "del-happy", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
         // disk_path points to a non-existent temp dir — absence is handled gracefully
-        let result = delete_imported_skill_inner(&conn, "del-happy-id", "");
+        let result = delete_imported_skill_inner(&conn, skill_id, "");
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
-        let after = crate::db::get_imported_skill_by_id(&conn, "del-happy-id").unwrap();
+        let after = crate::db::get_imported_skill_by_id(&conn, skill_id).unwrap();
         assert!(
             after.is_none(),
             "skill should have been removed from imported_skills"
@@ -593,13 +616,16 @@ mod tests {
         std::fs::create_dir_all(&disk_path).unwrap();
         std::fs::write(disk_path.join("SKILL.md"), "# skill").unwrap();
 
-        let mut skill = make_test_skill("del-workspace-id", "del-workspace");
+        let mut skill = make_test_skill(102, "del-workspace");
         skill.disk_path = disk_path.to_string_lossy().to_string();
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "del-workspace", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
 
         delete_imported_skill_inner(
             &conn,
-            "del-workspace-id",
+            skill_id,
             workspace.path().to_str().unwrap(),
         )
         .unwrap();
@@ -733,7 +759,7 @@ mod tests {
     #[test]
     fn test_delete_imported_skill_inner_not_found() {
         let conn = create_test_db_for_tests();
-        let result = delete_imported_skill_inner(&conn, "nonexistent-id", "");
+        let result = delete_imported_skill_inner(&conn, 99999, "");
         assert!(result.is_err());
         let msg = result.unwrap_err();
         assert!(
@@ -753,16 +779,19 @@ mod tests {
             crate::db::create_plugin(&conn, "dest-plugin", "local", None, None).unwrap();
 
         // Create an imported skill in the default plugin
-        let skill = make_test_skill("imp-skill-id", "imp-skill");
+        let skill = make_test_skill(103, "imp-skill");
         crate::db::upsert_skill(&conn, "imp-skill", "imported", "domain").unwrap();
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "imp-skill", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
 
         // Move: update skills.plugin_id (DB move)
         crate::db::move_skill_to_plugin(&conn, "imp-skill", DEFAULT_PLUGIN_SLUG, &target_slug)
             .expect("move should succeed");
 
         // Query imported_skills — plugin_slug comes from JOIN to skills.plugin_id
-        let imported = crate::db::get_imported_skill_by_id(&conn, "imp-skill-id")
+        let imported = crate::db::get_imported_skill_by_id(&conn, skill_id)
             .expect("query ok")
             .expect("imported skill must exist");
         assert_eq!(

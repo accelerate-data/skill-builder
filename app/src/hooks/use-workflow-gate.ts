@@ -20,6 +20,7 @@ import { appQueryClient } from "@/lib/query-client";
 import { queryKeys } from "@/lib/queries/query-keys";
 
 export interface UseWorkflowGateOptions {
+  skillId: number | null;
   skillName: string;
   pluginSlug?: string;
   workspacePath: string | null;
@@ -54,6 +55,7 @@ export interface UseWorkflowGateReturn {
  * to reduce the main hook from 640+ lines to ~400.
  */
 export function useWorkflowGate({
+  skillId,
   skillName,
   pluginSlug = pluginPaths.default_plugin_slug,
   workspacePath,
@@ -108,7 +110,10 @@ export function useWorkflowGate({
       setGateLoading(true);
       gateStepRef.current = currentStep;
       toast.info("Reviewing answers before continuing");
-      const agentId = await runAnswerEvaluator(skillName, workspacePath);
+      if (skillId == null) {
+        throw new Error("Missing skill ID");
+      }
+      const agentId = await runAnswerEvaluator(skillId, skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
       agentStartRun(agentId, model);
@@ -183,12 +188,12 @@ export function useWorkflowGate({
             }));
           if (updates.length > 0) {
             await invokeCommand("update_clarification_verdicts", {
-              skillId: skillName,
+              skillId: String(skillId),
               updates,
             });
           }
           appQueryClient.invalidateQueries({
-            queryKey: queryKeys.clarifications.bySkill(skillName),
+            queryKey: queryKeys.clarifications.bySkill(String(skillId)),
           });
         } catch (err) {
           console.warn(
@@ -262,7 +267,8 @@ export function useWorkflowGate({
     },
     [
       workspacePath,
-      skillName,
+    skillId,
+    skillName,
       advanceToNextStep,
       cancelPendingAutoStart,
       purpose,

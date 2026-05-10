@@ -1,6 +1,6 @@
 # Skill Builder
 
-Desktop app for creating domain-specific Claude Code-compatible skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
+Desktop app for creating domain-specific Claude Code-compatible skills. Tauri desktop app (React + Rust) orchestrates agents through a Rust-managed OpenHands Agent Server runtime.
 
 **Maintenance rule:** This file contains architecture, conventions, and guidelines — not product details. Do not add counts, feature descriptions, or any fact that can be discovered by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
 
@@ -28,7 +28,6 @@ See `repo-map.json` → `commands` for the full command reference. Quick start:
 ```bash
 cd app && npm install
 cd app && npm run dev                    # Dev mode (hot reload)
-cd app && MOCK_AGENTS=true npm run dev   # Mock mode (no API calls)
 ```
 
 ## Repo Memory
@@ -112,16 +111,14 @@ Run these automatically before reporting completion when files match:
 |---|---|
 | `agent-sources/plugins/**/agents/*.md` | `cd app && npm run test:agents:structural` |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
-| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
-| `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
-| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
+| `app/src/__tests__/fixtures/openhands-events/**` | `cd app && npm run test:unit` |
 | `app/src-tauri/src/contracts/**` | `cd app && npm run codegen && cd src-tauri && cargo test contracts::` |
 | `app/src/**` | `cd app && npm run test:unit` |
 | `tests/evals/**` | `cd tests/evals && npm test`; run affected `npm run eval:<package>` scripts when the issue changes live eval behavior |
 
 **E2E tests** use Playwright to drive the real Tauri app UI, but with mocked Tauri commands (`__TAURI_MOCK_OVERRIDES__` / `reloadWithOverrides`). They are not bare-metal system tests — the backend is always mocked.
 
-For artifact format changes (agent output + app parser + mock templates): run `test:agents:structural`, `test:unit`, and the affected live eval package or smoke subset. The `canonical-format.test.ts` suite is the canary for format drift.
+For artifact format changes (OpenHands transcript fixtures + app parser + mock templates): run `test:agents:structural`, `test:unit`, and the affected live eval package or smoke subset. The `canonical-format.test.ts` suite is the canary for OpenHands transcript fixture format drift.
 
 For Rust and cross-layer changes, consult `TEST_MAP.md` for the correct cargo filter and E2E tag. Unsure? `app/tests/run.sh` runs everything.
 
@@ -138,7 +135,7 @@ Live OpenCode evals are normal automated validation. Choose the smallest useful 
   ./scripts/worktree.sh feature/<branch-name>
   ```
 
-**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, or `.claude/rules/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or `app/sidecar/`.
+**Pre-commit:** `markdownlint <file>` for `.md` files · `cd app && npx tsc --noEmit` · `cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings` · `bash app/scripts/lint-agent-docs.sh` when editing `AGENTS.md`, `CLAUDE.md`, or `.claude/rules/` · `cd app && npm run test:unit` when changing event types in `app/src/lib/` or frontend runtime event consumers.
 
 **Pre-PR `repo-map.json` audit (required):** Before opening or updating a PR, verify `repo-map.json` reflects the current codebase. Check:
 
@@ -160,7 +157,6 @@ in `.claude/rules/logging-policy.md`.
 ## Gotchas
 
 - **Parallel worktrees:** `npm run dev` auto-assigns a free port — safe to run multiple Tauri instances simultaneously.
-- **Sidecar edits:** There is no hot reload for `app/sidecar/`; restart `npm run dev` after sidecar changes. Requires Node.js 18+.
 - **Windows compatibility:** Path separators, CRLF line endings, env-var prefix syntax, and Rust toolchain selection are recurring sources of Windows CI failures. Follow `.claude/rules/windows-compat.md` before writing path assertions, regex, `package.json` scripts, or Rust CI config.
 - **Linear Markdown — no double-escaping:** The `description` and `body` fields in `save_issue`/`save_comment` accept raw Markdown. Write literal newlines, `*`, `-`, `[ ]` etc. directly. Never escape them (`\\n`, `\\*`, `\\[X\\]`) — double-escaped descriptions render as garbled text in Linear.
 - **State:** Component-local UI state must stay in `useState`, not Zustand. Use Zustand only for shared, cross-component, or navigation-persistent state. Full rules: `.claude/rules/state-management.md`.

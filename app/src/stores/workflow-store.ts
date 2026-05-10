@@ -12,10 +12,12 @@ export interface WorkflowStep {
 
 interface WorkflowState {
   skillName: string | null;
+  skillId: number | null;
   purpose: string | null;
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  isStopping: boolean;
   /** When true, users can browse completed steps without triggering resets. */
   reviewMode: boolean;
   /** Active workflow session ID for usage tracking. Created when running starts, ended on navigate-away. */
@@ -28,7 +30,7 @@ interface WorkflowState {
   /** Step IDs that are disabled due to scope recommendation (too broad). */
   disabledSteps: number[];
 
-  /** Structured runtime error from a failed sidecar startup (shown in RuntimeErrorDialog). */
+  /** Structured runtime error from a failed runtime startup (shown in RuntimeErrorDialog). */
   runtimeError: RuntimeError | null;
 
   /** Transient: true while the answer-evaluator gate agent is running (not persisted to SQLite). */
@@ -37,11 +39,12 @@ interface WorkflowState {
   /** Transient: like pendingUpdateMode but suppresses auto-start. Used when navigating to an existing in-progress skill from the sidebar. */
   pendingNoReviewMode: boolean;
 
-  initWorkflow: (skillName: string, purpose?: string, initialReviewMode?: boolean) => void;
+  initWorkflow: (skillName: string, skillId: number | null, purpose?: string, initialReviewMode?: boolean) => void;
   setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
   setRunning: (running: boolean) => void;
+  setStopping: (stopping: boolean) => void;
   setInitializing: () => void;
   clearInitializing: () => void;
   setInitProgressMessage: (message: string) => void;
@@ -52,7 +55,7 @@ interface WorkflowState {
   navigateBackToStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[], savedCurrentStep?: number) => void;
   setHydrated: (hydrated: boolean) => void;
-  /** Set a structured runtime error from a sidecar startup failure. */
+  /** Set a structured runtime error from a runtime startup failure. */
   setRuntimeError: (error: RuntimeError) => void;
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
   clearRuntimeError: () => void;
@@ -69,10 +72,12 @@ const defaultSteps: WorkflowStep[] = WORKFLOW_STEP_DEFINITIONS.map((step) => ({
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   skillName: null,
+  skillId: null,
   purpose: null,
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
+  isStopping: false,
   reviewMode: true,
   workflowSessionId: null,
   isInitializing: false,
@@ -84,13 +89,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   hydrated: false,
   disabledSteps: [],
 
-  initWorkflow: (skillName, purpose, initialReviewMode) =>
+  initWorkflow: (skillName, skillId, purpose, initialReviewMode) =>
     set({
       skillName,
+      skillId,
       purpose: purpose ?? null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      isStopping: false,
       reviewMode: initialReviewMode ?? true,
       workflowSessionId: null,
       isInitializing: false,
@@ -120,15 +127,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       // dashboard creates a fresh one.
       const sessionId = crypto.randomUUID();
       const skillName = get().skillName;
+      const skillId = get().skillId;
       set({ isRunning: true, workflowSessionId: sessionId });
       // Fire-and-forget: persist session to SQLite
-      if (skillName) {
-        createWorkflowSession(sessionId, skillName).catch((e) => console.warn("[workflow-store] non-fatal: op=createWorkflowSession err=%s", e));
+      if (skillName && skillId != null) {
+        createWorkflowSession(sessionId, skillId).catch((e) => console.warn("[workflow-store] non-fatal: op=createWorkflowSession err=%s", e));
       }
     } else {
       set({ isRunning: running });
     }
   },
+
+  setStopping: (stopping) => set({ isStopping: stopping }),
 
   setInitializing: () =>
     set({
@@ -162,6 +172,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({
       currentStep: stepId,
       isRunning: false,
+      isStopping: false,
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
@@ -178,6 +189,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({
       currentStep: stepId,
       isRunning: false,
+      isStopping: false,
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
@@ -220,10 +232,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   reset: () =>
     set({
       skillName: null,
+      skillId: null,
       purpose: null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      isStopping: false,
       reviewMode: true,
       workflowSessionId: null,
       isInitializing: false,

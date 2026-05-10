@@ -28,7 +28,7 @@ describe("RuntimeErrorDialog", () => {
         error={{
           error_type: "spawn_failed",
           message: "Failed to start agent runtime: permission denied",
-          fix_hint: "Check file permissions and rebuild the sidecar.",
+          fix_hint: "Check file permissions and rebuild the runtime.",
         }}
         onDismiss={vi.fn()}
       />
@@ -62,7 +62,7 @@ describe("RuntimeErrorDialog", () => {
         error={{
           error_type: "spawn_failed",
           message: "Failed to start agent runtime",
-          fix_hint: "Try rebuilding the sidecar.",
+          fix_hint: "Try rebuilding the runtime.",
         }}
         onDismiss={onDismiss}
       />

@@ -3,7 +3,9 @@ use std::time::Duration;
 use tauri::State;
 
 use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
-use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, SidecarConfig};
+use crate::agents::runtime_config::{
+    BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
+};
 use crate::commands::workflow::deploy::ensure_openhands_runtime_dir;
 use crate::db::Db;
 use crate::types::ModelSettings;
@@ -91,24 +93,26 @@ fn build_model_connection_test_config(
     workspace_path: &str,
     runtime_run_dir: &std::path::Path,
     llm: crate::types::WorkflowLlmConfig,
-) -> SidecarConfig {
-    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
-        prompt: MODEL_CONNECTION_TEST_PROMPT.to_string(),
-        llm,
-        workspace_root_dir: workspace_path.replace('\\', "/"),
-        workspace_run_dir: runtime_run_dir.to_string_lossy().replace('\\', "/"),
-        mode: Some(OpenHandsRuntimeMode::Throwaway),
-        agent_name: "settings-model-test".to_string(),
-        task_kind: Some("settings.model_connection_test".to_string()),
-        user_message_suffix: None,
-        allowed_tools: Vec::new(),
-        max_turns: 1,
-        output_format: None,
-        skill_name: None,
-        step_id: Some(-40),
-        run_source: Some("test".to_string()),
-        plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
-    })
+) -> OpenHandsRuntimeConfig {
+    crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
+            prompt: MODEL_CONNECTION_TEST_PROMPT.to_string(),
+            llm,
+            workspace_root_dir: workspace_path.replace('\\', "/"),
+            workspace_run_dir: runtime_run_dir.to_string_lossy().replace('\\', "/"),
+            mode: Some(OpenHandsRuntimeMode::Throwaway),
+            agent_name: "settings-model-test".to_string(),
+            task_kind: Some("settings.model_connection_test".to_string()),
+            user_message_suffix: None,
+            allowed_tools: Vec::new(),
+            max_turns: 1,
+            output_format: None,
+            skill_name: None,
+            step_id: Some(-40),
+            run_source: Some("test".to_string()),
+            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+        },
+    )
 }
 
 fn ensure_model_connection_succeeded(state: &serde_json::Value) -> Result<(), String> {

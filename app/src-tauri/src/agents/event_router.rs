@@ -1,12 +1,12 @@
 use tauri::Emitter;
 
 use super::event_types::{
-    AgentEvent, AgentExitPayload, AgentInitError, AgentShutdownPayload, SidecarRunSummary,
+    AgentEvent, AgentExitPayload, AgentInitError, AgentShutdownPayload, RuntimeRunSummary,
 };
 use super::run_persist::persist_run_summary;
 #[derive(Debug)]
-pub(super) enum SidecarMessageAction {
-    PersistRunSummary(Box<SidecarRunSummary>),
+pub(super) enum RuntimeMessageAction {
+    PersistRunSummary(Box<RuntimeRunSummary>),
     EmitFrontendEvent {
         event_name: &'static str,
         payload: serde_json::Value,
@@ -36,10 +36,10 @@ fn build_frontend_event_payload(
     serde_json::Value::Object(payload)
 }
 
-pub(super) fn route_sidecar_message(
+pub(super) fn route_runtime_message(
     agent_id: &str,
     message: serde_json::Value,
-) -> Option<SidecarMessageAction> {
+) -> Option<RuntimeMessageAction> {
     let msg_type = message
         .get("type")
         .and_then(|t| t.as_str())
@@ -72,9 +72,9 @@ pub(super) fn route_sidecar_message(
         return match message.get("event") {
             Some(event) => match event.get("type").and_then(|t| t.as_str()) {
                 Some("run_result") => {
-                    match serde_json::from_value::<SidecarRunSummary>(event.clone()) {
+                    match serde_json::from_value::<RuntimeRunSummary>(event.clone()) {
                         Ok(summary) => {
-                            Some(SidecarMessageAction::PersistRunSummary(Box::new(summary)))
+                            Some(RuntimeMessageAction::PersistRunSummary(Box::new(summary)))
                         }
                         Err(e) => {
                             log::error!(
@@ -86,35 +86,35 @@ pub(super) fn route_sidecar_message(
                         }
                     }
                 }
-                Some("run_config") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("run_config") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-run-config",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
-                Some("run_init") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("run_init") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-run-init",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
-                Some("turn_usage") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("turn_usage") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-turn-usage",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
-                Some("compaction") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("compaction") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-compaction",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
-                Some("context_window") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("context_window") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-context-window",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
-                Some("session_exhausted") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("session_exhausted") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-session-exhausted",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
-                Some("init_progress") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("init_progress") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-init-progress",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
-                Some("turn_complete") => Some(SidecarMessageAction::EmitFrontendEvent {
+                Some("turn_complete") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-turn-complete",
                     payload: build_frontend_event_payload(agent_id, timestamp, event),
                 }),
@@ -141,19 +141,19 @@ pub(super) fn route_sidecar_message(
         };
     }
 
-    Some(SidecarMessageAction::ForwardAgentMessage(AgentEvent {
+    Some(RuntimeMessageAction::ForwardAgentMessage(AgentEvent {
         agent_id: agent_id.to_string(),
         message,
     }))
 }
 
-pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
+pub fn handle_runtime_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
     match serde_json::from_str::<serde_json::Value>(line) {
-        Ok(message) => match route_sidecar_message(agent_id, message) {
-            Some(SidecarMessageAction::PersistRunSummary(summary)) => {
+        Ok(message) => match route_runtime_message(agent_id, message) {
+            Some(RuntimeMessageAction::PersistRunSummary(summary)) => {
                 persist_run_summary(app_handle, agent_id, &summary);
             }
-            Some(SidecarMessageAction::EmitFrontendEvent {
+            Some(RuntimeMessageAction::EmitFrontendEvent {
                 event_name,
                 payload,
             }) => {
@@ -161,7 +161,7 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                     log::warn!("Failed to emit {} for {}: {}", event_name, agent_id, e);
                 }
             }
-            Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
+            Some(RuntimeMessageAction::ForwardAgentMessage(event)) => {
                 let msg_type = event
                     .message
                     .get("type")
@@ -223,17 +223,17 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
             None => {}
         },
         Err(e) => {
-            log::warn!("Failed to parse sidecar output: {}", e);
+            log::warn!("Failed to parse runtime output: {}", e);
         }
     }
 }
 
 #[allow(dead_code)]
-pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
-    handle_sidecar_exit_with_detail(app_handle, agent_id, success, None);
+pub fn handle_runtime_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
+    handle_runtime_exit_with_detail(app_handle, agent_id, success, None);
 }
 
-pub fn handle_sidecar_exit_with_detail(
+pub fn handle_runtime_exit_with_detail(
     app_handle: &tauri::AppHandle,
     agent_id: &str,
     success: bool,
@@ -330,7 +330,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn route_sidecar_message_maps_all_agent_events_to_expected_frontend_channels() {
+    fn route_runtime_message_maps_all_agent_events_to_expected_frontend_channels() {
         let cases = vec![
             (
                 serde_json::json!({
@@ -426,10 +426,10 @@ mod tests {
                 "timestamp": 42_u64
             });
 
-            let action = route_sidecar_message("agent-1", message);
+            let action = route_runtime_message("agent-1", message);
 
             match action {
-                Some(SidecarMessageAction::EmitFrontendEvent {
+                Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name,
                     payload,
                 }) => {
@@ -444,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_returns_run_init_frontend_event() {
+    fn route_runtime_message_returns_run_init_frontend_event() {
         let message = serde_json::json!({
             "type": "agent_event",
             "event": {
@@ -455,10 +455,10 @@ mod tests {
             "timestamp": 42_u64
         });
 
-        let action = route_sidecar_message("agent-1", message);
+        let action = route_runtime_message("agent-1", message);
 
         match action {
-            Some(SidecarMessageAction::EmitFrontendEvent {
+            Some(RuntimeMessageAction::EmitFrontendEvent {
                 event_name,
                 payload,
             }) => {
@@ -472,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_returns_init_progress_event() {
+    fn route_runtime_message_returns_init_progress_event() {
         let message = serde_json::json!({
             "type": "agent_event",
             "event": {
@@ -482,10 +482,10 @@ mod tests {
             "timestamp": 99_u64
         });
 
-        let action = route_sidecar_message("agent-2", message);
+        let action = route_runtime_message("agent-2", message);
 
         match action {
-            Some(SidecarMessageAction::EmitFrontendEvent {
+            Some(RuntimeMessageAction::EmitFrontendEvent {
                 event_name,
                 payload,
             }) => {
@@ -499,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_returns_session_exhausted_event() {
+    fn route_runtime_message_returns_session_exhausted_event() {
         let message = serde_json::json!({
             "type": "agent_event",
             "event": {
@@ -509,10 +509,10 @@ mod tests {
             "timestamp": 100_u64
         });
 
-        let action = route_sidecar_message("agent-5", message);
+        let action = route_runtime_message("agent-5", message);
 
         match action {
-            Some(SidecarMessageAction::EmitFrontendEvent {
+            Some(RuntimeMessageAction::EmitFrontendEvent {
                 event_name,
                 payload,
             }) => {
@@ -525,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_returns_turn_complete_event() {
+    fn route_runtime_message_returns_turn_complete_event() {
         let message = serde_json::json!({
             "type": "agent_event",
             "event": {
@@ -534,10 +534,10 @@ mod tests {
             "timestamp": 101_u64
         });
 
-        let action = route_sidecar_message("agent-6", message);
+        let action = route_runtime_message("agent-6", message);
 
         match action {
-            Some(SidecarMessageAction::EmitFrontendEvent {
+            Some(RuntimeMessageAction::EmitFrontendEvent {
                 event_name,
                 payload,
             }) => {
@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_forwards_openhands_conversation_event() {
+    fn route_runtime_message_forwards_openhands_conversation_event() {
         let message = serde_json::json!({
             "type": "conversation_event",
             "runtime": "openhands",
@@ -560,10 +560,10 @@ mod tests {
             }
         });
 
-        let action = route_sidecar_message("agent-6", message.clone());
+        let action = route_runtime_message("agent-6", message.clone());
 
         match action {
-            Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
+            Some(RuntimeMessageAction::ForwardAgentMessage(event)) => {
                 assert_eq!(event.agent_id, "agent-6");
                 assert_eq!(event.message, message);
             }
@@ -575,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_forwards_openhands_conversation_state() {
+    fn route_runtime_message_forwards_openhands_conversation_state() {
         let message = serde_json::json!({
             "type": "conversation_state",
             "runtime": "openhands",
@@ -584,10 +584,10 @@ mod tests {
             "error_detail": null
         });
 
-        let action = route_sidecar_message("agent-6", message.clone());
+        let action = route_runtime_message("agent-6", message.clone());
 
         match action {
-            Some(SidecarMessageAction::ForwardAgentMessage(event)) => {
+            Some(RuntimeMessageAction::ForwardAgentMessage(event)) => {
                 assert_eq!(event.agent_id, "agent-6");
                 assert_eq!(event.message, message);
             }
@@ -599,18 +599,18 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_skips_sdk_stderr_diagnostics() {
+    fn route_runtime_message_skips_sdk_stderr_diagnostics() {
         let message = serde_json::json!({
             "type": "system",
             "subtype": "sdk_stderr",
             "data": "diagnostic stderr line"
         });
 
-        assert!(route_sidecar_message("agent-6", message).is_none());
+        assert!(route_runtime_message("agent-6", message).is_none());
     }
 
     #[test]
-    fn route_sidecar_message_intercepts_run_result() {
+    fn route_runtime_message_intercepts_run_result() {
         let message = serde_json::json!({
             "type": "agent_event",
             "event": {
@@ -642,10 +642,10 @@ mod tests {
             }
         });
 
-        let action = route_sidecar_message("agent-3", message);
+        let action = route_runtime_message("agent-3", message);
 
         match action {
-            Some(SidecarMessageAction::PersistRunSummary(summary)) => {
+            Some(RuntimeMessageAction::PersistRunSummary(summary)) => {
                 assert_eq!(summary.skill_name, "demo-skill");
                 assert_eq!(summary.step_id, 2);
                 assert_eq!(summary.plugin_slug, "skills");
@@ -656,13 +656,13 @@ mod tests {
     }
 
     #[test]
-    fn route_sidecar_message_skips_agent_event_without_event() {
+    fn route_runtime_message_skips_agent_event_without_event() {
         let message = serde_json::json!({
             "type": "agent_event",
             "timestamp": 7_u64
         });
 
-        assert!(route_sidecar_message("agent-4", message).is_none());
+        assert!(route_runtime_message("agent-4", message).is_none());
     }
 
     // =========================================================================

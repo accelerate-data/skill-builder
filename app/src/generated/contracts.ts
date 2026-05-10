@@ -11,9 +11,9 @@
 export type AgentEvent = ({ type: "run_config" } & RunConfigEvent) | ({ type: "run_init" } & RunInitEvent) | ({ type: "turn_usage" } & TurnUsageEvent) | ({ type: "compaction" } & CompactionEvent) | ({ type: "context_window" } & ContextWindowEvent) | ({ type: "session_exhausted" } & SessionExhaustedEvent) | ({ type: "init_progress" } & InitProgressEvent) | ({ type: "turn_complete" } & TurnCompleteEvent) | ({ type: "run_result" } & RunResultEvent)
 
 /**
- * Wrapper envelope for agent events, matching the sidecar `AgentEventEnvelope`.
+ * Wrapper envelope for agent events, matching the runtime `AgentEventEnvelope`.
  * 
- * The sidecar envelope has `type: "agent_event"` as a literal discriminator
+ * The runtime envelope has `type: "agent_event"` as a literal discriminator
  * plus the nested `event` and `timestamp` fields.
  */
 export type AgentEventEnvelope = { 

@@ -8,7 +8,7 @@ functional-specs: []
 
 ## Overview
 
-OpenHands events arrive on the wire as `conversation_event` payloads with an `event_class` discriminator and land on `run.conversationEvents` in the frontend agent-store. The existing UI surfaces — Refine chat (`agent-turn-inline`), Workflow output panel (`agent-output-panel`), feedback dialog, status header, structured-output extraction — were all designed around the Claude Code `DisplayItem` shape (a transformed event format produced by the Node sidecar) on `run.displayItems`. After the OpenHands runtime migration, every run completes successfully on the backend but the UI either renders nothing (Refine) or renders a dense, unreadable raw-event timeline (Workflow's `agent-output-panel` via `ConversationEventList`).
+OpenHands events arrive on the wire as `conversation_event` payloads with an `event_class` discriminator and land on `run.conversationEvents` in the frontend agent-store. The existing UI surfaces — Refine chat (`agent-turn-inline`), Workflow output panel (`agent-output-panel`), feedback dialog, status header, structured-output extraction — were all designed around the Claude Code `DisplayItem` shape (a transformed event format produced by the legacy Node runtime) on `run.displayItems`. After the OpenHands runtime migration, every run completes successfully on the backend but the UI either renders nothing (Refine) or renders a dense, unreadable raw-event timeline (Workflow's `agent-output-panel` via `ConversationEventList`).
 
 This design defines a **product-wide projection rule**: an agent-store layer that converts every incoming OpenHands `conversation_event` into one or more `DisplayItem` mutations on `run.displayItems`, while preserving the raw native event stream on `run.conversationEvents` as an immutable audit trail. All UI surfaces consume `displayItems` uniformly via the existing `BaseItem` / `ToolItem` / `SubagentItem` / `ThinkingItem` / `OutputItem` / `ToolActivityGroupView` component set. There is no new design system, no toggle, no per-page rendering logic.
 
@@ -31,7 +31,7 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 
 - New rendering components — the existing component set on `main` is the visual surface for every UI consumer
 - A toggle between "beautified" and "raw" rendering — the projected view is the only production path
-- Translation of historical Claude Code-shaped `displayItems` (the Claude Code sidecar runtime is being removed in the broader VU-1145 migration; this design assumes OpenHands events as the only future input)
+- Translation of historical Claude Code-shaped `displayItems` (the Claude Code runtime is being removed in the broader VU-1145 migration; this design assumes OpenHands events as the only future input)
 - A new dev-tools / debug surface that reads `conversationEvents` directly (out of scope; `ConversationEventList` is retained as the rendering primitive for that future surface)
 
 ## Key Decisions
@@ -40,7 +40,7 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 |---|---|
 | Project events into `DisplayItem` at the agent-store layer rather than at the renderer | Reuses the entire `BaseItem`/`ToolItem`/`SubagentItem` component tree and the `groupDisplayItems` activity-group logic on main without forking. Renderer stays runtime-agnostic. |
 | Keep `conversationEvents` populated alongside `displayItems` | The raw native event stream is the audit trail and powers `agent-output-panel` for workflow debugging. The projection is a UI concern, not a data-model replacement. |
-| Pair `ActionEvent` + `ObservationEvent` by `tool_call_id` into one `DisplayItem` | Matches the chat-conventional "single tool call card with observation inside" pattern and matches how Claude Code's sidecar already shaped `tool_call` items. |
+| Pair `ActionEvent` + `ObservationEvent` by `tool_call_id` into one `DisplayItem` | Matches the chat-conventional "single tool call card with observation inside" pattern and matches how the legacy Claude Code runtime already shaped `tool_call` items. |
 | Hide `ConversationStateUpdateEvent` from chat; keep it in `conversationEvents` audit trail | Pure internal counter/state churn (token deltas, `execution_status` flips, `agent_state`). The lifecycle chip in the chat header already represents the user-facing transitions semantically; rendering each intermediate diff as a "Lifecycle update" row was noise. The Rust normalizer also promotes meaningful terminal state transitions to `conversation_state` — there is no information loss. |
 | Keep `SystemPromptEvent`, `Condensation*Event`, `PauseEvent`, and user `MessageEvent` visible as collapsed rows | Each carries genuine user-facing meaning that `ConversationStateUpdateEvent` does not — system prompt is a one-time setup the user can audit, condensations explain why context shifted mid-turn, pause is a real user action with intent, and the user MessageEvent shows the exact text dispatched (including any system suffix). All collapsed by default, low visual weight. |
 | Translate `InvokeSkillAction` to a `subagent` DisplayItem (not `tool_call`) | Semantic match: an AgentSkill activation loads a sub-context that drives subsequent actions, mirroring Claude Code's `Agent`/`Task` sub-agent invocations. The existing `SubagentItem` is the right shell. |
@@ -181,7 +181,7 @@ Mutating in place preserves React keys and any user-controlled expand state.
 |---|---|
 | `docs/design/openhands-runtime-model/README.md` | Defines the active OpenHands runtime and event model that this projection renders across surfaces. |
 | `docs/design/openhands-runtime-model/README.md` | Defines the active session model and event shapes (`conversation_event`, `conversation_state`) this projection consumes. |
-| Sidecar `app/sidecar/display-types.ts` | Canonical definition of `DisplayItem`. The projection produces values matching this shape verbatim. The frontend mirror at `app/src/lib/display-types.ts` stays in sync. |
+| `app/src/lib/display-types.ts` | Canonical frontend definition of `DisplayItem`. The projection produces values matching this shape verbatim. |
 
 ## Key Source Files
 
@@ -205,7 +205,7 @@ Keep both fallback chains in sync: any future SDK that introduces a different di
 
 | Issue | Symptom | Status |
 |---|---|---|
-| Persistence dirs were created but no audit trail was written | `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` was empty for runs after the OpenHands runtime migration. | **Fixed** in commit `e8622297` — `SidecarConfig.persistence_dir` is now plumbed through `OpenHandsOneShotRequest::try_from_sidecar_config` into the `StartConversationRequest.persistence_dir` field on the wire. The SDK now writes its native per-event JSON tree at `{persistence_dir}/{conversation_id}/base_state.json + events/event-NNNNN-{uuid}.json`. We accept the SDK's native per-event JSON format as the on-disk audit shape. The earlier `.jsonl` fixtures (hr-analytics May 2, measuring-pipeline-value May 3) came from a different, older Skill Builder writer path that no longer runs — they remain valid as test inputs because the projection only consumes parsed event payloads. |
+| Persistence dirs were created but no audit trail was written | `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` was empty for runs after the OpenHands runtime migration. | **Fixed** in commit `e8622297` — `OpenHandsRuntimeConfig.persistence_dir` is now plumbed through `OpenHandsOneShotRequest::try_from_runtime_config` into the `StartConversationRequest.persistence_dir` field on the wire. The SDK now writes its native per-event JSON tree at `{persistence_dir}/{conversation_id}/base_state.json + events/event-NNNNN-{uuid}.json`. We accept the SDK's native per-event JSON format as the on-disk audit shape. The earlier `.jsonl` fixtures (hr-analytics May 2, measuring-pipeline-value May 3) came from a different, older Skill Builder writer path that no longer runs — they remain valid as test inputs because the projection only consumes parsed event payloads. |
 
 ## Open Questions
 

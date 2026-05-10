@@ -4,7 +4,7 @@ As-built reference for the Tauri/Rust backend in `app/src-tauri/`.
 
 ## Overview
 
-The backend bridges the React frontend and the Node.js agent sidecar. It owns all persistent state (SQLite), orchestrates agent processes, manages the skill lifecycle on disk, and exposes its surface to the frontend as Tauri commands.
+The backend bridges the React frontend and the Rust-managed OpenHands runtime. It owns all persistent state (SQLite), orchestrates agent processes, manages the skill lifecycle on disk, and exposes its surface to the frontend as Tauri commands.
 
 **Stack:**
 
@@ -12,7 +12,6 @@ The backend bridges the React frontend and the Node.js agent sidecar. It owns al
 - **Rust** — all backend logic
 - **rusqlite (SQLite)** — single embedded database, WAL mode
 - **OpenHands Agent Server** — Python service managed via `uvx`; primary runtime for workflow execution and refine sessions. Rust spawns and manages the server process via `agents/openhands_server/`.
-- **Promptfoo sidecar** — separate process for Eval Workbench runs; managed by `agents/promptfoo_sidecar/`.
 
 ---
 
@@ -104,7 +103,7 @@ See [api.md](api.md) for the full command reference.
 
 1. Frontend calls `create_skill` → backend creates workspace directories + inserts into `skills` (under the skill's plugin) and `workflow_runs`.
 2. User advances to a step → frontend calls `run_workflow_step` with step config (prompt template, model, tools).
-3. Backend reads API key from settings, builds `SidecarConfig`, and dispatches to the OpenHands Agent Server via `agents/openhands_server/`.
+3. Backend reads API key from settings, builds `OpenHandsRuntimeConfig`, and dispatches to the OpenHands Agent Server via `agents/openhands_server/`.
 4. Agent Server streams events over HTTP; Rust translates them into Tauri events and emits to the frontend in real time.
 5. On completion, backend writes artifacts to `workflow_artifacts`, updates step status in `workflow_steps`, logs agent metrics to `agent_runs`.
 
@@ -151,8 +150,6 @@ The primary agent runtime is the **OpenHands Agent Server**, a Python service ma
 **Event streaming**: The Agent Server emits structured events over HTTP. Rust's `events.rs` translates them into Tauri events and forwards them to the frontend in real time using the same event contract (`AgentEvent` tagged union) used by all runtimes.
 
 **Startup check**: `check_startup_deps` probes for the Agent Server (via `uvx`) alongside Node.js, and reports availability to the frontend.
-
-**Eval Workbench**: The **Promptfoo sidecar** (`agents/promptfoo_sidecar/`) is a separate process used only for Eval Workbench runs. It is managed independently of the Agent Server.
 
 **Graceful shutdown**: `graceful_shutdown` releases selected-skill locks, ends workflow sessions for the current instance, then shuts down the OpenHands Agent Server with a bounded graceful-wait window before falling back to forced termination. `cancel_agent_run` cancels a specific in-flight run.
 

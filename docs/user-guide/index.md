@@ -24,7 +24,7 @@ Before the main UI appears, the app may show a few startup surfaces:
 
 ### Splash screen
 
-A splash screen appears while the Node sidecar is initialized.
+A splash screen appears while the OpenHands runtime is initialized.
 
 ### Startup reconciliation
 

@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::{Emitter, Listener, Manager};
 
 use crate::agents::openhands_server;
-use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, SidecarConfig};
+use crate::agents::runtime_config::{BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig};
 use crate::db::Db;
 use crate::skill_paths::resolve_workspace_skill_dir;
 
@@ -24,7 +24,7 @@ use super::prompt::{
     build_evaluator_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt,
     build_step3_prompt, format_user_context,
 };
-use super::settings::{read_workflow_settings, WorkflowSettings};
+use super::settings::{read_workflow_settings_by_skill_id, WorkflowSettings};
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     skill_generation_workflow_tools, workflow_output_format_for_step,
@@ -58,15 +58,15 @@ struct WorkflowStepMaterializedPayload {
     error_detail: Option<String>,
 }
 
-pub(crate) fn build_workflow_research_sidecar_config(
+pub(crate) fn build_workflow_research_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -80,15 +80,15 @@ pub(crate) fn build_workflow_research_sidecar_config(
     })
 }
 
-pub(crate) fn build_workflow_detailed_research_sidecar_config(
+pub(crate) fn build_workflow_detailed_research_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -102,15 +102,15 @@ pub(crate) fn build_workflow_detailed_research_sidecar_config(
     })
 }
 
-pub(crate) fn build_workflow_confirm_decisions_sidecar_config(
+pub(crate) fn build_workflow_confirm_decisions_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -124,15 +124,15 @@ pub(crate) fn build_workflow_confirm_decisions_sidecar_config(
     })
 }
 
-pub(crate) fn build_workflow_generate_skill_sidecar_config(
+pub(crate) fn build_workflow_generate_skill_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
     workflow_session_id: Option<String>,
-) -> SidecarConfig {
-    build_skill_creator_workflow_sidecar_config(SkillCreatorWorkflowConfigParams {
+) -> OpenHandsRuntimeConfig {
+    build_skill_creator_workflow_runtime_config(SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
         workspace_path,
@@ -159,9 +159,9 @@ struct SkillCreatorWorkflowConfigParams<'a> {
     max_turns: u32,
 }
 
-fn build_skill_creator_workflow_sidecar_config(
+fn build_skill_creator_workflow_runtime_config(
     params: SkillCreatorWorkflowConfigParams<'_>,
-) -> SidecarConfig {
+) -> OpenHandsRuntimeConfig {
     let SkillCreatorWorkflowConfigParams {
         skill_name,
         prompt,
@@ -181,8 +181,8 @@ fn build_skill_creator_workflow_sidecar_config(
             .to_string_lossy()
             .replace('\\', "/");
 
-    let mut config =
-        crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+    let mut config = crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
             prompt: prompt.to_string(),
             llm,
             workspace_root_dir,
@@ -198,62 +198,58 @@ fn build_skill_creator_workflow_sidecar_config(
             step_id: Some(step_id as i32),
             run_source: Some("workflow".to_string()),
             plugin_slug: plugin_slug.to_string(),
-        });
+        },
+    );
     config.workflow_session_id = workflow_session_id;
     config
 }
 
-pub(crate) fn build_answer_evaluator_sidecar_config(
+pub(crate) fn build_answer_evaluator_runtime_config(
     skill_name: &str,
     prompt: &str,
     workspace_path: &str,
     plugin_slug: &str,
     llm: crate::types::WorkflowLlmConfig,
-) -> SidecarConfig {
+) -> OpenHandsRuntimeConfig {
     let workspace_root_dir = workspace_path.replace('\\', "/");
     let workspace_run_dir =
         resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
             .to_string_lossy()
             .replace('\\', "/");
 
-    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
-        prompt: prompt.to_string(),
-        llm,
-        workspace_root_dir,
-        workspace_run_dir,
-        mode: None,
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("workflow.answer_evaluator".to_string()),
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
-        max_turns: 20,
-        output_format: Some(answer_evaluator_output_format()),
-        skill_name: Some(skill_name.to_string()),
-        step_id: None,
-        run_source: Some("gate-eval".to_string()),
-        plugin_slug: plugin_slug.to_string(),
-    })
+    crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
+            prompt: prompt.to_string(),
+            llm,
+            workspace_root_dir,
+            workspace_run_dir,
+            mode: None,
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("workflow.answer_evaluator".to_string()),
+            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+            allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(
+            ),
+            max_turns: 20,
+            output_format: Some(answer_evaluator_output_format()),
+            skill_name: Some(skill_name.to_string()),
+            step_id: None,
+            run_source: Some("gate-eval".to_string()),
+            plugin_slug: plugin_slug.to_string(),
+        },
+    )
 }
 
 async fn dispatch_persistent_skill_turn(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
 ) -> Result<String, String> {
-    let skill_name = config.skill_name.clone().ok_or_else(|| {
-        "Workflow OpenHands config missing skill_name for selected conversation lookup".to_string()
-    })?;
-    let conversation_id = {
-        let db = app.state::<Db>();
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_conversation_id(&conn, &config.plugin_slug, &skill_name)?
-    }
-    .ok_or_else(|| {
-        format!(
-            "No active OpenHands conversation for workflow skill '{}' plugin '{}'",
-            skill_name, config.plugin_slug
-        )
-    })?;
+    // Resume the saved OpenHands conversation for this skill, or create a new
+    // one and persist the ID. start_openhands_session uses ResumeOrCreate, so
+    // it covers every "no saved conversation" case — fresh skill, post-reset,
+    // server lost the conversation, DB drift — without erroring back to the UI.
+    let conversation_id =
+        crate::agents::openhands_server::start_openhands_session(app, config.clone(), None).await?;
 
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,
@@ -278,12 +274,12 @@ async fn dispatch_persistent_skill_turn(
 
 pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<Send, SendFuture>(
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: String,
     send: Send,
 ) -> Result<String, String>
 where
-    Send: FnOnce(&str, SidecarConfig, String) -> SendFuture,
+    Send: FnOnce(&str, OpenHandsRuntimeConfig, String) -> SendFuture,
     SendFuture: std::future::Future<Output = Result<(), String>>,
 {
     send(agent_id, config, conversation_id.clone()).await?;
@@ -514,7 +510,7 @@ async fn run_workflow_step_inner(
     );
 
     let config = match step_id {
-        0 => build_workflow_research_sidecar_config(
+        0 => build_workflow_research_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -522,7 +518,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
             workflow_session_id,
         ),
-        1 => build_workflow_detailed_research_sidecar_config(
+        1 => build_workflow_detailed_research_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -530,7 +526,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
             workflow_session_id,
         ),
-        2 => build_workflow_confirm_decisions_sidecar_config(
+        2 => build_workflow_confirm_decisions_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -538,7 +534,7 @@ async fn run_workflow_step_inner(
             settings.llm.clone(),
             workflow_session_id,
         ),
-        3 => build_workflow_generate_skill_sidecar_config(
+        3 => build_workflow_generate_skill_runtime_config(
             skill_name,
             &prompt,
             workspace_path,
@@ -604,6 +600,7 @@ pub async fn run_workflow_step(
     app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     runs: tauri::State<'_, WorkflowStepRunManager>,
+    skill_id: i64,
     skill_name: String,
     step_id: u32,
     workspace_path: String,
@@ -640,7 +637,7 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        openhands_server::pause_openhands_session(stale_agent_id);
+        openhands_server::abort_openhands_run(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
@@ -649,7 +646,8 @@ pub async fn run_workflow_step(
         }
     }
 
-    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
+    let settings =
+        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, step_id, &workspace_path)?;
     log::info!(
         "[run_workflow_step] settings: skills_path={} purpose={} intake={} industry={:?} function={:?}",
         settings.skills_path,
@@ -674,13 +672,14 @@ pub async fn run_workflow_step(
     // Gate: reject disabled steps when guard conditions are active.
     {
         let conn_guard = db.0.lock().map_err(|e| e.to_string())?;
-        if step_id >= 1 && check_scope_recommendation_db(&conn_guard, &skill_name) {
+        let skill_id_text = skill_id.to_string();
+        if step_id >= 1 && check_scope_recommendation_db(&conn_guard, &skill_id_text) {
             return Err(format!(
                 "{} is disabled: the research phase determined the skill scope is too broad.",
                 workflow_step_log_name(step_id as i32)
             ));
         }
-        if step_id >= 3 && check_decisions_guard_db(&conn_guard, &skill_name) {
+        if step_id >= 3 && check_decisions_guard_db(&conn_guard, &skill_id_text) {
             return Err(format!(
                 "{} is disabled: the decisions agent found unresolvable contradictions.",
                 workflow_step_log_name(step_id as i32)
@@ -754,6 +753,7 @@ pub async fn run_answer_evaluator(
     app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     runs: tauri::State<'_, WorkflowStepRunManager>,
+    skill_id: i64,
     skill_name: String,
     workspace_path: String,
 ) -> Result<String, String> {
@@ -762,7 +762,8 @@ pub async fn run_answer_evaluator(
     // Ensure agent files are deployed to workspace
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    let settings = read_workflow_settings(&db, &skill_name, 0, &workspace_path)?;
+    let settings =
+        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, 0, &workspace_path)?;
 
     let user_context_block = format_user_context(
         Some(&skill_name),
@@ -782,7 +783,7 @@ pub async fn run_answer_evaluator(
 
     let clarifications_json = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_name) {
+        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id.to_string()) {
             Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
             _ => "{}".to_string(),
         }
@@ -805,7 +806,7 @@ pub async fn run_answer_evaluator(
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
-    let config = build_answer_evaluator_sidecar_config(
+    let config = build_answer_evaluator_runtime_config(
         &skill_name,
         &prompt,
         &workspace_path,
@@ -852,30 +853,6 @@ pub async fn run_answer_evaluator(
 ///
 /// Cancels an active workflow request. OpenHands requests are killed
 /// through the direct Rust runner registry.
-#[tauri::command]
-pub async fn cancel_workflow_step(
-    agent_id: String,
-    runs: tauri::State<'_, WorkflowStepRunManager>,
-) -> Result<(), String> {
-    log::info!("[cancel_workflow_step] agent={}", agent_id);
-    {
-        let map = runs.0.lock().map_err(|e| {
-            log::error!(
-                "[cancel_workflow_step] Failed to acquire session lock: {}",
-                e
-            );
-            e.to_string()
-        })?;
-        if map.get(&agent_id).is_none() {
-            let msg = format!("No workflow step session found for agent_id={}", agent_id);
-            log::warn!("[cancel_workflow_step] {}", msg);
-            return Err(msg);
-        }
-    }
-    openhands_server::pause_openhands_session(&agent_id);
-    Ok(())
-}
-
 /// Log the user's gate decision so it appears in the backend log stream.
 #[tauri::command]
 pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) {

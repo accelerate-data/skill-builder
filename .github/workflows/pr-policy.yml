@@ -70,7 +70,6 @@ jobs:
           filters: |
             agents:
               - 'agent-sources/**'
-              - 'app/sidecar/**'
               - 'app/e2e/fixtures/agent-responses/**'
 
       - name: Setup Node.js

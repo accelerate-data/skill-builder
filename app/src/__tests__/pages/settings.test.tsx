@@ -357,11 +357,10 @@ describe("SettingsPage", () => {
 
     const user = userEvent.setup();
     await user.click(
-      screen.getByRole("button", { name: /back to dashboard/i }),
+      screen.getByRole("button", { name: /back to home/i }),
     );
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/",
-      search: { tab: undefined },
     });
   });
 

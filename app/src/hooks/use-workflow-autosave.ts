@@ -5,8 +5,7 @@ import { invokeCommand } from "@/lib/tauri";
 import { toast } from "@/lib/toast";
 
 interface UseWorkflowAutosaveOptions {
-  /** Skill name from route params */
-  skillName: string;
+  skillId: number | null;
   /** Whether current step allows clarifications editing */
   clarificationsEditable: boolean | undefined;
   /** Current step completion status */
@@ -34,7 +33,7 @@ function sameClarificationsData(
 }
 
 export function useWorkflowAutosave({
-  skillName,
+  skillId,
   clarificationsEditable,
   currentStepStatus,
   dbClarificationsData,
@@ -79,8 +78,11 @@ export function useWorkflowAutosave({
   const persistQuestionAnswer = useCallback(
     async (questionId: string, answerChoice: string | null, answerText: string | null) => {
       try {
+        if (skillId == null) {
+          throw new Error("Missing skill ID");
+        }
         await invokeCommand("update_clarification_answer", {
-          skillId: skillName,
+          skillId: String(skillId),
           questionId,
           answerChoice,
           answerText,
@@ -89,12 +91,12 @@ export function useWorkflowAutosave({
         toast.error(`Failed to save answer: ${err instanceof Error ? err.message : String(err)}`, {
           duration: Infinity,
           cause: err,
-          context: { operation: "workflow_autosave", skillName },
+          context: { operation: "workflow_autosave", skillId },
         });
         throw err;
       }
     },
-    [skillName],
+    [skillId],
   );
 
   // Handle editor content changes — detect changed question answers and persist

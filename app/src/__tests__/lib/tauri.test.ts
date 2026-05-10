@@ -4,7 +4,6 @@ import {
   checkMarketplaceUpdates,
   checkMarketplaceUrl,
   checkSkillCustomized,
-  cancelAgentRun,
   createPluginFromSkills,
   deleteImportedSkill,
   deletePlugin,
@@ -152,12 +151,6 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
           agentId: "agent-123",
         },
       },
-    },
-    {
-      name: "cancelAgentRun",
-      call: () => cancelAgentRun("agent-123"),
-      command: "cancel_agent_run",
-      args: { agentId: "agent-123" },
     },
     {
       name: "getDashboardSkillNames",

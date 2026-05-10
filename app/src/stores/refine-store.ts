@@ -69,6 +69,7 @@ interface RefineState {
   // Agent state
   activeAgentId: string | null;
   isRunning: boolean;
+  isStopping: boolean;
   conversationId: string | null;
   sessionExhausted: boolean;
   /** Agent names discovered from allowed refine plugins (e.g. "skill-creator:rewrite-skill"). */
@@ -104,6 +105,7 @@ interface RefineState {
   setGitDiff: (diff: RefineDiff | null) => void;
   setActiveAgentId: (id: string | null) => void;
   setRunning: (v: boolean) => void;
+  setStopping: (v: boolean) => void;
   setConversationId: (id: string | null) => void;
   setSessionExhausted: (v: boolean) => void;
   setAvailableAgents: (agents: string[]) => void;
@@ -122,6 +124,7 @@ const SESSION_DEFAULTS = {
   pendingFollowupMessage: null as string | null,
   activeAgentId: null as string | null,
   isRunning: false,
+  isStopping: false,
   conversationId: null as string | null,
   sessionExhausted: false,
   availableAgents: [] as string[],
@@ -302,6 +305,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
 
   setActiveAgentId: (id) => set({ activeAgentId: id }),
   setRunning: (v) => set({ isRunning: v }),
+  setStopping: (v) => set({ isStopping: v }),
   setConversationId: (id) => set({ conversationId: id }),
   setSessionExhausted: (v) => set({ sessionExhausted: v }),
   setAvailableAgents: (agents) => set({ availableAgents: agents }),

@@ -24,7 +24,7 @@ const makeQuestion = (overrides = {}) => ({
 
 describe("useWorkflowAutosave", () => {
   const defaultOptions = {
-    skillName: "test-skill",
+    skillId: 1,
     clarificationsEditable: true,
     currentStepStatus: "completed",
   };
@@ -103,7 +103,7 @@ describe("useWorkflowAutosave", () => {
     expect(result.current.editorDirty).toBe(true);
     await waitFor(() => {
       expect(invokeCommand).toHaveBeenCalledWith("update_clarification_answer", {
-        skillId: "test-skill",
+        skillId: "1",
         questionId: "q1",
         answerChoice: "A",
         answerText: null,

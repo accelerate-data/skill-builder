@@ -14,12 +14,6 @@ import { verifyReleaseStage } from "./verify-release-stage.mjs";
 
 const WINDOWS_REQUIRED_PATHS = [
   "skill-builder.exe",
-  "sidecar/dist/package.json",
-  "sidecar/dist/bootstrap.js",
-  "sidecar/dist/agent-runner.js",
-  "promptfoo-sidecar/package.json",
-  "promptfoo-sidecar/dist/runner.js",
-  "promptfoo-sidecar/node_modules/promptfoo/package.json",
   "agent-sources/plugins/skill-creator/LICENSE.txt",
   "agent-sources/skills/skill-test/SKILL.md",
   "workspace/CLAUDE.md",
@@ -28,12 +22,6 @@ const WINDOWS_REQUIRED_PATHS = [
 const MACOS_REQUIRED_PATHS = [
   "Skill Builder.app",
   "run.sh",
-  "Skill Builder.app/Contents/Resources/sidecar/dist/package.json",
-  "Skill Builder.app/Contents/Resources/sidecar/dist/bootstrap.js",
-  "Skill Builder.app/Contents/Resources/sidecar/dist/agent-runner.js",
-  "Skill Builder.app/Contents/Resources/promptfoo-sidecar/package.json",
-  "Skill Builder.app/Contents/Resources/promptfoo-sidecar/dist/runner.js",
-  "Skill Builder.app/Contents/Resources/promptfoo-sidecar/node_modules/promptfoo/package.json",
   "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
   "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
   "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",
@@ -103,11 +91,10 @@ test("CLI prints missing paths and exits 1 when the stage is incomplete", () => 
     });
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Release stage is missing 11 required path\(s\):/);
+    assert.match(result.stderr, /Release stage is missing 5 required path\(s\):/);
     assert.match(result.stderr, /- Skill Builder\.app/);
     assert.match(result.stderr, /- run\.sh/);
-    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/promptfoo-sidecar\/dist\/runner\.js/);
-    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/promptfoo-sidecar\/node_modules\/promptfoo\/package\.json/);
+    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/workspace\/CLAUDE\.md/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -13,7 +13,7 @@ cd app
 ./tests/run.sh
 
 # Run a single level
-./tests/run.sh unit            # Pure logic: stores, utils, hooks, Rust, sidecar
+./tests/run.sh unit            # Pure logic: stores, utils, hooks, Rust
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
 ./tests/run.sh agents          # Agent structural tests (Vitest, free)
@@ -46,7 +46,7 @@ npm run test:e2e:usage
 
 | Level | Command | Scope |
 |---|---|---|
-| Unit | `./tests/run.sh unit` | Frontend unit tests, Rust inline tests, sidecar Vitest tests |
+| Unit | `./tests/run.sh unit` | Frontend unit tests and Rust inline tests |
 | Integration | `./tests/run.sh integration` | Component and page tests with mocked Tauri APIs |
 | E2E | `./tests/run.sh e2e` | Playwright tests with mocked Tauri APIs |
 | Agents | `./tests/run.sh agents` | Structural agent prompt checks only |
@@ -78,7 +78,6 @@ app/
     harness-test.sh          # Self-tests for run.sh
     test-map-scenarios.sh    # Cross-layer test map validation
   src/__tests__/             # Frontend unit, guard, integration tests
-  sidecar/__tests__/         # Sidecar Vitest tests
   e2e/                       # Playwright E2E specs
   agent-tests/               # Agent structural tests
 tests/evals/                 # Repo-level Promptfoo/OpenCode eval harness

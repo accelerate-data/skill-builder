@@ -203,10 +203,9 @@ fn import_skill_from_file_inner(
     .map_err(|e| e.to_string())?;
 
     // Step 2: Create/update imported_skills row (linked to skill master)
-    let skill_id = generate_skill_id(name);
     let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let skill = crate::types::ImportedSkill {
-        skill_id,
+        skill_id: skill_master_id,
         skill_name: name.to_string(),
         library_key: None,
         is_active: true,

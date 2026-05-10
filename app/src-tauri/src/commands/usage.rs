@@ -184,12 +184,12 @@ pub fn get_agent_runs(
 #[tauri::command]
 pub fn get_step_agent_runs(
     db: tauri::State<'_, Db>,
-    skill_name: String,
+    skill_id: i64,
     step_id: i32,
 ) -> Result<Vec<AgentRunRecord>, String> {
     log::info!(
-        "[get_step_agent_runs] skill={} step={} step_id={}",
-        skill_name,
+        "[get_step_agent_runs] skill_id={} step={} step_id={}",
+        skill_id,
         crate::db::step_name(step_id),
         step_id
     );
@@ -197,7 +197,7 @@ pub fn get_step_agent_runs(
         log::error!("[get_step_agent_runs] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::get_step_agent_runs(&conn, &skill_name, step_id)
+    crate::db::get_step_agent_runs_by_skill_id(&conn, skill_id, step_id)
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::sync::Mutex as AsyncMutex;
 
 pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.21.0";
@@ -253,6 +253,35 @@ fn agent_server_registry() -> &'static OpenHandsAgentServerRegistry {
     REGISTRY.get_or_init(|| tokio::sync::Mutex::new(None))
 }
 
+/// Remove `owner_lease.json` files left behind by a killed server process.
+///
+/// OpenHands conversation leases have a 45-second TTL. When the server is
+/// killed before running its async teardown, leases stay on disk and the
+/// next server instance skips loading those conversations — returning 404
+/// for every resumed conversation ID. This is safe to call only after the
+/// previous process has exited.
+fn release_stale_conversation_leases(conversations_path: &Path) {
+    let Ok(entries) = std::fs::read_dir(conversations_path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let lease_file = entry.path().join("owner_lease.json");
+        if !lease_file.exists() {
+            continue;
+        }
+        match std::fs::remove_file(&lease_file) {
+            Ok(()) => log::debug!(
+                "[openhands-agent-server] released stale conversation lease {}",
+                lease_file.display()
+            ),
+            Err(e) => log::warn!(
+                "[openhands-agent-server] failed to release stale conversation lease {}: {e}",
+                lease_file.display()
+            ),
+        }
+    }
+}
+
 pub async fn ensure_agent_server(
     timeout: Duration,
     runtime_run_dir: &Path,
@@ -291,6 +320,14 @@ pub async fn ensure_agent_server(
         let _ = server.process.shutdown().await;
         *registry = None;
     }
+
+    // The OpenHands lease system gives each conversation a 45-second TTL lease
+    // tied to the server instance that created it. If the previous server was
+    // killed (SIGTERM without clean async teardown), leases are left on disk and
+    // the new server skips loading those conversations during startup, returning
+    // 404 for any resumed conversation. Clear stale leases after confirming the
+    // old process is dead so the fresh server loads all persisted conversations.
+    release_stale_conversation_leases(Path::new(&conversations_path));
 
     let process = OpenHandsAgentServerProcess::start(timeout, runtime_run_dir).await?;
     let handle = OpenHandsAgentServerHandle {
@@ -356,6 +393,7 @@ impl OpenHandsAgentServerProcess {
             "[openhands-agent-server] OH_CONVERSATIONS_PATH={}",
             conversations_path_str
         );
+        let log_file = open_server_log_file(runtime_run_dir).await;
         let stderr_secrets = vec![session_api_key.clone(), openhands_secret_key];
         let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(
             STDERR_TAIL_MAX_LINES,
@@ -367,12 +405,17 @@ impl OpenHandsAgentServerProcess {
             let stderr_tail_for_task = Arc::clone(&stderr_tail);
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
+                let mut log_writer = log_file;
                 loop {
                     match lines.next_line().await {
                         Ok(Some(line)) if !line.trim().is_empty() => {
                             let redacted = redact_stderr(&line, &stderr_secrets);
                             push_stderr_tail_line(&stderr_tail_for_task, &redacted).await;
-                            log_stderr_line(&redacted);
+                            if let Some(writer) = &mut log_writer {
+                                let _ = writer.write_all(redacted.as_bytes()).await;
+                                let _ = writer.write_all(b"\n").await;
+                                let _ = writer.flush().await;
+                            }
                         }
                         Ok(Some(_)) => {}
                         Ok(None) => break,
@@ -468,6 +511,40 @@ impl OpenHandsAgentServerProcess {
     }
 }
 
+/// Opens a timestamped log file for a server instance under `{runtime_run_dir}/logs/`.
+/// Best-effort: returns `None` on any IO error rather than failing the server start.
+async fn open_server_log_file(runtime_run_dir: &Path) -> Option<BufWriter<tokio::fs::File>> {
+    let logs_dir = runtime_run_dir.join("logs");
+    if let Err(e) = tokio::fs::create_dir_all(&logs_dir).await {
+        log::warn!(
+            "[openhands-agent-server] could not create log dir {}: {e}",
+            logs_dir.display()
+        );
+        return None;
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let log_path = logs_dir.join(format!("openhands-server-{ts}.log"));
+    match tokio::fs::File::create(&log_path).await {
+        Ok(file) => {
+            log::debug!(
+                "[openhands-agent-server] writing server logs to {}",
+                log_path.display()
+            );
+            Some(BufWriter::new(file))
+        }
+        Err(e) => {
+            log::warn!(
+                "[openhands-agent-server] could not open log file {}: {e}",
+                log_path.display()
+            );
+            None
+        }
+    }
+}
+
 async fn push_stderr_tail_line(buffer: &Arc<AsyncMutex<VecDeque<String>>>, line: &str) {
     let mut guard = buffer.lock().await;
     if guard.len() == STDERR_TAIL_MAX_LINES {
@@ -545,18 +622,6 @@ pub fn redact_stderr(text: &str, secrets: &[String]) -> String {
         .fold(text.to_string(), |redacted, secret| {
             redacted.replace(secret, "[REDACTED]")
         })
-}
-
-fn is_info_worthy_stderr_line(line: &str) -> bool {
-    line.to_ascii_lowercase().contains("conversation lease lost")
-}
-
-fn log_stderr_line(line: &str) {
-    if is_info_worthy_stderr_line(line) {
-        log::info!("[openhands-agent-server] {}", line);
-    } else {
-        log::debug!("[openhands-agent-server] {}", line);
-    }
 }
 
 async fn wait_until_healthy(port: u16, timeout: Duration) -> Result<(), String> {
@@ -639,16 +704,6 @@ mod tests {
             redacted,
             "failed with [REDACTED] and [REDACTED]; [REDACTED] again"
         );
-    }
-
-    #[test]
-    fn conversation_lease_loss_stderr_is_promoted_to_info() {
-        assert!(is_info_worthy_stderr_line(
-            "[05/09/26 09:44:22] WARNING  Conversation lease lost while polling event stream"
-        ));
-        assert!(!is_info_worthy_stderr_line(
-            "AuthlibDeprecationWarning: authlib.jose module is deprecated"
-        ));
     }
 
     #[test]
@@ -798,5 +853,42 @@ mod tests {
             ShutdownOutcome::Graceful,
             "expected OpenHands server to exit via SIGTERM before SIGKILL fallback"
         );
+    }
+
+    #[test]
+    fn release_stale_conversation_leases_removes_lease_files_and_ignores_missing_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let conversations = tmp.path().join("conversations");
+        fs::create_dir_all(&conversations).unwrap();
+
+        // Conversation with a stale lease
+        let conv1 = conversations.join("aaaa-0001");
+        fs::create_dir_all(&conv1).unwrap();
+        fs::write(
+            conv1.join("owner_lease.json"),
+            r#"{"owner":"old","expires_at":9999999999.0}"#,
+        )
+        .unwrap();
+        fs::write(conv1.join("meta.json"), "{}").unwrap();
+
+        // Conversation without a lease (should not be touched)
+        let conv2 = conversations.join("bbbb-0002");
+        fs::create_dir_all(&conv2).unwrap();
+        fs::write(conv2.join("meta.json"), "{}").unwrap();
+
+        release_stale_conversation_leases(&conversations);
+
+        assert!(
+            !conv1.join("owner_lease.json").exists(),
+            "stale lease should be removed"
+        );
+        assert!(conv1.join("meta.json").exists(), "meta.json should remain");
+        assert!(
+            conv2.join("meta.json").exists(),
+            "conversation without lease should be untouched"
+        );
+
+        // Calling on a non-existent path should not panic
+        release_stale_conversation_leases(Path::new("/tmp/does-not-exist-999999999"));
     }
 }

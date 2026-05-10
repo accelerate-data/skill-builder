@@ -1,5 +1,7 @@
 use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
-use crate::agents::sidecar::{OpenHandsRuntimeConfigParams, OpenHandsRuntimeMode, SidecarConfig};
+use crate::agents::runtime_config::{
+    BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
+};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 
@@ -35,7 +37,7 @@ pub(crate) struct ScopeReviewPromptParams<'a> {
     pub reference_documents: &'a [(String, String)],
 }
 
-pub(crate) struct ScopeReviewSidecarConfigParams<'a> {
+pub(crate) struct ScopeReviewRuntimeConfigParams<'a> {
     pub skill_name: &'a str,
     pub prompt: &'a str,
     pub workspace_path: &'a str,
@@ -121,29 +123,31 @@ fn scope_review_output_format() -> serde_json::Value {
     })
 }
 
-pub(crate) fn build_scope_review_sidecar_config(
-    params: ScopeReviewSidecarConfigParams<'_>,
-) -> SidecarConfig {
+pub(crate) fn build_scope_review_runtime_config(
+    params: ScopeReviewRuntimeConfigParams<'_>,
+) -> OpenHandsRuntimeConfig {
     let workspace_root_dir = params.workspace_path.replace('\\', "/");
     let workspace_run_dir = params.workspace_run_dir.replace('\\', "/");
 
-    crate::agents::sidecar::build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
-        prompt: params.prompt.to_string(),
-        llm: params.llm,
-        workspace_root_dir,
-        workspace_run_dir,
-        mode: Some(OpenHandsRuntimeMode::Throwaway),
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("scope_review".to_string()),
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        allowed_tools: vec!["file_editor".to_string()],
-        max_turns: 4,
-        output_format: Some(scope_review_output_format()),
-        skill_name: Some(params.skill_name.to_string()),
-        step_id: Some(-30),
-        run_source: None,
-        plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
-    })
+    crate::agents::runtime_config::build_openhands_runtime_config(
+        BuildOpenHandsRuntimeConfigParams {
+            prompt: params.prompt.to_string(),
+            llm: params.llm,
+            workspace_root_dir,
+            workspace_run_dir,
+            mode: Some(OpenHandsRuntimeMode::Throwaway),
+            agent_name: "skill-creator".to_string(),
+            task_kind: Some("scope_review".to_string()),
+            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+            allowed_tools: vec!["file_editor".to_string()],
+            max_turns: 4,
+            output_format: Some(scope_review_output_format()),
+            skill_name: Some(params.skill_name.to_string()),
+            step_id: Some(-30),
+            run_source: None,
+            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+        },
+    )
 }
 
 #[tauri::command]
@@ -212,7 +216,7 @@ pub async fn review_skill_scope(
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
     crate::commands::workflow::deploy::ensure_openhands_runtime_dir(&app, &runtime_run_dir).await?;
 
-    let config = build_scope_review_sidecar_config(ScopeReviewSidecarConfigParams {
+    let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
         skill_name: &skill_name,
         prompt: &prompt,
         workspace_path: &runtime_context.workspace_path,
@@ -229,7 +233,7 @@ pub async fn review_skill_scope(
         },
     )
     .await
-    .inspect_err(|e| log::error!("[review_skill_scope] sidecar request failed: {}", e))?;
+    .inspect_err(|e| log::error!("[review_skill_scope] runtime request failed: {}", e))?;
 
     let result = parse_scope_review_result_from_conversation_state(&run.conversation_state)?;
 
@@ -382,7 +386,7 @@ mod tests {
 
     #[test]
     fn scope_review_openhands_config_uses_clean_break_runner_contract() {
-        let config = build_scope_review_sidecar_config(ScopeReviewSidecarConfigParams {
+        let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
             skill_name: "forecasting-churned-customers",
             prompt: "rendered prompt",
             workspace_path: "/tmp/skill-builder/workspace",
@@ -413,7 +417,7 @@ mod tests {
             json["userMessageSuffix"],
             "Follow the current user message exactly. Do not infer a different task than the one stated in the message."
         );
-        let expected_suffix = crate::agents::sidecar::skill_creator_system_message_suffix();
+        let expected_suffix = crate::agents::runtime_config::skill_creator_system_message_suffix();
         assert_eq!(
             json["systemMessageSuffix"],
             serde_json::Value::String(expected_suffix)

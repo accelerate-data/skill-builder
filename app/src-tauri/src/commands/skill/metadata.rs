@@ -14,30 +14,30 @@ pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub fn acquire_lock(
-    skill_name: String,
+    skill_id: i64,
     instance: tauri::State<'_, crate::InstanceInfo>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[acquire_lock] skill={}", skill_name);
+    log::info!("[acquire_lock] skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[acquire_lock] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::acquire_skill_lock(&conn, &skill_name, &instance.id, instance.pid)
+    crate::db::acquire_skill_lock_by_skill_id(&conn, skill_id, &instance.id, instance.pid)
 }
 
 #[tauri::command]
 pub fn release_lock(
-    skill_name: String,
+    skill_id: i64,
     instance: tauri::State<'_, crate::InstanceInfo>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[release_lock] skill={}", skill_name);
+    log::info!("[release_lock] skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[release_lock] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::release_skill_lock(&conn, &skill_name, &instance.id)
+    crate::db::release_skill_lock_by_skill_id(&conn, skill_id, &instance.id)
 }
 
 /// Returns skill names locked by a different live instance (excludes our own locks).

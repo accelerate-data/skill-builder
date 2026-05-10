@@ -35,9 +35,9 @@ mod tests {
         let conn = create_test_db_for_tests();
         crate::db::upsert_skill(&conn, "listing-test", "imported", "domain").unwrap();
         let skill = ImportedSkill {
-            skill_id: "listing-test-id".to_string(),
+            skill_id: 1,
             skill_name: "listing-test".to_string(),
-            library_key: Some("imported:listing-test-id".to_string()),
+            library_key: Some("1".to_string()),
             is_active: true,
             disk_path: std::env::temp_dir()
                 .join("listing-test")
@@ -57,6 +57,6 @@ mod tests {
         };
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
         let result = crate::db::list_imported_skills_filtered(&conn, None).unwrap();
-        assert!(result.iter().any(|s| s.skill_id == "listing-test-id"));
+        assert!(result.iter().any(|s| s.skill_id == 1));
     }
 }

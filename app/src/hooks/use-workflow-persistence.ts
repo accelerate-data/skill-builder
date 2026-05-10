@@ -13,8 +13,8 @@ import { invalidateSkillDataAfterWorkflow } from "@/lib/queries/agent-stream-cac
 import { joinPath } from "@/lib/path-utils";
 
 interface UseWorkflowPersistenceOptions {
-  /** Skill name from route params */
   skillName: string;
+  skillId: number | null;
   /** Skills directory path from settings */
   skillsPath: string | null;
   /** Current step configuration for output file paths */
@@ -33,6 +33,7 @@ interface UseWorkflowPersistenceOptions {
 
 export function useWorkflowPersistence({
   skillName,
+  skillId,
   skillsPath,
   stepConfig,
   currentStep,
@@ -42,6 +43,7 @@ export function useWorkflowPersistence({
   autoStart = false,
 }: UseWorkflowPersistenceOptions) {
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Get store actions
   const initWorkflow = useWorkflowStore((state) => state.initWorkflow);
@@ -61,6 +63,7 @@ export function useWorkflowPersistence({
     // Without the else branch, re-navigating to a skill previously opened with autoStart=true
     // would leave reviewMode=false on a plain row-click (no autoStart).
     if (store.skillName === skillName && store.hydrated) {
+      setIsLoaded(true);
       store.setReviewMode(!autoStart);
       return;
     }
@@ -78,16 +81,21 @@ export function useWorkflowPersistence({
     clearRuns();
 
     // Read workflow state and disabled steps in parallel
+    if (skillId == null) {
+      return;
+    }
+
     Promise.all([
-      getWorkflowState(skillName),
-      getDisabledSteps(skillName).catch(() => [] as number[]),
+      getWorkflowState(skillId),
+      getDisabledSteps(skillId).catch(() => [] as number[]),
     ])
       .then(([state, disabled]) => {
         if (cancelled) return;
+        setIsLoaded(true);
 
         // Initialize workflow with purpose from saved state.
         // Pass initialReviewMode=false for sidebar navigation to suppress wasToggle auto-start.
-        initWorkflow(skillName, state.run?.purpose, isNoReviewMode ? false : undefined);
+        initWorkflow(skillName, skillId, state.run?.purpose, isNoReviewMode ? false : undefined);
 
         // Apply disabled steps immediately
         useWorkflowStore.getState().setDisabledSteps(disabled);
@@ -103,7 +111,10 @@ export function useWorkflowPersistence({
         loadWorkflowState(completedIds, state.run.current_step);
       })
       .catch(() => {
-        if (!cancelled) setHydrated(true);
+        if (!cancelled) {
+          setIsLoaded(true);
+          setHydrated(true);
+        }
       })
       .finally(() => {
         // If autoStart was requested, switch to Update mode after hydration so the
@@ -117,7 +128,7 @@ export function useWorkflowPersistence({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skillName]);
+  }, [skillId, skillName]);
 
   // Reset error artifact detection when moving to a new step
   useEffect(() => {
@@ -193,7 +204,8 @@ export function useWorkflowPersistence({
       );
       const stepToSave = status === "pending" ? highestCompletedStep : latestStore.currentStep;
 
-      saveWorkflowState(skillName, stepToSave, status, stepStatuses, purpose ?? undefined)
+      if (skillId == null) return;
+      saveWorkflowState(skillId, stepToSave, status, stepStatuses, purpose ?? undefined)
         .then(() => {
           invalidateSkillDataAfterWorkflow()
             .catch((err) => console.error("event=refresh_skills_failed error=%s", err));
@@ -202,9 +214,10 @@ export function useWorkflowPersistence({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [steps, currentStep, skillName, purpose, hydrated]);
+  }, [steps, currentStep, skillId, skillName, purpose, hydrated]);
 
   return {
     errorHasArtifacts,
+    isLoaded,
   };
 }

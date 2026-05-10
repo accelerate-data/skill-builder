@@ -47,6 +47,7 @@ void invokeCommand(maybeCommand, {});
 void invokeCommand(unsafeWorkflowCommand, {});
 
 void invokeCommand("run_workflow_step", {
+  skillId: 1,
   skillName: "demo",
   stepId: 1,
   workspacePath: "/tmp/workspace",
@@ -61,10 +62,9 @@ void invokeCommand("resolve_discovery", {
   pluginSlug: null,
 });
 
-void invokeCommand("cancel_workflow_step", { agentId: "demo-step-agent" });
-
 // @ts-expect-error run_workflow_step requires workflowSessionId to be string or null, not number
 void invokeCommand("run_workflow_step", {
+  skillId: 1,
   skillName: "demo",
   stepId: 1,
   workspacePath: "/tmp/workspace",

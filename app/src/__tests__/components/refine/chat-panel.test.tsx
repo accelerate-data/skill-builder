@@ -25,8 +25,7 @@ vi.mock("@/components/refine/chat-message-list", () => ({
 vi.mock("@/components/refine/chat-input-bar", () => ({
   ChatInputBar: (props: {
     onSend: (text: string) => void;
-    onCancel?: () => void;
-    isRunning: boolean;
+    waitingForQuestion?: boolean;
     availableFiles: string[];
     availableAgents: string[];
     prefilledValue?: string;
@@ -34,7 +33,7 @@ vi.mock("@/components/refine/chat-input-bar", () => ({
     inputBarState.props = props;
     return (
       <div data-testid="chat-input-bar">
-        {props.isRunning ? "running" : "idle"}
+        input
       </div>
     );
   },
@@ -101,8 +100,6 @@ describe("ChatPanel", () => {
     expect(messageListState.messages).toHaveLength(1);
     expect(inputBarState.props).toMatchObject({
       onSend: defaultProps.onSend,
-      onCancel: defaultProps.onCancel,
-      isRunning: false,
       availableFiles: defaultProps.availableFiles,
       prefilledValue: undefined,
     });
@@ -128,7 +125,7 @@ describe("ChatPanel", () => {
       screen.getByText(/Scope recommendation active/i),
     ).toBeInTheDocument();
     expect(inputBarState.props).toMatchObject({
-      isRunning: true,
+      availableFiles: defaultProps.availableFiles,
     });
   });
 
@@ -145,7 +142,7 @@ describe("ChatPanel", () => {
       ),
     ).toBeInTheDocument();
     expect(inputBarState.props).toMatchObject({
-      isRunning: true,
+      availableFiles: defaultProps.availableFiles,
     });
   });
 
@@ -165,8 +162,8 @@ describe("ChatPanel", () => {
     renderPanel({ isRunning: true });
 
     expect(inputBarState.props).toMatchObject({
-      onCancel: defaultProps.onCancel,
-      isRunning: true,
+      onSend: defaultProps.onSend,
+      availableFiles: defaultProps.availableFiles,
     });
   });
 

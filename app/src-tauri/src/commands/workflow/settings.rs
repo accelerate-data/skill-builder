@@ -67,8 +67,9 @@ pub(crate) fn read_initialized_runtime_context(
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
-pub(crate) fn read_workflow_settings(
+pub(crate) fn read_workflow_settings_by_skill_id(
     db: &Db,
+    skill_id: i64,
     skill_name: &str,
     step_id: u32,
     _workspace_path: &str,
@@ -92,9 +93,7 @@ pub(crate) fn read_workflow_settings(
     // `workflow_runs` entirely. Never read metadata from `workflow_runs` or
     // from frontend-supplied payload — always call `get_skill_master_any_plugin` here.
     // Use any-plugin lookup so non-default-plugin skills are found correctly.
-    let master_row = crate::db::get_skill_master_any_plugin(&conn, skill_name)
-        .ok()
-        .flatten();
+    let master_row = crate::db::get_skill_master_by_id(&conn, skill_id).ok().flatten();
     let plugin_slug = master_row
         .as_ref()
         .map(|m| m.plugin_slug.clone())
@@ -102,7 +101,8 @@ pub(crate) fn read_workflow_settings(
 
     // Validate prerequisites (step 3 requires decisions from DB)
     if step_id == 3 {
-        let decisions = crate::db::workflow_artifacts::read_decisions(&conn, skill_name)
+        let decisions =
+            crate::db::workflow_artifacts::read_decisions(&conn, &skill_id.to_string())
             .map_err(|e| e.to_string())?;
         if decisions.is_none_or(|d| d.items.is_empty()) {
             return Err(
@@ -115,10 +115,10 @@ pub(crate) fn read_workflow_settings(
     }
 
     // Get skill purpose
-    let purpose = crate::db::get_purpose(&conn, skill_name)?;
+    let purpose = crate::db::get_purpose_by_skill_id(&conn, skill_id)?;
 
     // Read author info and intake data from workflow run
-    let run_row = crate::db::get_workflow_run(&conn, skill_name)
+    let run_row = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .ok()
         .flatten();
     let author_login = settings
@@ -170,6 +170,19 @@ pub(crate) fn read_workflow_settings(
         disable_model_invocation,
         documents,
     })
+}
+
+pub(crate) fn read_workflow_settings(
+    db: &Db,
+    skill_name: &str,
+    step_id: u32,
+    workspace_path: &str,
+) -> Result<WorkflowSettings, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let skill_id = crate::db::get_skill_master_id_any_plugin(&conn, skill_name)?
+        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
+    drop(conn);
+    read_workflow_settings_by_skill_id(db, skill_id, skill_name, step_id, workspace_path)
 }
 
 #[cfg(test)]

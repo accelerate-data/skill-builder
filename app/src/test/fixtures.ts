@@ -29,6 +29,7 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
 
 export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummary {
   return {
+    id: 1,
     name: "test-skill",
     current_step: "Step 1: Research",
     status: "in_progress",

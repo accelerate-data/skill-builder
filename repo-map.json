@@ -6,13 +6,7 @@
     {
       "name": "npm",
       "lockfile": "app/package-lock.json",
-      "manifest": "app/package.json",
-      "workspaces": ["app/sidecar"]
-    },
-    {
-      "name": "npm (sidecar)",
-      "lockfile": "app/sidecar/package-lock.json",
-      "manifest": "app/sidecar/package.json"
+      "manifest": "app/package.json"
     },
     {
       "name": "npm (evals)",
@@ -32,7 +26,7 @@
         "app/src-tauri/tauri.conf.json",
         "app/src-tauri/Cargo.toml"
       ],
-      "notes": "Bundles frontend (Vite), Rust backend, sidecar dist, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
+      "notes": "Bundles frontend (Vite), Rust backend, and agent-sources as app resources. Identifier: com.vibedata.skill-builder. CSP allows Anthropic API + GitHub API. Dev port: DEV_PORT (default 1420), HMR on DEV_PORT+1."
     },
     {
       "name": "Vite 8",
@@ -87,11 +81,11 @@
   "modules": {
     "frontend_components": {
       "path": "app/src/components/",
-      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, bare-output, error, output, result, subagent, thinking, tool, tool-activity-group), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view, benchmark-prompt-inline, refine-question-inline), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives), workspace/ (workspace-shell, workspace-overview, workspace-refine, workspace-eval-workbench, workspace-evals, eval-workbench shared panels, version-diff-dialog, restore-version-dialog — shown when a complete/imported/marketplace skill is selected in app-layout), step-complete/ (per-step completion views: research, detailed-research, decisions, benchmark, file-viewer + shared hooks use-step-files, use-benchmark-data). Flat components include run-status-footer, skill-list-panel (260px panel), skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, agent panels, and more."
+      "description": "Reusable UI components. Sub-directories: agent-items/ (display item renderers: base, bare-output, error, output, result, subagent, thinking, tool, tool-activity-group), layout/ (app-layout, sidebar/icon-rail), refine/ (chat panel, chat input, preview panel, git patch view, benchmark-prompt-inline, refine-question-inline), settings/ (general, github, marketplace, sdk, advanced, usage sections), ui/ (shadcn/ui primitives), workspace/ (workspace-shell, workspace-overview, workspace-refine, workspace-eval-workbench, workspace-evals, workspace-loading-skeleton, eval-workbench shared panels, version-diff-dialog, restore-version-dialog — shown when a complete/imported/marketplace skill is selected in app-layout), step-complete/ (per-step completion views: research, detailed-research, decisions, benchmark, file-viewer + shared hooks use-step-files, use-benchmark-data). Flat components include run-status-footer, skill-list-panel (260px panel), workflow-loading-skeleton, skill cards, dialogs (delete, import, github, skill, feedback, reset, transition-gate), clarifications-editor, agent panels, and more."
     },
     "frontend_pages": {
       "path": "app/src/pages/",
-      "description": "Page-level route components: dashboard, workflow, settings"
+      "description": "Page-level route components: dashboard, home, settings, workflow, workspace-route"
     },
     "frontend_stores": {
       "path": "app/src/stores/",
@@ -103,11 +97,11 @@
     },
     "frontend_lib": {
       "path": "app/src/lib/",
-      "description": "Utilities, shared types, and server-state queries: tauri.ts (typed Tauri command wrappers), tauri-command-types.ts (central typed command map), tauri-command-types.typecheck.ts (compile-time command contract assertions), eval-workbench.ts (scenario, run-history, and refine-brief helpers for the app-owned Eval Workbench), eval-run.ts (pure evaluation result helpers), eval-running-state.ts (module-scoped running-state pub/sub for app-layout gating), evals.ts (shared eval parsing helpers), query-client.ts (TanStack Query client defaults), queries/ (query keys, skills, usage, documents, plugins, auth, clarifications — useClarifications/useUpdateClarificationAnswer/useUpdateClarificationVerdicts, decisions — useDecisions, agent stream cache invalidation), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), openhands-conversation-events.ts + openhands-event-projection.ts + openhands-result-summary.ts (OpenHands event/result projection helpers), display-types.ts (DisplayItem types), agent-results.ts (result parsing), skill-openhands-session.ts (selected-skill OpenHands bootstrap and restore hydration helper), model-catalog.ts + models.ts (model metadata), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-review.ts, clarifications-types.ts, frontmatter.ts, group-display-items.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
+      "description": "Utilities, shared types, and server-state queries: tauri.ts (typed Tauri command wrappers), tauri-command-types.ts (central typed command map), tauri-command-types.typecheck.ts (compile-time command contract assertions), eval-workbench.ts (scenario, run-history, and refine-brief helpers for the app-owned Eval Workbench), eval-run.ts (pure evaluation result helpers), eval-running-state.ts (module-scoped running-state pub/sub for app-layout gating), evals.ts (shared eval parsing helpers), query-client.ts (TanStack Query client defaults), queries/ (query keys, skills, usage, documents, plugins, auth, clarifications — useClarifications/useUpdateClarificationAnswer/useUpdateClarificationVerdicts, decisions — useDecisions, agent stream cache invalidation), types.ts (shared TS types), agent-events.ts (frontend AgentEvent types), openhands-conversation-events.ts + openhands-event-projection.ts + openhands-result-summary.ts (OpenHands event/result projection helpers), display-types.ts (DisplayItem types), agent-results.ts (result parsing), skill-openhands-session.ts (selected-skill OpenHands bootstrap and restore hydration helper), skill-routing.ts (getSkillSurface utility for workspace vs workflow routing), route-skill-session.ts (route/session coordinator: navigateToSkillSurface, leaveActiveSkillForNonSkillRoute — distinguishes selected-skill routing intent from active-session runtime identity), model-catalog.ts + models.ts (model metadata), workflow-steps.ts + workflow-step-configs.ts (step definitions), workflow-teardown.ts (shared workflow session teardown helper), clarifications-review.ts, clarifications-types.ts, frontmatter.ts, group-display-items.ts, path-utils.ts, app-log.ts, help-urls.ts, toast.ts, utils.ts"
     },
     "rust_commands": {
       "path": "app/src-tauri/src/commands/",
-      "description": "Tauri command handlers. Flat files: api_validation, feedback, files, git, github_auth, lifecycle, mod, node, reconciliation, settings, sidecar_lifecycle, skill_session, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, output_format, guards, prompt, runtime, evaluation, settings, tests, clarifications, decisions, answer_evaluation), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands, updates), skill/ (crud, export, metadata, suggestions, scope_review, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document), eval_workbench/ (scenario CRUD and suggestion commands), description/ (mod.rs: run_optimization_loop/cancel/apply_description/eval-query persistence commands; loop_runner.rs: iterative improve→eval→gate loop; eval.rs: parallel eval with per-run isolated workspaces; improve.rs: Claude API description improvement)"
+      "description": "Tauri command handlers. Flat files: api_validation, feedback, files, git, github_auth, lifecycle, mod, node, reconciliation, runtime_lifecycle, settings, skill_session, test_utils, usage, workflow_artifacts, workflow_lifecycle, workflow_session, workspace. Sub-module directories: workflow/ (step_config, deploy, output_format, guards, prompt, runtime, evaluation, settings, tests, clarifications, decisions, answer_evaluation), imported_skills/ (frontmatter, helpers, bundled, lifecycle, listing, upload), github_import/ (http, url, catalog, import, commands, updates), skill/ (crud, export, metadata, suggestions, scope_review, tests), refine/ (content, diff, output, protocol, tests), documents/ (list_documents, list_skills_for_documents, add_document_file, add_document_url, add_document_folder, update_document, delete_document), eval_workbench/ (scenario CRUD and suggestion commands), description/ (mod.rs: run_optimization_loop/cancel/apply_description/eval-query persistence commands; loop_runner.rs: iterative improve→eval→gate loop; eval.rs: parallel eval with per-run isolated workspaces; improve.rs: Claude API description improvement)"
     },
     "rust_db": {
       "path": "app/src-tauri/src/db/",
@@ -115,15 +109,15 @@
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, persistent-session plus throwaway runtime helpers), events.rs (re-export facade for handle_sidecar_message and handle_sidecar_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), run_persist.rs (run result persistence helpers), sidecar.rs (sidecar config builders for persistent and throwaway OpenHands runtimes), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
+      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, persistent-session plus throwaway runtime helpers), events.rs (re-export facade for handle_runtime_message and handle_runtime_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), run_persist.rs (run result persistence helpers), runtime_config.rs (runtime config builders for persistent and throwaway OpenHands runs), node_resolver.rs (Node.js binary resolution with platform-specific logic)."
     },
-    "sidecar_events": {
-      "path": "app/sidecar/agent-events.ts",
-      "description": "Canonical AgentEvent type definitions — service boundary contract between sidecar and Rust"
+    "frontend_agent_events": {
+      "path": "app/src/lib/agent-events.ts",
+      "description": "Frontend AgentEvent type entrypoint generated from Rust contracts."
     },
-    "sidecar_core": {
-      "path": "app/sidecar/",
-      "description": "Supporting sidecar modules: display-types.ts (DisplayItem types), config.ts (sidecar config validation), error-labels.ts (user-facing error strings), shutdown.ts (graceful shutdown handler). The OpenHands runtime runs through the Rust-managed Agent Server."
+    "frontend_display_types": {
+      "path": "app/src/lib/display-types.ts",
+      "description": "Canonical frontend DisplayItem definitions consumed by event projection, stores, and renderers."
     },
     "agent_prompts": {
       "path": "agent-sources/workspace/skills/",
@@ -160,8 +154,6 @@
     "app/src/test/": "Frontend test infrastructure: setup.ts (Vitest global setup), fixtures.ts (test data factories), mocks/ (Tauri invoke mocks, store mocks, router mocks). Distinguished from app/src/__tests__/ which contains the actual test files.",
     "app/src/__tests__/": "Frontend unit/integration tests, mirroring src/ structure: components/, guards/, hooks/, lib/, pages/, stores/",
     "app/src-tauri/src/": "Rust backend runtime (Tauri commands, DB, agents, types, reconciliation, support modules)",
-    "app/sidecar/": "Node.js/TypeScript sidecar modules (JSONL protocol, config, error labels, shutdown). OpenHands runs through Rust-managed Agent Server.",
-    "app/sidecar/__tests__/": "Sidecar unit tests (one test file per sidecar module)",
     "app/e2e/": "Playwright E2E tests. Sub-directories: dashboard, workflow, refine, description, evals, settings, usage, skill-tester, skills-library, integration, helpers, setup. The description/ and evals/ specs cover the two modes of the unified Eval Workbench surface.",
     "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains eval-map.json for coding-agent navigation, bin/ad-evals.js shared CLI, scripts/framework/ reusable harness modules, suite-owned tier config, OpenCode provider config, package-level eval configs including workbench prompt-contract packages, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, runtime-exported Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
     "agent-sources/workspace/": "OpenHands runtime workspace sources only: agents/ is copied to .agents/agents and skills/ is copied to .agents/skills during startup/runtime deployment.",
@@ -176,7 +168,7 @@
   },
   "dependencies_internal": {
     "frontend → rust": "Via Tauri IPC (`invoke()` from @tauri-apps/api/core)",
-    "frontend → sidecar_events": "Typed via agent-events.ts contract, received as Tauri events"
+    "frontend → agent_events": "Typed via app/src/lib/agent-events.ts and received as Tauri events"
   },
   "dependencies_external": {
     "runtime": {
@@ -212,7 +204,6 @@
     "check_help_docs": "node scripts/check-help-docs.mjs",
     "verify_release_stage": "node scripts/verify-release-stage.mjs <stage-dir> <windows|macos>",
     "create_worktree": "./scripts/worktree.sh feature/<branch-name>",
-    "test_sidecar": "cd app/sidecar && npx vitest run",
     "test_e2e": "cd app && npm run test:e2e",
     "test_all": "cd app && bash tests/run.sh",
     "test_rust": "cargo test --manifest-path app/src-tauri/Cargo.toml",
@@ -245,7 +236,7 @@
     "path_conventions": ".claude/rules/path-conventions.md — skill builder path vs workspace path rules",
     "state_management": ".claude/rules/state-management.md — frontend local-state vs Zustand boundaries",
     "windows_compat": ".claude/rules/windows-compat.md — repo-specific Windows CI guardrails for paths, CRLF, package scripts, and Rust toolchain.",
-    "logging_policy": ".claude/rules/logging-policy.md — repo-specific logging rules for Tauri commands, sidecar stderr, sensitive data, and file debug logs.",
+    "logging_policy": ".claude/rules/logging-policy.md — repo-specific logging rules for Tauri commands, runtime stderr, sensitive data, and file debug logs.",
     "test_map": "TEST_MAP.md — changed-path validation map, Rust command → E2E tag mappings, shared infra blast radius, cross-boundary format compliance, and live-eval boundaries."
   },
   "notes_for_agents": {
@@ -254,7 +245,7 @@
     "db_location": "Database is at Tauri app_data_dir()/skill-builder.db. macOS: ~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db",
     "migrations": "DB migrations are code-only in db/migrations.rs NUMBERED_MIGRATIONS constant — no separate migration files directory.",
     "workspace_path": "Workspace: <app_local_data_dir>/workspace (not user-configurable). Resolved from Tauri app_local_data_dir() by resolve_workspace_path() in commands/workspace.rs. Legacy ~/.vibedata/ path is cleaned up automatically on startup.",
-    "mock_mode": "MOCK_AGENTS=true is no longer supported — the Node sidecar mock chain has been removed. OpenHands runs through the Rust-managed Agent Server.",
+    "mock_mode": "MOCK_AGENTS=true is no longer supported — the legacy mock chain has been removed. OpenHands runs through the Rust-managed Agent Server.",
     "agent_tests_changed": "When agents/*.md or agent-sources/workspace/** changes, run `cd app && npm run test:agents:structural` before reporting completion.",
     "sdk_limitations": "See AGENTS.md Gotchas — SDK has no team tools (no TeamCreate/TaskCreate/SendMessage). Use the Task tool for sub-agents; multiple Task calls in the same turn run in parallel.",
     "pre_commit_checks": "See AGENTS.md Issue Management for the full pre-commit checklist (markdownlint, tsc, cargo check, lint-agent-docs).",

@@ -5,7 +5,6 @@ import { ChatInputBar } from "@/components/refine/chat-input-bar";
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
-  // Tiptap requires getComputedStyle for ProseMirror
   if (!window.getComputedStyle) {
     window.getComputedStyle = vi.fn().mockReturnValue({});
   }
@@ -13,8 +12,6 @@ beforeAll(() => {
 
 const defaultProps = {
   onSend: vi.fn(),
-  onCancel: vi.fn(),
-  isRunning: false,
   waitingForQuestion: false,
   availableFiles: ["SKILL.md", "references/glossary.md"],
   availableAgents: ["skill-creator:rewrite-skill", "skill-creator:generate-skill"],
@@ -28,7 +25,6 @@ function renderBar(overrides?: Partial<typeof defaultProps>) {
 describe("ChatInputBar", () => {
   beforeEach(() => {
     defaultProps.onSend.mockReset();
-    defaultProps.onCancel.mockReset();
   });
 
   it("renders the editor with a placeholder", async () => {
@@ -45,19 +41,21 @@ describe("ChatInputBar", () => {
     expect(screen.getByTestId("refine-send-button")).toBeInTheDocument();
   });
 
-  it("replaces send with cancel while running", async () => {
-    const user = userEvent.setup();
-    renderBar({ isRunning: true });
+  it("does not render a cancel button", () => {
+    renderBar();
 
-    const button = screen.getByRole("button", { name: "Cancel current run" });
-    await user.click(button);
+    expect(screen.queryByRole("button", { name: "Cancel current run" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop generation" })).toBeNull();
+  });
 
-    expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
-    expect(defaultProps.onSend).not.toHaveBeenCalled();
+  it("always renders a send button even when disabled", () => {
+    renderBar({ disabled: true });
+
+    expect(screen.getByRole("button", { name: "Send refine message" })).toBeInTheDocument();
   });
 
   it("shows pending question status while the agent is waiting for an answer", () => {
-    renderBar({ isRunning: true, waitingForQuestion: true });
+    renderBar({ waitingForQuestion: true });
 
     expect(screen.getByText("Answer the pending question above to continue.")).toBeInTheDocument();
   });

@@ -21,6 +21,7 @@ interface WorkflowStepCompleteProps {
   onEval?: () => void;
   isLastStep?: boolean;
   reviewMode?: boolean;
+  skillId?: number | null;
   skillName?: string;
   pluginSlug?: string;
   skillsPath?: string | null;
@@ -46,6 +47,7 @@ export function WorkflowStepComplete({
   onEval,
   isLastStep = false,
   reviewMode,
+  skillId,
   skillName,
   pluginSlug,
   skillsPath,
@@ -64,14 +66,14 @@ export function WorkflowStepComplete({
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
 
   useEffect(() => {
-    if (!skillName || stepId == null) {
+    if (skillId == null || stepId == null) {
       setAgentRuns([]);
       return;
     }
-    getStepAgentRuns(skillName, stepId)
+    getStepAgentRuns(skillId, stepId)
       .then((runs) => setAgentRuns(runs))
       .catch((err) => console.error("Failed to load agent stats:", err));
-  }, [skillName, stepId]);
+  }, [skillId, stepId]);
 
   const { fileContents, resolvedFiles, selectedFile, setSelectedFile, loadingFiles } =
     useStepFiles(skillName, pluginSlug, skillsPath, outputFiles);

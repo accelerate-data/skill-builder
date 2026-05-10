@@ -253,7 +253,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         handleOpenChange(false)
         editOnSaved?.()
       } else {
-        await createSkill({
+        const createdSkillId = await createSkill({
           workspacePath: createWorkspacePath,
           name: skillName.trim(),
           tags: tags.length > 0 ? tags : null,
@@ -266,9 +266,9 @@ export default function SkillDialog(props: SkillDialogProps) {
         })
         console.log(`[skill] Created skill "${skillName}"`)
         toast.success(`Skill "${skillName}" created`)
-        const createdName = skillName.trim()
-        await createOnCreated?.(createdName)
-        navigate({ to: "/skill/$skillName", params: { skillName: createdName }, state: { autoStart: true } })
+        const createdSkillIdString = String(createdSkillId)
+        await createOnCreated?.(createdSkillIdString)
+        navigate({ to: "/workflow/$skillId", params: { skillId: createdSkillIdString }, state: { autoStart: true } })
         handleOpenChange(false)
       }
     } catch (err) {

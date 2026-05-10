@@ -207,6 +207,84 @@ fn test_migration_count_matches_expected() {
 }
 
 #[test]
+fn test_migration_51_rebuilds_artifact_tables_on_integer_skill_fks() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 51 {
+            break;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    run_skill_id_artifact_fk_reset_migration(&conn).unwrap();
+
+    assert!(!table_has_column(&conn, "clarifications", "skill_master_id").unwrap());
+    assert!(!table_has_column(&conn, "decisions", "skill_master_id").unwrap());
+
+    let clar_skill_type: String = conn
+        .query_row(
+            "SELECT type FROM pragma_table_info('clarifications') WHERE name = 'skill_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let dec_skill_type: String = conn
+        .query_row(
+            "SELECT type FROM pragma_table_info('decisions') WHERE name = 'skill_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(clar_skill_type, "INTEGER");
+    assert_eq!(dec_skill_type, "INTEGER");
+}
+
+#[test]
+fn test_migration_51_is_rerunnable_after_partial_reset_state() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 51 {
+            break;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clarifications_new (skill_id INTEGER PRIMARY KEY);
+         DROP TABLE IF EXISTS decision_items;",
+    )
+    .unwrap();
+
+    run_skill_id_artifact_fk_reset_migration(&conn).unwrap();
+    run_skill_id_artifact_fk_reset_migration(&conn).unwrap();
+
+    let has_leftover_new: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'clarifications_new'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let has_decision_items: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'decision_items'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(has_leftover_new, 0);
+    assert_eq!(has_decision_items, 1);
+}
+
+#[test]
 fn test_performance_indexes_migration_creates_current_query_indexes() {
     let conn = Connection::open_in_memory().unwrap();
     ensure_migration_table(&conn).unwrap();
@@ -2773,7 +2851,7 @@ fn test_delete_imported_skill_by_name_non_default_plugin() {
     upsert_skill_in_plugin(&conn, "mkt-imp-skill", "marketplace", "domain", "mkt-imp")
         .expect("upsert skill");
     let skill = ImportedSkill {
-        skill_id: "id-mkt-imp".to_string(),
+        skill_id: 201,
         skill_name: "mkt-imp-skill".to_string(),
         library_key: Some("imported:id-mkt-imp".to_string()),
         is_active: true,
@@ -3266,8 +3344,6 @@ fn test_workflow_runs_extended_migration_is_idempotent() {
     let expected_cols = [
         "description",
         "version",
-
-
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3334,7 +3410,7 @@ fn test_list_active_skills() {
 
     // Skill 1: active (trigger comes from disk, not DB)
     let skill1 = ImportedSkill {
-        skill_id: "imp-1".to_string(),
+        skill_id: 301,
         skill_name: "active-with-trigger".to_string(),
         library_key: Some("imported:imp-1".to_string()),
         is_active: true,
@@ -3355,7 +3431,7 @@ fn test_list_active_skills() {
 
     // Skill 2: active
     let skill2 = ImportedSkill {
-        skill_id: "imp-2".to_string(),
+        skill_id: 302,
         skill_name: "active-no-trigger".to_string(),
         library_key: Some("imported:imp-2".to_string()),
         is_active: true,
@@ -3376,7 +3452,7 @@ fn test_list_active_skills() {
 
     // Skill 3: inactive
     let skill3 = ImportedSkill {
-        skill_id: "imp-3".to_string(),
+        skill_id: 303,
         skill_name: "inactive-with-trigger".to_string(),
         library_key: Some("imported:imp-3".to_string()),
         is_active: false,
@@ -3409,7 +3485,7 @@ fn test_delete_imported_skill_by_name() {
     // Skills master row required for FK-based lookup
     upsert_skill(&conn, "delete-me", "imported", "domain").unwrap();
     let skill = ImportedSkill {
-        skill_id: "id-del".to_string(),
+        skill_id: 304,
         skill_name: "delete-me".to_string(),
         library_key: Some("imported:id-del".to_string()),
 
@@ -3868,8 +3944,6 @@ fn test_migration_35_drops_workflow_runs_metadata_columns() {
     let columns_removed = [
         "description",
         "version",
-
-
         "user_invocable",
         "disable_model_invocation",
     ];
@@ -3914,7 +3988,7 @@ fn test_list_imported_skills_filtered() {
 
     // Insert a skill and verify it appears
     let skill = ImportedSkill {
-        skill_id: "imp-test-1".to_string(),
+        skill_id: 401,
         skill_name: "test-skill".to_string(),
         library_key: Some("imported:imp-test-1".to_string()),
         is_active: true,
@@ -3927,7 +4001,6 @@ fn test_list_imported_skills_filtered() {
         description: None,
         purpose: Some("domain".to_string()),
         version: Some("1.0.0".to_string()),
-
 
         user_invocable: None,
         disable_model_invocation: None,
@@ -3965,7 +4038,7 @@ fn test_list_imported_skills_filtered() {
 fn test_get_imported_skill_by_id() {
     let conn = create_test_db();
     let skill = ImportedSkill {
-        skill_id: "imp-test-byid".to_string(),
+        skill_id: 402,
         skill_name: "test-byid".to_string(),
         library_key: Some("imported:imp-test-byid".to_string()),
         is_active: true,
@@ -3987,11 +4060,11 @@ fn test_get_imported_skill_by_id() {
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
 
-    let found = get_imported_skill_by_id(&conn, "imp-test-byid").unwrap();
+    let found = get_imported_skill_by_id(&conn, 402).unwrap();
     assert!(found.is_some());
     assert_eq!(found.unwrap().skill_name, "test-byid");
 
-    let not_found = get_imported_skill_by_id(&conn, "nonexistent").unwrap();
+    let not_found = get_imported_skill_by_id(&conn, 99999).unwrap();
     assert!(not_found.is_none());
 }
 
@@ -3999,7 +4072,7 @@ fn test_get_imported_skill_by_id() {
 fn test_delete_imported_skill_by_skill_id() {
     let conn = create_test_db();
     let skill = ImportedSkill {
-        skill_id: "imp-test-del".to_string(),
+        skill_id: 403,
         skill_name: "test-del".to_string(),
         library_key: Some("imported:imp-test-del".to_string()),
         is_active: true,
@@ -4020,12 +4093,12 @@ fn test_delete_imported_skill_by_skill_id() {
         is_default_plugin: Some(true),
     };
     test_insert_imported_skill(&conn, &skill).unwrap();
-    assert!(get_imported_skill_by_id(&conn, "imp-test-del")
+    assert!(get_imported_skill_by_id(&conn, 403)
         .unwrap()
         .is_some());
 
-    delete_imported_skill_by_skill_id(&conn, "imp-test-del").unwrap();
-    assert!(get_imported_skill_by_id(&conn, "imp-test-del")
+    delete_imported_skill_by_skill_id(&conn, 403).unwrap();
+    assert!(get_imported_skill_by_id(&conn, 403)
         .unwrap()
         .is_none());
 }
@@ -4034,7 +4107,7 @@ fn test_delete_imported_skill_by_skill_id() {
 fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
     let conn = create_test_db();
     let imported = ImportedSkill {
-        skill_id: "imp-market-skill".to_string(),
+        skill_id: 404,
         skill_name: "market-skill".to_string(),
         library_key: Some("imported:imp-market-skill".to_string()),
         is_active: true,
@@ -4044,7 +4117,6 @@ fn test_get_imported_skill_by_name_and_source_respects_source_filter() {
         description: Some("test".to_string()),
         purpose: Some("skill-builder".to_string()),
         version: Some("1.0.0".to_string()),
-
 
         user_invocable: None,
         disable_model_invocation: None,
@@ -4341,7 +4413,7 @@ fn test_list_imported_skills_excludes_deleted_skills() {
     )
     .unwrap();
     let skill = ImportedSkill {
-        skill_id: "mkt-soft-del".to_string(),
+        skill_id: 405,
         skill_name: "soft-del-skill".to_string(),
         library_key: Some("imported:mkt-soft-del".to_string()),
         is_active: true,
@@ -4354,7 +4426,6 @@ fn test_list_imported_skills_excludes_deleted_skills() {
         description: None,
         purpose: Some("domain".to_string()),
         version: Some("1.0.0".to_string()),
-
 
         user_invocable: None,
         disable_model_invocation: None,
@@ -4380,7 +4451,7 @@ fn test_list_imported_skills_excludes_deleted_skills() {
     );
 
     // Also verify get_imported_skill_by_id excludes it
-    let by_id = get_imported_skill_by_id(&conn, "mkt-soft-del").unwrap();
+    let by_id = get_imported_skill_by_id(&conn, 405).unwrap();
     assert!(
         by_id.is_none(),
         "deleted skill must not be returned by get_imported_skill_by_id"

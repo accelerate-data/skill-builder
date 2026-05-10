@@ -352,11 +352,10 @@ pub(crate) async fn import_single_skill(
         );
     }
 
-    let skill_id = super::super::imported_skills::generate_skill_id(&skill_name);
     let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     Ok(ImportedSkill {
-        skill_id,
+        skill_id: 0,
         skill_name,
         library_key: None,
         is_active: true,

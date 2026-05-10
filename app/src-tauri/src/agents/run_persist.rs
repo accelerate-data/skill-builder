@@ -1,9 +1,9 @@
-use super::event_types::SidecarRunSummary;
+use super::event_types::RuntimeRunSummary;
 
 fn persist_run_summary_to_conn(
     conn: &rusqlite::Connection,
     agent_id: &str,
-    summary: &SidecarRunSummary,
+    summary: &RuntimeRunSummary,
 ) {
     // Determine the effective workflow_session_id (prefer workflowSessionId, fallback to usageSessionId)
     let effective_session_id = summary
@@ -101,7 +101,7 @@ fn persist_run_summary_to_conn(
 pub fn persist_run_summary(
     app_handle: &tauri::AppHandle,
     agent_id: &str,
-    summary: &SidecarRunSummary,
+    summary: &RuntimeRunSummary,
 ) {
     use tauri::Manager;
 
@@ -133,7 +133,7 @@ pub fn persist_run_summary(
 
 #[cfg(test)]
 mod tests {
-    use super::super::event_types::SidecarModelUsageEntry;
+    use super::super::event_types::RuntimeModelUsageEntry;
     use super::*;
 
     #[test]
@@ -142,7 +142,7 @@ mod tests {
         crate::db::save_workflow_run(&conn, "demo-skill", 2, "in_progress", "domain").unwrap();
         crate::db::create_workflow_session(&conn, "wf-aggregate", "demo-skill", 1000).unwrap();
 
-        let summary = SidecarRunSummary {
+        let summary = RuntimeRunSummary {
             skill_name: "demo-skill".to_string(),
             step_id: 2,
             workflow_session_id: Some("wf-aggregate".to_string()),
@@ -193,7 +193,7 @@ mod tests {
         let conn = crate::db::create_test_db_for_tests();
         crate::db::save_workflow_run(&conn, "demo-skill", -10, "in_progress", "domain").unwrap();
 
-        let summary = SidecarRunSummary {
+        let summary = RuntimeRunSummary {
             skill_name: "demo-skill".to_string(),
             step_id: -10,
             workflow_session_id: None,
@@ -207,7 +207,7 @@ mod tests {
             cache_write_tokens: 0,
             total_cost_usd: 0.0,
             model_usage_breakdown: vec![
-                SidecarModelUsageEntry {
+                RuntimeModelUsageEntry {
                     model: "settings-model-a".to_string(),
                     input_tokens: 100,
                     output_tokens: 20,
@@ -215,7 +215,7 @@ mod tests {
                     cache_write_tokens: 1,
                     cost: 0.10,
                 },
-                SidecarModelUsageEntry {
+                RuntimeModelUsageEntry {
                     model: "settings-model-b".to_string(),
                     input_tokens: 50,
                     output_tokens: 10,

@@ -2,9 +2,8 @@
 
 As-built reference for all Tauri events emitted from the Rust backend to the React frontend.
 All payload structs live in `app/src-tauri/src/contracts/agent_events.rs` (canonical Rust types).
-TypeScript types are generated from Rust via codegen into `app/src/generated/contracts.ts` and
-`app/sidecar/generated/contracts.ts`. Frontend listener registration lives in
-`app/src/hooks/use-agent-stream.ts`.
+TypeScript types are generated from Rust via codegen into `app/src/generated/contracts.ts`.
+Frontend listener registration lives in `app/src/hooks/use-agent-stream.ts`.
 
 ---
 
@@ -12,7 +11,7 @@ TypeScript types are generated from Rust via codegen into `app/src/generated/con
 
 ### `agent-exit`
 
-Emitted by `handle_sidecar_exit` when the Node.js sidecar process terminates.
+Emitted by `handle_runtime_exit` when the runtime agent process terminates.
 
 **Rust struct:** `AgentExitPayload`
 
@@ -26,7 +25,7 @@ Emitted by `handle_sidecar_exit` when the Node.js sidecar process terminates.
 ### `agent-shutdown`
 
 Emitted by `handle_agent_shutdown` when an agent is stopped via a graceful shutdown command
-(e.g. `cleanup_skill_sidecar`, `graceful_shutdown`).
+(e.g. `graceful_shutdown`).
 
 **Rust struct:** `AgentShutdownPayload`
 
@@ -38,7 +37,7 @@ Emitted by `handle_agent_shutdown` when an agent is stopped via a graceful shutd
 
 ### `agent-init-error`
 
-Emitted by `emit_init_error` (sidecar startup failure) and `emit_runtime_error`
+Emitted by `emit_init_error` (runtime startup failure) and `emit_runtime_error`
 (runtime failure detected from agent output, e.g. authentication failure).
 
 **Rust struct:** `AgentInitError`
@@ -53,7 +52,7 @@ Emitted by `emit_init_error` (sidecar startup failure) and `emit_runtime_error`
 
 ### `agent-message`
 
-Emitted by `handle_sidecar_message` for all raw sidecar protocol messages that are not
+Emitted by `handle_runtime_message` for all raw runtime protocol messages that are not
 internally consumed (i.e. everything except `run_result` and structured `agent_event` subtypes).
 
 **Rust struct:** `AgentEvent`
@@ -61,7 +60,7 @@ internally consumed (i.e. everything except `run_result` and structured `agent_e
 | Field | Type | Description |
 |---|---|---|
 | `agent_id` | `String` | Identifier of the originating agent |
-| `message` | `serde_json::Value` | Full JSON message from the sidecar |
+| `message` | `serde_json::Value` | Full JSON message from the runtime |
 
 > **Note:** Individual structured agent events (run_config, turn_usage, etc.) are now typed
 > via the `AgentEvent` tagged union in `contracts/agent_events.rs` rather than remaining
@@ -72,7 +71,7 @@ internally consumed (i.e. everything except `run_result` and structured `agent_e
 
 ### `agent-run-config`
 
-Emitted when the sidecar fires a `run_config` agent event.
+Emitted when the runtime emits a `run_config` agent event.
 
 **Payload shape:** `{ agent_id, timestamp, type, thinkingEnabled, agentName? }`
 
@@ -80,7 +79,7 @@ Emitted when the sidecar fires a `run_config` agent event.
 
 ### `agent-run-init`
 
-Emitted when the sidecar fires a `run_init` agent event (SDK session established).
+Emitted when the runtime emits a `run_init` agent event (SDK session established).
 
 **Payload shape:** `{ agent_id, timestamp, type, sessionId, model }`
 
@@ -120,7 +119,7 @@ Emitted when a refine session has reached its message limit.
 
 ### `agent-init-progress`
 
-Emitted during sidecar startup to report initialization stages.
+Emitted during runtime startup to report initialization stages.
 
 **Payload shape:** `{ agent_id, timestamp, type, stage }` where `stage` is `"init_start"` or `"runtime_ready"`.
 
@@ -136,7 +135,7 @@ Emitted after each assistant turn completes.
 
 ## Error Payload Notes
 
-The `agent-init-error` channel is shared between startup errors (`SidecarStartupError`) and
+The `agent-init-error` channel is shared between startup errors and
 runtime errors detected from agent output (e.g. authentication failures detected by
 `is_authentication_error`). Both paths produce an `AgentInitError` payload.
 
@@ -150,14 +149,14 @@ VU-552). Rust is intentionally kept free of UI-level status semantics.
 
 ## Structured Agent Event Payload Pattern
 
-For sidecar-originated `agent_event` messages (all events except `agent-exit`,
+For runtime-originated `agent_event` messages (all events except `agent-exit`,
 `agent-shutdown`, `agent-init-error`, and `agent-message`), Rust merges the event fields
 into a common envelope via `build_frontend_event_payload`:
 
 ```text
 {
   agent_id:  string   — added by Rust
-  timestamp: number   — taken from the sidecar message envelope
+  timestamp: number   — taken from the runtime message envelope
   type:      string   — from the inner event object
   ...rest            — all other fields from the inner event object
 }
@@ -229,7 +228,7 @@ Rust is the final validator — it deserializes the extracted JSON object into t
 - Canonical Rust contract types (workflow artifacts): `app/src-tauri/src/contracts/workflow_artifacts.rs`
 - Rust emit logic: `app/src-tauri/src/agents/events.rs`
 - Rust event routing: `app/src-tauri/src/agents/event_router.rs`
-- Generated TypeScript types: `app/src/generated/contracts.ts`, `app/sidecar/generated/contracts.ts`
+- Generated TypeScript types: `app/src/generated/contracts.ts`
 - Generated JSON Schema (inline, no `$ref`): `agent-sources/workspace/skills/shared/output-schemas/`
 - Frontend listener registration: `app/src/hooks/use-agent-stream.ts`
 - Frontend TypeScript event types: `app/src/lib/agent-events.ts`

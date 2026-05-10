@@ -102,11 +102,13 @@ const mockClearInitializing = vi.fn();
 const mockSetGateLoading = vi.fn();
 const mockResetToStep = vi.fn();
 const mockClearRuntimeError = vi.fn();
+const mockSetStopping = vi.fn();
 let mockWorkflowState = {
   workflowSessionId: null as string | null,
   currentStep: 0,
   steps: [{ id: 0, status: "pending" }],
   isRunning: false,
+  isStopping: false,
   isInitializing: false,
   reviewMode: false,
   gateLoading: false,
@@ -114,6 +116,7 @@ let mockWorkflowState = {
   setCurrentStep: mockSetCurrentStep,
   updateStepStatus: mockUpdateStepStatus,
   setRunning: mockSetRunning,
+  setStopping: mockSetStopping,
   setInitializing: mockSetInitializing,
   clearInitializing: mockClearInitializing,
   setGateLoading: mockSetGateLoading,
@@ -252,7 +255,7 @@ describe("useWorkflowStateMachine", () => {
   });
 
   it("handleStartAgentStep shows error toast when runWorkflowStep fails", async () => {
-    mockRunWorkflowStep.mockRejectedValueOnce(new Error("sidecar error"));
+    mockRunWorkflowStep.mockRejectedValueOnce(new Error("runtime error"));
     const { toast } = await import("@/lib/toast");
 
     const { result } = renderHook(() =>

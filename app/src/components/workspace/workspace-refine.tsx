@@ -16,49 +16,20 @@ import { useRefineStore } from "@/stores/refine-store";
 import type { SkillFile } from "@/stores/refine-store";
 import { useAgentStore, formatTokenCount } from "@/stores/agent-store";
 import {
-  getSkillContentForRefine,
   sendRefineMessage,
   finalizeRefineRun,
   cleanBenchmarkSnapshot,
-  cancelAgentRun,
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
 import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { initAgentStream } from "@/hooks/use-agent-stream";
+import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
+import { loadSkillFiles } from "@/lib/skill-file-loader";
 
 interface WorkspaceRefineProps {
   skill: EditableSkill;
-}
-
-/** Load skill files from disk, returning null on failure. */
-async function loadSkillFiles(
-  basePath: string,
-  skillName: string,
-  pluginSlug: string,
-): Promise<SkillFile[] | null> {
-  try {
-    const contents = await getSkillContentForRefine(
-      skillName,
-      basePath,
-      pluginSlug,
-    );
-    return contents
-      .map((c): SkillFile => ({ filename: c.path, content: c.content }))
-      .sort((a, b) => {
-        if (a.filename === "SKILL.md") return -1;
-        if (b.filename === "SKILL.md") return 1;
-        return a.filename.localeCompare(b.filename);
-      });
-  } catch (err) {
-    console.error("[workspace-refine] Failed to load skill files:", err);
-    return null;
-  }
-}
-
-function clearRefineAgentRuns(): void {
-  useAgentStore.getState().clearRunsBySource("refine");
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -104,11 +75,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const { blockerStatus, handleNavStay, handleNavLeave } = useLeaveGuard({
     shouldBlock: () => useRefineStore.getState().isRunning,
     onLeave: (proceed) => {
-      const store = useRefineStore.getState();
-      store.setRunning(false);
-      store.setActiveAgentId(null);
-      clearRefineAgentRuns();
-      proceed();
+      void proceed();
     },
   });
 
@@ -134,7 +101,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     setSessionTurns(0);
     setSessionTokens(0);
     setSessionCost(0);
-    void loadSkillFiles(workspacePath, skill.name, skill.plugin_slug)
+    void loadSkillFiles({
+      type: "builder",
+      skillName: skill.name,
+      workspacePath: workspacePath!,
+      pluginSlug: skill.plugin_slug,
+    })
       .then((files) => {
         if (cancelled) return;
         if (!files) {
@@ -227,30 +199,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     [activeSkill, selectedModel],
   );
 
-  const handleCancel = useCallback(async () => {
-    const store = useRefineStore.getState();
-    if (!activeSkill || !store.activeAgentId || !store.isRunning) {
-      return;
-    }
-
-    console.log("[workspace-refine] pause: agent=%s", store.activeAgentId);
-
-    try {
-      await cancelAgentRun(store.activeAgentId);
-    } catch (err) {
-      console.error("[workspace-refine] Failed to pause refine session:", err);
-      toast.error("Failed to pause current run", {
-        duration: Infinity,
-        cause: err,
-        context: { operation: "workspace_refine_pause" },
-      });
-    }
-    // Do NOT optimistically clear running state here. The agent completion
-    // useEffect watches activeRunStatus for a terminal event ("completed",
-    // "error", "shutdown") and handles cleanup. This ensures the UI only
-    // transitions when the stream has actually stopped.
-  }, [activeSkill]);
-
   // --- Watch agent completion ---
   useEffect(() => {
     if (!activeAgentId || !activeRunStatus) return;
@@ -259,6 +207,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       activeRunStatus,
     );
     if (!isTerminal) return;
+
+    // Clear stopping state when terminal event arrives
+    useRefineStore.getState().setStopping(false);
 
     console.log(
       "[workspace-refine] agent %s finished: status=%s",
@@ -320,11 +271,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           }
         } catch {
           try {
-            const files = await loadSkillFiles(
-              workspacePath,
-              completionSkill.name,
-              completionSkill.plugin_slug,
-            );
+            const files = await loadSkillFiles({
+              type: "builder",
+              skillName: completionSkill.name,
+              workspacePath: workspacePath!,
+              pluginSlug: completionSkill.plugin_slug,
+            });
             if (files) {
               store.updateSkillFiles(files);
               store.setGitDiff(null);
@@ -342,11 +294,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           workspacePath,
           completionSkill.plugin_slug,
         ).catch(() => {});
-        const files = await loadSkillFiles(
-          workspacePath,
-          completionSkill.name,
-          completionSkill.plugin_slug,
-        );
+        const files = await loadSkillFiles({
+          type: "builder",
+          skillName: completionSkill.name,
+          workspacePath: workspacePath!,
+          pluginSlug: completionSkill.plugin_slug,
+        });
         if (files) {
           store.updateSkillFiles(files);
           store.setGitDiff(null);
@@ -403,30 +356,21 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const modelLabel = activeModel
     ? (availableModels.find((m) => m.id === activeModel)?.displayName ??
       deriveModelLabel(activeModel))
-    : "No model selected";
+    : null;
 
-  const dotStyle = isRunning
-    ? { background: "var(--color-pacific)" }
-    : activeSkill
-      ? { background: "var(--color-seafoam)" }
-      : undefined;
-  const dotClass = isRunning
-    ? "animate-pulse"
-    : activeSkill
-      ? ""
-      : "bg-zinc-500";
-  const statusLabel = isRunning
-    ? "running..."
-    : activeSkill
-      ? "ready"
-      : "loading...";
+  const isStopping = useRefineStore((s) => s.isStopping);
+
+  const footerStatus: FooterDisplayStatus = isStopping
+    ? "stopping"
+    : isRunning
+      ? "running"
+      : "idle";
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 w-full flex-1 overflow-hidden">
         <ChatPanel
           onSend={handleSend}
-          onCancel={handleCancel}
-          isRunning={isRunning}
           hasSkill={!!activeSkill}
           availableFiles={availableFiles}
           availableAgents={availableAgents}
@@ -434,59 +378,16 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         />
       </div>
 
-      {/* Status bar */}
-      <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
-        <div className="flex items-center gap-1.5">
-          <div
-            className={`size-[5px] rounded-full ${dotClass}`}
-            style={dotStyle}
-          />
-          <span className="text-xs text-muted-foreground">{statusLabel}</span>
-        </div>
-        {activeSkill && (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground">
-              {activeSkill.name}
-            </span>
-          </>
-        )}
-        <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-xs text-muted-foreground">{modelLabel}</span>
-        {isRunning && (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs text-muted-foreground">
-              {(elapsed / 1000).toFixed(1)}s
-            </span>
-          </>
-        )}
-        {sessionTurns + activeRunTurns > 0 && (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
-              {sessionTurns + activeRunTurns}{" "}
-              {sessionTurns + activeRunTurns === 1 ? "turn" : "turns"}
-            </span>
-          </>
-        )}
-        {sessionTokens > 0 && !isRunning && (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
-              {formatTokenCount(sessionTokens)} tokens
-            </span>
-          </>
-        )}
-        {sessionCost > 0 && !isRunning && (
-          <>
-            <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
-              ${sessionCost.toFixed(4)}
-            </span>
-          </>
-        )}
-      </div>
+      <RunStatusFooter
+        status={footerStatus}
+        label={activeSkill?.name ?? null}
+        model={modelLabel}
+        elapsedMs={isRunning ? elapsed : null}
+        turns={sessionTurns + activeRunTurns > 0 ? sessionTurns + activeRunTurns : null}
+        tokenCount={sessionTokens > 0 && !isRunning ? formatTokenCount(sessionTokens) : null}
+        cost={sessionCost > 0 && !isRunning ? `$${sessionCost.toFixed(4)}` : null}
+        testId="refine-status-footer"
+      />
 
       {blockerStatus === "blocked" && (
         <Dialog

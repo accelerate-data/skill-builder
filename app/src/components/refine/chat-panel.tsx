@@ -7,8 +7,6 @@ import { ChatInputBar } from "./chat-input-bar";
 
 interface ChatPanelProps {
   onSend: (text: string, targetFiles?: string[]) => void;
-  onCancel?: () => void;
-  isRunning: boolean;
   hasSkill: boolean;
   availableFiles: string[];
   availableAgents: string[];
@@ -18,8 +16,6 @@ interface ChatPanelProps {
 
 export function ChatPanel({
   onSend,
-  onCancel,
-  isRunning,
   hasSkill,
   availableFiles,
   availableAgents,
@@ -31,8 +27,6 @@ export function ChatPanel({
   const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
   const waitingForQuestion = messages.some((message) => message.role === "question" && message.pending);
 
-  // Suggestion chip click — inject text into the input via the store's
-  // pendingInitialMessage mechanism (same as cross-page navigation).
   const handleSuggestionClick = useCallback((text: string) => {
     useRefineStore.getState().setPendingInitialMessage(text);
   }, []);
@@ -58,7 +52,6 @@ export function ChatPanel({
       )}
       <ChatMessageList
         messages={messages}
-        isRunning={isRunning}
         onQuestionSubmit={onQuestionSubmit}
         onSuggestionClick={handleSuggestionClick}
       />
@@ -70,8 +63,6 @@ export function ChatPanel({
       )}
       <ChatInputBar
         onSend={onSend}
-        onCancel={onCancel}
-        isRunning={isRunning || sessionExhausted || !!scopeBlocked}
         waitingForQuestion={waitingForQuestion}
         availableFiles={availableFiles}
         availableAgents={availableAgents}

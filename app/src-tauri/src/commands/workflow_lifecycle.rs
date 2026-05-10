@@ -3,14 +3,36 @@ use std::path::Path;
 
 const MAX_WORKFLOW_STEP_ID: u32 = 3;
 
+pub fn start_session_by_skill_id(
+    conn: &Connection,
+    session_id: &str,
+    skill_id: i64,
+    pid: u32,
+) -> Result<(), String> {
+    validate_session_start(session_id, skill_id, pid)?;
+    crate::db::create_workflow_session_by_skill_id(conn, session_id, skill_id, pid)
+}
+
 pub fn start_session(
     conn: &Connection,
     session_id: &str,
     skill_name: &str,
     pid: u32,
 ) -> Result<(), String> {
-    validate_session_start(session_id, skill_name, pid)?;
-    crate::db::create_workflow_session(conn, session_id, skill_name, pid)
+    if session_id.trim().is_empty() {
+        return Err("Session ID is required".to_string());
+    }
+    if skill_name.trim().is_empty() {
+        return Err("Skill name is required".to_string());
+    }
+    if pid == 0 {
+        return Err("PID must be greater than zero".to_string());
+    }
+    let skill_id = match crate::db::get_skill_master_id_any_plugin(conn, skill_name)? {
+        Some(skill_id) => skill_id,
+        None => crate::db::upsert_skill(conn, skill_name, "skill-builder", "domain")?,
+    };
+    start_session_by_skill_id(conn, session_id, skill_id, pid)
 }
 
 pub fn cancel_session(conn: &Connection, session_id: &str) -> Result<(), String> {
@@ -50,12 +72,12 @@ pub fn validate_run_request(
     Ok(())
 }
 
-fn validate_session_start(session_id: &str, skill_name: &str, pid: u32) -> Result<(), String> {
+fn validate_session_start(session_id: &str, skill_id: i64, pid: u32) -> Result<(), String> {
     if session_id.trim().is_empty() {
         return Err("Session ID is required".to_string());
     }
-    if skill_name.trim().is_empty() {
-        return Err("Skill name is required".to_string());
+    if skill_id <= 0 {
+        return Err("Skill ID is required".to_string());
     }
     if pid == 0 {
         return Err("PID must be greater than zero".to_string());

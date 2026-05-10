@@ -48,8 +48,12 @@ import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+let nextBuilderId = 1;
+let nextImportedId = 1000;
+
 function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
   const base: SkillSummary = {
+    id: nextBuilderId++,
     name: overrides.name,
     library_key: `skill-builder:skills:${overrides.name}`,
     current_step: null,
@@ -74,14 +78,17 @@ function makeBuilderSkill(overrides: Partial<SkillSummary> & { name: string }): 
 }
 
 function builderKey(name: string) {
-  return `skill-builder:skills:${name}`;
+  return String(
+    builderSkillResults.find((skill) => skill.name === name)?.id ??
+      "missing-builder-id",
+  );
 }
 
 function makeImportedSkill(
   overrides: Partial<ImportedSkill> & { skill_name: string },
 ): ImportedSkill {
   const base: ImportedSkill = {
-    skill_id: `id-${overrides.skill_name}`,
+    skill_id: nextImportedId++,
     skill_name: overrides.skill_name,
     library_key: `imported:id-${overrides.skill_name}`,
     description: null,
@@ -160,10 +167,12 @@ const importedSkill = makeImportedSkill({
 
 describe("SkillListPanel", () => {
   beforeEach(() => {
+    nextBuilderId = 1000;
+    nextImportedId = 2000;
     setBuilderSkills([]);
     setImportedSkills([]);
     useSkillStore.setState({
-      activeSkill: null,
+      activeSkillId: null,
       lockedSkills: new Set(),
       latestVersion: null,
     });
@@ -283,7 +292,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-imported:id-imp-skill");
+    const dot = screen.getByLabelText(`status-dot-${skill.skill_id}`);
     expect(dot.style.backgroundColor).toBe("var(--color-violet)");
   });
 
@@ -296,7 +305,7 @@ describe("SkillListPanel", () => {
 
     renderWithSkillQueries(<SkillListPanel />);
 
-    const dot = screen.getByLabelText("status-dot-imported:id-mkt-skill");
+    const dot = screen.getByLabelText(`status-dot-${skill.skill_id}`);
     expect(dot.style.backgroundColor).toBe("var(--color-pacific)");
   });
 
@@ -355,7 +364,7 @@ describe("SkillListPanel", () => {
     await openSkillMenu("plugin-skill", user);
     await user.click(screen.getByRole("menuitem", { name: "Remove from plugin" }));
 
-    expect(removeSkillFromPlugin).toHaveBeenCalledWith("skill-builder:analytics-pack:plugin-skill");
+    expect(removeSkillFromPlugin).toHaveBeenCalledWith(String(builderSkillResults[0]?.id));
   });
 
   // ── Pulse animation ───────────────────────────────────────────────────────
@@ -504,34 +513,26 @@ describe("SkillListPanel", () => {
 
   // ── Row click routing ─────────────────────────────────────────────────────
 
-  it("navigates to /skill/$skillName when clicking a never-started skill", async () => {
+  it("calls onSelectSkill when clicking a never-started skill", async () => {
+    const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "new-workflow" });
     setBuilderSkills([skill]);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("new-workflow").closest('[role="button"]')!);
 
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/skill/$skillName",
-        params: { skillName: "new-workflow" },
-      }),
-    );
+    expect(onSelectSkill).toHaveBeenCalledWith(builderKey("new-workflow"));
   });
 
-  it("navigates to /skill/$skillName when clicking a step-1 skill", async () => {
+  it("calls onSelectSkill when clicking a step-1 skill", async () => {
+    const onSelectSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "step1-nav", current_step: "Step 1" });
     setBuilderSkills([skill]);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("step1-nav").closest('[role="button"]')!);
 
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/skill/$skillName",
-        params: { skillName: "step1-nav" },
-      }),
-    );
+    expect(onSelectSkill).toHaveBeenCalledWith(builderKey("step1-nav"));
   });
 
   it("calls onSelectSkill when clicking a completed skill", () => {
@@ -554,7 +555,7 @@ describe("SkillListPanel", () => {
     renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
     fireEvent.click(screen.getByText("my-import").closest('[role="button"]')!);
 
-    expect(onSelectSkill).toHaveBeenCalledWith("imported:id-my-import");
+    expect(onSelectSkill).toHaveBeenCalledWith(String(skill.skill_id));
   });
 
   it("does not navigate or call onSelectSkill when clicking a locked row", () => {
@@ -627,12 +628,13 @@ describe("SkillListPanel", () => {
 
   // ── Review action ──────────────────────────────────────────────────────
 
-  it("shows Review menu item for completed builder skills and navigates to workflow in review mode", async () => {
+  it("shows Review menu item for completed builder skills and calls onActivateSkill", async () => {
     const user = userEvent.setup();
+    const onActivateSkill = vi.fn();
     const skill = makeBuilderSkill({ name: "review-skill", status: "completed" });
     setBuilderSkills([skill]);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
 
     await openSkillMenu("review-skill", user);
 
@@ -642,11 +644,8 @@ describe("SkillListPanel", () => {
 
     await user.click(reviewItem);
 
-    // Should navigate to workflow page WITHOUT autoStart (review mode)
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "review-skill" },
-    });
+    // Should call onActivateSkill (navigation handled by AppLayout)
+    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("review-skill"), "workflow");
   });
 
   it("shows the actions menu only for the selected skill", async () => {
@@ -654,7 +653,7 @@ describe("SkillListPanel", () => {
     const selectedSkill = makeBuilderSkill({ name: "selected-skill", status: "completed" });
     const unselectedSkill = makeBuilderSkill({ name: "unselected-skill", status: "completed" });
     setBuilderSkills([selectedSkill, unselectedSkill]);
-    useSkillStore.setState({ activeSkill: builderKey("selected-skill") });
+    useSkillStore.setState({ activeSkillId: builderKey("selected-skill") });
 
     renderWithSkillQueries(<SkillListPanel />);
 
@@ -765,7 +764,7 @@ describe("SkillListPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
   });
 
-  it("continue building activates the workflow skill before navigation", async () => {
+  it("continue building activates the workflow skill", async () => {
     const user = userEvent.setup();
     const onActivateSkill = vi.fn().mockResolvedValue(undefined);
     const skill = makeBuilderSkill({ name: "resume-builder", current_step: "Step 1" });
@@ -780,21 +779,17 @@ describe("SkillListPanel", () => {
 
     await user.click(continueItem);
 
-    expect(onActivateSkill).toHaveBeenCalledWith("skill-builder:skills:resume-builder");
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "resume-builder" },
-      state: { autoStart: true },
-    });
+    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("resume-builder"), "workflow");
   });
 
-  it("redo re-activates the workflow skill after reset before navigation", async () => {
+  it("redo re-activates the workflow skill after reset", async () => {
     const user = userEvent.setup();
+    const onActivateSkill = vi.fn().mockResolvedValue(undefined);
     const skill = makeBuilderSkill({ name: "redo-builder", status: "completed" });
     setBuilderSkills([skill]);
     vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
 
-    renderWithSkillQueries(<SkillListPanel />);
+    renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
 
     await openSkillMenu("redo-builder", user);
     await user.click(screen.getByRole("menuitem", { name: "Redo workflow" }));
@@ -810,11 +805,26 @@ describe("SkillListPanel", () => {
       }),
       expect.any(String),
     );
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
-      params: { skillName: "redo-builder" },
-      state: { autoStart: true },
-    });
+    // Navigation is handled by AppLayout via onActivateSkill
+    expect(onActivateSkill).toHaveBeenCalledWith(builderKey("redo-builder"), "workflow");
+  });
+
+  it("redo confirmation shows the resolved skill name instead of the internal skill id", async () => {
+    const user = userEvent.setup();
+    const skill = makeBuilderSkill({ name: "redo-builder-name", status: "completed" });
+    setBuilderSkills([skill]);
+
+    renderWithSkillQueries(<SkillListPanel />);
+
+    await openSkillMenu("redo-builder-name", user);
+    await user.click(screen.getByRole("menuitem", { name: "Redo workflow" }));
+
+    expect(
+      screen.getByText(/overwrite all generated artifacts and files for/i),
+    ).toHaveTextContent("redo-builder-name");
+    expect(
+      screen.getByText(/overwrite all generated artifacts and files for/i),
+    ).not.toHaveTextContent(String(skill.id));
   });
 
   it("does not navigate when clicking the running skill itself", () => {

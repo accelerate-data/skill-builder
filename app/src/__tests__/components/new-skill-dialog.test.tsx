@@ -537,7 +537,7 @@ describe("SkillDialog (create mode)", () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/skill/$skillName",
+      to: "/workflow/$skillName",
       params: { skillName: "sales-pipeline" },
       state: { autoStart: true },
     });

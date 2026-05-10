@@ -74,6 +74,7 @@ pub(crate) fn list_skills_inner(
                 // Frontmatter fields come from skills master (canonical since migration 24).
                 if let Some(run) = runs_map.get(&master.name) {
                     return SkillSummary {
+                        id: master.id,
                         name: run.skill_name.clone(),
                         library_key,
                         current_step: Some(format!("Step {}", run.current_step)),
@@ -102,6 +103,7 @@ pub(crate) fn list_skills_inner(
             // For marketplace/imported skills (or skill-builder with no workflow_runs row):
             // show as completed with master data. Frontmatter fields all come from skills master.
             SkillSummary {
+                id: master.id,
                 name: master.name.clone(),
                 library_key,
                 current_step: Some("Step 5".to_string()),
@@ -198,7 +200,7 @@ pub fn create_skill(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
     db: tauri::State<'_, Db>,
-) -> Result<(), String> {
+) -> Result<i64, String> {
     log::info!(
         "[create_skill] name={} purpose={:?} tags={:?} intake={} description={}",
         name,
@@ -228,7 +230,7 @@ pub fn create_skill(
     let author_login = settings.as_ref().and_then(|s| s.github_user_login.clone());
     let author_avatar = settings.as_ref().and_then(|s| s.github_user_avatar.clone());
 
-    {
+    let skill_id = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[create_skill] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -253,10 +255,12 @@ pub fn create_skill(
             user_invocable,
             disable_model_invocation,
         )?;
-    }
+        crate::db::get_skill_master_id_any_plugin(&conn, &name)?
+            .ok_or_else(|| format!("Failed to find created skill '{}'", name))?
+    };
 
     post_create_skill_filesystem_inner(&name, skills_path.as_deref(), DEFAULT_PLUGIN_SLUG);
-    Ok(())
+    Ok(skill_id)
 }
 
 #[allow(clippy::too_many_arguments)]

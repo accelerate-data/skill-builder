@@ -25,7 +25,7 @@ Triggered manually with a version string (e.g. `0.3.0`). Two jobs:
 2. Downloads and bundles a Node.js 22.14.0 binary (SHA-256 verified) so the app runs without Node installed.
 3. Builds the Tauri app and packages:
    - **macOS**: `SkillBuilder-v{VERSION}-macos.zip` — `.app` bundle + `run.sh` (strips quarantine before launch)
-   - **Windows**: `SkillBuilder-v{VERSION}-windows.zip` — `.exe` + sidecar JS files + bundled Node + agents directory
+   - **Windows**: `SkillBuilder-v{VERSION}-windows.zip` — `.exe` + bundled Node + agents directory
 
 ### `release` (ubuntu, after `build`)
 

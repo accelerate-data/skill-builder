@@ -12,8 +12,9 @@ use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
 use thiserror::Error;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::Message;
 
 pub use types::{OpenHandsRuntimeRequest, StartConversationRequest};
@@ -24,14 +25,14 @@ use self::process::{
     ensure_agent_server as ensure_agent_server_process, extract_terminal_error_from_stderr,
     stderr_tail_snapshot,
 };
-use crate::agents::sidecar::SidecarConfig;
+use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::db::Db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
 pub struct OpenHandsThrowawayRunParams {
     pub agent_id: String,
-    pub config: SidecarConfig,
+    pub config: OpenHandsRuntimeConfig,
     pub timeout: Duration,
 }
 
@@ -429,15 +430,20 @@ fn collect_live_child_subagent_events(
 ) -> Result<Vec<serde_json::Value>, String> {
     let children = list_persisted_subagent_conversations(root)?;
     let mut emitted = Vec::new();
-    log::debug!(
-        "[openhands-agent-server:{}] live_subagent_scan root={} launch_count={} child_count={} known_links={} emitted_keys={}",
-        agent_id,
-        root.display(),
-        launches.len(),
-        children.len(),
-        state.parent_tool_call_by_child_conversation.len(),
-        state.emitted_child_event_keys.len()
-    );
+    // Skip the per-tick log when there's nothing to scan — the parent step
+    // hasn't launched a sub-agent and the child directory is empty. Without
+    // this guard the loop logs a noisy line every 250ms.
+    if !launches.is_empty() || !children.is_empty() {
+        log::debug!(
+            "[openhands-agent-server:{}] live_subagent_scan root={} launch_count={} child_count={} known_links={} emitted_keys={}",
+            agent_id,
+            root.display(),
+            launches.len(),
+            children.len(),
+            state.parent_tool_call_by_child_conversation.len(),
+            state.emitted_child_event_keys.len()
+        );
+    }
 
     for child in children {
         let parent_tool_call_id = if let Some(existing) = state
@@ -568,7 +574,7 @@ async fn stream_live_child_subagent_events(
         ) {
             Ok(events) => {
                 for event in events {
-                    super::events::handle_sidecar_message(
+                    super::events::handle_runtime_message(
                         &task.app,
                         &task.agent_id,
                         &event.to_string(),
@@ -850,12 +856,40 @@ async fn resolve_openhands_conversation_id(
             )
             .await
         }
+        OpenHandsConversationResolution::Error(
+            OpenHandsRuntimeError::ConversationNotFound { .. }
+            | OpenHandsRuntimeError::MissingExistingConversation,
+        ) => {
+            // Conversation was lost (e.g. files deleted while DB retains the ID).
+            // Fall back to a fresh conversation and persist the new ID so all UI
+            // surfaces can resume without manual intervention.
+            let stale_id = saved_conversation_id.as_deref().unwrap_or("none");
+            log::warn!(
+                "[openhands-agent-server] conversation_unresumable saved_id={} action=create_new",
+                stale_id
+            );
+            let _ = app.emit(
+                "skill-session-reset",
+                serde_json::json!({
+                    "reason": "conversation_not_found",
+                    "conversation_id": stale_id
+                }),
+            );
+            let new_id = create_prepared_conversation_for_request(
+                &client,
+                request,
+                include_initial_message_on_create,
+            )
+            .await?;
+            save_skill_conversation_id(app, request, &new_id)?;
+            Ok(new_id)
+        }
         OpenHandsConversationResolution::Error(error) => Err(error.to_string()),
     }
 }
 
-pub async fn ensure_openhands_server(config: &SidecarConfig) -> Result<(), String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(config)?;
+pub async fn ensure_openhands_server(config: &OpenHandsRuntimeConfig) -> Result<(), String> {
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir())
         .await
         .map(|_| ())
@@ -863,10 +897,10 @@ pub async fn ensure_openhands_server(config: &SidecarConfig) -> Result<(), Strin
 
 pub async fn start_openhands_session(
     app: &tauri::AppHandle,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: Option<String>,
 ) -> Result<String, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let conversation_id = resolve_openhands_conversation_id(
         app,
         &request,
@@ -880,10 +914,10 @@ pub async fn start_openhands_session(
 }
 
 pub async fn list_openhands_conversation_events(
-    config: &SidecarConfig,
+    config: &OpenHandsRuntimeConfig,
     conversation_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     let server =
         ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
@@ -902,10 +936,10 @@ pub async fn list_openhands_conversation_events(
 pub async fn send_openhands_message(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: String,
 ) -> Result<String, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     dispatch_openhands_turn_with_request(
         app,
         agent_id,
@@ -921,10 +955,17 @@ pub async fn send_openhands_message(
 pub async fn openhands_send_message(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: String,
 ) -> Result<String, String> {
     send_openhands_message(app, agent_id, config, conversation_id).await
+}
+
+/// Force-abort the local Tokio task for an agent. Only for edge-case cleanup
+/// (stale runs, timed-out throwaway sessions). Normal user-initiated stops
+/// must go through `pause_openhands_conversation` so OpenHands is notified.
+pub fn abort_openhands_run(agent_id: &str) -> bool {
+    close_local_openhands_run(agent_id)
 }
 
 fn close_local_openhands_run(agent_id: &str) -> bool {
@@ -945,46 +986,30 @@ fn close_local_openhands_run(agent_id: &str) -> bool {
     found
 }
 
-pub fn pause_openhands_session(agent_id: &str) -> bool {
+/// Send the cancel oneshot signal to a registered agent's Tokio task.
+/// Returns `true` if the agent is registered (or was already signaled), `false` if not found.
+fn send_cancel_signal(agent_id: &str) -> bool {
     let mut handle = match cancel_registry().get_mut(agent_id) {
-        Some(handle) => handle,
+        Some(h) => h,
         None => return false,
     };
-
     if handle.pause_requested {
-        log::debug!(
-            "[pause_openhands_session] agent_id={} action=already-requested",
-            agent_id
-        );
-        return true;
-    }
-
-    let Some(cancel) = handle.sender.take() else {
+        true
+    } else if let Some(sender) = handle.sender.take() {
         handle.pause_requested = true;
-        log::debug!(
-            "[pause_openhands_session] agent_id={} action=awaiting-terminal",
-            agent_id
-        );
-        return true;
-    };
-
-    let sent = cancel.send(()).is_ok();
-    if sent {
+        sender.send(()).is_ok()
+    } else {
         handle.pause_requested = true;
-        log::debug!(
-            "[pause_openhands_session] agent_id={} action=signal-dispatched",
-            agent_id
-        );
+        true
     }
-    sent
 }
 
 pub async fn pause_openhands_conversation(
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     conversation_id: &str,
     agent_id: Option<&str>,
 ) -> Result<bool, String> {
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let server =
         ensure_agent_server_process(Duration::from_secs(60), request.runtime_run_dir()).await?;
     let client = OpenHandsServerClient::new(
@@ -1009,12 +1034,16 @@ pub async fn pause_openhands_conversation(
             .to_string()
         })?;
 
-    let local_closed = agent_id.is_some_and(close_local_openhands_run);
-    Ok(local_closed)
+    // Signal the in-process task so it sets cancel_pending=true before the socket closes.
+    // This keeps the WebSocket alive long enough for the task to receive the PAUSED terminal
+    // state and exit cleanly via build_cancelled_state rather than the error recovery path.
+    let signaled = agent_id.map(send_cancel_signal).unwrap_or(false);
+    Ok(signaled)
 }
 
 pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
-    let mut found = pause_openhands_session(agent_id);
+    // Signal the in-process task to stop gracefully before the force-abort timeout.
+    let mut found = send_cancel_signal(agent_id);
 
     if task_registry().contains_key(agent_id) {
         found = true;
@@ -1078,7 +1107,7 @@ pub async fn run_throwaway_openhands_session(
         }
     });
 
-    let request = OpenHandsRuntimeRequest::try_from_sidecar_config(&config)?;
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     dispatch_openhands_turn_with_request(
         app,
         &agent_id,
@@ -1124,9 +1153,9 @@ pub async fn run_throwaway_openhands_session(
         Ok(Ok(())) => {}
         Ok(Err(error)) => return Err(error),
         Err(_) => {
-            if !pause_openhands_session(&agent_id) {
+            if !close_local_openhands_run(&agent_id) {
                 log::warn!(
-                    "[openhands-agent-server] throwaway_run_timeout agent_id={} cleanup=pause-not-found",
+                    "[openhands-agent-server] throwaway_run_timeout agent_id={} cleanup=not-found",
                     agent_id
                 );
             }
@@ -1172,7 +1201,7 @@ async fn run_conversation_task(
 async fn dispatch_openhands_turn_with_request(
     app: &tauri::AppHandle,
     agent_id: &str,
-    config: SidecarConfig,
+    config: OpenHandsRuntimeConfig,
     request: OpenHandsRuntimeRequest,
     conversation_id: Option<String>,
     selection: OpenHandsConversationSelection,
@@ -1200,7 +1229,7 @@ async fn dispatch_openhands_turn_with_request(
     );
 
     let config_event = redact_openhands_config_for_log(&config, server.port);
-    super::events::handle_sidecar_message(app, agent_id, &config_event.to_string());
+    super::events::handle_runtime_message(app, agent_id, &config_event.to_string());
 
     let event_recovery = determine_event_recovery_mode(selection, request.prompt.as_str());
 
@@ -1232,7 +1261,7 @@ async fn dispatch_openhands_turn_with_request(
         unregister_cancel(&agent_for_task);
         unregister_task_handle(&agent_for_task);
         if let Err(error) = result {
-            super::events::handle_sidecar_exit_with_detail(
+            super::events::handle_runtime_exit_with_detail(
                 &app_for_task,
                 &agent_for_task,
                 false,
@@ -1313,7 +1342,7 @@ async fn run_conversation_task_inner(
                             terminal_state = Some(normalized);
                             continue;
                         }
-                        super::events::handle_sidecar_message(
+                        super::events::handle_runtime_message(
                             &task.app,
                             &task.agent_id,
                             &normalized.to_string(),
@@ -1356,7 +1385,7 @@ async fn run_conversation_task_inner(
                             terminal_state = Some(normalized);
                             continue;
                         }
-                        super::events::handle_sidecar_message(
+                        super::events::handle_runtime_message(
                             &task.app,
                             &task.agent_id,
                             &normalized.to_string(),
@@ -1445,6 +1474,18 @@ async fn run_conversation_task_inner(
                         break;
                     }
                 };
+                // A server restart (e.g. skill switch) sends CloseFrame{ code: Restart }
+                // before tungstenite returns None. Treat it as cancelled so we skip the
+                // recovery HTTP poll, which would fail against the now-dead server.
+                if matches!(&message, Message::Close(Some(f)) if f.code == CloseCode::Restart) {
+                    log::debug!(
+                        "[openhands-agent-server:{}] server_restart_close conversation_id={} action=cancel_pending",
+                        task.agent_id,
+                        task.conversation_id
+                    );
+                    cancel_pending = true;
+                    break;
+                }
                 if !message.is_text() {
                     continue;
                 }
@@ -1477,7 +1518,7 @@ async fn run_conversation_task_inner(
                     terminal_state = Some(normalized);
                     break;
                 } else {
-                    super::events::handle_sidecar_message(&task.app, &task.agent_id, &normalized.to_string());
+                    super::events::handle_runtime_message(&task.app, &task.agent_id, &normalized.to_string());
                 }
             }
         }
@@ -1550,8 +1591,8 @@ async fn run_conversation_task_inner(
         &terminal_state,
         &task.summary_context,
     );
-    super::events::handle_sidecar_message(&task.app, &task.agent_id, &terminal_state.to_string());
-    super::events::handle_sidecar_exit_with_detail(
+    super::events::handle_runtime_message(&task.app, &task.agent_id, &terminal_state.to_string());
+    super::events::handle_runtime_exit_with_detail(
         &task.app,
         &task.agent_id,
         terminal_error.is_none(),
@@ -1656,6 +1697,12 @@ fn build_socket_closed_state(
     conversation_id: &str,
     error_detail: &str,
 ) -> serde_json::Value {
+    log::error!(
+        "[openhands-agent-server:{}] socket_closed_terminal_state conversation_id={} error={}",
+        agent_id,
+        conversation_id,
+        error_detail
+    );
     serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
@@ -1694,7 +1741,7 @@ fn emit_openhands_run_result(
     context: &OpenHandsRunSummaryContext,
 ) {
     let run_result = build_openhands_run_result_event(terminal_state, context);
-    super::events::handle_sidecar_message(app, agent_id, &run_result.to_string());
+    super::events::handle_runtime_message(app, agent_id, &run_result.to_string());
 }
 
 fn build_openhands_run_result_event(
@@ -1818,7 +1865,10 @@ fn build_missing_completed_payload_state(
     })
 }
 
-fn redact_openhands_config_for_log(config: &SidecarConfig, port: u16) -> serde_json::Value {
+fn redact_openhands_config_for_log(
+    config: &OpenHandsRuntimeConfig,
+    port: u16,
+) -> serde_json::Value {
     let mut value = serde_json::to_value(config).unwrap_or(serde_json::Value::Null);
     if let Some(obj) = value.as_object_mut() {
         if obj.contains_key("apiKey") {
@@ -2395,7 +2445,7 @@ mod tests {
                     .to_string(),
             ),
             system_message_suffix: Some(
-                crate::agents::sidecar::skill_creator_system_message_suffix(),
+                crate::agents::runtime_config::skill_creator_system_message_suffix(),
             ),
             task_kind: Some("workflow.skill_generation".to_string()),
             plugin_slug: "default".to_string(),
@@ -2480,7 +2530,7 @@ mod tests {
     #[test]
     fn answer_evaluator_requests_match_existing_skill_creator_conversations() {
         let workflow_config =
-            crate::commands::workflow::runtime::build_workflow_generate_skill_sidecar_config(
+            crate::commands::workflow::runtime::build_workflow_generate_skill_runtime_config(
                 "my-skill",
                 "Generate the skill",
                 "/tmp/workspace",
@@ -2503,7 +2553,7 @@ mod tests {
                 Some("workflow-session".to_string()),
             );
         let answer_evaluator_config =
-            crate::commands::workflow::runtime::build_answer_evaluator_sidecar_config(
+            crate::commands::workflow::runtime::build_answer_evaluator_runtime_config(
                 "my-skill",
                 "Evaluate answers",
                 "/tmp/workspace",
@@ -2526,9 +2576,9 @@ mod tests {
             );
 
         let workflow_request =
-            OpenHandsRuntimeRequest::try_from_sidecar_config(&workflow_config).unwrap();
+            OpenHandsRuntimeRequest::try_from_runtime_config(&workflow_config).unwrap();
         let answer_evaluator_request =
-            OpenHandsRuntimeRequest::try_from_sidecar_config(&answer_evaluator_config).unwrap();
+            OpenHandsRuntimeRequest::try_from_runtime_config(&answer_evaluator_config).unwrap();
         let existing_conversation = serde_json::json!({
             "agent": {
                 "agent_context": {
@@ -2951,18 +3001,18 @@ mod tests {
     }
 
     #[test]
-    fn pause_registry_signals_once_and_stays_registered_until_unregistered() {
+    fn cancel_signal_sends_once_and_is_idempotent_until_unregistered() {
         let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
         let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
 
         register_cancel(&agent_id, cancel_tx).unwrap();
 
-        assert!(pause_openhands_session(&agent_id));
+        assert!(send_cancel_signal(&agent_id));
         assert!(cancel_rx.try_recv().is_ok());
-        assert!(pause_openhands_session(&agent_id));
+        assert!(send_cancel_signal(&agent_id)); // idempotent after sender consumed
 
         unregister_cancel(&agent_id);
-        assert!(!pause_openhands_session(&agent_id));
+        assert!(!send_cancel_signal(&agent_id)); // false once unregistered
     }
 
     #[tokio::test]

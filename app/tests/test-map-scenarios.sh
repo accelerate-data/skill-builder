@@ -93,10 +93,8 @@ assert_row_contains "files.rs → cargo filter"       "commands/files.rs"       
 assert_row_contains "files.rs → E2E tag"            "commands/files.rs"       "@workflow"
 assert_row_contains "settings.rs → cargo filter"    "commands/settings.rs"    "commands::settings"
 assert_row_contains "settings.rs → E2E tag"         "commands/settings.rs"    "@settings"
-assert_row_contains "sidecar.rs → cargo filter"     "agents/sidecar.rs"       "agents::sidecar"
-assert_row_contains "sidecar.rs → E2E tag"          "agents/sidecar.rs"       "@workflow"
-assert_row_contains "sidecar_pool mod → cargo filter" "agents/sidecar_pool/mod.rs" "agents::sidecar_pool"
-assert_row_contains "sidecar_pool mod → E2E tag"      "agents/sidecar_pool/mod.rs" "@workflow"
+assert_row_contains "runtime_config.rs → cargo filter" "agents/runtime_config.rs" "agents::runtime_config"
+assert_row_contains "runtime_config.rs → E2E tag"      "agents/runtime_config.rs" "@workflow"
 assert_row_contains "reconciliation command → E2E tag" "commands/reconciliation.rs" "@dashboard"
 assert_row_contains "db mod → cargo filter"            "db/mod.rs"                 "db"
 
@@ -118,7 +116,7 @@ assert_in_test_map  "workflow smoke spec listed"      "workflow-smoke.spec.ts"
 assert_in_test_map  "workflow gate spec listed"       "workflow-gate.spec.ts"
 assert_in_test_map  "refine spec listed"              "refine.spec.ts"
 assert_in_test_map  "evals spec listed"               "evals.spec.ts"
-assert_in_test_map  "integration spec listed"         "workflow-integration.spec.ts"
+assert_in_test_map  "display items spec listed"       "display-items.spec.ts"
 
 # ===== Summary =====
 

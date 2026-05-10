@@ -6,7 +6,9 @@ pub(crate) mod protocol;
 use serde::Deserialize;
 use std::path::Path;
 
-use crate::agents::sidecar::{build_openhands_runtime_config, OpenHandsRuntimeConfigParams};
+use crate::agents::runtime_config::{
+    build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams,
+};
 use crate::db::{self, Db};
 use crate::skill_paths::resolve_skill_dir;
 use crate::types::RefineDispatchResult;
@@ -186,13 +188,13 @@ pub(crate) fn build_refine_openhands_config(
     prompt: &str,
     workspace_path: &str,
     llm: crate::types::WorkflowLlmConfig,
-) -> crate::agents::sidecar::SidecarConfig {
+) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
     let workspace_skill_dir =
         crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name)
             .to_string_lossy()
             .replace('\\', "/");
 
-    build_openhands_runtime_config(OpenHandsRuntimeConfigParams {
+    build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
         prompt: prompt.to_string(),
         llm,
         workspace_root_dir: workspace_path.replace('\\', "/"),
@@ -424,7 +426,6 @@ pub async fn send_refine_message(
         active_conversation_id
     );
 
-    let expected_conversation_id = active_conversation_id.clone();
     let returned_conversation_id = crate::agents::openhands_server::send_openhands_message(
         &app,
         &agent_id,
@@ -432,13 +433,6 @@ pub async fn send_refine_message(
         active_conversation_id,
     )
     .await?;
-
-    if returned_conversation_id != expected_conversation_id {
-        return Err(format!(
-            "Refine conversation changed unexpectedly for skill '{}' plugin '{}'",
-            skill_name, plugin_slug
-        ));
-    }
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
@@ -453,19 +447,6 @@ pub async fn send_refine_message(
         agent_id,
         conversation_id: returned_conversation_id,
     })
-}
-
-/// Cancel an active OpenHands agent run by agent_id.
-#[tauri::command]
-pub async fn cancel_agent_run(agent_id: String) -> Result<(), String> {
-    log::info!("[cancel_agent_run] agent='{}'", agent_id);
-    if !crate::agents::openhands_server::pause_openhands_session(&agent_id) {
-        log::warn!(
-            "[cancel_agent_run] No active OpenHands run found for agent='{}'",
-            agent_id
-        );
-    }
-    Ok(())
 }
 
 #[cfg(test)]

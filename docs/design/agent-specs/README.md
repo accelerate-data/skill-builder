@@ -72,7 +72,7 @@ These older assumptions are obsolete:
 - `.claude/plugins/**` as the active runtime layout
 - `user-context.md`, `clarifications.json`, `decisions.json`, or
   `answer-evaluation.json` as canonical workflow state files on disk
-- sidecar JSONL/stdout as the active runtime contract
+- runtime JSONL/stdout as the active runtime contract
 
 ## Relationship To Other Design Docs
 

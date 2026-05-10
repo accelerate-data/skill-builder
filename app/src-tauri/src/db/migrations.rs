@@ -53,6 +53,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (48, run_scenarios_migration),
     (49, run_skill_hard_delete_cleanup_migration),
     (50, run_drop_model_argument_hint_migration),
+    (51, run_skill_id_artifact_fk_reset_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -1629,6 +1630,10 @@ pub(super) fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqli
     // so we only backfill from imported_skills for marketplace/imported skills.
     // Note: model and argument_hint were dropped in migration 50 and are no longer backfilled.
     if added_any {
+        // Ensure imported_skills has the extended columns before we try to read from them.
+        // run_imported_skills_extended_migration is idempotent and safe to call here.
+        run_imported_skills_extended_migration(conn)?;
+
         conn.execute_batch(
             "UPDATE skills
              SET
@@ -2593,12 +2598,154 @@ pub(super) fn run_workflow_artifact_tables_migration(
 }
 
 fn run_drop_model_argument_hint_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    log::info!("migration 50: dropping model and argument_hint columns from skills and imported_skills");
+    log::info!(
+        "migration 50: dropping model and argument_hint columns from skills and imported_skills"
+    );
     conn.execute_batch(
         "ALTER TABLE skills DROP COLUMN model;
          ALTER TABLE skills DROP COLUMN argument_hint;
          ALTER TABLE imported_skills DROP COLUMN model;
-         ALTER TABLE imported_skills DROP COLUMN argument_hint;"
+         ALTER TABLE imported_skills DROP COLUMN argument_hint;",
     )?;
+    Ok(())
+}
+
+/// Migration 51: dev-only destructive reset of workflow artifact tables onto
+/// `skills.id` integer FKs.
+///
+/// Old dev builds stored artifact parents keyed by a text `skill_id`/skill
+/// name plus a secondary `skill_master_id` column. Route-split work now treats
+/// `library_key` as the external identity and `skills.id` as the only
+/// persistence identity, so the normalized artifact tables are rebuilt around
+/// integer `skill_id` FKs. Existing artifact data is intentionally discarded.
+pub(super) fn run_skill_id_artifact_fk_reset_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "BEGIN IMMEDIATE;
+
+         DROP TABLE IF EXISTS clarification_choices_new;
+         DROP TABLE IF EXISTS clarification_questions_new;
+         DROP TABLE IF EXISTS clarification_sections_new;
+         DROP TABLE IF EXISTS clarification_notes_new;
+         DROP TABLE IF EXISTS clarifications_new;
+         DROP TABLE IF EXISTS decision_items_new;
+         DROP TABLE IF EXISTS decisions_new;
+
+         DROP TABLE IF EXISTS clarification_choices;
+         DROP TABLE IF EXISTS clarification_questions;
+         DROP TABLE IF EXISTS clarification_sections;
+         DROP TABLE IF EXISTS clarification_notes;
+         DROP TABLE IF EXISTS clarifications;
+         DROP TABLE IF EXISTS decision_items;
+         DROP TABLE IF EXISTS decisions;
+
+         CREATE TABLE clarifications (
+             skill_id                  INTEGER PRIMARY KEY REFERENCES skills(id) ON DELETE CASCADE,
+             version                   TEXT NOT NULL,
+             refinement_count          INTEGER NOT NULL DEFAULT 0,
+             must_answer_count         INTEGER NOT NULL DEFAULT 0,
+             question_count            INTEGER NOT NULL DEFAULT 0,
+             section_count             INTEGER NOT NULL DEFAULT 0,
+             title                     TEXT NOT NULL,
+             scope_recommendation      INTEGER,
+             scope_reason              TEXT,
+             scope_next_action         TEXT,
+             error_code                TEXT,
+             error_message             TEXT,
+             warning_code              TEXT,
+             warning_message           TEXT,
+             eval_verdict              TEXT,
+             eval_reasoning            TEXT,
+             eval_at                   INTEGER,
+             eval_answered_count       INTEGER,
+             eval_empty_count          INTEGER,
+             eval_vague_count          INTEGER,
+             eval_contradictory_count  INTEGER,
+             created_at                INTEGER NOT NULL,
+             updated_at                INTEGER NOT NULL
+         );
+
+         CREATE TABLE clarification_sections (
+             skill_id    INTEGER NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+             section_id  INTEGER NOT NULL,
+             ordinal     INTEGER NOT NULL,
+             title       TEXT NOT NULL,
+             description TEXT,
+             PRIMARY KEY (skill_id, section_id)
+         );
+
+         CREATE TABLE clarification_questions (
+             skill_id              INTEGER NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+             question_id           TEXT NOT NULL,
+             section_id            INTEGER NOT NULL,
+             parent_question_id    TEXT,
+             ordinal               INTEGER NOT NULL,
+             title                 TEXT NOT NULL,
+             text                  TEXT NOT NULL,
+             must_answer           INTEGER NOT NULL DEFAULT 0,
+             answer_choice         TEXT,
+             answer_text           TEXT,
+             recommendation        TEXT,
+             answer_verdict        TEXT,
+             answer_verdict_reason TEXT,
+             PRIMARY KEY (skill_id, question_id)
+         );
+
+         CREATE TABLE clarification_choices (
+             skill_id    INTEGER NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+             question_id TEXT NOT NULL,
+             choice_id   TEXT NOT NULL,
+             ordinal     INTEGER NOT NULL,
+             text        TEXT NOT NULL,
+             is_other    INTEGER NOT NULL DEFAULT 0,
+             PRIMARY KEY (skill_id, question_id, choice_id)
+         );
+
+         CREATE TABLE clarification_notes (
+             note_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+             skill_id INTEGER NOT NULL REFERENCES clarifications(skill_id) ON DELETE CASCADE,
+             ordinal  INTEGER NOT NULL,
+             type     TEXT NOT NULL,
+             title    TEXT NOT NULL,
+             body     TEXT NOT NULL
+         );
+
+         CREATE TABLE decisions (
+             skill_id                   INTEGER PRIMARY KEY REFERENCES skills(id) ON DELETE CASCADE,
+             version                    TEXT NOT NULL,
+             round                      INTEGER NOT NULL DEFAULT 0,
+             decision_count             INTEGER NOT NULL DEFAULT 0,
+             conflicts_resolved         INTEGER NOT NULL DEFAULT 0,
+             contradictory_inputs_state TEXT,
+             scope_recommendation       INTEGER,
+             created_at                 INTEGER NOT NULL,
+             updated_at                 INTEGER NOT NULL
+         );
+
+         CREATE TABLE decision_items (
+             skill_id          INTEGER NOT NULL REFERENCES decisions(skill_id) ON DELETE CASCADE,
+             decision_id       TEXT NOT NULL,
+             ordinal           INTEGER NOT NULL,
+             title             TEXT NOT NULL,
+             original_question TEXT NOT NULL,
+             decision          TEXT NOT NULL,
+             implication       TEXT NOT NULL,
+             status            TEXT NOT NULL,
+             PRIMARY KEY (skill_id, decision_id)
+         );
+
+         CREATE INDEX idx_clarification_questions_parent
+             ON clarification_questions(skill_id, parent_question_id);
+         CREATE INDEX idx_clarification_questions_section
+             ON clarification_questions(skill_id, section_id);
+         CREATE INDEX idx_clarification_choices_question
+             ON clarification_choices(skill_id, question_id);
+         CREATE INDEX idx_decision_items_skill
+             ON decision_items(skill_id);
+
+         COMMIT;"
+    )?;
+    log::info!("migration 51: rebuilt workflow artifact tables on integer skill_id FKs");
     Ok(())
 }

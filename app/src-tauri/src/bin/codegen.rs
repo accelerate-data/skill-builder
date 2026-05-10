@@ -1,7 +1,7 @@
 //! Code-generation binary for shared data contracts.
 //!
 //! Reads the canonical Rust contract types and produces:
-//! - TypeScript type definitions (via Specta) for frontend + sidecar
+//! - TypeScript type definitions (via Specta) for the frontend runtime boundary
 //! - JSON Schema constants (via Schemars) for app-side output contracts
 //!   Flat schemas: top-level fields only, nested types
 //!   collapsed to `{ "type": "object" }`. Deep validation is done by
@@ -365,13 +365,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ts_output = ts_config.export(&types)?;
 
     let frontend_path = project_root().join("src/generated/contracts.ts");
-    let sidecar_path = project_root().join("sidecar/generated/contracts.ts");
 
     write_with_dirs(&frontend_path, &ts_output)?;
-    write_with_dirs(&sidecar_path, &ts_output)?;
 
     println!("  wrote {}", frontend_path.display());
-    println!("  wrote {}", sidecar_path.display());
 
     // ── 3. Export flat JSON Schema constants for app output contracts ───────
     //

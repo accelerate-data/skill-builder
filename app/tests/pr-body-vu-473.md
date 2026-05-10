@@ -10,6 +10,6 @@ Fixes VU-473
 
 ## Test notes
 
-- `cargo test` (679 tests) and `cd app/sidecar && npx vitest run` (112 tests) pass.
+- `cargo test` (679 tests) passed for the runtime cleanup at the time this PR body was written.
 - `npm run test:agents:structural`: 81 pass; 2 fail on plugin manifest (manifest.skills undefined), unrelated to this issue.
 - Manual: run one workflow end-to-end with the new protocol; confirm agents receive correct context and produce valid output.
