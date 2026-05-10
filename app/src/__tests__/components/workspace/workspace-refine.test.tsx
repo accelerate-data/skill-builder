@@ -24,10 +24,6 @@ const tauriMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/tauri", () => tauriMocks);
 
-vi.mock("@/lib/agent-results", () => ({
-  extractStructuredResultPayload: vi.fn().mockReturnValue(null),
-}));
-
 vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), info: vi.fn() },
 }));

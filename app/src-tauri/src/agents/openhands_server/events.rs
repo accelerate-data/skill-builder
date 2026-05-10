@@ -53,7 +53,6 @@ fn normalize_terminal_state(
         "status": status,
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "result_text": result_text(raw),
-        "structured_output": structured_output(raw),
         "error_detail": error_detail(raw),
         "raw_event": raw,
     })
@@ -124,14 +123,6 @@ fn result_text(raw: &serde_json::Value) -> Option<String> {
         .or_else(|| raw.get("message"))
         .and_then(|value| value.as_str())
         .map(str::to_string)
-}
-
-fn structured_output(raw: &serde_json::Value) -> Option<serde_json::Value> {
-    raw.get("structured_output")
-        .or_else(|| raw.get("structuredOutput"))
-        .or_else(|| raw.pointer("/result/structured_output"))
-        .or_else(|| raw.pointer("/result/structuredOutput"))
-        .cloned()
 }
 
 fn error_detail(raw: &serde_json::Value) -> Option<String> {
@@ -213,10 +204,6 @@ mod tests {
         assert_eq!(normalized["type"], "conversation_state");
         assert_eq!(normalized["status"], "completed");
         assert_eq!(normalized["result_text"], "done");
-        assert_eq!(
-            normalized["structured_output"],
-            serde_json::json!({"ok": true})
-        );
         assert_eq!(normalized["raw_event"], raw);
     }
 

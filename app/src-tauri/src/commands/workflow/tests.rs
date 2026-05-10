@@ -1695,7 +1695,7 @@ fn test_materialize_step0_rejects_non_object_payload() {
     let db = db_with_seeded_skill("my-skill");
     let err = materialize_workflow_step_output_value(&db, "my-skill", 0, &serde_json::json!(null))
         .unwrap_err();
-    assert!(err.contains("structured_output must be a JSON object"));
+    assert!(err.contains("workflow result payload must be a JSON object"));
 }
 
 #[test]
@@ -1707,7 +1707,7 @@ fn test_materialize_step0_rejects_wrong_status() {
         "research_output": valid_clarifications_value()
     });
     let err = materialize_workflow_step_output_value(&db, "my-skill", 0, &payload).unwrap_err();
-    assert!(err.contains("structured_output.status must be 'research_complete'"));
+    assert!(err.contains("workflow result payload status must be 'research_complete'"));
 }
 
 #[test]
@@ -1804,7 +1804,9 @@ fn test_materialize_step1_rejects_wrong_status() {
         "clarifications_json": valid_clarifications_value()
     });
     let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &payload).unwrap_err();
-    assert!(err.contains("structured_output.status must be 'detailed_research_complete'"));
+    assert!(err.contains(
+        "workflow result payload status must be 'detailed_research_complete'"
+    ));
 }
 
 #[test]
@@ -2082,7 +2084,7 @@ fn test_materialize_step2_rejects_null_payload() {
     let db = db_with_seeded_skill("my-skill");
     let err = materialize_workflow_step_output_value(&db, "my-skill", 2, &serde_json::json!(null))
         .unwrap_err();
-    assert!(err.contains("structured_output must be a JSON object"));
+    assert!(err.contains("workflow result payload must be a JSON object"));
 }
 
 #[test]
@@ -2387,7 +2389,9 @@ fn test_materialize_step3_rejects_wrong_status() {
         "status": "decisions_complete"
     });
     let err = materialize_workflow_step_output_value(&db, "my-skill", 3, &payload).unwrap_err();
-    assert!(err.contains("must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped'"));
+    assert!(err.contains(
+        "workflow result payload status must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped'"
+    ));
 }
 
 #[test]
@@ -2805,8 +2809,8 @@ fn test_step_max_turns() {
 
 #[test]
 fn test_reset_cleans_workspace_context_files() {
-    // Steps 0-2 are DB-authoritative. Resetting from step 0 removes gate and
-    // evaluation files (step 0 filesystem outputs) and SKILL.md (step 3).
+    // Steps 0-2 are DB-authoritative. Resetting from step 0 removes gate files
+    // (step 0 filesystem outputs) and SKILL.md (step 3).
     let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_path_tmp = tempfile::tempdir().unwrap();
     let workspace = workspace_tmp.path().to_str().unwrap();
@@ -2819,7 +2823,6 @@ fn test_reset_cleans_workspace_context_files() {
         .join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
-    std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
     // Step 3 output
     let output_dir = skills_path_tmp
@@ -2838,9 +2841,8 @@ fn test_reset_cleans_workspace_context_files() {
         skills_path,
     );
 
-    // Gate/eval files and SKILL.md should be gone
+    // Gate file and SKILL.md should be gone
     assert!(!skill_dir.join("gate-result.json").exists());
-    assert!(!skill_dir.join("answer-evaluation.json").exists());
     assert!(!output_dir.join("SKILL.md").exists());
 }
 

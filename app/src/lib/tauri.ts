@@ -14,7 +14,7 @@ export const logFrontend = (level: "info" | "warn" | "error" | "debug", message:
   invokeCommand("log_frontend", { level, message }).catch(() => {});
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, RefineDispatchResult, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepStructuredOutput, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
+export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, RefineSessionInfo, RefineDispatchResult, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepResultPayload, AnswerEvaluationOutput, PerQuestionEntry, Document } from "@/lib/types";
 export type { ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
 
 // --- Settings ---
@@ -103,11 +103,11 @@ export const runWorkflowStep = (
 export const materializeWorkflowStepOutput = (
   skillName: string,
   stepId: 0 | 1 | 2 | 3,
-  structuredOutput: ResearchStepOutput | DetailedResearchOutput | DecisionsOutput | GenerateSkillOutput,
+  workflowResultPayload: ResearchStepOutput | DetailedResearchOutput | DecisionsOutput | GenerateSkillOutput,
 ) => invokeCommand("materialize_workflow_step_output", {
   skillName,
   stepId,
-  structuredOutput,
+  workflowResultPayload,
 });
 
 export const resetWorkflowStep = (
@@ -451,12 +451,12 @@ export const finalizeRefineRun = (
   skillName: string,
   workspacePath: string,
   pluginSlug: string,
-  structuredOutput?: unknown,
+  resultPayload?: unknown,
 ) => invokeCommand("finalize_refine_run", {
   skillName,
   workspacePath,
   pluginSlug,
-  structuredOutput: structuredOutput ?? null,
+  resultPayload: resultPayload ?? null,
 })
 
 export const cleanBenchmarkSnapshot = (
@@ -515,11 +515,11 @@ export const runAnswerEvaluator = (
 export const materializeAnswerEvaluationOutput = (
   skillName: string,
   workspacePath: string,
-  structuredOutput: AnswerEvaluationOutput,
+  evaluationPayload: AnswerEvaluationOutput,
 ) => invokeCommand("materialize_answer_evaluation_output", {
   skillName,
   workspacePath,
-  structuredOutput,
+  evaluationPayload,
 });
 
 

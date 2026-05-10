@@ -283,15 +283,6 @@ fn parse_scope_review_result_from_conversation_state(
 fn parse_completed_scope_review_output(
     state: &serde_json::Value,
 ) -> Result<ScopeReviewResult, String> {
-    if let Some(structured_output) = state
-        .get("structured_output")
-        .or_else(|| state.get("structuredOutput"))
-        .filter(|value| value.is_object())
-    {
-        return parse_scope_review_result_value(structured_output)
-            .map_err(|e| format!("Failed to parse structured scope review output: {}", e));
-    }
-
     let Some(result_text) = state
         .get("result_text")
         .or_else(|| state.get("resultText"))
@@ -303,6 +294,56 @@ fn parse_completed_scope_review_output(
 
     parse_scope_review_result_text(result_text)
         .map_err(|e| format!("Scope review completed without parseable output: {}", e))
+}
+
+fn top_level_json_object_candidates(text: &str) -> Vec<&str> {
+    let bytes = text.as_bytes();
+    let mut candidates = Vec::new();
+    let mut depth = 0usize;
+    let mut start = None;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                if depth == 0 {
+                    start = Some(idx);
+                }
+                depth += 1;
+            }
+            '}' => {
+                if depth == 0 {
+                    continue;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(start_idx) = start.take() {
+                        candidates.push(&text[start_idx..idx + ch.len_utf8()]);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if candidates.is_empty() && !bytes.is_empty() {
+        return vec![text];
+    }
+
+    candidates
 }
 
 fn parse_scope_review_result_value(
@@ -356,15 +397,24 @@ fn parse_scope_review_result_text(text: &str) -> Result<ScopeReviewResult, Strin
         .unwrap_or(cleaned);
     let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
 
-    let parsed: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
-        log::error!(
-            "[review_skill_scope] Failed to parse result: raw text={}",
-            text
-        );
-        format!("Failed to parse result: {}", e)
-    })?;
+    let mut parse_error = None;
+    for candidate in top_level_json_object_candidates(cleaned).into_iter().rev() {
+        match serde_json::from_str::<serde_json::Value>(candidate) {
+            Ok(parsed) if parsed.is_object() => return parse_scope_review_result_value(&parsed),
+            Ok(_) => {
+                parse_error = Some("Parsed scope review result was not a JSON object".to_string());
+            }
+            Err(err) => {
+                parse_error = Some(format!("Failed to parse result: {}", err));
+            }
+        }
+    }
 
-    parse_scope_review_result_value(&parsed)
+    log::error!(
+        "[review_skill_scope] Failed to parse result: raw text={}",
+        text
+    );
+    Err(parse_error.unwrap_or_else(|| "Failed to parse result".to_string()))
 }
 
 #[cfg(test)]
@@ -478,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn prefers_structured_output_over_result_text() {
+    fn uses_result_text_even_when_terminal_state_includes_legacy_structured_output() {
         let state = serde_json::json!({
             "type": "conversation_state",
             "status": "completed",
@@ -491,6 +541,17 @@ mod tests {
         });
 
         let result = parse_scope_review_result_from_conversation_state(&state).unwrap();
+
+        assert_eq!(result.status, "too-broad");
+        assert_eq!(result.reason, "Fallback text.");
+    }
+
+    #[test]
+    fn parses_scope_review_json_object_embedded_in_extra_text() {
+        let result = parse_scope_review_result_text(
+            "Scope review complete.\n```json\n{\"status\":\"focused\",\"reason\":\"Single workflow.\",\"suggested_skills\":[]}\n```",
+        )
+        .unwrap();
 
         assert_eq!(result.status, "focused");
         assert_eq!(result.reason, "Single workflow.");

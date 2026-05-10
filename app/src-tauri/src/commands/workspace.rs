@@ -179,7 +179,6 @@ fn migrate_workspace_layout(workspace_path: &str) {
                     "context/decisions.json",
                     "context/benchmark-meta.json",
                     "user-context.md",
-                    "answer-evaluation.json",
                     "gate-result.json",
                 ] {
                     let _ = fs::remove_file(skill_dir.join(name));
@@ -847,7 +846,6 @@ mod tests {
         fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
         fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
         fs::write(skill_dir.join("user-context.md"), "# ctx").unwrap();
-        fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
         fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
         // Write an unrelated file inside context/ — should survive.
@@ -870,10 +868,6 @@ mod tests {
         assert!(
             !skill_dir.join("user-context.md").exists(),
             "user-context.md should be removed"
-        );
-        assert!(
-            !skill_dir.join("answer-evaluation.json").exists(),
-            "answer-evaluation.json should be removed"
         );
         assert!(
             !skill_dir.join("gate-result.json").exists(),

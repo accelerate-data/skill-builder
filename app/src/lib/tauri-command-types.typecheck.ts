@@ -109,7 +109,7 @@ void invokeCommand("send_refine_message", {
 void invokeCommand("materialize_answer_evaluation_output", {
   skillName: "demo",
   workspacePath: "/tmp/workspace",
-  structuredOutput: { verdict: "ok" },
+  evaluationPayload: { verdict: "ok" },
 });
 
 // @ts-expect-error git history limit must be number or null

@@ -312,7 +312,7 @@ pub(crate) fn finalize_refine_run_inner(
     skill_name: &str,
     skills_path: &str,
     workspace_path: &str,
-    _structured_output: Option<&serde_json::Value>,
+    _result_payload: Option<&serde_json::Value>,
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     finalize_refine_run_inner_for_plugin(
@@ -320,7 +320,7 @@ pub(crate) fn finalize_refine_run_inner(
         skills_path,
         workspace_path,
         DEFAULT_PLUGIN_SLUG,
-        _structured_output,
+        _result_payload,
         pre_run_sha,
     )
 }
@@ -330,7 +330,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     skills_path: &str,
     workspace_path: &str,
     plugin_slug: &str,
-    _structured_output: Option<&serde_json::Value>,
+    _result_payload: Option<&serde_json::Value>,
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
@@ -558,7 +558,7 @@ pub fn finalize_refine_run(
     skill_name: String,
     plugin_slug: String,
     workspace_path: String,
-    structured_output: Option<serde_json::Value>,
+    result_payload: Option<serde_json::Value>,
     db: tauri::State<'_, Db>,
     sessions: tauri::State<'_, super::SkillSessionManager>,
 ) -> Result<RefineFinalizeResult, String> {
@@ -585,7 +585,7 @@ pub fn finalize_refine_run(
         &skills_path,
         &workspace_path,
         &plugin_slug,
-        structured_output.as_ref(),
+        result_payload.as_ref(),
         pre_run_sha.as_deref(),
     )
     .map_err(|e| {

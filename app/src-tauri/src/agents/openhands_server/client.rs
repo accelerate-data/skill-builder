@@ -380,10 +380,7 @@ mod tests {
         assert_eq!(json["tags"]["skill"], "lead-routing");
         assert_eq!(json["tags"]["step"], "2");
         assert_eq!(json["tags"]["source"], "workflow");
-        assert_eq!(
-            json["initial_message"]["content"][0]["text"],
-            "Build the skill"
-        );
+        assert!(json.get("initial_message").is_none());
     }
 
     #[test]
@@ -394,8 +391,7 @@ mod tests {
             "/workspace-root/default/lead-routing",
         );
         let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
-        let payload =
-            StartConversationRequest::from_runtime_request_with_initial_message(&request, false);
+        let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
         assert!(json.get("initial_message").is_none());

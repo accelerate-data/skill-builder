@@ -6,7 +6,6 @@ import {
   runAnswerEvaluator,
   materializeAnswerEvaluationOutput,
   logGateDecision,
-  readFile,
   invokeCommand,
   writeFile,
 } from "@/lib/tauri";
@@ -40,7 +39,7 @@ export interface UseWorkflowGateReturn {
   /** Ref tracking the workflow step that started the current gate run */
   gateStepRef: React.MutableRefObject<number | null>;
   /** Process gate agent completion — called by the agent watcher effect */
-  finishGateEvaluation: (structuredOutput?: unknown) => Promise<void>;
+  finishGateEvaluation: (evaluationPayload?: unknown) => Promise<void>;
 }
 
 /**
@@ -137,7 +136,7 @@ export function useWorkflowGate({
   ]);
 
   const finishGateEvaluation = useCallback(
-    async (structuredOutput?: unknown) => {
+    async (evaluationPayload?: unknown) => {
       if (!workspacePath) {
         stayOnCurrentStep(
           "Answer evaluation failed because the workspace is unavailable. Retry when the workspace is ready.",
@@ -145,25 +144,23 @@ export function useWorkflowGate({
         return;
       }
 
-      console.debug("[workflow] Gate structured output:", structuredOutput);
+      console.debug("[workflow] Gate evaluation payload:", evaluationPayload);
 
       try {
         let evaluation: AnswerEvaluation;
 
-        if (structuredOutput != null) {
+        if (evaluationPayload != null) {
           await materializeAnswerEvaluationOutput(
             skillName,
             workspacePath,
-            structuredOutput as import("@/lib/types").AnswerEvaluationOutput,
+            evaluationPayload as import("@/lib/types").AnswerEvaluationOutput,
           );
-          evaluation = structuredOutput as AnswerEvaluation;
+          evaluation = evaluationPayload as AnswerEvaluation;
         } else {
-          const evalPath = joinPath(
-            workspaceSkillDir(workspacePath, pluginSlug, skillName),
-            "answer-evaluation.json",
+          stayOnCurrentStep(
+            "Answer evaluation output was missing from the completed runtime result. Review the workflow logs and retry.",
           );
-          const raw = await readFile(evalPath);
-          evaluation = JSON.parse(raw) as AnswerEvaluation;
+          return;
         }
 
         if (

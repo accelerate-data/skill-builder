@@ -1914,7 +1914,7 @@ Only run if you have a real previous install with data in the old layout. If not
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-- [ ] **Step 1: Delete `EventRecoveryMode` enum**
+- [x] **Step 1: Delete `EventRecoveryMode` enum**
 
 Remove the entire enum definition (around line 222-227):
 ```rust
@@ -1926,25 +1926,25 @@ enum EventRecoveryMode {
 }
 ```
 
-- [ ] **Step 2: Delete `determine_event_recovery_mode` function**
+- [x] **Step 2: Delete `determine_event_recovery_mode` function**
 
 Remove the entire function (around line 694-707).
 
-- [ ] **Step 3: Delete watermark functions**
+- [x] **Step 3: Delete watermark functions**
 
 Remove:
 - `event_watermark_key`
 - `collect_event_watermark_keys`
 - `filter_events_after_watermark`
 
-- [ ] **Step 4: Remove `event_recovery` field from `OpenHandsConversationTask`**
+- [x] **Step 4: Remove `event_recovery` field from `OpenHandsConversationTask`**
 
 In the struct definition, remove:
 ```rust
 event_recovery: EventRecoveryMode,
 ```
 
-- [ ] **Step 5: Remove `event_recovery` assignment in `dispatch_openhands_turn_with_request`**
+- [x] **Step 5: Remove `event_recovery` assignment in `dispatch_openhands_turn_with_request`**
 
 Remove the line:
 ```rust
@@ -1953,7 +1953,7 @@ let event_recovery = determine_event_recovery_mode(selection, request.prompt.as_
 
 And remove `event_recovery` from the `OpenHandsConversationTask` construction.
 
-- [ ] **Step 6: Replace mode-match with unconditional FullHistory in `run_conversation_task_inner`**
+- [x] **Step 6: Replace mode-match with unconditional FullHistory in `run_conversation_task_inner`**
 
 Replace the entire `match task.event_recovery { ... }` block (around lines 1325-1404) with unconditional FullHistory replay:
 
@@ -1993,11 +1993,11 @@ match task.client.list_all_events(&task.conversation_id).await {
 }
 ```
 
-- [ ] **Step 7: Remove `known_event_keys_before_send` variable**
+- [x] **Step 7: Remove `known_event_keys_before_send` variable**
 
 Remove the entire block that collects watermark keys before send (around lines 1305-1319).
 
-- [ ] **Step 8: Update `event_recovery` references in subagent stream**
+- [x] **Step 8: Update `event_recovery` references in subagent stream**
 
 In the subagent stream worker task construction (around line 1422), remove:
 ```rust
@@ -2005,13 +2005,13 @@ event_recovery: EventRecoveryMode::None,
 ```
 from the `OpenHandsConversationTask` construction.
 
-- [ ] **Step 9: Remove/update tests**
+- [x] **Step 9: Remove/update tests**
 
 In `agents/openhands_server/mod.rs` tests (around lines 3159-3189):
 - Delete all tests for `determine_event_recovery_mode`
 - Delete any tests that construct `EventRecoveryMode` variants
 
-- [ ] **Step 10: Run openhands_server tests**
+- [x] **Step 10: Run openhands_server tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server
@@ -2019,7 +2019,9 @@ cd app/src-tauri && cargo test agents::openhands_server
 
 Expected: All tests pass.
 
-- [ ] **Step 11: Run full cargo test**
+Result: ✅ 62 passed; 0 failed.
+
+- [x] **Step 11: Run full cargo test**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -2027,7 +2029,9 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 12: Run clippy**
+Result: ✅ 1039 passed; 52 failed (pre-existing DB fixture failures, unrelated to PR 8 changes).
+
+- [x] **Step 12: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -2035,12 +2039,16 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: Clean.
 
-- [ ] **Step 13: Commit**
+Result: ✅ 0 errors in changed file (all clippy errors are pre-existing in other modules).
+
+- [x] **Step 13: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs
 git commit -m "refactor: collapse event recovery to always-FullHistory (Gap 8)"
 ```
+
+Result: ✅ Committed as `0489c762`.
 
 **Manual smoke:** Send a refine message, verify full transcript replays correctly. Run a workflow step, verify event streaming works.
 

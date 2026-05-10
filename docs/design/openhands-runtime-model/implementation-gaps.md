@@ -65,12 +65,14 @@ pub async fn ensure_skill_session(
     app: &tauri::AppHandle,
     config: OpenHandsRuntimeConfig,
     saved_conversation_id: Option<String>,
-) -> Result<String, String>
+) -> Result<StartedOpenHandsSession, String>
 ```
 
 Wraps `ensure_openhands_server` + `start_openhands_session` in the correct
-sequence. All callers use this instead of calling `start_openhands_session`
-directly.
+sequence. `start_openhands_session` owns resume-or-create plus resume
+hydration; callers receive the `conversation_id` and any restored raw events
+for reused sessions. All callers use this instead of calling
+`start_openhands_session` directly.
 
 ---
 
@@ -224,22 +226,19 @@ schema, and update all callers.
 
 ---
 
-## Gap 8 — Event recovery has multiple modes; target is always-FullHistory
+## Gap 8 — Event recovery had multiple modes; send path no longer replays history
 
-**Target:** `OpenHandsSendMessage` always replays full conversation history after
-send. No per-surface recovery mode selection. One code path, same behavior for
-Workflow and Refine.
+**Target:** Session bootstrap owns resume hydration. `OpenHandsSendMessage` is a
+turn primitive only: send a message, run the conversation, and stream only the
+new turn's events.
 
-**Current state:** `agents/openhands_server/mod.rs` has three
-`EventRecoveryMode` variants — `None`, `FullHistory`, and `Delta` — plus a
-pre-send watermark collection path used by `Delta`. Different surfaces may
-select different modes, adding complexity with no product benefit.
+**Current state:** Resolved on this branch.
 
-**Fix:** Collapse to a single `FullHistory` replay path. Delete
-`EventRecoveryMode::Delta`, `EventRecoveryMode::None`, and the
-`collect_event_watermark_keys` / `filter_events_after_watermark` watermark
-logic in `agents/openhands_server/mod.rs`. All callers that previously set a
-non-`FullHistory` mode are updated to use `FullHistory`.
+**Result:** `start_openhands_session` returns restored events when it resumes an
+existing conversation, and `send_openhands_message` no longer replays full
+history after send. The first user message now follows the same send-then-run
+path as subsequent turns; conversation creation never embeds an
+`initial_message`.
 
 ---
 

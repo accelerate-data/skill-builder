@@ -184,8 +184,13 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: OpenHandsRuntimeConfig,
 ) -> Result<String, String> {
-    let conversation_id =
-        crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None).await?;
+    let conversation_id = crate::agents::skill_creator::ensure_skill_session(
+        app,
+        config.clone(),
+        None,
+    )
+    .await?
+    .conversation_id;
 
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,

@@ -105,10 +105,6 @@ vi.mock("@/lib/eval-workbench", async () => {
   };
 });
 
-vi.mock("@/lib/agent-results", () => ({
-  extractStructuredResultPayload: vi.fn().mockReturnValue(null),
-}));
-
 vi.mock("@/components/workspace/workspace-refine", () => ({
   WorkspaceRefine: () => <div data-testid="workspace-refine" />,
 }));

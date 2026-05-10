@@ -111,7 +111,7 @@ fn navigate_back_to_step_impl(
 ) -> Result<(), String> {
     // Delete output files for steps from the target onwards.
     // Step 0 is a special case: navigating back to it means a full rerun, so its own
-    // artifacts (clarifications.json, answer-evaluation.json) must also be cleared.
+    // workflow artifacts must also be cleared.
     let delete_from = if target_step_id == 0 {
         0
     } else {

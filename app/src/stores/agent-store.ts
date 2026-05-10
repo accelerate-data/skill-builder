@@ -327,7 +327,7 @@ type ResultSubtype =
   | "error_max_turns"
   | "error_during_execution"
   | "error_max_budget_usd"
-  | "error_max_structured_output_retries";
+  | "error_max_result_payload_retries";
 
 type StopReason =
   | "end_turn"

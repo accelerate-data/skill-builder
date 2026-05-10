@@ -482,11 +482,10 @@ describe("useWorkflowStateMachine", () => {
         status: "completed",
         displayItems: [
           {
-            id: "result-agent-finish-1",
-            type: "result",
+            id: "output-agent-finish-1",
+            type: "output",
             timestamp: Date.now(),
-            outputText_result: "Agent completed",
-            structuredOutput: {
+            outputText: JSON.stringify({
               status: "research_complete",
               question_count: 1,
               research_output: {
@@ -501,8 +500,7 @@ describe("useWorkflowStateMachine", () => {
                 sections: [],
                 notes: [],
               },
-            },
-            resultStatus: "success",
+            }),
           },
         ],
         totalCost: 0,

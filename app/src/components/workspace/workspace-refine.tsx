@@ -22,11 +22,11 @@ import {
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { deriveModelLabel } from "@/lib/utils";
-import { extractStructuredResultPayload as extractStructuredResultFromDisplayItems } from "@/lib/agent-results";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { initAgentStream } from "@/hooks/use-agent-stream";
 import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
 import { loadSkillFiles } from "@/lib/skill-file-loader";
+import { parseResultTextPayload } from "@/lib/result-text-payload";
 
 interface WorkspaceRefineProps {
   skill: EditableSkill;
@@ -62,9 +62,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   const scopeBlocked = useScopeBlocked(activeSkill, "refine");
 
-  const extractStructuredResultPayload = useCallback((agentId: string) => {
+  const extractResultPayload = useCallback((agentId: string) => {
     const run = useAgentStore.getState().runs[agentId];
-    return extractStructuredResultFromDisplayItems(run?.displayItems);
+    const resultText = run?.conversationState?.resultText;
+    return typeof resultText === "string"
+      ? parseResultTextPayload(resultText)
+      : null;
   }, []);
 
   useEffect(() => {
@@ -244,18 +247,18 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const store = useRefineStore.getState();
 
       if (activeRunStatus === "completed" && workspacePath && completionSkill) {
-        const structuredOutput = extractStructuredResultPayload(activeAgentId);
-        const hasStructuredObject =
-          !!structuredOutput &&
-          typeof structuredOutput === "object" &&
-          !Array.isArray(structuredOutput);
+        const resultPayload = extractResultPayload(activeAgentId);
+        const hasResultObject =
+          !!resultPayload &&
+          typeof resultPayload === "object" &&
+          !Array.isArray(resultPayload);
 
         try {
           const finalized = await finalizeRefineRun(
             completionSkill.name,
             workspacePath,
             completionSkill.plugin_slug,
-            hasStructuredObject ? structuredOutput : undefined,
+            hasResultObject ? resultPayload : undefined,
           );
           store.updateSkillFiles(
             finalized.files.map(
@@ -325,7 +328,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     activeRunStatus,
     workspacePath,
     activeSkill,
-    extractStructuredResultPayload,
+    extractResultPayload,
     handleSend,
   ]);
 

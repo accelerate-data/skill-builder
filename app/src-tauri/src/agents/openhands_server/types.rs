@@ -193,31 +193,9 @@ pub struct StartConversationRequest {
 impl StartConversationRequest {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn from_runtime_request(request: &OpenHandsRuntimeRequest) -> Self {
-        Self::from_runtime_request_with_initial_message(request, true)
-    }
-
-    pub fn from_runtime_request_with_initial_message(
-        request: &OpenHandsRuntimeRequest,
-        include_initial_message: bool,
-    ) -> Self {
-        Self::from_runtime_run_dir(request, request.skill_dir_path(), include_initial_message)
-    }
-
-    pub fn from_runtime_run_dir(
-        request: &OpenHandsRuntimeRequest,
-        runtime_run_dir: &Path,
-        include_initial_message: bool,
-    ) -> Self {
         Self {
-            workspace: LocalWorkspace::new(runtime_run_dir.to_string_lossy().into_owned()),
-            initial_message: include_initial_message.then(|| SendMessageRequest {
-                role: "user".to_string(),
-                content: vec![TextContent {
-                    content_type: "text".to_string(),
-                    text: request.prompt.clone(),
-                }],
-                run: false,
-            }),
+            workspace: LocalWorkspace::new(request.skill_dir_path().to_string_lossy().into_owned()),
+            initial_message: None,
             max_iterations: request.max_turns,
             stuck_detection: true,
             confirmation_policy: NeverConfirmPolicy::default(),
@@ -243,6 +221,7 @@ impl StartConversationRequest {
                 // agent_context.skills, so it doesn't need to be listed here.
                 include_default_tools: vec!["FinishTool".to_string(), "ThinkTool".to_string()],
                 agent_context: {
+                    let runtime_run_dir = request.skill_dir_path();
                     let skills = discover_agentskills(runtime_run_dir);
                     if skills.is_empty() {
                         log::warn!(

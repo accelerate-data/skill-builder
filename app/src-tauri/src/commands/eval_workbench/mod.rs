@@ -208,13 +208,6 @@ fn load_define_eval_scenario_context(
     (clarifications, decisions)
 }
 
-fn parse_openhands_structured_output(state: &serde_json::Value) -> Result<Value, String> {
-    state
-        .get("structured_output")
-        .cloned()
-        .ok_or_else(|| "Missing structured_output in OpenHands state".to_string())
-}
-
 fn clean_openhands_structured_result_text(text: &str) -> &str {
     text.trim_start_matches("```json")
         .trim_start_matches("```")
@@ -226,13 +219,11 @@ fn parse_suggested_scenario_response(
     state: &serde_json::Value,
     existing_scenario: &scenarios::Scenario,
 ) -> Result<scenarios::Scenario, String> {
-    let output = parse_openhands_structured_output(state)?;
-    let text = output
-        .get("result")
+    let text = state
+        .get("result_text")
         .and_then(|v| v.as_str())
         .map(clean_openhands_structured_result_text)
-        .or_else(|| output.as_str())
-        .ok_or_else(|| "Missing result text in scenario suggestion response".to_string())?;
+        .ok_or_else(|| "Missing result_text in OpenHands state".to_string())?;
     let parsed: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| format!("Failed to parse suggested scenario JSON: {}", e))?;
     let name = parsed
@@ -559,9 +550,7 @@ mod tests {
                         .contains("/.openhands/throwaway/eval-workbench/"));
                     Ok(OpenHandsThrowawayRun {
                         conversation_state: serde_json::json!({
-                            "structured_output": {
-                                "result": "{\"name\":\"Performance 1\",\"prompt\":\"Prompt\",\"expectations\":[\"assertion\"]}"
-                            }
+                            "result_text": "{\"name\":\"Performance 1\",\"prompt\":\"Prompt\",\"expectations\":[\"assertion\"]}"
                         }),
                     })
                 },
