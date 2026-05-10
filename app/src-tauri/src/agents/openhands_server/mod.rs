@@ -800,7 +800,8 @@ async fn resolve_openhands_conversation_id(
     include_initial_message_on_create: bool,
 ) -> Result<String, String> {
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -919,7 +920,8 @@ pub async fn list_openhands_conversation_events(
 ) -> Result<Vec<serde_json::Value>, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -1011,7 +1013,8 @@ pub async fn pause_openhands_conversation(
 ) -> Result<bool, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
     let client = OpenHandsServerClient::new(
         server.base_url().parse::<reqwest::Url>().map_err(|e| {
             OpenHandsRuntimeError::Operation {
@@ -1059,7 +1062,8 @@ pub async fn pause_conversation_if_server_running(conversation_id: &str) {
         Err(e) => {
             log::warn!(
                 "[openhands-agent-server] invalid server URL for pause of {}: {}",
-                conversation_id, e
+                conversation_id,
+                e
             );
             return;
         }
@@ -1068,7 +1072,8 @@ pub async fn pause_conversation_if_server_running(conversation_id: &str) {
     if let Err(e) = client.pause_conversation(conversation_id).await {
         log::warn!(
             "[openhands-agent-server] best-effort pause of conversation {} failed (non-fatal): {}",
-            conversation_id, e
+            conversation_id,
+            e
         );
     } else {
         log::info!(
@@ -1256,7 +1261,8 @@ async fn dispatch_openhands_turn_with_request(
     )
     .await?;
     let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root)).await?;
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
     let client = OpenHandsServerClient::new(
         server
             .base_url()

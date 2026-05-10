@@ -84,7 +84,9 @@ fn apply_session_env(
 }
 
 fn openhands_secret_path(app_data_root: &Path) -> PathBuf {
-    app_data_root.join("openhands").join(OPENHANDS_SECRET_FILENAME)
+    app_data_root
+        .join("openhands")
+        .join(OPENHANDS_SECRET_FILENAME)
 }
 
 fn read_or_create_openhands_secret(app_data_root: &Path) -> Result<String, String> {

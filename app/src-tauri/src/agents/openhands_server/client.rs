@@ -289,7 +289,11 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    fn base_config(app_data_root: &str, skills_root: &str, skill_dir: &str) -> OpenHandsRuntimeConfig {
+    fn base_config(
+        app_data_root: &str,
+        skills_root: &str,
+        skill_dir: &str,
+    ) -> OpenHandsRuntimeConfig {
         OpenHandsRuntimeConfig {
             mode: None,
             prompt: "Build the skill".to_string(),
@@ -344,7 +348,11 @@ mod tests {
 
     #[test]
     fn conversation_payload_contains_local_workspace_for_skill_directory() {
-        let config = base_config("/workspace-root", "/workspace-root", "/workspace-root/default/lead-routing");
+        let config = base_config(
+            "/workspace-root",
+            "/workspace-root",
+            "/workspace-root/default/lead-routing",
+        );
         let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
@@ -380,7 +388,11 @@ mod tests {
 
     #[test]
     fn persistent_session_create_payload_omits_initial_message() {
-        let config = base_config("/workspace-root", "/workspace-root", "/workspace-root/default/lead-routing");
+        let config = base_config(
+            "/workspace-root",
+            "/workspace-root",
+            "/workspace-root/default/lead-routing",
+        );
         let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload =
             StartConversationRequest::from_runtime_request_with_initial_message(&request, false);
@@ -391,7 +403,11 @@ mod tests {
 
     #[test]
     fn conversation_payload_marks_opencode_zen_models_as_openai_compatible_for_litellm() {
-        let mut config = base_config("/workspace-root", "/workspace-root", "/workspace-root/default/lead-routing");
+        let mut config = base_config(
+            "/workspace-root",
+            "/workspace-root",
+            "/workspace-root/default/lead-routing",
+        );
         let llm = config.llm.as_mut().unwrap();
         llm.model = "opencode/minimax-m2.7".to_string();
         llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
@@ -409,7 +425,11 @@ mod tests {
 
     #[test]
     fn conversation_payload_keeps_legacy_opencode_go_models_openai_compatible() {
-        let mut config = base_config("/workspace-root", "/workspace-root", "/workspace-root/default/lead-routing");
+        let mut config = base_config(
+            "/workspace-root",
+            "/workspace-root",
+            "/workspace-root/default/lead-routing",
+        );
         let llm = config.llm.as_mut().unwrap();
         llm.model = "opencode-go/minimax-m2.7".to_string();
         llm.base_url = Some("https://opencode.ai/zen/go/v1".to_string());
@@ -437,7 +457,11 @@ mod tests {
             "http://127.0.0.1:43210".parse().unwrap(),
             Some("session-key".to_string()),
         );
-        let config = base_config("/workspace-root", "/workspace-root", "/workspace-root/default/lead-routing");
+        let config = base_config(
+            "/workspace-root",
+            "/workspace-root",
+            "/workspace-root/default/lead-routing",
+        );
         let runtime_request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let create = client
             .build_create_conversation_request(&StartConversationRequest::from_runtime_request(
@@ -496,7 +520,11 @@ mod tests {
 
     #[test]
     fn default_tool_set_includes_search_and_subagent_spawn() {
-        let mut config = base_config("/workspace-root", "/workspace-root", "/workspace-root/default/lead-routing");
+        let mut config = base_config(
+            "/workspace-root",
+            "/workspace-root",
+            "/workspace-root/default/lead-routing",
+        );
         config.allowed_tools = None;
         let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config).unwrap();
         let payload = StartConversationRequest::from_runtime_request(&request);

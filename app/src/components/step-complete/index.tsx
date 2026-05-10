@@ -110,7 +110,7 @@ export function WorkflowStepComplete({
 
   // --- Step 2: Decisions ---
   if (stepId === 2) {
-    return <DecisionsStepComplete {...baseProps} skillName={skillName} />;
+    return <DecisionsStepComplete {...baseProps} skillId={skillId} skillName={skillName} />;
   }
 
   // --- Default: File viewer ---

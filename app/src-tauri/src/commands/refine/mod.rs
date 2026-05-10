@@ -321,7 +321,13 @@ pub async fn send_refine_message(
         (session.dispatched_user_turn_count == 0, dispatch_plan)
     };
 
-    let runtime_ctx = crate::commands::skill_session::ensure_skill_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
+    let runtime_ctx = crate::commands::skill_session::ensure_skill_runtime_ready(
+        &app,
+        &db,
+        &skill_name,
+        &plugin_slug,
+    )
+    .await?;
 
     let prompt = if is_first_turn {
         let skills_path = resolve_skills_path(&db)?;

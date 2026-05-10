@@ -403,11 +403,15 @@ fn test_saved_refine_conversation_matches_runtime_contract() {
         prompt: String::new(),
         llm: test_workflow_llm_config(),
         app_data_root: "/tmp/app-data".to_string(),
-            skills_root: "/tmp/workspace".to_string(),
+        skills_root: "/tmp/workspace".to_string(),
         skill_dir: "/tmp/workspace/default/skills/my-skill".to_string(),
         allowed_tools: vec![],
         max_turns: 20,
-        user_message_suffix: Some(crate::agents::skill_creator::SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
+        user_message_suffix: Some(
+            crate::agents::skill_creator::SKILL_CREATOR_USER_SUFFIX
+                .trim()
+                .to_string(),
+        ),
         system_message_suffix: Some(
             crate::agents::runtime_config::skill_creator_system_message_suffix(),
         ),

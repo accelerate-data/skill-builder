@@ -131,6 +131,7 @@ const baseProps = {
   stepName: "Research",
   stepId: 0,
   outputFiles: [],
+  skillId: 42,
   skillName: "my-skill",
   skillsPath: "/skills",
 };
@@ -186,13 +187,13 @@ describe("WorkflowStepComplete — agent runs", () => {
     mockGetStepAgentRuns.mockResolvedValue([]);
 
     render(<WorkflowStepComplete {...baseProps} reviewMode={false} />);
-    await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith("my-skill", 0));
+    await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith(42, 0));
 
     vi.clearAllMocks();
     mockGetStepAgentRuns.mockResolvedValue([]);
 
     render(<WorkflowStepComplete {...baseProps} reviewMode={true} />);
-    await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith("my-skill", 0));
+    await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith(42, 0));
   });
 });
 
@@ -483,6 +484,19 @@ describe("WorkflowStepComplete — decisions step conflict resolution flow", () 
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Next Step" })).toBeInTheDocument();
+    });
+  });
+
+  it("passes the numeric skill id to the decisions query for step 2", async () => {
+    render(
+      <WorkflowStepComplete
+        {...decisionsProps}
+        skillId={2740}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockUseDecisions).toHaveBeenCalledWith("2740");
     });
   });
 });

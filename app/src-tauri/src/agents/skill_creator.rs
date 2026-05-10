@@ -63,12 +63,8 @@ pub async fn ensure_skill_session(
     saved_conversation_id: Option<String>,
 ) -> Result<String, String> {
     crate::agents::openhands_server::ensure_openhands_server(&config).await?;
-    crate::agents::openhands_server::start_openhands_session(
-        app,
-        config,
-        saved_conversation_id,
-    )
-    .await
+    crate::agents::openhands_server::start_openhands_session(app, config, saved_conversation_id)
+        .await
 }
 
 #[cfg(test)]
@@ -166,7 +162,10 @@ mod tests {
             output_format: Some(serde_json::json!({})),
         });
 
-        assert_eq!(config.task_kind, Some("workflow.answer_evaluator".to_string()));
+        assert_eq!(
+            config.task_kind,
+            Some("workflow.answer_evaluator".to_string())
+        );
         assert_eq!(config.step_id, Some(-1));
         assert_eq!(config.run_source, Some("gate-eval".to_string()));
         assert!(config.output_format.is_some());

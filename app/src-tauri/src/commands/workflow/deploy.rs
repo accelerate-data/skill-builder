@@ -334,11 +334,7 @@ pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> R
     let agents_dir = resolve_prompt_source_dirs(app_handle);
     let skills_dir = resolve_workspace_skills_dir(app_handle);
     if agents_dir.is_dir() || skills_dir.is_dir() {
-        copy_agent_sources_to_full_layout(
-            &agents_dir,
-            &skills_dir,
-            Path::new(workspace_path),
-        )?;
+        copy_agent_sources_to_full_layout(&agents_dir, &skills_dir, Path::new(workspace_path))?;
     }
     Ok(())
 }
@@ -350,11 +346,7 @@ fn copy_agent_sources_to_full_layout(
 ) -> Result<(), String> {
     copy_agent_sources_to_openhands_cwd(agents_src, skills_src, workspace)?;
     for workspace_skill_dir in discover_workspace_skill_dirs(workspace)? {
-        copy_agent_sources_to_openhands_cwd(
-            agents_src,
-            skills_src,
-            &workspace_skill_dir,
-        )?;
+        copy_agent_sources_to_openhands_cwd(agents_src, skills_src, &workspace_skill_dir)?;
     }
     Ok(())
 }
@@ -428,10 +420,7 @@ fn discover_workspace_skill_dirs(workspace: &Path) -> Result<Vec<PathBuf>, Strin
     Ok(dirs)
 }
 
-fn copy_agent_sources_to_agents_dir(
-    agents_src: &Path,
-    target_dir: &Path,
-) -> Result<(), String> {
+fn copy_agent_sources_to_agents_dir(agents_src: &Path, target_dir: &Path) -> Result<(), String> {
     let agents_dir = crate::skill_paths::workspace_agent_files_dir(target_dir);
     if agents_dir.is_dir() {
         std::fs::remove_dir_all(&agents_dir)
@@ -464,10 +453,7 @@ fn copy_agent_sources_to_agents_dir(
     Ok(())
 }
 
-fn copy_agent_sources_to_skills_dir(
-    skills_src: &Path,
-    target_dir: &Path,
-) -> Result<(), String> {
+fn copy_agent_sources_to_skills_dir(skills_src: &Path, target_dir: &Path) -> Result<(), String> {
     let skills_dir = crate::skill_paths::workspace_agent_skills_dir(target_dir);
     if skills_dir.is_dir() {
         std::fs::remove_dir_all(&skills_dir)
@@ -529,12 +515,13 @@ pub fn seed_skill_agents_dir(
     };
 
     if needs_copy {
-        copy_agent_sources_to_openhands_cwd(&agents_src, &skills_src, skill_dir)
-            .inspect_err(|_| {
+        copy_agent_sources_to_openhands_cwd(&agents_src, &skills_src, skill_dir).inspect_err(
+            |_| {
                 // Clear the optimistic cache entry so the next call retries.
                 let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
                 cache.remove(&skill_key);
-            })?;
+            },
+        )?;
         log::info!(
             "[seed_skill_agents_dir] seeded .agents/ in {}",
             skill_dir.display()

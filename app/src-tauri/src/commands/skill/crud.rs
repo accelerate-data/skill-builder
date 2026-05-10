@@ -259,7 +259,12 @@ pub fn create_skill(
             .ok_or_else(|| format!("Failed to find created skill '{}'", name))?
     };
 
-    post_create_skill_filesystem_inner(&name, skills_path.as_deref(), DEFAULT_PLUGIN_SLUG, Some(&app));
+    post_create_skill_filesystem_inner(
+        &name,
+        skills_path.as_deref(),
+        DEFAULT_PLUGIN_SLUG,
+        Some(&app),
+    );
     Ok(skill_id)
 }
 
@@ -500,10 +505,9 @@ fn post_create_skill_filesystem_inner(
 
         // Seed .agents/ so OpenHands can find agents immediately.
         if let Some(app) = app_handle {
-            if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
-                app,
-                &skill_dir,
-            ) {
+            if let Err(e) =
+                crate::commands::workflow::deploy::seed_skill_agents_dir(app, &skill_dir)
+            {
                 log::warn!(
                     "[create_skill] failed to seed .agents/ for {}: {}",
                     skill_dir.display(),

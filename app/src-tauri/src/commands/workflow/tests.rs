@@ -795,14 +795,14 @@ mod research {
 
     #[test]
     fn openhands_contract_and_terminal_materialization_smoke() {
-    let config = build_workflow_research_runtime_config(
-        "/tmp/app-data",
-        "lead-conversion",
-        "prompt",
-        "/tmp/skills",
-        DEFAULT_PLUGIN_SLUG,
-        test_workflow_llm_config(),
-    );
+        let config = build_workflow_research_runtime_config(
+            "/tmp/app-data",
+            "lead-conversion",
+            "prompt",
+            "/tmp/skills",
+            DEFAULT_PLUGIN_SLUG,
+            test_workflow_llm_config(),
+        );
         assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
         assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
 
@@ -852,12 +852,10 @@ mod backend_materialization {
             .unwrap();
 
         let conn = db.0.lock().unwrap();
-        let clarifications = crate::db::workflow_artifacts::read_clarifications(
-            &conn,
-            "rt-step1-materialization",
-        )
-        .unwrap()
-        .unwrap();
+        let clarifications =
+            crate::db::workflow_artifacts::read_clarifications(&conn, "rt-step1-materialization")
+                .unwrap()
+                .unwrap();
         assert_eq!(clarifications.refinement_count, 1);
     }
 
@@ -891,11 +889,9 @@ mod backend_materialization {
             .unwrap();
 
         let conn = db.0.lock().unwrap();
-        let decisions = crate::db::workflow_artifacts::read_decisions(
-            &conn,
-            "rt-step2-materialization",
-        )
-        .unwrap();
+        let decisions =
+            crate::db::workflow_artifacts::read_decisions(&conn, "rt-step2-materialization")
+                .unwrap();
         assert!(decisions.is_some());
     }
 

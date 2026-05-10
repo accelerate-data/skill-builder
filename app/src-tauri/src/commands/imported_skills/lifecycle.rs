@@ -427,9 +427,7 @@ pub fn create_plugin_from_skills(
             &plugin_slug,
         )?;
         crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
-        if let (Some(skill_id), Some(disk_path)) =
-            (imported_skill_id, skills_target.as_deref())
-        {
+        if let (Some(skill_id), Some(disk_path)) = (imported_skill_id, skills_target.as_deref()) {
             crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
         }
     }
@@ -461,9 +459,7 @@ pub fn move_skill_to_plugin(
         &current_plugin_slug,
         &plugin_slug,
     )?;
-    if let (Some(skill_id), Some(disk_path)) =
-        (imported_skill_id, skills_target.as_deref())
-    {
+    if let (Some(skill_id), Some(disk_path)) = (imported_skill_id, skills_target.as_deref()) {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
     }
     // Update marketplace.json to reflect the move
@@ -500,9 +496,7 @@ pub fn remove_skill_from_plugin(skill_key: String, db: tauri::State<'_, Db>) -> 
         &current_plugin_slug,
         DEFAULT_PLUGIN_SLUG,
     )?;
-    if let (Some(skill_id), Some(disk_path)) =
-        (imported_skill_id, skills_target.as_deref())
-    {
+    if let (Some(skill_id), Some(disk_path)) = (imported_skill_id, skills_target.as_deref()) {
         crate::db::update_imported_skill_disk_path(&conn, skill_id, disk_path)?;
     }
     // Update marketplace.json to reflect the move
@@ -546,7 +540,9 @@ pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Resu
         log::error!("delete_imported_skill: failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let workspace_path = crate::db::read_settings(&conn)?.workspace_path.unwrap_or_default();
+    let workspace_path = crate::db::read_settings(&conn)?
+        .workspace_path
+        .unwrap_or_default();
     delete_imported_skill_inner(&conn, skill_id, &workspace_path)?;
     Ok(())
 }
@@ -588,9 +584,10 @@ mod tests {
         crate::db::upsert_skill(&conn, "del-happy", "imported", "domain").unwrap();
         let skill = make_test_skill(101, "del-happy");
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
-        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "del-happy", DEFAULT_PLUGIN_SLUG)
-            .unwrap()
-            .unwrap();
+        let skill_id =
+            crate::db::get_skill_master_id_in_plugin(&conn, "del-happy", DEFAULT_PLUGIN_SLUG)
+                .unwrap()
+                .unwrap();
         // disk_path points to a non-existent temp dir — absence is handled gracefully
         let result = delete_imported_skill_inner(&conn, skill_id, "");
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
@@ -619,16 +616,12 @@ mod tests {
         let mut skill = make_test_skill(102, "del-workspace");
         skill.disk_path = disk_path.to_string_lossy().to_string();
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
-        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "del-workspace", DEFAULT_PLUGIN_SLUG)
-            .unwrap()
-            .unwrap();
+        let skill_id =
+            crate::db::get_skill_master_id_in_plugin(&conn, "del-workspace", DEFAULT_PLUGIN_SLUG)
+                .unwrap()
+                .unwrap();
 
-        delete_imported_skill_inner(
-            &conn,
-            skill_id,
-            workspace.path().to_str().unwrap(),
-        )
-        .unwrap();
+        delete_imported_skill_inner(&conn, skill_id, workspace.path().to_str().unwrap()).unwrap();
 
         assert!(
             !workspace_skill_dir.exists(),
@@ -782,9 +775,10 @@ mod tests {
         let skill = make_test_skill(103, "imp-skill");
         crate::db::upsert_skill(&conn, "imp-skill", "imported", "domain").unwrap();
         crate::db::test_insert_imported_skill(&conn, &skill).unwrap();
-        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "imp-skill", DEFAULT_PLUGIN_SLUG)
-            .unwrap()
-            .unwrap();
+        let skill_id =
+            crate::db::get_skill_master_id_in_plugin(&conn, "imp-skill", DEFAULT_PLUGIN_SLUG)
+                .unwrap()
+                .unwrap();
 
         // Move: update skills.plugin_id (DB move)
         crate::db::move_skill_to_plugin(&conn, "imp-skill", DEFAULT_PLUGIN_SLUG, &target_slug)

@@ -269,23 +269,22 @@ fn install_workflow_step_materialization_listener(
             Some(state) => {
                 let db = app_handle.state::<Db>();
                 let workflow_label = workflow_step_log_name(step_id as i32);
-                extract_workflow_json_from_conversation_state(&state, &workflow_label).and_then(
-                    |payload| {
+                extract_workflow_json_from_conversation_state(&state, &workflow_label)
+                    .and_then(|payload| {
                         materialize_workflow_step_output_value(
                             db.inner(),
                             &skill_id_for_db,
                             step_id,
                             &payload,
                         )
-                    },
-                )
-                .map_err(|err| {
-                    format!(
-                        "{} materialization failed: {}",
-                        workflow_step_log_name(step_id as i32),
-                        err
-                    )
-                })
+                    })
+                    .map_err(|err| {
+                        format!(
+                            "{} materialization failed: {}",
+                            workflow_step_log_name(step_id as i32),
+                            err
+                        )
+                    })
             }
             None => Err(format!(
                 "{} materialization listener closed",
@@ -308,7 +307,9 @@ fn install_workflow_step_materialization_listener(
         if let Err(e) = app_handle.emit("workflow-step-materialized", &payload) {
             log::warn!(
                 "[workflow_materialize] failed to emit event for agent={} step_id={}: {}",
-                agent_id, step_id, e
+                agent_id,
+                step_id,
+                e
             );
         }
     });
