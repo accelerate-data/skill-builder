@@ -1951,14 +1951,6 @@ git add app/src-tauri/src/agents/openhands_server/process.rs \
 git commit -m "feat: pause conversation before workflow reset; remove conversation directory deletion"
 ```
 
-**Manual smoke:**
-
-1. Open a skill, start a workflow step so the agent is running
-2. While the agent is running, click Reset Workflow
-3. **Verify:** The reset completes cleanly. No error toast. Rust logs show `paused conversation <id>` and `deleted conversation dir`.
-4. Re-open the skill. **Verify:** Workflow starts fresh (step 0, no history).
-5. Check `{app_data_root}/openhands/conversations/` (find `app_data_root` via `tauri::api::path::app_data_dir()` or the Settings debug panel) — the old conversation directory for the reset skill must be **gone**. Other skills' conversation directories must still be present.
-
 ---
 
 ### Task 7.4 — Rename confusing workspace fields; thread `app_data_root` to server startup
@@ -2251,8 +2243,6 @@ git add app/src-tauri/src/agents/runtime_config.rs \
 git commit -m "refactor: rename workspace_root_dir/workspace_skill_dir to skills_root/skill_dir; add app_data_root; fix OH_CONVERSATIONS_PATH and OH_BASH_EVENTS_DIR to use app data root"
 ```
 
-**Verify after landing:** Open the app, run a workflow step, then check `~/Library/Application Support/com.vibedata.skill-builder/openhands/conversations/` — the conversation directory must appear there, not under the skills root.
-
 ---
 
 ### Task 7.5 — Seed `.agents/` into every skill's canonical directory on startup and create
@@ -2429,14 +2419,7 @@ cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
 
 Expected: clean.
 
-- [ ] **Step 6: Manual smoke**
-
-1. Start the app. Open an existing skill (`petstore-sales` or any skill in `~/skill-builder/default/skills/`).
-2. Check `~/skill-builder/default/skills/<skill-name>/.agents/agents/` — `skill-creator.md` must be present.
-3. Check `~/skill-builder/default/skills/<skill-name>/.agents/skills/` — skill files must be present.
-4. Create a new skill. Check that its `.agents/` directory is populated immediately.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/deploy.rs \
@@ -2606,6 +2589,99 @@ Expected: clean; new test passes; old test is gone.
 git add app/src-tauri/src/commands/workflow/evaluation.rs
 git commit -m "fix: remove clear_persistent_skill_conversation_state; replace with DB-only clear in navigate_back_to_step"
 ```
+
+---
+
+### Task 7.8 — Manual smoke tests for all of PR 7
+
+**Prerequisite:** All of Tasks 7.0–7.7 must be landed and the app compiled in dev mode (`cd app && npm run dev`).
+
+**How to find `app_data_root`:** On macOS it is `~/Library/Application Support/com.vibedata.skill-builder/`. The conversations, logs, and bash_events directories all live inside `{app_data_root}/openhands/`.
+
+**How to find `skills_root`:** Check Settings → Skills Path, or look at `~/skill-builder/` (default). Skill dirs live at `{skills_root}/{plugin_slug}/skills/{skill_name}/`.
+
+---
+
+#### Smoke 1 — Cold launch: paths land in the right roots
+
+- [ ] Launch the app fresh (no prior session running).
+- [ ] Open an existing skill and run a workflow step to completion (a single agent turn is enough).
+- [ ] **Pass:** `{app_data_root}/openhands/conversations/` contains a conversation directory named by a UUID. **Fail:** any conversation directory appears under `{skills_root}`.
+- [ ] **Pass:** `{app_data_root}/openhands/bash_events/` and `{app_data_root}/openhands/logs/` are populated by the server. **Fail:** they appear under `{skills_root}/.openhands/` or anywhere else under the skills tree.
+
+---
+
+#### Smoke 2 — First-launch migration
+
+Only run if you have a real previous install with data in the old layout. If not, skip.
+
+- [ ] Back up `{app_data_root}/workspace/.openhands/` by copying it somewhere safe.
+- [ ] Launch the app.
+- [ ] **Pass:** `{app_data_root}/workspace/` is gone after launch. `{app_data_root}/openhands/conversations/`, `/logs/`, and `/bash_events/` exist and contain the migrated data. Existing conversation IDs visible in the DB still resolve to the correct directories.
+
+---
+
+#### Smoke 3 — `.agents/` seeding on startup
+
+- [ ] Launch the app. Do not start any workflow.
+- [ ] For each skill that already exists in the app (check the Skills list), look at `{skills_root}/{plugin_slug}/skills/{skill_name}/.agents/agents/` and `{skills_root}/{plugin_slug}/skills/{skill_name}/.agents/skills/`.
+- [ ] **Pass:** Both subdirectories are present and non-empty (e.g., `skill-creator.md` inside `agents/`). **Fail:** `.agents/` is absent or empty for any existing skill.
+
+---
+
+#### Smoke 4 — `.agents/` seeding on skill creation
+
+- [ ] Create a new skill via the UI (any name, any description).
+- [ ] After creation completes, open a terminal and check `{skills_root}/default/skills/{new-skill-name}/.agents/agents/` and `/skills/`.
+- [ ] **Pass:** Both directories exist and contain the bundled agent files. **Fail:** `.agents/` is missing or empty.
+
+---
+
+#### Smoke 5 — Reset workflow: conversation paused and directory deleted
+
+- [ ] Open a skill that has completed at least one step so a conversation exists in the DB.
+- [ ] Navigate to a step with a completed agent run and note the conversation directory in `{app_data_root}/openhands/conversations/` (it should exist and match the ID in the logs).
+- [ ] Click Reset Workflow (or Navigate Back to Step 0) from the UI.
+- [ ] **Pass:** Reset completes with no error toast.
+- [ ] Open the Tauri dev console or the log file in `{app_data_root}/openhands/logs/`. Confirm a log line like `paused conversation <id>` and `deleted conversation dir` appears.
+- [ ] **Pass:** The conversation directory you noted above is **gone** from `{app_data_root}/openhands/conversations/`. **Fail:** It still exists.
+- [ ] Re-open the skill. **Pass:** Workflow starts at step 0 with no prior history shown. No error.
+
+---
+
+#### Smoke 6 — Delete skill: conversation directory is preserved
+
+- [ ] Open a skill and run at least one step so a conversation ID is saved in the DB. Note the conversation ID from the logs or `{app_data_root}/openhands/conversations/` directory listing.
+- [ ] Delete the skill via the UI.
+- [ ] **Pass:** The conversation directory at `{app_data_root}/openhands/conversations/{conv_id}/` still exists — delete only removes the DB record, not the conversation data.
+- [ ] Confirm via the Tauri logs that `paused conversation <id>` was logged during the delete.
+- [ ] **Pass:** The skill is gone from the Skills list. No error toast.
+
+---
+
+#### Smoke 7 — Multi-skill isolation: reset one does not affect another
+
+- [ ] Open Skill A, run a step, note its conversation directory path.
+- [ ] Open Skill B, run a step, note its conversation directory path.
+- [ ] Reset Skill A's workflow to step 0.
+- [ ] **Pass:** Skill A's conversation directory is deleted from `{app_data_root}/openhands/conversations/`. Skill B's conversation directory is **still present**.
+- [ ] Open Skill B, verify its workflow history is intact (steps still show, no data loss).
+
+---
+
+#### Smoke 8 — Refine flow end-to-end
+
+- [ ] Complete a workflow step on any skill so the Refine button is available.
+- [ ] Trigger a Refine run.
+- [ ] **Pass:** Refine completes and the refined output is visible. No error toast or Rust panic in the logs.
+
+---
+
+#### Smoke 9 — Scope review
+
+- [ ] Open a skill that has at least one completed step.
+- [ ] Trigger Scope Review from the UI (wherever it is exposed).
+- [ ] **Pass:** Review runs and returns results. No crash or error toast.
 
 ---
 
