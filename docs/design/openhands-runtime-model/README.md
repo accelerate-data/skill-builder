@@ -159,9 +159,17 @@ Properties:
 
 Selected-skill activation owns the persistent session bootstrap sequence:
 
-1. resolve the canonical skill directory
-2. call `ensure_skill_session` with the saved `conversation_id` from the DB
-3. restore visible transcript history from the conversation events
+1. resolve the canonical skill row from `skill_id`
+2. acquire or verify the skill lease in the backend before any OpenHands session work
+3. resolve the canonical skill directory
+4. call `ensure_skill_session` with the saved `conversation_id` from the DB
+5. restore visible transcript history from the conversation events
+
+The lease boundary is backend-owned. The frontend may show advisory lock state in
+the menu, but it must not be the enforcement boundary for selected-skill
+bootstrap. If the backend cannot acquire or verify the skill lease for the
+requesting app instance, it must fail the product command before attempting
+conversation lookup, resume, creation, or message dispatch.
 
 The runtime is app-scoped: `OH_CONVERSATIONS_PATH` points at `{app_data_root}/openhands/conversations/` and `OH_BASH_EVENTS_DIR` points at `{app_data_root}/openhands/bash_events/`. Both are fixed for the lifetime of the app data root and do not change between skill switches. The cached Agent Server is reused across skill switches; it only restarts on process crash or failed health probe. Skill-specific file access is provided by `workspace.working_dir` in each conversation's `POST /api/conversations` body, and that working dir is always `skill_dir` — `{skills_root}/{plugin_slug}/skills/{skill_name}`. The DB is the durable source of truth for the saved `conversation_id`.
 
@@ -181,6 +189,20 @@ Failure policy:
 
 - if pause fails, the current skill stays visible and the next skill does not bootstrap
 - if lock release fails, the current skill stays visible and the next skill does not bootstrap
+
+## Lease Ownership Contract
+
+Skill leases are the source of truth for persistent selected-skill work:
+
+1. `select_skill_openhands_session` acquires or verifies the lease for the
+   requested `skill_id`
+2. only the lease-owning app instance may restore, resume, create, or dispatch
+   into that skill's persistent OpenHands conversation
+3. `send_refine_message` and any future persistent-skill dispatch command must
+   re-check lease ownership before touching the conversation
+
+Frontend lock state is advisory UX only. It exists to reduce surprise clicks,
+not to authorize backend behavior.
 
 ## App Shutdown Contract
 

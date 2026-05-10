@@ -79,7 +79,7 @@ Documents: documents → document_skills
 
 **`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`. FK `skill_id → skills.id`.
 
-**`skill_locks`** — Prevents two app instances from editing the same skill simultaneously. FK `skill_id → skills.id`. Stores `instance_id` and `pid`; stale locks (dead PID) are reclaimed automatically.
+**`skill_locks`** — Prevents two app instances from editing the same skill simultaneously. FK `skill_id → skills.id`. Stores `instance_id` and `pid`; stale locks (dead PID) are reclaimed automatically. Backend commands that restore, resume, create, or dispatch a persistent selected-skill OpenHands conversation must acquire or verify this lease before any OpenHands session work begins.
 
 **`skill_conversations`** — Maps `(plugin_slug, skill_name)` to OpenHands conversation IDs, enabling persistent multi-turn agent sessions across app restarts (migration 47).
 
@@ -122,7 +122,7 @@ On each app launch, `reconcile_on_startup` runs before the dashboard loads. See 
 ### Refine session lifecycle
 
 1. `get_skill_content_for_refine` loads current skill files into the editor.
-2. `select_skill_openhands_session` activates the selected skill's persistent OpenHands conversation, restoring compatible history and returning the current `conversation_id`. Conversation state is persisted in `skill_conversations`.
+2. `select_skill_openhands_session` resolves the canonical skill row by `skill_id`, acquires or verifies the backend skill lease, then activates the selected skill's persistent OpenHands conversation, restoring compatible history and returning the current `conversation_id`. Conversation state is persisted in `skill_conversations`.
 3. `send_refine_message` dispatches the next turn on the selected persistent conversation and returns the current live-run `agent_id`.
 4. `pause_openhands_session` pauses the selected skill's current live run during switch-away cleanup without discarding the persistent conversation.
 5. `cancel_agent_run` cancels an in-flight refine run by `agent_id` when the user explicitly stops the active turn.
@@ -159,7 +159,12 @@ The primary agent runtime is the **OpenHands Agent Server**, a Python service ma
 
 ### Concurrency
 
-**Skill locks** (`skill_locks` table) prevent two app instances from editing the same skill simultaneously. Locks are keyed by `(skill_name, instance_id, pid)` and released on app exit.
+**Skill locks** (`skill_locks` table) prevent two app instances from editing the same skill simultaneously. They are stored against `skill_id` plus `instance_id`/`pid`, and they are released on app exit.
+
+The backend is the enforcement boundary. Frontend lock state is advisory UX
+only; it may hide or disable locked skills in the menu, but backend commands
+must still reject selected-skill bootstrap or persistent conversation dispatch
+when the requesting app instance does not own the lease.
 
 **DB mutex**: A single `Mutex<Connection>` serializes all database access. This is sufficient for the current workload; the WAL mode allows reads to proceed while Tauri event handling (which doesn't touch the DB) runs concurrently.
 
