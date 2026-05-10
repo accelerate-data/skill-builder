@@ -1535,7 +1535,7 @@ app-local `workspace/` tree as the runtime root. This task makes the target
 contract explicit and removes the extra runtime mirror layer before the reset
 cleanup work lands.
 
-- [ ] **Step 1: Replace `workspaceSkillDir` semantics in the runtime contracts**
+- [x] **Step 1: Replace `workspaceSkillDir` semantics in the runtime contracts**
 
 Update `OpenHandsRuntimeConfig`, `OpenHandsRuntimeRequest`, and related helper
 methods so the working-directory field represents the canonical skill
@@ -1543,7 +1543,7 @@ directory. Rename fields/types where that improves clarity; do not keep
 `workspaceSkillDir` as the public runtime contract name if it now means the
 canonical skill dir.
 
-- [ ] **Step 2: Update skill-creator config builders to use canonical skill paths**
+- [x] **Step 2: Update skill-creator config builders to use canonical skill paths**
 
 Change `agents/skill_creator.rs` and any Layer 3 wrappers so they compute
 `workspace.working_dir` from the canonical authored skill path:
@@ -1555,7 +1555,7 @@ Change `agents/skill_creator.rs` and any Layer 3 wrappers so they compute
 Pre-create and throwaway flows should create that directory up front when
 needed and then use the same path as the OpenHands working dir.
 
-- [ ] **Step 3: Flatten app-local path resolution and delete the old `workspace/` wrapper**
+- [x] **Step 3: Flatten app-local path resolution and delete the old `workspace/` wrapper**
 
 Update `commands/workspace.rs` and any path helpers/callers so app-local
 runtime state lives directly under the app data root:
@@ -1608,27 +1608,27 @@ fn migrate_flatten_openhands_dir(app_data_root: &Path) {
 
 Call this after the new path helpers are in place so all callers are already writing to the new location before the old directory is removed.
 
-- [ ] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
+- [x] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
 
 Update deploy/setup/runtime helpers so `.agents` is managed where OpenHands will
 actually read it: inside the canonical skill directory. Remove plan references
 or code paths that depend on a separate `workspaceSkillDir` mirror being the
 runtime-visible `.agents` root.
 
-- [ ] **Step 5: Update refine and finalize helpers to the new root model**
+- [x] **Step 5: Update refine and finalize helpers to the new root model**
 
 Audit `commands/refine/*` helpers that currently mix canonical skill paths with
 workspace-scratch paths. The file viewer, prompt rendering, finalize flows,
 snapshot cleanup, and any benchmark/output helpers should all treat the
 canonical skill dir as the authoritative working tree.
 
-- [ ] **Step 6: Update tests, fixtures, and repo metadata**
+- [x] **Step 6: Update tests, fixtures, and repo metadata**
 
 Replace assertions, fixtures, and docs that still encode the old
 `workspaceSkillDir` or app-local `workspace/` layout. Update `repo-map.json`
 and the design docs in the same PR so future agents see the new model first.
 
-- [ ] **Step 7: Run focused verification**
+- [x] **Step 7: Run focused verification**
 
 ```bash
 cd app && npm run test:unit
@@ -1648,7 +1648,7 @@ Expected: Clean.
 
 **Context:** `ensure_agent_server` always starts a new server if none is cached — wrong for a cleanup path where we only want to pause if the server is already running. `try_get_cached_server_handle` returns the cached handle without touching the process.
 
-- [ ] **Step 1: Write a failing test**
+- [x] **Step 1: Write a failing test**
 
 Add to the `#[cfg(test)]` block:
 
@@ -1662,7 +1662,7 @@ async fn try_get_cached_server_handle_returns_none_when_no_server_cached() {
 }
 ```
 
-- [ ] **Step 2: Run to confirm it fails**
+- [x] **Step 2: Run to confirm it fails**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle_returns_none_when_no_server_cached 2>&1 | tail -5
@@ -1670,7 +1670,7 @@ cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get
 
 Expected: FAILED — function not found.
 
-- [ ] **Step 3: Add `try_get_cached_server_handle`**
+- [x] **Step 3: Add `try_get_cached_server_handle`**
 
 Insert immediately after `ensure_agent_server`:
 
@@ -1685,7 +1685,7 @@ pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle
 }
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle 2>&1 | tail -5
@@ -1693,7 +1693,7 @@ cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get
 
 Expected: PASS.
 
-- [ ] **Step 5: Run full process tests**
+- [x] **Step 5: Run full process tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -10
@@ -1710,7 +1710,7 @@ Expected: All pass.
 
 **Context:** This is the best-effort pause used by the reset path. It checks the cached server, constructs a client, and sends the pause HTTP call. All errors are logged and swallowed — the reset must not fail because the server is unreachable.
 
-- [ ] **Step 1: Add the function**
+- [x] **Step 1: Add the function**
 
 Add after `pause_openhands_conversation`:
 
@@ -1753,7 +1753,7 @@ pub async fn pause_conversation_if_server_running(conversation_id: &str) {
 }
 ```
 
-- [ ] **Step 2: Build to confirm compilation**
+- [x] **Step 2: Build to confirm compilation**
 
 ```bash
 cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
@@ -1761,7 +1761,7 @@ cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
 
 Expected: No errors.
 
-- [ ] **Step 3: Run clippy**
+- [x] **Step 3: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
@@ -1778,7 +1778,7 @@ Expected: Clean.
 
 **Context:** `clear_persistent_skill_conversation_state` currently: (1) clears the DB record, (2) removes the entire `conversations/` directory. The fix: (1) collect conversation IDs before clearing, (2) remove the `remove_dir_all` entirely, (3) return the IDs so `reset_workflow_step` can pause them before the DB clear. `reset_workflow_step` becomes `async fn` so it can `await` the pause.
 
-- [ ] **Step 1: Write a failing test proving no directory deletion**
+- [x] **Step 1: Write a failing test proving no directory deletion**
 
 Add to `#[cfg(test)]` in `evaluation.rs` (or a new `tests` module if none exists):
 
@@ -1813,7 +1813,7 @@ fn clear_persistent_skill_conversation_state_does_not_touch_filesystem() {
 }
 ```
 
-- [ ] **Step 2: Run to confirm it currently fails**
+- [x] **Step 2: Run to confirm it currently fails**
 
 ```bash
 cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
@@ -1821,7 +1821,7 @@ cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_pers
 
 Expected: FAILED — sentinel file is deleted by the current `remove_dir_all`.
 
-- [ ] **Step 3: Refactor `clear_persistent_skill_conversation_state`**
+- [x] **Step 3: Refactor `clear_persistent_skill_conversation_state`**
 
 Replace the function with two focused functions:
 
@@ -1867,7 +1867,7 @@ fn clear_skill_conversation_db_records(
 
 Remove `clear_persistent_skill_conversation_state` entirely.
 
-- [ ] **Step 4: Make `reset_workflow_step` async; add pause**
+- [x] **Step 4: Make `reset_workflow_step` async; add pause**
 
 Replace the function signature and the old `clear_persistent_skill_conversation_state` call site:
 
@@ -1914,7 +1914,7 @@ crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
 
 Remove the `// Reset steps in SQLite` comment and the existing `let conn = db.0.lock()` line that preceded the old call — they are replaced by the block above. Add `app_handle: tauri::AppHandle` to `reset_workflow_step`'s parameter list so it can resolve the conversations dir. Keep the `save_workflow_run` block unchanged.
 
-- [ ] **Step 5: Run the filesystem test**
+- [x] **Step 5: Run the filesystem test**
 
 ```bash
 cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
@@ -1922,7 +1922,7 @@ cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_pers
 
 Expected: PASS.
 
-- [ ] **Step 6: Run full cargo test**
+- [x] **Step 6: Run full cargo test**
 
 ```bash
 cd app/src-tauri && cargo test 2>&1 | tail -20
@@ -1930,7 +1930,7 @@ cd app/src-tauri && cargo test 2>&1 | tail -20
 
 Expected: All pass.
 
-- [ ] **Step 7: Run clippy**
+- [x] **Step 7: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
@@ -1938,11 +1938,11 @@ cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
 
 Expected: Clean.
 
-- [ ] **Step 8: Update `lib.rs` command registration**
+- [x] **Step 8: Update `lib.rs` command registration**
 
 `reset_workflow_step` is now async. In `app/src-tauri/src/lib.rs`, confirm it is registered in `invoke_handler!`. Tauri 2 handles async commands transparently — no registration change required, but verify the build compiles cleanly.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/process.rs \
