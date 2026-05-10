@@ -1803,102 +1803,6 @@ git commit -m "feat: pause conversation before workflow reset; remove conversati
 
 ---
 
-## PR 9 — Remove `workflow_session_id` from contracts (Gap 7)
-
-**Goal:** Remove `workflow_session_id` from contracts struct, regenerate TypeScript types, update callers.
-
-**Scope note:** This removes `workflow_session_id` from the Rust contracts struct and generated TypeScript types. The DB schema and usage queries retain the field — that's a separate future cleanup.
-
-### Task 9.1: Remove from contracts
-
-**Files:**
-- Modify: `app/src-tauri/src/contracts/agent_events.rs`
-- Modify: `app/src-tauri/src/agents/runtime_config.rs`
-- Modify: `app/src-tauri/src/agents/openhands_server/types.rs`
-- Modify: `app/src-tauri/src/agents/event_types.rs`
-- Modify: `app/src-tauri/src/agents/run_persist.rs`
-
-- [ ] **Step 1: Remove from `OpenHandsRuntimeConfig`**
-
-In `agents/runtime_config.rs`, remove:
-```rust
-#[serde(rename = "workflowSessionId", skip_serializing_if = "Option::is_none")]
-pub workflow_session_id: Option<String>,
-```
-
-Remove from `Debug` impl if present. Remove from all test fixtures.
-
-- [ ] **Step 2: Remove from `OpenHandsRuntimeRequest`**
-
-In `agents/openhands_server/types.rs`, remove `workflow_session_id` from the struct and from `from_runtime_request` mapping.
-
-- [ ] **Step 3: Remove from `OpenHandsRunSummaryContext`**
-
-In `agents/openhands_server/mod.rs`, remove `workflow_session_id` from the struct and from `new()`. Remove from the JSON emit at line ~1776.
-
-- [ ] **Step 4: Remove from `ConversationStateEvent`**
-
-In `agents/event_types.rs`, remove `workflow_session_id` field.
-
-- [ ] **Step 5: Remove from `run_persist.rs`**
-
-Remove the `workflow_session_id` lookup and usage in `run_persist.rs`.
-
-- [ ] **Step 6: Update all test fixtures**
-
-Remove `workflow_session_id` from all test fixtures in:
-- `agents/runtime_config.rs` tests
-- `agents/openhands_server/mod.rs` tests
-- `agents/openhands_server/client.rs` tests
-- `agents/run_persist.rs` tests
-- `commands/refine/tests.rs`
-- `commands/workflow/tests.rs`
-- `contracts/agent_events.rs` tests
-- `agents/event_router.rs` tests
-
-- [ ] **Step 7: Run codegen**
-
-```bash
-cd app && npm run codegen
-```
-
-Expected: Succeeds. Generated TypeScript types no longer have `workflowSessionId`.
-
-- [ ] **Step 8: Run contracts tests**
-
-```bash
-cd app/src-tauri && cargo test contracts::
-```
-
-Expected: All tests pass.
-
-- [ ] **Step 9: Run full cargo test**
-
-```bash
-cd app/src-tauri && cargo test
-```
-
-Expected: All tests pass.
-
-- [ ] **Step 10: TypeScript compile check**
-
-```bash
-cd app && npx tsc --noEmit
-```
-
-Expected: Clean.
-
-- [ ] **Step 11: Commit**
-
-```bash
-git add app/src-tauri/src/contracts/ app/src-tauri/src/agents/ app/src-tauri/src/commands/ app/src/generated/
-git commit -m "refactor: remove workflow_session_id from contracts (Gap 7)"
-```
-
-**Manual smoke:** None needed — pure structural removal, no behavioral change.
-
----
-
 ## PR 8 — Collapse event recovery to always-FullHistory (Gap 8)
 
 **Goal:** Single event replay path. Delete `EventRecoveryMode` enum entirely. Every `OpenHandsSendMessage` always replays full conversation history.
@@ -2037,6 +1941,102 @@ git commit -m "refactor: collapse event recovery to always-FullHistory (Gap 8)"
 ```
 
 **Manual smoke:** Send a refine message, verify full transcript replays correctly. Run a workflow step, verify event streaming works.
+
+---
+
+## PR 9 — Remove `workflow_session_id` from contracts (Gap 7)
+
+**Goal:** Remove `workflow_session_id` from contracts struct, regenerate TypeScript types, update callers.
+
+**Scope note:** This removes `workflow_session_id` from the Rust contracts struct and generated TypeScript types. The DB schema and usage queries retain the field — that's a separate future cleanup.
+
+### Task 9.1: Remove from contracts
+
+**Files:**
+- Modify: `app/src-tauri/src/contracts/agent_events.rs`
+- Modify: `app/src-tauri/src/agents/runtime_config.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/types.rs`
+- Modify: `app/src-tauri/src/agents/event_types.rs`
+- Modify: `app/src-tauri/src/agents/run_persist.rs`
+
+- [ ] **Step 1: Remove from `OpenHandsRuntimeConfig`**
+
+In `agents/runtime_config.rs`, remove:
+```rust
+#[serde(rename = "workflowSessionId", skip_serializing_if = "Option::is_none")]
+pub workflow_session_id: Option<String>,
+```
+
+Remove from `Debug` impl if present. Remove from all test fixtures.
+
+- [ ] **Step 2: Remove from `OpenHandsRuntimeRequest`**
+
+In `agents/openhands_server/types.rs`, remove `workflow_session_id` from the struct and from `from_runtime_request` mapping.
+
+- [ ] **Step 3: Remove from `OpenHandsRunSummaryContext`**
+
+In `agents/openhands_server/mod.rs`, remove `workflow_session_id` from the struct and from `new()`. Remove from the JSON emit at line ~1776.
+
+- [ ] **Step 4: Remove from `ConversationStateEvent`**
+
+In `agents/event_types.rs`, remove `workflow_session_id` field.
+
+- [ ] **Step 5: Remove from `run_persist.rs`**
+
+Remove the `workflow_session_id` lookup and usage in `run_persist.rs`.
+
+- [ ] **Step 6: Update all test fixtures**
+
+Remove `workflow_session_id` from all test fixtures in:
+- `agents/runtime_config.rs` tests
+- `agents/openhands_server/mod.rs` tests
+- `agents/openhands_server/client.rs` tests
+- `agents/run_persist.rs` tests
+- `commands/refine/tests.rs`
+- `commands/workflow/tests.rs`
+- `contracts/agent_events.rs` tests
+- `agents/event_router.rs` tests
+
+- [ ] **Step 7: Run codegen**
+
+```bash
+cd app && npm run codegen
+```
+
+Expected: Succeeds. Generated TypeScript types no longer have `workflowSessionId`.
+
+- [ ] **Step 8: Run contracts tests**
+
+```bash
+cd app/src-tauri && cargo test contracts::
+```
+
+Expected: All tests pass.
+
+- [ ] **Step 9: Run full cargo test**
+
+```bash
+cd app/src-tauri && cargo test
+```
+
+Expected: All tests pass.
+
+- [ ] **Step 10: TypeScript compile check**
+
+```bash
+cd app && npx tsc --noEmit
+```
+
+Expected: Clean.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add app/src-tauri/src/contracts/ app/src-tauri/src/agents/ app/src-tauri/src/commands/ app/src/generated/
+git commit -m "refactor: remove workflow_session_id from contracts (Gap 7)"
+```
+
+**Manual smoke:** None needed — pure structural removal, no behavioral change.
 
 ---
 
