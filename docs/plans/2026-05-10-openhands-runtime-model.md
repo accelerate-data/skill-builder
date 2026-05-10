@@ -1483,13 +1483,121 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 
 ---
 
-## PR 7 — Pause conversation before workflow reset; remove directory deletion
+## PR 7 — Canonical skill-dir runtime roots + reset cleanup
 
-**Goal:** `reset_workflow_step` pauses the skill's active conversation before clearing the DB record, so any in-flight agent work is cancelled cleanly. The `remove_dir_all` on the conversations folder is removed entirely — conversation directories are never deleted on reset; orphaned conversation files are harmless once the DB record is gone.
+**Goal:** Finish the runtime-model clean break after PR 6. Every skill-scoped
+conversation should use the canonical skill directory as `workspace.working_dir`
+and `.agents` root; the app-local data dir should no longer hide runtime state
+inside a `workspace/` wrapper. In the same PR, `reset_workflow_step` pauses the
+skill's active conversation before clearing the DB record, and the
+`remove_dir_all` on the conversations folder is removed entirely — conversation
+directories are never deleted on reset; orphaned conversation files are
+harmless once the DB record is gone.
 
-**Architecture:** Three small changes. (1) Add `try_get_cached_server_handle` to `process.rs` — returns the cached server handle without starting a new server. (2) Add `pause_conversation_if_server_running` to `mod.rs` — best-effort HTTP pause using the cached handle; logs and continues on any error. (3) Refactor `clear_persistent_skill_conversation_state` in `evaluation.rs` to remove `remove_dir_all`, split into a sync ID-collection step and a sync DB-clear step so the DB lock is never held across the async pause.
+**Architecture:** Two halves of the same folder-model cleanup. Phase 1
+canonicalizes runtime roots and skill working directories: remove the
+`workspaceSkillDir` contract, point OpenHands CWD at the canonical skill
+directory, flatten app-local storage to root-level `openhands/`, DB, and
+documents, and make canonical skill dirs the only runtime `.agents` location.
+Phase 2 keeps the existing reset cleanup work: (1) add
+`try_get_cached_server_handle` to `process.rs`, (2) add
+`pause_conversation_if_server_running` to `mod.rs`, and (3) refactor
+`clear_persistent_skill_conversation_state` in `evaluation.rs` to remove
+`remove_dir_all`, split into a sync ID-collection step and a sync DB-clear step
+so the DB lock is never held across the async pause.
 
 **Why no directory deletion:** After the DB record is cleared, the old conversation directory is an unreferenced orphan. It does not interfere with future conversations (each has its own ID-keyed subdirectory). Deleting the whole conversations folder on reset is dangerous once PR 6's shared `{workspace_root}/.openhands/conversations/` path is in place — it would wipe every skill's conversation state.
+
+---
+
+### Task 7.0 — Remove `workspaceSkillDir`; make canonical skill dir the OpenHands working directory
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/runtime_config.rs`
+- Modify: `app/src-tauri/src/agents/skill_creator.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/types.rs`
+- Modify: `app/src-tauri/src/commands/skill_session.rs`
+- Modify: `app/src-tauri/src/commands/refine/protocol.rs`
+- Modify: `app/src-tauri/src/commands/refine/content.rs`
+- Modify: `app/src-tauri/src/commands/refine/output.rs`
+- Modify: `app/src-tauri/src/commands/workspace.rs`
+- Modify: `app/src-tauri/src/commands/api_validation.rs`
+- Modify: `repo-map.json`
+- Modify: `docs/design/openhands-runtime-model/README.md`
+- Modify: `docs/design/openhands-runtime-model/implementation-gaps.md`
+
+**Context:** The current code still carries two different working-directory
+models. The prompt/UI target the canonical skill directory, but the runtime
+contract still carries `workspaceSkillDir` and many helpers still treat an
+app-local `workspace/` tree as the runtime root. This task makes the target
+contract explicit and removes the extra runtime mirror layer before the reset
+cleanup work lands.
+
+- [ ] **Step 1: Replace `workspaceSkillDir` semantics in the runtime contracts**
+
+Update `OpenHandsRuntimeConfig`, `OpenHandsRuntimeRequest`, and related helper
+methods so the working-directory field represents the canonical skill
+directory. Rename fields/types where that improves clarity; do not keep
+`workspaceSkillDir` as the public runtime contract name if it now means the
+canonical skill dir.
+
+- [ ] **Step 2: Update skill-creator config builders to use canonical skill paths**
+
+Change `agents/skill_creator.rs` and any Layer 3 wrappers so they compute
+`workspace.working_dir` from the canonical authored skill path:
+
+```text
+<skills_root>/<plugin>/skills/<skill>
+```
+
+Pre-create and throwaway flows should create that directory up front when
+needed and then use the same path as the OpenHands working dir.
+
+- [ ] **Step 3: Flatten app-local path resolution**
+
+Update `commands/workspace.rs` and any path helpers/callers so app-local
+runtime state lives directly under the app data root:
+
+```text
+{app_data_root}/openhands/
+{app_data_root}/skill-builder.db
+{app_data_root}/documents/
+```
+
+Remove the extra `{app_data_root}/workspace/` wrapper from the target layout.
+Preserve one-time cleanup/migration behavior for older installs if needed, but
+the steady-state layout must be flat.
+
+- [ ] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
+
+Update deploy/setup/runtime helpers so `.agents` is managed where OpenHands will
+actually read it: inside the canonical skill directory. Remove plan references
+or code paths that depend on a separate `workspaceSkillDir` mirror being the
+runtime-visible `.agents` root.
+
+- [ ] **Step 5: Update refine and finalize helpers to the new root model**
+
+Audit `commands/refine/*` helpers that currently mix canonical skill paths with
+workspace-scratch paths. The file viewer, prompt rendering, finalize flows,
+snapshot cleanup, and any benchmark/output helpers should all treat the
+canonical skill dir as the authoritative working tree.
+
+- [ ] **Step 6: Update tests, fixtures, and repo metadata**
+
+Replace assertions, fixtures, and docs that still encode the old
+`workspaceSkillDir` or app-local `workspace/` layout. Update `repo-map.json`
+and the design docs in the same PR so future agents see the new model first.
+
+- [ ] **Step 7: Run focused verification**
+
+```bash
+cd app && npm run test:unit
+cd app/src-tauri && cargo test
+cd app/src-tauri && cargo clippy -- -D warnings
+markdownlint docs/design/openhands-runtime-model/README.md docs/design/openhands-runtime-model/implementation-gaps.md docs/plans/2026-05-10-openhands-runtime-model.md
+```
+
+Expected: Clean.
 
 ---
 
@@ -2142,7 +2250,7 @@ Execute PRs sequentially in order 1→9. Each PR must pass all automated tests a
 | 4 | Move Layer 2 out of `refine/mod.rs` | `cargo test` (all), clippy | Open refine, send message, switch skills |
 | 5 | Delete duplicate workflow config | `cargo test commands::workflow`, clippy | Run workflow steps 0-3, answer evaluator |
 | 6 | Consolidate OH artifacts to workspace root + `OH_BASH_EVENTS_DIR` + remove skill-switch restart (backend) + remove `stopOpenHandsServer` (frontend) | `cargo test agents::openhands_server`, full cargo test, `npm run test:unit`, clippy | Switch skills → PID unchanged; verify `.openhands/conversations/` and `.openhands/bash_events/` exist; send message in new skill |
-| 7 | Pause conversation before workflow reset; remove directory deletion | `cargo test agents::openhands_server::process`, full cargo test, clippy | Reset workflow mid-run → verify clean pause in logs → verify fresh workflow on re-open |
+| 7 | Canonical skill-dir runtime roots + reset cleanup | `cargo test agents::openhands_server::process`, full cargo test, `npm run test:unit`, clippy, `markdownlint` on touched docs | Open/refine a skill → verify OpenHands CWD is the canonical skill dir; reset workflow mid-run → verify clean pause in logs → verify fresh workflow on re-open |
 | 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → resume conversation → verify full transcript replays |
 | 9 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
 | 10 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |

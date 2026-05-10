@@ -116,6 +116,7 @@ thin Layer 3 caller with no config builders or re-exports of `Refine*` names.
 `ensure_openhands_server` + `start_openhands_session`.
 
 Signature:
+
 ```rust
 pub fn build_skill_session_config(
     skill_name: &str,
@@ -273,39 +274,78 @@ release lock.
 
 ---
 
-## Gap 11 — Server artifacts are per-skill and skill switches restart the server
+## Gap 11 — Shared `.openhands` storage and no-restart skill switching are already complete on this branch
 
-**Target:** All persistent OpenHands server artifacts (`conversations/`,
-`bash_events/`, server logs) live under `{workspace_root}/.openhands/`.
-`OH_CONVERSATIONS_PATH` and `OH_BASH_EVENTS_DIR` are fixed for the workspace
-lifetime and do not change between skill switches. The cached Agent Server is
-reused across skill switches; it only restarts on process crash or health
-failure. Per-skill file isolation is provided by `workspace.working_dir` in each
-conversation's REST body, not by separate artifact directories.
+**Status:** Resolved by PR 6 on this branch.
+
+The target app-scoped OpenHands storage model is already in place here:
+
+- `OH_CONVERSATIONS_PATH` and `OH_BASH_EVENTS_DIR` are rooted under a shared
+  `.openhands/` directory instead of per-skill paths.
+- the cached Agent Server is reused across normal skill switches
+- leaving a skill no longer explicitly stops the server
+
+Keep this section as historical context for the PR sequence. Do not plan new
+work against it unless the branch regresses.
+
+---
+
+## Gap 12 — Runtime CWD still points at `workspaceSkillDir` instead of the canonical skill directory
+
+**Target:** Every skill-scoped OpenHands conversation, persistent or
+throwaway, sets `workspace.working_dir` to the canonical skill directory:
+
+`{skills_root}/{plugin_slug}/skills/{skill_name}`
+
+The prompt target, file viewer, `.agents` discovery root, and actual OpenHands
+working directory are the same directory. `workspaceSkillDir` is removed from
+the runtime contract.
 
 **Current state:**
-- `OH_CONVERSATIONS_PATH` is set to `{workspace_skill_dir}/conversations` — a
-  per-skill path. `ensure_agent_server` compares the incoming skill's
-  conversations path against the cached server's path and restarts whenever they
-  differ, causing a server restart on every skill switch.
-- `OH_BASH_EVENTS_DIR` is not set at all. The server default resolves relative
-  to the process CWD (a throwaway `tempfile::TempDir`), so bash events are
-  written to a directory that is deleted when the process struct drops.
 
-**Fix (PR 5b):**
-- Change `compute_conversations_path` to take `workspace_root: &Path` and return
-  `workspace_root.join(".openhands").join("conversations")`.
-- Add `compute_bash_events_path(workspace_root)` returning
-  `workspace_root.join(".openhands").join("bash_events")`.
-- Add `bash_events_path: Option<&str>` to `apply_session_env`; set
-  `OH_BASH_EVENTS_DIR` when present.
-- Simplify `openhands_secret_path` and `read_or_create_openhands_secret` to
-  accept `workspace_root` directly (no directory traversal needed).
-- Update `open_server_log_file` to write logs to
-  `workspace_root/.openhands/logs/`.
-- Remove `conversations_path` from `OpenHandsAgentServerHandle`.
-- Remove the skill-switch restart condition from `ensure_agent_server`; keep
-  only the health/liveness gate.
-- Update all five `ensure_agent_server_process` call sites in `mod.rs` to pass
-  `Path::new(&request.workspace_root_dir)` instead of
-  `request.runtime_run_dir()`.
+- `SkillCreatorConfigParams` still derives `workspace_run_dir` from
+  `workspace_skill_dir(...)`.
+- `OpenHandsRuntimeConfig`, `OpenHandsRuntimeRequest`, and related logging/tests
+  still carry `workspace_skill_dir`.
+- refine prompts and file viewers already target the canonical skill directory,
+  so the current model is internally inconsistent: the agent is told to edit one
+  tree while the runtime CWD points at another.
+- throwaway/session bootstrap helpers still assume a separate runtime working
+  directory abstraction rather than the canonical skill path.
+
+**Fix:** Replace `workspaceSkillDir` with canonical skill-dir semantics across
+`agents/runtime_config.rs`, `agents/skill_creator.rs`,
+`agents/openhands_server/types.rs`, `commands/skill_session.rs`,
+`commands/refine/*`, and all tests/fixtures that assert the old field or path
+shape. The runtime should create the canonical skill directory up front when it
+does not exist yet and then use that path as `workspace.working_dir`.
+
+---
+
+## Gap 13 — App storage still has a `workspace/` wrapper and deployment still mirrors `.agents` into runtime scratch dirs
+
+**Target:** The app-local data root is flat:
+
+- `{app_data_root}/openhands/`
+- `{app_data_root}/skill-builder.db`
+- `{app_data_root}/documents/`
+
+There is no `{app_data_root}/workspace/` wrapper. `.agents` is managed only in
+the canonical skill directory because that is the OpenHands working directory.
+
+**Current state:**
+
+- `commands/workspace.rs` still resolves app storage through a `workspace/`
+  subdirectory and cleanup comments still describe that tree as runtime scratch.
+- repo docs and metadata still describe the old workspace wrapper layout.
+- deploy/setup paths still support a two-tier `.agents` model with a shared
+  workspace mirror plus per-skill runtime copies, even though the target runtime
+  should read `.agents` directly from the canonical skill directory.
+- reset/finalize helpers still reference legacy workspace-scratch paths such as
+  `workspaceSkillDir` and `skill-snapshot` cleanup rooted under the app-local
+  workspace tree.
+
+**Fix:** Flatten app-data-root path resolution in `commands/workspace.rs` and
+all callers, update deploy/setup flows to place runtime `.agents` only in the
+canonical skill directory, and remove legacy workspace-wrapper assumptions from
+docs, tests, and cleanup code.
