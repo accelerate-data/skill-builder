@@ -910,18 +910,18 @@ git commit -m "refactor: remove workflow_session_id from contracts (Gap 7)"
 
 ---
 
-## PR 8 — Collapse `EventRecoveryMode` to `FullHistory` only (Gap 8)
+## PR 8 — Collapse event recovery to always-FullHistory (Gap 8)
 
-**Goal:** Single event replay path. Delete `Delta`, keep `None` for non-send paths.
+**Goal:** Single event replay path. Delete `EventRecoveryMode` enum entirely. Every `OpenHandsSendMessage` always replays full conversation history.
 
-### Task 8.1: Simplify event recovery
+### Task 8.1: Remove event recovery mode entirely
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-- [ ] **Step 1: Simplify `EventRecoveryMode` enum**
+- [ ] **Step 1: Delete `EventRecoveryMode` enum**
 
-Replace:
+Remove the entire enum definition (around line 222-227):
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EventRecoveryMode {
@@ -931,49 +931,9 @@ enum EventRecoveryMode {
 }
 ```
 
-With:
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EventRecoveryMode {
-    /// No event replay needed (session boot, throwaway).
-    None,
-    /// Full conversation history replay (send to existing conversation).
-    FullHistory,
-}
-```
+- [ ] **Step 2: Delete `determine_event_recovery_mode` function**
 
-- [ ] **Step 2: Simplify `determine_event_recovery_mode`**
-
-Replace:
-```rust
-fn determine_event_recovery_mode(
-    selection: OpenHandsConversationSelection,
-    prompt: &str,
-) -> EventRecoveryMode {
-    if selection != OpenHandsConversationSelection::SendExistingOnly {
-        return EventRecoveryMode::None;
-    }
-
-    if prompt.trim().is_empty() {
-        EventRecoveryMode::FullHistory
-    } else {
-        EventRecoveryMode::Delta
-    }
-}
-```
-
-With:
-```rust
-fn determine_event_recovery_mode(
-    selection: OpenHandsConversationSelection,
-) -> EventRecoveryMode {
-    if selection == OpenHandsConversationSelection::SendExistingOnly {
-        EventRecoveryMode::FullHistory
-    } else {
-        EventRecoveryMode::None
-    }
-}
-```
+Remove the entire function (around line 694-707).
 
 - [ ] **Step 3: Delete watermark functions**
 
@@ -982,29 +942,81 @@ Remove:
 - `collect_event_watermark_keys`
 - `filter_events_after_watermark`
 
-- [ ] **Step 4: Update call site**
+- [ ] **Step 4: Remove `event_recovery` field from `OpenHandsConversationTask`**
 
-In `dispatch_openhands_turn_with_request`, change:
+In the struct definition, remove:
+```rust
+event_recovery: EventRecoveryMode,
+```
+
+- [ ] **Step 5: Remove `event_recovery` assignment in `dispatch_openhands_turn_with_request`**
+
+Remove the line:
 ```rust
 let event_recovery = determine_event_recovery_mode(selection, request.prompt.as_str());
 ```
-to:
+
+And remove `event_recovery` from the `OpenHandsConversationTask` construction.
+
+- [ ] **Step 6: Replace mode-match with unconditional FullHistory in `run_conversation_task_inner`**
+
+Replace the entire `match task.event_recovery { ... }` block (around lines 1325-1404) with unconditional FullHistory replay:
+
 ```rust
-let event_recovery = determine_event_recovery_mode(selection);
+// Always replay full conversation history after send
+match task.client.list_all_events(&task.conversation_id).await {
+    Ok(events) => {
+        for raw in events {
+            if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                if !seen_event_ids.insert(id.to_string()) {
+                    continue;
+                }
+            }
+            record_subagent_launch(&raw, &pending_subagent_launches);
+            let normalized =
+                normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
+            if normalized.get("type").and_then(|value| value.as_str())
+                == Some("conversation_state")
+            {
+                terminal_state = Some(normalized);
+                continue;
+            }
+            super::events::handle_runtime_message(
+                &task.app,
+                &task.agent_id,
+                &normalized.to_string(),
+            );
+        }
+    }
+    Err(e) => {
+        log::warn!(
+            "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
+            task.agent_id,
+            e
+        );
+    }
+}
 ```
 
-- [ ] **Step 5: Remove `Delta` branch in `run_conversation_task_inner`**
+- [ ] **Step 7: Remove `known_event_keys_before_send` variable**
 
-Remove the `EventRecoveryMode::Delta` match arm and its watermark logic (the `known_event_keys_before_send` variable and related code). Keep `None` and `FullHistory` arms.
+Remove the entire block that collects watermark keys before send (around lines 1305-1319).
 
-- [ ] **Step 6: Update tests**
+- [ ] **Step 8: Update `event_recovery` references in subagent stream**
 
-In `agents/openhands_server/mod.rs` tests, update tests for `determine_event_recovery_mode`:
-- Remove tests for `Delta` mode
-- Keep tests that verify `SendExistingOnly` → `FullHistory`
-- Keep tests that verify `ResumeOrCreate`/`CreateFresh` → `None`
+In the subagent stream worker task construction (around line 1422), remove:
+```rust
+event_recovery: EventRecoveryMode::None,
+```
+from the `OpenHandsConversationTask` construction.
 
-- [ ] **Step 7: Run openhands_server tests**
+- [ ] **Step 9: Remove/update tests**
+
+In `agents/openhands_server/mod.rs` tests (around lines 3159-3189):
+- Delete all tests for `determine_event_recovery_mode`
+- Delete any tests that construct `EventRecoveryMode` variants
+
+- [ ] **Step 10: Run openhands_server tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server
@@ -1012,7 +1024,7 @@ cd app/src-tauri && cargo test agents::openhands_server
 
 Expected: All tests pass.
 
-- [ ] **Step 8: Run full cargo test**
+- [ ] **Step 11: Run full cargo test**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -1020,7 +1032,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 9: Run clippy**
+- [ ] **Step 12: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -1028,11 +1040,11 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: Clean.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs
-git commit -m "refactor: collapse EventRecoveryMode to FullHistory only (Gap 8)"
+git commit -m "refactor: collapse event recovery to always-FullHistory (Gap 8)"
 ```
 
 **Manual smoke:** Send a refine message, verify full transcript replays correctly. Run a workflow step, verify event streaming works.
@@ -1200,6 +1212,6 @@ Execute PRs sequentially in order 1→10. Each PR must pass all automated tests 
 | 5 | Delete duplicate workflow config | `cargo test commands::workflow`, clippy | Run workflow steps 0-3, answer evaluator |
 | 6 | Remove `stopOpenHandsServer` | `cargo test`, `npm run test:unit` | Switch skills, verify fast |
 | 7 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
-| 8 | Collapse `EventRecoveryMode` | `cargo test agents::openhands_server`, full cargo test, clippy | Send refine message, run workflow step |
+| 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Send refine message, run workflow step |
 | 9 | Delete `app/sidecar/` | `npm run test:repo-map`, `cargo test` | App launches, workflow runs |
 | 10 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
