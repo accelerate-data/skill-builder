@@ -135,6 +135,10 @@ async fn send_user_message(
         .map_err(|e| format!("Failed to send event to OpenHands conversation: {e}"))
 }
 
+fn should_backfill_persisted_history(prompt_delivery: PromptDelivery) -> bool {
+    matches!(prompt_delivery, PromptDelivery::IncludedInConversationCreate)
+}
+
 pub(crate) fn conversation_matches_request(
     conversation: &serde_json::Value,
     request: &OpenHandsRuntimeRequest,
@@ -1287,39 +1291,49 @@ async fn run_conversation_task_inner(
 
     if matches!(task.prompt_delivery, PromptDelivery::ViaSendEvent) {
         send_user_message(&task.client, &task.conversation_id, &task.prompt).await?;
+        task.client
+            .run_conversation(&task.conversation_id)
+            .await
+            .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
     }
 
-    // Always replay full conversation history after send
-    match task.client.list_all_events(&task.conversation_id).await {
-        Ok(events) => {
-            for raw in events {
-                if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
-                    if !seen_event_ids.insert(id.to_string()) {
+    // Only replay persisted history for conversations whose initial prompt was
+    // included in POST /api/conversations before the WS subscriber attached.
+    // Reused conversations are hydrated separately when the UI opens them;
+    // replaying that full history here would re-emit stale terminal states and
+    // poison the new turn.
+    if should_backfill_persisted_history(task.prompt_delivery) {
+        match task.client.list_all_events(&task.conversation_id).await {
+            Ok(events) => {
+                for raw in events {
+                    if let Some(id) = raw.get("id").and_then(|value| value.as_str()) {
+                        if !seen_event_ids.insert(id.to_string()) {
+                            continue;
+                        }
+                    }
+                    record_subagent_launch(&raw, &pending_subagent_launches);
+                    let normalized =
+                        normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
+                    if normalized.get("type").and_then(|value| value.as_str())
+                        == Some("conversation_state")
+                    {
+                        terminal_state = Some(normalized);
                         continue;
                     }
+                    super::events::handle_runtime_message(
+                        &task.app,
+                        &task.agent_id,
+                        &normalized.to_string(),
+                    );
                 }
-                record_subagent_launch(&raw, &pending_subagent_launches);
-                let normalized =
-                    normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
-                if normalized.get("type").and_then(|value| value.as_str())
-                    == Some("conversation_state")
-                {
-                    terminal_state = Some(normalized);
-                    continue;
-                }
-                super::events::handle_runtime_message(
-                    &task.app,
-                    &task.agent_id,
-                    &normalized.to_string(),
+            }
+            Err(e) => {
+                log::warn!(
+                    "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
+                    task.agent_id,
+                    e
                 );
             }
-        }
-        Err(e) => {
-            log::warn!(
-                "[openhands-agent-server:{}] event backfill failed (live WS only): {}",
-                task.agent_id,
-                e
-            );
         }
     }
 
@@ -1347,14 +1361,10 @@ async fn run_conversation_task_inner(
     };
 
     let mut cancel_pending = false;
-    // If REST backfill drained a terminal `conversation_state`, the
-    // conversation is already finished on the server. Skip the redundant
-    // /run POST and the WS read loop — fall straight through to the
-    // terminal-state handling below. Without this short-circuit a
-    // completed-on-disk conversation would issue a duplicate /run, and an
-    // error/cancelled-on-disk conversation would re-emit lifecycle events
-    // we've already projected.
-    if terminal_state.is_none() {
+    // For conversation-create flows, REST backfill may already contain the
+    // terminal state; skip the redundant /run in that case. Reused
+    // conversations are run immediately after send_user_message above.
+    if terminal_state.is_none() && should_backfill_persisted_history(task.prompt_delivery) {
         task.client
             .run_conversation(&task.conversation_id)
             .await
@@ -2962,5 +2972,15 @@ mod tests {
                 id: "conversation-1".to_string()
             })
         );
+    }
+
+    #[test]
+    fn only_conversation_create_path_replays_persisted_history() {
+        assert!(should_backfill_persisted_history(
+            PromptDelivery::IncludedInConversationCreate
+        ));
+        assert!(!should_backfill_persisted_history(
+            PromptDelivery::ViaSendEvent
+        ));
     }
 }
