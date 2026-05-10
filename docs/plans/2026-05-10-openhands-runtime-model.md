@@ -775,7 +775,7 @@ All unit tests for Phase 1 must pass before starting Phase 2.
 
 **Context:** `compute_conversations_path` currently takes `runtime_run_dir` (= `workspace_skill_dir`) and returns `skill_dir/conversations`. After this task it takes `workspace_root` and returns `workspace_root/.openhands/conversations`. `openhands_secret_path` currently calls `workspace_root_for_runtime_run_dir` to climb the directory tree — after this task it takes `workspace_root` directly. Both changes make callers simpler.
 
-- [ ] **Step 1: Write failing tests for new path shapes**
+- [x] **Step 1: Write failing tests for new path shapes**
 
 In the `#[cfg(test)]` block inside `process.rs`, add these two tests. They will fail until Step 2 is done.
 
@@ -801,7 +801,7 @@ fn compute_bash_events_path_resolves_under_workspace_root_openhands_dir() {
 }
 ```
 
-- [ ] **Step 2: Run to confirm the new tests fail**
+- [x] **Step 2: Run to confirm the new tests fail**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process::tests::compute_conversations_path_resolves_under_workspace_root_openhands_dir 2>&1 | tail -5
@@ -809,7 +809,7 @@ cd app/src-tauri && cargo test agents::openhands_server::process::tests::compute
 
 Expected: FAILED — function signature mismatch or assertion failure.
 
-- [ ] **Step 3: Update `compute_conversations_path` and add `compute_bash_events_path`**
+- [x] **Step 3: Update `compute_conversations_path` and add `compute_bash_events_path`**
 
 Replace the existing `compute_conversations_path` function and the doc comment above it. Add `compute_bash_events_path` immediately after.
 
@@ -827,7 +827,7 @@ pub(crate) fn compute_bash_events_path(workspace_root: &Path) -> PathBuf {
 }
 ```
 
-- [ ] **Step 4: Simplify `openhands_secret_path` to accept `workspace_root` directly**
+- [x] **Step 4: Simplify `openhands_secret_path` to accept `workspace_root` directly**
 
 Replace:
 
@@ -853,7 +853,7 @@ fn openhands_secret_path(workspace_root: &Path) -> PathBuf {
 }
 ```
 
-- [ ] **Step 5: Update `read_or_create_openhands_secret` signature**
+- [x] **Step 5: Update `read_or_create_openhands_secret` signature**
 
 Replace the signature `fn read_or_create_openhands_secret(runtime_run_dir: &Path)` with `fn read_or_create_openhands_secret(workspace_root: &Path)`. Update the body's one call from `openhands_secret_path(runtime_run_dir)?` to `openhands_secret_path(workspace_root)` (no `?` — it's now infallible). The rest of the body is unchanged.
 
@@ -902,15 +902,15 @@ fn read_or_create_openhands_secret(workspace_root: &Path) -> Result<String, Stri
 }
 ```
 
-- [ ] **Step 6: Update `open_server_log_file` to use workspace root**
+- [x] **Step 6: Update `open_server_log_file` to use workspace root**
 
 Replace the function signature `async fn open_server_log_file(runtime_run_dir: &Path)` with `async fn open_server_log_file(workspace_root: &Path)`. Change the body's `logs_dir` binding from `runtime_run_dir.join("logs")` to `workspace_root.join(".openhands").join("logs")`. The rest of the body is unchanged.
 
-- [ ] **Step 7: Update the existing stale path test**
+- [x] **Step 7: Update the existing stale path test**
 
 The test `compute_conversations_path_resolves_under_runtime_run_dir` asserts the old per-skill shape. Delete it — it is replaced by the two tests added in Step 1.
 
-- [ ] **Step 8: Run new path tests**
+- [x] **Step 8: Run new path tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process::tests::compute_conversations_path_resolves_under_workspace_root_openhands_dir agents::openhands_server::process::tests::compute_bash_events_path_resolves_under_workspace_root_openhands_dir 2>&1 | tail -10
@@ -918,7 +918,7 @@ cd app/src-tauri && cargo test agents::openhands_server::process::tests::compute
 
 Expected: Both PASS.
 
-- [ ] **Step 9: Update the secret test to pass `workspace_root` directly**
+- [x] **Step 9: Update the secret test to pass `workspace_root` directly**
 
 The test `read_or_create_openhands_secret_uses_stable_workspace_root_file` currently builds `runtime_run_dir = tmp.path().join("default/skills/petstore-sales")` and passes that. Update it to pass the workspace root directly:
 
@@ -945,7 +945,7 @@ fn read_or_create_openhands_secret_uses_stable_workspace_root_file() {
 }
 ```
 
-- [ ] **Step 10: Run full process tests**
+- [x] **Step 10: Run full process tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -15
@@ -962,7 +962,7 @@ Expected: All pass. (Some compilation errors from handle/ensure callers are expe
 
 **Context:** `apply_session_env` currently sets `OH_CONVERSATIONS_PATH`. We add `OH_BASH_EVENTS_DIR` alongside it. Both are `Option<&str>` so tests can omit them when testing other env vars.
 
-- [ ] **Step 1: Write a failing test for `OH_BASH_EVENTS_DIR`**
+- [x] **Step 1: Write a failing test for `OH_BASH_EVENTS_DIR`**
 
 Add this test to the `#[cfg(test)]` block:
 
@@ -1005,7 +1005,7 @@ fn apply_session_env_omits_bash_events_dir_when_none() {
 }
 ```
 
-- [ ] **Step 2: Update `apply_session_env` signature and body**
+- [x] **Step 2: Update `apply_session_env` signature and body**
 
 Replace the existing function:
 
@@ -1029,7 +1029,7 @@ fn apply_session_env(
 }
 ```
 
-- [ ] **Step 3: Fix existing `apply_session_env` call sites in tests**
+- [x] **Step 3: Fix existing `apply_session_env` call sites in tests**
 
 Update `apply_session_env_sets_conversations_path_when_present`:
 - Change the call to pass `Some("/tmp/test/conversations")` as the fourth arg and `Some("/tmp/test/bash_events")` as the fifth.
@@ -1039,7 +1039,7 @@ Update `apply_session_env_omits_conversations_path_when_none`:
 - Change the call to `apply_session_env(&mut cmd, "k", "s", None, None)`.
 - Add an assertion that `OH_BASH_EVENTS_DIR` is also absent.
 
-- [ ] **Step 4: Run `apply_session_env` tests**
+- [x] **Step 4: Run `apply_session_env` tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process::tests::apply_session_env 2>&1 | tail -10
@@ -1056,7 +1056,7 @@ Expected: All four tests PASS.
 
 **Context:** `conversations_path` is stored in the handle solely to drive the skill-switch restart check. Once the check is gone the field has no purpose.
 
-- [ ] **Step 1: Remove the field from the struct**
+- [x] **Step 1: Remove the field from the struct**
 
 Replace:
 
@@ -1088,7 +1088,7 @@ pub struct OpenHandsAgentServerHandle {
 
 **Context:** `ensure_agent_server` currently: (1) computes `conversations_path` from `runtime_run_dir`, (2) checks if the cached server's path matches — if not, restarts. The skill-switch restart lives in that path comparison. After this task, `ensure_agent_server` takes `workspace_root` and restarts only on health failure or process crash.
 
-- [ ] **Step 1: Write a failing test for the no-restart behavior**
+- [x] **Step 1: Write a failing test for the no-restart behavior**
 
 Add this test to the `#[cfg(test)]` block. It verifies that `should_reuse_cached_server` is the only gate (path is no longer a factor):
 
@@ -1104,7 +1104,7 @@ fn cached_server_reuse_does_not_depend_on_conversations_path() {
 
 (This test already passes since `should_reuse_cached_server` is unchanged — it just documents the intent.)
 
-- [ ] **Step 2: Add a structural compile-time test that `conversations_path` is gone from the handle**
+- [x] **Step 2: Add a structural compile-time test that `conversations_path` is gone from the handle**
 
 Add this test immediately after the one above. It is a compile-time proof: if `conversations_path` still exists on `OpenHandsAgentServerHandle`, the struct literal will fail to compile.
 
@@ -1122,7 +1122,7 @@ fn ensure_agent_server_handle_has_no_conversations_path_field() {
 }
 ```
 
-- [ ] **Step 3: Replace the `ensure_agent_server` signature and body**
+- [x] **Step 3: Replace the `ensure_agent_server` signature and body**
 
 Replace the full function:
 
@@ -1179,7 +1179,7 @@ pub async fn ensure_agent_server(
 
 **Context:** `start` and `start_once` currently take `runtime_run_dir`. After this task they take `workspace_root`. All path derivations inside `start_once` switch from skill-dir-relative to workspace-root-relative.
 
-- [ ] **Step 1: Update `OpenHandsAgentServerProcess::start` signature**
+- [x] **Step 1: Update `OpenHandsAgentServerProcess::start` signature**
 
 Replace:
 
@@ -1201,7 +1201,7 @@ pub async fn start(timeout: Duration, workspace_root: &Path) -> Result<Self, Str
 
 The rest of the function body is unchanged.
 
-- [ ] **Step 2: Replace the full `start_once` body**
+- [x] **Step 2: Replace the full `start_once` body**
 
 Replace the full `start_once` function:
 
@@ -1244,7 +1244,7 @@ async fn start_once(timeout: Duration, workspace_root: &Path) -> Result<Self, St
 
 The body after `let log_file = open_server_log_file(workspace_root).await;` is unchanged. Do not alter the stderr capture loop, the `Self { ... }` construction, or the health check.
 
-- [ ] **Step 3: Run process tests to confirm compilation**
+- [x] **Step 3: Run process tests to confirm compilation**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -15
@@ -1261,7 +1261,7 @@ Expected: All tests pass. (If `mod.rs` callers cause a compile error, proceed to
 
 **Context:** There are five call sites in `mod.rs` that currently pass `request.runtime_run_dir()` (= `workspace_skill_dir`) to `ensure_agent_server_process`. They must now pass `Path::new(&request.workspace_root_dir)` (the workspace root). `OpenHandsRuntimeRequest` already has a `workspace_root_dir: String` field — no struct changes needed.
 
-- [ ] **Step 1: Update all five call sites**
+- [x] **Step 1: Update all five call sites**
 
 Search for every occurrence of:
 
@@ -1283,11 +1283,11 @@ grep -n "ensure_agent_server_process" app/src-tauri/src/agents/openhands_server/
 
 Expected before: 5 lines. Expected after: same 5 lines with `workspace_root_dir`.
 
-- [ ] **Step 2: Confirm `std::path::Path` is in scope**
+- [x] **Step 2: Confirm `std::path::Path` is in scope**
 
 Check the imports at the top of `mod.rs`. `Path` is already used elsewhere in the file so the import already exists. If not, add `use std::path::Path;`.
 
-- [ ] **Step 3: Build to check compilation**
+- [x] **Step 3: Build to check compilation**
 
 ```bash
 cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -20
@@ -1304,7 +1304,7 @@ Expected: No errors.
 
 **Context:** The live server test (`live_openhands_server_shutdown_prefers_sigterm`) constructs a `runtime_run_dir` and passes it to `OpenHandsAgentServerProcess::start`. Update it to pass a workspace root instead.
 
-- [ ] **Step 1: Update the live server test**
+- [x] **Step 1: Update the live server test**
 
 Find the test `live_openhands_server_shutdown_prefers_sigterm`. It currently does:
 
@@ -1323,7 +1323,7 @@ let workspace_root = tmp.path();
 let mut process = OpenHandsAgentServerProcess::start(Duration::from_secs(60), workspace_root)
 ```
 
-- [ ] **Step 2: Run all `process` module tests**
+- [x] **Step 2: Run all `process` module tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -20
@@ -1331,7 +1331,7 @@ cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -20
 
 Expected: All pass.
 
-- [ ] **Step 3: Run full `openhands_server` tests**
+- [x] **Step 3: Run full `openhands_server` tests**
 
 ```bash
 cd app/src-tauri && cargo test agents::openhands_server 2>&1 | tail -20
@@ -1339,7 +1339,7 @@ cd app/src-tauri && cargo test agents::openhands_server 2>&1 | tail -20
 
 Expected: All pass.
 
-- [ ] **Step 4: Run full cargo test**
+- [x] **Step 4: Run full cargo test**
 
 ```bash
 cd app/src-tauri && cargo test 2>&1 | tail -20
@@ -1347,7 +1347,7 @@ cd app/src-tauri && cargo test 2>&1 | tail -20
 
 Expected: All pass.
 
-- [ ] **Step 5: Run clippy**
+- [x] **Step 5: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D warnings 2>&1 | grep "^error" | head -20
@@ -1355,7 +1355,7 @@ cd app/src-tauri && cargo clippy --manifest-path app/src-tauri/Cargo.toml -- -D 
 
 Expected: Clean.
 
-- [ ] **Step 6: Intermediate commit (Phase 1)**
+- [x] **Step 6: Intermediate commit (Phase 1)**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/process.rs \
@@ -1386,7 +1386,7 @@ Phase 1 unit tests must all pass before starting here.
 **Files:**
 - Modify: `app/src/lib/active-skill-transition.ts`
 
-- [ ] **Step 1: Remove `stopOpenHandsServer()` from `leaveCurrentSkill`**
+- [x] **Step 1: Remove `stopOpenHandsServer()` from `leaveCurrentSkill`**
 
 Read the file and remove the `stopOpenHandsServer()` call. The function should be:
 1. Pause conversation
@@ -1395,7 +1395,7 @@ Read the file and remove the `stopOpenHandsServer()` call. The function should b
 
 No server stop.
 
-- [ ] **Step 2: Remove unused import**
+- [x] **Step 2: Remove unused import**
 
 Remove the `stopOpenHandsServer` import if no longer used.
 
@@ -1405,15 +1405,15 @@ Remove the `stopOpenHandsServer` import if no longer used.
 - Modify: `app/src-tauri/src/commands/runtime_lifecycle.rs`
 - Modify: `app/src-tauri/src/lib.rs`
 
-- [ ] **Step 3: Delete `stop_openhands_server` from `runtime_lifecycle.rs`**
+- [x] **Step 3: Delete `stop_openhands_server` from `runtime_lifecycle.rs`**
 
 Remove the entire `stop_openhands_server` function (lines ~14-27).
 
-- [ ] **Step 4: Remove command registration from `lib.rs`**
+- [x] **Step 4: Remove command registration from `lib.rs`**
 
 Remove `commands::runtime_lifecycle::stop_openhands_server` from the `invoke_handler!` list.
 
-- [ ] **Step 5: Run Rust tests**
+- [x] **Step 5: Run Rust tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -1421,7 +1421,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 6: Run frontend tests**
+- [x] **Step 6: Run frontend tests**
 
 ```bash
 cd app && npm run test:unit
@@ -1429,7 +1429,7 @@ cd app && npm run test:unit
 
 Expected: All tests pass.
 
-- [ ] **Step 7: Run clippy**
+- [x] **Step 7: Run clippy**
 
 ```bash
 cd app/src-tauri && cargo clippy -- -D warnings
@@ -1437,7 +1437,7 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: Clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add app/src/lib/active-skill-transition.ts app/src-tauri/src/commands/runtime_lifecycle.rs app/src-tauri/src/lib.rs
@@ -1480,6 +1480,326 @@ git commit -m "feat: remove stopOpenHandsServer from leaveCurrentSkill; delete d
 2. Quit the app completely (Cmd+Q)
 3. Restart the app, open skill A
 4. **Verify:** Previous conversation transcript is restored. No errors.
+
+---
+
+## PR 6b — Pause conversation before workflow reset; remove directory deletion
+
+**Goal:** `reset_workflow_step` pauses the skill's active conversation before clearing the DB record, so any in-flight agent work is cancelled cleanly. The `remove_dir_all` on the conversations folder is removed entirely — conversation directories are never deleted on reset; orphaned conversation files are harmless once the DB record is gone.
+
+**Architecture:** Three small changes. (1) Add `try_get_cached_server_handle` to `process.rs` — returns the cached server handle without starting a new server. (2) Add `pause_conversation_if_server_running` to `mod.rs` — best-effort HTTP pause using the cached handle; logs and continues on any error. (3) Refactor `clear_persistent_skill_conversation_state` in `evaluation.rs` to remove `remove_dir_all`, split into a sync ID-collection step and a sync DB-clear step so the DB lock is never held across the async pause.
+
+**Why no directory deletion:** After the DB record is cleared, the old conversation directory is an unreferenced orphan. It does not interfere with future conversations (each has its own ID-keyed subdirectory). Deleting the whole conversations folder on reset is dangerous once PR 6's shared `{workspace_root}/.openhands/conversations/` path is in place — it would wipe every skill's conversation state.
+
+---
+
+### Task 6b.1 — Add `try_get_cached_server_handle` to `process.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
+
+**Context:** `ensure_agent_server` always starts a new server if none is cached — wrong for a cleanup path where we only want to pause if the server is already running. `try_get_cached_server_handle` returns the cached handle without touching the process.
+
+- [ ] **Step 1: Write a failing test**
+
+Add to the `#[cfg(test)]` block:
+
+```rust
+#[tokio::test]
+async fn try_get_cached_server_handle_returns_none_when_no_server_cached() {
+    // Registry starts empty in a fresh process; this should always be None.
+    // (Other tests that start a real server must not run in the same process.)
+    let handle = try_get_cached_server_handle().await;
+    assert!(handle.is_none());
+}
+```
+
+- [ ] **Step 2: Run to confirm it fails**
+
+```bash
+cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle_returns_none_when_no_server_cached 2>&1 | tail -5
+```
+
+Expected: FAILED — function not found.
+
+- [ ] **Step 3: Add `try_get_cached_server_handle`**
+
+Insert immediately after `ensure_agent_server`:
+
+```rust
+/// Returns the cached agent server handle if one exists.
+/// Does NOT start a new server — callers that only need the handle for
+/// best-effort operations (e.g. pause before delete) use this instead of
+/// `ensure_agent_server`.
+pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle> {
+    let registry = agent_server_registry().lock().await;
+    registry.as_ref().map(|s| s.handle.clone())
+}
+```
+
+- [ ] **Step 4: Run the test**
+
+```bash
+cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle 2>&1 | tail -5
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Run full process tests**
+
+```bash
+cd app/src-tauri && cargo test agents::openhands_server::process 2>&1 | tail -10
+```
+
+Expected: All pass.
+
+---
+
+### Task 6b.2 — Add `pause_conversation_if_server_running` to `mod.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+
+**Context:** This is the best-effort pause used by the reset path. It checks the cached server, constructs a client, and sends the pause HTTP call. All errors are logged and swallowed — the reset must not fail because the server is unreachable.
+
+- [ ] **Step 1: Add the function**
+
+Add after `pause_openhands_conversation`:
+
+```rust
+/// Best-effort pause of a conversation using the cached server handle.
+/// Does NOT start a new server. If no server is cached, or the pause call
+/// fails, logs and returns — the caller proceeds with cleanup regardless.
+pub async fn pause_conversation_if_server_running(conversation_id: &str) {
+    let Some(handle) =
+        crate::agents::openhands_server::process::try_get_cached_server_handle().await
+    else {
+        log::debug!(
+            "[openhands-agent-server] no cached server; skipping pause for conversation {}",
+            conversation_id
+        );
+        return;
+    };
+    let url = match handle.base_url().parse::<reqwest::Url>() {
+        Ok(u) => u,
+        Err(e) => {
+            log::warn!(
+                "[openhands-agent-server] invalid server URL for pause of {}: {}",
+                conversation_id, e
+            );
+            return;
+        }
+    };
+    let client = OpenHandsServerClient::new(url, Some(handle.session_api_key));
+    if let Err(e) = client.pause_conversation(conversation_id).await {
+        log::warn!(
+            "[openhands-agent-server] best-effort pause of conversation {} failed (non-fatal): {}",
+            conversation_id, e
+        );
+    } else {
+        log::info!(
+            "[openhands-agent-server] paused conversation {} before reset",
+            conversation_id
+        );
+    }
+}
+```
+
+- [ ] **Step 2: Build to confirm compilation**
+
+```bash
+cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
+```
+
+Expected: No errors.
+
+- [ ] **Step 3: Run clippy**
+
+```bash
+cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
+```
+
+Expected: Clean.
+
+---
+
+### Task 6b.3 — Refactor `clear_persistent_skill_conversation_state`; make `reset_workflow_step` async
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
+
+**Context:** `clear_persistent_skill_conversation_state` currently: (1) clears the DB record, (2) removes the entire `conversations/` directory. The fix: (1) collect conversation IDs before clearing, (2) remove the `remove_dir_all` entirely, (3) return the IDs so `reset_workflow_step` can pause them before the DB clear. `reset_workflow_step` becomes `async fn` so it can `await` the pause.
+
+- [ ] **Step 1: Write a failing test proving no directory deletion**
+
+Add to `#[cfg(test)]` in `evaluation.rs` (or a new `tests` module if none exists):
+
+```rust
+#[test]
+fn clear_persistent_skill_conversation_state_does_not_touch_filesystem() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let conversations_dir = tmp
+        .path()
+        .join("default")
+        .join("skills")
+        .join("my-skill")
+        .join("conversations");
+    std::fs::create_dir_all(&conversations_dir).expect("create conversations dir");
+    // Write a sentinel file inside to detect deletion
+    std::fs::write(conversations_dir.join("sentinel.txt"), b"keep me").expect("write sentinel");
+
+    let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+    // clear_persistent_skill_conversation_state must not remove the sentinel
+    clear_persistent_skill_conversation_state(
+        &conn,
+        tmp.path().to_str().unwrap(),
+        "default",
+        "my-skill",
+    )
+    .expect("clear");
+
+    assert!(
+        conversations_dir.join("sentinel.txt").exists(),
+        "conversations directory must not be deleted during reset"
+    );
+}
+```
+
+- [ ] **Step 2: Run to confirm it currently fails**
+
+```bash
+cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
+```
+
+Expected: FAILED — sentinel file is deleted by the current `remove_dir_all`.
+
+- [ ] **Step 3: Refactor `clear_persistent_skill_conversation_state`**
+
+Replace the function with two focused functions:
+
+```rust
+/// Collect the saved conversation IDs for a skill (and its legacy default-plugin
+/// entry if the skill moved plugins). Returns (plugin_slug, conversation_id) pairs.
+fn collect_skill_conversation_ids(
+    conn: &rusqlite::Connection,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Vec<(String, String)> {
+    let mut plugin_slugs = vec![plugin_slug.to_string()];
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    }
+    plugin_slugs
+        .into_iter()
+        .filter_map(|slug| {
+            crate::db::get_skill_conversation_id(conn, &slug, skill_name)
+                .ok()
+                .flatten()
+                .map(|id| (slug, id))
+        })
+        .collect()
+}
+
+/// Clear conversation DB records for a skill. Does not touch the filesystem.
+fn clear_skill_conversation_db_records(
+    conn: &rusqlite::Connection,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<(), String> {
+    let mut plugin_slugs = vec![plugin_slug.to_string()];
+    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
+        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    }
+    for slug in plugin_slugs {
+        crate::db::clear_skill_conversation_id(conn, &slug, skill_name)?;
+    }
+    Ok(())
+}
+```
+
+Remove `clear_persistent_skill_conversation_state` entirely.
+
+- [ ] **Step 4: Make `reset_workflow_step` async; add pause**
+
+Replace the function signature and the old `clear_persistent_skill_conversation_state` call site:
+
+```rust
+#[tauri::command]
+pub async fn reset_workflow_step(
+    workspace_path: String,
+    skill_name: String,
+    from_step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+```
+
+Inside the function, replace the single `clear_persistent_skill_conversation_state` call with:
+
+```rust
+// Collect conversation IDs before clearing the DB (sync, brief lock).
+let conversation_ids = {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    collect_skill_conversation_ids(&conn, &plugin_slug, &skill_name)
+};
+
+// Best-effort pause — does not hold the DB lock.
+for (_, conv_id) in &conversation_ids {
+    crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
+}
+
+// Reset steps in SQLite
+let conn = db.0.lock().map_err(|e| e.to_string())?;
+clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
+clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
+crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
+```
+
+Remove the `// Reset steps in SQLite` comment and the existing `let conn = db.0.lock()` line that preceded the old call — they are replaced by the block above. Keep the `save_workflow_run` block unchanged.
+
+- [ ] **Step 5: Run the filesystem test**
+
+```bash
+cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Run full cargo test**
+
+```bash
+cd app/src-tauri && cargo test 2>&1 | tail -20
+```
+
+Expected: All pass.
+
+- [ ] **Step 7: Run clippy**
+
+```bash
+cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
+```
+
+Expected: Clean.
+
+- [ ] **Step 8: Update `lib.rs` command registration**
+
+`reset_workflow_step` is now async. In `app/src-tauri/src/lib.rs`, confirm it is registered in `invoke_handler!`. Tauri 2 handles async commands transparently — no registration change required, but verify the build compiles cleanly.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add app/src-tauri/src/agents/openhands_server/process.rs \
+        app/src-tauri/src/agents/openhands_server/mod.rs \
+        app/src-tauri/src/commands/workflow/evaluation.rs
+git commit -m "feat: pause conversation before workflow reset; remove conversation directory deletion"
+```
+
+**Manual smoke:**
+
+1. Open a skill, start a workflow step so the agent is running
+2. While the agent is running, click Reset Workflow
+3. **Verify:** The reset completes cleanly. No error toast. Rust logs show `paused conversation <id> before reset`.
+4. Re-open the skill. **Verify:** Workflow starts fresh (step 0, no history).
+5. Check `~/.vibedata/.openhands/conversations/` — the old conversation directory may still be present on disk, which is expected and correct.
 
 ---
 
@@ -1822,6 +2142,7 @@ Execute PRs sequentially in order 1→9. Each PR must pass all automated tests a
 | 4 | Move Layer 2 out of `refine/mod.rs` | `cargo test` (all), clippy | Open refine, send message, switch skills |
 | 5 | Delete duplicate workflow config | `cargo test commands::workflow`, clippy | Run workflow steps 0-3, answer evaluator |
 | 6 | Consolidate OH artifacts to workspace root + `OH_BASH_EVENTS_DIR` + remove skill-switch restart (backend) + remove `stopOpenHandsServer` (frontend) | `cargo test agents::openhands_server`, full cargo test, `npm run test:unit`, clippy | Switch skills → PID unchanged; verify `.openhands/conversations/` and `.openhands/bash_events/` exist; send message in new skill |
+| 6b | Pause conversation before workflow reset; remove directory deletion | `cargo test agents::openhands_server::process`, full cargo test, clippy | Reset workflow mid-run → verify clean pause in logs → verify fresh workflow on re-open |
 | 8 | Collapse event recovery to always-FullHistory | `cargo test agents::openhands_server`, full cargo test, clippy | Switch skills → resume conversation → verify full transcript replays |
 | 7 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
 | 9 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
