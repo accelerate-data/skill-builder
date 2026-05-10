@@ -1961,6 +1961,300 @@ git commit -m "feat: pause conversation before workflow reset; remove conversati
 
 ---
 
+### Task 7.4 — Rename confusing workspace fields; thread `app_data_root` to server startup
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/runtime_config.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/types.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/process.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/client.rs`
+- Modify: `app/src-tauri/src/agents/skill_creator.rs`
+- Modify: `app/src-tauri/src/types/mod.rs`
+- Modify: `app/src-tauri/src/commands/skill_session.rs`
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `app/src-tauri/src/commands/skill/scope_review.rs`
+- Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `app/src-tauri/src/commands/api_validation.rs`
+
+**Context:** Code review found that `OH_CONVERSATIONS_PATH` and `OH_BASH_EVENTS_DIR` are being set to paths under `{skills_root}/.openhands/…` instead of `{app_data_root}/openhands/…`. Root cause: the field named `workspace_root_dir` is actually the skills root (not the app data root), and `ensure_agent_server` derives conversation/bash_events paths from it. `workspace_skill_dir` is the canonical per-skill CWD. Neither field name reflects its actual meaning, and `app_data_root` has no representation anywhere in the config structs.
+
+The three distinct roots are:
+- `app_data_root` = `~/Library/Application Support/com.vibedata.skill-builder/` — owns `openhands/`, the DB, documents
+- `skills_root` = user-configured skill tree root — owns all plugin/skill files
+- `skill_dir` = `{skills_root}/{plugin_slug}/skills/{skill_name}` — OpenHands CWD
+
+This task renames the fields to match these roots and adds `app_data_root` so the server receives the correct paths.
+
+- [ ] **Step 1: Rename fields in `runtime_config.rs` and add `app_data_root`**
+
+In `OpenHandsRuntimeConfig`:
+- Rename field `workspace_root_dir` → `skills_root`, update `#[serde(rename = "workspaceRootDir")]` → `#[serde(rename = "skillsRoot")]`
+- Rename field `workspace_skill_dir` → `skill_dir`, update `#[serde(rename = "workspaceSkillDir")]` → `#[serde(rename = "skillDir")]`
+- Add new field before `skills_root`:
+
+```rust
+/// App-local data directory (`~/Library/Application Support/com.vibedata.skill-builder/`).
+/// Owns `openhands/` (conversations, bash_events, logs, secret.key), the SQLite DB, and documents.
+#[serde(rename = "appDataRoot")]
+pub app_data_root: String,
+```
+
+In `BuildOpenHandsRuntimeConfigParams`:
+- Rename `workspace_root_dir` → `skills_root`
+- Rename `workspace_skill_dir` → `skill_dir`
+- Add `pub app_data_root: String`
+
+In `build_openhands_runtime_config`:
+- Set `app_data_root: params.app_data_root.replace('\\', "/")` (alongside the existing replacements)
+- Set `skills_root: params.skills_root.replace('\\', "/")`
+- Set `skill_dir: params.skill_dir.replace('\\', "/")`
+
+In `Debug` impl for `OpenHandsRuntimeConfig`, rename the `.field(...)` calls to match.
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
+
+Fix each compile error before continuing. The rename is mechanical — grep for `workspace_root_dir` and `workspace_skill_dir` in the file and replace all.
+
+- [ ] **Step 2: Rename fields in `types.rs` and add `app_data_root`**
+
+In `OpenHandsRuntimeRequest`:
+- Rename `workspace_root_dir` → `skills_root`
+- Rename `workspace_skill_dir` → `skill_dir`
+- Add `pub app_data_root: String`
+
+In `try_from_runtime_config`:
+```rust
+Ok(Self {
+    prompt: config.prompt.clone(),
+    llm,
+    app_data_root: config.app_data_root.clone(),
+    skills_root: config.skills_root.clone(),
+    skill_dir: config.skill_dir.clone(),
+    // ... rest unchanged
+})
+```
+
+Rename the method `runtime_run_dir` → `skill_dir_path` and update its body:
+```rust
+pub fn skill_dir_path(&self) -> &Path {
+    Path::new(&self.skill_dir)
+}
+```
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
+
+- [ ] **Step 3: Fix path helpers in `process.rs` to use `app_data_root`**
+
+Rename the parameter in all affected functions from `workspace_root` → `app_data_root`.
+
+Replace `compute_conversations_path`:
+```rust
+pub(crate) fn compute_conversations_path(app_data_root: &Path) -> PathBuf {
+    app_data_root.join("openhands").join("conversations")
+}
+```
+
+Replace `compute_bash_events_path`:
+```rust
+pub(crate) fn compute_bash_events_path(app_data_root: &Path) -> PathBuf {
+    app_data_root.join("openhands").join("bash_events")
+}
+```
+
+Replace `openhands_secret_path`:
+```rust
+fn openhands_secret_path(app_data_root: &Path) -> PathBuf {
+    app_data_root.join("openhands").join(OPENHANDS_SECRET_FILENAME)
+}
+```
+
+Replace `read_or_create_openhands_secret` signature: `fn read_or_create_openhands_secret(app_data_root: &Path)` — body stays the same, just uses the renamed local.
+
+Replace `open_server_log_file` (around line 497):
+```rust
+async fn open_server_log_file(app_data_root: &Path) -> Option<BufWriter<tokio::fs::File>> {
+    let logs_dir = app_data_root.join("openhands").join("logs");
+    // rest unchanged
+```
+
+In `ensure_agent_server` signature: `pub async fn ensure_agent_server(timeout: Duration, app_data_root: &Path)`.
+
+In `OpenHandsAgentServerProcess::start` and `start_once`: rename `workspace_root` → `app_data_root` throughout.
+
+Update the two unit test names and assertions that reference `workspace_root_openhands_dir`:
+- `compute_conversations_path_resolves_under_workspace_root_openhands_dir` → `compute_conversations_path_resolves_under_app_data_root_openhands_dir`
+- `compute_bash_events_path_resolves_under_workspace_root_openhands_dir` → `compute_bash_events_path_resolves_under_app_data_root_openhands_dir`
+
+Update the test assertion bodies to reflect the new flat path (no `.openhands` prefix):
+```rust
+fn compute_conversations_path_resolves_under_app_data_root_openhands_dir() {
+    let root = Path::new("/tmp/app-data");
+    assert_eq!(
+        compute_conversations_path(root),
+        Path::new("/tmp/app-data/openhands/conversations")
+    );
+}
+
+fn compute_bash_events_path_resolves_under_app_data_root_openhands_dir() {
+    let root = Path::new("/tmp/app-data");
+    assert_eq!(
+        compute_bash_events_path(root),
+        Path::new("/tmp/app-data/openhands/bash_events")
+    );
+}
+```
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
+
+- [ ] **Step 4: Update `mod.rs` to pass `app_data_root` to `ensure_agent_server_process`**
+
+There are five call sites (lines 803, 893, 922, 1014, 1259) that pass `Path::new(&request.workspace_root_dir)`. Replace every one with `Path::new(&request.app_data_root)`.
+
+Also update the four `runtime_run_dir()` call sites (lines 750, 758, 765 in log lines, and any others) to call `skill_dir_path()` instead.
+
+Update the four test fixture structs (lines ~2433, ~2476, ~2531, ~2548) that set `workspace_root_dir` and `workspace_skill_dir`:
+```rust
+app_data_root: "/tmp/app-data".to_string(),
+skills_root: "/tmp/skills".to_string(),
+skill_dir: "/tmp/skills/default/skills/my-skill".to_string(),
+```
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
+
+- [ ] **Step 5: Update `skill_creator.rs` and `SkillCreatorConfigParams`**
+
+Add `app_data_root: String` to `SkillCreatorConfigParams`:
+```rust
+pub struct SkillCreatorConfigParams<'a> {
+    pub app_data_root: &'a str,   // ← new
+    pub skill_name: &'a str,
+    pub prompt: &'a str,
+    pub skills_root: &'a str,
+    // ... rest unchanged
+}
+```
+
+In `build_skill_creator_config`, pass the new field through to `BuildOpenHandsRuntimeConfigParams`:
+```rust
+build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+    app_data_root: params.app_data_root.to_string(),  // ← new
+    skills_root: params.skills_root.replace('\\', "/"),
+    skill_dir: workspace_skill_dir,   // the local already computed this
+    // ... rest unchanged
+})
+```
+
+Rename the local `workspace_skill_dir` variable to `skill_dir` for clarity while you're here.
+
+Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
+
+- [ ] **Step 6: Update Layer 3 callers to resolve and pass `app_data_root`**
+
+Each caller of `SkillCreatorConfigParams` or `BuildOpenHandsRuntimeConfigParams` must:
+1. Resolve `app_data_root` from the `AppHandle` available in that command
+2. Rename `workspace_root_dir` → `skills_root` and `workspace_skill_dir` → `skill_dir` in the struct literal
+3. Add `app_data_root`
+
+The pattern for resolving:
+```rust
+let app_data_root = app_handle
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+    .to_string_lossy()
+    .replace('\\', "/");
+```
+
+Files and their relevant functions:
+
+**`commands/skill_session.rs`** — `build_skill_session_config` (already takes `app: &tauri::AppHandle`):
+```rust
+crate::agents::skill_creator::SkillCreatorConfigParams {
+    app_data_root: &app_data_root,
+    skills_root: &ctx.skills_path,
+    // rename workspace_skill_dir → skill_dir
+    skill_dir: &skill_dir,
+    // ...
+}
+```
+
+**`commands/workflow/runtime.rs`** — `build_*_config` helpers (these take `skills_path` and `skill_name` as strings; they need `app_data_root` added as a parameter):
+Add `app_data_root: &str` as the first parameter to each of the five `build_*_config` functions in this file. Pass it through to `SkillCreatorConfigParams`. Callers of these helpers (in the same file or `commands/workflow/*.rs`) already have access to `AppHandle` — resolve `app_data_root` there and pass it.
+
+**`commands/skill/scope_review.rs`** — uses `BuildOpenHandsRuntimeConfigParams` directly; resolve `app_data_root` from the `AppHandle` already in scope and add it.
+
+**`commands/eval_workbench/mod.rs`** — same pattern; resolve and add `app_data_root`.
+
+**`commands/api_validation.rs`** — same pattern.
+
+After each file, run `cargo check` and fix errors before moving to the next file.
+
+- [ ] **Step 7: Fix `client.rs` test helper and `types/mod.rs` fixture**
+
+In `agents/openhands_server/client.rs`, the `base_config` test helper:
+```rust
+fn base_config(app_data_root: &str, skills_root: &str, skill_dir: &str) -> OpenHandsRuntimeConfig {
+    OpenHandsRuntimeConfig {
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.to_string(),
+        skill_dir: skill_dir.to_string(),
+        // ...
+    }
+}
+```
+
+Update all call sites of `base_config` inside `client.rs` to pass three distinct paths.
+
+In `types/mod.rs`, the test fixture at line ~127:
+```rust
+app_data_root: "/tmp/app-data".to_string(),
+skills_root: "/tmp/skills".to_string(),
+skill_dir: "/tmp/skills/default/skills/test-skill".to_string(),
+```
+
+- [ ] **Step 8: Full build and test**
+
+```bash
+cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -20
+```
+
+Expected: clean build.
+
+```bash
+cd app/src-tauri && cargo test 2>&1 | tail -20
+```
+
+Expected: all pass.
+
+```bash
+cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
+```
+
+Expected: clean.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add app/src-tauri/src/agents/runtime_config.rs \
+        app/src-tauri/src/agents/openhands_server/types.rs \
+        app/src-tauri/src/agents/openhands_server/process.rs \
+        app/src-tauri/src/agents/openhands_server/mod.rs \
+        app/src-tauri/src/agents/openhands_server/client.rs \
+        app/src-tauri/src/agents/skill_creator.rs \
+        app/src-tauri/src/types/mod.rs \
+        app/src-tauri/src/commands/skill_session.rs \
+        app/src-tauri/src/commands/workflow/runtime.rs \
+        app/src-tauri/src/commands/skill/scope_review.rs \
+        app/src-tauri/src/commands/eval_workbench/mod.rs \
+        app/src-tauri/src/commands/api_validation.rs
+git commit -m "refactor: rename workspace_root_dir/workspace_skill_dir to skills_root/skill_dir; add app_data_root; fix OH_CONVERSATIONS_PATH and OH_BASH_EVENTS_DIR to use app data root"
+```
+
+**Verify after landing:** Open the app, run a workflow step, then check `~/Library/Application Support/com.vibedata.skill-builder/openhands/conversations/` — the conversation directory must appear there, not under the skills root.
+
+---
+
 ## PR 8 — Collapse event recovery to always-FullHistory (Gap 8)
 
 **Goal:** Single event replay path. Delete `EventRecoveryMode` enum entirely. Every `OpenHandsSendMessage` always replays full conversation history.
