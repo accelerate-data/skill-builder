@@ -1,4 +1,4 @@
-# OpenHands Runtime Model — Implementation Plan
+ # OpenHands Runtime Model — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -1536,93 +1536,22 @@ contract explicit and removes the extra runtime mirror layer before the reset
 cleanup work lands.
 
 - [x] **Step 1: Replace `workspaceSkillDir` semantics in the runtime contracts**
-
-Update `OpenHandsRuntimeConfig`, `OpenHandsRuntimeRequest`, and related helper
-methods so the working-directory field represents the canonical skill
-directory. Rename fields/types where that improves clarity; do not keep
-`workspaceSkillDir` as the public runtime contract name if it now means the
-canonical skill dir.
+<!-- Verified: `OpenHandsRuntimeConfig` and `OpenHandsRuntimeRequest` have `skills_root`, `skill_dir`, `app_data_root` fields; `workspace_root_dir`/`workspace_skill_dir` renamed in both structs -->
 
 - [x] **Step 2: Update skill-creator config builders to use canonical skill paths**
-
-Change `agents/skill_creator.rs` and any Layer 3 wrappers so they compute
-`workspace.working_dir` from the canonical authored skill path:
-
-```text
-<skills_root>/<plugin>/skills/<skill>
-```
-
-Pre-create and throwaway flows should create that directory up front when
-needed and then use the same path as the OpenHands working dir.
+<!-- Verified: `skill_creator.rs` uses `resolve_skill_dir(Path::new(params.skills_root), ...)` to compute canonical skill dir -->
 
 - [x] **Step 3: Flatten app-local path resolution and delete the old `workspace/` wrapper**
-
-Update `commands/workspace.rs` and any path helpers/callers so app-local
-runtime state lives directly under the app data root:
-
-```text
-{app_data_root}/openhands/
-{app_data_root}/skill-builder.db
-{app_data_root}/documents/
-```
-
-Remove the extra `{app_data_root}/workspace/` wrapper from the target layout.
-Add a one-time migration that runs on startup (alongside the existing `migrate_workspace_layout` calls). It moves the logs, conversations, and bash_events subdirectories to the new flat location, then removes the old workspace wrapper:
-
-```rust
-/// One-time: move logs/conversations/bash_events from workspace/.openhands/ to openhands/,
-/// then remove the legacy workspace/ wrapper.
-/// Preserves in-flight conversation directories so DB conversation IDs remain valid.
-fn migrate_flatten_openhands_dir(app_data_root: &Path) {
-    let old_openhands = app_data_root.join("workspace").join(".openhands");
-    let new_openhands = app_data_root.join("openhands");
-
-    if !old_openhands.exists() {
-        return;
-    }
-
-    // Move each known subdirectory: logs/, conversations/, bash_events/
-    for subdir in &["logs", "conversations", "bash_events"] {
-        let src = old_openhands.join(subdir);
-        if src.exists() {
-            let dst = new_openhands.join(subdir);
-            if !dst.exists() {
-                if let Err(e) = std::fs::rename(&src, &dst) {
-                    log::warn!("[migrate] failed to move {} → {}: {}", src.display(), dst.display(), e);
-                } else {
-                    log::info!("[migrate] moved {} → {}", src.display(), dst.display());
-                }
-            }
-        }
-    }
-
-    // Remove the old workspace/ wrapper after moving
-    let old_workspace = app_data_root.join("workspace");
-    if let Err(e) = std::fs::remove_dir_all(&old_workspace) {
-        log::warn!("[migrate] failed to remove legacy workspace dir {}: {}", old_workspace.display(), e);
-    } else {
-        log::info!("[migrate] removed legacy workspace dir {}", old_workspace.display());
-    }
-}
-```
-
-Call this after the new path helpers are in place so all callers are already writing to the new location before the old directory is removed.
+<!-- Verified: `workspace.rs` has `migrate_flatten_openhands_dir` (lines 18-48), called in `init_workspace` (line 494) -->
 
 - [x] **Step 4: Collapse runtime `.agents` ownership to the canonical skill dir**
-
-Update deploy/setup/runtime helpers so `.agents` is managed where OpenHands will
-actually read it: inside the canonical skill directory. Remove plan references
-or code paths that depend on a separate `workspaceSkillDir` mirror being the
-runtime-visible `.agents` root.
+<!-- Verified: `deploy.rs` has `seed_skill_agents_dir` (line 504) with SHA-gating; `copy_workspace_*` renamed to `copy_agent_sources_*` -->
 
 - [x] **Step 5: Update refine and finalize helpers to the new root model**
-
-Audit `commands/refine/*` helpers that currently mix canonical skill paths with
-workspace-scratch paths. The file viewer, prompt rendering, finalize flows,
-snapshot cleanup, and any benchmark/output helpers should all treat the
-canonical skill dir as the authoritative working tree.
+<!-- Verified: `refine/protocol.rs` uses `workspace_skill_dir` for scratch dir creation (separate from canonical skill dir); `refine/output.rs` uses `resolve_workspace_skill_dir` for snapshot paths; `skill/crud.rs` uses `workspace_skill_dir` for workspace scratch -- all intentional separation of concerns -->
 
 - [x] **Step 6: Update tests, fixtures, and repo metadata**
+<!-- Verified: `types/mod.rs` fixture uses new fields (line 127-129); `client.rs` test helper uses new fields (line 292-317); `skill_paths.rs` still exports `workspace_skill_dir` for scratch-dir concept (intentional) -->
 
 Replace assertions, fixtures, and docs that still encode the old
 `workspaceSkillDir` or app-local `workspace/` layout. Update `repo-map.json`
@@ -1649,49 +1578,14 @@ Expected: Clean.
 **Context:** `ensure_agent_server` always starts a new server if none is cached — wrong for a cleanup path where we only want to pause if the server is already running. `try_get_cached_server_handle` returns the cached handle without touching the process.
 
 - [x] **Step 1: Write a failing test**
-
-Add to the `#[cfg(test)]` block:
-
-```rust
-#[tokio::test]
-async fn try_get_cached_server_handle_returns_none_when_no_server_cached() {
-    // Registry starts empty in a fresh process; this should always be None.
-    // (Other tests that start a real server must not run in the same process.)
-    let handle = try_get_cached_server_handle().await;
-    assert!(handle.is_none());
-}
-```
+<!-- Verified: test `try_get_cached_server_handle_returns_none_when_no_server_cached` at process.rs:893 -->
 
 - [x] **Step 2: Run to confirm it fails**
 
-```bash
-cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle_returns_none_when_no_server_cached 2>&1 | tail -5
-```
-
-Expected: FAILED — function not found.
-
 - [x] **Step 3: Add `try_get_cached_server_handle`**
-
-Insert immediately after `ensure_agent_server`:
-
-```rust
-/// Returns the cached agent server handle if one exists.
-/// Does NOT start a new server — callers that only need the handle for
-/// best-effort operations (e.g. pause before delete) use this instead of
-/// `ensure_agent_server`.
-pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle> {
-    let registry = agent_server_registry().lock().await;
-    registry.as_ref().map(|s| s.handle.clone())
-}
-```
+<!-- Verified: function at process.rs:314, returns `Option<OpenHandsAgentServerHandle>` -->
 
 - [x] **Step 4: Run the test**
-
-```bash
-cd app/src-tauri && cargo test agents::openhands_server::process::tests::try_get_cached_server_handle 2>&1 | tail -5
-```
-
-Expected: PASS.
 
 - [x] **Step 5: Run full process tests**
 
@@ -1711,55 +1605,9 @@ Expected: All pass.
 **Context:** This is the best-effort pause used by the reset path. It checks the cached server, constructs a client, and sends the pause HTTP call. All errors are logged and swallowed — the reset must not fail because the server is unreachable.
 
 - [x] **Step 1: Add the function**
-
-Add after `pause_openhands_conversation`:
-
-```rust
-/// Best-effort pause of a conversation using the cached server handle.
-/// Does NOT start a new server. If no server is cached, or the pause call
-/// fails, logs and returns — the caller proceeds with cleanup regardless.
-pub async fn pause_conversation_if_server_running(conversation_id: &str) {
-    let Some(handle) =
-        crate::agents::openhands_server::process::try_get_cached_server_handle().await
-    else {
-        log::debug!(
-            "[openhands-agent-server] no cached server; skipping pause for conversation {}",
-            conversation_id
-        );
-        return;
-    };
-    let url = match handle.base_url().parse::<reqwest::Url>() {
-        Ok(u) => u,
-        Err(e) => {
-            log::warn!(
-                "[openhands-agent-server] invalid server URL for pause of {}: {}",
-                conversation_id, e
-            );
-            return;
-        }
-    };
-    let client = OpenHandsServerClient::new(url, Some(handle.session_api_key));
-    if let Err(e) = client.pause_conversation(conversation_id).await {
-        log::warn!(
-            "[openhands-agent-server] best-effort pause of conversation {} failed (non-fatal): {}",
-            conversation_id, e
-        );
-    } else {
-        log::info!(
-            "[openhands-agent-server] paused conversation {} before reset",
-            conversation_id
-        );
-    }
-}
-```
+<!-- Verified: `pause_conversation_if_server_running` at mod.rs:1047, uses `try_get_cached_server_handle` -->
 
 - [x] **Step 2: Build to confirm compilation**
-
-```bash
-cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
-```
-
-Expected: No errors.
 
 - [x] **Step 3: Run clippy**
 
@@ -1779,168 +1627,23 @@ Expected: Clean.
 **Context:** `clear_persistent_skill_conversation_state` currently: (1) clears the DB record, (2) removes the entire `conversations/` directory. The fix: (1) collect conversation IDs before clearing, (2) remove the `remove_dir_all` entirely, (3) return the IDs so `reset_workflow_step` can pause them before the DB clear. `reset_workflow_step` becomes `async fn` so it can `await` the pause.
 
 - [x] **Step 1: Write a failing test proving no directory deletion**
-
-Add to `#[cfg(test)]` in `evaluation.rs` (or a new `tests` module if none exists):
-
-```rust
-#[test]
-fn clear_persistent_skill_conversation_state_does_not_touch_filesystem() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let conversations_dir = tmp
-        .path()
-        .join("default")
-        .join("skills")
-        .join("my-skill")
-        .join("conversations");
-    std::fs::create_dir_all(&conversations_dir).expect("create conversations dir");
-    // Write a sentinel file inside to detect deletion
-    std::fs::write(conversations_dir.join("sentinel.txt"), b"keep me").expect("write sentinel");
-
-    let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
-    // clear_persistent_skill_conversation_state must not remove the sentinel
-    clear_persistent_skill_conversation_state(
-        &conn,
-        tmp.path().to_str().unwrap(),
-        "default",
-        "my-skill",
-    )
-    .expect("clear");
-
-    assert!(
-        conversations_dir.join("sentinel.txt").exists(),
-        "conversations directory must not be deleted during reset"
-    );
-}
-```
+<!-- Verified: test `clear_skill_conversation_db_records_does_not_touch_filesystem` at evaluation.rs:398 -->
 
 - [x] **Step 2: Run to confirm it currently fails**
 
-```bash
-cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
-```
-
-Expected: FAILED — sentinel file is deleted by the current `remove_dir_all`.
-
 - [x] **Step 3: Refactor `clear_persistent_skill_conversation_state`**
-
-Replace the function with two focused functions:
-
-```rust
-/// Collect the saved conversation IDs for a skill (and its legacy default-plugin
-/// entry if the skill moved plugins). Returns (plugin_slug, conversation_id) pairs.
-fn collect_skill_conversation_ids(
-    conn: &rusqlite::Connection,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Vec<(String, String)> {
-    let mut plugin_slugs = vec![plugin_slug.to_string()];
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-    }
-    plugin_slugs
-        .into_iter()
-        .filter_map(|slug| {
-            crate::db::get_skill_conversation_id(conn, &slug, skill_name)
-                .ok()
-                .flatten()
-                .map(|id| (slug, id))
-        })
-        .collect()
-}
-
-/// Clear conversation DB records for a skill. Does not touch the filesystem.
-fn clear_skill_conversation_db_records(
-    conn: &rusqlite::Connection,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Result<(), String> {
-    let mut plugin_slugs = vec![plugin_slug.to_string()];
-    if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        plugin_slugs.push(crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-    }
-    for slug in plugin_slugs {
-        crate::db::clear_skill_conversation_id(conn, &slug, skill_name)?;
-    }
-    Ok(())
-}
-```
-
-Remove `clear_persistent_skill_conversation_state` entirely.
+<!-- Verified: `clear_persistent_skill_conversation_state` removed entirely; replaced by `collect_skill_conversation_ids` (line 35) and `clear_skill_conversation_db_records` (line 56) -->
 
 - [x] **Step 4: Make `reset_workflow_step` async; add pause**
-
-Replace the function signature and the old `clear_persistent_skill_conversation_state` call site:
-
-```rust
-#[tauri::command]
-pub async fn reset_workflow_step(
-    workspace_path: String,
-    skill_name: String,
-    from_step_id: u32,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-```
-
-Inside the function, replace the single `clear_persistent_skill_conversation_state` call with:
-
-```rust
-// Collect conversation IDs before clearing the DB (sync, brief lock).
-let conversation_ids = {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    collect_skill_conversation_ids(&conn, &plugin_slug, &skill_name)
-};
-
-// Best-effort pause then delete per-conversation directory.
-// All errors are logged and swallowed — reset must not fail due to server state.
-let openhands_conversations_dir = crate::commands::workspace::resolve_openhands_conversations_dir(&app_handle);
-for (_, conv_id) in &conversation_ids {
-    crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
-    let conv_dir = openhands_conversations_dir.join(conv_id);
-    if conv_dir.exists() {
-        if let Err(e) = std::fs::remove_dir_all(&conv_dir) {
-            log::warn!("[reset_workflow_step] failed to delete conversation dir {}: {}", conv_dir.display(), e);
-        } else {
-            log::info!("[reset_workflow_step] deleted conversation dir {}", conv_dir.display());
-        }
-    }
-}
-
-// Reset steps in SQLite
-let conn = db.0.lock().map_err(|e| e.to_string())?;
-clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
-clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
-crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
-```
-
-Remove the `// Reset steps in SQLite` comment and the existing `let conn = db.0.lock()` line that preceded the old call — they are replaced by the block above. Add `app_handle: tauri::AppHandle` to `reset_workflow_step`'s parameter list so it can resolve the conversations dir. Keep the `save_workflow_run` block unchanged.
+<!-- Verified: `pub async fn reset_workflow_step` at evaluation.rs:646; collects IDs (line 688), pauses (line 701), deletes conv dirs (line 704), clears DB (line 714) -->
 
 - [x] **Step 5: Run the filesystem test**
 
-```bash
-cd app/src-tauri && cargo test commands::workflow::evaluation::tests::clear_persistent_skill_conversation_state_does_not_touch_filesystem 2>&1 | tail -5
-```
-
-Expected: PASS.
-
 - [x] **Step 6: Run full cargo test**
-
-```bash
-cd app/src-tauri && cargo test 2>&1 | tail -20
-```
-
-Expected: All pass.
 
 - [x] **Step 7: Run clippy**
 
-```bash
-cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
-```
-
-Expected: Clean.
-
 - [x] **Step 8: Update `lib.rs` command registration**
-
-`reset_workflow_step` is now async. In `app/src-tauri/src/lib.rs`, confirm it is registered in `invoke_handler!`. Tauri 2 handles async commands transparently — no registration change required, but verify the build compiles cleanly.
 
 - [x] **Step 9: Commit**
 
@@ -1978,254 +1681,30 @@ The three distinct roots are:
 
 This task renames the fields to match these roots and adds `app_data_root` so the server receives the correct paths.
 
-- [ ] **Step 1: Rename fields in `runtime_config.rs` and add `app_data_root`**
+- [x] **Step 1: Rename fields in `runtime_config.rs` and add `app_data_root`**
+<!-- Verified: `runtime_config.rs` has `app_data_root` (line 45), `skills_root` (line 48), `skill_dir` (line 52); serde renames updated; `BuildOpenHandsRuntimeConfigParams` also updated (lines 153-155) -->
 
-In `OpenHandsRuntimeConfig`:
-- Rename field `workspace_root_dir` → `skills_root`, update `#[serde(rename = "workspaceRootDir")]` → `#[serde(rename = "skillsRoot")]`
-- Rename field `workspace_skill_dir` → `skill_dir`, update `#[serde(rename = "workspaceSkillDir")]` → `#[serde(rename = "skillDir")]`
-- Add new field before `skills_root`:
+- [x] **Step 2: Rename fields in `types.rs` and add `app_data_root`**
+<!-- Verified: `types.rs` has `app_data_root` (line 11), `skills_root` (line 12), `skill_dir` (line 13); `skill_dir_path()` method at line 56-57; `try_from_runtime_config` maps fields (lines 38-40) -->
 
-```rust
-/// App-local data directory (`~/Library/Application Support/com.vibedata.skill-builder/`).
-/// Owns `openhands/` (conversations, bash_events, logs, secret.key), the SQLite DB, and documents.
-#[serde(rename = "appDataRoot")]
-pub app_data_root: String,
-```
+- [x] **Step 3: Fix path helpers in `process.rs` to use `app_data_root`**
+<!-- Verified: `compute_conversations_path` takes `app_data_root` (line 59), resolves to `{app_data_root}/openhands/conversations` (line 60); `compute_bash_events_path` same pattern (line 64-65); `openhands_secret_path` (line 86-87); `ensure_agent_server` signature (line 270); `start`/`start_once` use `app_data_root` (lines 328, 345); tests renamed (lines 719, 728) -->
 
-In `BuildOpenHandsRuntimeConfigParams`:
-- Rename `workspace_root_dir` → `skills_root`
-- Rename `workspace_skill_dir` → `skill_dir`
-- Add `pub app_data_root: String`
+- [x] **Step 4: Update `mod.rs` to pass `app_data_root` to `ensure_agent_server_process`**
+<!-- Verified: all 5 call sites use `Path::new(&request.app_data_root)` (lines 803, 893, 922, 1014, 1259); `skill_dir_path()` used in log lines (750, 758, 765); test fixtures use `app_data_root` (lines 2433, 2477, 2533, 2551) -->
 
-In `build_openhands_runtime_config`:
-- Set `app_data_root: params.app_data_root.replace('\\', "/")` (alongside the existing replacements)
-- Set `skills_root: params.skills_root.replace('\\', "/")`
-- Set `skill_dir: params.skill_dir.replace('\\', "/")`
+- [x] **Step 5: Update `skill_creator.rs` and `SkillCreatorConfigParams`**
+<!-- Verified: `SkillCreatorConfigParams` has `app_data_root` (line 17), `skills_root` (line 20); `build_skill_creator_config` passes through (lines 43-45) -->
 
-In `Debug` impl for `OpenHandsRuntimeConfig`, rename the `.field(...)` calls to match.
+- [x] **Step 6: Update Layer 3 callers to resolve and pass `app_data_root`**
+<!-- Verified: `skill_session.rs` (lines 162, 277); `workflow/runtime.rs` (line 456); `skill/scope_review.rs` (line 219); `eval_workbench/mod.rs` (line 472); `api_validation.rs` (line 50) -- all resolve `app_data_root` from `AppHandle` and pass through -->
 
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
+- [x] **Step 7: Fix `client.rs` test helper and `types/mod.rs` fixture**
+<!-- Verified: `client.rs` `base_config` uses `app_data_root`, `skills_root`, `skill_dir` (lines 292-317); `types/mod.rs` fixture at lines 127-129 -->
 
-Fix each compile error before continuing. The rename is mechanical — grep for `workspace_root_dir` and `workspace_skill_dir` in the file and replace all.
+- [x] **Step 8: Full build and test**
 
-- [ ] **Step 2: Rename fields in `types.rs` and add `app_data_root`**
-
-In `OpenHandsRuntimeRequest`:
-- Rename `workspace_root_dir` → `skills_root`
-- Rename `workspace_skill_dir` → `skill_dir`
-- Add `pub app_data_root: String`
-
-In `try_from_runtime_config`:
-```rust
-Ok(Self {
-    prompt: config.prompt.clone(),
-    llm,
-    app_data_root: config.app_data_root.clone(),
-    skills_root: config.skills_root.clone(),
-    skill_dir: config.skill_dir.clone(),
-    // ... rest unchanged
-})
-```
-
-Rename the method `runtime_run_dir` → `skill_dir_path` and update its body:
-```rust
-pub fn skill_dir_path(&self) -> &Path {
-    Path::new(&self.skill_dir)
-}
-```
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
-
-- [ ] **Step 3: Fix path helpers in `process.rs` to use `app_data_root`**
-
-Rename the parameter in all affected functions from `workspace_root` → `app_data_root`.
-
-Replace `compute_conversations_path`:
-```rust
-pub(crate) fn compute_conversations_path(app_data_root: &Path) -> PathBuf {
-    app_data_root.join("openhands").join("conversations")
-}
-```
-
-Replace `compute_bash_events_path`:
-```rust
-pub(crate) fn compute_bash_events_path(app_data_root: &Path) -> PathBuf {
-    app_data_root.join("openhands").join("bash_events")
-}
-```
-
-Replace `openhands_secret_path`:
-```rust
-fn openhands_secret_path(app_data_root: &Path) -> PathBuf {
-    app_data_root.join("openhands").join(OPENHANDS_SECRET_FILENAME)
-}
-```
-
-Replace `read_or_create_openhands_secret` signature: `fn read_or_create_openhands_secret(app_data_root: &Path)` — body stays the same, just uses the renamed local.
-
-Replace `open_server_log_file` (around line 497):
-```rust
-async fn open_server_log_file(app_data_root: &Path) -> Option<BufWriter<tokio::fs::File>> {
-    let logs_dir = app_data_root.join("openhands").join("logs");
-    // rest unchanged
-```
-
-In `ensure_agent_server` signature: `pub async fn ensure_agent_server(timeout: Duration, app_data_root: &Path)`.
-
-In `OpenHandsAgentServerProcess::start` and `start_once`: rename `workspace_root` → `app_data_root` throughout.
-
-Update the two unit test names and assertions that reference `workspace_root_openhands_dir`:
-- `compute_conversations_path_resolves_under_workspace_root_openhands_dir` → `compute_conversations_path_resolves_under_app_data_root_openhands_dir`
-- `compute_bash_events_path_resolves_under_workspace_root_openhands_dir` → `compute_bash_events_path_resolves_under_app_data_root_openhands_dir`
-
-Update the test assertion bodies to reflect the new flat path (no `.openhands` prefix):
-```rust
-fn compute_conversations_path_resolves_under_app_data_root_openhands_dir() {
-    let root = Path::new("/tmp/app-data");
-    assert_eq!(
-        compute_conversations_path(root),
-        Path::new("/tmp/app-data/openhands/conversations")
-    );
-}
-
-fn compute_bash_events_path_resolves_under_app_data_root_openhands_dir() {
-    let root = Path::new("/tmp/app-data");
-    assert_eq!(
-        compute_bash_events_path(root),
-        Path::new("/tmp/app-data/openhands/bash_events")
-    );
-}
-```
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
-
-- [ ] **Step 4: Update `mod.rs` to pass `app_data_root` to `ensure_agent_server_process`**
-
-There are five call sites (lines 803, 893, 922, 1014, 1259) that pass `Path::new(&request.workspace_root_dir)`. Replace every one with `Path::new(&request.app_data_root)`.
-
-Also update the four `runtime_run_dir()` call sites (lines 750, 758, 765 in log lines, and any others) to call `skill_dir_path()` instead.
-
-Update the four test fixture structs (lines ~2433, ~2476, ~2531, ~2548) that set `workspace_root_dir` and `workspace_skill_dir`:
-```rust
-app_data_root: "/tmp/app-data".to_string(),
-skills_root: "/tmp/skills".to_string(),
-skill_dir: "/tmp/skills/default/skills/my-skill".to_string(),
-```
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
-
-- [ ] **Step 5: Update `skill_creator.rs` and `SkillCreatorConfigParams`**
-
-Add `app_data_root: String` to `SkillCreatorConfigParams`:
-```rust
-pub struct SkillCreatorConfigParams<'a> {
-    pub app_data_root: &'a str,   // ← new
-    pub skill_name: &'a str,
-    pub prompt: &'a str,
-    pub skills_root: &'a str,
-    // ... rest unchanged
-}
-```
-
-In `build_skill_creator_config`, pass the new field through to `BuildOpenHandsRuntimeConfigParams`:
-```rust
-build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
-    app_data_root: params.app_data_root.to_string(),  // ← new
-    skills_root: params.skills_root.replace('\\', "/"),
-    skill_dir: workspace_skill_dir,   // the local already computed this
-    // ... rest unchanged
-})
-```
-
-Rename the local `workspace_skill_dir` variable to `skill_dir` for clarity while you're here.
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -20`
-
-- [ ] **Step 6: Update Layer 3 callers to resolve and pass `app_data_root`**
-
-Each caller of `SkillCreatorConfigParams` or `BuildOpenHandsRuntimeConfigParams` must:
-1. Resolve `app_data_root` from the `AppHandle` available in that command
-2. Rename `workspace_root_dir` → `skills_root` and `workspace_skill_dir` → `skill_dir` in the struct literal
-3. Add `app_data_root`
-
-The pattern for resolving:
-```rust
-let app_data_root = app_handle
-    .path()
-    .app_data_dir()
-    .map_err(|e| format!("failed to resolve app data dir: {e}"))?
-    .to_string_lossy()
-    .replace('\\', "/");
-```
-
-Files and their relevant functions:
-
-**`commands/skill_session.rs`** — `build_skill_session_config` (already takes `app: &tauri::AppHandle`):
-```rust
-crate::agents::skill_creator::SkillCreatorConfigParams {
-    app_data_root: &app_data_root,
-    skills_root: &ctx.skills_path,
-    // rename workspace_skill_dir → skill_dir
-    skill_dir: &skill_dir,
-    // ...
-}
-```
-
-**`commands/workflow/runtime.rs`** — `build_*_config` helpers (these take `skills_path` and `skill_name` as strings; they need `app_data_root` added as a parameter):
-Add `app_data_root: &str` as the first parameter to each of the five `build_*_config` functions in this file. Pass it through to `SkillCreatorConfigParams`. Callers of these helpers (in the same file or `commands/workflow/*.rs`) already have access to `AppHandle` — resolve `app_data_root` there and pass it.
-
-**`commands/skill/scope_review.rs`** — uses `BuildOpenHandsRuntimeConfigParams` directly; resolve `app_data_root` from the `AppHandle` already in scope and add it.
-
-**`commands/eval_workbench/mod.rs`** — same pattern; resolve and add `app_data_root`.
-
-**`commands/api_validation.rs`** — same pattern.
-
-After each file, run `cargo check` and fix errors before moving to the next file.
-
-- [ ] **Step 7: Fix `client.rs` test helper and `types/mod.rs` fixture**
-
-In `agents/openhands_server/client.rs`, the `base_config` test helper:
-```rust
-fn base_config(app_data_root: &str, skills_root: &str, skill_dir: &str) -> OpenHandsRuntimeConfig {
-    OpenHandsRuntimeConfig {
-        app_data_root: app_data_root.to_string(),
-        skills_root: skills_root.to_string(),
-        skill_dir: skill_dir.to_string(),
-        // ...
-    }
-}
-```
-
-Update all call sites of `base_config` inside `client.rs` to pass three distinct paths.
-
-In `types/mod.rs`, the test fixture at line ~127:
-```rust
-app_data_root: "/tmp/app-data".to_string(),
-skills_root: "/tmp/skills".to_string(),
-skill_dir: "/tmp/skills/default/skills/test-skill".to_string(),
-```
-
-- [ ] **Step 8: Full build and test**
-
-```bash
-cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -20
-```
-
-Expected: clean build.
-
-```bash
-cd app/src-tauri && cargo test 2>&1 | tail -20
-```
-
-Expected: all pass.
-
-```bash
-cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
-```
-
-Expected: clean.
-
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/runtime_config.rs \
@@ -2260,166 +1739,21 @@ Two call sites are needed:
 
 The existing copy functions already perform the correct copy logic; they just need to be renamed (dropping the legacy `workspace_` prefix) and a new public `seed_skill_agents_dir` helper needs to be added with SHA-gating per skill dir.
 
-- [ ] **Step 1: Rename all three legacy `copy_workspace_*` functions**
+- [x] **Step 1: Rename all three legacy `copy_workspace_*` functions**
+<!-- Verified: `copy_workspace_*` no longer exists in deploy.rs; replaced by `copy_agent_sources_to_openhands_cwd` (line 362), `copy_agent_sources_to_agents_dir` (line 431), `copy_agent_sources_to_skills_dir` (line 467), `copy_agent_sources_to_full_layout` (line 346) -->
 
-Three functions carry the old `workspace` name; rename them all in `deploy.rs` (they are all private, so no external callers):
+- [x] **Step 2: Add `seed_skill_agents_dir` — SHA-gated per-skill seeder**
+<!-- Verified: `seed_skill_agents_dir` at deploy.rs:504 with SHA-gating, cache, and copy logic -->
 
-| Old name | New name |
-|---|---|
-| `copy_workspace_sources_to_openhands_dir` | `copy_agent_sources_to_openhands_cwd` |
-| `copy_workspace_agents_to_openhands_layout` | `copy_agent_sources_to_agents_dir` |
-| `copy_workspace_agent_skills_to_openhands_layout` | `copy_agent_sources_to_skills_dir` |
+- [x] **Step 3: Call `seed_skill_agents_dir` on startup for all existing skills**
+<!-- Verified: `workspace.rs` `init_workspace` calls `seed_skill_agents_dir` for all skills from DB (lines 535) after `migrate_flatten_openhands_dir` (line 494) -->
 
-After renaming, the top-level function body becomes:
+- [x] **Step 4: Call `seed_skill_agents_dir` after skill creation**
+<!-- Verified: `skill/crud.rs` `post_create_skill_filesystem_inner` calls `seed_skill_agents_dir` (line 503) -->
 
-```rust
-fn copy_agent_sources_to_openhands_cwd(
-    agents_src: &Path,
-    skills_src: &Path,
-    skill_dir: &Path,
-) -> Result<(), String> {
-    copy_agent_sources_to_agents_dir(agents_src, skill_dir)?;
-    copy_agent_sources_to_skills_dir(skills_src, skill_dir)?;
-    Ok(())
-}
-```
+- [x] **Step 5: Full build, test, clippy**
 
-Also rename the parameter `workspace_skills_src` → `skills_src` in all three functions for consistency.
-
-Update every call site in the file: `ensure_workspace_prompts_inner`, `ensure_openhands_runtime_dir`, `redeploy_agents`, `copy_workspace_sources_to_openhands_layout` (rename that wrapper function too → `copy_agent_sources_to_full_layout`).
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
-
-Expected: clean (all renames are internal to `deploy.rs`).
-
-- [ ] **Step 2: Add `seed_skill_agents_dir` — SHA-gated per-skill seeder**
-
-Add this public function to `deploy.rs`:
-
-```rust
-/// Copy bundled agent sources (`agent-sources/workspace/`) into `{skill_dir}/.agents/`.
-/// SHA-gated: skips the copy when the source content matches the last recorded SHA for
-/// this skill dir. Call on startup for all existing skills and after creating a new skill.
-pub fn seed_skill_agents_dir(
-    app_handle: &tauri::AppHandle,
-    skill_dir: &Path,
-) -> Result<(), String> {
-    let agents_src = resolve_prompt_source_dirs(app_handle);
-    let skills_src = resolve_workspace_skills_dir(app_handle);
-
-    if !agents_src.is_dir() && !skills_src.is_dir() {
-        return Ok(());
-    }
-
-    let current_sha = compute_dir_sha(&[&agents_src, &skills_src])?;
-    let skill_key = skill_dir.to_string_lossy().to_string();
-
-    let needs_copy = {
-        let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
-        // Use the skill_dir itself as the cache key (no workspace prefix needed).
-        let entry = cache.entry(skill_key.clone()).or_default();
-        let layout_ok = skill_dir.join(".agents").join("agents").is_dir()
-            && skill_dir.join(".agents").join("skills").is_dir();
-        let stale = entry.source_sha.as_deref() != Some(current_sha.as_str()) || !layout_ok;
-        if stale {
-            entry.source_sha = Some(current_sha.clone());
-        }
-        stale
-    };
-
-    if needs_copy {
-        copy_agent_sources_to_openhands_cwd(&agents_src, &skills_src, skill_dir)
-            .map_err(|e| {
-                // Clear the optimistic cache entry so the next call retries.
-                let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
-                cache.remove(&skill_key);
-                e
-            })?;
-        log::info!(
-            "[seed_skill_agents_dir] seeded .agents/ in {}",
-            skill_dir.display()
-        );
-    }
-
-    Ok(())
-}
-```
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
-
-- [ ] **Step 3: Call `seed_skill_agents_dir` on startup for all existing skills**
-
-In `commands/workspace.rs`, inside `init_workspace` (after `migrate_flatten_openhands_dir` and before returning), add a block that:
-
-1. Resolves `skills_path` from the DB settings.
-2. Queries all skills from the DB via `crate::db::list_all_skills(&conn)`.
-3. For each skill, resolves its canonical dir and calls `seed_skill_agents_dir`.
-
-```rust
-// Seed .agents/ into every existing skill's canonical directory.
-if let Ok(skills_path) = crate::db::get_setting(&conn, "skills_path") {
-    if let Ok(all_skills) = crate::db::list_all_skills(&conn) {
-        for skill in all_skills {
-            let skill_dir = crate::skill_paths::resolve_skill_dir(
-                std::path::Path::new(&skills_path),
-                &skill.plugin_slug,
-                &skill.name,
-            );
-            if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
-                &app,
-                &skill_dir,
-            ) {
-                log::warn!(
-                    "[init_workspace] failed to seed .agents/ for skill {}/{}: {}",
-                    skill.plugin_slug,
-                    skill.name,
-                    e
-                );
-            }
-        }
-    }
-}
-```
-
-The `app: &tauri::AppHandle` is already available in `init_workspace`. Failures are logged and swallowed — startup must not fail because a skill's `.agents/` couldn't be written.
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
-
-Fix any name mismatches (`get_setting`, `list_all_skills`, the field names on the skill struct) by checking `src/db.rs` for the actual function signatures.
-
-- [ ] **Step 4: Call `seed_skill_agents_dir` after skill creation**
-
-In `commands/skill/crud.rs`, find `post_create_skill_filesystem_inner` (the function that runs filesystem setup after a skill row is inserted). Add a `seed_skill_agents_dir` call at the end, before returning:
-
-```rust
-// Seed .agents/ so OpenHands can find agents immediately.
-if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
-    app_handle,
-    std::path::Path::new(&skill_dir),
-) {
-    log::warn!(
-        "[create_skill] failed to seed .agents/ for {}: {}",
-        skill_dir,
-        e
-    );
-}
-```
-
-`app_handle: &tauri::AppHandle` and `skill_dir: &str` are already parameters of `post_create_skill_filesystem_inner`. If they are not, trace the call chain up to the nearest function that has them and thread them down.
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
-
-- [ ] **Step 5: Full build, test, clippy**
-
-```bash
-cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
-cd app/src-tauri && cargo test 2>&1 | tail -10
-cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
-```
-
-Expected: clean.
-
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/deploy.rs \
@@ -2437,59 +1771,12 @@ git commit -m "feat: seed .agents/ into skill_dir on startup and create; rename 
 
 **Context:** `delete_skill` calls `terminate_openhands_session` (kills the local Tauri task) but never sends an HTTP pause to the OpenHands server. The server retains an `owner_lease.json` for the conversation for up to 45 seconds. The fix collects the skill's saved conversation IDs from the DB and calls `pause_conversation_if_server_running` before any filesystem or DB cleanup. No conversation directory is deleted — the orphaned directory is harmless once the DB record is gone.
 
-- [ ] **Step 1: Collect conversation IDs and pause before cleanup**
+- [x] **Step 1: Collect conversation IDs and pause before cleanup**
+<!-- Verified: `skill/crud.rs` `delete_skill` collects conversation IDs from DB (lines 590-606), calls `pause_conversation_if_server_running` for each (line 608), logs pause (lines 609-614) -->
 
-In `delete_skill`, locate the block that ends with:
+- [x] **Step 2: Build and verify**
 
-```rust
-let shutdown_plan = {
-    let conn = db.0.lock()...
-    prepare_skill_runtime_shutdown_inner(...)
-};
-```
-
-Immediately after that block (before the `for agent_id in &shutdown_plan.agent_ids` loop), add:
-
-```rust
-// Best-effort HTTP pause — swallows all errors so delete cannot be blocked
-// by server state. collect IDs while holding the lock, then pause outside it.
-let conversation_ids: Vec<String> = {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let mut ids = Vec::new();
-    // Check the skill's current plugin slug and the default slug (legacy fallback).
-    let slugs_to_check = if plugin_slug != crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        vec![plugin_slug.clone(), crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string()]
-    } else {
-        vec![plugin_slug.clone()]
-    };
-    for slug in &slugs_to_check {
-        if let Ok(Some(id)) = crate::db::get_skill_conversation_id(&conn, slug, &name) {
-            ids.push(id);
-        }
-    }
-    ids
-};
-for conv_id in &conversation_ids {
-    crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
-    log::info!(
-        "[delete_skill] paused conversation {} for skill={}",
-        conv_id,
-        name
-    );
-}
-```
-
-- [ ] **Step 2: Build and verify**
-
-```bash
-cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
-cd app/src-tauri && cargo test commands::skill 2>&1 | tail -10
-cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
-```
-
-Expected: clean.
-
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill/crud.rs
@@ -2505,85 +1792,18 @@ git commit -m "fix: pause OpenHands conversation before delete_skill filesystem 
 
 **Context:** `clear_persistent_skill_conversation_state` (lines 33–61) still calls `remove_dir_all` on `workspace_skill_dir/conversations/`. Task 7.3 said to remove it entirely and replace its one call site in `navigate_back_to_step_impl` with `clear_skill_conversation_db_records` (which already exists in the same file). The old test `test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state` contradicts the plan and must be replaced with a test that asserts no filesystem deletion.
 
-- [ ] **Step 1: Remove the function**
+- [x] **Step 1: Remove the function**
+<!-- Verified: `clear_persistent_skill_conversation_state` no longer exists in evaluation.rs (grep returns no matches) -->
 
-Delete the entire `fn clear_persistent_skill_conversation_state` block (lines 33–61, from `fn clear_persistent_skill_conversation_state` through the closing `}`).
+- [x] **Step 2: Replace the call site in `navigate_back_to_step_impl`**
+<!-- Verified: `navigate_back_to_step_impl` at evaluation.rs:151 calls `clear_skill_conversation_db_records` instead -->
 
-- [ ] **Step 2: Replace the call site in `navigate_back_to_step_impl`**
+- [x] **Step 3: Delete the old test and add the replacement**
+<!-- Verified: old test `test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state` no longer exists; new test `clear_skill_conversation_db_records_does_not_touch_filesystem` at evaluation.rs:398 -->
 
-Find (line ~181):
-```rust
-if target_step_id == 0 {
-    clear_persistent_skill_conversation_state(conn, workspace_path, &plugin_slug, skill_name)?;
-}
-```
+- [x] **Step 4: Build and test**
 
-Replace with:
-```rust
-if target_step_id == 0 {
-    clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
-}
-```
-
-Note: `workspace_path` is no longer needed inside this branch. If it is only used for `clear_persistent_skill_conversation_state`, remove it from the call site too (it is still used by `delete_step_output_files` above, so keep the parameter on `navigate_back_to_step_impl` itself).
-
-Run: `cd app/src-tauri && cargo check 2>&1 | grep "^error" | head -10`
-
-- [ ] **Step 3: Delete the old test and add the replacement**
-
-Delete the entire test function `test_clear_persistent_skill_conversation_state_removes_saved_id_and_disk_state` (from its `#[test]` line through its closing `}`).
-
-Add this test in the same `#[cfg(test)]` block:
-
-```rust
-#[test]
-fn clear_skill_conversation_db_records_does_not_touch_filesystem() {
-    let conn = create_test_db();
-    let tmp = tempdir().unwrap();
-    let skill_name = "reset-me";
-    let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-
-    // Insert a skill and a saved conversation ID.
-    crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
-        .unwrap();
-    crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-abc")
-        .unwrap();
-
-    // Create a sentinel file representing an orphaned conversation directory.
-    let sentinel = tmp
-        .path()
-        .join(default_slug)
-        .join("skills")
-        .join(skill_name)
-        .join("conversations")
-        .join("sentinel.txt");
-    std::fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
-    std::fs::write(&sentinel, b"keep me").unwrap();
-
-    // clear_skill_conversation_db_records must only clear the DB record.
-    clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
-
-    // DB record cleared.
-    assert_eq!(
-        crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-        None
-    );
-    // Sentinel file must still exist — no filesystem deletion.
-    assert!(sentinel.exists(), "conversations directory must not be deleted");
-}
-```
-
-- [ ] **Step 4: Build and test**
-
-```bash
-cd app/src-tauri && cargo build 2>&1 | grep "^error" | head -10
-cd app/src-tauri && cargo test commands::workflow::evaluation 2>&1 | tail -10
-cd app/src-tauri && cargo clippy -- -D warnings 2>&1 | grep "^error" | head -10
-```
-
-Expected: clean; new test passes; old test is gone.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/evaluation.rs
