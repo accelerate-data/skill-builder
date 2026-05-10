@@ -225,9 +225,9 @@ fn repair_missing_research_section_closers(text: &str) -> Option<String> {
 }
 
 fn normalize_decisions_output_missing_statuses(
-    structured_output: &serde_json::Value,
+    workflow_result_payload: &serde_json::Value,
 ) -> Option<serde_json::Value> {
-    let mut normalized = structured_output.clone();
+    let mut normalized = workflow_result_payload.clone();
     let decisions = normalized.get_mut("decisions")?.as_array_mut()?;
     let mut changed = false;
 
@@ -427,10 +427,10 @@ fn strip_single_json_markdown_fence(text: &str) -> &str {
 }
 
 fn validate_generated_skill_output(
-    structured_output: &serde_json::Value,
+    workflow_result_payload: &serde_json::Value,
     expected_status: &str,
 ) -> Result<GenerateSkillOutput, String> {
-    let parsed = serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
+    let parsed = serde_json::from_value::<GenerateSkillOutput>(workflow_result_payload.clone())
         .map_err(|e| format!("invalid generate-skill output: {}", e))?;
     if parsed.status != expected_status {
         return Err(format!(
@@ -719,8 +719,9 @@ fn now_ms() -> i64 {
 ///
 /// Steps 0/1 unpack to `clarifications` (+ children) and call
 /// `upsert_clarifications`. Step 2 unpacks to `decisions` (+ items) and calls
-/// `upsert_decisions`. Step 3 only validates the structured output; benchmark
-/// metadata is no longer persisted (eval/benchmark redo).
+/// `upsert_decisions`. Step 3 only validates the parsed workflow result
+/// payload from `conversation_state.result_text`; benchmark metadata is no
+/// longer persisted (eval/benchmark redo).
 ///
 /// `skill_id` is the skill name (TEXT primary key on `clarifications` and
 /// `decisions`).
@@ -728,29 +729,30 @@ pub(crate) fn materialize_workflow_step_output_value(
     db: &Db,
     skill_id: &str,
     step_id: u32,
-    structured_output: &serde_json::Value,
+    workflow_result_payload: &serde_json::Value,
 ) -> Result<(), String> {
-    if !structured_output.is_object() {
-        return Err("structured_output must be a JSON object".to_string());
+    if !workflow_result_payload.is_object() {
+        return Err("workflow result payload must be a JSON object".to_string());
     }
 
     log::info!(
         "[materialize_step] step_id={} skill_id={} output_keys={:?}",
         step_id,
         skill_id,
-        structured_output
+        workflow_result_payload
             .as_object()
             .map(|o| o.keys().collect::<Vec<_>>())
     );
 
     match step_id {
         0 => {
-            let parsed = serde_json::from_value::<ResearchStepOutput>(structured_output.clone())
+            let parsed =
+                serde_json::from_value::<ResearchStepOutput>(workflow_result_payload.clone())
                 .map_err(|e| format!("invalid research step output: {}", e))?;
 
             if parsed.status != "research_complete" {
                 return Err(format!(
-                    "structured_output.status must be 'research_complete' but got '{}'",
+                    "workflow result payload status must be 'research_complete' but got '{}'",
                     parsed.status
                 ));
             }
@@ -771,12 +773,12 @@ pub(crate) fn materialize_workflow_step_output_value(
         }
         1 => {
             let parsed =
-                serde_json::from_value::<DetailedResearchOutput>(structured_output.clone())
+                serde_json::from_value::<DetailedResearchOutput>(workflow_result_payload.clone())
                     .map_err(|e| format!("invalid detailed research output: {}", e))?;
 
             if parsed.status != "detailed_research_complete" {
                 return Err(format!(
-                    "structured_output.status must be 'detailed_research_complete' but got '{}'",
+                    "workflow result payload status must be 'detailed_research_complete' but got '{}'",
                     parsed.status
                 ));
             }
@@ -797,12 +799,13 @@ pub(crate) fn materialize_workflow_step_output_value(
             persist_clarifications(db, &record)
         }
         2 => {
-            let parsed = match serde_json::from_value::<DecisionsOutput>(structured_output.clone())
+            let parsed =
+                match serde_json::from_value::<DecisionsOutput>(workflow_result_payload.clone())
             {
                 Ok(parsed) => parsed,
                 Err(parse_error) => {
                     if let Some(normalized) =
-                        normalize_decisions_output_missing_statuses(structured_output)
+                        normalize_decisions_output_missing_statuses(workflow_result_payload)
                     {
                         if let Ok(parsed) = serde_json::from_value::<DecisionsOutput>(normalized) {
                             log::warn!(
@@ -836,14 +839,15 @@ pub(crate) fn materialize_workflow_step_output_value(
             // VU-1157: no DB table replaces benchmark-meta.json. Eval/benchmark
             // is being redone in a separate effort. We validate the agent
             // output for both paths and log; no persistence is required here.
-            let status = structured_output
+            let status = workflow_result_payload
                 .get("status")
                 .and_then(|s| s.as_str())
                 .unwrap_or("");
 
             match status {
                 "generated" => {
-                    let parsed = validate_generated_skill_output(structured_output, "generated")?;
+                    let parsed =
+                        validate_generated_skill_output(workflow_result_payload, "generated")?;
                     log::info!(
                         "generate-skill completed for skill={}, skipped={}",
                         skill_id,
@@ -852,7 +856,8 @@ pub(crate) fn materialize_workflow_step_output_value(
                     Ok(())
                 }
                 "rewritten" => {
-                    let parsed = validate_generated_skill_output(structured_output, "rewritten")?;
+                    let parsed =
+                        validate_generated_skill_output(workflow_result_payload, "rewritten")?;
                     log::info!(
                         "rewrite-skill completed for skill={}, skipped={}",
                         skill_id,
@@ -866,12 +871,12 @@ pub(crate) fn materialize_workflow_step_output_value(
                         status,
                         skill_id
                     );
-                    serde_json::from_value::<GenerateSkillOutput>(structured_output.clone())
+                    serde_json::from_value::<GenerateSkillOutput>(workflow_result_payload.clone())
                         .map_err(|e| format!("invalid benchmark skill output: {}", e))?;
                     Ok(())
                 }
                 _ => Err(format!(
-                    "structured_output.status must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped' but got '{}'",
+                    "workflow result payload status must be 'generated', 'rewritten', or 'complete'|'partial'|'skipped' but got '{}'",
                     status
                 )),
             }
@@ -1026,7 +1031,7 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
 pub fn materialize_workflow_step_output(
     skill_name: String,
     step_id: u32,
-    structured_output: serde_json::Value,
+    workflow_result_payload: serde_json::Value,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     log::info!(
@@ -1035,8 +1040,8 @@ pub fn materialize_workflow_step_output(
         super::evaluation::workflow_step_log_name(step_id as i32),
         step_id
     );
-    materialize_workflow_step_output_value(&db, &skill_name, step_id, &structured_output).map_err(
-        |e| {
+    materialize_workflow_step_output_value(&db, &skill_name, step_id, &workflow_result_payload)
+        .map_err(|e| {
             log::error!(
                 "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
                 skill_name,
@@ -1045,18 +1050,17 @@ pub fn materialize_workflow_step_output(
                 e
             );
             e
-        },
-    )?;
+        })?;
 
     // After successful generate materialization, publish, commit, and tag the skill.
     // Benchmark output does not trigger a commit (benchmark data is in workspace, not git).
     // Rewrite/refine commit+tag is handled by finalize_refine_run.
     if step_id == 3 {
-        let status = structured_output
+        let status = workflow_result_payload
             .get("status")
             .and_then(|s| s.as_str())
             .unwrap_or("");
-        let skipped = structured_output
+        let skipped = workflow_result_payload
             .get("skipped")
             .and_then(|s| s.as_bool())
             .unwrap_or(false);
@@ -1199,15 +1203,15 @@ pub(crate) fn validate_answer_evaluation_json(
     Ok(parsed)
 }
 
-/// Validate-only: VU-1157 dropped the `answer-evaluation.json` file write.
+/// Validate-only: VU-1157 dropped answer-evaluation workspace file writes.
 /// Per-question verdicts now flow through `update_clarification_verdicts` from
 /// the gate hook (see Task 7). The structured output is still validated here
 /// so callers receive a clear error on shape drift, but no workspace file is
 /// written.
 pub(crate) fn materialize_answer_evaluation_output_value(
-    structured_output: &serde_json::Value,
+    evaluation_payload: &serde_json::Value,
 ) -> Result<(), String> {
-    validate_answer_evaluation_json(structured_output)
+    validate_answer_evaluation_json(evaluation_payload)
         .map_err(|e| format!("Invalid answer evaluation output: {}", e))?;
     Ok(())
 }
@@ -1216,7 +1220,7 @@ pub(crate) fn materialize_answer_evaluation_output_value(
 pub fn materialize_answer_evaluation_output(
     skill_name: String,
     workspace_path: String,
-    structured_output: serde_json::Value,
+    evaluation_payload: serde_json::Value,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
     let _ = (workspace_path, db);
@@ -1225,11 +1229,11 @@ pub fn materialize_answer_evaluation_output(
         skill_name
     );
     log::debug!(
-        "[materialize_answer_evaluation_output] skill={} structured_output={}",
+        "[materialize_answer_evaluation_output] skill={} evaluation_payload={}",
         skill_name,
-        structured_output
+        evaluation_payload
     );
-    materialize_answer_evaluation_output_value(&structured_output).map_err(|e| {
+    materialize_answer_evaluation_output_value(&evaluation_payload).map_err(|e| {
         log::error!(
             "[materialize_answer_evaluation_output] skill={} failed: {}",
             skill_name,

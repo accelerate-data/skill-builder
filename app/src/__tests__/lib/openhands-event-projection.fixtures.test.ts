@@ -108,33 +108,18 @@ function projectAll(
 
 /**
  * The terminal `conversation_state` envelopes captured in these fixtures store
- * structured output as a JSON string in `result_text` rather than as a parsed
- * object in `structured_output` (which is `null`). To exercise the tier-1 and
- * tier-2 detectors of `summarizeCompletedRun` we need to lift that JSON into a
- * real object before invoking the summarizer.
+ * the only backend payload in `result_text`. `summarizeCompletedRun` now parses
+ * that JSON directly.
  */
-function withStructuredOutputFromResultText(
+function stateForSummary(
   state: OpenHandsConversationState | null,
 ): ConversationStateForSummary {
   if (!state) {
     return { status: "completed" };
   }
-  let structuredOutput: unknown = state.structuredOutput;
-  if (
-    structuredOutput == null &&
-    typeof state.resultText === "string" &&
-    state.resultText.trim().startsWith("{")
-  ) {
-    try {
-      structuredOutput = JSON.parse(state.resultText);
-    } catch {
-      structuredOutput = undefined;
-    }
-  }
   return {
     status: state.status,
     resultText: state.resultText,
-    structuredOutput,
     errorDetail: state.errorDetail,
   };
 }
@@ -146,8 +131,7 @@ describe("openhands-event-projection (fixture-based)", () => {
 
     // Synthesize the terminal result item the way the agent-store does.
     expect(terminalState).not.toBeNull();
-    const stateForSummary = withStructuredOutputFromResultText(terminalState);
-    const { tier, summary } = summarizeCompletedRun(stateForSummary);
+    const { tier, summary } = summarizeCompletedRun(stateForSummary(terminalState));
     displayItems.push({
       id: "terminal-result-item",
       type: "output",
@@ -225,8 +209,7 @@ describe("openhands-event-projection (fixture-based)", () => {
     expect(terminalState).not.toBeNull();
     expect(terminalState!.status).toBe("completed");
 
-    const stateForSummary = withStructuredOutputFromResultText(terminalState);
-    const { tier, summary } = summarizeCompletedRun(stateForSummary);
+    const { tier, summary } = summarizeCompletedRun(stateForSummary(terminalState));
 
     expect(tier).toBe(2);
     expect(summary).toBe("Answers sufficient: 5/5");
@@ -238,8 +221,7 @@ describe("openhands-event-projection (fixture-based)", () => {
     expect(terminalState).not.toBeNull();
     expect(terminalState!.status).toBe("completed");
 
-    const stateForSummary = withStructuredOutputFromResultText(terminalState);
-    const { tier, summary } = summarizeCompletedRun(stateForSummary);
+    const { tier, summary } = summarizeCompletedRun(stateForSummary(terminalState));
 
     expect(tier).toBe(2);
     expect(summary).toBe("Answers insufficient: 5/10");

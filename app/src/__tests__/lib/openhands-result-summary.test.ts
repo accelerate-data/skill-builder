@@ -16,11 +16,8 @@ describe("summarizeCompletedRun", () => {
     it("renders dimensions and question count", () => {
       const result = summarizeCompletedRun(
         completed({
-          structuredOutput: {
-            status: "research_complete",
-            dimensions_selected: 4,
-            question_count: 10,
-          },
+          resultText:
+            '{"status":"research_complete","dimensions_selected":4,"question_count":10}',
         }),
       );
       expect(result.tier).toBe(1);
@@ -32,11 +29,8 @@ describe("summarizeCompletedRun", () => {
     it("renders zeros without falling through", () => {
       const result = summarizeCompletedRun(
         completed({
-          structuredOutput: {
-            status: "research_complete",
-            dimensions_selected: 0,
-            question_count: 0,
-          },
+          resultText:
+            '{"status":"research_complete","dimensions_selected":0,"question_count":0}',
         }),
       );
       expect(result.tier).toBe(1);
@@ -48,11 +42,19 @@ describe("summarizeCompletedRun", () => {
     it("falls through when status is scope_recommendation variant", () => {
       const result = summarizeCompletedRun(
         completed({
-          structuredOutput: {
-            status: "scope_recommendation",
-            dimensions_selected: 4,
-            question_count: 10,
-          },
+          resultText:
+            '{"status":"scope_recommendation","dimensions_selected":4,"question_count":10}',
+        }),
+      );
+      expect(result.tier).toBe(4);
+      expect(result.summary).toBe(
+        '{"status":"scope_recommendation","dimensions_selected":4,"question_count":10}',
+      );
+    });
+
+    it("falls through to plain text when non-summary JSON is wrapped in prose", () => {
+      const result = summarizeCompletedRun(
+        completed({
           resultText: "Recommended scope follows.\n\nDetails.",
         }),
       );
@@ -65,14 +67,8 @@ describe("summarizeCompletedRun", () => {
     it("renders sufficient verdict", () => {
       const result = summarizeCompletedRun(
         completed({
-          structuredOutput: {
-            verdict: "sufficient",
-            answered_count: 5,
-            total_count: 5,
-            empty_count: 0,
-            vague_count: 0,
-            contradictory_count: 0,
-          },
+          resultText:
+            '{"verdict":"sufficient","answered_count":5,"total_count":5,"empty_count":0,"vague_count":0,"contradictory_count":0}',
         }),
       );
       expect(result.tier).toBe(2);
@@ -82,11 +78,8 @@ describe("summarizeCompletedRun", () => {
     it("renders insufficient verdict", () => {
       const result = summarizeCompletedRun(
         completed({
-          structuredOutput: {
-            verdict: "insufficient",
-            answered_count: 5,
-            total_count: 10,
-          },
+          resultText:
+            '{"verdict":"insufficient","answered_count":5,"total_count":10}',
         }),
       );
       expect(result.tier).toBe(2);
@@ -97,7 +90,7 @@ describe("summarizeCompletedRun", () => {
   describe("Tier 3: skill-generation success", () => {
     it("renders skill_generated", () => {
       const result = summarizeCompletedRun(
-        completed({ structuredOutput: { status: "skill_generated" } }),
+        completed({ resultText: '{"status":"skill_generated"}' }),
       );
       expect(result.tier).toBe(3);
       expect(result.summary).toBe("Skill generated");
@@ -105,7 +98,7 @@ describe("summarizeCompletedRun", () => {
 
     it("renders skill_updated", () => {
       const result = summarizeCompletedRun(
-        completed({ structuredOutput: { status: "skill_updated" } }),
+        completed({ resultText: '{"status":"skill_updated"}' }),
       );
       expect(result.tier).toBe(3);
       expect(result.summary).toBe("Skill updated");
@@ -113,7 +106,7 @@ describe("summarizeCompletedRun", () => {
 
     it("renders generation_complete as 'Skill generated'", () => {
       const result = summarizeCompletedRun(
-        completed({ structuredOutput: { status: "generation_complete" } }),
+        completed({ resultText: '{"status":"generation_complete"}' }),
       );
       expect(result.tier).toBe(3);
       expect(result.summary).toBe("Skill generated");
@@ -145,10 +138,9 @@ describe("summarizeCompletedRun", () => {
       expect(result.summary.slice(0, 77)).toBe("A".repeat(77));
     });
 
-    it("falls through to tier 4 when structured_output does not match any earlier tier", () => {
+    it("falls through to tier 4 when parsed JSON does not match any earlier tier", () => {
       const result = summarizeCompletedRun(
         completed({
-          structuredOutput: { unrelated_key: "noise" },
           resultText: "Some plain summary line.",
         }),
       );

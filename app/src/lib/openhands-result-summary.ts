@@ -1,15 +1,14 @@
 /**
  * Result-summary detectors for OpenHands terminal `conversation_state` events.
  *
- * Given a terminal conversation_state with optional `resultText` and
- * `structuredOutput`, produce a one-line human-readable summary suitable for
- * the OutputItem summary line.
+ * Given a terminal conversation_state with optional `resultText`, produce a
+ * one-line human-readable summary suitable for the OutputItem summary line.
  *
  * Detectors run in tier order; first match wins.
  *
- *   Tier 1: research-complete structured output
- *   Tier 2: answer-evaluator verdict structured output
- *   Tier 3: skill-generation success structured output
+ *   Tier 1: research-complete JSON payload parsed from `resultText`
+ *   Tier 2: answer-evaluator verdict parsed from `resultText`
+ *   Tier 3: skill-generation success parsed from `resultText`
  *   Tier 4: first non-empty line of `resultText` (capped at 80 chars)
  *   Tier 5: fallback "Run completed"
  *
@@ -17,10 +16,11 @@
  * instead.
  */
 
+import { parseResultTextPayload } from "./result-text-payload";
+
 export interface ConversationStateForSummary {
   status: "completed" | "error" | "cancelled" | string;
   resultText?: string;
-  structuredOutput?: unknown;
   errorDetail?: string;
 }
 
@@ -124,15 +124,19 @@ function tryResultTextFirstLine(resultText: unknown): ResultSummary | null {
 export function summarizeCompletedRun(
   state: ConversationStateForSummary,
 ): ResultSummary {
-  const tier1 = tryResearchComplete(state.structuredOutput);
+  const payload = typeof state.resultText === "string"
+    ? parseResultTextPayload(state.resultText)
+    : null;
+
+  const tier1 = tryResearchComplete(payload);
   if (tier1) {
     return tier1;
   }
-  const tier2 = tryAnswerEvaluator(state.structuredOutput);
+  const tier2 = tryAnswerEvaluator(payload);
   if (tier2) {
     return tier2;
   }
-  const tier3 = trySkillGeneration(state.structuredOutput);
+  const tier3 = trySkillGeneration(payload);
   if (tier3) {
     return tier3;
   }

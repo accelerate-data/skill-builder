@@ -73,9 +73,7 @@ export interface DisplayItem {
   outputText_result?: string;
   resultStatus?: ResultStatus;
   errorSubtype?: string;
-  /** Structured output from the SDK result, used for artifact materialization. */
-  structuredOutput?: unknown;
-  /** Display-ready markdown extracted from structured output fields. */
+  /** Display-ready markdown extracted from parsed result payload fields. */
   resultMarkdown?: string;
 
   // error

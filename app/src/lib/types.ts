@@ -572,8 +572,8 @@ export type GenerateSkillOutput =
   | { status: "rewritten"; skipped?: boolean; benchmark_path?: string }
   | { status: "complete" | "partial" | "skipped"; benchmark_path?: string }
 
-/** Discriminated union narrowing `structuredOutput` per workflow step index. */
-export type WorkflowStepStructuredOutput =
+/** Discriminated union for a parsed workflow result payload per step index. */
+export type WorkflowStepResultPayload =
   | ({ stepId: 0 } & ResearchStepOutput)
   | ({ stepId: 1 } & DetailedResearchOutput)
   | ({ stepId: 2 } & DecisionsOutput)

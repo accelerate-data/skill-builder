@@ -16,6 +16,7 @@ import { requireSettingsModel } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
 import { useWorkflowGate } from "@/hooks/use-workflow-gate";
+import { parseResultTextPayload } from "@/lib/result-text-payload";
 
 const WORKFLOW_MATERIALIZATION_WAIT_MS = 5000;
 
@@ -42,76 +43,6 @@ function getString(
     if (typeof value === "string") return value;
   }
   return undefined;
-}
-
-function parseResultTextPayload(text: string): unknown | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const candidate = stripSingleJsonMarkdownFence(trimmed);
-
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    for (const objectCandidate of topLevelJsonObjectCandidates(candidate).reverse()) {
-      try {
-        return JSON.parse(objectCandidate);
-      } catch {
-        continue;
-      }
-    }
-    return null;
-  }
-}
-
-function stripSingleJsonMarkdownFence(text: string): string {
-  const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced?.[1]?.trim() ?? text;
-}
-
-function topLevelJsonObjectCandidates(text: string): string[] {
-  const candidates: string[] = [];
-  let depth = 0;
-  let startIndex: number | null = null;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (char == null) break;
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === "\"") {
-      inString = true;
-      continue;
-    }
-
-    if (char === "{") {
-      if (depth === 0) startIndex = index;
-      depth += 1;
-      continue;
-    }
-
-    if (char === "}") {
-      if (depth === 0) continue;
-      depth -= 1;
-      if (depth === 0 && startIndex != null) {
-        candidates.push(text.slice(startIndex, index + 1));
-        startIndex = null;
-      }
-    }
-  }
-
-  return candidates;
 }
 
 function getNumber(
@@ -273,18 +204,11 @@ export function useWorkflowStateMachine({
     }
   }, []);
 
-  const extractStructuredResultPayload = useCallback(
+  const extractResultPayload = useCallback(
     (agentId: string): unknown | null => {
       const run = useAgentStore.getState().runs[agentId];
       if (!run) return null;
-      const resultItem = [...run.displayItems]
-        .reverse()
-        .find((di) => di.type === "result");
-      if (resultItem?.structuredOutput != null)
-        return resultItem.structuredOutput;
-
       const state = run.conversationState;
-      if (state?.structuredOutput != null) return state.structuredOutput;
       if (state?.resultText) return parseResultTextPayload(state.resultText);
 
       return null;
@@ -668,17 +592,17 @@ export function useWorkflowStateMachine({
         return;
       }
 
-      const structuredOutput =
-        extractStructuredResultPayload(completedGateAgentId);
+      const evaluationPayload =
+        extractResultPayload(completedGateAgentId);
       clearRuns();
-      gate.finishGateEvaluation(structuredOutput).finally(() => {
+      gate.finishGateEvaluation(evaluationPayload).finally(() => {
         gate.gateStepRef.current = null;
       });
     }
   }, [
     activeRunStatus,
     activeAgentId,
-    extractStructuredResultPayload,
+    extractResultPayload,
     setGateLoading,
     setStopping,
     updateStepStatus,

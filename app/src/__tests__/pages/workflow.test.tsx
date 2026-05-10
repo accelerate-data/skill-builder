@@ -147,7 +147,6 @@ import type { ClarificationsFile } from "@/lib/clarifications-types";
 import pluginPaths from "../../../plugin-paths.json";
 
 type ListenCallback = (event: { payload: unknown }) => void;
-const gateEvaluationPath = `/test/workspace/${pluginPaths.default_plugin_slug}/skills/test-skill/answer-evaluation.json`;
 
 // Bridge new domain context commands to existing read/write path-based assertions.
 vi.mocked(getClarificationsContent).mockImplementation((skillName: string) =>
@@ -300,12 +299,12 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // Agent completes — should stay on step 0 completion screen (clarifications editable)
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-1", {
-        id: "result-agent-1",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: {
+      useAgentStore.getState().applyConversationState("agent-1", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-1",
+        status: "completed",
+        resultText: JSON.stringify({
           status: "research_complete",
           question_count: 1,
           research_output: {
@@ -320,10 +319,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
             sections: [],
             notes: [],
           },
-        },
-        resultStatus: "success",
+        }),
+        timestamp: Date.now(),
       });
-      useAgentStore.getState().completeRun("agent-1", true);
     });
 
     await waitFor(() => {
@@ -769,12 +767,12 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     // Agent completes step 0
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-1", {
-        id: "result-agent-1",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: {
+      useAgentStore.getState().applyConversationState("agent-1", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-1",
+        status: "completed",
+        resultText: JSON.stringify({
           status: "research_complete",
           question_count: 1,
           research_output: {
@@ -789,10 +787,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
             sections: [],
             notes: [],
           },
-        },
-        resultStatus: "success",
+        }),
+        timestamp: Date.now(),
       });
-      useAgentStore.getState().completeRun("agent-1", true);
     });
 
     await waitFor(() => {
@@ -820,12 +817,12 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     render(<WorkflowPage />);
 
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-2", {
-        id: "result-agent-2",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: {
+      useAgentStore.getState().applyConversationState("agent-2", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-2",
+        status: "completed",
+        resultText: JSON.stringify({
           status: "detailed_research_complete",
           refinement_count: 1,
           section_count: 1,
@@ -841,8 +838,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
             sections: [],
             notes: [],
           },
-        },
-        resultStatus: "success",
+        }),
+        timestamp: Date.now(),
       });
     });
 
@@ -1177,12 +1174,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       ],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -1204,10 +1195,14 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       props?.onClarificationsContinue?.();
     });
 
-    // Complete gate evaluator agent and trigger finishGateEvaluation.
     act(() => {
-      useAgentStore.getState().startRun("gate-agent-1", "haiku");
-      useAgentStore.getState().completeRun("gate-agent-1", true);
+      useAgentStore.getState().applyConversationState("gate-agent-1", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     // Gate persists per-question verdicts to DB via invokeCommand("update_clarification_verdicts")
@@ -1246,9 +1241,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
       }
       return Promise.reject("not found");
     });
@@ -1311,9 +1303,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve("NOT VALID JSON {{{");
-      }
       return Promise.reject("not found");
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-openhands-prose-result-text");
@@ -1360,31 +1349,16 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
   });
 
-  it("gate falls back when structured gate payload is missing", async () => {
+  it("stays on the current step when gate result_text payload is missing", async () => {
     const jsonData = makeClarificationsJson();
-    const evaluation = {
-      verdict: "mixed",
-      answered_count: 1,
-      empty_count: 0,
-      vague_count: 1,
-      contradictory_count: 0,
-      total_count: 1,
-      reasoning: "One answer is vague.",
-      per_question: [
-        { question_id: "Q1", verdict: "vague", reason: "Needs concrete metrics." },
-      ],
-    };
 
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
       return Promise.reject("not found");
     });
-    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-missing-structured");
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-missing-result-text");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -1404,19 +1378,18 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-agent-missing-structured", "haiku");
-      // Intentionally no result message with structured payload.
-      useAgentStore.getState().completeRun("gate-agent-missing-structured", true);
+      useAgentStore.getState().startRun("gate-agent-missing-result-text", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-missing-result-text", true);
     });
 
     await waitFor(() => {
       expect(vi.mocked(materializeAnswerEvaluationOutput)).not.toHaveBeenCalled();
     });
-    // gate with no structured output reads eval file directly; mixed verdict + run_research default → auto-advance
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-      expect(useWorkflowStore.getState().currentStep).toBe(1);
+      expect(useWorkflowStore.getState().currentStep).toBe(0);
     });
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
   it("writes evaluator feedback notes after Detailed Research continue (step 1 gate)", async () => {
@@ -1433,12 +1406,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       ],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-2");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -1462,8 +1429,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-agent-2", "haiku");
-      useAgentStore.getState().completeRun("gate-agent-2", true);
+      useAgentStore.getState().applyConversationState("gate-agent-2", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     await waitFor(() => {
@@ -1494,12 +1466,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       ],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-4");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -1522,8 +1488,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-agent-4", "haiku");
-      useAgentStore.getState().completeRun("gate-agent-4", true);
+      useAgentStore.getState().applyConversationState("gate-agent-4", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     await waitFor(() => {
@@ -1557,12 +1528,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       ],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-3");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -1583,8 +1548,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-agent-3", "haiku");
-      useAgentStore.getState().completeRun("gate-agent-3", true);
+      useAgentStore.getState().applyConversationState("gate-agent-3", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     // revise decision: stays on step 0, persists per-question verdicts via invokeCommand
@@ -1643,9 +1613,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       if (path === "/test/skills/test-skill/context/clarifications.json") {
         return Promise.resolve(JSON.stringify(jsonData));
       }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(sufficientEvaluation));
-      }
       return Promise.reject("not found");
     });
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-sufficient");
@@ -1668,8 +1635,13 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-agent-sufficient", "haiku");
-      useAgentStore.getState().completeRun("gate-agent-sufficient", true);
+      useAgentStore.getState().applyConversationState("gate-agent-sufficient", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(sufficientEvaluation),
+        timestamp: Date.now(),
+      });
     });
 
     // Gate with run_research default → auto-advances to step 1
@@ -2638,17 +2610,20 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Step 2 completes with structured output
+    // Step 2 completes with a result-text payload
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-decisions", {
-        id: "result-decisions",
-        type: "result",
+      useAgentStore.getState().applyConversationState("agent-decisions", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-decisions",
+        status: "completed",
+        resultText: JSON.stringify({
+          version: "1",
+          metadata: { decision_count: 2, contradictory_inputs: true },
+          decisions: [],
+        }),
         timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: { version: "1", metadata: { decision_count: 2, contradictory_inputs: true }, decisions: [] },
-        resultStatus: "success",
       });
-      useAgentStore.getState().completeRun("agent-decisions", true);
     });
 
     await waitFor(() => {
@@ -2843,15 +2818,18 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
     // Step 2 agent completes
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-d", {
-        id: "r-d",
-        type: "result",
+      useAgentStore.getState().applyConversationState("agent-d", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-d",
+        status: "completed",
+        resultText: JSON.stringify({
+          version: "1",
+          metadata: { decision_count: 0 },
+          decisions: [],
+        }),
         timestamp: Date.now(),
-        outputText_result: "Done",
-        structuredOutput: { version: "1", metadata: { decision_count: 0 }, decisions: [] },
-        resultStatus: "success",
       });
-      useAgentStore.getState().completeRun("agent-d", true);
     });
 
     await waitFor(() => {
@@ -2976,15 +2954,19 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
     // Step 1 completes
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-r", {
-        id: "r-r",
-        type: "result",
+      useAgentStore.getState().applyConversationState("agent-r", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-r",
+        status: "completed",
+        resultText: JSON.stringify({
+          status: "detailed_research_complete",
+          refinement_count: 1,
+          section_count: 3,
+          clarifications_json: {},
+        }),
         timestamp: Date.now(),
-        outputText_result: "Done",
-        structuredOutput: { status: "detailed_research_complete", refinement_count: 1, section_count: 3, clarifications_json: {} },
-        resultStatus: "success",
       });
-      useAgentStore.getState().completeRun("agent-r", true);
     });
 
     await waitFor(() => {
@@ -3050,21 +3032,20 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes step 3 (generate) with required structured output via display item
+    // Agent completes step 3 (generate) with a result-text payload
     act(() => {
-      useAgentStore.getState().addDisplayItem("agent-build", {
-        id: "result-build",
-        type: "result",
-        timestamp: Date.now(),
-        outputText_result: "Agent completed",
-        structuredOutput: {
+      useAgentStore.getState().applyConversationState("agent-build", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-build",
+        status: "completed",
+        resultText: JSON.stringify({
           status: "generated",
           // benchmark_status collapsed into status for benchmark-skill output
-      benchmark_path: "evals/iterations/iteration-1",
-        },
-        resultStatus: "success",
+          benchmark_path: "evals/iterations/iteration-1",
+        }),
+        timestamp: Date.now(),
       });
-      useAgentStore.getState().completeRun("agent-build", true);
     });
 
     // Step 3 completes directly (no benchmark phase)
@@ -3131,17 +3112,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
   });
 
   /** Helper: trigger gate flow on step 0 and wait for gate dialog */
-  async function triggerGateDialog(evaluation: Record<string, unknown>) {
+async function triggerGateDialog(evaluation: Record<string, unknown>) {
     const jsonData = makeClarificationsJson();
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
+    vi.mocked(readFile).mockImplementation((path: string) =>
+      path === "/test/skills/test-skill/context/clarifications.json"
+        ? Promise.resolve(JSON.stringify(jsonData))
+        : Promise.reject("not found"),
+    );
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-handler-test");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -3161,10 +3138,14 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       props?.onClarificationsContinue?.();
     });
 
-    // Gate agent completes
     act(() => {
-      useAgentStore.getState().startRun("gate-handler-test", "haiku");
-      useAgentStore.getState().completeRun("gate-handler-test", true);
+      useAgentStore.getState().applyConversationState("gate-handler-test", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
   }
 
@@ -3175,12 +3156,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     const agentId = options?.agentId ?? "gate-step1-test";
     const success = options?.success ?? true;
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(runAnswerEvaluator).mockResolvedValue(agentId);
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -3202,8 +3177,18 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun(agentId, "haiku");
-      useAgentStore.getState().completeRun(agentId, success);
+      if (!success) {
+        useAgentStore.getState().startRun(agentId, "haiku");
+        useAgentStore.getState().completeRun(agentId, false);
+        return;
+      }
+      useAgentStore.getState().applyConversationState(agentId, {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
   }
 
@@ -3316,15 +3301,11 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       per_question: [],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
+    vi.mocked(readFile).mockImplementation((path: string) =>
+      path === "/test/skills/test-skill/context/clarifications.json"
+        ? Promise.resolve(JSON.stringify(jsonData))
+        : Promise.reject("not found"),
+    );
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-ref-test");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -3346,8 +3327,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-ref-test", "haiku");
-      useAgentStore.getState().completeRun("gate-ref-test", true);
+      useAgentStore.getState().applyConversationState("gate-ref-test", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     await waitFor(() => {
@@ -3406,13 +3392,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().currentStep).toBe(1);
   });
 
-  it("step 1 gate stays on current step when answer-evaluation.json parse fails", async () => {
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve("NOT VALID JSON {{{");
-      }
-      return Promise.reject("not found");
-    });
+  it("step 1 gate stays on current step when result_text parse fails", async () => {
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-step1-bad-json");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -3434,8 +3414,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-step1-bad-json", "haiku");
-      useAgentStore.getState().completeRun("gate-step1-bad-json", true);
+      useAgentStore.getState().applyConversationState("gate-step1-bad-json", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: "NOT VALID JSON {{{",
+        timestamp: Date.now(),
+      });
     });
 
     await waitFor(() => {
@@ -3533,15 +3518,11 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       per_question: [],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
+    vi.mocked(readFile).mockImplementation((path: string) =>
+      path === "/test/skills/test-skill/context/clarifications.json"
+        ? Promise.resolve(JSON.stringify(jsonData))
+        : Promise.reject("not found"),
+    );
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-disabled-test");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -3573,8 +3554,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
 
     // Complete the gate agent
     act(() => {
-      useAgentStore.getState().startRun("gate-disabled-test", "haiku");
-      useAgentStore.getState().completeRun("gate-disabled-test", true);
+      useAgentStore.getState().applyConversationState("gate-disabled-test", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     // Gate completes with run_research but advanceToNextStep skips disabled step 1 → stays on 0
@@ -3584,18 +3570,14 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     expect(useWorkflowStore.getState().currentStep).toBe(0);
   });
 
-  it("finishGateEvaluation stays on current step when answer-evaluation.json parse fails", async () => {
+  it("finishGateEvaluation stays on current step when result_text parse fails", async () => {
     const jsonData = makeClarificationsJson();
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve("NOT VALID JSON {{{");
-      }
-      return Promise.reject("not found");
-    });
+    vi.mocked(readFile).mockImplementation((path: string) =>
+      path === "/test/skills/test-skill/context/clarifications.json"
+        ? Promise.resolve(JSON.stringify(jsonData))
+        : Promise.reject("not found"),
+    );
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-bad-json");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -3616,8 +3598,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-bad-json", "haiku");
-      useAgentStore.getState().completeRun("gate-bad-json", true);
+      useAgentStore.getState().applyConversationState("gate-bad-json", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: "NOT VALID JSON {{{",
+        timestamp: Date.now(),
+      });
     });
 
     // JSON parse fails → step stays completed on the current step with an error signal
@@ -3641,15 +3628,11 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       per_question: [],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.json") {
-        return Promise.resolve(JSON.stringify(jsonData));
-      }
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
+    vi.mocked(readFile).mockImplementation((path: string) =>
+      path === "/test/skills/test-skill/context/clarifications.json"
+        ? Promise.resolve(JSON.stringify(jsonData))
+        : Promise.reject("not found"),
+    );
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-bad-verdict");
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
@@ -3670,8 +3653,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-bad-verdict", "haiku");
-      useAgentStore.getState().completeRun("gate-bad-verdict", true);
+      useAgentStore.getState().applyConversationState("gate-bad-verdict", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     // Invalid verdict → step stays completed on the current step with an error signal
@@ -3738,12 +3726,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       ],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-verdicts");
 
@@ -3765,8 +3747,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-all-verdicts", "haiku");
-      useAgentStore.getState().completeRun("gate-all-verdicts", true);
+      useAgentStore.getState().applyConversationState("gate-all-verdicts", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     // Gate should persist verdicts via invokeCommand("update_clarification_verdicts")
@@ -3802,12 +3789,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       ],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-no-reason");
 
@@ -3829,8 +3810,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-no-reason", "haiku");
-      useAgentStore.getState().completeRun("gate-no-reason", true);
+      useAgentStore.getState().applyConversationState("gate-no-reason", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     await waitFor(() => {
@@ -3862,12 +3848,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       ],
     };
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === gateEvaluationPath) {
-        return Promise.resolve(JSON.stringify(evaluation));
-      }
-      return Promise.reject("not found");
-    });
     vi.mocked(invokeCommand).mockResolvedValue(undefined);
     vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-all-clear");
 
@@ -3889,8 +3869,13 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-all-clear", "haiku");
-      useAgentStore.getState().completeRun("gate-all-clear", true);
+      useAgentStore.getState().applyConversationState("gate-all-clear", {
+        type: "conversation_state",
+        runtime: "openhands",
+        status: "completed",
+        resultText: JSON.stringify(evaluation),
+        timestamp: Date.now(),
+      });
     });
 
     // Gate advances (sufficient verdict, gate_decision = run_research)
@@ -3959,8 +3944,8 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 
-  it("step 2 (non-requiresStructuredOutput) completes when structuredOutput is null and verifyStepOutput is true", async () => {
-    // Step 2 is "reasoning" type with no requiresStructuredOutput
+  it("step 2 completes when result payload is absent and verifyStepOutput is true", async () => {
+    // Step 2 is a reasoning step; backend verification can complete it without a parsed payload
     vi.mocked(verifyStepOutput).mockResolvedValue(true);
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");

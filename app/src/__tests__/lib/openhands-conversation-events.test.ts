@@ -97,7 +97,7 @@ describe("OpenHands conversation event helpers", () => {
     expect(event.parentToolCallId).toBe("call-parent-1");
   });
 
-  it("preserves terminal result text and structured output", () => {
+  it("preserves terminal result text", () => {
     const state = normalizeConversationStateMessage({
       type: "conversation_state",
       runtime: "openhands",
@@ -105,7 +105,6 @@ describe("OpenHands conversation event helpers", () => {
       agent_id: "agent-result",
       status: "completed",
       result_text: '```json\n{"verdict":"mixed"}\n```',
-      structured_output: { verdict: "mixed" },
       timestamp: 1_778_000_100,
     });
 
@@ -116,7 +115,6 @@ describe("OpenHands conversation event helpers", () => {
       agentId: "agent-result",
       status: "completed",
       resultText: '```json\n{"verdict":"mixed"}\n```',
-      structuredOutput: { verdict: "mixed" },
       timestamp: 1_778_000_100,
     });
   });

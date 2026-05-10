@@ -545,7 +545,7 @@ fn test_get_skill_content_excludes_context_artifacts() {
 }
 
 #[test]
-fn test_finalize_refine_run_ignores_structured_output() {
+fn test_finalize_refine_run_ignores_result_payload() {
     let skills_dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
 

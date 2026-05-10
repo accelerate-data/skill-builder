@@ -24,7 +24,7 @@ fn remove_dir_logged(label: &str, path: &Path) {
 
 /// List existing output files for a single step (display names, not full paths).
 ///
-/// For step 0, also lists workflow-level files (gate-result.json, answer-evaluation.json).
+/// For step 0, also lists workflow-level files such as gate-result.json.
 /// For step 3, checks skills_path for skill artifacts and tolerates legacy
 /// workspace eval directories when present.
 /// For other steps, checks context files in workspace_path/skill_name/.
@@ -53,7 +53,7 @@ pub fn list_step_output_files(
                     files.push(file.to_string());
                 }
             }
-            for extra in ["gate-result.json", "answer-evaluation.json"] {
+            for extra in ["gate-result.json"] {
                 if skill_dir.join(extra).exists() {
                     files.push(extra.to_string());
                 }
@@ -128,7 +128,6 @@ pub fn clean_step_output(
                 remove_file_logged(LABEL, &skill_dir.join(file));
             }
             remove_file_logged(LABEL, &skill_dir.join("gate-result.json"));
-            remove_file_logged(LABEL, &skill_dir.join("answer-evaluation.json"));
         }
         3 => {
             // Skill artifacts in skills_path
@@ -303,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_delete_step0_deletes_all_artifacts() {
-        // Deleting from step 0 must remove all files: gate, evaluation, skill, evals.
+        // Deleting from step 0 must remove all files: gate, skill, evals.
         // Steps 0-2 are DB-authoritative — clarifications/decisions have no filesystem form.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
@@ -314,7 +313,6 @@ mod tests {
         // Step 0 workflow-level files
         let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
-        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
         // Step 3 artifacts in canonical plugin layout
         let output_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
@@ -328,7 +326,6 @@ mod tests {
 
         // Everything must be gone
         assert!(!skill_dir.join("gate-result.json").exists());
-        assert!(!skill_dir.join("answer-evaluation.json").exists());
         assert!(!output_dir.join("SKILL.md").exists());
         assert!(!output_dir.join("references").exists());
         assert!(!skill_dir.join("evals").exists());
@@ -380,8 +377,8 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_step0_deletes_gate_and_evaluation_files() {
-        // Step 0 cleanup removes workflow-level gate and evaluation files.
+    fn test_clean_step0_deletes_gate_files() {
+        // Step 0 cleanup removes workflow-level gate files.
         // Clarifications are DB-authoritative and have no filesystem representation.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
@@ -391,12 +388,10 @@ mod tests {
         let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
-        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
         clean_step_output(workspace, "my-skill", SLUG, 0, skills_path);
 
         assert!(!skill_dir.join("gate-result.json").exists());
-        assert!(!skill_dir.join("answer-evaluation.json").exists());
     }
 
     // ── list_step_output_files tests ──
@@ -404,7 +399,7 @@ mod tests {
     #[test]
     fn test_list_step0_returns_empty_without_gate_files() {
         // Steps 0-2 are DB-authoritative. Step 0 has no filesystem outputs
-        // unless gate-result.json or answer-evaluation.json are present.
+        // unless gate-result.json is present.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
@@ -420,8 +415,8 @@ mod tests {
     }
 
     #[test]
-    fn test_list_step0_includes_gate_and_evaluation() {
-        // Step 0 lists gate-result.json and answer-evaluation.json when present.
+    fn test_list_step0_includes_gate_result() {
+        // Step 0 lists gate-result.json when present.
         // Clarifications are DB-authoritative and not listed as filesystem outputs.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
@@ -431,12 +426,10 @@ mod tests {
         let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
-        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
         let files = list_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
         assert!(!files.contains(&"context/clarifications.json".to_string()));
         assert!(files.contains(&"gate-result.json".to_string()));
-        assert!(files.contains(&"answer-evaluation.json".to_string()));
     }
 
     #[test]
@@ -522,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_prerun_step0_deletes_own_output() {
-        // Re-running step 0 deletes gate-result.json and answer-evaluation.json.
+        // Re-running step 0 deletes gate-result.json.
         // Clarifications are DB-authoritative and have no filesystem representation.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
@@ -533,12 +526,10 @@ mod tests {
         let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
-        std::fs::write(skill_dir.join("answer-evaluation.json"), "{}").unwrap();
 
-        // Re-running step 0 should delete them
+        // Re-running step 0 should delete it
         clean_step_output(workspace, "my-skill", SLUG, 0, skills_path);
         assert!(!skill_dir.join("gate-result.json").exists());
-        assert!(!skill_dir.join("answer-evaluation.json").exists());
     }
 
     #[test]

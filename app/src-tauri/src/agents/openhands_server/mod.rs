@@ -1631,7 +1631,6 @@ fn build_socket_closed_state(
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "error_detail": error_detail,
         "result_text": null,
-        "structured_output": null,
     })
 }
 
@@ -1649,7 +1648,6 @@ fn build_cancelled_state(agent_id: &str, conversation_id: &str) -> serde_json::V
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "error_detail": "User cancelled before the server emitted a PauseEvent",
         "result_text": null,
-        "structured_output": null,
     })
 }
 
@@ -1726,10 +1724,6 @@ fn terminal_state_needs_final_response(state: &serde_json::Value) -> bool {
             .get("result_text")
             .map(|value| value.is_null())
             .unwrap_or(true)
-        && state
-            .get("structured_output")
-            .map(|value| value.is_null())
-            .unwrap_or(true)
 }
 
 async fn fetch_final_response_state(
@@ -1748,7 +1742,7 @@ async fn fetch_final_response_state(
         .unwrap_or("")
         .to_string();
     if response.trim().is_empty() {
-        return Err("OpenHands completed without structured output or final response".to_string());
+        return Err("OpenHands completed without result text or final response".to_string());
     }
     Ok(serde_json::json!({
         "type": "conversation_state",
@@ -1758,7 +1752,6 @@ async fn fetch_final_response_state(
         "status": "completed",
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "result_text": response,
-        "structured_output": null,
         "raw_event": {
             "terminal_event": terminal_event,
             "final_response": final_response,
@@ -1780,7 +1773,6 @@ fn build_missing_completed_payload_state(
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "error_detail": error_detail,
         "result_text": null,
-        "structured_output": null,
     })
 }
 
@@ -1961,8 +1953,7 @@ mod tests {
         let state = serde_json::json!({
             "type": "conversation_state",
             "status": "completed",
-            "result_text": null,
-            "structured_output": null
+            "result_text": null
         });
 
         assert!(terminal_state_needs_final_response(&state));
@@ -1973,25 +1964,16 @@ mod tests {
         let with_text = serde_json::json!({
             "type": "conversation_state",
             "status": "completed",
-            "result_text": "{\"status\":\"ok\"}",
-            "structured_output": null
-        });
-        let with_structured = serde_json::json!({
-            "type": "conversation_state",
-            "status": "completed",
-            "result_text": null,
-            "structured_output": {"status": "ok"}
+            "result_text": "{\"status\":\"ok\"}"
         });
         // Empty string is a valid intentional result; do not trigger a fallback fetch.
         let with_empty_string = serde_json::json!({
             "type": "conversation_state",
             "status": "completed",
-            "result_text": "",
-            "structured_output": null
+            "result_text": ""
         });
 
         assert!(!terminal_state_needs_final_response(&with_text));
-        assert!(!terminal_state_needs_final_response(&with_structured));
         assert!(!terminal_state_needs_final_response(&with_empty_string));
     }
 
@@ -2000,17 +1982,16 @@ mod tests {
         let state = build_missing_completed_payload_state(
             "agent-1",
             "conversation-1",
-            "OpenHands completed without structured output or final response",
+            "OpenHands completed without result text or final response",
         );
 
         assert_eq!(state["type"], "conversation_state");
         assert_eq!(state["status"], "error");
         assert_eq!(
             state["error_detail"],
-            "OpenHands completed without structured output or final response"
+            "OpenHands completed without result text or final response"
         );
         assert!(state["result_text"].is_null());
-        assert!(state["structured_output"].is_null());
     }
 
     #[test]
@@ -2091,8 +2072,7 @@ mod tests {
             "type": "conversation_state",
             "status": "error",
             "error_detail": null,
-            "result_text": null,
-            "structured_output": null
+            "result_text": null
         });
 
         enrich_terminal_state_error_detail(&mut state, &stderr_tail).await;

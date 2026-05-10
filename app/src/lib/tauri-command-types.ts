@@ -118,7 +118,7 @@ export interface SkillIdName {
 
 type SkillPurpose = string | null;
 type DocumentScope = "all" | "skill";
-type WorkflowStepStructuredOutput =
+type WorkflowStepResultPayload =
   | ResearchStepOutput
   | DetailedResearchOutput
   | DecisionsOutput
@@ -179,7 +179,7 @@ export interface TauriCommandMap {
     result: string;
   };
   materialize_workflow_step_output: {
-    args: { skillName: string; stepId: 0 | 1 | 2 | 3; structuredOutput: WorkflowStepStructuredOutput };
+    args: { skillName: string; stepId: 0 | 1 | 2 | 3; workflowResultPayload: WorkflowStepResultPayload };
     result: void;
   };
   reset_workflow_step: { args: { workspacePath: string; skillName: string; fromStepId: number }; result: void };
@@ -332,7 +332,7 @@ export interface TauriCommandMap {
       skillName: string;
       workspacePath: string;
       pluginSlug: string;
-      structuredOutput: unknown;
+      resultPayload: unknown;
     };
     result: RefineFinalizeResult;
   };
@@ -354,7 +354,7 @@ export interface TauriCommandMap {
   };
   run_answer_evaluator: { args: { skillId: number; skillName: string; workspacePath: string }; result: string };
   materialize_answer_evaluation_output: {
-    args: { skillName: string; workspacePath: string; structuredOutput: AnswerEvaluationOutput };
+    args: { skillName: string; workspacePath: string; evaluationPayload: AnswerEvaluationOutput };
     result: void;
   };
   // VU-1157: typed Tauri commands backed by SQLite workflow_artifacts tables.
