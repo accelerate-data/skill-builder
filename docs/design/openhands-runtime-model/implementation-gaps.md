@@ -212,6 +212,25 @@ schema, and update all callers.
 
 ---
 
+## Gap 9 — Event recovery has multiple modes; target is always-FullHistory
+
+**Target:** `OpenHandsSendMessage` always replays full conversation history after
+send. No per-surface recovery mode selection. One code path, same behavior for
+Workflow and Refine.
+
+**Current state:** `agents/openhands_server/mod.rs` has three
+`EventRecoveryMode` variants — `None`, `FullHistory`, and `Delta` — plus a
+pre-send watermark collection path used by `Delta`. Different surfaces may
+select different modes, adding complexity with no product benefit.
+
+**Fix:** Collapse to a single `FullHistory` replay path. Delete
+`EventRecoveryMode::Delta`, `EventRecoveryMode::None`, and the
+`collect_event_watermark_keys` / `filter_events_after_watermark` watermark
+logic in `agents/openhands_server/mod.rs`. All callers that previously set a
+non-`FullHistory` mode are updated to use `FullHistory`.
+
+---
+
 ## Gap 8 — Node sidecar still exists in the repo
 
 **Target:** The `app/sidecar/` package is removed. The Rust process and

@@ -204,6 +204,10 @@ Cost and usage queries group by `skill_name + step_id`. A per-invocation session
 | Step 3 generate skill | `workflow.skill_generation` |
 | Refine turn | `refine` |
 
+## Event Replay
+
+Every `OpenHandsSendMessage` call replays full conversation history after send. All surfaces use the same replay path — there is no per-surface recovery mode. This keeps the runtime simple and ensures the visible transcript is always consistent with the durable conversation state.
+
 ## Event Model
 
 | OpenHands event | Skill Builder event |
@@ -218,7 +222,6 @@ Cost and usage queries group by `skill_name + step_id`. A per-invocation session
 
 | Doc | Purpose |
 |---|---|
-| [send-turn-semantics.md](send-turn-semantics.md) | Contract for `OpenHandsSendMessage` — turn envelope, recovery, and transcript consistency. |
 | [optimistic-session-activation.md](optimistic-session-activation.md) | Async skill bootstrap optimization: navigate before server ready. |
 | [tools-included.md](tools-included.md) | Tool policy for OpenHands requests. |
 | [implementation-gaps.md](implementation-gaps.md) | Gaps between the target design and the current codebase. |
