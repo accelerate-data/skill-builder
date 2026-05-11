@@ -125,7 +125,7 @@ mod tests {
             };
             crate::db::write_settings(&conn, &settings).unwrap();
         }
-        Db(Mutex::new(conn))
+        Db(std::sync::Arc::new(Mutex::new(conn)))
     }
 
     /// Build a per-skill git repo with one commit using the canonical skill path layout.

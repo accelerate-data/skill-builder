@@ -186,7 +186,7 @@ mod tests {
         let conn = create_test_db_for_tests();
         upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         write_settings(&conn, &app_settings).unwrap();
-        let db = Db(Mutex::new(conn));
+        let db = Db(std::sync::Arc::new(Mutex::new(conn)));
         read_workflow_settings(&db, "test-skill", 0, "/tmp/workspace")
     }
 
@@ -216,7 +216,7 @@ mod tests {
         let mut settings = configured_settings("anthropic/claude-sonnet-4-5", Some("sk-test"));
         settings.skills_path = Some(workspace_path.clone());
         write_settings(&conn, &settings).unwrap();
-        let db = Db(Mutex::new(conn));
+        let db = Db(std::sync::Arc::new(Mutex::new(conn)));
 
         let context = read_initialized_runtime_context(&db).unwrap();
 
@@ -237,7 +237,7 @@ mod tests {
                 .into_owned(),
         );
         write_settings(&conn, &settings).unwrap();
-        let db = Db(Mutex::new(conn));
+        let db = Db(std::sync::Arc::new(Mutex::new(conn)));
 
         let error = read_initialized_runtime_context(&db).unwrap_err();
 
