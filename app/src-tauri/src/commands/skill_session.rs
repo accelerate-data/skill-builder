@@ -7,7 +7,7 @@ use tauri::Manager;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
-use crate::types::RefineSessionInfo;
+use crate::types::SkillSessionInfo;
 
 pub fn build_skill_session_config(
     skill_name: &str,
@@ -153,7 +153,7 @@ pub async fn select_skill_openhands_session(
     instance: tauri::State<'_, crate::InstanceInfo>,
     sessions: tauri::State<'_, SkillSessionManager>,
     db: tauri::State<'_, Db>,
-) -> Result<RefineSessionInfo, String> {
+) -> Result<SkillSessionInfo, String> {
     let (skill_name, plugin_slug, saved_conversation_id) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let skill = acquire_or_verify_skill_lock(
@@ -257,7 +257,7 @@ pub async fn select_skill_openhands_session(
             },
         );
 
-        Ok(RefineSessionInfo {
+        Ok(SkillSessionInfo {
             conversation_id: active_conversation_id,
             skill_name,
             created_at,

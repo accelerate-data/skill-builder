@@ -5,7 +5,7 @@ import {
 } from "@/lib/skill-openhands-session";
 import { useAgentStore, resetAgentStoreInternals } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineSessionInfo } from "@/lib/types";
+import type { SkillSessionInfo } from "@/lib/types";
 
 const mockSelectSkillOpenHandsSession = vi.fn();
 
@@ -23,7 +23,7 @@ describe("skill-openhands-session", () => {
   });
 
   it("hydrates restored transcript events into refine messages and a completed restored run", () => {
-    const session: RefineSessionInfo = {
+    const session: SkillSessionInfo = {
       conversation_id: "conv-123",
       skill_name: "sales-skill",
       created_at: new Date().toISOString(),
@@ -134,7 +134,7 @@ describe("skill-openhands-session", () => {
   });
 
   it("restart hydrates the selected skill session without injecting an extra bootstrap turn", async () => {
-    const session: RefineSessionInfo = {
+    const session: SkillSessionInfo = {
       conversation_id: "conv-789",
       skill_name: "sales-skill",
       created_at: new Date().toISOString(),

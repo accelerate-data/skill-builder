@@ -3640,7 +3640,7 @@ git commit -m "fix: keep landing page passive until explicit skill selection"
 - Modify: `app/src-tauri/src/types/mod.rs`
 - Modify: `app/src-tauri/src/types/refine.rs`
 
-- [ ] **Step 1: Create `types/session.rs`**
+- [x] **Step 1: Create `types/session.rs`**
 
 Create `app/src-tauri/src/types/session.rs` with the three shared types, renamed where needed:
 
@@ -3689,7 +3689,7 @@ impl std::fmt::Debug for SkillSessionInfo {
 }
 ```
 
-- [ ] **Step 2: Update `types/mod.rs`**
+- [x] **Step 2: Update `types/mod.rs`**
 
 Add the new module and re-exports:
 
@@ -3698,7 +3698,7 @@ pub mod session;
 pub use session::{ConversationMessage, RestoredConversationEvent, SkillSessionInfo};
 ```
 
-- [ ] **Step 3: Remove the moved types from `types/refine.rs`**
+- [x] **Step 3: Remove the moved types from `types/refine.rs`**
 
 Delete `RefineSessionInfo`, `ConversationMessage`, and `RestoredConversationEvent` from `types/refine.rs`. Keep `SkillFileContent`, `RefineFileDiff`, `RefineDiff`, `RefineFinalizeResult`, and `RefineDispatchResult`.
 
@@ -3709,7 +3709,7 @@ Delete `RefineSessionInfo`, `ConversationMessage`, and `RestoredConversationEven
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 - Modify: `app/src-tauri/src/commands/refine/tests.rs`
 
-- [ ] **Step 1: Update `commands/skill_session.rs`**
+- [x] **Step 1: Update `commands/skill_session.rs`**
 
 Change the import:
 ```rust
@@ -3743,11 +3743,11 @@ Vec<crate::types::RestoredConversationEvent>,
 // After (unchanged — already uses crate::types:: prefix, will resolve via mod.rs re-exports)
 ```
 
-- [ ] **Step 2: Update `commands/refine/mod.rs`**
+- [x] **Step 2: Update `commands/refine/mod.rs`**
 
 The extractors use `crate::types::ConversationMessage` and `crate::types::RestoredConversationEvent` — these will resolve automatically via the new `mod.rs` re-exports. No changes needed unless there are direct `use crate::types::refine::` imports (there shouldn't be).
 
-- [ ] **Step 3: Update `commands/refine/tests.rs`**
+- [x] **Step 3: Update `commands/refine/tests.rs`**
 
 Change the import:
 ```rust
@@ -3757,7 +3757,7 @@ use crate::types::ConversationMessage;
 use crate::types::ConversationMessage;  // no change needed — resolves via mod.rs re-export
 ```
 
-- [ ] **Step 4: Verify Rust compiles and tests pass**
+- [x] **Step 4: Verify Rust compiles and tests pass**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -3765,6 +3765,8 @@ cd app/src-tauri && cargo clippy -- -D warnings
 ```
 
 Expected: PASS.
+
+Result: ✅ 1129 passed; 0 failed. Clippy clean (0 errors).
 
 ### Task 14.3: Update TypeScript types
 
@@ -3775,7 +3777,7 @@ Expected: PASS.
 - Modify: `app/src/lib/skill-openhands-session.ts`
 - Modify: `app/src/__tests__/lib/skill-openhands-session.test.ts`
 
-- [ ] **Step 1: Rename in `lib/types.ts`**
+- [x] **Step 1: Rename in `lib/types.ts`**
 
 ```ts
 // Before:
@@ -3786,7 +3788,7 @@ export interface SkillSessionInfo {
 
 Update the JSDoc comment if present — remove "refine" from the description since this is now a general skill session type.
 
-- [ ] **Step 2: Update `lib/tauri-command-types.ts`**
+- [x] **Step 2: Update `lib/tauri-command-types.ts`**
 
 ```ts
 // Before:

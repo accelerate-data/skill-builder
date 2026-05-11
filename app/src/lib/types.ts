@@ -185,11 +185,16 @@ export interface RestoredConversationEvent {
   parent_tool_call_id?: string | null
 }
 
-export interface RefineSessionInfo {
+export interface ConversationMessage {
+  role: string
+  content: string
+}
+
+export interface SkillSessionInfo {
   conversation_id: string
   skill_name: string
   created_at: string
-  /** Agent names discovered from allowed refine plugins (e.g. "skill-creator:rewrite-skill"). */
+  /** Agent names discovered from allowed plugins (e.g. "skill-creator:rewrite-skill"). */
   available_agents: string[]
   restored_messages: ConversationMessage[]
   restored_transcript_events: RestoredConversationEvent[]

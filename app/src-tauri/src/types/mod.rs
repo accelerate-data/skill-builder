@@ -1,6 +1,7 @@
 mod github;
 mod refine;
 mod secret;
+mod session;
 mod settings;
 mod skill;
 mod startup;
@@ -11,6 +12,7 @@ mod workflow;
 pub use github::*;
 pub use refine::*;
 pub use secret::*;
+pub use session::*;
 pub use settings::*;
 pub use skill::*;
 pub use startup::*;

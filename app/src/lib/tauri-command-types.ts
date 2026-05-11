@@ -22,7 +22,7 @@ import type {
   ReconciliationResult,
   RefineFinalizeResult,
   RefineDispatchResult,
-  RefineSessionInfo,
+  SkillSessionInfo,
   SkillCommit,
   SkillFileContent,
   SkillFileEntry,
@@ -302,7 +302,7 @@ export interface TauriCommandMap {
   };
   select_skill_openhands_session: {
     args: { skillId: number; workspacePath: string };
-    result: RefineSessionInfo;
+    result: SkillSessionInfo;
   };
   pause_openhands_session: {
     args: {
