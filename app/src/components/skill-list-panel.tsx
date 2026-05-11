@@ -75,7 +75,8 @@ export function SkillListPanel({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [redoTarget, setRedoTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<{ skillName: string; pluginSlug: string } | null>(null);
-  const [externalLockedSkills, setExternalLockedSkills] = useState<Set<string>>(new Set());
+  const lockedSkills = useSkillStore((s) => s.lockedSkills);
+  const setLockedSkills = useSkillStore((s) => s.setLockedSkills);
   const [moveTarget, setMoveTarget] = useState<UnifiedSkill | null>(null);
   const [createPluginTarget, setCreatePluginTarget] = useState<UnifiedSkill | null>(null);
   const [deletePluginTarget, setDeletePluginTarget] = useState<{ slug: string; displayName: string } | null>(null);
@@ -91,12 +92,36 @@ export function SkillListPanel({
   const runs = useAgentStore((s) => s.runs);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Refresh external locks on every navigation so stale lock state clears after leaving a skill
+  // Refresh external locks on mount, interval ticks, and window focus
   useEffect(() => {
-    getExternallyLockedSkills()
-      .then((names) => setExternalLockedSkills(new Set(names)))
-      .catch(() => { /* non-fatal */ });
-  }, [pathname]);
+    let cancelled = false;
+
+    const refreshLocks = async () => {
+      try {
+        const names = await getExternallyLockedSkills();
+        if (!cancelled) {
+          setLockedSkills(new Set(names));
+        }
+      } catch {
+        // non-fatal
+      }
+    };
+
+    void refreshLocks();
+    const intervalId = window.setInterval(() => {
+      void refreshLocks();
+    }, 3000);
+    const onFocus = () => {
+      void refreshLocks();
+    };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [pathname, setLockedSkills]);
 
   // Sort by creation date (newest first) — stable across edits since created_at never changes.
   const unifiedSkills = useUnifiedSkills(builderSkills, importedSkills);
@@ -143,7 +168,7 @@ export function SkillListPanel({
     // Running skill is also a no-op
     if (skill.name === runningSkillName) return;
     // Skill locked by another instance
-    if (externalLockedSkills.has(skill.name)) return;
+    if (lockedSkills.has(skill.name)) return;
 
     console.log("event=skill_selected skill=%s", skill.name);
     localStorage.setItem("last-selected-skill", skill.key);
@@ -371,7 +396,7 @@ export function SkillListPanel({
       {/* Skill rows */}
       <ScrollArea className="flex-1">
         {filteredSkills.map((skill, index) => {
-          const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || externalLockedSkills.has(skill.name);
+          const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || lockedSkills.has(skill.name);
           const isRunning = skill.name === runningSkillName;
           const isSelected = skill.skillId === selectedSkillId;
           const showPluginHeader = index === 0 || filteredSkills[index - 1]?.pluginSlug !== skill.pluginSlug;
