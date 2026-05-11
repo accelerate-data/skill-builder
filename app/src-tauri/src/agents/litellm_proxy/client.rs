@@ -6,12 +6,14 @@ use crate::agents::litellm_proxy::types::{
     HealthResponse, KeyInfoResponse,
 };
 
+#[allow(dead_code)]
 pub struct LiteLLMAdminClient {
     client: Client,
     base_url: Url,
     master_key: String,
 }
 
+#[allow(dead_code)]
 impl LiteLLMAdminClient {
     pub fn new(base_url: Url, master_key: String) -> Self {
         Self {

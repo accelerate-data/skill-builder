@@ -111,6 +111,8 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/types/mod.rs` | `types` | -- |
 | `app/src-tauri/src/cleanup.rs` | `cleanup` | -- |
 | `app/src-tauri/src/fs_validation.rs` | `fs_validation` | -- |
+| `app/src-tauri/src/commands/litellm_providers.rs` | `commands::litellm_providers` | -- |
+| `app/src-tauri/src/commands/litellm_profiles.rs` | `commands::litellm_profiles` | -- |
 | `app/src-tauri/src/commands/reconciliation.rs` | `commands::reconciliation` | `@dashboard` |
 | `app/src-tauri/src/reconciliation/mod.rs` | `reconciliation` | `@dashboard` |
 | `app/src-tauri/src/reconciliation/` | `reconciliation` | `@dashboard` |

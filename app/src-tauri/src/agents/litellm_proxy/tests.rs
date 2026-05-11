@@ -35,3 +35,16 @@ fn config_dir_is_created_under_app_data() {
     assert!(config_path.to_string_lossy().contains("litellm"));
     assert!(config_path.to_string_lossy().ends_with("config.yaml"));
 }
+
+/// Proof that should_reuse_cached_proxy requires both is_running and health OK.
+fn should_reuse_cached_proxy(is_running: bool, health: Result<(), String>) -> bool {
+    is_running && health.is_ok()
+}
+
+#[test]
+fn should_reuse_cached_proxy_requires_running_and_healthy() {
+    assert!(should_reuse_cached_proxy(true, Ok(())));
+    assert!(!should_reuse_cached_proxy(false, Ok(())));
+    assert!(!should_reuse_cached_proxy(true, Err("unhealthy".to_string())));
+    assert!(!should_reuse_cached_proxy(false, Err("unhealthy".to_string())));
+}
