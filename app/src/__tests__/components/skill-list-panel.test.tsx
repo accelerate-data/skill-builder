@@ -8,6 +8,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 import { createTestQueryClient } from "@/test/query-test-utils";
 import { queryKeys } from "@/lib/queries/query-keys";
+import { getExternallyLockedSkills } from "@/lib/tauri";
 
 const mockNavigate = vi.fn();
 
@@ -472,6 +473,61 @@ describe("SkillListPanel", () => {
     const skillBRow = screen.getByText("locked-skill-b").closest('[role="button"]');
     expect(skillBRow?.className).toMatch(/cursor-not-allowed/);
     expect(screen.queryByLabelText("More actions")).not.toBeInTheDocument();
+  });
+
+  // ── External lock polling ─────────────────────────────────────────────────
+
+  it("refreshes external locks on mount and interval ticks", async () => {
+    vi.useFakeTimers();
+    const lockedMock = vi.mocked(getExternallyLockedSkills);
+    lockedMock.mockResolvedValue([]);
+
+    setBuilderSkills([
+      makeBuilderSkill({ name: "sales-skill", status: "completed" }),
+    ]);
+
+    renderWithSkillQueries(<SkillListPanel />);
+
+    // Flush microtasks so the initial async refreshLocks() call resolves
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(lockedMock).toHaveBeenCalledTimes(1);
+
+    // Advance 3 seconds to trigger the interval
+    await vi.advanceTimersByTimeAsync(3000);
+    await Promise.resolve();
+
+    expect(lockedMock).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
+  it("locks rows based on externally locked skills from polling", () => {
+    useSkillStore.setState({
+      lockedSkills: new Set(["sales-skill"]),
+    });
+
+    const onSelectSkill = vi.fn();
+    setBuilderSkills([
+      makeBuilderSkill({ name: "sales-skill", status: "completed" }),
+      makeBuilderSkill({ name: "finance-skill", status: "completed" }),
+    ]);
+
+    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
+
+    // sales-skill should be locked
+    const salesRow = screen.getByText("sales-skill").closest('[role="button"]');
+    expect(salesRow?.className).toMatch(/opacity-\[0\.45\]/);
+    expect(salesRow?.className).toMatch(/cursor-not-allowed/);
+
+    // finance-skill should NOT be locked
+    const financeRow = screen.getByText("finance-skill").closest('[role="button"]');
+    expect(financeRow?.className).not.toMatch(/opacity-\[0\.45\]/);
+
+    // Click on locked row should be a no-op
+    fireEvent.click(salesRow!);
+    expect(onSelectSkill).not.toHaveBeenCalled();
   });
 
   // ── Default selection ─────────────────────────────────────────────────────
