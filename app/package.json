@@ -35,6 +35,7 @@
     "test:openhands:live-smoke": "node ../scripts/smoke/openhands-agent-server-live-smoke.mjs",
     "test:openhands:agentskill-smoke": "node ../scripts/smoke/openhands-agentskill-live-smoke.mjs",
     "test:openhands:subagent-smoke": "node ../scripts/smoke/openhands-subagent-live-smoke.mjs",
+    "test:litellm:live-smoke": "node ../scripts/smoke/litellm-proxy-live-smoke.mjs",
     "test:all": "npm run test:unit && npm run test:guard && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {

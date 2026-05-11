@@ -696,11 +696,8 @@ git commit -m "feat: LiteLLM proxy process management (spawn, health, shutdown)"
 
 ### Manual smoke test for PR 1
 
-- [ ] Run `cd app && npm run dev`
-- [ ] Check app logs for `[litellm-proxy]` entries showing spawn and health check success
-- [ ] Verify `{app_data}/litellm/.master_key` file exists with 0600 permissions
-- [ ] Verify `{app_data}/litellm/config.yaml` is created (empty or minimal for now)
-- [ ] Quit app — check logs for SIGTERM shutdown
+- [ ] Run `cd app && LITELLM_PROXY_LIVE_SMOKE=1 npm run test:litellm:live-smoke`
+- [ ] Verify PASS output; test covers spawn → health → admin API auth → shutdown
 
 ---
 
