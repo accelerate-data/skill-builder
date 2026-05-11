@@ -53,10 +53,6 @@ impl LiteLLMProxyHandle {
             Err(format!("LiteLLM health check returned {}", resp.status()))
         }
     }
-
-    pub async fn shutdown(&self) -> Result<(), String> {
-        Ok(())
-    }
 }
 
 pub struct LiteLLMProxyProcess {
