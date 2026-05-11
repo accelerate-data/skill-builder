@@ -2069,7 +2069,7 @@ Result: ✅ Committed as `0489c762`.
 - Modify: `app/src-tauri/src/agents/event_types.rs`
 - Modify: `app/src-tauri/src/agents/run_persist.rs`
 
-- [ ] **Step 1: Remove from `OpenHandsRuntimeConfig`**
+- [x] **Step 1: Remove from `OpenHandsRuntimeConfig`**
 
 In `agents/runtime_config.rs`, remove:
 ```rust
@@ -2079,23 +2079,23 @@ pub workflow_session_id: Option<String>,
 
 Remove from `Debug` impl if present. Remove from all test fixtures.
 
-- [ ] **Step 2: Remove from `OpenHandsRuntimeRequest`**
+- [x] **Step 2: Remove from `OpenHandsRuntimeRequest`**
 
 In `agents/openhands_server/types.rs`, remove `workflow_session_id` from the struct and from `from_runtime_request` mapping.
 
-- [ ] **Step 3: Remove from `OpenHandsRunSummaryContext`**
+- [x] **Step 3: Remove from `OpenHandsRunSummaryContext`**
 
 In `agents/openhands_server/mod.rs`, remove `workflow_session_id` from the struct and from `new()`. Remove from the JSON emit at line ~1776.
 
-- [ ] **Step 4: Remove from `ConversationStateEvent`**
+- [x] **Step 4: Remove from `ConversationStateEvent`**
 
 In `agents/event_types.rs`, remove `workflow_session_id` field.
 
-- [ ] **Step 5: Remove from `run_persist.rs`**
+- [x] **Step 5: Remove from `run_persist.rs`**
 
 Remove the `workflow_session_id` lookup and usage in `run_persist.rs`.
 
-- [ ] **Step 6: Update all test fixtures**
+- [x] **Step 6: Update all test fixtures**
 
 Remove `workflow_session_id` from all test fixtures in:
 - `agents/runtime_config.rs` tests
@@ -2107,7 +2107,7 @@ Remove `workflow_session_id` from all test fixtures in:
 - `contracts/agent_events.rs` tests
 - `agents/event_router.rs` tests
 
-- [ ] **Step 7: Run codegen**
+- [x] **Step 7: Run codegen**
 
 ```bash
 cd app && npm run codegen
@@ -2115,7 +2115,7 @@ cd app && npm run codegen
 
 Expected: Succeeds. Generated TypeScript types no longer have `workflowSessionId`.
 
-- [ ] **Step 8: Run contracts tests**
+- [x] **Step 8: Run contracts tests**
 
 ```bash
 cd app/src-tauri && cargo test contracts::
@@ -2123,7 +2123,7 @@ cd app/src-tauri && cargo test contracts::
 
 Expected: All tests pass.
 
-- [ ] **Step 9: Run full cargo test**
+- [x] **Step 9: Run full cargo test**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -2131,7 +2131,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 10: TypeScript compile check**
+- [x] **Step 10: TypeScript compile check**
 
 ```bash
 cd app && npx tsc --noEmit
@@ -2139,7 +2139,7 @@ cd app && npx tsc --noEmit
 
 Expected: Clean.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add app/src-tauri/src/contracts/ app/src-tauri/src/agents/ app/src-tauri/src/commands/ app/src/generated/

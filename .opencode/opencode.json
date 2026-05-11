@@ -10,5 +10,6 @@
       "root_markers": ["package.json", "tsconfig.json"],
       "extensions": [".ts", ".tsx", ".js", ".jsx"]
     }
-  }
+  },
+  "instructions": ["docs/development-standards.md", "test/testing-guidelines.md", "packages/*/AGENTS.md"]
 }
