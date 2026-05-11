@@ -56,11 +56,16 @@
 ### PR 3: Virtual Key Management
 | File | Action |
 |---|---|
-| `app/src-tauri/src/agents/litellm_proxy/client.rs` | Modify — add `/user/new`, `/key/generate`, `/key/info` methods |
-| `app/src-tauri/src/agents/litellm_proxy/mod.rs` | Modify — add virtual key provisioning to startup flow |
-| `app/src-tauri/src/commands/litellm_profiles.rs` | Modify — add `test_profile_connection` command |
-| `app/src-tauri/src/types/litellm.rs` | Modify — add virtual key response types |
-| `app/src-tauri/src/agents/litellm_proxy/tests.rs` | Modify — add virtual key management tests |
+| `app/src-tauri/src/agents/litellm_proxy/types.rs` | Modify — remove `deny_unknown_fields`, add `model_max_budget` to `GenerateKeyRequest` |
+| `app/src-tauri/src/agents/litellm_proxy/client.rs` | Modify — revert `urlencoding` in `key_info` |
+| `app/src-tauri/src/agents/litellm_proxy/mod.rs` | Modify — single shared user bootstrap, detached provisioning, per-model budgets |
+| `app/src-tauri/src/commands/litellm_profiles.rs` | Modify — add `verify_profile_virtual_key` command (replaces `test_profile_connection`) |
+| `app/src-tauri/src/db/litellm_profiles.rs` | Modify — drop `litellm_user_id`, add `budget` to `LlmProfileModel` |
+| `app/src-tauri/src/db/migrations.rs` | Modify — drop `litellm_user_id` column, add `budget` column |
+| `app/src-tauri/Cargo.toml` | Modify — remove `urlencoding` dependency |
+| `app/src-tauri/src/lib.rs` | Modify — register `verify_profile_virtual_key` |
+| `docs/design/litellm-integration/README.md` | Modify — rename from model-settings, update startup flow, schema |
+| `docs/design/litellm-integration/budgets.md` | Create — LiteLLM budget hierarchy and Skill Builder usage |
 
 ### PR 4: OpenHands → Proxy Routing
 | File | Action |
@@ -1310,204 +1315,297 @@ git commit -m "feat: provider/profile DB schema, CRUD commands, config generatio
 
 ## PR 3: Virtual Key Management + Profile Activation
 
-**Goal:** After proxy starts, create LiteLLM users and virtual keys for each profile. Bind profiles to keys.
+**Goal:** After proxy starts, create a single shared LiteLLM user and generate virtual keys for each profile. Bind profiles to keys with per-profile and per-model budgets.
 
-### Task 1: Add admin API methods to client
-
-**Files:**
-- Modify: `app/src-tauri/src/agents/litellm_proxy/client.rs`
-
-- [x] **Step 1: Add `/user/new` and `/key/generate` methods**
-
-Already defined in types.rs. Add methods to `LiteLLMAdminClient`:
-
-```rust
-pub async fn create_user(&self, req: &CreateUserRequest) -> Result<CreateUserResponse, String> {
-    // ... (already in client.rs from PR 1)
-}
-
-pub async fn generate_key(&self, req: &GenerateKeyRequest) -> Result<GenerateKeyResponse, String> {
-    // ... (already in client.rs from PR 1)
-}
-```
-
-- [x] **Step 1b: URL-encode `key` parameter in `key_info`**
-
-Virtual keys may contain characters that break URL parsing. Use `urlencoding`:
-
-```rust
-// In client.rs key_info():
-let url = self.base_url
-    .join(&format!("/key/info?key={}", urlencoding::Encoded(key)))
-    .map_err(|e| e.to_string())?;
-```
-
-Add `urlencoding = "1"` to `Cargo.toml` if not present.
-
-### Task 1c: Harden response types with `deny_unknown_fields`
+### Task 1: Fix response types — remove `deny_unknown_fields`
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/types.rs`
 
-- [x] **Step 1c: Add `#[serde(deny_unknown_fields)]` to all response types**
+- [ ] **Step 1: Remove `#[serde(deny_unknown_fields)]` from all response types**
 
-This catches API contract changes early rather than silently ignoring new fields:
+LiteLLM returns many more fields than modeled. `deny_unknown_fields` causes deserialization failures on first real use. Remove from `HealthResponse`, `CreateUserResponse`, `GenerateKeyResponse`, `KeyInfoResponse`, and `KeyInfo`.
+
+### Task 1b: Drop `urlencoding` dependency
+
+**Files:**
+- Modify: `app/src-tauri/Cargo.toml`
+- Modify: `app/src-tauri/src/agents/litellm_proxy/client.rs`
+
+- [ ] **Step 1b: Remove `urlencoding` crate and revert to plain key interpolation**
+
+Virtual keys are `sk-<uuid>` format with no special characters. The `url` crate already in deps handles encoding. Remove `urlencoding = "1"` from `Cargo.toml` and revert `key_info` to:
 
 ```rust
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HealthResponse { ... }
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CreateUserResponse { ... }
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct GenerateKeyResponse { ... }
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct KeyInfoResponse { ... }
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct KeyInfo { ... }
+.join(&format!("/key/info?key={}", key))
 ```
 
-### Task 2: Add virtual key provisioning to startup
+### Task 1c: Add per-model budget to `GenerateKeyRequest`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/litellm_proxy/types.rs`
+
+- [ ] **Step 1c: Add `model_max_budget` field to `GenerateKeyRequest`**
+
+```rust
+#[derive(Debug, Clone, Serialize)]
+pub struct GenerateKeyRequest {
+    pub user_id: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_budget: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_duration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tpm_limit: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rpm_limit: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_max_budget: Option<std::collections::HashMap<String, f64>>,
+}
+```
+
+### Task 2: Add DB migration — drop `litellm_user_id`, add per-model budget
+
+**Files:**
+- Modify: `app/src-tauri/src/db/migrations.rs`
+
+- [ ] **Step 2: Add migration**
+
+```rust
+// Add to NUMBERED_MIGRATIONS (next number after current highest):
+(next_num, |conn: &Connection| -> Result<(), rusqlite::Error> {
+    // Drop litellm_user_id column (not needed with single shared user)
+    conn.execute_batch(r#"
+        ALTER TABLE llm_profiles DROP COLUMN litellm_user_id;
+    "#)?;
+
+    // Add per-model budget column
+    conn.execute_batch(r#"
+        ALTER TABLE llm_profile_models ADD COLUMN budget REAL;
+    "#)?;
+
+    Ok(())
+}),
+```
+
+### Task 3: Update DB types — drop `litellm_user_id`, add per-model budget
+
+**Files:**
+- Modify: `app/src-tauri/src/db/litellm_profiles.rs`
+- Modify: `app/src-tauri/src/db/litellm_providers.rs` (no changes, just verify)
+
+- [ ] **Step 3: Update `LlmProfile` struct**
+
+Remove `litellm_user_id` field from `LlmProfile`. Update all SQL queries that reference it (INSERT, UPDATE, SELECT).
+
+- [ ] **Step 4: Update `LlmProfileModel` struct**
+
+Add `pub budget: Option<f64>` field. Update INSERT and SELECT queries.
+
+### Task 4: Add virtual key provisioning to startup (single user, detached task)
 
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/mod.rs`
 
-- [x] **Step 2: Add provisioning function**
+- [ ] **Step 5: Bootstrap shared user**
+
+Create a single user `"skill-builder"` at proxy bootstrap. Ignore 409 if user already exists from a previous run.
+
+```rust
+async fn bootstrap_shared_user(client: &LiteLLMAdminClient) -> Result<(), String> {
+    let req = CreateUserRequest {
+        user_id: "skill-builder".to_string(),
+        max_budget: None,
+        budget_duration: None,
+        tpm_limit: None,
+        rpm_limit: None,
+    };
+    match client.create_user(&req).await {
+        Ok(_) => {
+            log::info!("[litellm-proxy] created shared user 'skill-builder'");
+            Ok(())
+        }
+        Err(e) if e.contains("409") || e.to_lowercase().contains("already exists") => {
+            log::info!("[litellm-proxy] shared user 'skill-builder' already exists");
+            Ok(())
+        }
+        Err(e) => Err(format!("Failed to create shared user: {e}")),
+    }
+}
+```
+
+- [ ] **Step 6: Rewrite `provision_virtual_keys` — single user, per-profile keys, per-model budgets**
 
 ```rust
 async fn provision_virtual_keys(
     handle: &LiteLLMProxyHandle,
     db: &Db,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let profiles = crate::db::list_profiles(&conn)?;
-    drop(conn); // Release lock before making HTTP calls
+    let profiles = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::list_profiles(&conn)?
+    };
 
     let client = handle.admin_client();
 
     for profile in &profiles {
         if profile.virtual_key.is_some() {
-            continue; // Already provisioned
+            continue;
         }
 
-        let user_id = format!("profile-{}", profile.id);
-
-        // Create user
-        let user_req = CreateUserRequest {
-            user_id: user_id.clone(),
-            max_budget: profile.budget_total,
-            budget_duration: profile.budget_monthly.map(|_| "30d".to_string()),
-            tpm_limit: profile.tpm_limit.map(|v| v as u64),
-            rpm_limit: profile.rpm_limit.map(|v| v as u64),
+        let models = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            crate::db::get_profile_models(&conn, &profile.id)?
         };
-        let user_resp = client.create_user(&user_req).await?;
-
-        // Get models for this profile
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let models = crate::db::get_profile_models(&conn, &profile.id)?;
-        drop(conn);
 
         let model_names: Vec<String> = models.iter().map(|m| m.model_name.clone()).collect();
 
-        // Generate key
+        // Build per-model budget map from models that have a budget set
+        let model_max_budget: std::collections::HashMap<String, f64> = models
+            .iter()
+            .filter_map(|m| m.budget.map(|b| (m.model_name.clone(), b)))
+            .collect();
+        let model_max_budget = if model_max_budget.is_empty() {
+            None
+        } else {
+            Some(model_max_budget)
+        };
+
+        let max_budget = profile.budget_total.or(profile.budget_monthly);
+
         let key_req = GenerateKeyRequest {
-            user_id: user_id.clone(),
+            user_id: "skill-builder".to_string(),
             models: model_names,
-            max_budget: profile.budget_total,
+            max_budget,
             budget_duration: profile.budget_monthly.map(|_| "30d".to_string()),
             tpm_limit: profile.tpm_limit.map(|v| v as u64),
             rpm_limit: profile.rpm_limit.map(|v| v as u64),
+            model_max_budget,
         };
         let key_resp = client.generate_key(&key_req).await?;
 
-        // Save back to DB
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let updated_profile = crate::db::LlmProfile {
-            id: profile.id.clone(),
-            name: profile.name.clone(),
-            budget_monthly: profile.budget_monthly,
-            budget_total: profile.budget_total,
-            tpm_limit: profile.tpm_limit,
-            rpm_limit: profile.rpm_limit,
-            virtual_key: Some(key_resp.key.clone()),
-            litellm_user_id: Some(user_id),
-            created_at: profile.created_at,
-        };
-        crate::db::update_profile(&conn, &updated_profile)?;
+        {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let updated_profile = crate::db::LlmProfile {
+                id: profile.id.clone(),
+                name: profile.name.clone(),
+                budget_monthly: profile.budget_monthly,
+                budget_total: profile.budget_total,
+                tpm_limit: profile.tpm_limit,
+                rpm_limit: profile.rpm_limit,
+                virtual_key: Some(key_resp.key.clone()),
+                created_at: profile.created_at,
+            };
+            crate::db::update_profile(&conn, &updated_profile)?;
+        }
+
+        log::info!("[litellm-proxy] provisioned virtual key for profile '{}'", profile.name);
     }
 
     Ok(())
 }
 ```
 
-- [x] **Step 3: Call provisioning in ensure_litellm_proxy**
+- [ ] **Step 7: Provisioning runs in detached task, not blocking `ensure_litellm_proxy`**
 
 ```rust
-// After proxy is healthy:
-provision_virtual_keys(&handle, db).await?;
+// In ensure_litellm_proxy, after registering the proxy:
+let handle_clone = handle.clone();
+let db_clone = db.clone(); // Db is Arc<Mutex<Connection>>
+tokio::spawn(async move {
+    if let Err(e) = provision_virtual_keys(&handle_clone, &db_clone).await {
+        log::error!("[litellm-proxy] provisioning failed: {e}");
+    }
+});
 ```
 
-### Task 4: Add test_profile_connection command
+This releases the registry lock immediately after proxy registration. Provisioning runs asynchronously without blocking `try_get_proxy_handle` callers.
+
+### Task 5: Add `verify_profile_virtual_key` command
 
 **Files:**
 - Modify: `app/src-tauri/src/commands/litellm_profiles.rs`
 
-- [x] **Step 4: Add test command**
+- [ ] **Step 8: Add command using `get_profile` instead of `list_profiles`**
 
 ```rust
 #[tauri::command]
-pub async fn test_profile_connection(
+pub async fn verify_profile_virtual_key(
     db: tauri::State<'_, Db>,
     profile_id: String,
 ) -> Result<bool, String> {
-    log::info!("[test_profile_connection] profile_id={}", profile_id);
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let profiles = crate::db::list_profiles(&conn)?;
-    let profile = profiles.iter().find(|p| p.id == profile_id)
-        .ok_or_else(|| "Profile not found".to_string())?;
+    log::info!("[verify_profile_virtual_key] profile_id={}", profile_id);
+    let virtual_key = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let profile = crate::db::get_profile(&conn, &profile_id)?
+            .ok_or_else(|| "Profile not found".to_string())?;
+        profile.virtual_key.clone()
+            .ok_or_else(|| "Profile has no virtual key".to_string())?
+    };
 
-    let virtual_key = profile.virtual_key.as_ref()
-        .ok_or_else(|| "Profile has no virtual key".to_string())?;
-
-    // Get proxy handle
     let handle = crate::agents::litellm_proxy::try_get_proxy_handle()
         .await
         .ok_or_else(|| "LiteLLM proxy not running".to_string())?;
 
-    // Test by calling /key/info
     let client = handle.admin_client();
-    let info = client.key_info(virtual_key).await?;
+    let _info = client.key_info(&virtual_key).await?;
     Ok(true)
 }
 ```
 
-- [x] **Step 5: Run tests**
+- [ ] **Step 9: Register command in `lib.rs`**
+
+Replace `test_profile_connection` with `verify_profile_virtual_key` in the invoke handler.
+
+### Task 6: Update design documentation
+
+**Files:**
+- Modify: `docs/design/litellm-integration/README.md`
+- Create: `docs/design/litellm-integration/budgets.md`
+
+- [ ] **Step 10: Update design doc**
+
+- Rename from "Model Settings" to "LiteLLM Integration"
+- Update startup flow: single shared user, detached provisioning
+- Remove `litellm_user_id` from `llm_profiles` table schema
+- Add `budget` column to `llm_profile_models` table schema
+- Add budgets.md child page documenting LiteLLM budget hierarchy and Skill Builder's usage
+
+### Task 7: Update implementation plan checkboxes
+
+**Files:**
+- Modify: `docs/plans/2026-05-11-litellm-proxy-implementation.md`
+
+- [ ] **Step 11: Reset PR3 checkboxes to `[ ]`**
+
+All PR3 items were previously marked `[x]` against the old implementation. Reset them to `[ ]` for the new implementation.
+
+### Task 8: Run tests
+
+- [ ] **Step 12: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test -- --nocapture
 ```
 
-- [x] **Step 6: Commit**
+### Task 9: Commit
+
+- [ ] **Step 13: Commit**
 
 ```bash
-git add app/src-tauri/src/agents/litellm_proxy/ app/src-tauri/src/commands/litellm_profiles.rs
-git commit -m "feat: virtual key provisioning and profile activation"
+git add app/src-tauri/ docs/design/ docs/plans/
+git commit -m "feat: virtual key provisioning with single shared user, per-model budgets"
 ```
 
 ### Manual smoke test for PR 3
 
 - [ ] Run `cd app && npm run dev`
 - [ ] Create a provider and profile via Tauri invoke
-- [ ] Check logs for `[litellm-proxy]` provisioning entries
-- [ ] Call `invoke('test_profile_connection', { profile_id: '...' })` — should return `true`
+- [ ] Check logs for `[litellm-proxy] created shared user 'skill-builder'`
+- [ ] Check logs for `[litellm-proxy] provisioned virtual key for profile '...'`
+- [ ] Call `invoke('verify_profile_virtual_key', { profile_id: '...' })` — should return `true`
 - [ ] Verify `{app_data}/litellm/litellm.db` exists and has LiteLLM tables
 
 ---

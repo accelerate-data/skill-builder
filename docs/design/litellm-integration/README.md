@@ -2,7 +2,7 @@
 functional-specs: [custom-plugin-management]
 ---
 
-# Model Settings
+# LiteLLM Integration
 
 > **Status:** Draft
 > **Functional specs:** [`custom-plugin-management`](../../functional/custom-plugin-management/README.md) — this design covers the LLM infrastructure (provider routing, budget enforcement, spend tracking) that powers the skill-building workflow agents. It does not define the skill creation, refinement, evaluation, or distribution behavior itself.
