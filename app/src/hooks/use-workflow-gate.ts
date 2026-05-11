@@ -12,7 +12,7 @@ import {
 import { requireSettingsModel } from "@/lib/models";
 import { joinPath } from "@/lib/path-utils";
 import { toast } from "@/lib/toast";
-import { workspaceSkillDir } from "@/lib/evals";
+import { skillDir } from "@/lib/evals";
 import pluginPaths from "../../plugin-paths.json";
 import { useSettingsStore } from "@/stores/settings-store";
 import { appQueryClient } from "@/lib/query-client";
@@ -209,7 +209,7 @@ export function useWorkflowGate({
           });
           writeFile(
             joinPath(
-              workspaceSkillDir(workspacePath, pluginSlug, skillName),
+              skillDir(workspacePath, pluginSlug, skillName),
               "gate-result.json",
             ),
             gateLog,

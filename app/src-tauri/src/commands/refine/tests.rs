@@ -6,16 +6,12 @@ use super::output::{
 use super::protocol::*;
 use super::*;
 use crate::commands::imported_skills::validate_skill_name;
-use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::ConversationMessage;
 use tempfile::tempdir;
 
 fn default_skill_dir(root: &std::path::Path, skill_name: &str) -> std::path::PathBuf {
     resolve_skill_dir(root, DEFAULT_PLUGIN_SLUG, skill_name)
-}
-
-fn default_workspace_skill_dir(root: &std::path::Path, skill_name: &str) -> std::path::PathBuf {
-    resolve_workspace_skill_dir(root, DEFAULT_PLUGIN_SLUG, skill_name)
 }
 
 // ===== get_skill_content_inner tests =====
@@ -1190,7 +1186,7 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
 
     // Create a stale snapshot in the workspace (under default plugin slug)
     let snapshot_dir =
-        default_workspace_skill_dir(workspace_dir.path(), "my-skill").join("skill-snapshot");
+        resolve_skill_dir(workspace_dir.path(), DEFAULT_PLUGIN_SLUG, "my-skill").join("skill-snapshot");
     std::fs::create_dir_all(&snapshot_dir).unwrap();
     std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
     assert!(snapshot_dir.exists());

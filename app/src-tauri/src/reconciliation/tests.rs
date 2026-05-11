@@ -1,7 +1,7 @@
 use super::*;
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::get_step_output_files;
-use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use std::path::Path;
 
 /// Insert a minimal clarifications row for a skill so the DB consistency check
@@ -39,7 +39,7 @@ fn insert_stub_decisions(conn: &rusqlite::Connection, skill_name: &str) {
 /// Create a skill working directory on disk with a context/ dir.
 /// Uses plugin-organised layout: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/context/
 fn create_skill_dir(workspace: &Path, name: &str, _domain: &str) {
-    let skill_dir = resolve_workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
+    let skill_dir = resolve_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 }
 
@@ -49,7 +49,7 @@ fn create_step_output(workspace: &Path, name: &str, step_id: u32) {
     let skill_dir = if step_id >= 3 {
         resolve_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name)
     } else {
-        resolve_workspace_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name)
+        resolve_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name)
     };
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
     for file in get_step_output_files(step_id) {
@@ -431,7 +431,7 @@ fn test_fresh_skill_step_0_not_falsely_completed() {
 
     crate::db::save_workflow_run(&conn, "fresh-skill", 0, "pending", "domain").unwrap();
     // Only create the canonical working directory — no output files
-    std::fs::create_dir_all(crate::skill_paths::workspace_skill_dir(
+    std::fs::create_dir_all(crate::skill_paths::resolve_skill_dir(
         tmp.path(),
         DEFAULT_PLUGIN_SLUG,
         "fresh-skill",
@@ -1462,7 +1462,7 @@ fn test_cleanup_future_steps_with_negative_step() {
     crate::cleanup::cleanup_future_steps(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, -1, workspace);
 
     // All step output should be deleted
-    let skill_dir = resolve_workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
+    let skill_dir = resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
     // Step 0 file (clarifications.json in context/)
     let step0_file = skill_dir.join("context").join("clarifications.json");
     assert!(!step0_file.exists(), "step 0 output should be cleaned");
@@ -1818,7 +1818,7 @@ fn test_pass2_scenario_9c_with_some_context() {
 
     // Create step 0 output + SKILL.md but no step 4
     create_step_output(skills_tmp.path(), "some-context-skill", 0);
-    let skill_dir = crate::skill_paths::workspace_skill_dir(
+    let skill_dir = crate::skill_paths::resolve_skill_dir(
         skills_tmp.path(),
         DEFAULT_PLUGIN_SLUG,
         "some-context-skill",
@@ -2051,7 +2051,7 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
 
     // The workspace dir should be recreated (scenario 5)
     // Steps 0-2 are DB-authoritative; no context/ subdir is created.
-    let skill_dir = crate::skill_paths::workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, name);
+    let skill_dir = crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, name);
     assert!(skill_dir.exists(), "workspace dir should be recreated");
 }
 

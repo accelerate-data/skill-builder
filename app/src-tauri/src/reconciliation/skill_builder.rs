@@ -124,9 +124,18 @@ pub(crate) fn reconcile_skill_builder(
 
     let run = maybe_run.unwrap();
 
-    // Scenario 5: workspace dir missing → recreate transient scratch space
+    // Scenario 5: canonical skill dir missing → recreate
     let skill_dir =
-        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
+        match crate::skill_paths::ensure_nested_skill_dir(Path::new(workspace_path), plugin_slug, name) {
+            Ok(d) => d,
+            Err(e) => {
+                log::warn!(
+                    "[reconcile] '{}': failed to ensure skill dir: {}",
+                    name, e
+                );
+                return Ok(());
+            }
+        };
     if !skill_dir.exists() {
         match std::fs::create_dir_all(&skill_dir) {
             Ok(()) => log::info!(

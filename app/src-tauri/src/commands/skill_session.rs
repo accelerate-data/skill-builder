@@ -271,11 +271,21 @@ pub async fn pause_openhands_session(
     }
 
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
-    crate::commands::refine::protocol::ensure_skill_workspace_dir(
-        &runtime_ctx.workspace_path,
+    let skills_root = resolve_skills_path(&db)?;
+    let skill_dir = crate::skill_paths::resolve_skill_dir(
+        Path::new(&skills_root),
         &plugin_slug,
         &skill_name,
     );
+    if !skill_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&skill_dir) {
+            log::warn!(
+                "[pause_openhands_session] failed to create skill dir '{}': {}",
+                skill_dir.display(),
+                e
+            );
+        }
+    }
 
     let skills_path = resolve_skills_path(&db)?;
     let app_data_root = app

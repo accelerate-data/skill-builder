@@ -7,29 +7,6 @@ pub(crate) fn new_skill_usage_session_id(skill_name: &str) -> String {
     format!("synthetic:refine:{}:{}", skill_name, uuid::Uuid::new_v4())
 }
 
-pub(crate) fn ensure_skill_workspace_dir(
-    workspace_path: &str,
-    plugin_slug: &str,
-    skill_name: &str,
-) {
-    let skill_workspace_dir =
-        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    if !skill_workspace_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
-            log::warn!(
-                "[ensure_skill_workspace_dir] failed to create skill workspace dir '{}': {}",
-                skill_workspace_dir.display(),
-                e
-            );
-        } else {
-            log::debug!(
-                "[ensure_skill_workspace_dir] created skill workspace dir '{}'",
-                skill_workspace_dir.display()
-            );
-        }
-    }
-}
-
 const REFINE_PROMPT_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../agent-sources/prompts/refine-initial.txt"
@@ -67,9 +44,9 @@ pub(super) fn build_refine_prompt_with_output_dir(request: RefinePromptRequest<'
             },
     } = request;
 
-    let workspace_dir =
-        crate::skill_paths::workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_str = skill_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let target_files_clause = match target_files {
         Some(files) if !files.is_empty() => format!(

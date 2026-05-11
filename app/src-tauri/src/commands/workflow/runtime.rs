@@ -602,17 +602,15 @@ pub async fn run_workflow_step(
         settings.function_role,
     );
 
-    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
-        Path::new(&workspace_path),
-        &settings.plugin_slug,
-        &skill_name,
-    );
-    std::fs::create_dir_all(&workspace_skill_dir)
-        .map_err(|e| format!("Failed to create workspace skill dir: {}", e))?;
+    let skill_dir =
+        crate::skill_paths::ensure_nested_skill_dir(Path::new(&settings.skills_path), &settings.plugin_slug, &skill_name)
+            .map_err(|e| format!("Failed to create skill dir: {}", e))?;
+    std::fs::create_dir_all(&skill_dir)
+        .map_err(|e| format!("Failed to create skill dir: {}", e))?;
 
     // Ensure OpenHands agent files exist after the skill directory is present;
-    // deployment discovers workspace skill directories before copying `.agents`.
-    ensure_workspace_prompts(&app, &workspace_path).await?;
+    // deployment discovers skill directories before copying `.agents`.
+    ensure_workspace_prompts(&app, &settings.skills_path).await?;
 
     // Gate: reject disabled steps when guard conditions are active.
     {

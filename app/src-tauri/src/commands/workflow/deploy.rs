@@ -5,19 +5,14 @@ use std::sync::{Mutex, OnceLock};
 
 /// Per-workspace SHA-gated deployment cache state.
 ///
-/// Tracks two tiers:
+/// Tracks a single tier:
 /// - `source_sha`: SHA-256 over `agent-sources/workspace/{agents,skills}/` at
 ///   the time of the last copy from source → `<workspace>/.agents/`.
-/// - `per_skill_sha`: SHA-256 of `<workspace>/.agents/` at the time of the
-///   last copy from workspace root → `<workspace>/<plugin>/<skill>/.agents/`.
-///   Keyed by absolute skill_dir path.
 #[derive(Default, Debug, Clone)]
 struct WorkspaceDeployCache {
-    /// SHA over the source dirs at the last successful tier-1 copy.
+    /// SHA over the source dirs at the last successful copy.
     /// `None` until the first call for this workspace.
     source_sha: Option<String>,
-    /// SHA of `<workspace>/.agents/` per skill_dir at last successful tier-2 copy.
-    per_skill_sha: HashMap<String, String>,
 }
 
 /// Session-scoped per-workspace deployment cache. Replaces the older
@@ -226,25 +221,17 @@ pub async fn ensure_openhands_runtime_dir(
     .map_err(|e| format!("Throwaway prompt copy task failed: {}", e))?
 }
 
-/// Two-tier SHA-gated deploy. Used by both async and sync entry points and is
+/// SHA-gated deploy. Used by both async and sync entry points and is
 /// exposed to tests so callers can pass explicit source paths instead of
 /// resolving them through `tauri::AppHandle`.
 ///
-/// Tier 1: source dirs → `<workspace>/.agents/`. Fires when the SHA over the
+/// Copies source dirs → `<workspace>/.agents/` when the SHA over the
 /// source directories differs from the cached `source_sha` for this workspace.
-/// On invalidation, the per-skill cache for this workspace is cleared so every
-/// skill gets refreshed from the new root.
-///
-/// Tier 2: `<workspace>/.agents/` → `<workspace>/<plugin>/<skill>/.agents/`.
-/// Fires per skill_dir when the SHA over the workspace-root `.agents/` differs
-/// from the cached `per_skill_sha[skill_dir]`. Skill dirs are discovered fresh
-/// on every call so newly created skills get covered.
 pub(crate) fn ensure_workspace_prompts_inner(
     agents_src: &Path,
     skills_src: &Path,
     workspace_path: &str,
 ) -> Result<(), String> {
-    // ---- Tier 1: source → <workspace>/.agents/ ---------------------------
     let current_source_sha = compute_dir_sha(&[agents_src, skills_src])?;
     let workspace_key = workspace_path.to_string();
     let workspace_root = Path::new(workspace_path);
@@ -252,59 +239,18 @@ pub(crate) fn ensure_workspace_prompts_inner(
     let tier_1_changed = {
         let mut cache_lock = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
         let entry = cache_lock.entry(workspace_key.clone()).or_default();
-        let layout_ok = crate::skill_paths::workspace_agent_files_dir(workspace_root).is_dir()
-            && crate::skill_paths::workspace_agent_skills_dir(workspace_root).is_dir();
+        let layout_ok = workspace_root.join(".agents").join("agents").is_dir()
+            && workspace_root.join(".agents").join("skills").is_dir();
         let changed =
             entry.source_sha.as_deref() != Some(current_source_sha.as_str()) || !layout_ok;
         if changed {
-            // Optimistically update so a concurrent caller sees the new SHA
-            // and skips the redundant copy. Cleared by `invalidate_workspace_cache`
-            // on copy failure (see async wrapper).
             entry.source_sha = Some(current_source_sha.clone());
-            // Tier-1 invalidation wipes ALL per-skill SHA entries — every
-            // skill is now stale relative to the freshly-rewritten root.
-            entry.per_skill_sha.clear();
         }
         changed
     };
 
     if tier_1_changed && (agents_src.is_dir() || skills_src.is_dir()) {
         copy_agent_sources_to_openhands_cwd(agents_src, skills_src, workspace_root)?;
-    }
-
-    // ---- Tier 2: <workspace>/.agents/ → per-skill .agents/ ---------------
-    let workspace_root_agents_dir = crate::skill_paths::workspace_agent_files_dir(workspace_root);
-    let workspace_root_skills_dir = crate::skill_paths::workspace_agent_skills_dir(workspace_root);
-    if !workspace_root_agents_dir.is_dir() && !workspace_root_skills_dir.is_dir() {
-        return Ok(());
-    }
-
-    let current_root_sha =
-        compute_dir_sha(&[&workspace_root_agents_dir, &workspace_root_skills_dir])?;
-
-    for skill_dir in discover_workspace_skill_dirs(workspace_root)? {
-        let skill_key = skill_dir.to_string_lossy().to_string();
-        let needs_copy = {
-            let mut cache_lock = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
-            let entry = cache_lock.entry(workspace_key.clone()).or_default();
-            let layout_ok = crate::skill_paths::workspace_agent_files_dir(&skill_dir).is_dir()
-                && crate::skill_paths::workspace_agent_skills_dir(&skill_dir).is_dir();
-            entry.per_skill_sha.get(&skill_key).map(String::as_str)
-                != Some(current_root_sha.as_str())
-                || !layout_ok
-        };
-        if needs_copy {
-            copy_agent_sources_to_openhands_cwd(
-                &workspace_root_agents_dir,
-                &workspace_root_skills_dir,
-                &skill_dir,
-            )?;
-            let mut cache_lock = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
-            let entry = cache_lock.entry(workspace_key.clone()).or_default();
-            entry
-                .per_skill_sha
-                .insert(skill_key, current_root_sha.clone());
-        }
     }
 
     Ok(())
@@ -344,11 +290,7 @@ fn copy_agent_sources_to_full_layout(
     skills_src: &Path,
     workspace: &Path,
 ) -> Result<(), String> {
-    copy_agent_sources_to_openhands_cwd(agents_src, skills_src, workspace)?;
-    for workspace_skill_dir in discover_workspace_skill_dirs(workspace)? {
-        copy_agent_sources_to_openhands_cwd(agents_src, skills_src, &workspace_skill_dir)?;
-    }
-    Ok(())
+    copy_agent_sources_to_openhands_cwd(agents_src, skills_src, workspace)
 }
 
 fn copy_agent_sources_to_openhands_cwd(
@@ -361,67 +303,8 @@ fn copy_agent_sources_to_openhands_cwd(
     Ok(())
 }
 
-fn discover_workspace_skill_dirs(workspace: &Path) -> Result<Vec<PathBuf>, String> {
-    if !workspace.is_dir() {
-        return Ok(Vec::new());
-    }
-
-    let mut dirs = Vec::new();
-    for plugin_entry in
-        std::fs::read_dir(workspace).map_err(|e| format!("Failed to read workspace dir: {}", e))?
-    {
-        let plugin_entry =
-            plugin_entry.map_err(|e| format!("Failed to read workspace entry: {}", e))?;
-        let plugin_path = plugin_entry.path();
-        if !plugin_path.is_dir() || plugin_entry.file_name().to_string_lossy().starts_with('.') {
-            continue;
-        }
-
-        let canonical_skills_dir = plugin_path.join("skills");
-        if canonical_skills_dir.is_dir() {
-            for skill_entry in std::fs::read_dir(&canonical_skills_dir).map_err(|e| {
-                format!(
-                    "Failed to read workspace plugin skills dir {}: {}",
-                    canonical_skills_dir.display(),
-                    e
-                )
-            })? {
-                let skill_entry = skill_entry
-                    .map_err(|e| format!("Failed to read workspace skill entry: {}", e))?;
-                let skill_path = skill_entry.path();
-                if skill_path.is_dir()
-                    && !skill_entry.file_name().to_string_lossy().starts_with('.')
-                {
-                    dirs.push(skill_path);
-                }
-            }
-        }
-
-        for skill_entry in std::fs::read_dir(&plugin_path).map_err(|e| {
-            format!(
-                "Failed to read workspace plugin dir {}: {}",
-                plugin_path.display(),
-                e
-            )
-        })? {
-            let skill_entry =
-                skill_entry.map_err(|e| format!("Failed to read workspace skill entry: {}", e))?;
-            let skill_path = skill_entry.path();
-            let file_name = skill_entry.file_name().to_string_lossy().to_string();
-            if file_name.starts_with('.') || file_name == "skills" || !skill_path.is_dir() {
-                continue;
-            }
-            dirs.push(skill_path);
-        }
-    }
-
-    dirs.sort();
-    dirs.dedup();
-    Ok(dirs)
-}
-
 fn copy_agent_sources_to_agents_dir(agents_src: &Path, target_dir: &Path) -> Result<(), String> {
-    let agents_dir = crate::skill_paths::workspace_agent_files_dir(target_dir);
+    let agents_dir = target_dir.join(".agents").join("agents");
     if agents_dir.is_dir() {
         std::fs::remove_dir_all(&agents_dir)
             .map_err(|e| format!("Failed to clear .agents/agents dir: {}", e))?;
@@ -454,7 +337,7 @@ fn copy_agent_sources_to_agents_dir(agents_src: &Path, target_dir: &Path) -> Res
 }
 
 fn copy_agent_sources_to_skills_dir(skills_src: &Path, target_dir: &Path) -> Result<(), String> {
-    let skills_dir = crate::skill_paths::workspace_agent_skills_dir(target_dir);
+    let skills_dir = target_dir.join(".agents").join("skills");
     if skills_dir.is_dir() {
         std::fs::remove_dir_all(&skills_dir)
             .map_err(|e| format!("Failed to clear .agents/skills dir: {}", e))?;
@@ -567,13 +450,12 @@ mod tests {
     }
 
     #[test]
-    fn copy_agent_sources_populates_openhands_layout_for_root_and_discovered_skill_dirs() {
+    fn copy_agent_sources_populates_openhands_layout() {
         let tmp = tempfile::tempdir().unwrap();
         let agents = bundled_workspace_agents_fixture(tmp.path());
         let skills = bundled_workspace_skills_fixture(tmp.path());
         let workspace = tmp.path().join("workspace");
-        let skill_dir = workspace.join("plugin/new-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::create_dir_all(&workspace).unwrap();
 
         copy_agent_sources_to_full_layout(&agents, &skills, &workspace).unwrap();
 
@@ -583,14 +465,6 @@ mod tests {
             .join(".agents/skills/researching-skill-requirements/SKILL.md")
             .is_file());
         assert!(workspace
-            .join(".agents/skills/creating-skills/SKILL.md")
-            .is_file());
-        assert!(skill_dir.join(".agents/agents/skill-creator.md").is_file());
-        assert!(skill_dir.join(".agents/agents/skill-verifier.md").is_file());
-        assert!(skill_dir
-            .join(".agents/skills/researching-skill-requirements/SKILL.md")
-            .is_file());
-        assert!(skill_dir
             .join(".agents/skills/creating-skills/SKILL.md")
             .is_file());
     }
@@ -650,7 +524,7 @@ mod tests {
         );
     }
 
-    // ---- two-tier cache tests ---------------------------------------------
+    // ---- cache tests ------------------------------------------------------
     //
     // These exercise `ensure_workspace_prompts_inner` directly with explicit
     // source paths so we don't need a `tauri::AppHandle`.
@@ -717,69 +591,4 @@ mod tests {
         invalidate_workspace_cache(&workspace_str);
     }
 
-    #[test]
-    fn tier_1_invalidation_clears_per_skill_cache() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (agents, skills) = fresh_sources(tmp.path());
-        let workspace = tmp.path().join("workspace");
-        let skill_dir = workspace.join("plugin/skill-a");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        let workspace_str = workspace.to_string_lossy().to_string();
-        invalidate_workspace_cache(&workspace_str);
-
-        // First deploy: tier-1 copies source → root, tier-2 copies root → skill.
-        ensure_workspace_prompts_inner(&agents, &skills, &workspace_str).unwrap();
-        let skill_deployed = skill_dir.join(".agents/agents/skill-creator.md");
-        assert_eq!(std::fs::read_to_string(&skill_deployed).unwrap(), "v1");
-
-        // Mutate a source byte. Tier-1 SHA changes → per_skill cache wiped →
-        // tier-2 must re-copy to skill_dir.
-        std::fs::write(agents.join("skill-creator.md"), "v2").unwrap();
-
-        ensure_workspace_prompts_inner(&agents, &skills, &workspace_str).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&skill_deployed).unwrap(),
-            "v2",
-            "tier-1 invalidation must propagate through tier-2 to every skill"
-        );
-        invalidate_workspace_cache(&workspace_str);
-    }
-
-    #[test]
-    fn tier_2_caches_per_skill_after_first_copy() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (agents, skills) = fresh_sources(tmp.path());
-        let workspace = tmp.path().join("workspace");
-        let skill_a = workspace.join("plugin/skill-a");
-        let skill_b = workspace.join("plugin/skill-b");
-        std::fs::create_dir_all(&skill_a).unwrap();
-        std::fs::create_dir_all(&skill_b).unwrap();
-        let workspace_str = workspace.to_string_lossy().to_string();
-        invalidate_workspace_cache(&workspace_str);
-
-        // First deploy: both skills get their .agents/.
-        ensure_workspace_prompts_inner(&agents, &skills, &workspace_str).unwrap();
-        let a_file = skill_a.join(".agents/agents/skill-creator.md");
-        let b_file = skill_b.join(".agents/agents/skill-creator.md");
-        assert!(a_file.is_file());
-        assert!(b_file.is_file());
-        let a_mtime = std::fs::metadata(&a_file).unwrap().modified().unwrap();
-        let b_mtime = std::fs::metadata(&b_file).unwrap().modified().unwrap();
-
-        std::thread::sleep(std::time::Duration::from_millis(20));
-
-        // Second deploy with no changes: per-skill SHAs match → no rewrite.
-        ensure_workspace_prompts_inner(&agents, &skills, &workspace_str).unwrap();
-        assert_eq!(
-            a_mtime,
-            std::fs::metadata(&a_file).unwrap().modified().unwrap(),
-            "skill-a should not be rewritten when nothing changed"
-        );
-        assert_eq!(
-            b_mtime,
-            std::fs::metadata(&b_file).unwrap().modified().unwrap(),
-            "skill-b should not be rewritten when nothing changed"
-        );
-        invalidate_workspace_cache(&workspace_str);
-    }
 }

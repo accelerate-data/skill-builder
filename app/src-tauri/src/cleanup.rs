@@ -1,5 +1,5 @@
 use crate::commands::workflow::get_step_output_files;
-use crate::skill_paths::{resolve_existing_skill_dir, resolve_existing_workspace_skill_dir};
+use crate::skill_paths::resolve_existing_skill_dir;
 use std::path::Path;
 
 /// Try to remove a file, logging the outcome.
@@ -43,7 +43,7 @@ pub fn list_step_output_files(
         skills_path
     );
     let skill_dir =
-        resolve_existing_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+        resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let mut files = Vec::new();
 
     match step_id {
@@ -119,7 +119,7 @@ pub fn clean_step_output(
     );
 
     let skill_dir =
-        resolve_existing_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+        resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
 
     match step_id {
         0 => {
@@ -228,7 +228,7 @@ pub fn delete_step_output_files(
 mod tests {
     use super::*;
     use crate::commands::workflow::get_step_output_files;
-    use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+    use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
     use std::path::Path;
 
     const SLUG: &str = DEFAULT_PLUGIN_SLUG;
@@ -236,7 +236,7 @@ mod tests {
     /// Create a skill working directory under the plugin-organised layout.
     /// Workspace skill dirs contain only .agents/, logs/, and tmp/ (no context/).
     fn create_skill_dir(workspace: &Path, name: &str, _domain: &str) {
-        let skill_dir = resolve_workspace_skill_dir(workspace, SLUG, name);
+        let skill_dir = resolve_skill_dir(workspace, SLUG, name);
         std::fs::create_dir_all(&skill_dir).unwrap();
     }
 
@@ -246,7 +246,7 @@ mod tests {
         let skill_dir = if step_id == 3 {
             resolve_skill_dir(root, SLUG, name)
         } else {
-            resolve_workspace_skill_dir(root, SLUG, name)
+            resolve_skill_dir(root, SLUG, name)
         };
         std::fs::create_dir_all(&skill_dir).unwrap();
         for file in get_step_output_files(step_id) {
@@ -311,7 +311,7 @@ mod tests {
         create_skill_dir(tmp.path(), "my-skill", "test");
 
         // Step 0 workflow-level files
-        let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
         // Step 3 artifacts in canonical plugin layout
@@ -360,7 +360,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Create a legacy workspace eval folder.
-        let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
         std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 
@@ -385,7 +385,7 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
@@ -423,7 +423,7 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
@@ -475,7 +475,7 @@ mod tests {
         std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
 
         // Legacy eval folder in plugin-organised workspace.
-        let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
         std::fs::write(skill_dir.join("evals/legacy-case.json"), "{}").unwrap();
 
@@ -501,7 +501,7 @@ mod tests {
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
         // Empty plugin-organised workspace dir
-        std::fs::create_dir_all(resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill")).unwrap();
+        std::fs::create_dir_all(resolve_skill_dir(tmp.path(), SLUG, "my-skill")).unwrap();
 
         let files = list_step_output_files(workspace, "my-skill", SLUG, 3, skills_path);
 
@@ -523,7 +523,7 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Step 0 workflow-level files
-        let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
@@ -589,7 +589,7 @@ mod tests {
         std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
 
         // Legacy eval folder content.
-        let skill_dir = resolve_workspace_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(skill_dir.join("evals/workspace")).unwrap();
         std::fs::write(skill_dir.join("evals/workspace/results.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();

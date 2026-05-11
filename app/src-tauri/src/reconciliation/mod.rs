@@ -227,7 +227,7 @@ fn normalize_workspace_layout_from_db(
 ) -> Result<(), String> {
     let all_skills = crate::db::list_all_skills(conn)?;
     for skill in all_skills {
-        let canonical_dir = crate::skill_paths::resolve_workspace_skill_dir(
+        let canonical_dir = crate::skill_paths::resolve_skill_dir(
             workspace_root,
             normalized_plugin_slug(&skill.plugin_slug),
             &skill.name,

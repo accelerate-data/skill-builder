@@ -13,16 +13,15 @@ use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
 
-/// Helper: build the nested skill path under a root directory.
-/// Default plugin: root/skills/{name} (no skills/ intermediate)
+/// Helper: canonical plugin-layout skill path: {root}/{DEFAULT_PLUGIN_SLUG}/skills/{name}/
 fn nested_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
     crate::skill_paths::resolve_skill_dir(Path::new(root), DEFAULT_PLUGIN_SLUG, skill_name)
 }
 
-/// Helper: plugin-organised workspace skill path: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/
-/// Use this for workspace assertions (workspace is now plugin-namespaced).
-fn flat_skill(workspace: &str, skill_name: &str) -> std::path::PathBuf {
-    crate::skill_paths::workspace_skill_dir(Path::new(workspace), DEFAULT_PLUGIN_SLUG, skill_name)
+/// Helper: plugin-organised skill path: {root}/{DEFAULT_PLUGIN_SLUG}/skills/{name}/
+/// Use this for workspace assertions (workspace is now plugin-namespaced with canonical layout).
+fn flat_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
+    crate::skill_paths::resolve_skill_dir(Path::new(root), DEFAULT_PLUGIN_SLUG, skill_name)
 }
 
 // ===== list_skills_inner tests =====
@@ -169,10 +168,6 @@ fn test_create_skill_filesystem_phase_does_not_write_db_records() {
     create_skill_filesystem_inner(workspace_path, "fs-only-skill", Some(skills_path)).unwrap();
 
     // context/ subdir is no longer created on skill creation (removed in VU-1157 aftermath).
-    assert!(flat_skill(workspace_path, "fs-only-skill").is_dir());
-    assert!(!flat_skill(workspace_path, "fs-only-skill")
-        .join("context")
-        .exists());
     assert!(nested_skill(skills_path, "fs-only-skill")
         .join("references")
         .is_dir());
@@ -216,6 +211,8 @@ fn test_create_skill_db_phase_does_not_create_filesystem_dirs() {
 fn test_create_duplicate_skill() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
+    let skills = dir.path().join("skills");
+    let skills_str = skills.to_str().unwrap();
 
     create_skill_inner(
         workspace,
@@ -223,7 +220,7 @@ fn test_create_duplicate_skill() {
         None,
         None,
         None,
-        None,
+        Some(skills_str),
         None,
         None,
         None,
@@ -239,7 +236,7 @@ fn test_create_duplicate_skill() {
         None,
         None,
         None,
-        None,
+        Some(skills_str),
         None,
         None,
         None,
@@ -324,7 +321,6 @@ fn test_delete_skill_db_phase_does_not_delete_filesystem_dirs() {
     assert!(crate::db::get_workflow_run(&conn, "delete-db-only")
         .unwrap()
         .is_none());
-    assert!(flat_skill(workspace_path, "delete-db-only").exists());
     assert!(nested_skill(skills_path, "delete-db-only").exists());
 }
 
@@ -590,8 +586,6 @@ fn test_delete_skill_with_skills_path() {
     )
     .unwrap();
 
-    // Workspace dir should be gone (flat path)
-    assert!(!flat_skill(workspace, "full-delete").exists());
     // Skills output dir should be gone
     assert!(!output_dir.exists());
     // DB should be clean
@@ -789,8 +783,6 @@ fn test_delete_skill_directory_traversal() {
 
     // The outside directory should still exist (not deleted)
     assert!(outside_dir.exists());
-    // The legitimate skill should still exist (plugin-organised workspace layout)
-    assert!(flat_skill(workspace_str, "legit").exists());
 }
 
 #[test]
@@ -1022,45 +1014,6 @@ fn test_rename_skill_inner_updates_imported_skills_name() {
 // ===== Existing tests (updated signatures) =====
 
 #[test]
-fn test_create_skill_collision_in_workspace() {
-    let dir = tempdir().unwrap();
-    let workspace = dir.path().to_str().unwrap();
-    let skills_dir = tempdir().unwrap();
-    let skills_path = skills_dir.path().to_str().unwrap();
-
-    // Create the skill directory in workspace manually (simulating a pre-existing flat dir)
-    fs::create_dir_all(flat_skill(workspace, "colliding-skill")).unwrap();
-
-    let result = create_skill_inner(
-        workspace,
-        "colliding-skill",
-        None,
-        None,
-        None,
-        Some(skills_path),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(
-        err.contains("already exists"),
-        "Error should mention 'already exists': {}",
-        err
-    );
-    assert!(
-        err.contains("workspace directory"),
-        "Error should mention 'workspace directory': {}",
-        err
-    );
-}
-
-#[test]
 fn test_create_skill_collision_in_skills_path() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
@@ -1093,24 +1046,24 @@ fn test_create_skill_collision_in_skills_path() {
         err
     );
     assert!(
-        err.contains("skills output directory"),
-        "Error should mention 'skills output directory': {}",
+        err.contains("skills directory"),
+        "Error should mention 'skills directory': {}",
         err
     );
 }
 
 #[test]
-fn test_create_skill_recreates_stale_workspace_dir_when_db_row_missing() {
+fn test_create_skill_recreates_stale_skill_dir_when_db_row_missing() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
     let skills_dir = tempdir().unwrap();
     let skills_path = skills_dir.path().to_str().unwrap();
     let conn = create_test_db();
 
-    let stale_workspace = flat_skill(workspace, "stale-skill");
-    fs::create_dir_all(stale_workspace.join("conversations")).unwrap();
+    let stale_skill = nested_skill(skills_path, "stale-skill");
+    fs::create_dir_all(stale_skill.join("conversations")).unwrap();
     fs::write(
-        stale_workspace.join("conversations").join("leftover.txt"),
+        stale_skill.join("conversations").join("leftover.txt"),
         "stale",
     )
     .unwrap();
@@ -1132,13 +1085,13 @@ fn test_create_skill_recreates_stale_workspace_dir_when_db_row_missing() {
     )
     .unwrap();
 
-    assert!(flat_skill(workspace, "stale-skill").exists());
+    assert!(nested_skill(skills_path, "stale-skill").exists());
     assert!(
-        !flat_skill(workspace, "stale-skill")
+        !nested_skill(skills_path, "stale-skill")
             .join("conversations")
             .join("leftover.txt")
             .exists(),
-        "stale workspace contents should be replaced"
+        "stale skill dir contents should be replaced"
     );
     assert!(crate::db::get_workflow_run(&conn, "stale-skill")
         .unwrap()
@@ -1216,14 +1169,9 @@ fn test_create_skill_no_collision() {
     );
     assert!(result.is_ok());
 
-    // Verify the workspace working directory was created (flat layout)
-    assert!(flat_skill(workspace, "new-skill").exists());
-
     // Verify skill output directories were created in skills_path (nested under default plugin)
     let skill_output = nested_skill(skills_path, "new-skill");
     assert!(skill_output.join("references").exists());
-    // context/ subdir is no longer created on skill creation (removed in VU-1157 aftermath).
-    assert!(!flat_skill(workspace, "new-skill").join("context").exists());
 }
 
 #[test]
@@ -1495,10 +1443,6 @@ fn test_rename_skill_basic() {
     )
     .unwrap();
 
-    // Workspace dirs moved (flat layout)
-    assert!(!flat_skill(workspace, "old-name").exists());
-    assert!(flat_skill(workspace, "new-name").exists());
-
     // Skills dirs moved (nested under default plugin)
     assert!(!nested_skill(skills_path, "old-name").exists());
     assert!(nested_skill(skills_path, "new-name").exists());
@@ -1686,7 +1630,6 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
         None,
     )
     .unwrap();
-    assert!(flat_skill(workspace, "will-rollback").exists());
 
     // To force the DB transaction to fail, we drop the workflow_runs table
     // after creating the skill, so the INSERT in the transaction will fail.
@@ -1743,16 +1686,7 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
         .unwrap_err()
         .contains("Failed to rename skill in database"));
 
-    // Workspace dir should be rolled back to original name (flat layout)
-    assert!(
-        flat_skill(workspace, "will-rollback").exists(),
-        "Workspace dir should be rolled back to original name"
-    );
-    assert!(
-        !flat_skill(workspace, "rollback-target").exists(),
-        "New workspace dir should not exist after rollback"
-    );
-
+    // DB transaction rolls back — disk is never touched since DB runs first.
     // DB should still have the original skill
     let row = crate::db::get_workflow_run(&conn, "will-rollback");
     // The transaction was rolled back, but the INSERT+DELETE on workflow_runs
@@ -1774,6 +1708,8 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
 fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     let dir = tempdir().unwrap();
     let workspace = dir.path().to_str().unwrap();
+    let skills_dir = tempdir().unwrap();
+    let skills_path = skills_dir.path().to_str().unwrap();
     let mut conn = create_test_db();
 
     // Create the skill via create_skill_inner so it gets proper DB rows.
@@ -1783,7 +1719,7 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
         None,
         None,
         Some(&conn),
-        None,
+        Some(skills_path),
         None,
         None,
         None,
@@ -1794,15 +1730,15 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     )
     .unwrap();
 
-    // Confirm the workspace directory was created on disk (flat layout).
-    assert!(flat_skill(workspace, "original-skill").exists());
+    // Confirm the skills output directory was created on disk.
+    assert!(nested_skill(skills_path, "original-skill").exists());
 
     rename_skill_inner(
         "original-skill",
         "renamed-skill",
         workspace,
         &mut conn,
-        None,
+        Some(skills_path),
     )
     .unwrap();
 
@@ -1816,14 +1752,14 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     let old_run = crate::db::get_workflow_run(&conn, "original-skill").unwrap();
     assert!(old_run.is_none(), "old workflow_run name should be gone");
 
-    // Workspace directory renamed on disk (flat layout).
+    // Skills output directory renamed on disk.
     assert!(
-        flat_skill(workspace, "renamed-skill").exists(),
-        "workspace dir should be renamed"
+        nested_skill(skills_path, "renamed-skill").exists(),
+        "skills dir should be renamed"
     );
     assert!(
-        !flat_skill(workspace, "original-skill").exists(),
-        "old workspace dir should not exist after rename"
+        !nested_skill(skills_path, "original-skill").exists(),
+        "old skills dir should not exist after rename"
     );
 }
 
@@ -1898,11 +1834,16 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
         err
     );
 
-    // The workspace directory should have been rolled back (old name preserved)
-    // because rename_skill_inner rolls back workspace rename on skills rename failure.
+    // DB was already committed (new name), but skills dir rename was rolled back.
     assert!(
-        flat_skill(workspace_str, "rename-fail").exists(),
-        "workspace dir should be rolled back to old name"
+        crate::db::get_workflow_run(&conn, "rename-success")
+            .unwrap()
+            .is_some(),
+        "DB should have the new name (committed before disk failure)"
+    );
+    assert!(
+        nested_skill(skills_str, "rename-fail").exists(),
+        "skills dir should retain old name after rollback"
     );
 }
 

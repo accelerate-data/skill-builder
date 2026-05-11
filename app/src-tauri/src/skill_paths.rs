@@ -13,7 +13,6 @@ pub struct PluginPaths {
     pub default_plugin_slug: String,
     pub skill_dir: String,
     pub eval_dir: String,
-    pub workspace_skill_dir: String,
     pub tag_prefix: String,
     pub tag_glob: String,
 }
@@ -90,27 +89,6 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
     format!("skill-builder:{plugin_slug}:{skill_name}")
 }
 
-/// Workspace scratch directory for a skill (from `plugin-paths.json` → `workspace_skill_dir`).
-pub fn workspace_skill_dir(workspace: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    resolve_path_template(
-        &paths().workspace_skill_dir,
-        &[
-            ("workspace", &workspace.to_string_lossy()),
-            ("plugin_slug", plugin_slug),
-            ("skill_name", skill_name),
-        ],
-    )
-}
-
-/// Resolve the workspace scratch directory for a skill.
-pub fn resolve_workspace_skill_dir(
-    workspace: &Path,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> PathBuf {
-    workspace_skill_dir(workspace, plugin_slug, skill_name)
-}
-
 fn dedupe_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     let mut deduped = Vec::new();
     for path in paths {
@@ -119,44 +97,6 @@ fn dedupe_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
         }
     }
     deduped
-}
-
-pub fn workspace_skill_dir_candidates(
-    workspace: &Path,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Vec<PathBuf> {
-    dedupe_paths([
-        workspace_skill_dir(workspace, plugin_slug, skill_name),
-        workspace.join(plugin_slug).join(skill_name),
-        workspace.join(skill_name),
-    ])
-}
-
-pub fn resolve_existing_workspace_skill_dir(
-    workspace: &Path,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> PathBuf {
-    workspace_skill_dir_candidates(workspace, plugin_slug, skill_name)
-        .into_iter()
-        .find(|path| path.exists())
-        .unwrap_or_else(|| workspace_skill_dir(workspace, plugin_slug, skill_name))
-}
-
-/// OpenHands agent root inside a workflow workspace skill directory.
-pub fn workspace_agents_dir(workspace_skill_dir: &Path) -> PathBuf {
-    workspace_skill_dir.join(".agents")
-}
-
-/// OpenHands agent definition files inside a workflow workspace skill directory.
-pub fn workspace_agent_files_dir(workspace_skill_dir: &Path) -> PathBuf {
-    workspace_agents_dir(workspace_skill_dir).join("agents")
-}
-
-/// OpenHands AgentSkills inside a workflow workspace skill directory.
-pub fn workspace_agent_skills_dir(workspace_skill_dir: &Path) -> PathBuf {
-    workspace_agents_dir(workspace_skill_dir).join("skills")
 }
 
 /// Canonical throwaway runtime root for a product surface run.
@@ -488,20 +428,6 @@ mod tests {
     }
 
     #[test]
-    fn workspace_skill_dir_includes_skills_subdir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace_skill = workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report");
-
-        assert_eq!(
-            workspace_skill,
-            tmp.path()
-                .join(DEFAULT_PLUGIN_SLUG)
-                .join("skills")
-                .join("weekly-report")
-        );
-    }
-
-    #[test]
     fn resolve_eval_dir_includes_evals_subdir() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_root = tmp.path();
@@ -509,25 +435,6 @@ mod tests {
         assert_eq!(
             resolve_eval_dir(skills_root, "analytics", "weekly-report"),
             skills_root.join("analytics").join("evals").join("weekly-report")
-        );
-    }
-
-    #[test]
-    fn workspace_agent_dirs_are_under_workspace_skill_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace_skill = workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report");
-
-        assert_eq!(
-            workspace_agents_dir(&workspace_skill),
-            workspace_skill.join(".agents")
-        );
-        assert_eq!(
-            workspace_agent_files_dir(&workspace_skill),
-            workspace_skill.join(".agents").join("agents")
-        );
-        assert_eq!(
-            workspace_agent_skills_dir(&workspace_skill),
-            workspace_skill.join(".agents").join("skills")
         );
     }
 
@@ -549,10 +456,6 @@ mod tests {
             runtime_dir.join("conversations")
         );
         assert_eq!(throwaway_logs_dir(&runtime_dir), runtime_dir.join("logs"));
-        assert_ne!(
-            runtime_dir,
-            workspace_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "weekly-report")
-        );
     }
 
     #[test]

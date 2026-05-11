@@ -11,11 +11,12 @@ import {
   prepareForSave,
   removeExpectation,
   suggestEvalPlaceholder,
+  skillDir,
   toSlug,
   totalRunCount,
   truncatePrompt,
   validateTestCaseForm,
-  workspaceSkillDir,
+  parseEvalFrontmatter,
 } from "@/lib/evals";
 import type { TestCase } from "@/lib/types";
 
@@ -293,18 +294,18 @@ description: Transforms raw data into SCD type 2 snapshots for historical tracki
   });
 });
 
-// --- workspaceSkillDir ---
+// --- skillDir ---
 
-describe("workspaceSkillDir", () => {
+describe("skillDir", () => {
   it("uses canonical layout for default plugin slug", () => {
-    expect(workspaceSkillDir("/workspace", "default", "my-skill")).toBe(
-      "/workspace/default/skills/my-skill",
+    expect(skillDir("/skills", "default", "my-skill")).toBe(
+      "/skills/default/skills/my-skill",
     );
   });
 
   it("uses canonical layout for non-default plugin", () => {
-    expect(workspaceSkillDir("/workspace", "my-plugin", "my-skill")).toBe(
-      "/workspace/my-plugin/skills/my-skill",
+    expect(skillDir("/skills", "my-plugin", "my-skill")).toBe(
+      "/skills/my-plugin/skills/my-skill",
     );
   });
 });

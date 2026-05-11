@@ -1,6 +1,6 @@
 use crate::db::Db;
 use crate::skill_paths::{
-    ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG,
+    ensure_nested_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG,
 };
 use crate::types::ReconciliationResult;
 use crate::DataDir;
@@ -206,7 +206,7 @@ fn migrate_workspace_to_plugin_layout(workspace_path: &Path, conn: &rusqlite::Co
             continue;
         }
         let plugin_dir =
-            resolve_workspace_skill_dir(workspace_path, &skill.plugin_slug, &skill.name);
+            resolve_skill_dir(workspace_path, &skill.plugin_slug, &skill.name);
         if plugin_dir.exists() {
             log::debug!(
                 "[migrate_workspace] '{}': already at plugin-organised path, skipping",

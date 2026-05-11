@@ -1,6 +1,6 @@
 use crate::db::Db;
 use crate::skill_paths::{
-    ensure_nested_skill_dir, resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG,
+    ensure_nested_skill_dir, resolve_existing_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG,
 };
 use std::fs;
 use std::path::Path;
@@ -98,16 +98,16 @@ pub(crate) fn delete_imported_skill_inner(
     }
     // Also check the inactive path in workspace
     if !workspace_path.is_empty() {
-        let workspace_skill_dir = resolve_workspace_skill_dir(
+        let skill_dir = resolve_existing_skill_dir(
             Path::new(workspace_path),
             skill.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG),
             &skill_name,
         );
-        if workspace_skill_dir.exists() {
-            if let Err(e) = fs::remove_dir_all(&workspace_skill_dir) {
+        if skill_dir.exists() {
+            if let Err(e) = fs::remove_dir_all(&skill_dir) {
                 log::warn!(
                     "[delete_imported_skill] failed to remove '{}': {}",
-                    workspace_skill_dir.display(),
+                    skill_dir.display(),
                     e
                 );
             }
@@ -198,7 +198,7 @@ fn move_skill_directories(
 
     if let Some(workspace_path) = workspace_path {
         let source =
-            resolve_workspace_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
+            resolve_existing_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
         if source.exists() {
             let target =
                 ensure_nested_skill_dir(Path::new(workspace_path), to_plugin_slug, skill_name)?;
@@ -551,7 +551,7 @@ pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Resu
 mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
-    use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+    use crate::skill_paths::{resolve_existing_skill_dir, resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
     use crate::types::ImportedSkill;
 
     fn make_test_skill(id: i64, name: &str) -> ImportedSkill {
@@ -603,10 +603,10 @@ mod tests {
         let conn = create_test_db_for_tests();
         crate::db::upsert_skill(&conn, "del-workspace", "imported", "domain").unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let workspace_skill_dir =
-            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "del-workspace");
-        std::fs::create_dir_all(&workspace_skill_dir).unwrap();
-        std::fs::write(workspace_skill_dir.join("SKILL.md"), "# skill").unwrap();
+        let skill_dir =
+            resolve_existing_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "del-workspace");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# skill").unwrap();
 
         let skills_disk = tempfile::tempdir().unwrap();
         let disk_path = skills_disk.path().join("del-workspace");
@@ -624,7 +624,7 @@ mod tests {
         delete_imported_skill_inner(&conn, skill_id, workspace.path().to_str().unwrap()).unwrap();
 
         assert!(
-            !workspace_skill_dir.exists(),
+            !skill_dir.exists(),
             "workspace canonical skill mirror should be removed"
         );
     }
