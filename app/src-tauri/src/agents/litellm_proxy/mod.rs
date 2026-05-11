@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod client;
+pub mod config;
 pub mod process;
 pub mod types;
 
@@ -12,6 +13,7 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
 
 use self::process::{LiteLLMProxyHandle, LiteLLMProxyProcess};
+use crate::db::Db;
 
 struct ManagedLiteLLMProxy {
     handle: LiteLLMProxyHandle,
@@ -28,16 +30,29 @@ fn proxy_registry() -> &'static LiteLLMProxyRegistry {
 pub async fn ensure_litellm_proxy(
     timeout: std::time::Duration,
     app_data_root: &Path,
+    db: &Db,
 ) -> Result<LiteLLMProxyHandle, String> {
     let mut registry = proxy_registry().lock().await;
+
     if let Some(managed) = registry.as_mut() {
-        let health = managed.handle.health_check().await;
-        if health.is_ok() {
+        let process_alive = managed.process.is_running();
+        let health_result = if process_alive {
+            managed.handle.health_check().await
+        } else {
+            Err("process is not running".to_string())
+        };
+        if process_alive && health_result.is_ok() {
             return Ok(managed.handle.clone());
         }
-        log::warn!("[litellm-proxy] cached proxy failed health check; restarting");
+        log::warn!("[litellm-proxy] cached proxy failed health check or is not running; restarting");
         let _ = managed.process.shutdown().await;
         *registry = None;
+    }
+
+    let master_key = process::read_or_create_master_key(app_data_root)?;
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        config::write_config(&conn, app_data_root, &master_key)?;
     }
 
     let process = LiteLLMProxyProcess::start(timeout, app_data_root).await?;
@@ -53,6 +68,7 @@ pub async fn ensure_litellm_proxy(
     Ok(handle)
 }
 
+#[allow(dead_code)]
 pub async fn try_get_proxy_handle() -> Option<LiteLLMProxyHandle> {
     let registry = proxy_registry().lock().await;
     registry.as_ref().map(|m| m.handle.clone())

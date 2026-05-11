@@ -54,6 +54,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (49, run_skill_hard_delete_cleanup_migration),
     (50, run_drop_model_argument_hint_migration),
     (51, run_skill_id_artifact_fk_reset_migration),
+    (52, run_litellm_provider_profile_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2622,5 +2623,41 @@ pub(super) fn run_skill_id_artifact_fk_reset_migration(
          COMMIT;"
     )?;
     log::info!("migration 51: rebuilt workflow artifact tables on integer skill_id FKs");
+    Ok(())
+}
+
+/// Migration 52: Add LiteLLM provider/profile tables for multi-provider routing.
+pub(super) fn run_litellm_provider_profile_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(r#"
+        CREATE TABLE IF NOT EXISTS llm_providers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            api_key TEXT NOT NULL,
+            base_url TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS llm_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            budget_monthly REAL,
+            budget_total REAL,
+            tpm_limit INTEGER,
+            rpm_limit INTEGER,
+            virtual_key TEXT,
+            litellm_user_id TEXT,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS llm_profile_models (
+            id TEXT PRIMARY KEY,
+            profile_id TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            priority INTEGER NOT NULL
+        );
+    "#)?;
+    log::info!("migration 52: created llm_providers, llm_profiles, llm_profile_models tables");
     Ok(())
 }

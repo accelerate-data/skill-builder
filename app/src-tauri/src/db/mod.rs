@@ -6,6 +6,8 @@ use std::sync::Mutex;
 pub mod documents;
 pub mod eval_workbench;
 pub mod imported_skills;
+pub mod litellm_profiles;
+pub mod litellm_providers;
 pub mod locks;
 pub mod migrations;
 pub mod settings;
@@ -16,6 +18,8 @@ pub mod workflow_artifacts;
 
 pub use documents::*;
 pub use imported_skills::*;
+pub use litellm_profiles::*;
+pub use litellm_providers::*;
 pub use locks::*;
 pub use settings::*;
 pub use skills::*;

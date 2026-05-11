@@ -21,7 +21,9 @@ const MASTER_KEY_FILENAME: &str = ".master_key";
 #[derive(Debug, Clone)]
 pub struct LiteLLMProxyHandle {
     pub port: u16,
+    #[allow(dead_code)]
     pub master_key: String,
+    #[allow(dead_code)]
     pub stderr_tail: Arc<AsyncMutex<VecDeque<String>>>,
 }
 
@@ -30,6 +32,7 @@ impl LiteLLMProxyHandle {
         format!("http://127.0.0.1:{}", self.port)
     }
 
+    #[allow(dead_code)]
     pub fn admin_client(&self) -> LiteLLMAdminClient {
         use url::Url;
         LiteLLMAdminClient::new(
@@ -63,6 +66,20 @@ pub struct LiteLLMProxyProcess {
 }
 
 impl LiteLLMProxyProcess {
+    pub fn is_running(&mut self) -> bool {
+        match self._child.try_wait() {
+            Ok(None) => true,
+            Ok(Some(status)) => {
+                log::warn!("[litellm-proxy] process exited with status {status}");
+                false
+            }
+            Err(e) => {
+                log::warn!("[litellm-proxy] failed to check process status: {e}");
+                false
+            }
+        }
+    }
+
     pub async fn start(timeout: Duration, app_data_root: &Path) -> Result<Self, String> {
         let port = select_random_local_port()?;
         let master_key = read_or_create_master_key(app_data_root)?;
@@ -189,6 +206,7 @@ fn spawn_proxy(
     })
 }
 
+#[allow(dead_code)]
 pub async fn ensure_proxy(
     timeout: Duration,
     app_data_root: &Path,
