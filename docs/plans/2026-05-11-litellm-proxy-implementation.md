@@ -29,13 +29,13 @@
 ### PR 1: Proxy Process Management
 | File | Action |
 |---|---|
-| `app/src-tauri/src/agents/litellm_proxy/mod.rs` | Create — module root, registry, public API |
-| `app/src-tauri/src/agents/litellm_proxy/process.rs` | Create — spawn, health check, shutdown, port selection, master key |
-| `app/src-tauri/src/agents/litellm_proxy/client.rs` | Create — HTTP client for LiteLLM admin API |
-| `app/src-tauri/src/agents/litellm_proxy/types.rs` | Create — request/response types for admin API |
-| `app/src-tauri/src/agents/mod.rs` | Modify — add `pub mod litellm_proxy` |
-| `app/src-tauri/src/lib.rs` | Modify — add proxy startup in Tauri setup hook |
-| `app/src-tauri/src/agents/litellm_proxy/tests.rs` | Create — unit tests for port selection, redaction, config path |
+| `app/src-tauri/src/agents/litellm_proxy/mod.rs` | Create — module root, registry, public API ✅ |
+| `app/src-tauri/src/agents/litellm_proxy/process.rs` | Create — spawn, health check, shutdown, port selection, master key ✅ |
+| `app/src-tauri/src/agents/litellm_proxy/client.rs` | Create — HTTP client for LiteLLM admin API ✅ |
+| `app/src-tauri/src/agents/litellm_proxy/types.rs` | Create — request/response types for admin API ✅ |
+| `app/src-tauri/src/agents/mod.rs` | Modify — add `pub mod litellm_proxy` ✅ |
+| `app/src-tauri/src/lib.rs` | Modify — add proxy startup in Tauri setup hook ✅ |
+| `app/src-tauri/src/agents/litellm_proxy/tests.rs` | Create — unit tests for port selection, redaction, config path ✅ |
 
 ### PR 2: Provider/Profile DB + Config Generation
 | File | Action |
@@ -133,7 +133,7 @@
 - Create: `app/src-tauri/src/agents/litellm_proxy/types.rs`
 - Modify: `app/src-tauri/src/agents/mod.rs`
 
-- [ ] **Step 1: Create mod.rs**
+- [x] **Step 1: Create mod.rs**
 
 ```rust
 pub mod client;
@@ -200,7 +200,7 @@ pub async fn shutdown_litellm_proxy() -> Result<(), String> {
 }
 ```
 
-- [ ] **Step 2: Create types.rs**
+- [x] **Step 2: Create types.rs**
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -267,7 +267,7 @@ pub struct GenerateKeyRequest {
 }
 ```
 
-- [ ] **Step 3: Create client.rs**
+- [x] **Step 3: Create client.rs**
 
 ```rust
 use reqwest::Client;
@@ -369,7 +369,7 @@ impl LiteLLMAdminClient {
 }
 ```
 
-- [ ] **Step 4: Create process.rs**
+- [x] **Step 4: Create process.rs**
 
 ```rust
 #[cfg(unix)]
@@ -620,14 +620,14 @@ fn ensure_config_dir(app_data_root: &Path) -> Result<PathBuf, String> {
 }
 ```
 
-- [ ] **Step 5: Update agents/mod.rs**
+- [x] **Step 5: Update agents/mod.rs**
 
 ```rust
 // Add to existing agents/mod.rs:
 pub mod litellm_proxy;
 ```
 
-- [ ] **Step 6: Add Cargo.toml dependency for `url` crate**
+- [x] **Step 6: Add Cargo.toml dependency for `url` crate**
 
 Check if `url` is already in `app/src-tauri/Cargo.toml`. If not, add:
 
@@ -635,7 +635,7 @@ Check if `url` is already in `app/src-tauri/Cargo.toml`. If not, add:
 url = "2"
 ```
 
-- [ ] **Step 7: Write tests**
+- [x] **Step 7: Write tests**
 
 Create `app/src-tauri/src/agents/litellm_proxy/tests.rs`:
 
@@ -679,7 +679,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 8: Run tests**
+- [x] **Step 8: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test litellm_proxy -- --nocapture
@@ -687,7 +687,7 @@ cd app/src-tauri && cargo test litellm_proxy -- --nocapture
 
 Expected: All 3 tests pass.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/litellm_proxy/ app/src-tauri/src/agents/mod.rs app/src-tauri/Cargo.toml
@@ -696,7 +696,7 @@ git commit -m "feat: LiteLLM proxy process management (spawn, health, shutdown)"
 
 ### Manual smoke test for PR 1
 
-- [ ] Run `cd app && LITELLM_PROXY_LIVE_SMOKE=1 npm run test:litellm:live-smoke`
+- [x] Run `cd app && LITELLM_PROXY_LIVE_SMOKE=1 npm run test:litellm:live-smoke`
 - [ ] Verify PASS output; test covers spawn → health → admin API auth → shutdown
 
 ---
