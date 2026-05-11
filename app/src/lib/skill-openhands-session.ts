@@ -5,7 +5,7 @@ import {
 } from "@/lib/openhands-conversation-events";
 import type {
   EditableSkill,
-  RefineSessionInfo,
+  SkillSessionInfo,
   RestoredConversationEvent,
 } from "@/lib/types";
 import {
@@ -149,7 +149,7 @@ function buildRestoredMessages(
 }
 
 function buildFallbackMessages(
-  session: RefineSessionInfo,
+  session: SkillSessionInfo,
 ): RefineMessage[] {
   return session.restored_messages.map((message, index) => ({
     id: crypto.randomUUID(),
@@ -162,7 +162,7 @@ function buildFallbackMessages(
 
 export function hydrateSelectedSkillOpenHandsSession(
   skill: Pick<EditableSkill, "name" | "plugin_slug"> & Partial<EditableSkill>,
-  session: RefineSessionInfo,
+  session: SkillSessionInfo,
 ): void {
   const editableSkill = buildSessionSkill(skill);
   const store = useRefineStore.getState();
