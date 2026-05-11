@@ -25,7 +25,7 @@ pub fn build_log_plugin(pid: u32) -> tauri_plugin_log::Builder {
     tauri_plugin_log::Builder::new()
         .targets([
             Target::new(TargetKind::LogDir {
-                file_name: Some(log_file_stem(pid).into()),
+                file_name: Some(log_file_stem(pid)),
             }),
             Target::new(TargetKind::Stderr),
         ])
