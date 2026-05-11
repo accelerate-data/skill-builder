@@ -1118,7 +1118,62 @@ pub async fn ensure_litellm_proxy(
 }
 ```
 
-### Task 5: Create Tauri commands
+### Task 5: Add `is_running()` process liveness check
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/litellm_proxy/process.rs`
+- Modify: `app/src-tauri/src/agents/litellm_proxy/mod.rs`
+
+- [ ] **Step 6b: Add `is_running()` to `LiteLLMProxyProcess`**
+
+Follow the OpenHands pattern — check `try_wait()` before health polling:
+
+```rust
+impl LiteLLMProxyProcess {
+    pub fn is_running(&self) -> bool {
+        match self._child.try_wait() {
+            Ok(None) => true,
+            Ok(Some(status)) => {
+                log::warn!("[litellm-proxy] process exited with status {status}");
+                false
+            }
+            Err(e) => {
+                log::warn!("[litellm-proxy] failed to check process status: {e}");
+                false
+            }
+        }
+    }
+}
+```
+
+- [ ] **Step 6c: Update `ensure_litellm_proxy` to check liveness before health**
+
+```rust
+// In ensure_litellm_proxy, before health check:
+let process_alive = managed.process.is_running();
+let health_result = if process_alive {
+    managed.handle.health_check().await
+} else {
+    Err("process is not running".to_string())
+};
+if process_alive && health_result.is_ok() {
+    return Ok(managed.handle.clone());
+}
+```
+
+- [ ] **Step 6d: Add test for `is_running()`**
+
+```rust
+#[test]
+fn should_reuse_cached_proxy_requires_running_and_healthy() {
+    // Proof that is_running + health check are both required
+    assert!(should_reuse_cached_proxy(true, Ok(())));
+    assert!(!should_reuse_cached_proxy(false, Ok(())));
+    assert!(!should_reuse_cached_proxy(true, Err("unhealthy".to_string())));
+}
+```
+
+### Task 6: Create Tauri commands
 
 **Files:**
 - Create: `app/src-tauri/src/commands/litellm_providers.rs`
@@ -1268,6 +1323,50 @@ pub async fn create_user(&self, req: &CreateUserRequest) -> Result<CreateUserRes
 pub async fn generate_key(&self, req: &GenerateKeyRequest) -> Result<GenerateKeyResponse, String> {
     // ... (already in client.rs from PR 1)
 }
+```
+
+- [ ] **Step 1b: URL-encode `key` parameter in `key_info`**
+
+Virtual keys may contain characters that break URL parsing. Use `urlencoding`:
+
+```rust
+// In client.rs key_info():
+let url = self.base_url
+    .join(&format!("/key/info?key={}", urlencoding::Encoded(key)))
+    .map_err(|e| e.to_string())?;
+```
+
+Add `urlencoding = "1"` to `Cargo.toml` if not present.
+
+### Task 1c: Harden response types with `deny_unknown_fields`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/litellm_proxy/types.rs`
+
+- [ ] **Step 1c: Add `#[serde(deny_unknown_fields)]` to all response types**
+
+This catches API contract changes early rather than silently ignoring new fields:
+
+```rust
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HealthResponse { ... }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateUserResponse { ... }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GenerateKeyResponse { ... }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyInfoResponse { ... }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyInfo { ... }
 ```
 
 ### Task 2: Add virtual key provisioning to startup
