@@ -1,7 +1,15 @@
 use tauri_plugin_log::{Target, TargetKind};
 
-/// The log file name written to the app log directory each session.
-const LOG_FILE_NAME: &str = "app";
+/// Base prefix for per-process log files written to the app log directory.
+const LOG_FILE_PREFIX: &str = "app";
+
+fn log_file_stem(pid: u32) -> String {
+    format!("{LOG_FILE_PREFIX}-{pid}")
+}
+
+fn log_file_path_for_pid(log_dir: &std::path::Path, pid: u32) -> std::path::PathBuf {
+    log_dir.join(format!("{}.log", log_file_stem(pid)))
+}
 
 /// Build the `tauri-plugin-log` plugin instance.
 ///
@@ -13,11 +21,11 @@ const LOG_FILE_NAME: &str = "app";
 /// - **LogDir**: persistent file in the app log directory. The plugin appends
 ///   across restarts and rotates the file once it exceeds `max_file_size`.
 /// - **Stderr**: visible in terminals / dev consoles for CLI users.
-pub fn build_log_plugin() -> tauri_plugin_log::Builder {
+pub fn build_log_plugin(pid: u32) -> tauri_plugin_log::Builder {
     tauri_plugin_log::Builder::new()
         .targets([
             Target::new(TargetKind::LogDir {
-                file_name: Some(LOG_FILE_NAME.into()),
+                file_name: Some(log_file_stem(pid).into()),
             }),
             Target::new(TargetKind::Stderr),
         ])
@@ -54,7 +62,7 @@ pub fn set_log_level(level: &str) {
 pub fn get_log_file_path(app: &tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
     let log_dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
-    let log_file = log_dir.join(format!("{}.log", LOG_FILE_NAME));
+    let log_file = log_file_path_for_pid(&log_dir, std::process::id());
     log_file
         .to_str()
         .map(|s| s.to_string())
@@ -475,7 +483,13 @@ mod tests {
     }
 
     #[test]
-    fn test_log_file_name_is_app() {
-        assert_eq!(LOG_FILE_NAME, "app");
+    fn test_log_file_stem_uses_pid() {
+        assert_eq!(log_file_stem(4242), "app-4242");
+    }
+
+    #[test]
+    fn test_log_file_path_for_pid_uses_pid_specific_name() {
+        let path = log_file_path_for_pid(Path::new("/tmp/logs"), 4242);
+        assert_eq!(path, Path::new("/tmp/logs/app-4242.log"));
     }
 }

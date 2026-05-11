@@ -13,8 +13,10 @@ mod reconciliation;
 mod skill_paths;
 mod types;
 
+use std::any::Any;
 use std::fs;
 use std::io;
+use std::panic::PanicHookInfo;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 pub use types::*;
@@ -70,6 +72,41 @@ fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
     crate::fs_utils::copy_dir_recursive(src, dst).map_err(io::Error::other)
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
+fn startup_context_summary(pid: u32, parent_pid: Option<u32>, argv: &[String]) -> String {
+    let parent = parent_pid
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let argv = if argv.is_empty() {
+        "<empty>".to_string()
+    } else {
+        argv.join(" | ")
+    };
+    format!("pid={pid} ppid={parent} argv={argv}")
+}
+
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|panic_info: &PanicHookInfo<'_>| {
+        let location = panic_info
+            .location()
+            .map(|value| format!("{}:{}", value.file(), value.line()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let payload = panic_payload_message(panic_info.payload());
+        let message = format!("[panic] location={location} payload={payload}");
+        eprintln!("{message}");
+        log::error!("{message}");
+    }));
 }
 
 /// One-time migration from historical app-local dir to the current bundle identifier path.
@@ -163,8 +200,10 @@ fn migrate_legacy_app_data_dir(new_data_dir: &Path) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_panic_hook();
+    let pid = std::process::id();
     tauri::Builder::default()
-        .plugin(logging::build_log_plugin().build())
+        .plugin(logging::build_log_plugin(pid).build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -250,7 +289,16 @@ pub fn run() {
                 id: uuid::Uuid::new_v4().to_string(),
                 pid: std::process::id(),
             };
+            let argv: Vec<String> = std::env::args().collect();
+            #[cfg(unix)]
+            let parent_pid = Some(nix::unistd::getppid().as_raw() as u32);
+            #[cfg(not(unix))]
+            let parent_pid: Option<u32> = None;
             log::info!("Instance ID: {}, PID: {}", instance_info.id, instance_info.pid);
+            log::info!(
+                "[startup] {}",
+                startup_context_summary(instance_info.pid, parent_pid, &argv)
+            );
             app.manage(instance_info);
 
             // Apply persisted log level setting (fall back to info if DB read fails).
@@ -548,6 +596,29 @@ mod tests {
         assert!(
             new_dir.join("existing.txt").exists(),
             "existing target content must be preserved"
+        );
+    }
+
+    #[test]
+    fn test_panic_payload_message_handles_string_payloads() {
+        let static_payload: &(dyn Any + Send) = &"panic text";
+        let owned_payload: &(dyn Any + Send) = &"owned panic".to_string();
+
+        assert_eq!(panic_payload_message(static_payload), "panic text");
+        assert_eq!(panic_payload_message(owned_payload), "owned panic");
+    }
+
+    #[test]
+    fn test_startup_context_summary_includes_pid_parent_and_args() {
+        let summary = startup_context_summary(
+            4242,
+            Some(111),
+            &["/Applications/Skill Builder.app".to_string(), "--flag".to_string()],
+        );
+
+        assert_eq!(
+            summary,
+            "pid=4242 ppid=111 argv=/Applications/Skill Builder.app | --flag"
         );
     }
 }

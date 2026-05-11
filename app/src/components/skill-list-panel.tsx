@@ -34,6 +34,7 @@ import {
   deletePlugin,
   exportSkillAsFile,
   getExternallyLockedSkills,
+  logFrontend,
   parseSkillFile,
   removeSkillFromPlugin,
   resetWorkflowStep,
@@ -128,16 +129,34 @@ export function SkillListPanel({
 
   // Default selection once query data is available.
   useEffect(() => {
+    let cancelled = false;
     if (unifiedSkills.length === 0 || selectedSkillId) return;
     const stored = localStorage.getItem("last-selected-skill");
-    const key = stored && unifiedSkills.some((s) => s.key === stored)
-      ? stored
-      : unifiedSkills[0].key;
-    const skill = unifiedSkills.find((candidate) => candidate.key === key);
+    const preferredSkill = stored
+      ? unifiedSkills.find((candidate) => candidate.key === stored)
+      : null;
+    const skill = preferredSkill && !lockedSkills.has(Number(preferredSkill.skillId))
+      ? preferredSkill
+      : unifiedSkills.find((candidate) => !lockedSkills.has(Number(candidate.skillId))) ?? null;
     if (!skill) return;
     setSelectedSkill(skill.skillId);
-    void onActivateSkill?.(key);
-  }, [onActivateSkill, selectedSkillId, setSelectedSkill, unifiedSkills]);
+    if (onActivateSkill) {
+      void Promise.resolve(onActivateSkill(skill.key)).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[skill-list-panel] default activation failed", err);
+        void logFrontend(
+          "error",
+          `[skill-list-panel] default activation failed skill_id=${skill.skillId} skill=${skill.name} error=${message}`,
+        );
+        if (!cancelled) {
+          setSelectedSkill(null);
+        }
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [lockedSkills, onActivateSkill, selectedSkillId, setSelectedSkill, unifiedSkills]);
 
   const runningAgent = Object.values(runs).find(
     (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),

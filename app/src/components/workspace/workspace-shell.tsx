@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText } from "lucide-react";
+import { FileText, Lock } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,7 @@ import { WorkspaceEvalWorkbench } from "./workspace-eval-workbench";
 import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
 import { toEditableSkill } from "@/lib/types";
 import { useBuilderSkillsQuery } from "@/lib/queries/skills";
+import { useIsSkillLocked } from "@/stores/skill-store";
 
 export type WorkspaceSurface = "overview" | "refine" | "evals";
 
@@ -54,6 +55,8 @@ export function WorkspaceShell({ skill, skillType, initialSurface = "overview", 
   }, [activeTab, onNavigateSurface]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
+  const skillId = "id" in skill ? skill.id : skill.skill_id;
+  const isLocked = useIsSkillLocked(skillId);
 
   useEffect(() => {
     const store = useRefineStore.getState();
@@ -120,7 +123,15 @@ export function WorkspaceShell({ skill, skillType, initialSurface = "overview", 
   }, [isBuilderSkill, workspacePath, skill]);
 
   return (
-    <div className={`flex h-full flex-col ${className ?? ""}`}>
+    <div className={`relative flex h-full flex-col ${className ?? ""}`}>
+      {isLocked && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-[1px]">
+          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+            <Lock className="size-8 opacity-50" />
+            <p className="text-sm font-medium">Skill is locked by another instance</p>
+          </div>
+        </div>
+      )}
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
         <span className="truncate text-sm font-semibold">{skillName}</span>
         {(isBuilderSkill || "disk_path" in skill) && (

@@ -59,6 +59,7 @@ export function AppLayout() {
   const agentRunning = refineRunning || evalsRunningReactive || Boolean(runningWorkflow);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const lockedSkills = useSkillStore((s) => s.lockedSkills);
 
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [nodeReady, setNodeReady] = useState(false);
@@ -205,6 +206,10 @@ export function AppLayout() {
 
   const activateSkill = useCallback(
     async (skillId: string, targetSurface?: "workflow" | "workspace") => {
+      if (lockedSkills.has(Number(skillId))) {
+        return;
+      }
+
       const resolvedSkill = resolveSkillSelection(skillId);
       if (!resolvedSkill) {
         throw new Error(`Skill '${skillId}' is not available`);
@@ -253,6 +258,7 @@ export function AppLayout() {
       }
     },
     [
+      lockedSkills,
       resolveSkillSelection,
       workspacePath,
       selectedWorkspaceSkillId,
@@ -263,6 +269,10 @@ export function AppLayout() {
 
   const handleSelectSkill = useCallback(
     async (skillId: string, tab?: string) => {
+      if (lockedSkills.has(Number(skillId))) {
+        return;
+      }
+
       const resolvedSkill = resolveSkillSelection(skillId);
       if (!resolvedSkill) return;
       const { editableSkill } = resolvedSkill;
@@ -290,7 +300,14 @@ export function AppLayout() {
         toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });
       }
     },
-    [activateSkill, resolveSkillSelection, selectedWorkspaceSkillId, runningWorkflow, navigate],
+    [
+      activateSkill,
+      lockedSkills,
+      resolveSkillSelection,
+      selectedWorkspaceSkillId,
+      runningWorkflow,
+      navigate,
+    ],
   );
 
   const handleSkillSwitchStay = useCallback(() => {
