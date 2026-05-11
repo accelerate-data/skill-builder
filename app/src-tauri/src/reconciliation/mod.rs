@@ -220,14 +220,17 @@ fn workspace_legacy_skill_candidates(
     candidates
 }
 
-fn normalize_workspace_layout_from_db(
+/// Legacy migration: normalizes old workspace skill directory layouts into the
+/// canonical skill directory. Operates on the workspace root only for historical
+/// artifact cleanup — does not touch the canonical skills tree.
+fn normalize_legacy_workspace_skill_dirs(
     conn: &rusqlite::Connection,
     workspace_root: &Path,
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {
     let all_skills = crate::db::list_all_skills(conn)?;
     for skill in all_skills {
-        let canonical_dir = crate::skill_paths::resolve_workspace_skill_dir(
+        let canonical_dir = crate::skill_paths::resolve_skill_dir(
             workspace_root,
             normalized_plugin_slug(&skill.plugin_slug),
             &skill.name,
@@ -274,7 +277,7 @@ fn normalize_legacy_startup_state(
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {
     crate::db::migrations::repair_plugin_ownership_schema(conn).map_err(|e| e.to_string())?;
-    normalize_workspace_layout_from_db(conn, workspace_root, notifications)?;
+    normalize_legacy_workspace_skill_dirs(conn, workspace_root, notifications)?;
     normalize_root_layout(skills_root, notifications, "skills")?;
     Ok(())
 }

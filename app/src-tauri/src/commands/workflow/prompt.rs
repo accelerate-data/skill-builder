@@ -1,4 +1,4 @@
-use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir};
+use crate::skill_paths::resolve_skill_dir;
 use std::path::Path;
 
 const ANSWER_EVALUATOR_TEMPLATE: &str = include_str!(concat!(
@@ -33,7 +33,7 @@ fn render_workspace_prompt(
     plugin_slug: &str,
 ) -> String {
     let workspace_dir =
-        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+        resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     template
         .trim_end_matches('\n')
@@ -111,7 +111,7 @@ pub(crate) fn build_step3_prompt(
     decisions_json: &str,
 ) -> String {
     let workspace_dir =
-        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+        resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .to_string_lossy()
@@ -453,7 +453,7 @@ pub(crate) fn build_evaluator_prompt(
     clarifications_json: &str,
 ) -> String {
     let workspace_dir =
-        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+        resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .to_string_lossy()

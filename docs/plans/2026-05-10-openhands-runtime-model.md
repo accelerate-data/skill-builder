@@ -2069,7 +2069,7 @@ Result: ✅ Committed as `0489c762`.
 - Modify: `app/src-tauri/src/agents/event_types.rs`
 - Modify: `app/src-tauri/src/agents/run_persist.rs`
 
-- [ ] **Step 1: Remove from `OpenHandsRuntimeConfig`**
+- [x] **Step 1: Remove from `OpenHandsRuntimeConfig`**
 
 In `agents/runtime_config.rs`, remove:
 ```rust
@@ -2079,23 +2079,23 @@ pub workflow_session_id: Option<String>,
 
 Remove from `Debug` impl if present. Remove from all test fixtures.
 
-- [ ] **Step 2: Remove from `OpenHandsRuntimeRequest`**
+- [x] **Step 2: Remove from `OpenHandsRuntimeRequest`**
 
 In `agents/openhands_server/types.rs`, remove `workflow_session_id` from the struct and from `from_runtime_request` mapping.
 
-- [ ] **Step 3: Remove from `OpenHandsRunSummaryContext`**
+- [x] **Step 3: Remove from `OpenHandsRunSummaryContext`**
 
 In `agents/openhands_server/mod.rs`, remove `workflow_session_id` from the struct and from `new()`. Remove from the JSON emit at line ~1776.
 
-- [ ] **Step 4: Remove from `ConversationStateEvent`**
+- [x] **Step 4: Remove from `ConversationStateEvent`**
 
 In `agents/event_types.rs`, remove `workflow_session_id` field.
 
-- [ ] **Step 5: Remove from `run_persist.rs`**
+- [x] **Step 5: Remove from `run_persist.rs`**
 
 Remove the `workflow_session_id` lookup and usage in `run_persist.rs`.
 
-- [ ] **Step 6: Update all test fixtures**
+- [x] **Step 6: Update all test fixtures**
 
 Remove `workflow_session_id` from all test fixtures in:
 - `agents/runtime_config.rs` tests
@@ -2107,7 +2107,7 @@ Remove `workflow_session_id` from all test fixtures in:
 - `contracts/agent_events.rs` tests
 - `agents/event_router.rs` tests
 
-- [ ] **Step 7: Run codegen**
+- [x] **Step 7: Run codegen**
 
 ```bash
 cd app && npm run codegen
@@ -2115,7 +2115,7 @@ cd app && npm run codegen
 
 Expected: Succeeds. Generated TypeScript types no longer have `workflowSessionId`.
 
-- [ ] **Step 8: Run contracts tests**
+- [x] **Step 8: Run contracts tests**
 
 ```bash
 cd app/src-tauri && cargo test contracts::
@@ -2123,7 +2123,7 @@ cd app/src-tauri && cargo test contracts::
 
 Expected: All tests pass.
 
-- [ ] **Step 9: Run full cargo test**
+- [x] **Step 9: Run full cargo test**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -2131,7 +2131,7 @@ cd app/src-tauri && cargo test
 
 Expected: All tests pass.
 
-- [ ] **Step 10: TypeScript compile check**
+- [x] **Step 10: TypeScript compile check**
 
 ```bash
 cd app && npx tsc --noEmit
@@ -2139,7 +2139,7 @@ cd app && npx tsc --noEmit
 
 Expected: Clean.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add app/src-tauri/src/contracts/ app/src-tauri/src/agents/ app/src-tauri/src/commands/ app/src/generated/
@@ -2813,9 +2813,556 @@ git commit -m "docs: document backend-owned selected-skill lease contract"
 
 ---
 
+## PR 12 — Remove `workspace_skill_dir` entirely (Gap 12 final)
+
+**Goal:** Eliminate the last vestige of the two-tier workspace model. `workspace_skill_dir` (`{workspace}/{plugin_slug}/skills/{skill_name}`) is removed from every file, function, test, and config. The only skill directory concept is the canonical `skill_dir` (`{skills_root}/{plugin_slug}/skills/{skill_name}`). OpenHands uses `skill_dir` directly as `workspace.working_dir`. Existing workspace skill directories on disk are deleted on first launch via migration.
+
+**Architecture:** Three sub-phases. Phase 1 removes the core definitions and config. Phase 2 updates all callers in `commands/` and `agents/`. Phase 3 adds a startup migration to clean up orphaned workspace dirs and updates all tests. Each phase compiles and passes tests before the next begins.
+
+**Files affected (~144 references across ~15 files):**
+
+| File | What changes |
+|------|-------------|
+| `app/plugin-paths.json` | Remove `workspace_skill_dir` key |
+| `app/src-tauri/src/skill_paths.rs` | Remove `PluginPaths.workspace_skill_dir`, `workspace_skill_dir()`, `resolve_workspace_skill_dir()`, `workspace_skill_dir_candidates()`, `resolve_existing_workspace_skill_dir()`, `workspace_agents_dir()`, `workspace_agent_files_dir()`, `workspace_agent_skills_dir()`, and all related tests |
+| `app/src-tauri/src/commands/workflow/runtime.rs` | Remove workspace dir creation; use `skill_dir` |
+| `app/src-tauri/src/commands/workflow/deploy.rs` | Remove `discover_workspace_skill_dirs`; single-tier `.agents` deploy to `skill_dir` only |
+| `app/src-tauri/src/commands/workflow/output_format.rs` | Remove workspace commit path; operate on `skill_dir` only |
+| `app/src-tauri/src/commands/workflow/tests.rs` | Update all test fixtures and assertions |
+| `app/src-tauri/src/commands/skill/crud.rs` | Create/delete `skill_dir` instead of `workspace_skill_dir` |
+| `app/src-tauri/src/commands/skill/tests.rs` | Update test helpers |
+| `app/src-tauri/src/commands/refine/protocol.rs` | Remove `ensure_skill_workspace_dir`; prompt uses `skill_dir` |
+| `app/src-tauri/src/commands/refine/output.rs` | Snapshot cleanup uses `skill_dir` |
+| `app/src-tauri/src/commands/refine/tests.rs` | Update test helpers |
+| `app/src-tauri/src/commands/imported_skills/lifecycle.rs` | Use `skill_dir` for move/delete |
+| `app/src-tauri/src/cleanup.rs` | All cleanup uses `skill_dir` |
+| `app/src-tauri/src/commands/workspace.rs` | Add migration to delete orphaned `{workspace}/{plugin}/skills/` dirs |
+| `app/src-tauri/src/reconciliation/skill_builder.rs` | Reconstruct `skill_dir` not workspace dir |
+| `app/src-tauri/src/reconciliation/tests.rs` | Update test helpers |
+| `docs/plans/2026-05-10-openhands-runtime-model.md` | This plan file |
+
+---
+
+### Phase 1 — Remove core definitions and config
+
+### Task 12.1: Remove `workspace_skill_dir` from `plugin-paths.json` and `skill_paths.rs`
+
+**Files:**
+- Modify: `app/plugin-paths.json`
+- Modify: `app/src-tauri/src/skill_paths.rs`
+
+- [ ] **Step 1: Remove `workspace_skill_dir` from `plugin-paths.json`**
+
+Read `app/plugin-paths.json` and remove the `workspace_skill_dir` key. The file should contain only:
+
+```json
+{
+  "default_plugin_slug": "default",
+  "skill_dir": "{skills_root}/{plugin_slug}/skills/{skill_name}",
+  "eval_dir": "{skills_root}/{plugin_slug}/evals/{skill_name}",
+  "tag_prefix": "v",
+  "tag_glob":   "v*",
+  "_note": "Three distinct runtime roots exist: {app_data_root} (Tauri app data), {skills_root} (user-configured canonical skill tree), {skill_dir} (per-skill OpenHands working_dir). Never construct paths by hand — use the single authoritative resolver for each root.",
+  "_roots": {
+    "app_data_root": "app_handle.path().app_data_dir() — never user-configured",
+    "skills_root": "resolve_skills_path(&db) → settings.skills_path — unconfigured is an error, never falls back to workspace",
+    "skill_dir": "skill_paths::resolve_skill_dir(skills_root, plugin_slug, skill_name)"
+  },
+  "_examples": {
+    "default_plugin_skill_dir": "C:/users/skill-builder/default/skills/my-skill",
+    "custom_plugin_skill_dir": "C:/users/skill-builder/my-plugin/skills/my-skill"
+  }
+}
+```
+
+- [ ] **Step 2: Remove `workspace_skill_dir` field from `PluginPaths` struct**
+
+In `skill_paths.rs`, remove `pub workspace_skill_dir: String` from the `PluginPaths` struct (line 16).
+
+- [ ] **Step 3: Remove all `workspace_skill_dir` functions**
+
+Delete these functions entirely:
+- `workspace_skill_dir()` (lines 93-103)
+- `resolve_workspace_skill_dir()` (lines 106-112)
+- `workspace_skill_dir_candidates()` (lines 124-134)
+- `resolve_existing_workspace_skill_dir()` (lines 136-145)
+- `workspace_agents_dir()` (lines 148-150)
+- `workspace_agent_files_dir()` (lines 153-155)
+- `workspace_agent_skills_dir()` (lines 158-160)
+
+- [ ] **Step 4: Remove workspace-related tests**
+
+Delete these tests from the `#[cfg(test)]` block:
+- `workspace_skill_dir_includes_skills_subdir` (lines 491-502)
+- `workspace_agent_dirs_are_under_workspace_skill_dir` (lines 516-532)
+- Update `throwaway_runtime_dirs_are_isolated_from_the_skill_tree` (lines 535-556) to remove the `assert_ne!` that references `workspace_skill_dir`
+
+- [ ] **Step 5: Run skill_paths tests**
+
+```bash
+cd app/src-tauri && cargo test skill_paths
+```
+
+Expected: FAIL — callers in other modules still reference removed functions. This is expected; proceed to Phase 2.
+
+---
+
+### Phase 2 — Update all callers
+
+### Task 12.2: Update `commands/workflow/runtime.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+
+- [ ] **Step 1: Remove workspace skill dir creation**
+
+Find the block that creates the workspace skill directory (around lines 605-610):
+
+```rust
+let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
+    Path::new(&workspace_path),
+    DEFAULT_PLUGIN_SLUG,
+    &skill_name,
+);
+std::fs::create_dir_all(&workspace_skill_dir)
+```
+
+Replace with canonical skill dir creation using `skill_dir` from `skills_root`. The `skills_root` is already available in the runtime context. Use `ensure_nested_skill_dir(skills_root, DEFAULT_PLUGIN_SLUG, &skill_name)` instead.
+
+- [ ] **Step 2: Update `ensure_workspace_prompts` call**
+
+If `ensure_workspace_prompts` receives the workspace skill dir, update it to receive `skill_dir` instead. The function should deploy `.agents/` to the canonical skill directory, not a workspace mirror.
+
+---
+
+### Task 12.3: Update `commands/workflow/deploy.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/deploy.rs`
+
+- [ ] **Step 1: Remove `discover_workspace_skill_dirs`**
+
+Delete the `discover_workspace_skill_dirs` function (around line 364). It scans for `{workspace}/{plugin}/skills/{name}/` dirs — this concept no longer exists.
+
+- [ ] **Step 2: Update deploy call sites**
+
+Replace the loop at lines 348-349:
+
+```rust
+for workspace_skill_dir in discover_workspace_skill_dirs(workspace)? {
+    copy_agent_sources_to_openhands_cwd(agents_src, skills_src, &workspace_skill_dir)?;
+}
+```
+
+With a call to `seed_skill_agents_dir` for each skill from the DB. The existing `seed_skill_agents_dir` function (line 504) already handles SHA-gated deployment to the canonical skill directory. If it's not already called at startup, add the call here.
+
+- [ ] **Step 3: Update `deploy_agents_to_workspace` (line 285)**
+
+This function iterates `discover_workspace_skill_dirs`. Replace it with a function that iterates skills from the DB and calls `seed_skill_agents_dir` for each. Rename to `deploy_agents_to_all_skills`.
+
+---
+
+### Task 12.4: Update `commands/workflow/output_format.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/output_format.rs`
+
+- [ ] **Step 1: Remove workspace commit path**
+
+At line 1076, find:
+
+```rust
+let skill_root = crate::skill_paths::workspace_skill_dir(...)
+```
+
+Replace with `resolve_skill_dir(skills_root, ...)` — the canonical skill directory. Remove any dual-path logic that operates on both workspace and skills library dirs. After this change, there is only one directory: `skill_dir`.
+
+---
+
+### Task 12.5: Update `commands/skill/crud.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/skill/crud.rs`
+
+- [ ] **Step 1: Update skill creation**
+
+Replace lines 335-388 where `workspace_skill_dir` is computed and created:
+
+```rust
+let workspace_skill_dir =
+    crate::skill_paths::workspace_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
+```
+
+With:
+
+```rust
+let skill_dir =
+    crate::skill_paths::ensure_nested_skill_dir(skills_root, DEFAULT_PLUGIN_SLUG, name)?;
+```
+
+All subsequent `fs::create_dir_all(&workspace_skill_dir)` calls become unnecessary — `ensure_nested_skill_dir` already creates the directory and its parents.
+
+- [ ] **Step 2: Update skill deletion**
+
+Replace `resolve_existing_workspace_skill_dir` (line 686) with `resolve_existing_skill_dir`. The deletion target is the canonical skill directory, not a workspace mirror.
+
+- [ ] **Step 3: Update test at line 882**
+
+Replace `workspace_skill_dir` assertion with `resolve_skill_dir`.
+
+---
+
+### Task 12.6: Update `commands/refine/protocol.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/protocol.rs`
+
+- [ ] **Step 1: Remove `ensure_skill_workspace_dir`**
+
+Delete the function `ensure_skill_workspace_dir` (lines 10-31). It creates the workspace skill directory — no longer needed.
+
+- [ ] **Step 2: Update `build_refine_prompt_with_output_dir`**
+
+At lines 70-72, replace the `workspace_skill_dir` resolution with `resolve_skill_dir`. The `workspace_str` embedded in the agent prompt should point to the canonical skill directory.
+
+---
+
+### Task 12.7: Update `commands/refine/output.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/output.rs`
+
+- [ ] **Step 1: Update snapshot cleanup paths**
+
+Replace `resolve_workspace_skill_dir` (lines 338, 551) with `resolve_skill_dir`. The `skill-snapshot/` cleanup operates on the canonical skill directory.
+
+---
+
+### Task 12.8: Update `commands/refine/tests.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/refine/tests.rs`
+
+- [ ] **Step 1: Remove `default_workspace_skill_dir` helper**
+
+Delete the helper function at lines 17-18. Replace all call sites with `resolve_skill_dir(skills_root, DEFAULT_PLUGIN_SLUG, skill_name)`.
+
+- [ ] **Step 2: Update test at line 1193**
+
+Replace `default_workspace_skill_dir` with `resolve_skill_dir`.
+
+---
+
+### Task 12.9: Update `commands/imported_skills/lifecycle.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/imported_skills/lifecycle.rs`
+
+- [ ] **Step 1: Update `delete_imported_skill_inner`**
+
+Replace `resolve_workspace_skill_dir` (line 101) with `resolve_existing_skill_dir`. The deletion target is the canonical skill directory.
+
+- [ ] **Step 2: Update `move_skill_directories`**
+
+Replace the source/destination workspace skill dir resolution (lines 200-211) with canonical skill dir resolution. The move operates on `{skills_root}/{plugin_slug}/skills/{skill_name}`.
+
+---
+
+### Task 12.10: Update `cleanup.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/cleanup.rs`
+
+- [ ] **Step 1: Replace all `resolve_existing_workspace_skill_dir` calls**
+
+In `list_step_output_files` (line 46) and `clean_step_output` (line 122), replace `resolve_existing_workspace_skill_dir` with `resolve_existing_skill_dir`. Step outputs live in the canonical skill directory.
+
+- [ ] **Step 2: Update test helpers**
+
+Replace all `resolve_workspace_skill_dir` calls in tests (lines 239, 249, 314, 363, 388, 426, 478, 504, 526, 592) with `resolve_skill_dir`.
+
+---
+
+### Task 12.11: Update `commands/workflow/tests.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+
+- [ ] **Step 1: Update test at lines 919-935**
+
+Replace `workspace_skill_root` with `resolve_skill_dir`.
+
+- [ ] **Step 2: Update test at lines 2705-2790**
+
+Replace `workspace_skill_dir` creation and assertions with `resolve_skill_dir`. The test `test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layout` should verify `.agents/` deployment to the canonical skill directory.
+
+---
+
+### Task 12.12: Update `commands/skill/tests.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/skill/tests.rs`
+
+- [ ] **Step 1: Update `flat_skill()` helper**
+
+Replace the `workspace_skill_dir` wrapper (lines 24-26) with `resolve_skill_dir`.
+
+---
+
+### Task 12.13: Update `reconciliation/skill_builder.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/reconciliation/skill_builder.rs`
+
+- [ ] **Step 1: Update scenario 5 (lines 128-143)**
+
+Replace `create_dir_all` of the workspace dir with `ensure_nested_skill_dir`. The reconciliation reconstructs the canonical skill directory.
+
+---
+
+### Task 12.14: Update `reconciliation/tests.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/reconciliation/tests.rs`
+
+- [ ] **Step 1: Update `create_skill_dir()` helper**
+
+Replace `resolve_workspace_skill_dir` (lines 42-44) with `resolve_skill_dir`.
+
+- [ ] **Step 2: Update `create_step_output()` helper**
+
+Replace `resolve_workspace_skill_dir` for steps 0-2 (lines 49-53) with `resolve_skill_dir`. All step outputs now live in the canonical skill directory.
+
+- [ ] **Step 3: Update test assertions**
+
+Replace all `resolve_workspace_skill_dir` assertions (lines 434-439, 1465, 1821-1826, 2054) with `resolve_skill_dir`.
+
+---
+
+### Task 12.15: Update `agents/openhands_server/types.rs`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/openhands_server/types.rs`
+
+- [ ] **Step 1: Update comment at line 339**
+
+Replace `<workspace_skill_dir>/.agents/skills/<skill-name>/SKILL.md` with `<skill_dir>/.agents/skills/<skill-name>/SKILL.md`.
+
+- [ ] **Step 2: Rename test variables**
+
+In tests at lines 578-606 and 654-664, rename the local variable `workspace_skill_dir` to `skill_dir` for clarity. The tests use `tmp.path()` as the root — no functional change needed.
+
+---
+
+### Phase 2 verification
+
+- [ ] **Step 3: Run full cargo test**
+
+```bash
+cd app/src-tauri && cargo test
+```
+
+Expected: All tests pass. If any compilation errors remain, fix them before proceeding to Phase 3.
+
+- [ ] **Step 4: Run clippy**
+
+```bash
+cd app/src-tauri && cargo clippy -- -D warnings
+```
+
+Expected: Clean.
+
+---
+
+### Phase 3 — Migration and final cleanup
+
+### Task 12.16: Add migration to delete orphaned workspace skill directories
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/workspace.rs`
+
+- [ ] **Step 1: Add migration function**
+
+Add a new function `migrate_delete_workspace_skill_dirs` that runs on app startup after `init_workspace`. It should:
+
+```rust
+/// Delete orphaned workspace skill directories from the old two-tier model.
+/// These were at {workspace}/{plugin_slug}/skills/{skill_name}/ and are no longer used.
+/// The canonical skill directories at {skills_root}/{plugin_slug}/skills/{skill_name}/ are the only source of truth.
+pub fn migrate_delete_workspace_skill_dirs(
+    workspace_path: &Path,
+    db: &rusqlite::Connection,
+) -> Result<(), String> {
+    // Get all skills from the DB to know which workspace dirs to clean
+    let skills = crate::db::get_all_skills(db)?;
+    for skill in skills {
+        let old_workspace_dir = workspace_path
+            .join(&skill.plugin_slug)
+            .join("skills")
+            .join(&skill.name);
+        if old_workspace_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&old_workspace_dir) {
+                log::warn!(
+                    "[migration] failed to delete orphaned workspace dir {}: {}",
+                    old_workspace_dir.display(),
+                    e
+                );
+            } else {
+                log::info!(
+                    "[migration] deleted orphaned workspace dir {}",
+                    old_workspace_dir.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+```
+
+- [ ] **Step 2: Call migration in `init_workspace`**
+
+In `init_workspace`, call `migrate_delete_workspace_skill_dirs` after `migrate_flatten_openhands_dir` (around line 494). Pass the workspace path and DB connection.
+
+---
+
+### Task 12.17: Update design docs
+
+**Files:**
+- Modify: `docs/design/openhands-runtime-model/implementation-gaps.md`
+- Modify: `docs/design/openhands-runtime-model/README.md`
+
+- [ ] **Step 1: Update Gap 12 status**
+
+In `implementation-gaps.md`, update Gap 12 to mark it as resolved. Remove the "Current state" section and update the status.
+
+- [ ] **Step 2: Update Gap 13 status**
+
+In `implementation-gaps.md`, update Gap 13 to reflect that workspace wrapper assumptions are now fully removed.
+
+- [ ] **Step 3: Verify README.md accuracy**
+
+Confirm `README.md`'s "Runtime Roots" section accurately describes the three roots with no mention of `workspace_skill_dir` or `{workspace}`.
+
+---
+
+### Task 12.18: Final verification
+
+- [ ] **Step 1: Grep for remaining references**
+
+```bash
+grep -rn "workspace_skill_dir" app/src-tauri/src/ --include="*.rs" | grep -v "#\[cfg(test)\]"
+```
+
+Expected: Zero results. Any remaining references are bugs.
+
+- [ ] **Step 2: Run full cargo test**
+
+```bash
+cd app/src-tauri && cargo test
+```
+
+Expected: All tests pass.
+
+- [ ] **Step 3: Run clippy**
+
+```bash
+cd app/src-tauri && cargo clippy -- -D warnings
+```
+
+Expected: Clean.
+
+- [ ] **Step 4: Run frontend tests**
+
+```bash
+cd app && npm run test:unit
+```
+
+Expected: All tests pass.
+
+- [ ] **Step 5: Run TypeScript check**
+
+```bash
+cd app && npx tsc --noEmit
+```
+
+Expected: Clean.
+
+- [ ] **Step 6: Run codegen**
+
+```bash
+cd app && npm run codegen
+```
+
+Expected: Succeeds. No `workspaceSkillDir` in generated types.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/plugin-paths.json \
+        app/src-tauri/src/skill_paths.rs \
+        app/src-tauri/src/commands/workflow/runtime.rs \
+        app/src-tauri/src/commands/workflow/deploy.rs \
+        app/src-tauri/src/commands/workflow/output_format.rs \
+        app/src-tauri/src/commands/workflow/tests.rs \
+        app/src-tauri/src/commands/skill/crud.rs \
+        app/src-tauri/src/commands/skill/tests.rs \
+        app/src-tauri/src/commands/refine/protocol.rs \
+        app/src-tauri/src/commands/refine/output.rs \
+        app/src-tauri/src/commands/refine/tests.rs \
+        app/src-tauri/src/commands/imported_skills/lifecycle.rs \
+        app/src-tauri/src/cleanup.rs \
+        app/src-tauri/src/commands/workspace.rs \
+        app/src-tauri/src/reconciliation/skill_builder.rs \
+        app/src-tauri/src/reconciliation/tests.rs \
+        app/src-tauri/src/agents/openhands_server/types.rs \
+        docs/design/openhands-runtime-model/implementation-gaps.md \
+        docs/design/openhands-runtime-model/README.md
+git commit -m "refactor: remove workspace_skill_dir entirely; canonical skill_dir is the only skill directory concept (Gap 12 final)"
+```
+
+---
+
+### Task 12.19: Manual smoke tests
+
+**Prerequisite:** All tasks 12.1–12.18 must be landed and the app compiled in dev mode (`cd app && npm run dev`).
+
+#### Smoke 1 — Cold launch: no workspace skill dirs created
+
+- [ ] Launch the app fresh.
+- [ ] Create a new skill via the UI.
+- [ ] **Pass:** `{skills_root}/default/skills/{new-skill}/` exists with `SKILL.md` and `.agents/`. **Fail:** any directory appears under `{workspace}/default/skills/`.
+
+#### Smoke 2 — Migration deletes old workspace dirs
+
+- [ ] Before launching, create a fake old workspace dir: `mkdir -p {workspace}/default/skills/orphan-skill && touch {workspace}/default/skills/orphan-skill/SKILL.md`
+- [ ] Launch the app.
+- [ ] **Pass:** `{workspace}/default/skills/orphan-skill/` is gone. Log shows `[migration] deleted orphaned workspace dir`.
+
+#### Smoke 3 — Workflow runs against canonical skill dir
+
+- [ ] Open a skill, run workflow step 0.
+- [ ] **Pass:** Agent completes successfully. Output files appear in `{skills_root}/{plugin}/skills/{skill}/`. **Fail:** errors about missing directories or wrong paths.
+
+#### Smoke 4 — Refine flow
+
+- [ ] Complete a workflow step, trigger Refine.
+- [ ] **Pass:** Refine completes. No errors about missing workspace dirs.
+
+#### Smoke 5 — Skill deletion
+
+- [ ] Delete a skill via the UI.
+- [ ] **Pass:** `{skills_root}/{plugin}/skills/{skill}/` is gone. No error toast.
+
+#### Smoke 6 — Imported skill move
+
+- [ ] If applicable, test moving an imported skill between plugins.
+- [ ] **Pass:** Skill directory moves correctly under `{skills_root}`. No errors.
+
+---
+
 ## PR Execution Order
 
-Execute PRs sequentially in order 1→11. Each PR must pass all automated tests and manual smoke before proceeding to the next.
+Execute PRs sequentially in order 1→12. Each PR must pass all automated tests and manual smoke before proceeding to the next.
 
 | PR | Gap | Automated Tests | Manual Smoke |
 |---|---|---|---|
@@ -2830,3 +3377,4 @@ Execute PRs sequentially in order 1→11. Each PR must pass all automated tests 
 | 9 | Remove `workflow_session_id` from contracts | `npm run codegen`, `cargo test contracts::`, `tsc --noEmit` | None |
 | 10 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
 | 11 | Backend lease enforcement + advisory UI polling | `cargo test commands::skill_session`, `cargo test commands::refine`, `npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/components/app-layout.test.tsx src/__tests__/components/skill-list-panel.test.tsx`, `git diff --check` | Two instances: lock in A, B menu disables within a few seconds, backend rejects forced selection before OpenHands restore |
+| 12 | Remove `workspace_skill_dir` entirely | `cargo test`, `npm run test:unit`, `npm run codegen`, `tsc --noEmit`, clippy | Create skill → no workspace dir created; workflow runs against canonical skill dir; refine works; migration deletes old workspace dirs |

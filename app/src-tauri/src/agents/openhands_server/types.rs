@@ -336,7 +336,7 @@ fn openhands_litellm_model(model: &str, base_url: Option<&str>) -> String {
 
 /// Discover deployed AgentSkills under the conversation working directory.
 ///
-/// Looks at `<workspace_skill_dir>/.agents/skills/<skill-name>/SKILL.md`,
+/// Looks at `<skill_dir>/.agents/skills/<skill-name>/SKILL.md`,
 /// the canonical location our deploy step writes to. Each match becomes an
 /// `OpenHandsSkill` with `is_agentskills_format: true` so the SDK lists it in
 /// `<available_skills>` (progressive disclosure) and `Agent._initialize`
@@ -575,8 +575,8 @@ mod skill_discovery_tests {
     #[test]
     fn discovers_agentskills_from_dot_agents_skills_layout() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let workspace_skill_dir = tmp.path();
-        let skills_root = workspace_skill_dir.join(".agents").join("skills");
+        let skill_dir = tmp.path();
+        let skills_root = skill_dir.join(".agents").join("skills");
         let skill_dir = skills_root.join("researching-skill-requirements");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(
@@ -603,7 +603,7 @@ mod skill_discovery_tests {
         fs::create_dir_all(skills_root.join("shared")).unwrap();
         fs::write(skills_root.join("shared").join("schemas.md"), "not a skill").unwrap();
 
-        let skills = discover_agentskills(workspace_skill_dir);
+        let skills = discover_agentskills(tmp.path());
 
         let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(
@@ -651,8 +651,8 @@ mod skill_discovery_tests {
     #[test]
     fn missing_frontmatter_name_falls_back_to_folder_name() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let workspace_skill_dir = tmp.path();
-        let skills_root = workspace_skill_dir.join(".agents").join("skills");
+        let skill_dir = tmp.path();
+        let skills_root = skill_dir.join(".agents").join("skills");
         let skill_dir = skills_root.join("fallback-name-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(
@@ -661,7 +661,7 @@ mod skill_discovery_tests {
         )
         .unwrap();
 
-        let skills = discover_agentskills(workspace_skill_dir);
+        let skills = discover_agentskills(tmp.path());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "fallback-name-skill");

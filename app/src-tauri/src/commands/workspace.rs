@@ -68,6 +68,38 @@ fn migrate_flatten_openhands_dir(app_data_root: &Path) {
     }
 }
 
+/// Delete orphaned workspace skill directories from the old two-tier model.
+/// These were at `{workspace}/{plugin_slug}/skills/{skill_name}/` and are no longer used.
+/// The canonical skill directories at `{skills_root}/{plugin_slug}/skills/{skill_name}/` are the only source of truth.
+fn migrate_delete_workspace_skill_dirs(workspace_path: &Path, db: &tauri::State<'_, Db>) {
+    let Ok(conn) = db.0.lock() else {
+        return;
+    };
+    let Ok(skills) = crate::db::list_all_skills(&conn) else {
+        return;
+    };
+    for skill in skills {
+        let old_workspace_dir = workspace_path
+            .join(&skill.plugin_slug)
+            .join("skills")
+            .join(&skill.name);
+        if old_workspace_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&old_workspace_dir) {
+                log::warn!(
+                    "[migration] failed to delete orphaned workspace dir {}: {}",
+                    old_workspace_dir.display(),
+                    e
+                );
+            } else {
+                log::info!(
+                    "[migration] deleted orphaned workspace dir {}",
+                    old_workspace_dir.display()
+                );
+            }
+        }
+    }
+}
+
 /// Iterate over immediate subdirectories of `dir`, skipping hidden (dotfile)
 /// entries. Returns an empty iterator if `dir` cannot be read.
 fn non_hidden_subdirs(dir: &Path) -> impl Iterator<Item = std::path::PathBuf> {
@@ -512,6 +544,9 @@ pub fn init_workspace(
 
     // One-time: flatten app-local storage from workspace/.openhands/ to openhands/
     migrate_flatten_openhands_dir(data_dir);
+
+    // One-time: delete orphaned workspace skill directories from the old two-tier model.
+    migrate_delete_workspace_skill_dirs(Path::new(&workspace_path), db);
 
     // Purge stale bundled workspace mirrors then seed current ones (filesystem-only, no DB).
     {

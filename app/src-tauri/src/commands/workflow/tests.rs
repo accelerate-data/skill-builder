@@ -916,14 +916,14 @@ mod backend_materialization {
         .unwrap();
         let db = crate::db::Db(std::sync::Mutex::new(conn));
 
-        let workspace_skill_root = crate::skill_paths::workspace_skill_dir(
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
             workspace_tmp.path(),
             DEFAULT_PLUGIN_SLUG,
             "rt-step3-materialization",
         );
-        std::fs::create_dir_all(workspace_skill_root.join("skill")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("skill")).unwrap();
         std::fs::write(
-            workspace_skill_root.join("skill").join("SKILL.md"),
+            skill_dir.join("skill").join("SKILL.md"),
             r#"---
 name: measuring-pipeline-value
 description: Use when measuring weighted pipeline value.
@@ -2178,18 +2178,18 @@ fn test_materialize_step3_generate_rejects_missing_required_trace_entry() {
 fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     let workspace = tempfile::tempdir().unwrap();
     let skills = tempfile::tempdir().unwrap();
-    let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
-    let generated_refs = workspace_skill_root.join("skill").join("references");
+    let skill_dir = workspace.path().join("skills").join("tagged-skill");
+    let generated_refs = skill_dir.join("skill").join("references");
     std::fs::create_dir_all(&generated_refs).unwrap();
     std::fs::write(
-        workspace_skill_root.join("skill").join("SKILL.md"),
+        skill_dir.join("skill").join("SKILL.md"),
         "---\nname: tagged-skill\n---\n# Tagged Skill\n",
     )
     .unwrap();
     std::fs::write(generated_refs.join("terms.md"), "# Terms\n").unwrap();
 
     publish_commit_and_tag_generated_skill(
-        &workspace_skill_root,
+        &skill_dir,
         skills.path(),
         "skills",
         "tagged-skill",
@@ -2207,8 +2207,8 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
 fn publish_commit_and_tag_generated_skill_accepts_skill_without_metadata_version() {
     let workspace = tempfile::tempdir().unwrap();
     let skills = tempfile::tempdir().unwrap();
-    let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
-    let generated_dir = workspace_skill_root.join("skill");
+    let skill_dir = workspace.path().join("skills").join("tagged-skill");
+    let generated_dir = skill_dir.join("skill");
     std::fs::create_dir_all(&generated_dir).unwrap();
     std::fs::write(
         generated_dir.join("SKILL.md"),
@@ -2217,7 +2217,7 @@ fn publish_commit_and_tag_generated_skill_accepts_skill_without_metadata_version
     .unwrap();
 
     publish_commit_and_tag_generated_skill(
-        &workspace_skill_root,
+        &skill_dir,
         skills.path(),
         "skills",
         "tagged-skill",
@@ -2229,8 +2229,8 @@ fn publish_commit_and_tag_generated_skill_accepts_skill_without_metadata_version
 fn publish_commit_and_tag_generated_skill_accepts_non_initial_metadata_version_in_frontmatter() {
     let workspace = tempfile::tempdir().unwrap();
     let skills = tempfile::tempdir().unwrap();
-    let workspace_skill_root = workspace.path().join("skills").join("tagged-skill");
-    let generated_dir = workspace_skill_root.join("skill");
+    let skill_dir = workspace.path().join("skills").join("tagged-skill");
+    let generated_dir = skill_dir.join("skill");
     std::fs::create_dir_all(&generated_dir).unwrap();
     std::fs::write(
         generated_dir.join("SKILL.md"),
@@ -2239,7 +2239,7 @@ fn publish_commit_and_tag_generated_skill_accepts_non_initial_metadata_version_i
     .unwrap();
 
     publish_commit_and_tag_generated_skill(
-        &workspace_skill_root,
+        &skill_dir,
         skills.path(),
         "skills",
         "tagged-skill",
@@ -2265,8 +2265,8 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
     crate::git::commit_all(&published_dir, "existing").unwrap();
     crate::git::create_skill_version_tag(&published_dir, plugin_slug, skill_name, "1.0.0").unwrap();
 
-    let workspace_skill_root = workspace.path().join("skills").join(skill_name);
-    let generated_dir = workspace_skill_root.join("skill");
+    let skill_dir = workspace.path().join("skills").join(skill_name);
+    let generated_dir = skill_dir.join("skill");
     std::fs::create_dir_all(&generated_dir).unwrap();
     std::fs::write(
         generated_dir.join("SKILL.md"),
@@ -2275,7 +2275,7 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
     .unwrap();
 
     let err = publish_commit_and_tag_generated_skill(
-        &workspace_skill_root,
+        &skill_dir,
         skills.path(),
         plugin_slug,
         skill_name,
@@ -2298,11 +2298,11 @@ fn step3_reset_and_rerun_does_not_collide_on_version_tag() {
     let skills = tempfile::tempdir().unwrap();
     let plugin = "skills";
     let skill_name = "my-skill";
-    let workspace_skill_root = workspace.path().join(plugin).join(skill_name);
+    let workspace_skill_path = workspace.path().join(plugin).join(skill_name);
     let skill_dir = crate::skill_paths::resolve_skill_dir(skills.path(), plugin, skill_name);
 
     let write_generated = |content: &str| {
-        let generated_dir = workspace_skill_root.join("skill");
+        let generated_dir = workspace_skill_path.join("skill");
         std::fs::create_dir_all(&generated_dir).unwrap();
         std::fs::write(
             generated_dir.join("SKILL.md"),
@@ -2314,7 +2314,7 @@ fn step3_reset_and_rerun_does_not_collide_on_version_tag() {
     // Step 3 completes for the first time.
     write_generated("# v1");
     publish_commit_and_tag_generated_skill(
-        &workspace_skill_root,
+        &workspace_skill_path,
         skills.path(),
         plugin,
         skill_name,
@@ -2336,7 +2336,7 @@ fn step3_reset_and_rerun_does_not_collide_on_version_tag() {
     // Step 3 re-runs and produces new output.
     write_generated("# v1 regenerated");
     publish_commit_and_tag_generated_skill(
-        &workspace_skill_root,
+        &workspace_skill_path,
         skills.path(),
         plugin,
         skill_name,
@@ -2702,12 +2702,6 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
     let workspace_agents_src = tempfile::tempdir().unwrap();
     let workspace_skills_src = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
-    let workspace_skill_dir = crate::skill_paths::workspace_skill_dir(
-        workspace.path(),
-        DEFAULT_PLUGIN_SLUG,
-        "test-skill",
-    );
-    std::fs::create_dir_all(&workspace_skill_dir).unwrap();
 
     std::fs::write(
         workspace_agents_src.path().join("skill-creator.md"),
@@ -2753,28 +2747,20 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
     )
     .unwrap();
 
-    assert!(workspace_skill_dir
-        .join(".agents/agents/skill-creator.md")
-        .is_file());
-    assert!(workspace_skill_dir
-        .join(".agents/agents/skill-verifier.md")
-        .is_file());
-    assert!(!workspace_skill_dir
-        .join(".agents/agents/README.txt")
-        .exists());
-    assert!(workspace_skill_dir
-        .join(".agents/skills/researching-skill-requirements/SKILL.md")
-        .is_file());
-    assert!(!workspace_skill_dir
-        .join(".agents/skills/answer-evaluator/SKILL.md")
-        .exists());
-    assert!(workspace_skill_dir
-        .join(".agents/skills/creating-skills/SKILL.md")
-        .is_file());
+    // Agents deployed to workspace root .agents/
     assert!(workspace
         .path()
         .join(".agents/agents/skill-creator.md")
         .is_file());
+    assert!(workspace
+        .path()
+        .join(".agents/agents/skill-verifier.md")
+        .is_file());
+    assert!(!workspace
+        .path()
+        .join(".agents/agents/README.txt")
+        .exists());
+    // Skills deployed to workspace root .agents/skills/
     assert!(workspace
         .path()
         .join(".agents/skills/researching-skill-requirements/SKILL.md")
@@ -2787,7 +2773,6 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
         .path()
         .join(".agents/skills/creating-skills/SKILL.md")
         .is_file());
-    assert!(!workspace_skill_dir.join("CLAUDE.md").exists());
     assert!(!workspace.path().join("CLAUDE.md").exists());
     super::deploy::invalidate_workspace_cache(workspace_str);
 }

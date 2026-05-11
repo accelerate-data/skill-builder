@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
-use crate::skill_paths::{resolve_skill_dir, resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::{RefineDiff, RefineFileDiff, RefineFinalizeResult, SkillFileContent};
 
 use super::content::get_skill_content_inner_for_plugin;
@@ -63,8 +63,8 @@ fn build_mock_refine_diff(
 ///
 /// Called after benchmark/rewrite finalization and on error/cancellation to
 /// prevent stale snapshots from accumulating on disk.
-pub(crate) fn cleanup_skill_snapshot(workspace_skill_root: &Path) {
-    let snapshot_dir = workspace_skill_root.join("skill-snapshot");
+pub(crate) fn cleanup_skill_snapshot(skill_root: &Path) {
+    let snapshot_dir = skill_root.join("skill-snapshot");
     if snapshot_dir.exists() {
         if let Err(e) = std::fs::remove_dir_all(&snapshot_dir) {
             log::warn!(
@@ -334,8 +334,8 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let workspace_skill_root =
-        resolve_workspace_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let workspace_root =
+        resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_root.exists() {
         return Err(format!(
             "Skill '{}' not found at {}",
@@ -345,7 +345,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     }
 
     // Clean up any stale skill snapshot left by a prior rewrite→benchmark cycle
-    cleanup_skill_snapshot(&workspace_skill_root);
+    cleanup_skill_snapshot(&workspace_root);
 
     // Read HEAD for the commit SHA. The rewrite agent is instructed to commit,
     // but finalize also commits scoped skill changes if the agent only edited files.
@@ -547,9 +547,9 @@ pub fn clean_benchmark_snapshot(
         plugin_slug
     );
     validate_skill_name(&skill_name)?;
-    let workspace_skill_root =
-        resolve_workspace_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
-    cleanup_skill_snapshot(&workspace_skill_root);
+    let workspace_root =
+        resolve_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
+    cleanup_skill_snapshot(&workspace_root);
     Ok(())
 }
 

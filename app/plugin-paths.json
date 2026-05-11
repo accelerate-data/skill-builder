@@ -2,7 +2,6 @@
   "default_plugin_slug": "default",
   "skill_dir": "{skills_root}/{plugin_slug}/skills/{skill_name}",
   "eval_dir": "{skills_root}/{plugin_slug}/evals/{skill_name}",
-  "workspace_skill_dir": "{workspace}/{plugin_slug}/skills/{skill_name}",
   "tag_prefix": "v",
   "tag_glob":   "v*",
   "_note": "Three distinct runtime roots exist: {app_data_root} (Tauri app data), {skills_root} (user-configured canonical skill tree), {skill_dir} (per-skill OpenHands working_dir). Never construct paths by hand — use the single authoritative resolver for each root.",
@@ -13,7 +12,6 @@
   },
   "_examples": {
     "default_plugin_skill_dir": "C:/users/skill-builder/default/skills/my-skill",
-    "custom_plugin_skill_dir": "C:/users/skill-builder/my-plugin/skills/my-skill",
-    "workspace_skill_dir_example": "C:/AppData/workspace/default/skills/my-skill"
+    "custom_plugin_skill_dir": "C:/users/skill-builder/my-plugin/skills/my-skill"
   }
 }

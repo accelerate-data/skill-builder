@@ -30,9 +30,9 @@ function resolveTemplate(template: string, vars: Record<string, string>): string
   return result;
 }
 
-export function workspaceSkillDir(workspacePath: string, pluginSlug: string, skillName: string): string {
-  return resolveTemplate(pluginPaths.workspace_skill_dir, {
-    workspace: workspacePath,
+export function skillDir(skillsRoot: string, pluginSlug: string, skillName: string): string {
+  return resolveTemplate(pluginPaths.skill_dir, {
+    skills_root: skillsRoot,
     plugin_slug: pluginSlug,
     skill_name: skillName,
   });

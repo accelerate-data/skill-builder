@@ -291,60 +291,14 @@ work against it unless the branch regresses.
 
 ## Gap 12 — Runtime CWD still points at `workspaceSkillDir` instead of the canonical skill directory
 
-**Target:** Every skill-scoped OpenHands conversation, persistent or
-throwaway, sets `workspace.working_dir` to the canonical skill directory:
+**Status: RESOLVED** (PR 12)
 
-`{skills_root}/{plugin_slug}/skills/{skill_name}`
-
-The prompt target, file viewer, `.agents` discovery root, and actual OpenHands
-working directory are the same directory. `workspaceSkillDir` is removed from
-the runtime contract.
-
-**Current state:**
-
-- `SkillCreatorConfigParams` still derives `workspace_run_dir` from
-  `workspace_skill_dir(...)`.
-- `OpenHandsRuntimeConfig`, `OpenHandsRuntimeRequest`, and related logging/tests
-  still carry `workspace_skill_dir`.
-- refine prompts and file viewers already target the canonical skill directory,
-  so the current model is internally inconsistent: the agent is told to edit one
-  tree while the runtime CWD points at another.
-- throwaway/session bootstrap helpers still assume a separate runtime working
-  directory abstraction rather than the canonical skill path.
-
-**Fix:** Replace `workspaceSkillDir` with canonical skill-dir semantics across
-`agents/runtime_config.rs`, `agents/skill_creator.rs`,
-`agents/openhands_server/types.rs`, `commands/skill_session.rs`,
-`commands/refine/*`, and all tests/fixtures that assert the old field or path
-shape. The runtime should create the canonical skill directory up front when it
-does not exist yet and then use that path as `workspace.working_dir`.
+The `workspace_skill_dir` concept has been eliminated entirely. The only skill directory concept is the canonical `skill_dir` (`{skills_root}/{plugin_slug}/skills/{skill_name}`). OpenHands uses `skill_dir` directly as `workspace.working_dir`.
 
 ---
 
 ## Gap 13 — App storage still has a `workspace/` wrapper and deployment still mirrors `.agents` into runtime scratch dirs
 
-**Target:** The app-local data root is flat:
+**Status: RESOLVED** (PR 12)
 
-- `{app_data_root}/openhands/`
-- `{app_data_root}/skill-builder.db`
-- `{app_data_root}/documents/`
-
-There is no `{app_data_root}/workspace/` wrapper. `.agents` is managed only in
-the canonical skill directory because that is the OpenHands working directory.
-
-**Current state:**
-
-- `commands/workspace.rs` still resolves app storage through a `workspace/`
-  subdirectory and cleanup comments still describe that tree as runtime scratch.
-- repo docs and metadata still describe the old workspace wrapper layout.
-- deploy/setup paths still support a two-tier `.agents` model with a shared
-  workspace mirror plus per-skill runtime copies, even though the target runtime
-  should read `.agents` directly from the canonical skill directory.
-- reset/finalize helpers still reference legacy workspace-scratch paths such as
-  `workspaceSkillDir` and `skill-snapshot` cleanup rooted under the app-local
-  workspace tree.
-
-**Fix:** Flatten app-data-root path resolution in `commands/workspace.rs` and
-all callers, update deploy/setup flows to place runtime `.agents` only in the
-canonical skill directory, and remove legacy workspace-wrapper assumptions from
-docs, tests, and cleanup code.
+The app-local data root is flat. There is no `{app_data_root}/workspace/` wrapper. `.agents` is managed only in the canonical skill directory. A startup migration (`migrate_delete_workspace_skill_dirs`) cleans up orphaned workspace skill directories from the old two-tier model.

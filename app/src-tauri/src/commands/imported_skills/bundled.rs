@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::frontmatter::parse_frontmatter_full;
 use super::helpers::copy_dir_recursive;
-use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+    use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 
 const WORKFLOW_INTERNAL_SKILLS: &[&str] = &["research"];
 const BUNDLED_WORKSPACE_MARKER: &str = ".skill-builder-bundled";
@@ -171,7 +171,7 @@ pub(crate) fn seed_bundled_skills(
         }
 
         // Copy directory to the canonical workspace skill location.
-        let dest_dir = resolve_workspace_skill_dir(
+        let dest_dir = resolve_skill_dir(
             Path::new(workspace_path),
             DEFAULT_PLUGIN_SLUG,
             &skill_name,
@@ -208,7 +208,7 @@ pub(crate) fn seed_bundled_skills(
 #[cfg(test)]
 mod tests {
     use super::{purge_stale_bundled_skills, seed_bundled_skills, BUNDLED_WORKSPACE_MARKER};
-    use crate::skill_paths::{resolve_workspace_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 
     #[test]
     fn seed_bundled_skills_uses_canonical_workspace_layout() {
@@ -225,7 +225,7 @@ mod tests {
         seed_bundled_skills(workspace.path().to_str().unwrap(), bundled.path()).unwrap();
 
         assert!(
-            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "demo-skill")
+            resolve_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "demo-skill")
                 .join("SKILL.md")
                 .is_file()
         );
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn purge_stale_bundled_skills_removes_canonical_workspace_skill_dirs() {
+    fn purge_stale_bundled_skills_removes_canonical_skill_dirs() {
         let workspace = tempfile::tempdir().unwrap();
         let bundled = tempfile::tempdir().unwrap();
         let kept_bundle_dir = bundled.path().join("kept-skill");
@@ -251,7 +251,7 @@ mod tests {
         .unwrap();
 
         let kept_workspace_dir =
-            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "kept-skill");
+            resolve_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "kept-skill");
         std::fs::create_dir_all(&kept_workspace_dir).unwrap();
         std::fs::write(
             kept_workspace_dir.join("SKILL.md"),
@@ -260,7 +260,7 @@ mod tests {
         .unwrap();
 
         let stale_workspace_dir =
-            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "stale-skill");
+            resolve_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "stale-skill");
         std::fs::create_dir_all(&stale_workspace_dir).unwrap();
         std::fs::write(
             stale_workspace_dir.join("SKILL.md"),
@@ -287,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn purge_stale_bundled_skills_preserves_custom_workspace_skill_dirs() {
+    fn purge_stale_bundled_skills_preserves_custom_skill_dirs() {
         let workspace = tempfile::tempdir().unwrap();
         let bundled = tempfile::tempdir().unwrap();
         let bundled_skill_dir = bundled.path().join("kept-skill");
@@ -299,7 +299,7 @@ mod tests {
         .unwrap();
 
         let custom_workspace_dir =
-            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "custom-skill");
+            resolve_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "custom-skill");
         std::fs::create_dir_all(&custom_workspace_dir).unwrap();
         std::fs::write(
             custom_workspace_dir.join("SKILL.md"),
@@ -336,7 +336,7 @@ mod tests {
         .unwrap();
 
         let stale_workspace_dir =
-            resolve_workspace_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "old-bundled-skill");
+            resolve_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "old-bundled-skill");
         std::fs::create_dir_all(&stale_workspace_dir).unwrap();
         std::fs::write(
             stale_workspace_dir.join("SKILL.md"),

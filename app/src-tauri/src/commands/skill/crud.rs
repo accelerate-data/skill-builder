@@ -2,7 +2,7 @@ use crate::commands::skill_session::SkillSessionManager;
 use crate::commands::workflow::runtime::WorkflowStepRunManager;
 use crate::db::Db;
 use crate::skill_paths::{
-    ensure_nested_skill_dir, resolve_existing_skill_dir, resolve_existing_workspace_skill_dir,
+    ensure_nested_skill_dir, resolve_existing_skill_dir,
     skill_library_key, DEFAULT_PLUGIN_SLUG,
 };
 use crate::types::SkillSummary;
@@ -322,75 +322,43 @@ pub(crate) fn create_skill_filesystem_inner(
 }
 
 fn create_skill_filesystem_inner_with_policy(
-    workspace_path: &str,
+    _workspace_path: &str,
     name: &str,
     skills_path: Option<&str>,
     overwrite_orphaned: bool,
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)
         .map_err(|_| "Invalid skill path: path traversal not allowed".to_string())?;
-    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
-    // New skills are always created in the default plugin.
-    let workspace_root = Path::new(workspace_path);
-    let workspace_skill_dir =
-        crate::skill_paths::workspace_skill_dir(workspace_root, DEFAULT_PLUGIN_SLUG, name);
-    if workspace_skill_dir.exists() {
-        if overwrite_orphaned {
-            fs::remove_dir_all(&workspace_skill_dir).map_err(|e| {
-                format!(
-                    "Failed to remove stale workspace directory for '{}': {}",
-                    name, e
-                )
-            })?;
-            log::warn!(
-                "[create_skill] removed stale workspace dir before recreate skill={} path={}",
-                name,
-                workspace_skill_dir.display()
-            );
-        } else {
-            return Err(format!(
-                "Skill '{}' already exists in workspace directory ({})",
-                name,
-                workspace_skill_dir.display()
-            ));
-        }
-    }
 
-    // Check for collision in skills_path (skill output directory).
-    // Skills library IS organized by plugin (default plugin: skills/{name}).
+    // Check for collision in skills_path (canonical skill directory).
     if let Some(sp) = skills_path {
-        let skill_output =
+        let skill_dir =
             crate::skill_paths::resolve_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name);
-        if skill_output.exists() {
+        if skill_dir.exists() {
             if overwrite_orphaned {
-                fs::remove_dir_all(&skill_output).map_err(|e| {
+                fs::remove_dir_all(&skill_dir).map_err(|e| {
                     format!(
-                        "Failed to remove stale skills output directory for '{}': {}",
+                        "Failed to remove stale skills directory for '{}': {}",
                         name, e
                     )
                 })?;
                 log::warn!(
-                    "[create_skill] removed stale output dir before recreate skill={} path={}",
+                    "[create_skill] removed stale dir before recreate skill={} path={}",
                     name,
-                    skill_output.display()
+                    skill_dir.display()
                 );
             } else {
                 return Err(format!(
-                    "Skill '{}' already exists in skills output directory ({})",
+                    "Skill '{}' already exists in skills directory ({})",
                     name,
-                    skill_output.display()
+                    skill_dir.display()
                 ));
             }
         }
-    }
 
-    // Create plugin-organised workspace dir.
-    fs::create_dir_all(&workspace_skill_dir).map_err(|e| e.to_string())?;
-
-    if let Some(sp) = skills_path {
-        // Skill output (SKILL.md, references/) lives in skills_path, plugin-organised.
-        let skill_output = ensure_nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name)?;
-        fs::create_dir_all(skill_output.join("references")).map_err(|e| e.to_string())?;
+        // Create canonical skill dir and references subdir.
+        let skill_dir = ensure_nested_skill_dir(Path::new(sp), DEFAULT_PLUGIN_SLUG, name)?;
+        fs::create_dir_all(skill_dir.join("references")).map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -683,7 +651,7 @@ pub(crate) fn delete_skill_filesystem_inner(
     super::super::imported_skills::validate_skill_name(name)
         .map_err(|_| "Invalid skill path: path traversal not allowed".to_string())?;
 
-    let base = resolve_existing_workspace_skill_dir(Path::new(workspace_path), plugin_slug, name);
+    let base = resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, name);
 
     // Delete workspace working directory if it exists
     if base.exists() {
@@ -873,19 +841,25 @@ mod tests {
 
     #[test]
     fn create_skill_filesystem_inner_does_not_create_context_subdir() {
-        let workspace = tempfile::tempdir().unwrap();
-        let workspace_str = workspace.path().to_str().unwrap();
+        let skills = tempfile::tempdir().unwrap();
+        let skills_str = skills.path().to_str().unwrap();
 
-        // No skills_path provided — only workspace dir is created.
-        create_skill_filesystem_inner(workspace_str, "my-new-skill", None).unwrap();
+        // Skills dir is created via ensure_nested_skill_dir.
+        create_skill_filesystem_inner_with_policy(
+            "/tmp/unused-workspace",
+            "my-new-skill",
+            Some(skills_str),
+            false,
+        )
+        .unwrap();
 
-        let skill_dir = crate::skill_paths::workspace_skill_dir(
-            workspace.path(),
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
+            skills.path(),
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             "my-new-skill",
         );
 
-        assert!(skill_dir.is_dir(), "workspace skill dir should be created");
+        assert!(skill_dir.is_dir(), "skill dir should be created");
         assert!(
             !skill_dir.join("context").exists(),
             "context/ subdir must NOT be created"
