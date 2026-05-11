@@ -171,6 +171,10 @@ bootstrap. If the backend cannot acquire or verify the skill lease for the
 requesting app instance, it must fail the product command before attempting
 conversation lookup, resume, creation, or message dispatch.
 
+If any step fails after the lease is acquired, the backend releases the lock
+before returning the error. This prevents skills from remaining permanently
+locked due to transient failures (disk errors, permission issues, etc.).
+
 The runtime is app-scoped: `OH_CONVERSATIONS_PATH` points at `{app_data_root}/openhands/conversations/` and `OH_BASH_EVENTS_DIR` points at `{app_data_root}/openhands/bash_events/`. Both are fixed for the lifetime of the app data root and do not change between skill switches. The cached Agent Server is reused across skill switches; it only restarts on process crash or failed health probe. Skill-specific file access is provided by `workspace.working_dir` in each conversation's `POST /api/conversations` body, and that working dir is always `skill_dir` — `{skills_root}/{plugin_slug}/skills/{skill_name}`. The DB is the durable source of truth for the saved `conversation_id`.
 
 See [optimistic-session-activation.md](optimistic-session-activation.md) for the async optimization of this sequence.
@@ -179,16 +183,15 @@ See [optimistic-session-activation.md](optimistic-session-activation.md) for the
 
 Every UI path that leaves the current skill uses the same shared leave sequence:
 
-1. pause the current persistent conversation (`pause_openhands_session`)
-2. release the current skill lock
-3. clear app-level UI state
+1. pause the current persistent conversation and release the skill lock (`pause_openhands_session` with `skill_id`)
+2. clear app-level UI state
 
 The server stays alive after leave. The next skill's bootstrap calls `ensure_skill_session`, which reuses the running server against the same app-scoped `openhands/` storage.
 
 Failure policy:
 
 - if pause fails, the current skill stays visible and the next skill does not bootstrap
-- if lock release fails, the current skill stays visible and the next skill does not bootstrap
+- lock release is performed by the backend as part of the pause command; if it fails, the current skill stays visible and the next skill does not bootstrap
 
 ## Lease Ownership Contract
 

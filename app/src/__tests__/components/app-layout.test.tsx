@@ -823,7 +823,6 @@ describe("AppLayout", () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
         skillId: 1,
-        workspacePath: "/home/user/workspace",
       });
     });
 
@@ -1003,29 +1002,16 @@ describe("AppLayout", () => {
           pluginSlug: "skills",
           conversationId: "conv-current",
           agentId: null,
+          skillId: 1,
         },
-      });
-    });
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("release_lock", {
-        skillId: 1,
       });
     });
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
         skillId: 2,
-        workspacePath: "/home/user/workspace",
       });
     });
-
-    expect(commandOrder.indexOf("pause_openhands_session")).toBeLessThan(
-      commandOrder.indexOf("release_lock"),
-    );
-    expect(commandOrder.indexOf("release_lock")).toBeLessThan(
-      commandOrder.indexOf("select_skill_openhands_session"),
-    );
   });
 
   it("does not bootstrap the next skill when pause fails", async () => {
@@ -1117,7 +1103,6 @@ describe("AppLayout", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(mockInvoke).not.toHaveBeenCalledWith("select_skill_openhands_session", {
       skillId: 2,
-      workspacePath: "/home/user/workspace",
     });
   });
 
@@ -1386,7 +1371,6 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
           skillId: 1,
-          workspacePath: "/home/user/workspace",
         });
       });
       await waitFor(() => {
@@ -1406,7 +1390,6 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
           skillId: 1,
-          workspacePath: "/home/user/workspace",
         });
       });
       await waitFor(() => {

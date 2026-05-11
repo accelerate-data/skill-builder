@@ -1,7 +1,6 @@
 import { hydrateSelectedSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import {
   pauseOpenHandsSession,
-  releaseLock,
   selectSkillOpenHandsSession,
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
@@ -69,13 +68,8 @@ export async function leaveCurrentSkill(
       session.pluginSlug,
       session.conversationId,
       session.agentId,
+      session.skillId,
     );
-  }
-
-  if (session) {
-    if (session.skillId != null) {
-      await releaseLock(session.skillId);
-    }
   }
 
   clearActiveSkillUiState();
@@ -83,11 +77,10 @@ export async function leaveCurrentSkill(
 
 export async function enterSkill(
   skill: EditableSkill,
-  workspacePath: string,
 ): Promise<void> {
   if (skill.id == null) {
     throw new Error(`Missing DB skill ID for '${skill.name}'`);
   }
-  const session = await selectSkillOpenHandsSession(skill.id, workspacePath);
+  const session = await selectSkillOpenHandsSession(skill.id);
   hydrateSelectedSkillOpenHandsSession(skill, session);
 }

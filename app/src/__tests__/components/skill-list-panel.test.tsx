@@ -504,15 +504,15 @@ describe("SkillListPanel", () => {
   });
 
   it("locks rows based on externally locked skills from polling", () => {
+    const salesSkill = makeBuilderSkill({ name: "sales-skill", status: "completed" });
+    const financeSkill = makeBuilderSkill({ name: "finance-skill", status: "completed" });
+
     useSkillStore.setState({
-      lockedSkills: new Set(["sales-skill"]),
+      lockedSkills: new Set([salesSkill.id]),
     });
 
     const onSelectSkill = vi.fn();
-    setBuilderSkills([
-      makeBuilderSkill({ name: "sales-skill", status: "completed" }),
-      makeBuilderSkill({ name: "finance-skill", status: "completed" }),
-    ]);
+    setBuilderSkills([salesSkill, financeSkill]);
 
     renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
 

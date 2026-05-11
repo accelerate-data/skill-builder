@@ -98,9 +98,9 @@ export function SkillListPanel({
 
     const refreshLocks = async () => {
       try {
-        const names = await getExternallyLockedSkills();
+        const ids = await getExternallyLockedSkills();
         if (!cancelled) {
-          setLockedSkills(new Set(names));
+          setLockedSkills(new Set(ids));
         }
       } catch {
         // non-fatal
@@ -168,7 +168,7 @@ export function SkillListPanel({
     // Running skill is also a no-op
     if (skill.name === runningSkillName) return;
     // Skill locked by another instance
-    if (lockedSkills.has(skill.name)) return;
+    if (lockedSkills.has(skill.skillId)) return;
 
     console.log("event=skill_selected skill=%s", skill.name);
     localStorage.setItem("last-selected-skill", skill.key);
@@ -396,7 +396,7 @@ export function SkillListPanel({
       {/* Skill rows */}
       <ScrollArea className="flex-1">
         {filteredSkills.map((skill, index) => {
-          const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || lockedSkills.has(skill.name);
+          const isLocked = (!!runningSkillName && skill.name !== runningSkillName) || lockedSkills.has(skill.skillId);
           const isRunning = skill.name === runningSkillName;
           const isSelected = skill.skillId === selectedSkillId;
           const showPluginHeader = index === 0 || filteredSkills[index - 1]?.pluginSlug !== skill.pluginSlug;

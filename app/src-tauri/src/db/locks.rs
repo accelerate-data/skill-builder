@@ -115,15 +115,16 @@ pub fn get_skill_lock_by_skill_id(
 ) -> Result<Option<crate::types::SkillLock>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_id = ?1",
+            "SELECT skill_id, skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_id = ?1",
         )
         .map_err(|e| e.to_string())?;
     let result = stmt.query_row(rusqlite::params![skill_id], |row| {
         Ok(crate::types::SkillLock {
-            skill_name: row.get(0)?,
-            instance_id: row.get(1)?,
-            pid: row.get::<_, i64>(2)? as u32,
-            acquired_at: row.get(3)?,
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            instance_id: row.get(2)?,
+            pid: row.get::<_, i64>(3)? as u32,
+            acquired_at: row.get(4)?,
         })
     });
 
@@ -147,16 +148,17 @@ pub fn get_skill_lock(
 
 pub fn get_all_skill_locks(conn: &Connection) -> Result<Vec<crate::types::SkillLock>, String> {
     let mut stmt = conn
-        .prepare("SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks")
+        .prepare("SELECT skill_id, skill_name, instance_id, pid, acquired_at FROM skill_locks")
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], |row| {
             Ok(crate::types::SkillLock {
-                skill_name: row.get(0)?,
-                instance_id: row.get(1)?,
-                pid: row.get::<_, i64>(2)? as u32,
-                acquired_at: row.get(3)?,
+                skill_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                instance_id: row.get(2)?,
+                pid: row.get::<_, i64>(3)? as u32,
+                acquired_at: row.get(4)?,
             })
         })
         .map_err(|e| e.to_string())?;

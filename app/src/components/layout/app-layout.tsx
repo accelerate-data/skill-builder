@@ -240,7 +240,7 @@ export function AppLayout() {
 
       try {
         setSelectedWorkspaceSkill(skillId);
-        await enterSkill(editableSkill, workspacePath);
+        await enterSkill(editableSkill);
       } catch (err) {
         setSelectedWorkspaceSkill(null);
         throw err;
