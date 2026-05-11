@@ -508,7 +508,7 @@ describe("SkillListPanel", () => {
     const financeSkill = makeBuilderSkill({ name: "finance-skill", status: "completed" });
 
     useSkillStore.setState({
-      lockedSkills: new Set([salesSkill.id]),
+      lockedSkills: new Set([String(salesSkill.id)]),
     });
 
     const onSelectSkill = vi.fn();

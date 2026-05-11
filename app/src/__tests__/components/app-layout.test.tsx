@@ -368,6 +368,7 @@ describe("AppLayout", () => {
           pluginSlug: "skills",
           conversationId: "conv-refine-1",
           agentId: "refine-agent-1",
+          skillId: null,
         },
       });
     });
