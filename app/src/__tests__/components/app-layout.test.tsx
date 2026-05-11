@@ -446,6 +446,7 @@ describe("AppLayout", () => {
           pluginSlug: "skills",
           conversationId: "conv-workflow",
           agentId: "workflow-agent-1",
+          skillId: null,
         },
       });
     });
@@ -567,6 +568,7 @@ describe("AppLayout", () => {
             pluginSlug: "skills",
             conversationId: "conv-refine-1",
             agentId: "refine-agent-1",
+            skillId: null,
           },
         });
       });
@@ -712,6 +714,7 @@ describe("AppLayout", () => {
           pluginSlug: "skills",
           conversationId: "conv-workflow-fallback",
           agentId: "workflow-agent-pending",
+          skillId: null,
         },
       });
     });
