@@ -2,18 +2,17 @@
 
 Desktop app for creating domain-specific Claude Code-compatible skills. Tauri desktop app (React + Rust) orchestrates agents through a Rust-managed OpenHands Agent Server runtime.
 
+**Startup rule:** ALWAYS READ `.opencode/skills/using-superpowers/SKILL.md` on startup on critical skills needed for all coding agents.
+
 **Maintenance rule:** This file contains architecture, conventions, and guidelines — not product details. Do not add counts, feature descriptions, or any fact that can be discovered by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
 
 ## Instruction Hierarchy
 
-Use this precedence when maintaining agent guidance:
+Precedence for agent guidance:
 
 1. `AGENTS.md` (canonical, cross-agent source of truth)
-2. `.claude/rules/*.md` (shared detailed rules; agent-agnostic content)
-3. `agent-sources/**` (runtime agent, plugin, skill, and workspace instructions)
-4. Agent-specific adapter files (for example `CLAUDE.md`) that reference canonical docs
-
-Adapter files must not duplicate canonical policy unless they are adding agent-specific behavior.
+2. Agent-specific adapter files (for example `CLAUDE.md`) that reference canonical docs. Adapter files must not duplicate canonical policy unless they are adding agent-specific behavior.
+3. `.claude/rules/*.md` (shared detailed rules; agent-agnostic content)
 
 ## Repo Pointers
 
@@ -42,6 +41,9 @@ Read these before starting any non-trivial task:
 
 - `repo-map.json` — structure, entrypoints, modules, commands. Schema: `.claude/repo-map.schema.json`. Skip repo-wide rediscovery if it covers the task.
 - `TEST_MAP.md` — changed-path → validation-command map, Rust → E2E tag mappings, shared infrastructure blast radius, cross-boundary format compliance, and live-eval boundaries. Read before choosing tests. Frontend mappings are also handled by `vitest --changed`.
+- Read `TEST_MAP.md` before choosing validation commands. It maps changed paths to required tests, Rust modules to E2E tags, artifact producers to parser tests, and app-local tests versus repo-level evals.
+- Before writing tests, read existing tests for the files you changed. Update broken tests, remove redundant ones, and add coverage only for genuinely new behavior or regressions.
+- **Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
 
 ### Maintenance Rules
 
@@ -68,40 +70,7 @@ Use these folder boundaries for documentation work:
 - `docs/references/` is for vendored or external reference material used by
   implementation work. Do not route product help or design decisions there.
 
-### Stable Repo Memory
-
-#### Skill Path Convention
-
-Read `app/plugin-paths.json` — it defines the canonical layout for all skill file paths.
-
-#### Data And Error Boundaries
-
-- SQLite mutations must use bound parameters, not string-concatenated SQL.
-- Usage and log snapshot records should stay immutable when parent entities are
-  renamed or deleted.
-- Persisted strings that may be empty need backend guards. Frontend `??`
-  defaults do not catch `""`, and empty model/config values can become
-  downstream API errors.
-- User input, Tauri IPC payloads, and external API responses must be validated
-  at the boundary.
-
-#### Frontend Server State
-
-Request/response backend data belongs in TanStack Query hooks under
-`app/src/lib/queries/`. Zustand stores are for UI state, navigation-persistent
-selections, workflow/refine runtime state, and live agent event streams. Event
-streams that affect request/response data should update or invalidate the query
-cache through explicit helpers.
-
 ## Testing
-
-Read `TEST_MAP.md` before choosing validation commands. It maps changed paths to
-required tests, Rust modules to E2E tags, artifact producers to parser tests,
-and app-local tests versus repo-level evals.
-
-Before writing tests, read existing tests for the files you changed. Update
-broken tests, remove redundant ones, and add coverage only for genuinely new
-behavior or regressions.
 
 ### Which tests to run
 
@@ -126,9 +95,9 @@ Live OpenCode evals are normal automated validation. Choose the smallest useful 
 
 ## Issue Management
 
-- **PR title format:** `VU-XXX: short description`
-- **PR body link:** `Fixes VU-XXX`
 - **Linear project:** All issues created for this repository must be created under **Skill Builder**.
+- **PR title format:** `short description`
+- **PR body link:** `Fixes VU-XXX`
 - **Worktrees:** Use `./scripts/worktree.sh <branch-name>` as the canonical maintainer workflow for creating or attaching a repo worktree and bootstrapping it. It creates the worktree under `../worktrees/<branchName>`, symlinks `.env` from the repo root, and installs `app/` npm dependencies. Eval dependencies are managed by the eval framework when evals run.
 
   ```bash
