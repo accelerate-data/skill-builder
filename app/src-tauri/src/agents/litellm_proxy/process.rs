@@ -172,7 +172,7 @@ fn spawn_proxy(
         &port.to_string(),
     ])
     .env("LITELLM_MASTER_KEY", master_key)
-    .env("LITELLM_DATABASE_URL", &format!("sqlite:///{}", litellm_db.to_string_lossy()))
+    .env("LITELLM_DATABASE_URL", format!("sqlite:///{}", litellm_db.to_string_lossy()))
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::piped())
