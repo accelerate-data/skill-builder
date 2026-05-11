@@ -179,6 +179,7 @@ describe("AppLayout", () => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
     useSkillStore.getState().setActiveSkill(null);
+    useSkillStore.getState().setLockedSkills(new Set());
     setEvalsRunning(false);
     setEvalsStopping(false);
     setEvalsCancelHandler(null);
@@ -833,6 +834,53 @@ describe("AppLayout", () => {
     expect(useRefineStore.getState().conversationId).toBe("conv-sales");
   });
 
+  it("does not bootstrap a locked skill from the panel", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            id: 1,
+            name: "sales-skill",
+            current_step: null,
+            status: "completed",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+    useSkillStore.setState({ lockedSkills: new Set([1]) });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Startup activate sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Startup activate sales"));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockInvoke).not.toHaveBeenCalledWith("select_skill_openhands_session", {
+      skillId: 1,
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("navigates to the workflow page for an already-active skill when explicitly requested", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
@@ -900,6 +948,74 @@ describe("AppLayout", () => {
         params: { skillId: SALES_SKILL_ID },
       });
     });
+  });
+
+  it("does not navigate to a locked already-active skill", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            id: 1,
+            name: "sales-skill",
+            current_step: null,
+            status: "completed",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "github_get_user") return Promise.resolve(null);
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+
+    useSkillStore.setState({
+      activeSkillId: SALES_SKILL_ID,
+      lockedSkills: new Set([1]),
+    });
+    useRefineStore.setState({
+      selectedSkill: {
+        id: 1,
+        name: "sales-skill",
+        status: "completed",
+        current_step: null,
+        last_modified: null,
+        tags: [],
+        purpose: "domain",
+        skill_source: "skill-builder",
+        author_login: null,
+        author_avatar: null,
+        intake_json: null,
+        plugin_slug: "skills",
+        plugin_display_name: "Skills",
+        is_default_plugin: true,
+      },
+      conversationId: "conv-sales",
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Review sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Review sales"));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("pauses the current skill conversation before switching skills", async () => {

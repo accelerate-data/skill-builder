@@ -163,8 +163,9 @@ fn migrate_legacy_app_data_dir(new_data_dir: &Path) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let pid = std::process::id();
     tauri::Builder::default()
-        .plugin(logging::build_log_plugin().build())
+        .plugin(logging::build_log_plugin(pid).build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {

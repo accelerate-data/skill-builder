@@ -46,7 +46,6 @@ pub fn get_externally_locked_skills(
     instance: tauri::State<'_, crate::InstanceInfo>,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<i64>, String> {
-    log::info!("[get_externally_locked_skills]");
     let conn = db.0.lock().map_err(|e| {
         log::error!(
             "[get_externally_locked_skills] Failed to acquire DB lock: {}",
@@ -61,7 +60,21 @@ pub fn get_externally_locked_skills(
         .filter(|lock| lock.instance_id != instance.id)
         .map(|lock| lock.skill_id)
         .collect();
+    if let Some(message) = externally_locked_skills_log_message(&external) {
+        log::info!("{}", message);
+    }
     Ok(external)
+}
+
+pub(crate) fn externally_locked_skills_log_message(skill_ids: &[i64]) -> Option<String> {
+    if skill_ids.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "[get_externally_locked_skills] locked_skill_ids={:?}",
+            skill_ids
+        ))
+    }
 }
 
 #[tauri::command]

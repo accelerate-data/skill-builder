@@ -542,6 +542,19 @@ describe("SkillListPanel", () => {
     expect(olderRow?.getAttribute("aria-selected")).toBe("true");
   });
 
+  it("skips a locked last-selected skill during default selection", () => {
+    setBuilderSkills([recentBuilder, olderBuilder]);
+    localStorage.setItem("last-selected-skill", builderKey("older-skill"));
+    useSkillStore.setState({ lockedSkills: new Set([olderBuilder.id!]) });
+
+    renderWithSkillQueries(<SkillListPanel />);
+
+    const recentRow = screen.getByText("recent-skill").closest('[role="button"]');
+    const olderRow = screen.getByText("older-skill").closest('[role="button"]');
+    expect(recentRow?.getAttribute("aria-selected")).toBe("true");
+    expect(olderRow?.getAttribute("aria-selected")).toBe("false");
+  });
+
   it("falls back to most-recently-modified skill when localStorage key is absent", () => {
     setBuilderSkills([olderBuilder, recentBuilder]);
 

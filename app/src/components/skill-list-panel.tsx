@@ -130,14 +130,16 @@ export function SkillListPanel({
   useEffect(() => {
     if (unifiedSkills.length === 0 || selectedSkillId) return;
     const stored = localStorage.getItem("last-selected-skill");
-    const key = stored && unifiedSkills.some((s) => s.key === stored)
-      ? stored
-      : unifiedSkills[0].key;
-    const skill = unifiedSkills.find((candidate) => candidate.key === key);
+    const preferredSkill = stored
+      ? unifiedSkills.find((candidate) => candidate.key === stored)
+      : null;
+    const skill = preferredSkill && !lockedSkills.has(Number(preferredSkill.skillId))
+      ? preferredSkill
+      : unifiedSkills.find((candidate) => !lockedSkills.has(Number(candidate.skillId))) ?? null;
     if (!skill) return;
     setSelectedSkill(skill.skillId);
-    void onActivateSkill?.(key);
-  }, [onActivateSkill, selectedSkillId, setSelectedSkill, unifiedSkills]);
+    void onActivateSkill?.(skill.key);
+  }, [lockedSkills, onActivateSkill, selectedSkillId, setSelectedSkill, unifiedSkills]);
 
   const runningAgent = Object.values(runs).find(
     (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),
