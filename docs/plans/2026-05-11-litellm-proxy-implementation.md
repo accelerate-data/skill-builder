@@ -1317,7 +1317,7 @@ git commit -m "feat: provider/profile DB schema, CRUD commands, config generatio
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/client.rs`
 
-- [ ] **Step 1: Add `/user/new` and `/key/generate` methods**
+- [x] **Step 1: Add `/user/new` and `/key/generate` methods**
 
 Already defined in types.rs. Add methods to `LiteLLMAdminClient`:
 
@@ -1331,7 +1331,7 @@ pub async fn generate_key(&self, req: &GenerateKeyRequest) -> Result<GenerateKey
 }
 ```
 
-- [ ] **Step 1b: URL-encode `key` parameter in `key_info`**
+- [x] **Step 1b: URL-encode `key` parameter in `key_info`**
 
 Virtual keys may contain characters that break URL parsing. Use `urlencoding`:
 
@@ -1349,7 +1349,7 @@ Add `urlencoding = "1"` to `Cargo.toml` if not present.
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/types.rs`
 
-- [ ] **Step 1c: Add `#[serde(deny_unknown_fields)]` to all response types**
+- [x] **Step 1c: Add `#[serde(deny_unknown_fields)]` to all response types**
 
 This catches API contract changes early rather than silently ignoring new fields:
 
@@ -1380,7 +1380,7 @@ pub struct KeyInfo { ... }
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/mod.rs`
 
-- [ ] **Step 2: Add provisioning function**
+- [x] **Step 2: Add provisioning function**
 
 ```rust
 async fn provision_virtual_keys(
@@ -1448,7 +1448,7 @@ async fn provision_virtual_keys(
 }
 ```
 
-- [ ] **Step 3: Call provisioning in ensure_litellm_proxy**
+- [x] **Step 3: Call provisioning in ensure_litellm_proxy**
 
 ```rust
 // After proxy is healthy:
@@ -1460,7 +1460,7 @@ provision_virtual_keys(&handle, db).await?;
 **Files:**
 - Modify: `app/src-tauri/src/commands/litellm_profiles.rs`
 
-- [ ] **Step 4: Add test command**
+- [x] **Step 4: Add test command**
 
 ```rust
 #[tauri::command]
@@ -1489,13 +1489,13 @@ pub async fn test_profile_connection(
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test -- --nocapture
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/litellm_proxy/ app/src-tauri/src/commands/litellm_profiles.rs
