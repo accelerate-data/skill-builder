@@ -184,7 +184,6 @@ export function hydrateSelectedSkillOpenHandsSession(
 
 export async function restartSkillOpenHandsSession(
   skill: Pick<EditableSkill, "name" | "plugin_slug"> & Partial<EditableSkill>,
-  workspacePath: string,
 ): Promise<void> {
   const editableSkill = buildSessionSkill(skill);
   if (editableSkill.id == null) {
@@ -192,7 +191,6 @@ export async function restartSkillOpenHandsSession(
   }
   const session = await selectSkillOpenHandsSession(
     editableSkill.id,
-    workspacePath,
   );
 
   hydrateSelectedSkillOpenHandsSession(editableSkill, session);

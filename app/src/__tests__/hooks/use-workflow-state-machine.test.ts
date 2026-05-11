@@ -361,7 +361,6 @@ describe("useWorkflowStateMachine", () => {
     );
     expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(
       99,
-      "/workspace",
     );
 
     const refine = useRefineStore.getState();

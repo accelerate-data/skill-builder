@@ -172,12 +172,10 @@ describe("skill-openhands-session", () => {
 
     await restartSkillOpenHandsSession(
       { id: 42, name: "sales-skill", plugin_slug: "skills", skill_source: "skill-builder" },
-      "/tmp/workspace",
     );
 
     expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(
       42,
-      "/tmp/workspace",
     );
 
     const refine = useRefineStore.getState();

@@ -227,7 +227,7 @@ export interface TauriCommandMap {
   github_logout: { args: NoArgs; result: void };
   acquire_lock: { args: { skillId: number }; result: void };
   release_lock: { args: { skillId: number }; result: void };
-  get_externally_locked_skills: { args: NoArgs; result: string[] };
+  get_externally_locked_skills: { args: NoArgs; result: number[] };
   get_usage_summary: {
     args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
     result: UsageSummary;
@@ -301,7 +301,7 @@ export interface TauriCommandMap {
     result: SkillFileContent[];
   };
   select_skill_openhands_session: {
-    args: { skillId: number; workspacePath: string };
+    args: { skillId: number; workspacePath?: string };
     result: SkillSessionInfo;
   };
   pause_openhands_session: {
