@@ -51,11 +51,33 @@ pub fn update_profile(conn: &Connection, profile: &LlmProfile) -> Result<(), Str
 }
 
 pub fn delete_profile(conn: &Connection, id: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM llm_profile_models WHERE profile_id = ?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM llm_profiles WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute("BEGIN", []).map_err(|e| e.to_string())?;
+    if let Err(e) = conn.execute("DELETE FROM llm_profile_models WHERE profile_id = ?1", rusqlite::params![id]) {
+        let _ = conn.execute("ROLLBACK", []);
+        return Err(e.to_string());
+    }
+    if let Err(e) = conn.execute("DELETE FROM llm_profiles WHERE id = ?1", rusqlite::params![id]) {
+        let _ = conn.execute("ROLLBACK", []);
+        return Err(e.to_string());
+    }
+    conn.execute("COMMIT", []).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+pub fn get_profile(conn: &Connection, id: &str) -> Result<Option<LlmProfile>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, budget_monthly, budget_total, tpm_limit, rpm_limit, virtual_key, litellm_user_id, created_at
+         FROM llm_profiles WHERE id = ?1"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(rusqlite::params![id], |row| {
+        Ok(LlmProfile {
+            id: row.get(0)?, name: row.get(1)?, budget_monthly: row.get(2)?,
+            budget_total: row.get(3)?, tpm_limit: row.get(4)?, rpm_limit: row.get(5)?,
+            virtual_key: row.get(6)?, litellm_user_id: row.get(7)?, created_at: row.get(8)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    let profiles: Vec<LlmProfile> = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(profiles.into_iter().next())
 }
 
 pub fn list_profiles(conn: &Connection) -> Result<Vec<LlmProfile>, String> {
@@ -103,4 +125,12 @@ pub fn get_profile_models(conn: &Connection, profile_id: &str) -> Result<Vec<Llm
         })
     }).map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+pub fn delete_profile_model(conn: &Connection, model_id: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM llm_profile_models WHERE id = ?1",
+        rusqlite::params![model_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
 }

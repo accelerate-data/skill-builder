@@ -55,24 +55,24 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Tauri App                          │
-│                                                       │
+│                    Tauri App                        │
+│                                                     │
 │  ┌────────────┐    ┌────────────────────────────┐   │
 │  │  Rust      │───▶│  LiteLLM Proxy Process     │   │
 │  │  Backend   │    │  (uvx litellm[proxy])      │   │
 │  │            │◀───│  :<port>/v1 + admin API    │   │
 │  └─────┬──────┘    └──────────┬─────────────────┘   │
-│        │                      │                      │
-│        │ config.yaml          │ virtual key          │
-│        │                      │                      │
-│        ▼                      ▼                      │
+│        │                      │                     │
+│        │ config.yaml          │ virtual key         │
+│        │                      │                     │
+│        ▼                      ▼                     │
 │  ┌────────────┐    ┌────────────────────────────┐   │
 │  │ OpenHands  │───▶│  LiteLLM Proxy (routing)   │   │
 │  │ Process    │    │  → Provider API keys       │   │
 │  └────────────┘    │  → Budget enforcement      │   │
 │                    │  → Fallback chains         │   │
 │                    └──────────┬─────────────────┘   │
-│                               │                      │
+│                               │                     │
 │                    ┌──────────▼─────────────────┐   │
 │                    │  {app_data}/litellm/       │   │
 │                    │  ├── config.yaml           │   │

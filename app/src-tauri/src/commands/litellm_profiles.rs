@@ -71,9 +71,7 @@ pub fn update_litellm_profile(
 ) -> Result<(), String> {
     log::info!("[update_litellm_profile] id={}", id);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let existing = crate::db::list_profiles(&conn)?
-        .into_iter()
-        .find(|p| p.id == id)
+    let existing = crate::db::get_profile(&conn, &id)?
         .ok_or_else(|| "Profile not found".to_string())?;
     let profile = crate::db::LlmProfile {
         id,
@@ -122,11 +120,7 @@ pub fn remove_profile_model(
 ) -> Result<(), String> {
     log::info!("[remove_profile_model] model_id={}", model_id);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM llm_profile_models WHERE id = ?1",
-        rusqlite::params![model_id],
-    ).map_err(|e| e.to_string())?;
-    Ok(())
+    crate::db::delete_profile_model(&conn, &model_id)
 }
 
 #[tauri::command]

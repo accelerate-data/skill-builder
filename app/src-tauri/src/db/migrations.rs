@@ -2655,7 +2655,9 @@ pub(super) fn run_litellm_provider_profile_migration(conn: &Connection) -> Resul
             profile_id TEXT NOT NULL,
             model_name TEXT NOT NULL,
             provider_id TEXT NOT NULL,
-            priority INTEGER NOT NULL
+            priority INTEGER NOT NULL,
+            FOREIGN KEY (profile_id) REFERENCES llm_profiles(id) ON DELETE CASCADE,
+            FOREIGN KEY (provider_id) REFERENCES llm_providers(id) ON DELETE CASCADE
         );
     "#)?;
     log::info!("migration 52: created llm_providers, llm_profiles, llm_profile_models tables");

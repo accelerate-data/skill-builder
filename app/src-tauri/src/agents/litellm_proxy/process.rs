@@ -175,10 +175,8 @@ fn spawn_proxy(
     master_key: &str,
     config_path: &Path,
 ) -> Result<tokio::process::Child, String> {
-    let litellm_db = config_path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join("litellm.db");
+    let config_dir = config_path.parent().expect("config path must have a parent");
+    let litellm_db = config_dir.join("litellm.db");
 
     let mut cmd = tokio::process::Command::new("uvx");
     cmd.args([
@@ -260,4 +258,9 @@ pub fn ensure_config_dir(app_data_root: &Path) -> Result<PathBuf, String> {
         format!("Failed to create litellm directory: {e}")
     })?;
     Ok(litellm_dir.join("config.yaml"))
+}
+
+pub fn litellm_db_url(app_data_root: &Path) -> String {
+    let db_path = app_data_root.join("litellm").join("litellm.db");
+    format!("sqlite:///{}", db_path.to_string_lossy())
 }

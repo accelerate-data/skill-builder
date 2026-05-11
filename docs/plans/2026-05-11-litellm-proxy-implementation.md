@@ -1041,10 +1041,13 @@ pub fn generate_config(
             let provider = providers.iter().find(|p| p.id == pm.provider_id);
             if let Some(provider) = provider {
                 // Build model_name from provider prefix + model
+                // NOTE: After PR 5 ships, use provider.litellm_provider_prefix instead of provider.name
+                // to build the LiteLLM-compatible model name (e.g., "anthropic/claude-sonnet").
+                let prefix = provider.litellm_provider_prefix.as_deref().unwrap_or(&provider.name);
                 let full_model = if pm.model_name.contains('/') {
                     pm.model_name.clone()
                 } else {
-                    format!("{}/{}", provider.name, pm.model_name)
+                    format!("{}/{}", prefix, pm.model_name)
                 };
                 model_list.push(ModelEntry {
                     model_name: pm.model_name.clone(),
@@ -1296,6 +1299,12 @@ git commit -m "feat: provider/profile DB schema, CRUD commands, config generatio
 - [ ] Call `invoke('create_litellm_provider', { name: 'anthropic', api_key: 'sk-test-123' })` — should return UUID
 - [ ] Call `invoke('list_litellm_providers')` — should return the created provider
 - [ ] Verify `{app_data}/litellm/config.yaml` contains the provider entry
+
+### Known limitations / follow-ups (post-merge)
+
+- [ ] **Runtime config regeneration**: `config.yaml` is only written during proxy startup. If a user adds/updates/deletes a provider or profile while the proxy is running, the LiteLLM proxy continues using stale config. A `regenerate_config()` command that triggers a proxy restart is needed. Track as follow-up issue.
+- [ ] **`reorder_profile_models` validation**: The command silently ignores model IDs that don't exist or don't belong to the profile. Add server-side validation that the count of updated rows matches `model_ids.len()`.
+- [ ] **Provider name vs LiteLLM prefix**: The config generator uses the provider's display `name` as the LiteLLM model prefix (e.g., `anthropic/claude-sonnet`). If a user names a provider "My Custom Provider", the generated model name becomes `My Custom Provider/claude-sonnet` which LiteLLM won't recognize. Requires a separate `litellm_provider_prefix` field in the DB schema and a matching UI input in the Providers page (PR 5).
 
 ---
 
@@ -1765,6 +1774,8 @@ export function ProviderList({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id
 - [ ] **Step 4: Create provider-dialog.tsx**
 
 Form dialog with fields: name (select: Anthropic, OpenAI, Azure, Ollama, Custom), API key, base URL.
+
+> **Note:** The provider dialog must also include a `litellm_provider_prefix` field (e.g., `anthropic`, `openai`) that is stored separately from the display name. This prefix is used by the config generator to build LiteLLM-compatible model names (e.g., `anthropic/claude-sonnet`). For known providers, auto-fill the prefix from the display name selection.
 
 - [ ] **Step 5: Create providers-page.tsx**
 
