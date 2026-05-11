@@ -1322,7 +1322,7 @@ git commit -m "feat: provider/profile DB schema, CRUD commands, config generatio
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/types.rs`
 
-- [ ] **Step 1: Remove `#[serde(deny_unknown_fields)]` from all response types**
+- [x] **Step 1: Remove `#[serde(deny_unknown_fields)]` from all response types**
 
 LiteLLM returns many more fields than modeled. `deny_unknown_fields` causes deserialization failures on first real use. Remove from `HealthResponse`, `CreateUserResponse`, `GenerateKeyResponse`, `KeyInfoResponse`, and `KeyInfo`.
 
@@ -1332,7 +1332,7 @@ LiteLLM returns many more fields than modeled. `deny_unknown_fields` causes dese
 - Modify: `app/src-tauri/Cargo.toml`
 - Modify: `app/src-tauri/src/agents/litellm_proxy/client.rs`
 
-- [ ] **Step 1b: Remove `urlencoding` crate and revert to plain key interpolation**
+- [x] **Step 1b: Remove `urlencoding` crate and revert to plain key interpolation**
 
 Virtual keys are `sk-<uuid>` format with no special characters. The `url` crate already in deps handles encoding. Remove `urlencoding = "1"` from `Cargo.toml` and revert `key_info` to:
 
@@ -1345,7 +1345,7 @@ Virtual keys are `sk-<uuid>` format with no special characters. The `url` crate 
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/types.rs`
 
-- [ ] **Step 1c: Add `model_max_budget` field to `GenerateKeyRequest`**
+- [x] **Step 1c: Add `model_max_budget` field to `GenerateKeyRequest`**
 
 ```rust
 #[derive(Debug, Clone, Serialize)]
@@ -1371,7 +1371,7 @@ pub struct GenerateKeyRequest {
 **Files:**
 - Modify: `app/src-tauri/src/db/migrations.rs`
 
-- [ ] **Step 2: Add migration**
+- [x] **Step 2: Add migration**
 
 ```rust
 // Add to NUMBERED_MIGRATIONS (next number after current highest):
@@ -1396,11 +1396,11 @@ pub struct GenerateKeyRequest {
 - Modify: `app/src-tauri/src/db/litellm_profiles.rs`
 - Modify: `app/src-tauri/src/db/litellm_providers.rs` (no changes, just verify)
 
-- [ ] **Step 3: Update `LlmProfile` struct**
+- [x] **Step 3: Update `LlmProfile` struct**
 
 Remove `litellm_user_id` field from `LlmProfile`. Update all SQL queries that reference it (INSERT, UPDATE, SELECT).
 
-- [ ] **Step 4: Update `LlmProfileModel` struct**
+- [x] **Step 4: Update `LlmProfileModel` struct**
 
 Add `pub budget: Option<f64>` field. Update INSERT and SELECT queries.
 
@@ -1409,7 +1409,7 @@ Add `pub budget: Option<f64>` field. Update INSERT and SELECT queries.
 **Files:**
 - Modify: `app/src-tauri/src/agents/litellm_proxy/mod.rs`
 
-- [ ] **Step 5: Bootstrap shared user**
+- [x] **Step 5: Bootstrap shared user**
 
 Create a single user `"skill-builder"` at proxy bootstrap. Ignore 409 if user already exists from a previous run.
 
@@ -1436,7 +1436,7 @@ async fn bootstrap_shared_user(client: &LiteLLMAdminClient) -> Result<(), String
 }
 ```
 
-- [ ] **Step 6: Rewrite `provision_virtual_keys` — single user, per-profile keys, per-model budgets**
+- [x] **Step 6: Rewrite `provision_virtual_keys` — single user, per-profile keys, per-model budgets**
 
 ```rust
 async fn provision_virtual_keys(
@@ -1508,7 +1508,7 @@ async fn provision_virtual_keys(
 }
 ```
 
-- [ ] **Step 7: Provisioning runs in detached task, not blocking `ensure_litellm_proxy`**
+- [x] **Step 7: Provisioning runs in detached task, not blocking `ensure_litellm_proxy`**
 
 ```rust
 // In ensure_litellm_proxy, after registering the proxy:
@@ -1528,7 +1528,7 @@ This releases the registry lock immediately after proxy registration. Provisioni
 **Files:**
 - Modify: `app/src-tauri/src/commands/litellm_profiles.rs`
 
-- [ ] **Step 8: Add command using `get_profile` instead of `list_profiles`**
+- [x] **Step 8: Add command using `get_profile` instead of `list_profiles`**
 
 ```rust
 #[tauri::command]
@@ -1555,7 +1555,7 @@ pub async fn verify_profile_virtual_key(
 }
 ```
 
-- [ ] **Step 9: Register command in `lib.rs`**
+- [x] **Step 9: Register command in `lib.rs`**
 
 Replace `test_profile_connection` with `verify_profile_virtual_key` in the invoke handler.
 
@@ -1565,7 +1565,7 @@ Replace `test_profile_connection` with `verify_profile_virtual_key` in the invok
 - Modify: `docs/design/litellm-integration/README.md`
 - Create: `docs/design/litellm-integration/budgets.md`
 
-- [ ] **Step 10: Update design doc**
+- [x] **Step 10: Update design doc**
 
 - Rename from "Model Settings" to "LiteLLM Integration"
 - Update startup flow: single shared user, detached provisioning

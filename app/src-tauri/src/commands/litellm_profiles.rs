@@ -7,6 +7,7 @@ pub struct CreateProfileRequest {
     pub budget_total: Option<f64>,
     pub tpm_limit: Option<i64>,
     pub rpm_limit: Option<i64>,
+    pub settings_json: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -15,6 +16,7 @@ pub struct AddProfileModelRequest {
     pub model_name: String,
     pub provider_id: String,
     pub priority: i32,
+    pub budget: Option<f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -56,7 +58,7 @@ pub fn create_litellm_profile(
         tpm_limit: request.tpm_limit,
         rpm_limit: request.rpm_limit,
         virtual_key: None,
-        litellm_user_id: None,
+        settings_json: request.settings_json,
         created_at: chrono::Utc::now().timestamp(),
     };
     crate::db::insert_profile(&conn, &profile)?;
@@ -81,7 +83,7 @@ pub fn update_litellm_profile(
         tpm_limit: request.tpm_limit,
         rpm_limit: request.rpm_limit,
         virtual_key: existing.virtual_key,
-        litellm_user_id: existing.litellm_user_id,
+        settings_json: request.settings_json.or(existing.settings_json),
         created_at: existing.created_at,
     };
     crate::db::update_profile(&conn, &profile)
@@ -108,6 +110,7 @@ pub fn add_profile_model(
         model_name: request.model_name,
         provider_id: request.provider_id,
         priority: request.priority,
+        budget: request.budget,
     };
     crate::db::insert_profile_model(&conn, &model)?;
     Ok(id)
@@ -140,15 +143,14 @@ pub fn reorder_profile_models(
 }
 
 #[tauri::command]
-pub async fn test_profile_connection(
+pub async fn verify_profile_virtual_key(
     db: tauri::State<'_, Db>,
     profile_id: String,
 ) -> Result<bool, String> {
-    log::info!("[test_profile_connection] profile_id={}", profile_id);
+    log::info!("[verify_profile_virtual_key] profile_id={}", profile_id);
     let virtual_key = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let profiles = crate::db::list_profiles(&conn)?;
-        let profile = profiles.iter().find(|p| p.id == profile_id)
+        let profile = crate::db::get_profile(&conn, &profile_id)?
             .ok_or_else(|| "Profile not found".to_string())?;
         profile.virtual_key.clone()
             .ok_or_else(|| "Profile has no virtual key".to_string())?

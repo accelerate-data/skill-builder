@@ -55,6 +55,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (50, run_drop_model_argument_hint_migration),
     (51, run_skill_id_artifact_fk_reset_migration),
     (52, run_litellm_provider_profile_migration),
+    (53, run_litellm_pr3_schema_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2661,5 +2662,53 @@ pub(super) fn run_litellm_provider_profile_migration(conn: &Connection) -> Resul
         );
     "#)?;
     log::info!("migration 52: created llm_providers, llm_profiles, llm_profile_models tables");
+    Ok(())
+}
+
+/// Migration 53: Complete LiteLLM schema for PR3.
+/// - Drop litellm_user_id (single shared user replaces per-profile users)
+/// - Add per-model budget column to llm_profile_models
+/// - Add litellm_provider_prefix to llm_providers (config generation needs it)
+/// - Add settings_json to both tables (forward-compat for any LiteLLM setting)
+pub(super) fn run_litellm_pr3_schema_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Drop litellm_user_id (SQLite doesn't support DROP COLUMN on all versions,
+    // but SQLite 3.35.0+ does. We use the table-rebuild pattern for safety.)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS llm_profiles_new (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            budget_monthly REAL,
+            budget_total REAL,
+            tpm_limit INTEGER,
+            rpm_limit INTEGER,
+            virtual_key TEXT,
+            settings_json TEXT,
+            created_at INTEGER NOT NULL
+        );
+        INSERT INTO llm_profiles_new (id, name, budget_monthly, budget_total, tpm_limit, rpm_limit, virtual_key, created_at)
+            SELECT id, name, budget_monthly, budget_total, tpm_limit, rpm_limit, virtual_key, created_at FROM llm_profiles;
+        DROP TABLE llm_profiles;
+        ALTER TABLE llm_profiles_new RENAME TO llm_profiles;",
+    )?;
+
+    // Add per-model budget
+    let has_budget = table_has_column(conn, "llm_profile_models", "budget")?;
+    if !has_budget {
+        conn.execute_batch("ALTER TABLE llm_profile_models ADD COLUMN budget REAL;")?;
+    }
+
+    // Add litellm_provider_prefix
+    let has_prefix = table_has_column(conn, "llm_providers", "litellm_provider_prefix")?;
+    if !has_prefix {
+        conn.execute_batch("ALTER TABLE llm_providers ADD COLUMN litellm_provider_prefix TEXT;")?;
+    }
+
+    // Add settings_json to providers
+    let has_settings = table_has_column(conn, "llm_providers", "settings_json")?;
+    if !has_settings {
+        conn.execute_batch("ALTER TABLE llm_providers ADD COLUMN settings_json TEXT;")?;
+    }
+
+    log::info!("migration 53: dropped litellm_user_id, added budget, litellm_provider_prefix, settings_json");
     Ok(())
 }

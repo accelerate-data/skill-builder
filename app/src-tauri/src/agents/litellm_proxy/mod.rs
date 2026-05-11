@@ -10,11 +10,15 @@ mod tests;
 
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use tokio::sync::Mutex as AsyncMutex;
 
 use self::process::{LiteLLMProxyHandle, LiteLLMProxyProcess};
 use self::types::{CreateUserRequest, GenerateKeyRequest};
 use crate::db::Db;
+
+const PROVISIONING_MAX_RETRIES: u32 = 3;
+const PROVISIONING_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 struct ManagedLiteLLMProxy {
     handle: LiteLLMProxyHandle,
@@ -31,7 +35,7 @@ fn proxy_registry() -> &'static LiteLLMProxyRegistry {
 pub async fn ensure_litellm_proxy(
     timeout: std::time::Duration,
     app_data_root: &Path,
-    db: &Db,
+    db: Db,
 ) -> Result<LiteLLMProxyHandle, String> {
     let mut registry = proxy_registry().lock().await;
 
@@ -67,7 +71,38 @@ pub async fn ensure_litellm_proxy(
         process,
     });
 
-    provision_virtual_keys(&handle, db).await?;
+    // Bootstrap shared user and provision virtual keys in a detached task
+    let handle_clone = handle.clone();
+    let db_clone = db.clone();
+    tokio::spawn(async move {
+        let mut last_err = None;
+        for attempt in 1..=PROVISIONING_MAX_RETRIES {
+            match bootstrap_shared_user_and_provision_keys(&handle_clone, &db_clone).await {
+                Ok(()) => {
+                    log::info!("[litellm-proxy] provisioning completed successfully");
+                    return;
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < PROVISIONING_MAX_RETRIES {
+                        log::warn!(
+                            "[litellm-proxy] provisioning attempt {}/{} failed: {}; retrying in {}s",
+                            attempt,
+                            PROVISIONING_MAX_RETRIES,
+                            last_err.as_ref().unwrap(),
+                            PROVISIONING_RETRY_DELAY.as_secs()
+                        );
+                        tokio::time::sleep(PROVISIONING_RETRY_DELAY).await;
+                    }
+                }
+            }
+        }
+        log::error!(
+            "[litellm-proxy] provisioning failed after {} attempts: {}",
+            PROVISIONING_MAX_RETRIES,
+            last_err.unwrap_or_default()
+        );
+    });
 
     Ok(handle)
 }
@@ -86,32 +121,38 @@ pub async fn shutdown_litellm_proxy() -> Result<(), String> {
     Ok(())
 }
 
-async fn provision_virtual_keys(
+async fn bootstrap_shared_user_and_provision_keys(
     handle: &LiteLLMProxyHandle,
     db: &Db,
 ) -> Result<(), String> {
+    let client = handle.admin_client();
+
+    // Bootstrap shared user (ignore 409 if already exists)
+    let user_req = CreateUserRequest {
+        user_id: "skill-builder".to_string(),
+        max_budget: None,
+        budget_duration: None,
+        tpm_limit: None,
+        rpm_limit: None,
+    };
+    match client.create_user(&user_req).await {
+        Ok(_) => log::info!("[litellm-proxy] created shared user 'skill-builder'"),
+        Err(e) if e.contains("409") || e.to_lowercase().contains("already exists") => {
+            log::info!("[litellm-proxy] shared user 'skill-builder' already exists");
+        }
+        Err(e) => return Err(format!("Failed to create shared user: {e}")),
+    }
+
+    // Provision virtual keys for profiles without one
     let profiles = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::list_profiles(&conn)?
     };
 
-    let client = handle.admin_client();
-
     for profile in &profiles {
         if profile.virtual_key.is_some() {
             continue;
         }
-
-        let user_id = format!("profile-{}", profile.id);
-
-        let user_req = CreateUserRequest {
-            user_id: user_id.clone(),
-            max_budget: profile.budget_total,
-            budget_duration: profile.budget_monthly.map(|_| "30d".to_string()),
-            tpm_limit: profile.tpm_limit.map(|v| v as u64),
-            rpm_limit: profile.rpm_limit.map(|v| v as u64),
-        };
-        let _user_resp = client.create_user(&user_req).await?;
 
         let models = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -120,13 +161,26 @@ async fn provision_virtual_keys(
 
         let model_names: Vec<String> = models.iter().map(|m| m.model_name.clone()).collect();
 
+        let model_max_budget: std::collections::HashMap<String, f64> = models
+            .iter()
+            .filter_map(|m| m.budget.map(|b| (m.model_name.clone(), b)))
+            .collect();
+        let model_max_budget = if model_max_budget.is_empty() {
+            None
+        } else {
+            Some(model_max_budget)
+        };
+
+        let max_budget = profile.budget_total.or(profile.budget_monthly);
+
         let key_req = GenerateKeyRequest {
-            user_id: user_id.clone(),
+            user_id: "skill-builder".to_string(),
             models: model_names,
-            max_budget: profile.budget_total,
+            max_budget,
             budget_duration: profile.budget_monthly.map(|_| "30d".to_string()),
             tpm_limit: profile.tpm_limit.map(|v| v as u64),
             rpm_limit: profile.rpm_limit.map(|v| v as u64),
+            model_max_budget,
         };
         let key_resp = client.generate_key(&key_req).await?;
 
@@ -140,7 +194,7 @@ async fn provision_virtual_keys(
                 tpm_limit: profile.tpm_limit,
                 rpm_limit: profile.rpm_limit,
                 virtual_key: Some(key_resp.key.clone()),
-                litellm_user_id: Some(user_id),
+                settings_json: profile.settings_json.clone(),
                 created_at: profile.created_at,
             };
             crate::db::update_profile(&conn, &updated_profile)?;
