@@ -4,7 +4,7 @@
 
 **Goal:** Restructure the OpenHands runtime into a clean three-layer architecture, remove dead code, and optimize skill activation.
 
-**Architecture:** Three layers — Layer 1 (`agents/openhands_server/`) raw API, Layer 2 (`agents/skill_creator.rs`) config + session boot, Layer 3 (`commands/`) Tauri commands. 10 small PRs, each independently testable.
+**Architecture:** Three layers — Layer 1 (`agents/openhands_server/`) raw API, Layer 2 (`agents/skill_creator.rs`) config + session boot, Layer 3 (`commands/`) Tauri commands. 13 small PRs, each independently testable.
 
 **Tech Stack:** Rust (Tauri 2), React, TypeScript, Playwright E2E (mocked), cargo test.
 
@@ -3353,9 +3353,281 @@ git commit -m "refactor: remove workspace_skill_dir entirely; canonical skill_di
 
 ---
 
+## PR 13 — Neutral `/` landing page; explicit skill navigation only
+
+**Goal:** Make `/` a truly passive landing page. Never auto-enter a skill or redirect away from `/` during startup. Only explicit user actions in the skill list should navigate to `/workflow/$skillId` or `/workspace/$skillId`.
+
+**Why this exists:** The current crash class happens because startup code on `/` still tries to activate a default skill before settings/workspace readiness is guaranteed. The dashboard page already exists; the bug is the implicit redirect/activation behavior layered on top of it.
+
+### Task 13.1: Remove `/` auto-redirect from `HomePage`
+
+**Files:**
+- Modify: `app/src/pages/home.tsx`
+- Create: `app/src/__tests__/pages/home.test.tsx`
+
+- [ ] **Step 1: Write a failing test for passive `/` behavior**
+
+Create `app/src/__tests__/pages/home.test.tsx` with a focused regression test that proves `HomePage` does not navigate when an active skill is already present in store state.
+
+```tsx
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { useSkillStore } from "@/stores/skill-store";
+
+const mockNavigate = vi.fn();
+
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mockNavigate,
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: "/" } }),
+}));
+
+vi.mock("@/pages/dashboard", () => ({
+  default: () => <div data-testid="dashboard-page">dashboard</div>,
+}));
+
+import HomePage from "@/pages/home";
+
+describe("HomePage", () => {
+  beforeEach(() => {
+    mockNavigate.mockReset();
+    useSkillStore.setState({
+      activeSkillId: "2740",
+      lockedSkills: new Set(),
+      latestVersion: null,
+    });
+  });
+
+  it("renders the dashboard and does not redirect when an active skill exists", () => {
+    render(<HomePage />);
+
+    expect(screen.getByTestId("dashboard-page")).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 2: Run the new test and verify it fails**
+
+```bash
+cd app && npx vitest run src/__tests__/pages/home.test.tsx
+```
+
+Expected: FAIL because `HomePage` still calls `navigate(...)` when `activeSkillId` is set.
+
+- [ ] **Step 3: Remove the redirect effect from `HomePage`**
+
+Replace `app/src/pages/home.tsx` with a passive wrapper that just renders the landing page content:
+
+```tsx
+import DashboardPage from "./dashboard";
+
+export default function HomePage() {
+  return <DashboardPage />;
+}
+```
+
+- [ ] **Step 4: Re-run the targeted test**
+
+```bash
+cd app && npx vitest run src/__tests__/pages/home.test.tsx
+```
+
+Expected: PASS.
+
+---
+
+### Task 13.2: Stop default skill activation on mount in `SkillListPanel`
+
+**Files:**
+- Modify: `app/src/components/skill-list-panel.tsx`
+- Modify: `app/src/__tests__/components/skill-list-panel.test.tsx`
+
+- [ ] **Step 1: Write the failing regression for “select without navigate”**
+
+In `app/src/__tests__/components/skill-list-panel.test.tsx`, add a test near the existing default-selection coverage proving the panel may select a default row but must not call `onActivateSkill` on mount:
+
+```tsx
+it("highlights the default skill on mount without activating it", () => {
+  setBuilderSkills([recentBuilder, olderBuilder]);
+  const onActivateSkill = vi.fn();
+
+  renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
+
+  const recentRow = screen.getByText("recent-skill").closest('[role="button"]');
+  expect(recentRow?.getAttribute("aria-selected")).toBe("true");
+  expect(onActivateSkill).not.toHaveBeenCalled();
+});
+```
+
+- [ ] **Step 2: Remove the old mount-time activation regression**
+
+Delete or rewrite any test that exists only to guard the old fire-and-forget activation path, including the current `default activation fails`/`unhandled rejection` regression. After this PR there should be no startup activation to catch.
+
+- [ ] **Step 3: Run the targeted panel suite and verify the new test fails**
+
+```bash
+cd app && npx vitest run src/__tests__/components/skill-list-panel.test.tsx
+```
+
+Expected: FAIL because the effect still calls `onActivateSkill(...)` during mount.
+
+- [ ] **Step 4: Remove mount-time activation from `SkillListPanel`**
+
+In `app/src/components/skill-list-panel.tsx`, update the default-selection effect so it only restores/highlights the selected row and never calls `onActivateSkill` during mount. Keep the locked-skill fallback behavior.
+
+The effect should conceptually become:
+
+```tsx
+useEffect(() => {
+  if (unifiedSkills.length === 0 || selectedSkillId) return;
+  const stored = localStorage.getItem("last-selected-skill");
+  const preferredSkill = stored
+    ? unifiedSkills.find((candidate) => candidate.key === stored)
+    : null;
+  const skill = preferredSkill && !lockedSkills.has(Number(preferredSkill.skillId))
+    ? preferredSkill
+    : unifiedSkills.find((candidate) => !lockedSkills.has(Number(candidate.skillId))) ?? null;
+  if (!skill) return;
+  setSelectedSkill(skill.skillId);
+}, [lockedSkills, selectedSkillId, setSelectedSkill, unifiedSkills]);
+```
+
+Also remove now-unused startup failure logging in this path if it becomes dead code:
+- `logFrontend` import
+- the `Promise.resolve(onActivateSkill(...)).catch(...)` block
+
+- [ ] **Step 5: Re-run the targeted panel suite**
+
+```bash
+cd app && npx vitest run src/__tests__/components/skill-list-panel.test.tsx
+```
+
+Expected: PASS. Existing tests for locked default selection should still pass.
+
+---
+
+### Task 13.3: Preserve explicit navigation behavior from the skill list
+
+**Files:**
+- Modify: `app/src/__tests__/components/skill-list-panel.test.tsx`
+- Modify: `app/src/__tests__/pages/home.test.tsx` (if a second case is clearer than overloading the first)
+
+- [ ] **Step 1: Add an explicit-navigation safety test**
+
+Make sure a real user click from the dashboard path still routes through the existing callback contract:
+
+```tsx
+it("still activates a skill from explicit user intent", async () => {
+  const onSelectSkill = vi.fn();
+  setBuilderSkills([recentBuilder]);
+
+  renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
+  fireEvent.click(screen.getByText("recent-skill").closest('[role="button"]')!);
+
+  expect(onSelectSkill).toHaveBeenCalledWith(builderKey("recent-skill"));
+});
+```
+
+This probably overlaps with an existing test. If so, keep the existing assertion and do not duplicate it. The plan requirement is simply: explicit clicks must continue to navigate.
+
+- [ ] **Step 2: Verify `HomePage` remains passive even when selection state changes**
+
+If useful, add a second `HomePage` test that sets `activeSkillId` after render and confirms `/` still does not auto-navigate. This guards against someone reintroducing a redirect effect tied to store updates.
+
+```tsx
+it("stays on the dashboard when activeSkillId changes after mount", () => {
+  render(<HomePage />);
+
+  useSkillStore.setState({
+    activeSkillId: "3001",
+    lockedSkills: new Set(),
+    latestVersion: null,
+  });
+
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+```
+
+- [ ] **Step 3: Run the focused page+panel tests together**
+
+```bash
+cd app && npx vitest run \
+  src/__tests__/pages/home.test.tsx \
+  src/__tests__/components/skill-list-panel.test.tsx
+```
+
+Expected: PASS.
+
+---
+
+### Task 13.4: Full frontend verification and smoke
+
+**Files:**
+- Modify: `docs/plans/2026-05-10-openhands-runtime-model.md` (this section only if you discover plan corrections while implementing)
+
+- [ ] **Step 1: Run the frontend unit suite**
+
+```bash
+cd app && npm run test:unit
+```
+
+Expected: PASS.
+
+- [ ] **Step 2: Run the frontend integration suite**
+
+```bash
+cd app && npm run test:integration
+```
+
+Expected: PASS. If unrelated failures exist, capture them separately and do not weaken the new `/` behavior.
+
+- [ ] **Step 3: Run TypeScript type-check**
+
+```bash
+cd app && npx tsc --noEmit
+```
+
+Expected: Clean.
+
+- [ ] **Step 4: Manual smoke — cold launch stays on `/`**
+
+1. Launch the first instance.
+2. Observe the initial route.
+
+**Pass:** The app stays on the dashboard/landing page and shows “Select a skill”. It does not jump into `/workspace/$skillId` or `/workflow/$skillId` by itself.
+
+- [ ] **Step 5: Manual smoke — explicit click still navigates**
+
+1. From `/`, click a skill row in the selector.
+
+**Pass:** The app navigates into the appropriate skill surface (`/workspace/$skillId` or `/workflow/$skillId`) only after the click.
+
+- [ ] **Step 6: Manual smoke — second instance no longer trips startup activation**
+
+1. Start instance A and leave it on `/`.
+2. Start instance B.
+
+**Pass:** Instance A remains alive. Its PID-specific log does not contain:
+- `[frontend] [window.unhandledrejection]` from the old startup path
+- `[frontend] [skill-list-panel] default activation failed ... Workspace path is not configured`
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/src/pages/home.tsx \
+        app/src/components/skill-list-panel.tsx \
+        app/src/__tests__/pages/home.test.tsx \
+        app/src/__tests__/components/skill-list-panel.test.tsx \
+        docs/plans/2026-05-10-openhands-runtime-model.md
+git commit -m "fix: keep landing page passive until explicit skill selection"
+```
+
+---
+
 ## PR Execution Order
 
-Execute PRs sequentially in order 1→12. Each PR must pass all automated tests and manual smoke before proceeding to the next.
+Execute PRs sequentially in order 1→13. Each PR must pass all automated tests and manual smoke before proceeding to the next.
 
 | PR | Gap | Automated Tests | Manual Smoke |
 |---|---|---|---|
@@ -3371,3 +3643,4 @@ Execute PRs sequentially in order 1→12. Each PR must pass all automated tests 
 | 10 | Optimistic activation | `npm run test:unit`, `tsc --noEmit` | Click skill → page appears immediately → content loads |
 | 11 | Backend lease enforcement + advisory UI polling | `cargo test commands::skill_session`, `cargo test commands::refine`, `npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/components/app-layout.test.tsx src/__tests__/components/skill-list-panel.test.tsx`, `git diff --check` | Two instances: lock in A, B menu disables within a few seconds, backend rejects forced selection before OpenHands restore |
 | 12 | Remove `workspace_skill_dir` entirely | `cargo test`, `npm run test:unit`, `npm run codegen`, `tsc --noEmit`, clippy | Create skill → no workspace dir created; workflow runs against canonical skill dir; refine works; migration deletes old workspace dirs |
+| 13 | Neutral `/` landing page; explicit navigation only | `npx vitest run src/__tests__/pages/home.test.tsx src/__tests__/components/skill-list-panel.test.tsx`, `npm run test:unit`, `npm run test:integration`, `tsc --noEmit` | Cold launch stays on dashboard; clicking a skill navigates; launching instance B no longer kills instance A during `/` startup |
