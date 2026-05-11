@@ -331,6 +331,7 @@ describe("useWorkflowStateMachine", () => {
         restartOpenHandsSession: () =>
           restartSkillOpenHandsSession(
             {
+              id: 99,
               name: "test-skill",
               plugin_slug: "default",
               skill_source: "skill-builder",
@@ -359,9 +360,8 @@ describe("useWorkflowStateMachine", () => {
       0,
     );
     expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(
-      "test-skill",
+      99,
       "/workspace",
-      "default",
     );
 
     const refine = useRefineStore.getState();

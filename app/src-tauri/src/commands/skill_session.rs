@@ -123,9 +123,9 @@ fn restore_skill_conversation_state(
     Vec<crate::types::RestoredConversationEvent>,
     usize,
 ) {
-    let restored_messages = crate::commands::refine::extract_conversation_messages(&events);
+    let restored_messages = crate::commands::refine::extract_conversation_messages(events);
     let restored_transcript_events =
-        crate::commands::refine::extract_restored_conversation_events(&events);
+        crate::commands::refine::extract_restored_conversation_events(events);
     let dispatched_user_turn_count =
         crate::commands::refine::restored_conversation_user_turn_count(&restored_transcript_events);
     (
