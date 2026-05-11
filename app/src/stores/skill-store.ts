@@ -2,10 +2,10 @@ import { create } from "zustand";
 
 interface SkillState {
   activeSkillId: string | null;
-  lockedSkills: Set<string>;
+  lockedSkills: Set<number>;
   latestVersion: string | null;
   setActiveSkill: (skillId: string | null) => void;
-  setLockedSkills: (names: Set<string>) => void;
+  setLockedSkills: (ids: Set<number>) => void;
   setLatestVersion: (version: string) => void;
 }
 
@@ -14,6 +14,6 @@ export const useSkillStore = create<SkillState>((set) => ({
   lockedSkills: new Set(),
   latestVersion: null,
   setActiveSkill: (skillId) => set({ activeSkillId: skillId }),
-  setLockedSkills: (names) => set({ lockedSkills: names }),
+  setLockedSkills: (ids) => set({ lockedSkills: ids }),
   setLatestVersion: (version) => set({ latestVersion: version }),
 }));

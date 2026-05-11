@@ -1098,6 +1098,49 @@ fn test_skill_name_validation_rejects_traversal() {
     assert!(validate_skill_name("").is_err());
 }
 
+#[test]
+fn plan_refine_dispatch_reuses_the_existing_conversation_id() {
+    let session = SkillSession {
+        skill_name: "my-skill".to_string(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        usage_session_id: "usage-session-1".to_string(),
+        conversation_id: Some("conv-123".to_string()),
+        current_agent_id: None,
+        dispatched_user_turn_count: 0,
+        head_sha_at_start: None,
+    };
+
+    let plan = plan_refine_conversation_dispatch(&session, Some("conv-123".to_string()))
+        .expect("dispatch plan");
+
+    assert_eq!(
+        plan,
+        RefineConversationDispatchPlan::ReuseExisting("conv-123".to_string())
+    );
+}
+
+#[test]
+fn selected_skill_lease_guard_rejects_other_instance_before_refine_dispatch() {
+    let conn = crate::db::create_test_db_for_tests();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-b", std::process::id())
+        .unwrap();
+
+    let error = crate::commands::skill_session::acquire_or_verify_skill_lock(
+        &conn,
+        skill_id,
+        "instance-a",
+        std::process::id(),
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        error,
+        "Skill 'my-skill' is being edited in another instance"
+    );
+}
+
 // ===== user context tests =====
 //
 // VU-1157 moved `format_user_context` from `commands::workflow::user_context`

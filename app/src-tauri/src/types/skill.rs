@@ -112,6 +112,7 @@ pub struct SkillFileMeta {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SkillLock {
+    pub skill_id: i64,
     pub skill_name: String,
     pub instance_id: String,
     pub pid: u32,

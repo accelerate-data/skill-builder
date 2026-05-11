@@ -187,10 +187,12 @@ export async function restartSkillOpenHandsSession(
   workspacePath: string,
 ): Promise<void> {
   const editableSkill = buildSessionSkill(skill);
+  if (editableSkill.id == null) {
+    throw new Error(`Missing DB skill ID for '${editableSkill.name}'`);
+  }
   const session = await selectSkillOpenHandsSession(
-    editableSkill.name,
+    editableSkill.id,
     workspacePath,
-    editableSkill.plugin_slug,
   );
 
   hydrateSelectedSkillOpenHandsSession(editableSkill, session);

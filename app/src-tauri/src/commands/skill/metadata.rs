@@ -40,12 +40,12 @@ pub fn release_lock(
     crate::db::release_skill_lock_by_skill_id(&conn, skill_id, &instance.id)
 }
 
-/// Returns skill names locked by a different live instance (excludes our own locks).
+/// Returns skill IDs locked by a different live instance (excludes our own locks).
 #[tauri::command]
 pub fn get_externally_locked_skills(
     instance: tauri::State<'_, crate::InstanceInfo>,
     db: tauri::State<'_, Db>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<i64>, String> {
     log::info!("[get_externally_locked_skills]");
     let conn = db.0.lock().map_err(|e| {
         log::error!(
@@ -56,10 +56,10 @@ pub fn get_externally_locked_skills(
     })?;
     crate::db::reclaim_dead_locks(&conn)?;
     let all_locks = crate::db::get_all_skill_locks(&conn)?;
-    let external: Vec<String> = all_locks
+    let external: Vec<i64> = all_locks
         .into_iter()
         .filter(|lock| lock.instance_id != instance.id)
-        .map(|lock| lock.skill_name)
+        .map(|lock| lock.skill_id)
         .collect();
     Ok(external)
 }

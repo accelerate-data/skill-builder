@@ -3,9 +3,7 @@ import type { EditableSkill } from "@/lib/types";
 import { enterSkill, leaveCurrentSkill } from "@/lib/active-skill-transition";
 
 const tauriMocks = vi.hoisted(() => ({
-  acquireLock: vi.fn().mockResolvedValue(undefined),
   pauseOpenHandsSession: vi.fn().mockResolvedValue(undefined),
-  releaseLock: vi.fn().mockResolvedValue(undefined),
   selectSkillOpenHandsSession: vi.fn().mockResolvedValue({
     conversation_id: "conv-next",
     skill_name: "finance-skill",
@@ -93,9 +91,7 @@ function makeSkill(name: string): EditableSkill {
 describe("active-skill-transition", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    tauriMocks.acquireLock.mockResolvedValue(undefined);
     tauriMocks.pauseOpenHandsSession.mockResolvedValue(undefined);
-    tauriMocks.releaseLock.mockResolvedValue(undefined);
     tauriMocks.selectSkillOpenHandsSession.mockResolvedValue({
       conversation_id: "conv-next",
       skill_name: "finance-skill",
@@ -126,16 +122,13 @@ describe("active-skill-transition", () => {
     tauriMocks.pauseOpenHandsSession.mockImplementation(async () => {
       calls.push("pause");
     });
-    tauriMocks.releaseLock.mockImplementation(async () => {
-      calls.push("release");
-    });
     refineState.selectSkill.mockImplementation(() => {
       calls.push("clear");
     });
 
     await leaveCurrentSkill();
 
-    expect(calls).toEqual(["pause", "release", "clear"]);
+    expect(calls).toEqual(["pause", "clear"]);
     expect(teardownWorkflowSession).toHaveBeenCalledWith({
       logPrefix: "active-skill-transition",
       clearSessionId: true,
@@ -150,71 +143,45 @@ describe("active-skill-transition", () => {
     expect(refineState.selectSkill).not.toHaveBeenCalled();
   });
 
-  it("does not clear UI state when lock release fails", async () => {
-    tauriMocks.releaseLock.mockRejectedValue(new Error("release failed"));
-
-    await expect(leaveCurrentSkill()).rejects.toThrow("release failed");
-    expect(refineState.selectSkill).not.toHaveBeenCalled();
-  });
-
   it("ignores stale leave requests for a different skill", async () => {
     await leaveCurrentSkill({ expectedSkillName: "finance-skill" });
 
     expect(tauriMocks.pauseOpenHandsSession).not.toHaveBeenCalled();
-    expect(tauriMocks.releaseLock).not.toHaveBeenCalled();
     expect(refineState.selectSkill).not.toHaveBeenCalled();
   });
 
-  it("enters the selected skill by acquiring a lock, bootstrapping, and hydrating", async () => {
+  it("enters the selected skill by bootstrapping and hydrating", async () => {
     const skill = makeSkill("finance-skill");
 
-    await enterSkill(skill, "/workspace");
+    await enterSkill(skill);
 
-    expect(tauriMocks.acquireLock).toHaveBeenCalledWith(11);
-    expect(tauriMocks.selectSkillOpenHandsSession).toHaveBeenCalledWith(
-      "finance-skill",
-      "/workspace",
-      "skills",
-    );
+    expect(tauriMocks.selectSkillOpenHandsSession).toHaveBeenCalledWith(11);
     expect(hydrateSelectedSkillOpenHandsSession).toHaveBeenCalledWith(
       skill,
       expect.objectContaining({ conversation_id: "conv-next" }),
     );
   });
 
-  it("releases the lock when selectSkillOpenHandsSession throws", async () => {
+  it("propagates selectSkillOpenHandsSession errors without hydrating", async () => {
     tauriMocks.selectSkillOpenHandsSession.mockRejectedValue(
       new Error("bootstrap failed"),
     );
     const skill = makeSkill("finance-skill");
 
-    await expect(enterSkill(skill, "/workspace")).rejects.toThrow(
+    await expect(enterSkill(skill)).rejects.toThrow(
       "bootstrap failed",
     );
-    expect(tauriMocks.releaseLock).toHaveBeenCalledWith(11);
     expect(hydrateSelectedSkillOpenHandsSession).not.toHaveBeenCalled();
   });
 
-  it("propagates acquireLock errors without calling selectSkillOpenHandsSession", async () => {
-    tauriMocks.acquireLock.mockRejectedValue(new Error("lock failed"));
+  it("throws when skill lacks a DB id", async () => {
     const skill = makeSkill("finance-skill");
+    skill.id = null;
 
-    await expect(enterSkill(skill, "/workspace")).rejects.toThrow("lock failed");
+    await expect(enterSkill(skill)).rejects.toThrow(
+      "Missing DB skill ID",
+    );
     expect(tauriMocks.selectSkillOpenHandsSession).not.toHaveBeenCalled();
-    expect(tauriMocks.releaseLock).not.toHaveBeenCalled();
     expect(hydrateSelectedSkillOpenHandsSession).not.toHaveBeenCalled();
-  });
-
-  it("does not re-throw when releaseLock fails during error cleanup", async () => {
-    tauriMocks.selectSkillOpenHandsSession.mockRejectedValue(
-      new Error("bootstrap failed"),
-    );
-    tauriMocks.releaseLock.mockRejectedValue(new Error("release also failed"));
-    const skill = makeSkill("finance-skill");
-
-    await expect(enterSkill(skill, "/workspace")).rejects.toThrow(
-      "bootstrap failed",
-    );
-    expect(tauriMocks.releaseLock).toHaveBeenCalledWith(11);
   });
 });

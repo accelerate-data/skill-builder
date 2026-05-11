@@ -39,8 +39,9 @@ background while the target page shows its loading skeleton.
 | Decision | Rationale |
 |---|---|
 | Lease acquisition moves to the backend product command. | The backend is the enforcement boundary. It must acquire or verify the skill lease before any OpenHands session work begins. |
+| Lock tracking uses `skill_id` throughout. | All lock interactions (acquire, release, query) use the integer `skill_id` — not `skill_name` or composite keys — ensuring unambiguous ownership even when skills share names across plugins. |
 | Navigation happens before session boot. | The target page already has loading skeletons. Navigating immediately eliminates the visible idle window while the Agent Server starts. |
-| `leaveCurrentSkill` stays synchronous in `handleSelectSkill`. | The leave sequence (pause → release lock → clear UI) must complete before the next skill's backend bootstrap begins. Moving leave into the background would create a window where two skills appear active simultaneously. |
+| `leaveCurrentSkill` stays synchronous in `handleSelectSkill`. | The leave sequence (pause + release lock → clear UI) must complete before the next skill's backend bootstrap begins. Moving leave into the background would create a window where two skills appear active simultaneously. |
 | Background boot errors navigate back to dashboard. | The user sees a brief skeleton flash, then an error toast and a return to `/`. This is preferable to leaving the page in a broken state with no conversation. |
 | Stale hydration is harmless. | If the user navigates to a different skill before the background boot completes, the new skill's activation overwrites the refine store. The old hydration lands on inactive state. |
 | UI lock state is advisory only. | A lightweight poller or focus-refresh keeps the skill menu mostly current, but the backend remains the source of truth for lease conflicts. |
@@ -91,9 +92,11 @@ not *what* it does.
 The [leave sequence](README.md#active-skill-leave-contract) remains synchronous
 in `handleSelectSkill`:
 
-1. Pause the current persistent conversation (`pause_openhands_session`)
-2. Release the current skill lock (`release_lock`)
-3. Clear app-level UI state (`teardownWorkflowSession`, `selectSkill(null)`, `setActiveSkill(null)`)
+1. Pause the current persistent conversation and release the skill lock (`pause_openhands_session` with `skill_id`)
+2. Clear app-level UI state (`teardownWorkflowSession`, `selectSkill(null)`, `setActiveSkill(null)`)
+
+Lock release is now performed by the backend as part of `pause_openhands_session`
+when `skill_id` is provided. The frontend no longer calls `release_lock` directly.
 
 Only after leave completes does the new skill's sync phase begin:
 
@@ -135,8 +138,7 @@ If the background session boot fails:
 1. Show an error toast with the failure reason
 2. Navigate back to the dashboard (`/`)
 3. Clear `activeSessionSkillName` and `selectedWorkspaceSkillName`
-4. Release the lock (best-effort, fire-and-forget) only if backend acquisition
-   already succeeded
+4. The backend releases the lock automatically on any error after acquisition — no frontend cleanup needed
 
 ## Race Conditions
 
@@ -153,7 +155,7 @@ instances before any OpenHands session work begins.
 If the user clicks a different skill before the background boot completes:
 
 - The new skill's `handleSelectSkill` calls `leaveCurrentSkill` synchronously,
-  which pauses the in-progress conversation (if any) and releases the lock
+  which pauses the in-progress conversation (if any) — the backend releases the lock as part of the pause
 - The background `selectSkillOpenHandsSession` for the old skill will either
   succeed (and hydrate a store that's no longer active) or fail (and show a
   toast that the user has already navigated away from)

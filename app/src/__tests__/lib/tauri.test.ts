@@ -104,12 +104,10 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
     },
     {
       name: "selectSkillOpenHandsSession",
-      call: () => selectSkillOpenHandsSession("demo-skill", "/tmp/workspace", "analytics-pack"),
+      call: () => selectSkillOpenHandsSession(42),
       command: "select_skill_openhands_session",
       args: {
-        skillName: "demo-skill",
-        pluginSlug: "analytics-pack",
-        workspacePath: "/tmp/workspace",
+        skillId: 42,
       },
     },
     {
@@ -141,6 +139,7 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
           "analytics-pack",
           "conv-123",
           "agent-123",
+          42,
         ),
       command: "pause_openhands_session",
       args: {
@@ -149,6 +148,7 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
           pluginSlug: "analytics-pack",
           conversationId: "conv-123",
           agentId: "agent-123",
+          skillId: 42,
         },
       },
     },

@@ -2250,7 +2250,7 @@ git commit -m "feat: split skill activation into sync + async phases (Gap 10)"
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 - Test: `app/src-tauri/src/commands/skill_session.rs`
 
-- [ ] **Step 1: Add failing tests for backend-owned lease acquisition**
+- [x] **Step 1: Add failing tests for backend-owned lease acquisition**
 
 Add these tests to the `#[cfg(test)]` block in `app/src-tauri/src/commands/skill_session.rs`:
 
@@ -2302,7 +2302,7 @@ Add these tests to the `#[cfg(test)]` block in `app/src-tauri/src/commands/skill
     }
 ```
 
-- [ ] **Step 2: Add the backend acquire-or-verify helper**
+- [x] **Step 2: Add the backend acquire-or-verify helper**
 
 In `app/src-tauri/src/commands/skill_session.rs`, add this helper near the existing session helpers:
 
@@ -2319,7 +2319,7 @@ pub(crate) fn acquire_or_verify_skill_lock(
 }
 ```
 
-- [ ] **Step 3: Change `select_skill_openhands_session` to use `skillId` and acquire the lease before session restore**
+- [x] **Step 3: Change `select_skill_openhands_session` to use `skillId` and acquire the lease before session restore**
 
 In `app/src-tauri/src/commands/skill_session.rs`, change the command signature from:
 
@@ -2373,7 +2373,7 @@ At the top of the function, replace the direct `skill_name` / `plugin_slug` inpu
 
 Keep the rest of the command behavior intact: runtime readiness, `build_skill_session_config`, `ensure_skill_session`, transcript restore, and the in-memory session map upsert.
 
-- [ ] **Step 4: Run the focused Rust tests**
+- [x] **Step 4: Run the focused Rust tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::skill_session
@@ -2381,7 +2381,7 @@ cd app/src-tauri && cargo test commands::skill_session
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs
@@ -2394,7 +2394,7 @@ git commit -m "feat: enforce selected-skill lease in backend bootstrap"
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 - Modify: `app/src-tauri/src/commands/refine/tests.rs`
 
-- [ ] **Step 1: Add a failing test that documents the dispatch seam**
+- [x] **Step 1: Add a failing test that documents the dispatch seam**
 
 Add this control test to `app/src-tauri/src/commands/refine/tests.rs`:
 
@@ -2443,7 +2443,7 @@ fn selected_skill_lease_guard_rejects_other_instance_before_refine_dispatch() {
 }
 ```
 
-- [ ] **Step 2: Add the backend lease guard at the top of `send_refine_message`**
+- [x] **Step 2: Add the backend lease guard at the top of `send_refine_message`**
 
 In `app/src-tauri/src/commands/refine/mod.rs`, update the command signature to include:
 
@@ -2474,7 +2474,7 @@ Then, immediately after destructuring `input`, add:
 
 Do not change the existing session-map and OpenHands dispatch flow below this guard.
 
-- [ ] **Step 3: Run focused refine tests**
+- [x] **Step 3: Run focused refine tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::refine
@@ -2482,7 +2482,7 @@ cd app/src-tauri && cargo test commands::refine
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/refine/tests.rs
@@ -2499,7 +2499,7 @@ git commit -m "feat: enforce selected-skill lease before refine dispatch"
 - Modify: `app/src/__tests__/lib/tauri.test.ts`
 - Modify: `app/src/__tests__/components/app-layout.test.tsx`
 
-- [ ] **Step 1: Update the typed command contract**
+- [x] **Step 1: Update the typed command contract**
 
 In `app/src/lib/tauri-command-types.ts`, replace:
 
@@ -2519,7 +2519,7 @@ With:
   };
 ```
 
-- [ ] **Step 2: Update the wrapper**
+- [x] **Step 2: Update the wrapper**
 
 In `app/src/lib/tauri.ts`, replace:
 
@@ -2535,7 +2535,7 @@ export const selectSkillOpenHandsSession = (skillId: number, workspacePath: stri
   invokeCommand("select_skill_openhands_session", { skillId, workspacePath })
 ```
 
-- [ ] **Step 3: Remove `acquireLock` from selected-skill entry**
+- [x] **Step 3: Remove `acquireLock` from selected-skill entry**
 
 In `app/src/lib/active-skill-transition.ts`, replace:
 
@@ -2563,7 +2563,7 @@ With:
 
 Also remove the unused `acquireLock` import.
 
-- [ ] **Step 4: Update restart hydration**
+- [x] **Step 4: Update restart hydration**
 
 In `app/src/lib/skill-openhands-session.ts`, replace:
 
@@ -2588,7 +2588,7 @@ With:
   );
 ```
 
-- [ ] **Step 5: Update the tests to stop expecting frontend `acquire_lock`**
+- [x] **Step 5: Update the tests to stop expecting frontend `acquire_lock`**
 
 In `app/src/__tests__/components/app-layout.test.tsx`, replace selected-skill bootstrap assertions like:
 
@@ -2626,7 +2626,7 @@ With:
       call: () => selectSkillOpenHandsSession(42, "/tmp/workspace"),
 ```
 
-- [ ] **Step 6: Run frontend tests**
+- [x] **Step 6: Run frontend tests**
 
 ```bash
 cd app && npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/components/app-layout.test.tsx
@@ -2634,7 +2634,7 @@ cd app && npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/component
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/src/lib/tauri-command-types.ts app/src/lib/tauri.ts app/src/lib/active-skill-transition.ts app/src/lib/skill-openhands-session.ts app/src/__tests__/lib/tauri.test.ts app/src/__tests__/components/app-layout.test.tsx
@@ -2647,7 +2647,7 @@ git commit -m "refactor: move selected-skill lease acquisition out of frontend"
 - Modify: `app/src/components/skill-list-panel.tsx`
 - Modify: `app/src/__tests__/components/skill-list-panel.test.tsx`
 
-- [ ] **Step 1: Replace panel-local lock state with a real refresh loop**
+- [x] **Step 1: Replace panel-local lock state with a real refresh loop**
 
 In `app/src/components/skill-list-panel.tsx`, replace the panel-local state:
 
@@ -2718,7 +2718,7 @@ With:
     if (lockedSkills.has(skill.name)) return;
 ```
 
-- [ ] **Step 2: Add a polling-focused test**
+- [x] **Step 2: Add a polling-focused test**
 
 In `app/src/__tests__/components/skill-list-panel.test.tsx`, add:
 
@@ -2746,7 +2746,7 @@ In `app/src/__tests__/components/skill-list-panel.test.tsx`, add:
   });
 ```
 
-- [ ] **Step 3: Run focused panel tests**
+- [x] **Step 3: Run focused panel tests**
 
 ```bash
 cd app && npx vitest run src/__tests__/components/skill-list-panel.test.tsx
@@ -2754,7 +2754,7 @@ cd app && npx vitest run src/__tests__/components/skill-list-panel.test.tsx
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/src/components/skill-list-panel.tsx app/src/__tests__/components/skill-list-panel.test.tsx
@@ -2768,7 +2768,7 @@ git commit -m "feat: add advisory UI lock polling for selected-skill menu"
 - Modify: `docs/design/openhands-runtime-model/optimistic-session-activation.md`
 - Modify: `docs/design/backend-design/README.md`
 
-- [ ] **Step 1: Update the canonical runtime contract doc**
+- [x] **Step 1: Update the canonical runtime contract doc**
 
 In `docs/design/openhands-runtime-model/README.md`, make the selected-skill bootstrap contract explicit:
 
@@ -2777,7 +2777,7 @@ In `docs/design/openhands-runtime-model/README.md`, make the selected-skill boot
 - frontend lock state is advisory only
 - persistent dispatch commands re-check lease ownership before touching the conversation
 
-- [ ] **Step 2: Update the optimistic activation design**
+- [x] **Step 2: Update the optimistic activation design**
 
 In `docs/design/openhands-runtime-model/optimistic-session-activation.md`, remove the stale assumption that the sync phase calls `acquireLock`. The flow should say:
 
@@ -2786,7 +2786,7 @@ In `docs/design/openhands-runtime-model/optimistic-session-activation.md`, remov
 - backend lease acquisition/verification happens inside that product command
 - UI lock polling is advisory only
 
-- [ ] **Step 3: Update the backend summary doc**
+- [x] **Step 3: Update the backend summary doc**
 
 In `docs/design/backend-design/README.md`, keep the as-built backend summary accurate:
 
@@ -2794,7 +2794,7 @@ In `docs/design/backend-design/README.md`, keep the as-built backend summary acc
 - `select_skill_openhands_session` acquires or verifies the backend lease before OpenHands session restore
 - frontend lock state is advisory UX, not the enforcement boundary
 
-- [ ] **Step 4: Run doc sanity check**
+- [x] **Step 4: Run doc sanity check**
 
 ```bash
 cd /Users/hbanerjee/src/worktrees/feature/runtime-model-refactor && git diff --check
@@ -2802,14 +2802,7 @@ cd /Users/hbanerjee/src/worktrees/feature/runtime-model-refactor && git diff --c
 
 Expected: No whitespace or patch-format errors.
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add docs/design/openhands-runtime-model/README.md docs/design/openhands-runtime-model/optimistic-session-activation.md docs/design/backend-design/README.md
-git commit -m "docs: document backend-owned selected-skill lease contract"
-```
-
-**Manual smoke:** Open two app instances. In instance A, select a skill and leave it active. In instance B, verify the skill becomes disabled in the menu within a few seconds or on window focus. Force a selection attempt anyway if possible and verify the backend rejects it cleanly before any OpenHands session restore or refine dispatch occurs.
+- [x] **Step 5: Commit** Open two app instances. In instance A, select a skill and leave it active. In instance B, verify the skill becomes disabled in the menu within a few seconds or on window focus. Force a selection attempt anyway if possible and verify the backend rejects it cleanly before any OpenHands session restore or refine dispatch occurs.
 
 ---
 

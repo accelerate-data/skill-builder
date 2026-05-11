@@ -123,9 +123,9 @@ fn restore_skill_conversation_state(
     Vec<crate::types::RestoredConversationEvent>,
     usize,
 ) {
-    let restored_messages = crate::commands::refine::extract_conversation_messages(&events);
+    let restored_messages = crate::commands::refine::extract_conversation_messages(events);
     let restored_transcript_events =
-        crate::commands::refine::extract_restored_conversation_events(&events);
+        crate::commands::refine::extract_restored_conversation_events(events);
     let dispatched_user_turn_count =
         crate::commands::refine::restored_conversation_user_turn_count(&restored_transcript_events);
     (
@@ -135,112 +135,147 @@ fn restore_skill_conversation_state(
     )
 }
 
+pub(crate) fn acquire_or_verify_skill_lock(
+    conn: &rusqlite::Connection,
+    skill_id: i64,
+    instance_id: &str,
+    pid: u32,
+) -> Result<crate::types::SkillMasterRow, String> {
+    crate::db::acquire_skill_lock_by_skill_id(conn, skill_id, instance_id, pid)?;
+    crate::db::get_skill_master_by_id(conn, skill_id)?
+        .ok_or_else(|| format!("Skill id {} was not found in the skills master", skill_id))
+}
+
 #[tauri::command]
 pub async fn select_skill_openhands_session(
     app: tauri::AppHandle,
-    skill_name: String,
-    plugin_slug: String,
-    _workspace_path: String,
+    skill_id: i64,
+    instance: tauri::State<'_, crate::InstanceInfo>,
     sessions: tauri::State<'_, SkillSessionManager>,
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
+    let (skill_name, plugin_slug, saved_conversation_id) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let skill = acquire_or_verify_skill_lock(
+            &conn,
+            skill_id,
+            &instance.id,
+            instance.pid,
+        )?;
+        let saved_conversation_id =
+            crate::db::get_skill_conversation_id(&conn, &skill.plugin_slug, &skill.name)?;
+        (skill.name, skill.plugin_slug, saved_conversation_id)
+    };
+
     log::info!(
-        "[select_skill_openhands_session] skill={} plugin={}",
+        "[select_skill_openhands_session] skill_id={} skill={} plugin={}",
+        skill_id,
         skill_name,
         plugin_slug
     );
-    validate_skill_name(&skill_name)?;
 
-    let runtime_ctx = ensure_skill_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
+    // Run all post-lock-acquisition work in an async block so we can release
+    // the lock on any failure — the frontend no longer has a releaseLock in its
+    // error path, so the backend must clean up after itself.
+    let result = async {
+        validate_skill_name(&skill_name)?;
 
-    let saved_conversation_id = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
-    };
+        let runtime_ctx = ensure_skill_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
 
-    let skills_path = resolve_skills_path(&db)?;
-    let app_data_root = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
-        .to_string_lossy()
-        .replace('\\', "/");
-    let session_config = build_skill_session_config(
-        &skill_name,
-        &plugin_slug,
-        "",
-        &app_data_root,
-        &skills_path,
-        runtime_ctx.llm.clone(),
-    );
-    let started_session = crate::agents::skill_creator::ensure_skill_session(
-        &app,
-        session_config,
-        saved_conversation_id,
-    )
-    .await?;
-    let active_conversation_id = started_session.conversation_id.clone();
-    let (restored_messages, restored_transcript_events, dispatched_user_turn_count) =
-        restore_skill_conversation_state(&started_session.restored_events);
-
-    let mut map = sessions.0.lock().map_err(|e| {
-        log::error!(
-            "[select_skill_openhands_session] failed to acquire session lock: {}",
-            e
+        let skills_path = resolve_skills_path(&db)?;
+        let app_data_root = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let session_config = build_skill_session_config(
+            &skill_name,
+            &plugin_slug,
+            "",
+            &app_data_root,
+            &skills_path,
+            runtime_ctx.llm.clone(),
         );
-        e.to_string()
-    })?;
+        let started_session = crate::agents::skill_creator::ensure_skill_session(
+            &app,
+            session_config,
+            saved_conversation_id,
+        )
+        .await?;
+        let active_conversation_id = started_session.conversation_id.clone();
+        let (restored_messages, restored_transcript_events, dispatched_user_turn_count) =
+            restore_skill_conversation_state(&started_session.restored_events);
 
-    let session_key = skill_session_key(&skill_name, &plugin_slug);
-    if map.iter().any(|(key, session)| {
-        key != &session_key
-            && session.skill_name == skill_name
-            && session.plugin_slug == plugin_slug
-    }) {
-        log::info!(
-            "[select_skill_openhands_session] removing stale session for skill '{}' before restart",
+        let mut map = sessions.0.lock().map_err(|e| {
+            log::error!(
+                "[select_skill_openhands_session] failed to acquire session lock: {}",
+                e
+            );
+            e.to_string()
+        })?;
+
+        let session_key = skill_session_key(&skill_name, &plugin_slug);
+        if map.iter().any(|(key, session)| {
+            key != &session_key
+                && session.skill_name == skill_name
+                && session.plugin_slug == plugin_slug
+        }) {
+            log::info!(
+                "[select_skill_openhands_session] removing stale session for skill '{}' before restart",
+                skill_name
+            );
+        }
+
+        let created_at = chrono::Utc::now().to_rfc3339();
+        log::debug!(
+            "[select_skill_openhands_session] creating session [REDACTED] for skill '{}'",
             skill_name
         );
+
+        let head_sha_at_start = git2::Repository::open(Path::new(&skills_path))
+            .ok()
+            .and_then(|repo| {
+                let head = repo.head().ok()?;
+                let commit = head.peel_to_commit().ok()?;
+                Some(commit.id().to_string())
+            });
+
+        upsert_skill_session(
+            &mut map,
+            session_key,
+            SkillSession {
+                skill_name: skill_name.clone(),
+                plugin_slug: plugin_slug.clone(),
+                usage_session_id: crate::commands::refine::protocol::new_skill_usage_session_id(
+                    &skill_name,
+                ),
+                conversation_id: Some(active_conversation_id.clone()),
+                current_agent_id: None,
+                dispatched_user_turn_count,
+                head_sha_at_start,
+            },
+        );
+
+        Ok(RefineSessionInfo {
+            conversation_id: active_conversation_id,
+            skill_name,
+            created_at,
+            available_agents: vec!["skill-creator".to_string()],
+            restored_messages,
+            restored_transcript_events,
+        })
+    }
+    .await;
+
+    // Release the lock if any post-acquisition step failed.
+    if result.is_err() {
+        if let Ok(conn) = db.0.lock() {
+            let _ = crate::db::release_skill_lock_by_skill_id(&conn, skill_id, &instance.id);
+        }
     }
 
-    let created_at = chrono::Utc::now().to_rfc3339();
-    log::debug!(
-        "[select_skill_openhands_session] creating session [REDACTED] for skill '{}'",
-        skill_name
-    );
-
-    let head_sha_at_start = git2::Repository::open(Path::new(&skills_path))
-        .ok()
-        .and_then(|repo| {
-            let head = repo.head().ok()?;
-            let commit = head.peel_to_commit().ok()?;
-            Some(commit.id().to_string())
-        });
-
-    upsert_skill_session(
-        &mut map,
-        session_key,
-        SkillSession {
-            skill_name: skill_name.clone(),
-            plugin_slug: plugin_slug.clone(),
-            usage_session_id: crate::commands::refine::protocol::new_skill_usage_session_id(
-                &skill_name,
-            ),
-            conversation_id: Some(active_conversation_id.clone()),
-            current_agent_id: None,
-            dispatched_user_turn_count,
-            head_sha_at_start,
-        },
-    );
-
-    Ok(RefineSessionInfo {
-        conversation_id: active_conversation_id,
-        skill_name,
-        created_at,
-        available_agents: vec!["skill-creator".to_string()],
-        restored_messages,
-        restored_transcript_events,
-    })
+    result
 }
 
 #[derive(Debug, Deserialize)]
@@ -250,6 +285,9 @@ pub struct PauseOpenHandsSessionInput {
     pub plugin_slug: String,
     pub conversation_id: String,
     pub agent_id: Option<String>,
+    /// When provided, the skill lock is released after pausing.
+    /// Used by `leaveCurrentSkill` to keep lock ownership in the backend.
+    pub skill_id: Option<i64>,
 }
 
 #[tauri::command]
@@ -258,12 +296,14 @@ pub async fn pause_openhands_session(
     input: PauseOpenHandsSessionInput,
     db: tauri::State<'_, Db>,
     sessions: tauri::State<'_, SkillSessionManager>,
+    instance: tauri::State<'_, crate::InstanceInfo>,
 ) -> Result<(), String> {
     let PauseOpenHandsSessionInput {
         skill_name,
         plugin_slug,
         conversation_id,
         agent_id,
+        skill_id,
     } = input;
 
     if conversation_id.trim().is_empty() {
@@ -322,12 +362,24 @@ pub async fn pause_openhands_session(
         remove_skill_sessions(&mut map, &skill_name, &plugin_slug);
     }
 
+    // Release the skill lock when the caller explicitly provides the skill ID.
+    // This keeps lock ownership entirely in the backend — the frontend no longer
+    // calls `release_lock` directly.
+    if let Some(sid) = skill_id {
+        if let Ok(conn) = db.0.lock() {
+            let _ = crate::db::release_skill_lock_by_skill_id(&conn, sid, &instance.id);
+        }
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{remove_skill_sessions, skill_session_key, upsert_skill_session, SkillSession};
+    use super::{
+        acquire_or_verify_skill_lock, remove_skill_sessions, skill_session_key, upsert_skill_session,
+        SkillSession,
+    };
     use std::collections::HashMap;
 
     fn session(skill_name: &str, plugin_slug: &str, usage_session_id: &str) -> SkillSession {
@@ -340,6 +392,74 @@ mod tests {
             dispatched_user_turn_count: 0,
             head_sha_at_start: None,
         }
+    }
+
+    #[test]
+    fn acquire_or_verify_skill_lock_acquires_missing_lock_for_current_instance() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "locked-skill", "skill-builder", "domain").unwrap();
+
+        let skill =
+            acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
+                .unwrap();
+
+        assert_eq!(skill.id, skill_id);
+
+        let lock = crate::db::get_skill_lock_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .expect("lock row");
+        assert_eq!(lock.instance_id, "instance-a");
+    }
+
+    #[test]
+    fn acquire_or_verify_skill_lock_rejects_other_instance_lease() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "locked-skill", "skill-builder", "domain").unwrap();
+        crate::db::acquire_skill_lock_by_skill_id(
+            &conn,
+            skill_id,
+            "instance-b",
+            std::process::id(),
+        )
+        .unwrap();
+
+        let error =
+            acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
+                .unwrap_err();
+
+        assert_eq!(
+            error,
+            "Skill 'locked-skill' is being edited in another instance"
+        );
+    }
+
+    #[test]
+    fn acquire_then_release_lock_allows_other_instance_to_acquire() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "release-test", "skill-builder", "domain").unwrap();
+
+        acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id()).unwrap();
+
+        let lock = crate::db::get_skill_lock_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .expect("lock row exists");
+        assert_eq!(lock.instance_id, "instance-a");
+
+        crate::db::release_skill_lock_by_skill_id(&conn, skill_id, "instance-a").unwrap();
+
+        let lock_after = crate::db::get_skill_lock_by_skill_id(&conn, skill_id).unwrap();
+        assert!(
+            lock_after.is_none(),
+            "lock should be gone after release"
+        );
+
+        let skill =
+            acquire_or_verify_skill_lock(&conn, skill_id, "instance-b", std::process::id())
+                .unwrap();
+        assert_eq!(skill.id, skill_id);
     }
 
     #[test]
