@@ -1073,11 +1073,6 @@ pub fn materialize_workflow_step_output(
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
                 super::evaluation::lookup_plugin_slug(&conn, &skill_name)
             };
-            let _skill_dir = crate::skill_paths::resolve_skill_dir(
-                Path::new(&workspace_path),
-                &plugin_slug,
-                &skill_name,
-            );
 
             let conn = db.0.lock().map_err(|e| e.to_string())?;
             let settings = crate::db::read_settings(&conn)?;

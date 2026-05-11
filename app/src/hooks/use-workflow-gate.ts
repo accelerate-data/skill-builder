@@ -23,6 +23,7 @@ export interface UseWorkflowGateOptions {
   skillName: string;
   pluginSlug?: string;
   workspacePath: string | null;
+  skillsPath: string | null;
   currentStep: number;
   purpose: string | null;
   /** Called after gate completes to advance the workflow */
@@ -58,6 +59,7 @@ export function useWorkflowGate({
   skillName,
   pluginSlug = pluginPaths.default_plugin_slug,
   workspacePath,
+  skillsPath,
   currentStep,
   purpose,
   advanceToNextStep,
@@ -201,7 +203,7 @@ export function useWorkflowGate({
 
         const gateDecision = evaluation.gate_decision ?? "run_research";
 
-        if (workspacePath) {
+        if (skillsPath) {
           const gateLog = JSON.stringify({
             ...evaluation,
             action: gateDecision,
@@ -209,7 +211,7 @@ export function useWorkflowGate({
           });
           writeFile(
             joinPath(
-              skillDir(workspacePath, pluginSlug, skillName),
+              skillDir(skillsPath, pluginSlug, skillName),
               "gate-result.json",
             ),
             gateLog,
@@ -263,7 +265,7 @@ export function useWorkflowGate({
       }
     },
     [
-      workspacePath,
+      skillsPath,
     skillId,
     skillName,
       advanceToNextStep,

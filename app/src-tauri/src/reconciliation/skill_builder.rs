@@ -126,7 +126,7 @@ pub(crate) fn reconcile_skill_builder(
 
     // Scenario 5: canonical skill dir missing → recreate
     let skill_dir =
-        match crate::skill_paths::ensure_nested_skill_dir(Path::new(workspace_path), plugin_slug, name) {
+        match crate::skill_paths::ensure_nested_skill_dir(Path::new(skills_path), plugin_slug, name) {
             Ok(d) => d,
             Err(e) => {
                 log::warn!(
@@ -139,11 +139,11 @@ pub(crate) fn reconcile_skill_builder(
     if !skill_dir.exists() {
         match std::fs::create_dir_all(&skill_dir) {
             Ok(()) => log::info!(
-                "[reconcile] '{}': skill_source=skill-builder, action=recreate_workspace",
+                "[reconcile] '{}': skill_source=skill-builder, action=recreate_skill_dir",
                 name
             ),
             Err(e) => log::warn!(
-                "[reconcile] '{}': failed to recreate workspace dir '{}': {}",
+                "[reconcile] '{}': failed to recreate skill dir '{}': {}",
                 name,
                 skill_dir.display(),
                 e

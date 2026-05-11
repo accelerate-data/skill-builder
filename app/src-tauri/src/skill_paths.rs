@@ -160,9 +160,11 @@ pub fn resolve_existing_skill_dir(skills_root: &Path, plugin_slug: &str, skill_n
         .unwrap_or_else(|| resolve_skill_dir(skills_root, plugin_slug, skill_name))
 }
 
-/// Returns the canonical skill directory, creating the parent plugin
-/// directory if it doesn't exist. Used when the `{plugin_slug}/` folder
-/// may have been deleted and needs to be recreated before writing.
+/// Returns the canonical skill directory path, creating parent directories
+/// (`{skills_root}/{plugin_slug}/skills/`) if they don't exist.
+///
+/// **Note:** This does NOT create the skill directory itself — only its parents.
+/// Callers must create the final skill directory separately if needed.
 pub fn ensure_nested_skill_dir(
     skills_root: &Path,
     plugin_slug: &str,

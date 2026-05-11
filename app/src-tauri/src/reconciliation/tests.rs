@@ -379,8 +379,8 @@ fn test_missing_workspace_dir_is_recreated() {
         .unwrap();
     assert_eq!(run.current_step, 0);
 
-    // Workspace dir should have been recreated (no longer includes context/ subdir)
-    assert!(tmp
+    // Skill dir should have been recreated under skills_path (no longer includes context/ subdir)
+    assert!(skills_tmp
         .path()
         .join(DEFAULT_PLUGIN_SLUG)
         .join("skills")
@@ -813,8 +813,8 @@ fn test_reconcile_mixed_scenarios() {
     assert!(result.notifications.is_empty());
     assert!(result.orphans.is_empty());
 
-    // db-only skill's workspace dir should have been recreated (no context/ subdir)
-    assert!(tmp
+    // db-only skill's skill dir should have been recreated under skills_path (no context/ subdir)
+    assert!(skills_tmp
         .path()
         .join(DEFAULT_PLUGIN_SLUG)
         .join("skills")
@@ -1073,14 +1073,15 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
         result.notifications
     );
 
-    // Workspace dir should have been recreated (no longer includes context/ subdir)
+    // Skill dir should have been recreated under skills_path (no longer includes context/ subdir)
     assert!(
-        tmp.path()
+        skills_tmp
+            .path()
             .join(DEFAULT_PLUGIN_SLUG)
             .join("skills")
             .join("my-skill")
             .exists(),
-        "workspace skill dir should be recreated"
+        "skill dir should be recreated under skills_path"
     );
 
     // current_step should remain at 1 (DB is valid)
@@ -2026,7 +2027,7 @@ fn test_reconcile_skill_builder_scenario_10_missing_workflow_run() {
 }
 
 #[test]
-fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
+fn test_reconcile_skill_builder_recreates_missing_skill_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path().to_str().unwrap();
@@ -2034,7 +2035,7 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
     let conn = create_test_db();
     let name = "sb-missing-ws";
 
-    // Create skill + workflow_runs but do NOT create workspace dir
+    // Create skill + workflow_runs but do NOT create skill dir
     crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run(&conn, name, 0, "pending", "domain").unwrap();
 
@@ -2049,10 +2050,10 @@ fn test_reconcile_skill_builder_recreates_missing_workspace_dir() {
     )
     .unwrap();
 
-    // The workspace dir should be recreated (scenario 5)
+    // The canonical skill dir should be recreated under skills_path (scenario 5)
     // Steps 0-2 are DB-authoritative; no context/ subdir is created.
-    let skill_dir = crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, name);
-    assert!(skill_dir.exists(), "workspace dir should be recreated");
+    let skill_dir = crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, name);
+    assert!(skill_dir.exists(), "skill dir should be recreated under skills_path");
 }
 
 #[test]
