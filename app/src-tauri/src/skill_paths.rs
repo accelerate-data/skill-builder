@@ -182,53 +182,53 @@ pub fn throwaway_logs_dir(run_dir: &Path) -> PathBuf {
 }
 
 /// Returns the canonical plugin-layout skill directory path
-/// (`{root}/{plugin_slug}/skills/{skill_name}`). Does not check existence.
-pub fn resolve_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+/// (`{skills_root}/{plugin_slug}/skills/{skill_name}`). Does not check existence.
+pub fn resolve_skill_dir(skills_root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().skill_dir,
         &[
-            ("root", &root.to_string_lossy()),
+            ("skills_root", &skills_root.to_string_lossy()),
             ("plugin_slug", plugin_slug),
             ("skill_name", skill_name),
         ],
     )
 }
 
-pub fn resolve_eval_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+pub fn resolve_eval_dir(skills_root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
     resolve_path_template(
         &paths().eval_dir,
         &[
-            ("root", &root.to_string_lossy()),
+            ("skills_root", &skills_root.to_string_lossy()),
             ("plugin_slug", plugin_slug),
             ("skill_name", skill_name),
         ],
     )
 }
 
-pub fn skill_dir_candidates(root: &Path, plugin_slug: &str, skill_name: &str) -> Vec<PathBuf> {
+pub fn skill_dir_candidates(skills_root: &Path, plugin_slug: &str, skill_name: &str) -> Vec<PathBuf> {
     dedupe_paths([
-        resolve_skill_dir(root, plugin_slug, skill_name),
-        root.join(plugin_slug).join(skill_name),
-        root.join(skill_name),
+        resolve_skill_dir(skills_root, plugin_slug, skill_name),
+        skills_root.join(plugin_slug).join(skill_name),
+        skills_root.join(skill_name),
     ])
 }
 
-pub fn resolve_existing_skill_dir(root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
-    skill_dir_candidates(root, plugin_slug, skill_name)
+pub fn resolve_existing_skill_dir(skills_root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+    skill_dir_candidates(skills_root, plugin_slug, skill_name)
         .into_iter()
         .find(|path| path.exists())
-        .unwrap_or_else(|| resolve_skill_dir(root, plugin_slug, skill_name))
+        .unwrap_or_else(|| resolve_skill_dir(skills_root, plugin_slug, skill_name))
 }
 
 /// Returns the canonical skill directory, creating the parent plugin
 /// directory if it doesn't exist. Used when the `{plugin_slug}/` folder
 /// may have been deleted and needs to be recreated before writing.
 pub fn ensure_nested_skill_dir(
-    root: &Path,
+    skills_root: &Path,
     plugin_slug: &str,
     skill_name: &str,
 ) -> Result<PathBuf, String> {
-    let dir = resolve_skill_dir(root, plugin_slug, skill_name);
+    let dir = resolve_skill_dir(skills_root, plugin_slug, skill_name);
     if let Some(parent) = dir.parent() {
         fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -241,13 +241,13 @@ pub fn ensure_nested_skill_dir(
     Ok(dir)
 }
 
-/// Enumerate all skill locations under the root directory.
+/// Enumerate all skill locations under the skills root directory.
 ///
-/// Primary scan: `root/{slug}/skills/{name}/` (canonical plugin layout).
-/// Fallbacks: `root/{slug}/{name}/` (legacy nested) and `root/{name}/` (legacy flat).
+/// Primary scan: `skills_root/{slug}/skills/{name}/` (canonical plugin layout).
+/// Fallbacks: `skills_root/{slug}/{name}/` (legacy nested) and `skills_root/{name}/` (legacy flat).
 /// Deduplicates by (plugin_slug, skill_name).
-pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, String> {
-    if !root.exists() {
+pub fn enumerate_skill_locations(skills_root: &Path) -> Result<Vec<SkillLocation>, String> {
+    if !skills_root.exists() {
         return Ok(vec![]);
     }
 
@@ -255,10 +255,10 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
     let mut seen = std::collections::HashSet::new();
 
     for entry in
-        fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))?
+        fs::read_dir(skills_root).map_err(|e| format!("Failed to read '{}': {}", skills_root.display(), e))?
     {
         let entry =
-            entry.map_err(|e| format!("Failed to read entry in '{}': {}", root.display(), e))?;
+            entry.map_err(|e| format!("Failed to read entry in '{}': {}", skills_root.display(), e))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -358,18 +358,18 @@ pub fn enumerate_skill_locations(root: &Path) -> Result<Vec<SkillLocation>, Stri
 }
 
 /// Enumerate skills using the flat and nested layouts (for migration).
-/// Scans `root/{name}/` (legacy flat) and `root/{slug}/{name}/` (nested).
-pub fn enumerate_skill_locations_legacy(root: &Path) -> Result<Vec<SkillLocation>, String> {
-    if !root.exists() {
+/// Scans `skills_root/{name}/` (legacy flat) and `skills_root/{slug}/{name}/` (nested).
+pub fn enumerate_skill_locations_legacy(skills_root: &Path) -> Result<Vec<SkillLocation>, String> {
+    if !skills_root.exists() {
         return Ok(vec![]);
     }
 
     let mut discovered = Vec::new();
     for entry in
-        fs::read_dir(root).map_err(|e| format!("Failed to read '{}': {}", root.display(), e))?
+        fs::read_dir(skills_root).map_err(|e| format!("Failed to read '{}': {}", skills_root.display(), e))?
     {
         let entry =
-            entry.map_err(|e| format!("Failed to read entry in '{}': {}", root.display(), e))?;
+            entry.map_err(|e| format!("Failed to read entry in '{}': {}", skills_root.display(), e))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -480,10 +480,10 @@ mod tests {
     #[test]
     fn resolve_skill_dir_includes_skills_subdir() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
+        let skills_root = tmp.path();
         assert_eq!(
-            resolve_skill_dir(root, "analytics", "weekly-report"),
-            root.join("analytics").join("skills").join("weekly-report")
+            resolve_skill_dir(skills_root, "analytics", "weekly-report"),
+            skills_root.join("analytics").join("skills").join("weekly-report")
         );
     }
 
@@ -504,11 +504,11 @@ mod tests {
     #[test]
     fn resolve_eval_dir_includes_evals_subdir() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
+        let skills_root = tmp.path();
 
         assert_eq!(
-            resolve_eval_dir(root, "analytics", "weekly-report"),
-            root.join("analytics").join("evals").join("weekly-report")
+            resolve_eval_dir(skills_root, "analytics", "weekly-report"),
+            skills_root.join("analytics").join("evals").join("weekly-report")
         );
     }
 
@@ -670,8 +670,8 @@ mod tests {
 
     #[test]
     fn resolves_eval_dir_from_plugin_layout() {
-        let root = Path::new("/users/alice/my-plugins");
-        let dir = resolve_eval_dir(root, "superpowers", "analyzing-bookings");
+        let skills_root = Path::new("/users/alice/my-plugins");
+        let dir = resolve_eval_dir(skills_root, "superpowers", "analyzing-bookings");
         assert_eq!(
             dir,
             Path::new("/users/alice/my-plugins/superpowers/evals/analyzing-bookings")

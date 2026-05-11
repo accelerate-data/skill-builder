@@ -1,11 +1,16 @@
 {
   "default_plugin_slug": "default",
-  "skill_dir": "{root}/{plugin_slug}/skills/{skill_name}",
-  "eval_dir": "{root}/{plugin_slug}/evals/{skill_name}",
+  "skill_dir": "{skills_root}/{plugin_slug}/skills/{skill_name}",
+  "eval_dir": "{skills_root}/{plugin_slug}/evals/{skill_name}",
   "workspace_skill_dir": "{workspace}/{plugin_slug}/skills/{skill_name}",
   "tag_prefix": "v",
   "tag_glob":   "v*",
-  "_note": "plugin_slug is always required in skill paths. Never construct {root}/{skill_name} directly. Use skill_paths::resolve_skill_dir(root, plugin_slug, skill_name) in Rust.",
+  "_note": "Three distinct runtime roots exist: {app_data_root} (Tauri app data), {skills_root} (user-configured canonical skill tree), {skill_dir} (per-skill OpenHands working_dir). Never construct paths by hand — use the single authoritative resolver for each root.",
+  "_roots": {
+    "app_data_root": "app_handle.path().app_data_dir() — never user-configured",
+    "skills_root": "resolve_skills_path(&db) → settings.skills_path — unconfigured is an error, never falls back to workspace",
+    "skill_dir": "skill_paths::resolve_skill_dir(skills_root, plugin_slug, skill_name)"
+  },
   "_examples": {
     "default_plugin_skill_dir": "C:/users/skill-builder/default/skills/my-skill",
     "custom_plugin_skill_dir": "C:/users/skill-builder/my-plugin/skills/my-skill",
