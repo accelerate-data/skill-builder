@@ -556,25 +556,15 @@ describe("SkillListPanel", () => {
     expect(olderRow?.getAttribute("aria-selected")).toBe("false");
   });
 
-  it("does not leak an unhandled rejection when default activation fails", async () => {
-    setBuilderSkills([recentBuilder]);
-    const onActivateSkill = vi.fn().mockRejectedValue(new Error("activation failed"));
-    const unhandled = vi.fn();
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      event.preventDefault();
-      unhandled(event.reason);
-    };
-    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+  it("highlights the default skill on mount without activating it", () => {
+    setBuilderSkills([recentBuilder, olderBuilder]);
+    const onActivateSkill = vi.fn();
 
     renderWithSkillQueries(<SkillListPanel onActivateSkill={onActivateSkill} />);
 
-    await waitFor(() => {
-      expect(onActivateSkill).toHaveBeenCalledWith(builderKey("recent-skill"));
-    });
-    await Promise.resolve();
-
-    expect(unhandled).not.toHaveBeenCalled();
-    window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    const recentRow = screen.getByText("recent-skill").closest('[role="button"]');
+    expect(recentRow?.getAttribute("aria-selected")).toBe("true");
+    expect(onActivateSkill).not.toHaveBeenCalled();
   });
 
   it("falls back to most-recently-modified skill when localStorage key is absent", () => {
