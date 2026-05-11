@@ -3625,6 +3625,305 @@ git commit -m "fix: keep landing page passive until explicit skill selection"
 
 ---
 
+## PR 14 — Move `RefineSessionInfo` → `SkillSessionInfo` to `types/session.rs`
+
+**Goal:** Rename `RefineSessionInfo` → `SkillSessionInfo` and move it (along with the shared `ConversationMessage` and `RestoredConversationEvent`) out of `types/refine.rs` into a new neutral `types/session.rs`. The `Refine*` prefix on a cross-cutting session type misleads about its scope — it's returned by `select_skill_openhands_session` and consumed by all skill surfaces, not just refine.
+
+**Why this matters:** Gap 3 in `implementation-gaps.md` tracks this rename. The type is constructed in `commands/skill_session.rs`, returned to the frontend for all skills, and consumed in `skill-openhands-session.ts` for session hydration. Keeping it in `types/refine.rs` creates ongoing confusion about ownership and scope.
+
+**Scope:** Only `RefineSessionInfo`, `ConversationMessage`, and `RestoredConversationEvent` move — they're shared across skill_session and refine. Genuinely refine-specific types (`RefineDiff`, `RefineFileDiff`, `RefineFinalizeResult`, `RefineDispatchResult`, `SkillFileContent`) stay in `types/refine.rs`.
+
+### Task 14.1: Create `types/session.rs` with shared session types
+
+**Files:**
+- Create: `app/src-tauri/src/types/session.rs`
+- Modify: `app/src-tauri/src/types/mod.rs`
+- Modify: `app/src-tauri/src/types/refine.rs`
+
+- [ ] **Step 1: Create `types/session.rs`**
+
+Create `app/src-tauri/src/types/session.rs` with the three shared types, renamed where needed:
+
+```rust
+use serde::{Deserialize, Serialize};
+
+/// A single message in a skill conversation history.
+/// Typed struct ensures Tauri IPC rejects malformed payloads at the boundary
+/// rather than silently forwarding broken JSON to the runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RestoredConversationEvent {
+    pub event_class: String,
+    pub event: serde_json::Value,
+    pub timestamp: i64,
+    pub tool_call_id: Option<String>,
+    pub parent_tool_call_id: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SkillSessionInfo {
+    pub conversation_id: String,
+    pub skill_name: String,
+    pub created_at: String,
+    /// Agent names discovered from the allowed plugins.
+    pub available_agents: Vec<String>,
+    /// Restored user/agent messages from the persisted skill conversation.
+    pub restored_messages: Vec<ConversationMessage>,
+    /// Restored OpenHands event transcript for resume hydration.
+    pub restored_transcript_events: Vec<RestoredConversationEvent>,
+}
+
+impl std::fmt::Debug for SkillSessionInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SkillSessionInfo")
+            .field("conversation_id", &"[REDACTED]")
+            .field("skill_name", &self.skill_name)
+            .field("created_at", &self.created_at)
+            .finish()
+    }
+}
+```
+
+- [ ] **Step 2: Update `types/mod.rs`**
+
+Add the new module and re-exports:
+
+```rust
+pub mod session;
+pub use session::{ConversationMessage, RestoredConversationEvent, SkillSessionInfo};
+```
+
+- [ ] **Step 3: Remove the moved types from `types/refine.rs`**
+
+Delete `RefineSessionInfo`, `ConversationMessage`, and `RestoredConversationEvent` from `types/refine.rs`. Keep `SkillFileContent`, `RefineFileDiff`, `RefineDiff`, `RefineFinalizeResult`, and `RefineDispatchResult`.
+
+### Task 14.2: Update Rust callers
+
+**Files:**
+- Modify: `app/src-tauri/src/commands/skill_session.rs`
+- Modify: `app/src-tauri/src/commands/refine/mod.rs`
+- Modify: `app/src-tauri/src/commands/refine/tests.rs`
+
+- [ ] **Step 1: Update `commands/skill_session.rs`**
+
+Change the import:
+```rust
+// Before:
+use crate::types::RefineSessionInfo;
+// After:
+use crate::types::SkillSessionInfo;
+```
+
+Update the return type of `select_skill_openhands_session`:
+```rust
+// Before:
+) -> Result<RefineSessionInfo, String> {
+// After:
+) -> Result<SkillSessionInfo, String> {
+```
+
+Update the construction at line ~260:
+```rust
+// Before:
+Ok(RefineSessionInfo {
+// After:
+Ok(SkillSessionInfo {
+```
+
+Update `restore_skill_conversation_state` return type references:
+```rust
+// Before:
+Vec<crate::types::ConversationMessage>,
+Vec<crate::types::RestoredConversationEvent>,
+// After (unchanged — already uses crate::types:: prefix, will resolve via mod.rs re-exports)
+```
+
+- [ ] **Step 2: Update `commands/refine/mod.rs`**
+
+The extractors use `crate::types::ConversationMessage` and `crate::types::RestoredConversationEvent` — these will resolve automatically via the new `mod.rs` re-exports. No changes needed unless there are direct `use crate::types::refine::` imports (there shouldn't be).
+
+- [ ] **Step 3: Update `commands/refine/tests.rs`**
+
+Change the import:
+```rust
+// Before:
+use crate::types::ConversationMessage;
+// After:
+use crate::types::ConversationMessage;  // no change needed — resolves via mod.rs re-export
+```
+
+- [ ] **Step 4: Verify Rust compiles and tests pass**
+
+```bash
+cd app/src-tauri && cargo test
+cd app/src-tauri && cargo clippy -- -D warnings
+```
+
+Expected: PASS.
+
+### Task 14.3: Update TypeScript types
+
+**Files:**
+- Modify: `app/src/lib/types.ts`
+- Modify: `app/src/lib/tauri-command-types.ts`
+- Modify: `app/src/lib/tauri.ts`
+- Modify: `app/src/lib/skill-openhands-session.ts`
+- Modify: `app/src/__tests__/lib/skill-openhands-session.test.ts`
+
+- [ ] **Step 1: Rename in `lib/types.ts`**
+
+```ts
+// Before:
+export interface RefineSessionInfo {
+// After:
+export interface SkillSessionInfo {
+```
+
+Update the JSDoc comment if present — remove "refine" from the description since this is now a general skill session type.
+
+- [ ] **Step 2: Update `lib/tauri-command-types.ts`**
+
+```ts
+// Before:
+import type {
+  RefineSessionInfo,
+  ...
+} from "./types";
+// After:
+import type {
+  SkillSessionInfo,
+  ...
+} from "./types";
+```
+
+Update the command result type mapping:
+```ts
+// Before:
+result: RefineSessionInfo;
+// After:
+result: SkillSessionInfo;
+```
+
+- [ ] **Step 3: Update `lib/tauri.ts`**
+
+```ts
+// Before:
+RefineSessionInfo,
+// After:
+SkillSessionInfo,
+```
+
+- [ ] **Step 4: Update `lib/skill-openhands-session.ts`**
+
+```ts
+// Before:
+import type { RefineSessionInfo } from "@/lib/types";
+// After:
+import type { SkillSessionInfo } from "@/lib/types";
+```
+
+Update function parameter types:
+```ts
+// Before:
+function buildFallbackMessages(session: RefineSessionInfo): RefineMessage[]
+export function hydrateSelectedSkillOpenHandsSession(
+  skill: ...,
+  session: RefineSessionInfo,
+): void
+// After:
+function buildFallbackMessages(session: SkillSessionInfo): RefineMessage[]
+export function hydrateSelectedSkillOpenHandsSession(
+  skill: ...,
+  session: SkillSessionInfo,
+): void
+```
+
+- [ ] **Step 5: Update `__tests__/lib/skill-openhands-session.test.ts`**
+
+```ts
+// Before:
+import type { RefineSessionInfo } from "@/lib/types";
+const session: RefineSessionInfo = {
+// After:
+import type { SkillSessionInfo } from "@/lib/types";
+const session: SkillSessionInfo = {
+```
+
+- [ ] **Step 6: Verify TypeScript compiles**
+
+```bash
+cd app && npx tsc --noEmit
+```
+
+Expected: Clean.
+
+### Task 14.4: Full verification
+
+- [ ] **Step 1: Run frontend unit tests**
+
+```bash
+cd app && npm run test:unit
+```
+
+Expected: PASS.
+
+- [ ] **Step 2: Run Rust tests**
+
+```bash
+cd app/src-tauri && cargo test
+```
+
+Expected: PASS.
+
+- [ ] **Step 3: Run clippy**
+
+```bash
+cd app/src-tauri && cargo clippy -- -D warnings
+```
+
+Expected: Clean.
+
+- [ ] **Step 4: Manual smoke — skill session loads**
+
+1. Launch the app
+2. Open any skill (not refine)
+3. Send a message
+
+**Pass:** Session loads, messages render, agent responds.
+
+- [ ] **Step 5: Manual smoke — refine session loads**
+
+1. Open a refine-enabled skill
+2. Enter refine mode
+3. Send a message
+
+**Pass:** Refine session loads, messages render, diff/finalize flow works.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add app/src-tauri/src/types/session.rs \
+        app/src-tauri/src/types/mod.rs \
+        app/src-tauri/src/types/refine.rs \
+        app/src-tauri/src/commands/skill_session.rs \
+        app/src-tauri/src/commands/refine/mod.rs \
+        app/src-tauri/src/commands/refine/tests.rs \
+        app/src/lib/types.ts \
+        app/src/lib/tauri-command-types.ts \
+        app/src/lib/tauri.ts \
+        app/src/lib/skill-openhands-session.ts \
+        app/src/__tests__/lib/skill-openhands-session.test.ts \
+        docs/plans/2026-05-10-openhands-runtime-model.md
+git commit -m "refactor: move RefineSessionInfo → SkillSessionInfo to types/session.rs"
+```
+
+---
+
 ## PR Execution Order
 
 Execute PRs sequentially in order 1→13. Each PR must pass all automated tests and manual smoke before proceeding to the next.
@@ -3644,3 +3943,4 @@ Execute PRs sequentially in order 1→13. Each PR must pass all automated tests 
 | 11 | Backend lease enforcement + advisory UI polling | `cargo test commands::skill_session`, `cargo test commands::refine`, `npx vitest run src/__tests__/lib/tauri.test.ts src/__tests__/components/app-layout.test.tsx src/__tests__/components/skill-list-panel.test.tsx`, `git diff --check` | Two instances: lock in A, B menu disables within a few seconds, backend rejects forced selection before OpenHands restore |
 | 12 | Remove `workspace_skill_dir` entirely | `cargo test`, `npm run test:unit`, `npm run codegen`, `tsc --noEmit`, clippy | Create skill → no workspace dir created; workflow runs against canonical skill dir; refine works; migration deletes old workspace dirs |
 | 13 | Neutral `/` landing page; explicit navigation only | `npx vitest run src/__tests__/pages/home.test.tsx src/__tests__/components/skill-list-panel.test.tsx`, `npm run test:unit`, `npm run test:integration`, `tsc --noEmit` | Cold launch stays on dashboard; clicking a skill navigates; launching instance B no longer kills instance A during `/` startup |
+| 14 | Move `RefineSessionInfo` → `SkillSessionInfo` to `types/session.rs` | `cargo test`, `npm run test:unit`, `tsc --noEmit`, clippy | Open skill → session loads; refine → session loads; messages render correctly |

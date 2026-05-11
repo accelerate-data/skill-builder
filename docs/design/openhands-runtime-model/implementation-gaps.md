@@ -10,87 +10,6 @@ PRs and to verify when the target state has been reached.
 
 ---
 
-## Gap 1 — `agents/skill_creator.rs` does not exist
-
-**Target:** Layer 2 (`agents/skill_creator.rs`) is the single place that knows
-how to configure and launch the skill-creator agent. No deps on `commands::` —
-imports only from `agents/openhands_server/`, `agents/runtime_config`, and
-`skill_paths`.
-
-**Current state:** This file does not exist. The two config builders
-(`build_refine_openhands_config` in `commands/refine/mod.rs` and
-`build_skill_creator_workflow_runtime_config` in
-`commands/workflow/runtime.rs`) are separate, diverged, and live in Layer 3.
-
-**Fix:** Create `app/src-tauri/src/agents/skill_creator.rs` exporting:
-
-`SKILL_CREATOR_USER_SUFFIX` — moves here from `commands/refine/mod.rs`.
-
-`SkillCreatorConfigParams`:
-
-```rust
-pub struct SkillCreatorConfigParams<'a> {
-    pub skill_name: &'a str,
-    pub prompt: &'a str,
-    pub workspace_path: &'a str,
-    pub plugin_slug: &'a str,
-    pub llm: WorkflowLlmConfig,
-    pub task_kind: &'a str,
-    pub run_source: &'a str,
-    pub allowed_tools: Vec<String>,
-    pub max_turns: u32,
-    pub step_id: i32,
-    pub output_format: Option<serde_json::Value>,
-}
-```
-
-`step_id` convention is in [README.md](README.md#step_id-convention).
-`workflow_session_id` is intentionally absent — cost queries group by
-`skill_name + step_id` only.
-
-`build_skill_creator_config`:
-
-```rust
-pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenHandsRuntimeConfig
-```
-
-Derives `workspace_run_dir` from `workspace_skill_dir(workspace_path, plugin_slug, skill_name)`,
-sets `agent_name: "skill-creator"`, applies `SKILL_CREATOR_USER_SUFFIX`,
-delegates to `build_openhands_runtime_config`.
-
-`ensure_skill_session`:
-
-```rust
-pub async fn ensure_skill_session(
-    app: &tauri::AppHandle,
-    config: OpenHandsRuntimeConfig,
-    saved_conversation_id: Option<String>,
-) -> Result<StartedOpenHandsSession, String>
-```
-
-Wraps `ensure_openhands_server` + `start_openhands_session` in the correct
-sequence. `start_openhands_session` owns resume-or-create plus resume
-hydration; callers receive the `conversation_id` and any restored raw events
-for reused sessions. All callers use this instead of calling
-`start_openhands_session` directly.
-
----
-
-## Gap 2 — `dispatch_persistent_skill_turn` bypasses `ensure_openhands_server`
-
-**Target:** All product surfaces call `ensure_skill_session`, which wraps
-`ensure_openhands_server` + `start_openhands_session`. The server lifecycle
-check always runs before a session is opened.
-
-**Current state:** `dispatch_persistent_skill_turn` in
-`commands/workflow/runtime.rs` calls `start_openhands_session` directly,
-skipping the server lifecycle check.
-
-**Fix:** Update `dispatch_persistent_skill_turn` to call
-`skill_creator::ensure_skill_session` instead of `start_openhands_session`.
-
----
-
 ## Gap 3 — `skill_session.rs` and `refine/mod.rs` still use `Refine*` names
 
 **Target:** All session management types and helpers in
@@ -107,6 +26,7 @@ thin Layer 3 caller with no config builders or re-exports of `Refine*` names.
 | `upsert_refine_session` | `upsert_skill_session` |
 | `remove_refine_sessions_for_skill` | `remove_skill_sessions` |
 | `restore_refine_conversation_state` | `restore_skill_conversation_state` |
+| `RefineSessionInfo` | `SkillSessionInfo` |
 
 **Fix in `commands/skill_session.rs`:** Apply the renames above. Add
 `build_skill_session_config` as a thin wrapper over
@@ -140,165 +60,23 @@ pub fn build_skill_session_config(
 | `commands/refine/output.rs` | `RefineSessionManager` → `SkillSessionManager` |
 | `commands/refine/tests.rs` | `build_refine_openhands_config` → `build_skill_session_config` |
 | `skill_session.rs` unit tests | test function names updated to match renamed helpers |
+| `types/refine.rs` | `RefineSessionInfo` → `SkillSessionInfo` |
 
 ---
 
-## Gap 4 — `commands/refine/mod.rs` owns Layer 2 code
+## Closed Gaps
 
-**Target:** `commands/refine/mod.rs` is a thin Layer 3 caller. It does not own
-the OpenHands config builder, the runtime-ready check, or the user suffix.
+The following gaps have been resolved and are kept here as historical context:
 
-**Current state:**
-
-- `build_refine_openhands_config` — Layer 2 concern, lives in Layer 3
-- `ensure_refine_runtime_ready` — needs rename to `ensure_skill_runtime_ready`;
-  stays in Layer 3 but moves to `commands/skill_session.rs`
-- `SKILL_CREATOR_USER_SUFFIX` — belongs in `agents/skill_creator.rs`
-
-**Fix:** Delete `build_refine_openhands_config` (replaced by
-`skill_creator::build_skill_creator_config`). Move
-`ensure_refine_runtime_ready` → `ensure_skill_runtime_ready` into
-`commands/skill_session.rs`. Move `SKILL_CREATOR_USER_SUFFIX` into
-`agents/skill_creator.rs`.
-
----
-
-## Gap 5 — `workflow/runtime.rs` has a parallel skill-creator config builder
-
-**Target:** All skill-creator config construction goes through
-`skill_creator::build_skill_creator_config`. Step-specific wrappers in
-`workflow/runtime.rs` are thin callers of that unified builder.
-
-**Current state:** `SkillCreatorWorkflowConfigParams` and
-`build_skill_creator_workflow_runtime_config` are a separate, diverged
-implementation of the config builder that lives entirely in
-`commands/workflow/runtime.rs`.
-
-**Fix:** Delete `SkillCreatorWorkflowConfigParams` and
-`build_skill_creator_workflow_runtime_config`. The five step wrappers stay but
-delegate to `skill_creator::build_skill_creator_config`:
-
-- `build_workflow_research_runtime_config`
-- `build_workflow_detailed_research_runtime_config`
-- `build_workflow_confirm_decisions_runtime_config`
-- `build_workflow_generate_skill_runtime_config`
-- `build_answer_evaluator_runtime_config`
-
-## PR 1 scope note
-
-Gaps 1–5 are one PR. All Tauri command names, IPC contracts, frontend code,
-agent behavior, and runtime semantics are unchanged — this is a pure structural
-refactor. The one functional change is that `dispatch_persistent_skill_turn`
-now calls `ensure_openhands_server` via `ensure_skill_session`, correcting a
-pre-existing gap rather than changing intended behavior.
-
----
-
-## Gap 6 — `leaveCurrentSkill` still stops the Agent Server (deferred)
-
-**Target:** `leaveCurrentSkill` is three steps: pause conversation, release
-lock, clear UI. The server stays alive between skill switches.
-
-**Current state:** `leaveCurrentSkill` in
-`app/src/lib/active-skill-transition.ts` calls `stopOpenHandsServer()` as a
-fourth step. The `stop_openhands_server` Tauri command in
-`commands/runtime_lifecycle.rs` becomes dead code once this is removed.
-
-**Fix (deferred PR 2):** Remove `stopOpenHandsServer()` from `leaveCurrentSkill`.
-Delete the `stop_openhands_server` Tauri command and its registration.
-
----
-
-## Gap 7 — `workflow_session_id` is still in the runtime contracts
-
-**Target:** `workflow_session_id` is absent from `OpenHandsRuntimeConfig` and
-all generated contracts. Cost and usage queries group by `skill_name + step_id`
-only.
-
-**Current state:** `workflow_session_id` is present in
-`app/src-tauri/src/contracts/` and the generated TypeScript types. It is
-passed through the runtime config to OpenHands but provides no query value
-beyond `skill_name + step_id`.
-
-**Fix (follow-on codegen PR):** Remove `workflow_session_id` from the contracts
-struct, run `npm run codegen` to regenerate TypeScript types and the Rust
-schema, and update all callers.
-
----
-
-## Gap 8 — Event recovery had multiple modes; send path no longer replays history
-
-**Target:** Session bootstrap owns resume hydration. `OpenHandsSendMessage` is a
-turn primitive only: send a message, run the conversation, and stream only the
-new turn's events.
-
-**Current state:** Resolved on this branch.
-
-**Result:** `start_openhands_session` returns restored events when it resumes an
-existing conversation, and `send_openhands_message` no longer replays full
-history after send. The first user message now follows the same send-then-run
-path as subsequent turns; conversation creation never embeds an
-`initial_message`.
-
----
-
-## Gap 9 — Node sidecar cleanup is already complete on `main`
-
-**Status:** Resolved outside this refactor.
-
-The tracked Node sidecar package and its packaging/CI wiring have already been
-removed on `main`. If a local checkout still shows `app/sidecar/`, treat it as
-workspace residue and delete it before starting the runtime-model refactor.
-
----
-
-## Gap 10 — Skill activation blocks on session boot
-
-**Target:** Skill activation splits into a sync phase (lock + navigate) and an
-async background phase (server ensure + conversation resolve + history hydration).
-The UI navigates immediately and shows a skeleton while the session boots.
-Full spec: [optimistic-session-activation.md](optimistic-session-activation.md).
-
-**Current state:** `activateSkill` in `app/src/components/layout/app-layout.tsx`
-calls `selectSkillOpenHandsSession` synchronously before navigating. The UI
-blocks for 2–5s on a cold Agent Server start before the target page appears.
-
-**Fix:** Split `activateSkill` into sync and async phases. Sync: `acquireLock`,
-`setSelectedWorkspaceSkillName`, `navigate`. Async (background):
-`selectSkillOpenHandsSession`, `hydrateSelectedSkillOpenHandsSession`,
-`setActiveSessionSkillName`. Add a `conversationId` null-guard to the loading
-state in `WorkflowPage` and `WorkspaceRoutePage` so they hold the skeleton
-until the background boot completes. On failure: toast, navigate to `/`,
-release lock.
-
----
-
-## Gap 11 — Shared `.openhands` storage and no-restart skill switching are already complete on this branch
-
-**Status:** Resolved by PR 6 on this branch.
-
-The target app-scoped OpenHands storage model is already in place here:
-
-- `OH_CONVERSATIONS_PATH` and `OH_BASH_EVENTS_DIR` are rooted under a shared
-  `.openhands/` directory instead of per-skill paths.
-- the cached Agent Server is reused across normal skill switches
-- leaving a skill no longer explicitly stops the server
-
-Keep this section as historical context for the PR sequence. Do not plan new
-work against it unless the branch regresses.
-
----
-
-## Gap 12 — Runtime CWD still points at `workspaceSkillDir` instead of the canonical skill directory
-
-**Status: RESOLVED** (PR 12)
-
-The `workspace_skill_dir` concept has been eliminated entirely. The only skill directory concept is the canonical `skill_dir` (`{skills_root}/{plugin_slug}/skills/{skill_name}`). OpenHands uses `skill_dir` directly as `workspace.working_dir`.
-
----
-
-## Gap 13 — App storage still has a `workspace/` wrapper and deployment still mirrors `.agents` into runtime scratch dirs
-
-**Status: RESOLVED** (PR 12)
-
-The app-local data root is flat. There is no `{app_data_root}/workspace/` wrapper. `.agents` is managed only in the canonical skill directory. A startup migration (`migrate_delete_workspace_skill_dirs`) cleans up orphaned workspace skill directories from the old two-tier model.
+- **Gap 1** — `agents/skill_creator.rs` created (PR 1)
+- **Gap 2** — `dispatch_persistent_skill_turn` uses `ensure_skill_session` (PR 1)
+- **Gap 4** — `commands/refine/mod.rs` is now a thin Layer 3 caller (PR 1)
+- **Gap 5** — `workflow/runtime.rs` delegates to `skill_creator::build_skill_creator_config` (PR 1)
+- **Gap 6** — `stopOpenHandsServer` removed from TS/RS codebases (PR 2)
+- **Gap 7** — `workflow_session_id` absent from contracts and frontend; retained in Rust DB layer
+- **Gap 8** — Event recovery unified; `send_openhands_message` no longer replays history
+- **Gap 9** — Node sidecar removed from `main`
+- **Gap 10** — Optimistic session activation implemented
+- **Gap 11** — Shared `.openhands` storage and no-restart skill switching (PR 6)
+- **Gap 12** — Runtime CWD uses canonical `skill_dir` (PR 12)
+- **Gap 13** — Flat app storage; `.agents` no longer mirrored (PR 12)
