@@ -135,28 +135,48 @@ fn restore_skill_conversation_state(
     )
 }
 
+pub(crate) fn acquire_or_verify_skill_lock(
+    conn: &rusqlite::Connection,
+    skill_id: i64,
+    instance_id: &str,
+    pid: u32,
+) -> Result<crate::types::SkillMasterRow, String> {
+    crate::db::acquire_skill_lock_by_skill_id(conn, skill_id, instance_id, pid)?;
+    crate::db::get_skill_master_by_id(conn, skill_id)?
+        .ok_or_else(|| format!("Skill id {} was not found in the skills master", skill_id))
+}
+
 #[tauri::command]
 pub async fn select_skill_openhands_session(
     app: tauri::AppHandle,
-    skill_name: String,
-    plugin_slug: String,
+    skill_id: i64,
     _workspace_path: String,
+    instance: tauri::State<'_, crate::InstanceInfo>,
     sessions: tauri::State<'_, SkillSessionManager>,
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
+    let (skill_name, plugin_slug, saved_conversation_id) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let skill = acquire_or_verify_skill_lock(
+            &conn,
+            skill_id,
+            &instance.id,
+            instance.pid,
+        )?;
+        let saved_conversation_id =
+            crate::db::get_skill_conversation_id(&conn, &skill.plugin_slug, &skill.name)?;
+        (skill.name, skill.plugin_slug, saved_conversation_id)
+    };
+
     log::info!(
-        "[select_skill_openhands_session] skill={} plugin={}",
+        "[select_skill_openhands_session] skill_id={} skill={} plugin={}",
+        skill_id,
         skill_name,
         plugin_slug
     );
     validate_skill_name(&skill_name)?;
 
     let runtime_ctx = ensure_skill_runtime_ready(&app, &db, &skill_name, &plugin_slug).await?;
-
-    let saved_conversation_id = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_conversation_id(&conn, &plugin_slug, &skill_name)?
-    };
 
     let skills_path = resolve_skills_path(&db)?;
     let app_data_root = app
@@ -327,7 +347,10 @@ pub async fn pause_openhands_session(
 
 #[cfg(test)]
 mod tests {
-    use super::{remove_skill_sessions, skill_session_key, upsert_skill_session, SkillSession};
+    use super::{
+        acquire_or_verify_skill_lock, remove_skill_sessions, skill_session_key, upsert_skill_session,
+        SkillSession,
+    };
     use std::collections::HashMap;
 
     fn session(skill_name: &str, plugin_slug: &str, usage_session_id: &str) -> SkillSession {
@@ -340,6 +363,47 @@ mod tests {
             dispatched_user_turn_count: 0,
             head_sha_at_start: None,
         }
+    }
+
+    #[test]
+    fn acquire_or_verify_skill_lock_acquires_missing_lock_for_current_instance() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "locked-skill", "skill-builder", "domain").unwrap();
+
+        let skill =
+            acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
+                .unwrap();
+
+        assert_eq!(skill.id, skill_id);
+
+        let lock = crate::db::get_skill_lock_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .expect("lock row");
+        assert_eq!(lock.instance_id, "instance-a");
+    }
+
+    #[test]
+    fn acquire_or_verify_skill_lock_rejects_other_instance_lease() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "locked-skill", "skill-builder", "domain").unwrap();
+        crate::db::acquire_skill_lock_by_skill_id(
+            &conn,
+            skill_id,
+            "instance-b",
+            std::process::id(),
+        )
+        .unwrap();
+
+        let error =
+            acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
+                .unwrap_err();
+
+        assert_eq!(
+            error,
+            "Skill 'locked-skill' is being edited in another instance"
+        );
     }
 
     #[test]
