@@ -33,7 +33,8 @@ use migrations::{
     run_marketplace_source_url_migration, run_migrations, NUMBERED_MIGRATIONS,
 };
 
-pub struct Db(pub Mutex<Connection>);
+#[derive(Clone)]
+pub struct Db(pub std::sync::Arc<Mutex<Connection>>);
 
 #[cfg(test)]
 pub(crate) fn create_test_db_for_tests() -> Connection {
@@ -114,7 +115,7 @@ pub fn init_db(data_dir: &Path) -> Result<Db, Box<dyn std::error::Error>> {
         log::error!("[init_db] settings startup migrations failed: {}", e);
     }
 
-    Ok(Db(Mutex::new(conn)))
+    Ok(Db(std::sync::Arc::new(Mutex::new(conn))))
 }
 
 fn migrate_legacy_db_path(

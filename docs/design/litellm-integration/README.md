@@ -2,7 +2,7 @@
 functional-specs: [custom-plugin-management]
 ---
 
-# Model Settings
+# LiteLLM Integration
 
 > **Status:** Draft
 > **Functional specs:** [`custom-plugin-management`](../../functional/custom-plugin-management/README.md) — this design covers the LLM infrastructure (provider routing, budget enforcement, spend tracking) that powers the skill-building workflow agents. It does not define the skill creation, refinement, evaluation, or distribution behavior itself.
@@ -105,10 +105,9 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 5. Rust selects a random available port (same pattern as `select_random_local_port()`)
 6. Rust spawns: `uvx litellm[proxy] --config config.yaml --port <port>`
 7. Rust polls `http://127.0.0.1:<port>/health` until healthy (5s timeout, 100ms intervals)
-8. Rust calls LiteLLM admin API to ensure each profile has a virtual key:
-   - `POST /user/new` → Create internal user per profile
-   - `POST /key/generate` → Create virtual key with models, budget, rate limits
-9. Rust stores virtual keys and user IDs back in `llm_profiles` table
+8. Rust calls LiteLLM admin API to bootstrap a single shared user `"skill-builder"` (409 ignored if exists), then provisions virtual keys for each profile in a detached task:
+   - `POST /key/generate` → Create virtual key with models, budget, rate limits, per-model budgets
+9. Rust stores virtual keys back in `llm_profiles` table
 10. Port and master key stored in static registry (pattern: `OpenHandsAgentServerRegistry`)
 11. On completion, Rust emits a Tauri event (`litellm-proxy-ready`) that the frontend listens to for enabling "Run" buttons
 
@@ -194,10 +193,12 @@ OpenHandsRuntimeConfig {
 | Column | Type | Description |
 |---|---|---|
 | `id` | TEXT PRIMARY KEY | UUID |
-| `name` | TEXT NOT NULL | Provider name (e.g. "anthropic", "openai") |
+| `name` | TEXT NOT NULL | Provider display name (e.g. "Anthropic", "My Custom Provider") |
 | `api_key` | TEXT NOT NULL | API key (SecretString in Rust) |
 | `base_url` | TEXT | Optional custom base URL |
 | `enabled` | INTEGER DEFAULT 1 | 0 = disabled |
+| `litellm_provider_prefix` | TEXT | LiteLLM model prefix (e.g. "anthropic", "openai") |
+| `settings_json` | TEXT | Forward-compat blob for any LiteLLM provider setting |
 | `created_at` | INTEGER NOT NULL | Unix timestamp |
 
 **`llm_profiles`**
@@ -211,7 +212,7 @@ OpenHandsRuntimeConfig {
 | `tpm_limit` | INTEGER | Tokens per minute limit |
 | `rpm_limit` | INTEGER | Requests per minute limit |
 | `virtual_key` | TEXT | Virtual key from LiteLLM (sk-...) |
-| `litellm_user_id` | TEXT | Internal user ID in LiteLLM |
+| `settings_json` | TEXT | Forward-compat blob for any LiteLLM profile setting |
 | `created_at` | INTEGER NOT NULL | Unix timestamp |
 
 **`llm_profile_models`**
@@ -223,6 +224,7 @@ OpenHandsRuntimeConfig {
 | `model_name` | TEXT NOT NULL | LiteLLM model name |
 | `provider_id` | TEXT NOT NULL | FK → llm_providers.id |
 | `priority` | INTEGER NOT NULL | Fallback order (1 = primary) |
+| `budget` | REAL | Per-model budget cap in USD (optional) |
 
 ### LiteLLM SQLite — Managed by LiteLLM
 

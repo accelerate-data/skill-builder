@@ -60,4 +60,6 @@ pub struct GenerateKeyRequest {
     pub tpm_limit: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rpm_limit: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_max_budget: Option<std::collections::HashMap<String, f64>>,
 }

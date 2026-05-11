@@ -618,7 +618,7 @@ mod verify_step_output_tests {
             },
         )
         .unwrap();
-        let db = Db(std::sync::Mutex::new(conn));
+        let db = Db(std::sync::Arc::new(std::sync::Mutex::new(conn)));
 
         let result =
             verify_step_output(String::new(), "my-skill".to_string(), 3, db_state(&db)).unwrap();

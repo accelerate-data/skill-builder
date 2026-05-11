@@ -67,7 +67,7 @@ fn db_with_seeded_skill(name: &str) -> crate::db::Db {
         rusqlite::params![name, DEFAULT_PLUGIN_SLUG],
     )
     .unwrap();
-    crate::db::Db(std::sync::Mutex::new(conn))
+    crate::db::Db(std::sync::Arc::new(std::sync::Mutex::new(conn)))
 }
 
 fn test_workflow_llm_config() -> crate::types::WorkflowLlmConfig {
@@ -914,7 +914,7 @@ mod backend_materialization {
             },
         )
         .unwrap();
-        let db = crate::db::Db(std::sync::Mutex::new(conn));
+        let db = crate::db::Db(std::sync::Arc::new(std::sync::Mutex::new(conn)));
 
         let skill_dir = crate::skill_paths::resolve_skill_dir(
             workspace_tmp.path(),

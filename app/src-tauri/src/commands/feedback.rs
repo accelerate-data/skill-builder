@@ -148,7 +148,7 @@ mod tests {
     async fn test_create_github_issue_no_token() {
         // Use an in-memory DB with no github_oauth_token set
         let conn = crate::db::create_test_db_for_tests();
-        let db = crate::db::Db(Mutex::new(conn));
+        let db = crate::db::Db(std::sync::Arc::new(Mutex::new(conn)));
         // Directly test the token retrieval logic via a Tauri-less path:
         // read settings, confirm no token
         let inner_conn = db.0.lock().unwrap();

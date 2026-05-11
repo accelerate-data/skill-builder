@@ -356,7 +356,7 @@ pub fn run() {
                 match crate::agents::litellm_proxy::ensure_litellm_proxy(
                     std::time::Duration::from_secs(30),
                     &proxy_data_dir,
-                    &db,
+                    (*db).clone(),
                 ).await {
                     Ok(handle) => {
                         log::info!("[litellm-proxy] proxy started on port {}", handle.port);
@@ -498,6 +498,7 @@ pub fn run() {
             commands::litellm_profiles::add_profile_model,
             commands::litellm_profiles::remove_profile_model,
             commands::litellm_profiles::reorder_profile_models,
+            commands::litellm_profiles::verify_profile_virtual_key,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};

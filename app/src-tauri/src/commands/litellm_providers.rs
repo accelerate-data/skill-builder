@@ -7,6 +7,8 @@ pub struct CreateProviderRequest {
     pub api_key: String,
     pub base_url: Option<String>,
     pub enabled: Option<bool>,
+    pub litellm_provider_prefix: Option<String>,
+    pub settings_json: Option<String>,
 }
 
 #[tauri::command]
@@ -30,6 +32,8 @@ pub fn create_litellm_provider(
         api_key: SecretString::new(request.api_key),
         base_url: request.base_url,
         enabled: request.enabled.unwrap_or(true),
+        litellm_provider_prefix: request.litellm_provider_prefix,
+        settings_json: request.settings_json,
         created_at: chrono::Utc::now().timestamp(),
     };
     crate::db::insert_provider(&conn, &provider)?;
@@ -50,6 +54,8 @@ pub fn update_litellm_provider(
         api_key: SecretString::new(request.api_key),
         base_url: request.base_url,
         enabled: request.enabled.unwrap_or(true),
+        litellm_provider_prefix: request.litellm_provider_prefix,
+        settings_json: request.settings_json,
         created_at: chrono::Utc::now().timestamp(),
     };
     crate::db::update_provider(&conn, &provider)
