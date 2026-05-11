@@ -436,6 +436,33 @@ mod tests {
     }
 
     #[test]
+    fn acquire_then_release_lock_allows_other_instance_to_acquire() {
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "release-test", "skill-builder", "domain").unwrap();
+
+        acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id()).unwrap();
+
+        let lock = crate::db::get_skill_lock_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .expect("lock row exists");
+        assert_eq!(lock.instance_id, "instance-a");
+
+        crate::db::release_skill_lock_by_skill_id(&conn, skill_id, "instance-a").unwrap();
+
+        let lock_after = crate::db::get_skill_lock_by_skill_id(&conn, skill_id).unwrap();
+        assert!(
+            lock_after.is_none(),
+            "lock should be gone after release"
+        );
+
+        let skill =
+            acquire_or_verify_skill_lock(&conn, skill_id, "instance-b", std::process::id())
+                .unwrap();
+        assert_eq!(skill.id, skill_id);
+    }
+
+    #[test]
     fn upsert_skill_session_removes_stale_entries_for_same_skill() {
         let mut sessions = HashMap::new();
         sessions.insert(
