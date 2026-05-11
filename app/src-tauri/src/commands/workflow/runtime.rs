@@ -327,7 +327,6 @@ fn install_workflow_step_materialization_listener(
 /// Core logic for launching a single workflow step via a persistent skill turn.
 /// Builds the prompt, constructs the runtime config, and starts the request.
 /// Returns the agent_id, which is also the OpenHands request_id.
-#[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
@@ -335,7 +334,6 @@ async fn run_workflow_step_inner(
     step_id: u32,
     workspace_path: &str,
     settings: &WorkflowSettings,
-    _workflow_session_id: Option<String>,
     db: &Db,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
@@ -548,7 +546,6 @@ async fn run_workflow_step_inner(
     Ok(agent_id)
 }
 
-#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
@@ -558,18 +555,12 @@ pub async fn run_workflow_step(
     skill_name: String,
     step_id: u32,
     workspace_path: String,
-    workflow_session_id: Option<String>,
 ) -> Result<String, String> {
     log::info!(
-        "[run_workflow_step] skill={} step={} step_id={} session={}",
+        "[run_workflow_step] skill={} step={} step_id={}",
         skill_name,
         workflow_step_log_name(step_id as i32),
         step_id,
-        if workflow_session_id.is_some() {
-            "[present]"
-        } else {
-            "[none]"
-        }
     );
     crate::commands::workflow_lifecycle::validate_run_request(
         &skill_name,
@@ -681,7 +672,6 @@ pub async fn run_workflow_step(
         step_id,
         &workspace_path,
         &settings,
-        workflow_session_id,
         db.inner(),
     )
     .await

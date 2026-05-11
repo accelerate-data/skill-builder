@@ -82,9 +82,6 @@ pub struct OpenHandsRuntimeConfig {
     /// Step ID for persistence (-1=unknown, -10=refine, -11=test, 0-3=workflow steps).
     #[serde(rename = "stepId", skip_serializing_if = "Option::is_none")]
     pub step_id: Option<i32>,
-    /// Workflow session ID.
-    #[serde(rename = "workflowSessionId", skip_serializing_if = "Option::is_none")]
-    pub workflow_session_id: Option<String>,
     /// Synthetic usage session ID for non-workflow runs.
     #[serde(rename = "usageSessionId", skip_serializing_if = "Option::is_none")]
     pub usage_session_id: Option<String>,
@@ -213,7 +210,6 @@ pub fn build_openhands_runtime_config(
         conversation_history: None,
         skill_name: params.skill_name,
         step_id: params.step_id,
-        workflow_session_id: None,
         usage_session_id: None,
         run_source: params.run_source,
         plugin_slug: params.plugin_slug,
@@ -254,7 +250,6 @@ mod tests {
             conversation_history: None,
             skill_name: None,
             step_id: None,
-            workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
@@ -311,7 +306,6 @@ mod tests {
             conversation_history: None,
             skill_name: None,
             step_id: None,
-            workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
@@ -356,7 +350,6 @@ mod tests {
             conversation_history: None,
             skill_name: Some("my-skill".to_string()),
             step_id: None,
-            workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
@@ -404,7 +397,6 @@ mod tests {
             conversation_history: None,
             skill_name: None,
             step_id: None,
-            workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),
@@ -461,7 +453,6 @@ mod tests {
             conversation_history: None,
             skill_name: Some("new-skill".to_string()),
             step_id: Some(-30),
-            workflow_session_id: None,
             usage_session_id: None,
             run_source: None,
             plugin_slug: "skills".to_string(),

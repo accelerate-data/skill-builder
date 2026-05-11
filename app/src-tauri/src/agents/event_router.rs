@@ -617,7 +617,6 @@ mod tests {
                 "type": "run_result",
                 "skillName": "demo-skill",
                 "stepId": 2,
-                "workflowSessionId": "wf-123",
                 "usageSessionId": null,
                 "runSource": "workflow",
                 "sessionId": "sdk-session",
@@ -649,7 +648,6 @@ mod tests {
                 assert_eq!(summary.skill_name, "demo-skill");
                 assert_eq!(summary.step_id, 2);
                 assert_eq!(summary.plugin_slug, "skills");
-                assert_eq!(summary.workflow_session_id.as_deref(), Some("wf-123"));
             }
             other => panic!("expected run summary action, got {:?}", other),
         }

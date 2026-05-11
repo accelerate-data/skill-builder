@@ -335,7 +335,6 @@ mod tests {
             conversation_history: None,
             skill_name: Some("lead-routing".to_string()),
             step_id: Some(2),
-            workflow_session_id: Some("workflow-1".to_string()),
             usage_session_id: None,
             run_source: Some("workflow".to_string()),
             persistence_dir: None,

@@ -141,8 +141,6 @@ pub struct RunResultEvent {
     pub skill_name: String,
     pub step_id: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_session_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_source: Option<RunSource>,
@@ -443,7 +441,6 @@ mod tests {
                 assert_eq!(e.step_id, 0);
                 assert_eq!(e.num_turns, 3);
                 assert_eq!(e.plugin_slug, "my-plugin");
-                assert!(e.workflow_session_id.is_none());
                 assert!(e.result_text.is_none());
                 match e.status {
                     RunResultStatus::Completed => {}
@@ -460,7 +457,6 @@ mod tests {
             "type": "run_result",
             "skillName": "my-skill",
             "stepId": 2,
-            "workflowSessionId": "ws-123",
             "usageSessionId": "us-456",
             "runSource": "workflow",
             "sessionId": "sess-789",
@@ -498,7 +494,6 @@ mod tests {
         let event: AgentEvent = serde_json::from_value(json).expect("deserialize");
         match event {
             AgentEvent::RunResult(e) => {
-                assert_eq!(e.workflow_session_id.as_deref(), Some("ws-123"));
                 assert_eq!(e.usage_session_id.as_deref(), Some("us-456"));
                 assert_eq!(e.duration_api_ms, Some(25000));
                 assert_eq!(e.model_usage_breakdown.len(), 1);

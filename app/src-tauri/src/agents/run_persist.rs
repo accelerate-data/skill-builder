@@ -5,11 +5,7 @@ fn persist_run_summary_to_conn(
     agent_id: &str,
     summary: &RuntimeRunSummary,
 ) {
-    // Determine the effective workflow_session_id (prefer workflowSessionId, fallback to usageSessionId)
-    let effective_session_id = summary
-        .workflow_session_id
-        .as_deref()
-        .or(summary.usage_session_id.as_deref());
+    let effective_session_id = summary.usage_session_id.as_deref();
 
     // Persist one row per model entry or one aggregate row
     if !summary.model_usage_breakdown.is_empty() {
@@ -145,8 +141,7 @@ mod tests {
         let summary = RuntimeRunSummary {
             skill_name: "demo-skill".to_string(),
             step_id: 2,
-            workflow_session_id: Some("wf-aggregate".to_string()),
-            usage_session_id: None,
+            usage_session_id: Some("wf-aggregate".to_string()),
             run_source: Some("workflow".to_string()),
             session_id: Some("sdk-session".to_string()),
             model: "settings-model-a".to_string(),
@@ -196,7 +191,6 @@ mod tests {
         let summary = RuntimeRunSummary {
             skill_name: "demo-skill".to_string(),
             step_id: -10,
-            workflow_session_id: None,
             usage_session_id: Some("synthetic:refine:demo-skill:sess-1".to_string()),
             run_source: Some("refine".to_string()),
             session_id: Some("sdk-session".to_string()),

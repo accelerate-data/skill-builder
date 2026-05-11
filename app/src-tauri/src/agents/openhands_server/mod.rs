@@ -171,7 +171,6 @@ enum OpenHandsRuntimeEvent {
 struct OpenHandsRunSummaryContext {
     skill_name: String,
     step_id: i32,
-    workflow_session_id: Option<String>,
     usage_session_id: Option<String>,
     run_source: Option<String>,
     session_id: String,
@@ -189,7 +188,6 @@ impl OpenHandsRunSummaryContext {
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string()),
             step_id: request.step_id.unwrap_or(-1),
-            workflow_session_id: request.workflow_session_id.clone(),
             usage_session_id: request.usage_session_id.clone(),
             run_source: request.run_source.clone(),
             session_id: conversation_id.to_string(),
@@ -1641,7 +1639,6 @@ fn build_openhands_run_result_event(
             "type": "run_result",
             "skillName": context.skill_name,
             "stepId": context.step_id,
-            "workflowSessionId": context.workflow_session_id,
             "usageSessionId": context.usage_session_id,
             "runSource": context.run_source,
             "sessionId": context.session_id,
@@ -2058,7 +2055,6 @@ mod tests {
         let context = OpenHandsRunSummaryContext {
             skill_name: "my-skill".to_string(),
             step_id: 2,
-            workflow_session_id: Some("workflow-1".to_string()),
             usage_session_id: Some("usage-1".to_string()),
             run_source: Some("workflow".to_string()),
             session_id: "conversation-1".to_string(),
@@ -2089,10 +2085,6 @@ mod tests {
             Some("my-skill")
         );
         assert_eq!(run_result.get("stepId").and_then(|v| v.as_i64()), Some(2));
-        assert_eq!(
-            run_result.get("workflowSessionId").and_then(|v| v.as_str()),
-            Some("workflow-1")
-        );
         assert_eq!(
             run_result.get("usageSessionId").and_then(|v| v.as_str()),
             Some("usage-1")
@@ -2162,7 +2154,6 @@ mod tests {
             skill_name: Some("my-skill".to_string()),
             step_id: Some(3),
             run_source: Some("workflow".to_string()),
-            workflow_session_id: Some("workflow-session".to_string()),
             usage_session_id: None,
         };
 
@@ -2211,7 +2202,6 @@ mod tests {
             skill_name: Some("my-skill".to_string()),
             step_id: Some(3),
             run_source: Some("workflow".to_string()),
-            workflow_session_id: Some("workflow-session".to_string()),
             usage_session_id: None,
         };
 
@@ -2262,7 +2252,6 @@ mod tests {
             skill_name: Some("my-skill".to_string()),
             step_id: Some(3),
             run_source: Some("workflow".to_string()),
-            workflow_session_id: Some("workflow-session".to_string()),
             usage_session_id: None,
         };
         let refine_request = OpenHandsRuntimeRequest {
@@ -2280,7 +2269,6 @@ mod tests {
             skill_name: Some("my-skill".to_string()),
             step_id: Some(-10),
             run_source: Some("refine".to_string()),
-            workflow_session_id: None,
             usage_session_id: Some("refine-session".to_string()),
         };
 
