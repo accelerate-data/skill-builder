@@ -17,3 +17,9 @@ export const useSkillStore = create<SkillState>((set) => ({
   setLockedSkills: (ids) => set({ lockedSkills: ids }),
   setLatestVersion: (version) => set({ latestVersion: version }),
 }));
+
+/** Returns true when the given skill ID is locked by another app instance. */
+export function useIsSkillLocked(skillId: number | null | undefined): boolean {
+  const lockedSkills = useSkillStore((s) => s.lockedSkills);
+  return skillId != null && lockedSkills.has(skillId);
+}

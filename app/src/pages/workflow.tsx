@@ -6,6 +6,7 @@ import {
   RotateCcw,
   Loader2,
   CircleHelp,
+  Lock,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FeedbackDialog } from "@/components/feedback-dialog";
@@ -13,7 +14,7 @@ import { getWorkflowStepUrl } from "@/lib/help-urls";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
 import { cn } from "@/lib/utils";
 import type { WorkflowStep } from "@/stores/workflow-store";
-import { useSkillStore } from "@/stores/skill-store";
+import { useSkillStore, useIsSkillLocked } from "@/stores/skill-store";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -196,6 +197,7 @@ export default function WorkflowPage() {
   const currentSkillId = currentSkill?.id ?? (
     selectedSkillMatchesRoute ? refineSelectedSkill?.id ?? null : null
   );
+  const isLocked = useIsSkillLocked(currentSkillId);
   const pluginSlug = currentSkill?.plugin_slug ?? (
     selectedSkillMatchesRoute ? refineSelectedSkill?.plugin_slug : undefined
   );
@@ -590,7 +592,15 @@ export default function WorkflowPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {isLocked && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-[1px]">
+            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+              <Lock className="size-8 opacity-50" />
+              <p className="text-sm font-medium">Skill is locked by another instance</p>
+            </div>
+          </div>
+        )}
         {/* Main header — skill name + status */}
         <WorkflowMainHeader
           skillName={`${currentSkill?.plugin_display_name ?? "Skill Builder"} · ${actualSkillName}`}
