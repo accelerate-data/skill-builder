@@ -1,6 +1,5 @@
 import { hydrateSelectedSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import {
-  acquireLock,
   pauseOpenHandsSession,
   releaseLock,
   selectSkillOpenHandsSession,
@@ -89,16 +88,6 @@ export async function enterSkill(
   if (skill.id == null) {
     throw new Error(`Missing DB skill ID for '${skill.name}'`);
   }
-  await acquireLock(skill.id);
-  try {
-    const session = await selectSkillOpenHandsSession(
-      skill.name,
-      workspacePath,
-      skill.plugin_slug,
-    );
-    hydrateSelectedSkillOpenHandsSession(skill, session);
-  } catch (error) {
-    await releaseLock(skill.id).catch(() => {});
-    throw error;
-  }
+  const session = await selectSkillOpenHandsSession(skill.id, workspacePath);
+  hydrateSelectedSkillOpenHandsSession(skill, session);
 }

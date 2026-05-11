@@ -301,7 +301,7 @@ export interface TauriCommandMap {
     result: SkillFileContent[];
   };
   select_skill_openhands_session: {
-    args: { skillName: string; pluginSlug: string; workspacePath: string };
+    args: { skillId: number; workspacePath: string };
     result: RefineSessionInfo;
   };
   pause_openhands_session: {
