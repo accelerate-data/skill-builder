@@ -267,7 +267,7 @@ export default function WorkflowPage() {
         `No active selected skill session is available for workflow skill '${skillId}'`,
       );
     }
-    await restartSkillOpenHandsSession(restartSkill, workspacePath);
+    await restartSkillOpenHandsSession(restartSkill);
   }, [refineSelectedSkill, skillId, workspacePath]);
 
   // 4. State machine — step transitions, agent orchestration, gate evaluation

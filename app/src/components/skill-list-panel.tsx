@@ -185,18 +185,16 @@ export function SkillListPanel({
     if (!workspacePath) return;
     try {
       await resetWorkflowStep(workspacePath, skill.name, 0);
-      await restartSkillOpenHandsSession(
-        {
+        await restartSkillOpenHandsSession({
           name: skill.name,
           plugin_slug: skill.pluginSlug,
+          id: Number(skill.skillId),
           skill_source: skill.source,
           description: skill.description,
           purpose: skill.purpose,
           status: skill.status,
           current_step: skill.currentStep,
-        },
-        workspacePath,
-      );
+        });
       console.log("event=skill_redo skill=%s", skill.name);
       // Reset store so persistence hook re-hydrates from DB (picks up the step reset).
       useWorkflowStore.getState().reset();
