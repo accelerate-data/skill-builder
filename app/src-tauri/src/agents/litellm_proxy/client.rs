@@ -81,7 +81,7 @@ impl LiteLLMAdminClient {
 
     pub async fn key_info(&self, key: &str) -> Result<KeyInfoResponse, String> {
         let url = self.base_url
-            .join(&format!("/key/info?key={}", key))
+            .join(&format!("/key/info?key={}", urlencoding::Encoded(key)))
             .map_err(|e| e.to_string())?;
         let resp = self
             .client

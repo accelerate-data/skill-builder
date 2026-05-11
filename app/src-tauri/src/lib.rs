@@ -498,6 +498,7 @@ pub fn run() {
             commands::litellm_profiles::add_profile_model,
             commands::litellm_profiles::remove_profile_model,
             commands::litellm_profiles::reorder_profile_models,
+            commands::litellm_profiles::test_profile_connection,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};

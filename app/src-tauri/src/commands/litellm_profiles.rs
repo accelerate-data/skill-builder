@@ -138,3 +138,27 @@ pub fn reorder_profile_models(
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn test_profile_connection(
+    db: tauri::State<'_, Db>,
+    profile_id: String,
+) -> Result<bool, String> {
+    log::info!("[test_profile_connection] profile_id={}", profile_id);
+    let virtual_key = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let profiles = crate::db::list_profiles(&conn)?;
+        let profile = profiles.iter().find(|p| p.id == profile_id)
+            .ok_or_else(|| "Profile not found".to_string())?;
+        profile.virtual_key.clone()
+            .ok_or_else(|| "Profile has no virtual key".to_string())?
+    };
+
+    let handle = crate::agents::litellm_proxy::try_get_proxy_handle()
+        .await
+        .ok_or_else(|| "LiteLLM proxy not running".to_string())?;
+
+    let client = handle.admin_client();
+    let _info = client.key_info(&virtual_key).await?;
+    Ok(true)
+}

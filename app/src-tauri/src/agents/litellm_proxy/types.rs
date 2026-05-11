@@ -2,24 +2,28 @@ use serde::{Deserialize, Serialize};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HealthResponse {
     pub status: String,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateUserResponse {
     pub user_id: String,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GenerateKeyResponse {
     pub key: String,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KeyInfoResponse {
     pub key: String,
     pub info: KeyInfo,
@@ -27,6 +31,7 @@ pub struct KeyInfoResponse {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KeyInfo {
     pub spend: f64,
     pub models: Vec<String>,

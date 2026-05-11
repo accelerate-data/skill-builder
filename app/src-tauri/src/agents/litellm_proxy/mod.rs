@@ -13,6 +13,7 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
 
 use self::process::{LiteLLMProxyHandle, LiteLLMProxyProcess};
+use self::types::{CreateUserRequest, GenerateKeyRequest};
 use crate::db::Db;
 
 struct ManagedLiteLLMProxy {
@@ -65,6 +66,9 @@ pub async fn ensure_litellm_proxy(
         handle: handle.clone(),
         process,
     });
+
+    provision_virtual_keys(&handle, db).await?;
+
     Ok(handle)
 }
 
@@ -79,5 +83,71 @@ pub async fn shutdown_litellm_proxy() -> Result<(), String> {
     if let Some(mut managed) = registry.take() {
         managed.process.shutdown().await?;
     }
+    Ok(())
+}
+
+async fn provision_virtual_keys(
+    handle: &LiteLLMProxyHandle,
+    db: &Db,
+) -> Result<(), String> {
+    let profiles = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::list_profiles(&conn)?
+    };
+
+    let client = handle.admin_client();
+
+    for profile in &profiles {
+        if profile.virtual_key.is_some() {
+            continue;
+        }
+
+        let user_id = format!("profile-{}", profile.id);
+
+        let user_req = CreateUserRequest {
+            user_id: user_id.clone(),
+            max_budget: profile.budget_total,
+            budget_duration: profile.budget_monthly.map(|_| "30d".to_string()),
+            tpm_limit: profile.tpm_limit.map(|v| v as u64),
+            rpm_limit: profile.rpm_limit.map(|v| v as u64),
+        };
+        let _user_resp = client.create_user(&user_req).await?;
+
+        let models = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            crate::db::get_profile_models(&conn, &profile.id)?
+        };
+
+        let model_names: Vec<String> = models.iter().map(|m| m.model_name.clone()).collect();
+
+        let key_req = GenerateKeyRequest {
+            user_id: user_id.clone(),
+            models: model_names,
+            max_budget: profile.budget_total,
+            budget_duration: profile.budget_monthly.map(|_| "30d".to_string()),
+            tpm_limit: profile.tpm_limit.map(|v| v as u64),
+            rpm_limit: profile.rpm_limit.map(|v| v as u64),
+        };
+        let key_resp = client.generate_key(&key_req).await?;
+
+        {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let updated_profile = crate::db::LlmProfile {
+                id: profile.id.clone(),
+                name: profile.name.clone(),
+                budget_monthly: profile.budget_monthly,
+                budget_total: profile.budget_total,
+                tpm_limit: profile.tpm_limit,
+                rpm_limit: profile.rpm_limit,
+                virtual_key: Some(key_resp.key.clone()),
+                litellm_user_id: Some(user_id),
+                created_at: profile.created_at,
+            };
+            crate::db::update_profile(&conn, &updated_profile)?;
+        }
+
+        log::info!("[litellm-proxy] provisioned virtual key for profile '{}'", profile.name);
+    }
+
     Ok(())
 }
