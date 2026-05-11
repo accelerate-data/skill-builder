@@ -1,5 +1,6 @@
 pub mod client;
 pub mod process;
+pub mod tests;
 pub mod types;
 
 use std::path::Path;

@@ -58,6 +58,12 @@ async fn shutdown_openhands_agent_server_for_exit() {
     }
 }
 
+async fn shutdown_litellm_proxy_for_exit() {
+    if let Err(e) = crate::agents::litellm_proxy::shutdown_litellm_proxy().await {
+        log::warn!("[exit] LiteLLM proxy shutdown failed: {e}");
+    }
+}
+
 fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
     Ok(fs::read_dir(path)?.next().is_none())
 }
@@ -293,6 +299,23 @@ pub fn run() {
             // Non-fatal: errors are logged as warnings and startup continues.
             logging::prune_transcript_files(&workspace_path);
 
+            // Start LiteLLM proxy asynchronously (non-blocking).
+            // The proxy is required for all model calls; runs will fail if not configured.
+            let proxy_data_dir = data_dir.clone();
+            tauri::async_runtime::spawn(async move {
+                match crate::agents::litellm_proxy::ensure_litellm_proxy(
+                    std::time::Duration::from_secs(30),
+                    &proxy_data_dir,
+                ).await {
+                    Ok(handle) => {
+                        log::info!("[litellm-proxy] proxy started on port {}", handle.port);
+                    }
+                    Err(e) => {
+                        log::error!("[litellm-proxy] proxy startup failed: {e}");
+                    }
+                }
+            });
+
             Ok(())
         })
         .manage(CloseGuardState::default())
@@ -467,10 +490,12 @@ pub fn run() {
                 // Shut down the OpenHands Agent Server.
                 if let Ok(rt) = tokio::runtime::Handle::try_current() {
                     rt.block_on(shutdown_openhands_agent_server_for_exit());
+                    rt.block_on(shutdown_litellm_proxy_for_exit());
                 } else if let Ok(rt) = tokio::runtime::Runtime::new() {
                     rt.block_on(shutdown_openhands_agent_server_for_exit());
+                    rt.block_on(shutdown_litellm_proxy_for_exit());
                 } else {
-                    log::warn!("[exit] No Tokio runtime available — skipping OpenHands server shutdown");
+                    log::warn!("[exit] No Tokio runtime available — skipping OpenHands server and LiteLLM proxy shutdown");
                 }
             }
             _ => {}
