@@ -710,7 +710,7 @@ git commit -m "feat: LiteLLM proxy process management (spawn, health, shutdown)"
 **Files:**
 - Modify: `app/src-tauri/src/db/migrations.rs`
 
-- [ ] **Step 1: Add migration for new tables**
+- [x] **Step 1: Add migration for new tables**
 
 In `NUMBERED_MIGRATIONS`, add the next migration number (check current highest):
 
@@ -768,7 +768,7 @@ In `NUMBERED_MIGRATIONS`, add the next migration number (check current highest):
 - Create: `app/src-tauri/src/db/litellm_profiles.rs`
 - Modify: `app/src-tauri/src/db/mod.rs`
 
-- [ ] **Step 2: Create litellm_providers.rs**
+- [x] **Step 2: Create litellm_providers.rs**
 
 ```rust
 use rusqlite::Connection;
@@ -857,7 +857,7 @@ pub fn get_provider(conn: &Connection, id: &str) -> Result<Option<LlmProvider>, 
 }
 ```
 
-- [ ] **Step 3: Create litellm_profiles.rs**
+- [x] **Step 3: Create litellm_profiles.rs**
 
 ```rust
 use rusqlite::Connection;
@@ -966,7 +966,7 @@ pub fn get_profile_models(conn: &Connection, profile_id: &str) -> Result<Vec<Llm
 }
 ```
 
-- [ ] **Step 4: Update db/mod.rs**
+- [x] **Step 4: Update db/mod.rs**
 
 ```rust
 // Add to module declarations:
@@ -983,7 +983,7 @@ pub use litellm_profiles::*;
 **Files:**
 - Create: `app/src-tauri/src/agents/litellm_proxy/config.rs`
 
-- [ ] **Step 5: Create config.rs**
+- [x] **Step 5: Create config.rs**
 
 ```rust
 use std::path::Path;
@@ -1093,7 +1093,7 @@ pub fn write_config(
 - Modify: `app/src-tauri/src/agents/litellm_proxy/mod.rs`
 - Modify: `app/src-tauri/src/agents/litellm_proxy/process.rs`
 
-- [ ] **Step 6: Update mod.rs to integrate config generation**
+- [x] **Step 6: Update mod.rs to integrate config generation**
 
 ```rust
 // Add to mod.rs:
@@ -1121,7 +1121,7 @@ pub async fn ensure_litellm_proxy(
 - Modify: `app/src-tauri/src/agents/litellm_proxy/process.rs`
 - Modify: `app/src-tauri/src/agents/litellm_proxy/mod.rs`
 
-- [ ] **Step 6b: Add `is_running()` to `LiteLLMProxyProcess`**
+- [x] **Step 6b: Add `is_running()` to `LiteLLMProxyProcess`**
 
 Follow the OpenHands pattern — check `try_wait()` before health polling:
 
@@ -1143,7 +1143,7 @@ impl LiteLLMProxyProcess {
 }
 ```
 
-- [ ] **Step 6c: Update `ensure_litellm_proxy` to check liveness before health**
+- [x] **Step 6c: Update `ensure_litellm_proxy` to check liveness before health**
 
 ```rust
 // In ensure_litellm_proxy, before health check:
@@ -1158,7 +1158,7 @@ if process_alive && health_result.is_ok() {
 }
 ```
 
-- [ ] **Step 6d: Add test for `is_running()`**
+- [x] **Step 6d: Add test for `is_running()`**
 
 ```rust
 #[test]
@@ -1178,7 +1178,7 @@ fn should_reuse_cached_proxy_requires_running_and_healthy() {
 - Modify: `app/src-tauri/src/commands/mod.rs`
 - Modify: `app/src-tauri/src/lib.rs`
 
-- [ ] **Step 7: Create litellm_providers.rs commands**
+- [x] **Step 7: Create litellm_providers.rs commands**
 
 ```rust
 use crate::db::Db;
@@ -1246,18 +1246,18 @@ pub fn delete_litellm_provider(db: tauri::State<'_, Db>, id: String) -> Result<(
 }
 ```
 
-- [ ] **Step 8: Create litellm_profiles.rs commands**
+- [x] **Step 8: Create litellm_profiles.rs commands**
 
 Similar pattern to providers — CRUD commands for profiles and profile models.
 
-- [ ] **Step 9: Update commands/mod.rs**
+- [x] **Step 9: Update commands/mod.rs**
 
 ```rust
 pub mod litellm_providers;
 pub mod litellm_profiles;
 ```
 
-- [ ] **Step 10: Register commands in lib.rs**
+- [x] **Step 10: Register commands in lib.rs**
 
 Add to `invoke_handler`:
 
@@ -1275,13 +1275,13 @@ commands::litellm_profiles::remove_profile_model,
 commands::litellm_profiles::reorder_profile_models,
 ```
 
-- [ ] **Step 11: Run tests**
+- [x] **Step 11: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test -- --nocapture
 ```
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add app/src-tauri/src/db/litellm_*.rs app/src-tauri/src/db/mod.rs app/src-tauri/src/db/migrations.rs app/src-tauri/src/commands/litellm_*.rs app/src-tauri/src/commands/mod.rs app/src-tauri/src/agents/litellm_proxy/config.rs app/src-tauri/src/agents/litellm_proxy/mod.rs app/src-tauri/src/lib.rs
