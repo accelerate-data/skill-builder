@@ -42,7 +42,7 @@ The optimistic-session-activation spec requires both `WorkflowPage` and the refi
 **Files:**
 - Modify: `app/src/pages/workflow.tsx`
 
-- [ ] **Step 1: Locate the `conversationId` selector block**
+- [x] **Step 1: Locate the `conversationId` selector block**
 
 Open `app/src/pages/workflow.tsx`. Around line 187 there is already a `useRefineStore` selector:
 
@@ -57,7 +57,7 @@ const refineSelectedSkill = useRefineStore((s) => s.selectedSkill);
 const conversationId = useRefineStore((s) => s.conversationId);
 ```
 
-- [ ] **Step 2: Update the loading guard (around line 466)**
+- [x] **Step 2: Update the loading guard (around line 466)**
 
 Change:
 
@@ -75,7 +75,7 @@ if (!isLoaded || !conversationId) {
 }
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 ```bash
 cd app && npx tsc --noEmit
@@ -83,7 +83,7 @@ cd app && npx tsc --noEmit
 
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/src/pages/workflow.tsx
@@ -97,7 +97,7 @@ git commit -m "fix: guard WorkflowPage on conversationId readiness"
 **Files:**
 - Modify: `app/src/components/workspace/workspace-refine.tsx`
 
-- [ ] **Step 1: Add `conversationId` selector at the top of the component**
+- [x] **Step 1: Add `conversationId` selector at the top of the component**
 
 In `WorkspaceRefine`, around line 40–44, add a reactive selector. The existing selectors are:
 
@@ -114,7 +114,7 @@ Add after them:
 const conversationId = useRefineStore((s) => s.conversationId);
 ```
 
-- [ ] **Step 2: Add the loading skeleton guard**
+- [x] **Step 2: Add the loading skeleton guard**
 
 Find the component's first `return` statement (the main JSX return, not an early return for `scopeBlocked` etc.). Add this guard immediately before that return, but after all hooks (hooks must not be called conditionally):
 
@@ -128,7 +128,7 @@ if (!conversationId) {
 }
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 ```bash
 cd app && npx tsc --noEmit
@@ -136,7 +136,7 @@ cd app && npx tsc --noEmit
 
 Expected: no errors.
 
-- [ ] **Step 4: Unit test — guard renders skeleton when conversationId is null**
+- [x] **Step 4: Unit test — guard renders skeleton when conversationId is null**
 
 Run existing unit tests to ensure no regressions:
 
@@ -146,7 +146,7 @@ cd app && npm run test:unit -- --run
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src/components/workspace/workspace-refine.tsx
