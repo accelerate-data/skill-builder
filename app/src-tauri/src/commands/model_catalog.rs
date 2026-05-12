@@ -7,19 +7,7 @@ pub async fn refresh_model_catalog(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
     log::info!("[refresh_model_catalog] refreshing catalog from models.dev");
-
-    let body = model_catalog::fetch_models_dev_json().await?;
-
-    let db_clone = db.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = db_clone.0.lock().map_err(|e| {
-            log::error!("[refresh_model_catalog] Failed to acquire DB lock: {}", e);
-            e.to_string()
-        })?;
-        model_catalog::refresh_model_catalog_from_json(&mut conn, &body)
-    })
-    .await
-    .map_err(|e| format!("refresh task panicked: {}", e))?
+    model_catalog::refresh_model_catalog(&db).await
 }
 
 #[tauri::command]
@@ -50,7 +38,7 @@ pub fn filter_models(
 mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
-    use crate::services::model_catalog::refresh_model_catalog_from_fixture;
+    use crate::services::model_catalog::refresh_model_catalog_from_json;
 
     fn fixture_json() -> &'static str {
         include_str!("../fixtures/model-catalog.json")
@@ -59,14 +47,14 @@ mod tests {
     #[test]
     fn test_refresh_from_fixture_via_service() {
         let mut conn = create_test_db_for_tests();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
         assert!(!entries.is_empty());
     }
 
     #[test]
     fn test_get_cached_after_refresh() {
         let mut conn = create_test_db_for_tests();
-        refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+        refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
 
         let cached = db::read_cached_model_catalog(&conn).unwrap();
         assert!(!cached.is_empty());
@@ -77,7 +65,7 @@ mod tests {
     #[test]
     fn test_filter_round_trip() {
         let mut conn = create_test_db_for_tests();
-        refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+        refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
 
         let all = db::read_cached_model_catalog(&conn).unwrap();
         let filters = vec![ModelFilter {
@@ -95,7 +83,7 @@ mod tests {
     #[test]
     fn test_filter_multiple_ops() {
         let mut conn = create_test_db_for_tests();
-        refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+        refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
 
         let all = db::read_cached_model_catalog(&conn).unwrap();
         let filters = vec![
