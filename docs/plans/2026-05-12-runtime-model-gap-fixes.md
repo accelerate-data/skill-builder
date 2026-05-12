@@ -18,7 +18,7 @@
 | PR B | #2 — lock release propagation | Low (error path only) | `skill_session.rs` |
 | PR C | #4 + #6 + #7 — Rust rename + cleanup | Low (search-replace + trivial) | `workflow/settings.rs`, `skill_session.rs`, `refine/mod.rs`, 3 callers |
 | PR D | #6 (gaps) + #7 (gaps) — artifact identity + docs index | Low (DB contract + docs) | `workflow_artifacts.rs`, `clarifications.rs`, `decisions.rs`, `migrations.rs`, `docs/design/README.md` |
-| PR E (optional) | #5 — move event helpers | Medium (structural refactor) | `agents/openhands_server/events.rs`, `refine/mod.rs`, `skill_session.rs` |
+| PR E (optional) | #5 — move event helpers | Medium (structural refactor) | `agents/openhands_server/events.rs`, `refine/mod.rs`, `skill_session.rs` | **MERGED** |
 
 Do PRs A, B, C, D in order (each merges before next starts). PR E can be deferred.
 
@@ -649,7 +649,7 @@ The coupling works correctly today. The fix is purely architectural and has no c
 - Create: `app/src-tauri/src/commands/refine/events.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Create `events.rs` with the extracted helpers**
+- [x] **Step 1: Create `events.rs` with the extracted helpers**
 
 Create `app/src-tauri/src/commands/refine/events.rs` and move these functions from `refine/mod.rs`:
 
@@ -665,7 +665,7 @@ Create `app/src-tauri/src/commands/refine/events.rs` and move these functions fr
 
 The three `pub(crate)` functions keep their visibility. The private helpers stay private within the new file.
 
-- [ ] **Step 2: Declare the module in `refine/mod.rs`**
+- [x] **Step 2: Declare the module in `refine/mod.rs`**
 
 Add at the top of `app/src-tauri/src/commands/refine/mod.rs`:
 
@@ -677,7 +677,7 @@ Remove the moved functions from `mod.rs`.
 
 Update any internal calls in `mod.rs` to use `events::extract_conversation_messages(...)` etc.
 
-- [ ] **Step 3: Update `skill_session.rs` callers**
+- [x] **Step 3: Update `skill_session.rs` callers**
 
 In `commands/skill_session.rs`, `restore_skill_conversation_state` currently calls:
 
@@ -695,7 +695,7 @@ crate::commands::refine::events::extract_restored_conversation_events(events)
 crate::commands::refine::events::restored_conversation_user_turn_count(events)
 ```
 
-- [ ] **Step 4: Compile**
+- [x] **Step 4: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -703,7 +703,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 5: Run all Rust tests**
+- [x] **Step 5: Run all Rust tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -711,7 +711,7 @@ cd app/src-tauri && cargo test
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/events.rs \
