@@ -561,19 +561,20 @@ Two low-risk items from the implementation-gaps backlog:
 - Review: `app/src-tauri/src/commands/workflow/decisions.rs`
 - Review: `app/src-tauri/src/db/migrations.rs`
 
-- [ ] **Step 1: Audit artifact resolution paths**
+- [x] **Step 1: Audit artifact resolution paths**
 
 Read the four files above and verify:
 
 1. Clarifications and decisions resolve skills by `skills.id` (primary key), not
-   by name or redundant parent identity.
-2. No name-based ambiguity exists in artifact resolution queries.
-3. The migration history reflects the canonical `skills.id` contract.
+   by name or redundant parent identity. **VERIFIED**: `resolve_skill_db_id()` →
+   `resolve_skill_master_id_from_identifier()` always returns `skills.id` (integer).
+2. No name-based ambiguity exists in artifact resolution queries. **VERIFIED**: All
+   artifact tables use `skill_id INTEGER` as FK; commands pass `skill_id` directly.
+3. The migration history reflects the canonical `skills.id` contract. **VERIFIED**.
 
-- [ ] **Step 2: Fix any remaining name-based or redundant identity resolution**
+- [x] **Step 2: Fix any remaining name-based or redundant identity resolution**
 
-If any query or command still resolves artifacts by skill name or a redundant
-parent identifier, update it to use `skills.id` as the canonical key.
+No fixes needed. All resolution paths already use `skills.id` as the canonical key.
 
 - [ ] **Step 3: Compile and test**
 
@@ -601,15 +602,17 @@ git commit -m "fix: ensure canonical skills.id for artifact identity resolution"
 **Files:**
 - Modify: `docs/design/README.md`
 
-- [ ] **Step 1: Read `docs/design/README.md`**
+- [x] **Step 1: Read `docs/design/README.md`**
 
 Check for any references to old design directories (e.g., `docs/design/model-settings/`)
 that should now point to `docs/design/litellm-integration/`.
 
-- [ ] **Step 2: Update links**
+**VERIFIED**: `docs/design/README.md` line 7 correctly references `litellm-integration/`.
+No stale paths found.
 
-Replace stale paths with the correct `docs/design/litellm-integration/` references.
-Ensure the README accurately reflects the current design folder structure.
+- [x] **Step 2: Update links**
+
+No updates needed. The README accurately reflects the current design folder structure.
 
 - [ ] **Step 3: Commit**
 
