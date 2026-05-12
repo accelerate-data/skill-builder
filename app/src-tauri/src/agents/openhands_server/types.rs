@@ -251,7 +251,7 @@ fn openhands_tag_value(value: &str) -> String {
 
 fn openhands_llm_json(llm: &crate::types::WorkflowLlmConfig) -> serde_json::Value {
     let mut value = serde_json::json!({
-        "model": openhands_litellm_model(&llm.model, llm.base_url.as_deref()),
+        "model": normalize_model_for_openai(&llm.model, llm.base_url.as_deref()),
     });
     if let Some(obj) = value.as_object_mut() {
         if let Some(api_key) = &llm.api_key {
@@ -321,7 +321,7 @@ fn openhands_llm_json(llm: &crate::types::WorkflowLlmConfig) -> serde_json::Valu
     value
 }
 
-fn openhands_litellm_model(model: &str, base_url: Option<&str>) -> String {
+fn normalize_model_for_openai(model: &str, base_url: Option<&str>) -> String {
     if base_url.is_some() {
         if let Some(model_name) = model
             .strip_prefix("opencode-go/")
