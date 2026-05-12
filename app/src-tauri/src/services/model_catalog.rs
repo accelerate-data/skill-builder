@@ -225,7 +225,11 @@ mod tests {
     #[test]
     fn test_refresh_from_fixture_writes_all_tables() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         assert!(!entries.is_empty(), "should return cached entries");
 
@@ -245,7 +249,11 @@ mod tests {
     #[test]
     fn test_filter_models_provider_id_eq() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "provider_id".to_string(),
@@ -261,7 +269,11 @@ mod tests {
     #[test]
     fn test_filter_models_reasoning_false() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "reasoning".to_string(),
@@ -277,7 +289,11 @@ mod tests {
     #[test]
     fn test_filter_models_context_limit_gte() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "context_limit".to_string(),
@@ -293,7 +309,11 @@ mod tests {
     #[test]
     fn test_filter_models_input_modality_contains() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "input_modalities".to_string(),
@@ -309,7 +329,11 @@ mod tests {
     #[test]
     fn test_filter_models_empty_filters_returns_all() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let result = filter_models(entries, &[]).unwrap();
         assert_eq!(result.len(), 2);
@@ -318,7 +342,11 @@ mod tests {
     #[test]
     fn test_filter_models_unknown_field_returns_error() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "nonexistent_field".to_string(),
@@ -334,7 +362,11 @@ mod tests {
     #[test]
     fn test_filter_models_unknown_op_returns_error() {
         let mut conn = create_test_db_with_catalog();
+
         let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "provider_id".to_string(),
@@ -346,6 +378,7 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("unknown filter operator"));
     }
+
 
     #[test]
     fn test_filter_models_structured_output_true() {
@@ -363,4 +396,6 @@ mod tests {
         assert_eq!(result[0].model_id, "claude-sonnet-4-6");
         assert_eq!(result[0].structured_output, Some(true));
     }
+
+
 }

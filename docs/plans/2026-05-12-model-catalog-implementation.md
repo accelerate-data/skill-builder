@@ -624,6 +624,12 @@ Update the runtime builder so it resolves:
 - effective base URL = `base_url_override ?? provider_catalog.api_base_url`
 - API key from the provider override map
 
+Runtime contract for the catalog-backed path:
+
+- runtime must use `provider_catalog.api_base_url` directly when no override is set
+- runtime must preserve catalog model ids verbatim
+- do not remap catalog-backed model ids based on URL or provider alias heuristics
+
 - [ ] **Step 27: Remove active dependence on profile/virtual-key inputs**
 
 Adjust the runtime config path so it no longer expects:
@@ -634,6 +640,10 @@ Adjust the runtime config path so it no longer expects:
 
 in the active target flow.
 
+Remove the legacy remapping helper in `app/src-tauri/src/agents/openhands_server/types.rs`
+(`openhands_litellm_model`) once the catalog-backed runtime path sends the
+catalog provider/model identity through unchanged.
+
 - [ ] **Step 28: Add runtime config tests**
 
 Cover:
@@ -642,6 +652,8 @@ Cover:
 - override base URL wins over catalog default
 - missing API key for a remote provider fails validation
 - local-compatible base URLs still allow no API key where existing rules intend that
+- catalog-backed model ids are sent unchanged even when `provider_catalog.api_base_url` is set
+- no `opencode/... -> openai/...` rewrite occurs in the catalog-backed runtime path
 
 Run:
 
