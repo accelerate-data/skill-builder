@@ -136,9 +136,10 @@ pub fn update_skill_metadata(
     {
         // set_skill_behaviour writes to skills master only (canonical store for all skill sources).
         // Works for all skill sources — marketplace/imported updates skills master directly.
-        crate::db::set_skill_behaviour(
+        crate::db::set_skill_behaviour_in_plugin(
             &conn,
             &skill_name,
+            &plugin_slug,
             description.as_deref(),
             version.as_deref(),
             user_invocable,

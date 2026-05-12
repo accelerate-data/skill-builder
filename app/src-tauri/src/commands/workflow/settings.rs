@@ -167,12 +167,13 @@ pub(crate) fn read_workflow_settings_by_skill_id(
 pub(crate) fn read_workflow_settings(
     db: &Db,
     skill_name: &str,
+    plugin_slug: &str,
     step_id: u32,
     workspace_path: &str,
 ) -> Result<WorkflowSettings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let skill_id = crate::db::get_skill_master_id_any_plugin(&conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
+    let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, skill_name, plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
     drop(conn);
     read_workflow_settings_by_skill_id(db, skill_id, skill_name, step_id, workspace_path)
 }
@@ -189,7 +190,7 @@ mod tests {
         upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         write_settings(&conn, &app_settings).unwrap();
         let db = Db(std::sync::Arc::new(Mutex::new(conn)));
-        read_workflow_settings(&db, "test-skill", 0, "/tmp/workspace")
+        read_workflow_settings(&db, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG, 0, "/tmp/workspace")
     }
 
     fn configured_settings(model: &str, api_key: Option<&str>) -> AppSettings {

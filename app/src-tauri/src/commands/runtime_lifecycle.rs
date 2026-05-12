@@ -70,7 +70,7 @@ pub fn allow_app_exit(close_guard: tauri::State<'_, CloseGuardState>) {
 mod tests {
     use super::release_instance_runtime_state;
     use crate::commands::test_utils::create_test_db;
-    use crate::db::{acquire_skill_lock, create_workflow_session};
+    use crate::db::{acquire_skill_lock_by_skill_id, create_workflow_session_by_skill_id, get_skill_master_id_in_plugin};
     use crate::InstanceInfo;
 
     #[test]
@@ -89,10 +89,13 @@ mod tests {
         )
         .unwrap();
 
-        acquire_skill_lock(&conn, "skill-a", "instance-a", 4242).unwrap();
-        acquire_skill_lock(&conn, "skill-b", "instance-b", 5151).unwrap();
-        create_workflow_session(&conn, "sess-a", "skill-a", 4242).unwrap();
-        create_workflow_session(&conn, "sess-b", "skill-b", 5151).unwrap();
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        let skill_a_id = get_skill_master_id_in_plugin(&conn, "skill-a", default_slug).unwrap().unwrap();
+        let skill_b_id = get_skill_master_id_in_plugin(&conn, "skill-b", default_slug).unwrap().unwrap();
+        acquire_skill_lock_by_skill_id(&conn, skill_a_id, "instance-a", 4242).unwrap();
+        acquire_skill_lock_by_skill_id(&conn, skill_b_id, "instance-b", 5151).unwrap();
+        create_workflow_session_by_skill_id(&conn, "sess-a", skill_a_id, 4242).unwrap();
+        create_workflow_session_by_skill_id(&conn, "sess-b", skill_b_id, 5151).unwrap();
 
         release_instance_runtime_state(
             &conn,

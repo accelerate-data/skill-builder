@@ -254,7 +254,7 @@ pub fn create_skill(
             user_invocable,
             disable_model_invocation,
         )?;
-        crate::db::get_skill_master_id_any_plugin(&conn, &name)?
+        crate::db::get_skill_master_id_in_plugin(&conn, &name, crate::skill_paths::DEFAULT_PLUGIN_SLUG)?
             .ok_or_else(|| format!("Failed to find created skill '{}'", name))?
     };
 
@@ -431,9 +431,10 @@ pub(crate) fn create_skill_db_records_inner(
             || user_invocable.is_some()
             || disable_model_invocation.is_some()
         {
-            crate::db::set_skill_behaviour(
+            crate::db::set_skill_behaviour_in_plugin(
                 conn,
                 name,
+                crate::skill_paths::DEFAULT_PLUGIN_SLUG,
                 description,
                 version,
                 user_invocable,
@@ -788,7 +789,9 @@ pub(crate) fn delete_skill_db_records_inner(
 
         // Full DB cleanup: route to the right delete based on what's in the DB.
         // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
-        let has_workflow_run = crate::db::get_workflow_run_id(conn, name)
+        let s_id = crate::db::get_skill_master_id_in_plugin(conn, name, plugin_slug)?
+            .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", name, plugin_slug))?;
+        let has_workflow_run = crate::db::get_workflow_run_id_by_skill_id(conn, s_id)
             .unwrap_or(None)
             .is_some();
         if has_workflow_run {

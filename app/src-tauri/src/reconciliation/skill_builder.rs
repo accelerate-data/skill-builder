@@ -13,6 +13,9 @@ pub(crate) fn reconcile_skill_builder(
     skills_path: &str,
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {
+    let s_id = crate::db::get_skill_master_id_in_plugin(conn, name, plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", name, plugin_slug))?;
+
     // Scenario 7: active session — skip entirely
     if crate::db::has_active_session_with_live_pid(conn, name) {
         log::debug!(
@@ -29,14 +32,14 @@ pub(crate) fn reconcile_skill_builder(
     // Fix stale in_progress steps: no live PID means any in_progress step is a
     // leftover from a crash or unclean shutdown. Reset to pending so the user
     // can re-run instead of seeing a permanently stuck step.
-    let steps = crate::db::get_workflow_steps(conn, name)?;
+    let steps = crate::db::get_workflow_steps_by_skill_id(conn, s_id)?;
     for step in &steps {
         if step.status == "in_progress" {
             log::info!(
                 "[reconcile] '{}': resetting stale in_progress step {} to pending (no active session)",
                 name, step.step_id
             );
-            crate::db::save_workflow_step(conn, name, step.step_id, "pending")?;
+            crate::db::save_workflow_step_by_skill_id(conn, s_id, step.step_id, "pending")?;
         }
     }
 
@@ -44,10 +47,11 @@ pub(crate) fn reconcile_skill_builder(
     // current_step > 0 but no rows in the clarifications/decisions tables — their
     // data only ever existed in the now-dead workspace JSON files. Reset them to
     // step 0 so the user can re-run from the beginning.
-    if let Some(early_run) = crate::db::get_workflow_run(conn, name)? {
+    if let Some(early_run) = crate::db::get_workflow_run_by_skill_id(conn, s_id)? {
         if early_run.status != "completed" && early_run.current_step > 0 {
             // current_step > 0 already guarantees >= 1; check clarifications unconditionally.
-            let has_clarifications = db_artifacts::read_clarifications(conn, name)
+            let skill_id_str = s_id.to_string();
+            let has_clarifications = db_artifacts::read_clarifications(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?
                 .is_some();
             if !has_clarifications {
@@ -63,7 +67,7 @@ pub(crate) fn reconcile_skill_builder(
                     early_run.current_step + 1
                 ));
             } else if early_run.current_step >= 3 {
-                let has_decisions = db_artifacts::read_decisions(conn, name)
+                let has_decisions = db_artifacts::read_decisions(conn, &skill_id_str)
                     .map_err(|e| e.to_string())?
                     .is_some();
                 if !has_decisions {
@@ -84,12 +88,13 @@ pub(crate) fn reconcile_skill_builder(
     }
 
     // Look up workflow_runs row
-    let maybe_run = crate::db::get_workflow_run(conn, name)?;
+    let maybe_run = crate::db::get_workflow_run_by_skill_id(conn, s_id)?;
 
     if maybe_run.is_none() {
         // Scenario 10: master row exists but no workflow_runs row — auto-create.
         // Check both DB artifact rows and filesystem for step detection.
-        let has_decisions = db_artifacts::read_decisions(conn, name)
+        let skill_id_str = s_id.to_string();
+        let has_decisions = db_artifacts::read_decisions(conn, &skill_id_str)
             .map(|opt| opt.is_some())
             .unwrap_or(false);
         let has_skill_md =
@@ -196,7 +201,7 @@ pub(crate) fn reconcile_skill_builder(
                     name, run.current_step, disk_step, last_expected_detectable
                 );
                 crate::db::save_workflow_run(conn, name, disk_step, "pending", &run.purpose)?;
-                crate::db::reset_workflow_steps_from(conn, name, disk_step)?;
+                crate::db::reset_workflow_steps_from_by_skill_id(conn, s_id, disk_step)?;
                 did_reset = true;
                 notifications.push(format!(
                     "'{}' was reset from step {} to step {} (disk state behind DB)",
@@ -231,7 +236,7 @@ pub(crate) fn reconcile_skill_builder(
         // Mark all detectable steps confirmed by disk as completed
         for &s in DETECTABLE_STEPS {
             if s <= disk_step {
-                crate::db::save_workflow_step(conn, name, s, "completed")?;
+                crate::db::save_workflow_step_by_skill_id(conn, s_id, s, "completed")?;
             }
         }
         // If no reset: also mark non-detectable steps between disk and current_step as completed.
@@ -240,7 +245,7 @@ pub(crate) fn reconcile_skill_builder(
         if !did_reset {
             for s in (disk_step + 1)..=run.current_step {
                 if !DETECTABLE_STEPS.contains(&s) {
-                    crate::db::save_workflow_step(conn, name, s, "completed")?;
+                    crate::db::save_workflow_step_by_skill_id(conn, s_id, s, "completed")?;
                 }
             }
         }
@@ -269,7 +274,7 @@ pub(crate) fn reconcile_skill_builder(
             name, run.current_step
         );
         crate::db::save_workflow_run(conn, name, 2, "pending", &run.purpose)?;
-        crate::db::reset_workflow_steps_from(conn, name, 3)?;
+        crate::db::reset_workflow_steps_from_by_skill_id(conn, s_id, 3)?;
         cleanup_future_steps(workspace_path, name, plugin_slug, 2, skills_path);
         notifications.push(format!(
             "'{}' was reset from step {} to step 3 (SKILL.md not found)",

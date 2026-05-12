@@ -78,11 +78,18 @@ pub(crate) fn clear_artifacts_for_step_reset(
     skill_name: &str,
     from_step_id: u32,
 ) -> Result<(), String> {
+    let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)?
+        .map(|m| m.plugin_slug)
+        .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+    let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+    let skill_id_str = s_id.to_string();
+
     match from_step_id {
         0 | 1 => {
-            crate::db::workflow_artifacts::delete_clarifications(conn, skill_name)
+            crate::db::workflow_artifacts::delete_clarifications(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?;
-            crate::db::workflow_artifacts::delete_decisions(conn, skill_name)
+            crate::db::workflow_artifacts::delete_decisions(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?;
             log::info!(
                 "[clear_artifacts_for_step_reset] cleared clarifications and decisions for '{}' (resetting from step {})",
@@ -90,7 +97,7 @@ pub(crate) fn clear_artifacts_for_step_reset(
             );
         }
         2 => {
-            crate::db::workflow_artifacts::delete_decisions(conn, skill_name)
+            crate::db::workflow_artifacts::delete_decisions(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?;
             log::info!(
                 "[clear_artifacts_for_step_reset] cleared decisions for '{}' (resetting from step {})",
@@ -152,12 +159,14 @@ fn navigate_back_to_step_impl(
     }
 
     // Reset only steps after the target; target step status is preserved as "completed".
-    crate::db::reset_workflow_steps_from(conn, skill_name, delete_from as i32)?;
+    let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+    crate::db::reset_workflow_steps_from_by_skill_id(conn, s_id, delete_from as i32)?;
 
     // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
     // Use "pending" for the run status because subsequent steps are now reset; the next
     // saveWorkflowState sync will recompute and update as needed.
-    if let Some(run) = crate::db::get_workflow_run(conn, skill_name)? {
+    if let Some(run) = crate::db::get_workflow_run_by_skill_id(conn, s_id)? {
         crate::db::save_workflow_run(
             conn,
             skill_name,
@@ -721,10 +730,12 @@ pub async fn reset_workflow_step(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
     clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
-    crate::db::reset_workflow_steps_from(&conn, &skill_name, from_step_id as i32)?;
+    let s_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+    crate::db::reset_workflow_steps_from_by_skill_id(&conn, s_id, from_step_id as i32)?;
 
     // Update the workflow run's current step
-    if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
+    if let Some(run) = crate::db::get_workflow_run_by_skill_id(&conn, s_id)? {
         crate::db::save_workflow_run(
             &conn,
             &skill_name,
@@ -1229,7 +1240,7 @@ mod reset_artifact_cleanup_tests {
         DecisionsRecord,
     };
 
-    fn seed_clarifications(conn: &mut rusqlite::Connection, skill_id: &str) {
+    fn seed_clarifications(conn: &mut rusqlite::Connection, skill_id: i64) {
         let record = ClarificationsRecord {
             skill_id: skill_id.to_string(),
             version: "1".to_string(),
@@ -1283,7 +1294,7 @@ mod reset_artifact_cleanup_tests {
         tx.commit().unwrap();
     }
 
-    fn seed_decisions(conn: &mut rusqlite::Connection, skill_id: &str) {
+    fn seed_decisions(conn: &mut rusqlite::Connection, skill_id: i64) {
         let record = DecisionsRecord {
             skill_id: skill_id.to_string(),
             version: "1".to_string(),
@@ -1309,14 +1320,14 @@ mod reset_artifact_cleanup_tests {
         tx.commit().unwrap();
     }
 
-    fn has_clarifications(conn: &rusqlite::Connection, skill_id: &str) -> bool {
-        workflow_artifacts::read_clarifications(conn, skill_id)
+    fn has_clarifications(conn: &rusqlite::Connection, skill_id: i64) -> bool {
+        workflow_artifacts::read_clarifications(conn, &skill_id.to_string())
             .unwrap()
             .is_some()
     }
 
-    fn has_decisions(conn: &rusqlite::Connection, skill_id: &str) -> bool {
-        workflow_artifacts::read_decisions(conn, skill_id)
+    fn has_decisions(conn: &rusqlite::Connection, skill_id: i64) -> bool {
+        workflow_artifacts::read_decisions(conn, &skill_id.to_string())
             .unwrap()
             .is_some()
     }
@@ -1325,21 +1336,22 @@ mod reset_artifact_cleanup_tests {
     fn test_reset_from_step_0_clears_clarifications_and_decisions() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
 
-        seed_clarifications(&mut conn, "test-skill");
-        seed_decisions(&mut conn, "test-skill");
-        assert!(has_clarifications(&conn, "test-skill"));
-        assert!(has_decisions(&conn, "test-skill"));
+        seed_clarifications(&mut conn, skill_id);
+        seed_decisions(&mut conn, skill_id);
+        assert!(has_clarifications(&conn, skill_id));
+        assert!(has_decisions(&conn, skill_id));
 
         // Reset from step 0 should clear both
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 0).unwrap();
 
         assert!(
-            !has_clarifications(&conn, "test-skill"),
+            !has_clarifications(&conn, skill_id),
             "clarifications should be deleted when resetting from step 0"
         );
         assert!(
-            !has_decisions(&conn, "test-skill"),
+            !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 0"
         );
     }
@@ -1348,22 +1360,23 @@ mod reset_artifact_cleanup_tests {
     fn test_reset_from_step_1_clears_clarifications_and_decisions() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 1, "pending", "domain").unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
 
-        seed_clarifications(&mut conn, "test-skill");
-        seed_decisions(&mut conn, "test-skill");
-        assert!(has_clarifications(&conn, "test-skill"));
-        assert!(has_decisions(&conn, "test-skill"));
+        seed_clarifications(&mut conn, skill_id);
+        seed_decisions(&mut conn, skill_id);
+        assert!(has_clarifications(&conn, skill_id));
+        assert!(has_decisions(&conn, skill_id));
 
         // Reset from step 1 should clear both because step 1 reruns
         // clarifications-producing work and invalidates downstream decisions.
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 1).unwrap();
 
         assert!(
-            !has_clarifications(&conn, "test-skill"),
+            !has_clarifications(&conn, skill_id),
             "clarifications should be deleted when resetting from step 1"
         );
         assert!(
-            !has_decisions(&conn, "test-skill"),
+            !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 1"
         );
     }
@@ -1372,21 +1385,22 @@ mod reset_artifact_cleanup_tests {
     fn test_reset_from_step_2_clears_decisions_preserves_clarifications() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 2, "pending", "domain").unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
 
-        seed_clarifications(&mut conn, "test-skill");
-        seed_decisions(&mut conn, "test-skill");
-        assert!(has_clarifications(&conn, "test-skill"));
-        assert!(has_decisions(&conn, "test-skill"));
+        seed_clarifications(&mut conn, skill_id);
+        seed_decisions(&mut conn, skill_id);
+        assert!(has_clarifications(&conn, skill_id));
+        assert!(has_decisions(&conn, skill_id));
 
         // Reset from step 2 should clear decisions only
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 2).unwrap();
 
         assert!(
-            has_clarifications(&conn, "test-skill"),
+            has_clarifications(&conn, skill_id),
             "clarifications should be preserved when resetting from step 2"
         );
         assert!(
-            !has_decisions(&conn, "test-skill"),
+            !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 2"
         );
     }
@@ -1397,20 +1411,21 @@ mod reset_artifact_cleanup_tests {
             let mut conn = create_test_db();
             crate::db::save_workflow_run(&conn, "test-skill", from_step as i32, "pending", "domain")
                 .unwrap();
+            let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
 
-            seed_clarifications(&mut conn, "test-skill");
-            seed_decisions(&mut conn, "test-skill");
-            assert!(has_clarifications(&conn, "test-skill"));
-            assert!(has_decisions(&conn, "test-skill"));
+            seed_clarifications(&mut conn, skill_id);
+            seed_decisions(&mut conn, skill_id);
+            assert!(has_clarifications(&conn, skill_id));
+            assert!(has_decisions(&conn, skill_id));
 
             super::clear_artifacts_for_step_reset(&conn, "test-skill", from_step).unwrap();
 
             assert!(
-                has_clarifications(&conn, "test-skill"),
+                has_clarifications(&conn, skill_id),
                 "clarifications should be preserved when resetting from step {from_step}"
             );
             assert!(
-                has_decisions(&conn, "test-skill"),
+                has_decisions(&conn, skill_id),
                 "decisions should be preserved when resetting from step {from_step}"
             );
         }

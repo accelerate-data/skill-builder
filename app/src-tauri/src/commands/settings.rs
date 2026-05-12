@@ -204,9 +204,10 @@ fn backfill_missing_skill_versions(
             log::info!("[startup] normalized metadata.version for '{}'", skill_name);
         }
 
-        crate::db::set_skill_behaviour(
+        crate::db::set_skill_behaviour_in_plugin(
             conn,
             &skill_name,
+            &skill.plugin_slug,
             None,
             Some(&normalized.version),
             None,

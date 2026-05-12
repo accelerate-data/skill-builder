@@ -715,6 +715,22 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// Resolve a skill identifier (bare name or structured key) to a canonical
+/// `SkillIdentifier` string. Bare names are resolved via the skills master
+/// table to find the owning plugin, then formatted as `skill-builder:{plugin}:{name}`.
+fn resolve_skill_to_canonical_id(
+    conn: &rusqlite::Connection,
+    skill_id: &str,
+) -> String {
+    // Already a structured identifier or numeric ID — pass through.
+    if crate::db::SkillIdentifier::parse(skill_id).is_ok() {
+        return skill_id.to_string();
+    }
+    // Bare name: look up the owning plugin and construct a builder key.
+    let plugin_slug = super::evaluation::lookup_plugin_slug(conn, skill_id);
+    format!("skill-builder:{}:{}", plugin_slug, skill_id)
+}
+
 /// Persist agent step output to the workflow artifact tables.
 ///
 /// Steps 0/1 unpack to `clarifications` (+ children) and call
@@ -734,6 +750,15 @@ pub(crate) fn materialize_workflow_step_output_value(
     if !workflow_result_payload.is_object() {
         return Err("workflow result payload must be a JSON object".to_string());
     }
+
+    // Resolve bare skill names to a structured identifier at the boundary.
+    let canonical_id = {
+        let conn = db
+            .0
+            .lock()
+            .map_err(|e| format!("Failed to lock DB: {}", e))?;
+        resolve_skill_to_canonical_id(&conn, skill_id)
+    };
 
     log::info!(
         "[materialize_step] step_id={} skill_id={} output_keys={:?}",
@@ -764,7 +789,7 @@ pub(crate) fn materialize_workflow_step_output_value(
             );
 
             let record = agent_json_to_clarifications_record(
-                skill_id,
+                &canonical_id,
                 0, // step 0 always starts at refinement 0
                 parsed.research_output,
                 now_ms(),
@@ -791,7 +816,7 @@ pub(crate) fn materialize_workflow_step_output_value(
             );
 
             let record = agent_json_to_clarifications_record(
-                skill_id,
+                &canonical_id,
                 parsed.refinement_count,
                 parsed.clarifications_json,
                 now_ms(),
@@ -828,7 +853,7 @@ pub(crate) fn materialize_workflow_step_output_value(
                 parsed.metadata.decision_count
             );
 
-            let record = agent_json_to_decisions_record(skill_id, parsed, now_ms())?;
+            let record = agent_json_to_decisions_record(&canonical_id, parsed, now_ms())?;
             persist_decisions(db, &record)
         }
         3 => {

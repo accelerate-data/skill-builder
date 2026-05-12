@@ -689,7 +689,7 @@ pub fn reconcile_on_startup(
                 continue;
             }
             if skill.skill_source == "skill-builder" {
-                let run = crate::db::get_workflow_run(conn, &skill.name)?;
+                let run = crate::db::get_workflow_run_by_skill_id(conn, skill.id)?;
                 let is_completed = run
                     .as_ref()
                     .map(|r| r.status == "completed")
@@ -852,7 +852,7 @@ pub fn reconcile_on_startup(
         }
 
         // Only reconcile incomplete skills — completed skills were handled in Phase 1
-        let maybe_run = crate::db::get_workflow_run(conn, &skill.name)?;
+        let maybe_run = crate::db::get_workflow_run_by_skill_id(conn, skill.id)?;
         let is_completed = maybe_run
             .as_ref()
             .map(|r| r.status == "completed")
@@ -929,9 +929,16 @@ pub fn resolve_orphan(
             Ok(())
         }
         "keep" => {
-            if let Some(run) = crate::db::get_workflow_run(conn, skill_name)? {
-                crate::db::save_workflow_run(conn, skill_name, 0, "pending", &run.purpose)?;
-                crate::db::reset_workflow_steps_from(conn, skill_name, 0)?;
+            let s_id = crate::db::get_skill_master_id_in_plugin(
+                conn,
+                skill_name,
+                crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            )?;
+            if let Some(s_id) = s_id {
+                if let Some(run) = crate::db::get_workflow_run_by_skill_id(conn, s_id)? {
+                    crate::db::save_workflow_run(conn, skill_name, 0, "pending", &run.purpose)?;
+                    crate::db::reset_workflow_steps_from_by_skill_id(conn, s_id, 0)?;
+                }
             }
             Ok(())
         }

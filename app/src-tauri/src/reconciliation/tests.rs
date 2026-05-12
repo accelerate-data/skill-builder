@@ -179,11 +179,13 @@ fn test_scenario_2_db_ahead_of_disk() {
     // DB says step 3 but no SKILL.md on disk.
     // Steps 0-2 are DB-authoritative; only SKILL.md is filesystem-based.
     // Scenario 4 fires: reset to step 2 so the user can re-run step 3.
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     insert_stub_decisions(&conn, "my-skill");
     // Verify the stubs were inserted
-    let clar_check = crate::db::workflow_artifacts::read_clarifications(&conn, "my-skill").unwrap();
+    let clar_check =
+        crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id.to_string()).unwrap();
     assert!(clar_check.is_some(), "stub clarifications should exist");
     create_skill_dir(tmp.path(), "my-skill", "sales");
 

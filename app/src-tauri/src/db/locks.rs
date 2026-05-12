@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-use super::skills::{get_skill_master_by_id, get_skill_master_id_any_plugin};
+use super::skills::{get_skill_master_by_id, get_skill_master_id_in_plugin};
 
 // --- Skill Locks ---
 
@@ -62,15 +62,19 @@ pub fn acquire_skill_lock_by_skill_id(
     result
 }
 
-#[allow(dead_code)]
+/// Convenience wrapper: resolves skill_id from name + default plugin, then acquires lock.
 pub fn acquire_skill_lock(
     conn: &Connection,
     skill_name: &str,
     instance_id: &str,
     pid: u32,
 ) -> Result<(), String> {
-    let skill_id = get_skill_master_id_any_plugin(conn, skill_name)?
-        .ok_or_else(|| "Skill not found in skills master".to_string())?;
+    let skill_id = get_skill_master_id_in_plugin(
+        conn,
+        skill_name,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )?
+    .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
     acquire_skill_lock_by_skill_id(conn, skill_id, instance_id, pid)
 }
 
@@ -87,15 +91,18 @@ pub fn release_skill_lock_by_skill_id(
     Ok(())
 }
 
-#[allow(dead_code)]
+/// Convenience wrapper: resolves skill_id from name + default plugin, then releases lock.
 pub fn release_skill_lock(
     conn: &Connection,
     skill_name: &str,
     instance_id: &str,
 ) -> Result<(), String> {
-    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
-        return Ok(());
-    };
+    let skill_id = get_skill_master_id_in_plugin(
+        conn,
+        skill_name,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )?
+    .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
     release_skill_lock_by_skill_id(conn, skill_id, instance_id)
 }
 
@@ -135,13 +142,18 @@ pub fn get_skill_lock_by_skill_id(
     }
 }
 
-#[allow(dead_code)]
+/// Convenience wrapper: resolves skill_id from name + default plugin, then queries lock.
 pub fn get_skill_lock(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<crate::types::SkillLock>, String> {
-    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
-        return Ok(None);
+    let skill_id = match get_skill_master_id_in_plugin(
+        conn,
+        skill_name,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )? {
+        Some(id) => id,
+        None => return Ok(None),
     };
     get_skill_lock_by_skill_id(conn, skill_id)
 }
@@ -212,24 +224,27 @@ mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
 
-    /// Insert a skill master row so `acquire_skill_lock` can look it up.
-    fn insert_skill(conn: &rusqlite::Connection, name: &str) {
+    /// Insert a skill master row so lock functions can look it up.
+    fn insert_skill(conn: &rusqlite::Connection, name: &str) -> i64 {
         super::super::skills::upsert_skill(conn, name, "skill-builder", "test").unwrap();
+        crate::db::get_skill_master_id_in_plugin(conn, name, crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap()
     }
 
     #[test]
     fn test_acquire_skill_lock_succeeds_for_unlocked_skill() {
         let conn = create_test_db_for_tests();
-        insert_skill(&conn, "my-skill");
+        let skill_id = insert_skill(&conn, "my-skill");
 
-        let result = acquire_skill_lock(&conn, "my-skill", "instance-1", std::process::id());
+        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-1", std::process::id());
         assert!(
             result.is_ok(),
             "acquire_skill_lock should succeed for an unlocked skill"
         );
 
         // Lock row should now exist
-        let lock = get_skill_lock(&conn, "my-skill").unwrap();
+        let lock = get_skill_lock_by_skill_id(&conn, skill_id).unwrap();
         assert!(
             lock.is_some(),
             "skill_locks row should be present after acquire"
@@ -242,24 +257,24 @@ mod tests {
     #[test]
     fn test_acquire_skill_lock_idempotent_for_same_instance() {
         let conn = create_test_db_for_tests();
-        insert_skill(&conn, "idem-skill");
+        let skill_id = insert_skill(&conn, "idem-skill");
 
         // Acquire twice with the same instance_id — should succeed both times.
-        acquire_skill_lock(&conn, "idem-skill", "same-instance", std::process::id()).unwrap();
-        let result = acquire_skill_lock(&conn, "idem-skill", "same-instance", std::process::id());
+        acquire_skill_lock_by_skill_id(&conn, skill_id, "same-instance", std::process::id()).unwrap();
+        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "same-instance", std::process::id());
         assert!(result.is_ok(), "re-acquiring own lock should succeed");
     }
 
     #[test]
     fn test_acquire_skill_lock_fails_when_held_by_live_process() {
         let conn = create_test_db_for_tests();
-        insert_skill(&conn, "live-skill");
+        let skill_id = insert_skill(&conn, "live-skill");
 
         // Acquire with the current (live) process PID under a different instance_id.
-        acquire_skill_lock(&conn, "live-skill", "instance-owner", std::process::id()).unwrap();
+        acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-owner", std::process::id()).unwrap();
 
         // A second instance_id must not be able to steal the lock from a live process.
-        let result = acquire_skill_lock(&conn, "live-skill", "instance-thief", std::process::id());
+        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-thief", std::process::id());
         assert!(
             result.is_err(),
             "acquire should fail while skill is locked by a live process"
@@ -275,14 +290,9 @@ mod tests {
     #[test]
     fn test_acquire_skill_lock_reclaims_dead_pid_lock() {
         let conn = create_test_db_for_tests();
-        insert_skill(&conn, "dead-skill");
+        let skill_id = insert_skill(&conn, "dead-skill");
 
         // Manually insert a lock with a PID that is guaranteed not to be alive.
-        let skill_id: i64 = conn
-            .query_row("SELECT id FROM skills WHERE name = 'dead-skill'", [], |r| {
-                r.get(0)
-            })
-            .unwrap();
         conn.execute(
             "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES ('dead-skill', ?1, 'dead-instance', 9999999)",
             rusqlite::params![skill_id],
@@ -290,14 +300,14 @@ mod tests {
         .unwrap();
 
         // A new instance should be able to reclaim the lock held by PID 9999999 (dead).
-        let result = acquire_skill_lock(&conn, "dead-skill", "new-instance", std::process::id());
+        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "new-instance", std::process::id());
         assert!(
             result.is_ok(),
             "acquire should reclaim a lock held by a dead PID, got: {:?}",
             result
         );
 
-        let lock = get_skill_lock(&conn, "dead-skill").unwrap().unwrap();
+        let lock = get_skill_lock_by_skill_id(&conn, skill_id).unwrap().unwrap();
         assert_eq!(
             lock.instance_id, "new-instance",
             "lock should now belong to new-instance"
@@ -307,33 +317,33 @@ mod tests {
     #[test]
     fn test_release_skill_lock_removes_lock_and_allows_reacquire() {
         let conn = create_test_db_for_tests();
-        insert_skill(&conn, "rel-skill");
+        let skill_id = insert_skill(&conn, "rel-skill");
 
-        acquire_skill_lock(&conn, "rel-skill", "holder", std::process::id()).unwrap();
+        acquire_skill_lock_by_skill_id(&conn, skill_id, "holder", std::process::id()).unwrap();
 
         // Release the lock.
-        release_skill_lock(&conn, "rel-skill", "holder").unwrap();
+        release_skill_lock_by_skill_id(&conn, skill_id, "holder").unwrap();
 
         // Lock row should be gone.
-        let lock = get_skill_lock(&conn, "rel-skill").unwrap();
+        let lock = get_skill_lock_by_skill_id(&conn, skill_id).unwrap();
         assert!(lock.is_none(), "lock row should be absent after release");
 
         // Another instance should now be able to acquire.
-        let result = acquire_skill_lock(&conn, "rel-skill", "new-holder", std::process::id());
+        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "new-holder", std::process::id());
         assert!(result.is_ok(), "reacquire after release should succeed");
     }
 
     #[test]
     fn test_release_skill_lock_is_noop_for_wrong_instance() {
         let conn = create_test_db_for_tests();
-        insert_skill(&conn, "wrong-rel-skill");
+        let skill_id = insert_skill(&conn, "wrong-rel-skill");
 
-        acquire_skill_lock(&conn, "wrong-rel-skill", "real-owner", std::process::id()).unwrap();
+        acquire_skill_lock_by_skill_id(&conn, skill_id, "real-owner", std::process::id()).unwrap();
 
         // Releasing with a different instance_id must not remove the real owner's lock.
-        release_skill_lock(&conn, "wrong-rel-skill", "impostor").unwrap();
+        release_skill_lock_by_skill_id(&conn, skill_id, "impostor").unwrap();
 
-        let lock = get_skill_lock(&conn, "wrong-rel-skill").unwrap();
+        let lock = get_skill_lock_by_skill_id(&conn, skill_id).unwrap();
         assert!(lock.is_some(), "real owner's lock should still be present");
         assert_eq!(lock.unwrap().instance_id, "real-owner");
     }
@@ -341,20 +351,13 @@ mod tests {
     #[test]
     fn test_reclaim_dead_locks_removes_dead_and_keeps_live() {
         let conn = create_test_db_for_tests();
-        insert_skill(&conn, "live-locked");
-        insert_skill(&conn, "dead-locked");
+        let live_id = insert_skill(&conn, "live-locked");
+        let dead_id = insert_skill(&conn, "dead-locked");
 
         // Live lock (current process PID).
-        acquire_skill_lock(&conn, "live-locked", "live-inst", std::process::id()).unwrap();
+        acquire_skill_lock_by_skill_id(&conn, live_id, "live-inst", std::process::id()).unwrap();
 
         // Dead lock (bogus PID inserted directly).
-        let dead_id: i64 = conn
-            .query_row(
-                "SELECT id FROM skills WHERE name = 'dead-locked'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
         conn.execute(
             "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES ('dead-locked', ?1, 'dead-inst', 9999999)",
             rusqlite::params![dead_id],
@@ -366,11 +369,11 @@ mod tests {
         // The dead lock should be reclaimed; the live lock must remain.
         assert_eq!(reclaimed, 1, "exactly one dead lock should be reclaimed");
         assert!(
-            get_skill_lock(&conn, "live-locked").unwrap().is_some(),
+            get_skill_lock_by_skill_id(&conn, live_id).unwrap().is_some(),
             "live lock must not be removed"
         );
         assert!(
-            get_skill_lock(&conn, "dead-locked").unwrap().is_none(),
+            get_skill_lock_by_skill_id(&conn, dead_id).unwrap().is_none(),
             "dead lock should be removed"
         );
     }
@@ -379,7 +382,7 @@ mod tests {
     fn test_acquire_skill_lock_fails_for_unknown_skill() {
         let conn = create_test_db_for_tests();
         // No skill inserted — the lock function must return an error.
-        let result = acquire_skill_lock(&conn, "nonexistent-skill", "inst", 1);
+        let result = acquire_skill_lock_by_skill_id(&conn, 99999, "inst", 1);
         assert!(
             result.is_err(),
             "acquire should fail when skill is not in the skills table"

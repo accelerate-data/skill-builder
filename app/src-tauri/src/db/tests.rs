@@ -1042,14 +1042,26 @@ fn test_backfill_migration_populates_skills_from_workflow_runs() {
     );
 
     // Marketplace row should be removed from workflow_runs
-    let run = get_workflow_run(&conn, "mkt-skill").unwrap();
+    let run: Option<String> = conn
+        .query_row(
+            "SELECT skill_name FROM workflow_runs WHERE skill_name = 'mkt-skill'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
     assert!(
         run.is_none(),
         "marketplace rows should be removed from workflow_runs"
     );
 
     // Created skill should still have a workflow_runs row
-    let run = get_workflow_run(&conn, "created-skill").unwrap();
+    let run: Option<String> = conn
+        .query_row(
+            "SELECT skill_name FROM workflow_runs WHERE skill_name = 'created-skill'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
     assert!(run.is_some());
 
     // workflow_runs should have skill_id FK populated
@@ -4358,9 +4370,10 @@ fn test_save_workflow_state_preserves_skills_metadata() {
     save_workflow_run(&conn, "meta-skill", 0, "pending", "domain").unwrap();
 
     // 2. Write canonical metadata to the skills master table.
-    set_skill_behaviour(
+    set_skill_behaviour_in_plugin(
         &conn,
         "meta-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         Some("Canonical description"),
         Some("2.0.0"),
         Some(true),
@@ -4511,14 +4524,15 @@ fn test_acquire_lock_works_for_marketplace_skill() {
     )
     .unwrap();
     upsert_skill_in_plugin(&conn, "mkt-lockable", "marketplace", "domain", "mkt-lock").unwrap();
+    let skill_id = get_skill_master_id_in_plugin(&conn, "mkt-lockable", "mkt-lock").unwrap().unwrap();
 
-    let result = acquire_skill_lock(&conn, "mkt-lockable", "inst-1", std::process::id());
+    let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", std::process::id());
     assert!(
         result.is_ok(),
         "acquire_skill_lock should succeed for marketplace skill with active master row"
     );
 
-    release_skill_lock(&conn, "mkt-lockable", "inst-1").unwrap();
+    release_skill_lock_by_skill_id(&conn, skill_id, "inst-1").unwrap();
 }
 
 #[test]

@@ -4,7 +4,7 @@ use crate::types::{
 use rusqlite::Connection;
 
 use super::skills::get_skill_master_id_in_plugin;
-use super::workflow::{get_workflow_run_id, get_workflow_run_id_by_skill_id};
+use super::workflow::get_workflow_run_id_by_skill_id;
 
 pub(crate) fn step_name(step_id: i32) -> String {
     match step_id {
@@ -555,7 +555,15 @@ pub fn get_step_agent_runs(
     skill_name: &str,
     step_id: i32,
 ) -> Result<Vec<AgentRunRecord>, String> {
-    let wr_id = match get_workflow_run_id(conn, skill_name)? {
+    let s_id = match crate::db::get_skill_master_id_in_plugin(
+        conn,
+        skill_name,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )? {
+        Some(id) => id,
+        None => return Ok(vec![]),
+    };
+    let wr_id = match get_workflow_run_id_by_skill_id(conn, s_id)? {
         Some(id) => id,
         None => return Ok(vec![]),
     };

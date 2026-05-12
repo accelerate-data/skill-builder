@@ -18,6 +18,7 @@ pub fn start_session(
     conn: &Connection,
     session_id: &str,
     skill_name: &str,
+    plugin_slug: &str,
     pid: u32,
 ) -> Result<(), String> {
     if session_id.trim().is_empty() {
@@ -29,9 +30,9 @@ pub fn start_session(
     if pid == 0 {
         return Err("PID must be greater than zero".to_string());
     }
-    let skill_id = match crate::db::get_skill_master_id_any_plugin(conn, skill_name)? {
+    let skill_id = match crate::db::get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)? {
         Some(skill_id) => skill_id,
-        None => crate::db::upsert_skill(conn, skill_name, "skill-builder", "domain")?,
+        None => crate::db::upsert_skill_in_plugin(conn, skill_name, "skill-builder", "domain", plugin_slug)?,
     };
     start_session_by_skill_id(conn, session_id, skill_id, pid)
 }
@@ -94,14 +95,14 @@ mod tests {
     #[test]
     fn test_start_session_happy_path() {
         let conn = create_test_db();
-        let result = start_session(&conn, "session-start", "my-skill", 1234);
+        let result = start_session(&conn, "session-start", "my-skill", "default", 1234);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_start_session_failure_path_requires_inputs() {
         let conn = create_test_db();
-        let err = start_session(&conn, "", "my-skill", 1234).unwrap_err();
+        let err = start_session(&conn, "", "my-skill", "default", 1234).unwrap_err();
         assert!(err.contains("Session ID is required"));
     }
 
@@ -122,7 +123,7 @@ mod tests {
     #[test]
     fn test_cancel_session_happy_path() {
         let conn = create_test_db();
-        start_session(&conn, "session-cancel", "my-skill", 4321).unwrap();
+        start_session(&conn, "session-cancel", "my-skill", "default", 4321).unwrap();
         let result = cancel_session(&conn, "session-cancel");
         assert!(result.is_ok());
     }
@@ -137,8 +138,8 @@ mod tests {
     #[test]
     fn test_shutdown_happy_path() {
         let conn = create_test_db();
-        start_session(&conn, "session-a", "skill-a", 5555).unwrap();
-        start_session(&conn, "session-b", "skill-b", 5555).unwrap();
+        start_session(&conn, "session-a", "skill-a", "default", 5555).unwrap();
+        start_session(&conn, "session-b", "skill-b", "default", 5555).unwrap();
         let ended = shutdown_sessions_for_pid(&conn, 5555).unwrap();
         assert_eq!(ended, 2);
     }
