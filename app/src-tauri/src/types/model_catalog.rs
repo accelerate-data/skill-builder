@@ -70,7 +70,7 @@ pub struct ProviderCatalogRow {
     pub doc_url: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCatalogEntry {
     pub full_id: String,
     pub provider_id: String,

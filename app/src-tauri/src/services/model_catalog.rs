@@ -10,8 +10,16 @@ pub async fn refresh_model_catalog(
     conn: &mut Connection,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
     let body = fetch_models_dev_json().await?;
+    refresh_model_catalog_from_json(conn, &body)
+}
+
+/// Refresh from raw JSON string (used by the Tauri command after async fetch).
+pub fn refresh_model_catalog_from_json(
+    conn: &mut Connection,
+    json: &str,
+) -> Result<Vec<ModelCatalogEntry>, String> {
     let providers: Vec<CatalogProvider> =
-        serde_json::from_str(&body).map_err(|e| format!("Failed to parse models.dev payload: {e}"))?;
+        serde_json::from_str(json).map_err(|e| format!("Failed to parse models.dev payload: {e}"))?;
 
     replace_model_catalog_snapshot(conn, &providers)
         .map_err(|e| format!("Failed to write catalog snapshot: {e}"))?;
@@ -24,16 +32,11 @@ pub fn refresh_model_catalog_from_fixture(
     conn: &mut Connection,
     json: &str,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
-    let providers: Vec<CatalogProvider> =
-        serde_json::from_str(json).map_err(|e| format!("Failed to parse fixture payload: {e}"))?;
-
-    replace_model_catalog_snapshot(conn, &providers)
-        .map_err(|e| format!("Failed to write catalog snapshot: {e}"))?;
-
-    read_cached_model_catalog(conn).map_err(|e| format!("Failed to read cached catalog: {e}"))
+    refresh_model_catalog_from_json(conn, json)
 }
 
-async fn fetch_models_dev_json() -> Result<String, String> {
+/// Fetch the raw JSON from models.dev (public for use by Tauri commands).
+pub async fn fetch_models_dev_json() -> Result<String, String> {
     let resp = reqwest::get(MODELS_DEV_API_URL)
         .await
         .map_err(|e| format!("Failed to fetch {MODELS_DEV_API_URL}: {e}"))?;

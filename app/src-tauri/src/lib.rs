@@ -460,6 +460,10 @@ pub fn run() {
             commands::documents::add_document_folder,
             commands::documents::update_document,
             commands::documents::delete_document,
+
+            commands::model_catalog::refresh_model_catalog,
+            commands::model_catalog::get_cached_model_catalog,
+            commands::model_catalog::filter_models,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};
