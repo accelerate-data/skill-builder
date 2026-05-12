@@ -1,6 +1,6 @@
 pub mod content;
 pub mod diff;
-pub mod events;
+pub(crate) mod events;
 pub mod output;
 pub(crate) mod protocol;
 

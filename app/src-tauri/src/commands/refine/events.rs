@@ -128,3 +128,317 @@ pub(crate) fn restored_conversation_user_turn_count(
         })
         .count()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_event_class_prefers_event_class_over_eventclass_kind_type() {
+        let raw = serde_json::json!({
+            "event_class": "MessageEvent",
+            "eventClass": "OtherEvent",
+            "kind": "KindEvent",
+            "type": "TypeEvent"
+        });
+        assert_eq!(event_class(&raw), Some("MessageEvent"));
+    }
+
+    #[test]
+    fn test_event_class_falls_back_to_eventclass() {
+        let raw = serde_json::json!({
+            "eventClass": "MessageEvent"
+        });
+        assert_eq!(event_class(&raw), Some("MessageEvent"));
+    }
+
+    #[test]
+    fn test_event_class_falls_back_to_kind() {
+        let raw = serde_json::json!({
+            "kind": "ActionEvent"
+        });
+        assert_eq!(event_class(&raw), Some("ActionEvent"));
+    }
+
+    #[test]
+    fn test_event_class_falls_back_to_type() {
+        let raw = serde_json::json!({
+            "type": "ObservationEvent"
+        });
+        assert_eq!(event_class(&raw), Some("ObservationEvent"));
+    }
+
+    #[test]
+    fn test_event_class_returns_none_when_all_missing() {
+        let raw = serde_json::json!({
+            "source": "user",
+            "message": "hello"
+        });
+        assert_eq!(event_class(&raw), None);
+    }
+
+    #[test]
+    fn test_first_string_returns_first_non_empty_string() {
+        let v1 = serde_json::json!("hello");
+        let v2 = serde_json::json!("world");
+        assert_eq!(first_string([Some(&v1), Some(&v2)]), Some("hello"));
+    }
+
+    #[test]
+    fn test_first_string_skips_null_values() {
+        let v = serde_json::json!("found");
+        assert_eq!(first_string([None, Some(&v), None]), Some("found"));
+    }
+
+    #[test]
+    fn test_first_string_skips_empty_strings() {
+        let empty = serde_json::json!("");
+        let v = serde_json::json!("not-empty");
+        // find_map returns the first as_str() match, then filter rejects empty strings,
+        // so an empty string as the first value results in None
+        assert_eq!(first_string([Some(&empty), Some(&v)]), None);
+    }
+
+    #[test]
+    fn test_first_string_skips_whitespace_only_strings() {
+        let ws = serde_json::json!("   ");
+        let v = serde_json::json!("real");
+        // find_map returns the first as_str() match, then filter rejects whitespace-only,
+        // so a whitespace string as the first value results in None
+        assert_eq!(first_string([Some(&ws), Some(&v)]), None);
+    }
+
+    #[test]
+    fn test_first_string_returns_none_when_all_empty() {
+        let empty = serde_json::json!("");
+        assert_eq!(first_string([Some(&empty), None]), None);
+    }
+
+    #[test]
+    fn test_first_string_returns_none_when_all_null() {
+        assert_eq!(first_string([None, None]), None);
+    }
+
+    #[test]
+    fn test_extract_message_text_from_top_level_message() {
+        let raw = serde_json::json!({
+            "message": "Hello world"
+        });
+        assert_eq!(extract_message_text(&raw), Some("Hello world".to_string()));
+    }
+
+    #[test]
+    fn test_extract_message_text_from_top_level_text() {
+        let raw = serde_json::json!({
+            "text": "Some text"
+        });
+        assert_eq!(extract_message_text(&raw), Some("Some text".to_string()));
+    }
+
+    #[test]
+    fn test_extract_message_text_from_content_array() {
+        let raw = serde_json::json!({
+            "content": [{"type": "text", "text": "Content text"}]
+        });
+        assert_eq!(extract_message_text(&raw), Some("Content text".to_string()));
+    }
+
+    #[test]
+    fn test_extract_message_text_from_llm_message() {
+        let raw = serde_json::json!({
+            "llm_message": {"message": "LLM says hi"}
+        });
+        assert_eq!(
+            extract_message_text(&raw),
+            Some("LLM says hi".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_message_text_from_llm_message_text() {
+        let raw = serde_json::json!({
+            "llm_message": {"text": "LLM text field"}
+        });
+        assert_eq!(
+            extract_message_text(&raw),
+            Some("LLM text field".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_message_text_from_llm_content_array() {
+        let raw = serde_json::json!({
+            "llm_message": {"content": [{"type": "text", "text": "LLM content"}]}
+        });
+        assert_eq!(
+            extract_message_text(&raw),
+            Some("LLM content".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_message_text_returns_none_for_empty_payload() {
+        let raw = serde_json::json!({});
+        assert_eq!(extract_message_text(&raw), None);
+    }
+
+    #[test]
+    fn test_extract_message_text_prefers_message_over_text() {
+        let raw = serde_json::json!({
+            "message": "primary",
+            "text": "secondary"
+        });
+        assert_eq!(extract_message_text(&raw), Some("primary".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_call_id_from_top_level() {
+        let raw = serde_json::json!({
+            "tool_call_id": "tc-123"
+        });
+        assert_eq!(extract_tool_call_id(&raw), Some("tc-123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_call_id_from_camelcase() {
+        let raw = serde_json::json!({
+            "toolCallId": "tc-456"
+        });
+        assert_eq!(extract_tool_call_id(&raw), Some("tc-456".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_call_id_from_action_nested() {
+        let raw = serde_json::json!({
+            "action": {"tool_call_id": "tc-789"}
+        });
+        assert_eq!(extract_tool_call_id(&raw), Some("tc-789".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_call_id_from_observation_nested() {
+        let raw = serde_json::json!({
+            "observation": {"toolCallId": "tc-obs"}
+        });
+        assert_eq!(extract_tool_call_id(&raw), Some("tc-obs".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_call_id_from_tool_calls_array() {
+        let raw = serde_json::json!({
+            "tool_calls": [{"id": "tc-array"}]
+        });
+        assert_eq!(extract_tool_call_id(&raw), Some("tc-array".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_call_id_returns_none_when_missing() {
+        let raw = serde_json::json!({
+            "event_class": "ActionEvent"
+        });
+        assert_eq!(extract_tool_call_id(&raw), None);
+    }
+
+    #[test]
+    fn test_extract_parent_tool_call_id_from_top_level() {
+        let raw = serde_json::json!({
+            "parent_tool_call_id": "parent-1"
+        });
+        assert_eq!(
+            extract_parent_tool_call_id(&raw),
+            Some("parent-1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_parent_tool_call_id_from_camelcase() {
+        let raw = serde_json::json!({
+            "parentToolCallId": "parent-2"
+        });
+        assert_eq!(
+            extract_parent_tool_call_id(&raw),
+            Some("parent-2".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_parent_tool_call_id_from_action_nested() {
+        let raw = serde_json::json!({
+            "action": {"parent_tool_call_id": "parent-3"}
+        });
+        assert_eq!(
+            extract_parent_tool_call_id(&raw),
+            Some("parent-3".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_parent_tool_call_id_from_observation_nested() {
+        let raw = serde_json::json!({
+            "observation": {"parentToolCallId": "parent-4"}
+        });
+        assert_eq!(
+            extract_parent_tool_call_id(&raw),
+            Some("parent-4".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_parent_tool_call_id_returns_none_when_missing() {
+        let raw = serde_json::json!({
+            "event_class": "ActionEvent"
+        });
+        assert_eq!(extract_parent_tool_call_id(&raw), None);
+    }
+
+    #[test]
+    fn test_extract_timestamp_ms_from_i64() {
+        let raw = serde_json::json!({
+            "timestamp": 1715000000000i64
+        });
+        assert_eq!(extract_timestamp_ms(&raw), 1715000000000);
+    }
+
+    #[test]
+    fn test_extract_timestamp_ms_from_u64_large_value() {
+        let raw = serde_json::json!({
+            "timestamp": 1715000000000u64
+        });
+        assert_eq!(extract_timestamp_ms(&raw), 1715000000000);
+    }
+
+    #[test]
+    fn test_extract_timestamp_ms_from_rfc3339_string() {
+        let raw = serde_json::json!({
+            "timestamp": "2026-05-07T10:00:00Z"
+        });
+        let result = extract_timestamp_ms(&raw);
+        assert!(result > 0, "should parse to a positive timestamp");
+    }
+
+    #[test]
+    fn test_extract_timestamp_ms_falls_back_to_now_when_missing() {
+        let raw = serde_json::json!({});
+        let before = chrono::Utc::now().timestamp_millis();
+        let result = extract_timestamp_ms(&raw);
+        let after = chrono::Utc::now().timestamp_millis();
+        assert!(
+            result >= before && result <= after,
+            "fallback timestamp should be close to now"
+        );
+    }
+
+    #[test]
+    fn test_extract_timestamp_ms_falls_back_to_now_for_invalid_string() {
+        let raw = serde_json::json!({
+            "timestamp": "not-a-date"
+        });
+        let before = chrono::Utc::now().timestamp_millis();
+        let result = extract_timestamp_ms(&raw);
+        let after = chrono::Utc::now().timestamp_millis();
+        assert!(
+            result >= before && result <= after,
+            "invalid string should fall back to now"
+        );
+    }
+}
