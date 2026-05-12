@@ -4,7 +4,7 @@
 |---|---|
 | [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
 | [product-architecture/](product-architecture/README.md) | Product-level architecture entrypoint: UI, Rust backend, OpenHands runtime, persistent state, and doc routing |
-| [litellm-integration/](litellm-integration/README.md) | LiteLLM proxy sidecar target design: provider routing, budget enforcement, spend tracking, virtual keys, and multi-profile model configuration |
+| [model-catalog/](model-catalog/README.md) | Model catalog target design: `models.dev` ingestion, SQLite cache, provider/model filtering, and OpenHands model-resolution contract |
 | [openhands-runtime-model/](openhands-runtime-model/README.md) | Canonical OpenHands runtime model: frontend-to-backend product commands, backend-to-OpenHands session primitives, persistent versus throwaway sessions, workspace ownership, and surface mapping |
 | [skill-purpose-taxonomy/](skill-purpose-taxonomy/README.md) | Skill purpose taxonomy: three live create-skill purposes, harness-owned exclusions, and source-system-semantics boundaries |
 | [creating-skills-generator-verifier/](creating-skills-generator-verifier/README.md) | Creating skills generator-verifier: runtime `creating-skills` guidance under `agent-sources/workspace/skills`, app-owned workflow context loading, and fresh-context validation |

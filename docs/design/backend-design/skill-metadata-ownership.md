@@ -27,50 +27,36 @@ Target owned fields:
 - `disable_model_invocation`
 
 This table defines what the skill is. It does not own transient execution state
-or model-routing infrastructure.
+or model-selection infrastructure.
 
 ### `workflow_runs`
 
 `workflow_runs` owns builder execution state and workflow-authoring snapshots.
 
-Target owned concerns:
-
-- `current_step`
-- `status`
-- `purpose` as the workflow-run purpose snapshot
-- intake and display metadata captured during workflow creation
-
-`workflow_runs` must not become a second source of truth for canonical skill
-metadata.
-
 ### Workflow artifact tables
 
 `clarifications`, `decisions`, and their child tables own normalized workflow
-artifacts. They do not own skill metadata. They depend on canonical skill
-identity and should reference the owning skill through `skills.id`.
+artifacts. They do not own skill metadata.
 
 ### `skill_locks`
 
-`skill_locks` owns backend lease state only. It does not own any skill metadata.
+`skill_locks` owns backend lease state only.
 
 ### `skill_conversations`
 
-`skill_conversations` owns persistent conversation bindings only. It does not
-own any skill metadata.
+`skill_conversations` owns persistent OpenHands conversation bindings only.
 
-### LiteLLM tables
+### Model catalog tables
 
-The LiteLLM configuration tables are adjacent backend configuration, not skill
+The model-catalog cache tables are adjacent backend configuration, not skill
 metadata:
 
-- `llm_providers` owns provider credentials and provider-specific routing data
-- `llm_profiles` owns profile budgets, rate limits, settings blobs, and virtual
-  keys
-- `llm_profile_models` owns per-profile model membership, priority, and
-  per-model budgets
+- `provider_catalog` owns cached provider metadata and defaults
+- `model_catalog` owns cached model metadata and filterable capability fields
+- modality child tables own repeated modality values for cached models
 
-These tables define how model traffic is routed. They do not define what a
-skill is.
+These tables define what model options the app knows about. They do not define
+what a skill is.
 
 ## Write Paths
 
@@ -82,9 +68,7 @@ skill is.
 | Clarifications / decisions | artifact tables | workflow artifact materialization and edit commands |
 | Skill lease state | `skill_locks` | lease-acquire/release commands |
 | Persistent conversation binding | `skill_conversations` | selected-skill session bootstrap and cleanup |
-| Provider config | `llm_providers` | LiteLLM provider commands |
-| Profile config | `llm_profiles` | LiteLLM profile commands |
-| Profile model routing | `llm_profile_models` | LiteLLM profile-model commands |
+| Provider/model catalog cache | catalog tables | model catalog refresh/filter commands |
 
 ## Runtime Resolution Rules
 
@@ -100,11 +84,9 @@ Target behavior:
 
 Target behavior:
 
-- the selected LiteLLM profile defines the virtual key, budgets, and fallback
-  order
-- OpenHands runtime config points at LiteLLM rather than a direct provider
-  credential
-- provider credentials are never treated as skill metadata
+- the selected provider/model pair is resolved through the model catalog
+- OpenHands runtime config is built directly from that resolved selection
+- provider credentials and base-URL overrides are never treated as skill metadata
 
 ## What Does Not Belong In `skills`
 
@@ -114,9 +96,7 @@ The following are not skill metadata in the target design:
 - runtime leases
 - OpenHands conversation IDs
 - provider API keys
-- LiteLLM virtual keys
-- profile budgets and rate limits
-- usage/spend logs
+- cached provider/model catalog rows
 
 ## Current-State Deltas
 

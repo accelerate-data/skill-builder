@@ -4,16 +4,13 @@ Target database architecture for the Skill Builder backend.
 
 ## Storage Model
 
-The backend uses two SQLite databases:
+The backend uses one app-owned SQLite database:
 
 1. **App database**: `{app_local_data_dir}/db/skill-builder.db`
    This is the durable product database owned by the Rust backend.
-2. **LiteLLM database**: `{app_local_data_dir}/litellm/litellm.db`
-   This is owned by LiteLLM for spend logs, verification tokens, and related
-   proxy-managed state.
 
-The app database remains the source of truth for product entities. LiteLLM owns
-usage and budget-enforcement internals.
+The app database remains the source of truth for product entities, runtime
+selection state, and cached model metadata.
 
 ## App Database Topology
 
@@ -40,9 +37,10 @@ plugins
 
 documents
 
-llm_providers
-llm_profiles
-└── llm_profile_models
+provider_catalog
+└── model_catalog
+    ├── model_input_modalities
+    └── model_output_modalities
 
 scenarios
 └── assertions
@@ -76,22 +74,14 @@ Every product-facing skill reference should resolve to this row.
 
 Builder-workflow run state for `skill-builder` skills.
 
-Owned concerns:
-
-- current step
-- overall workflow status
-- intake snapshot and workflow-authoring metadata
-
 ### `workflow_steps`
 
 Per-step execution state for a workflow run.
 
 ### `workflow_artifacts`
 
-Disk-backed workflow outputs that are persisted inline for reset, recovery, and
-history behavior.
-
-These are distinct from the normalized clarifications/decisions artifact tables.
+Disk-backed workflow outputs persisted inline for reset, recovery, and history
+behavior.
 
 ### `clarifications` and `decisions`
 
@@ -105,17 +95,6 @@ Target contract:
 - all lookup and mutation paths resolve artifact ownership through canonical
   `skills.id`, not ambiguous skill-name matching
 
-#### Clarifications child tables
-
-- `clarification_sections`
-- `clarification_questions`
-- `clarification_choices`
-- `clarification_notes`
-
-#### Decisions child tables
-
-- `decision_items`
-
 ### `imported_skills`
 
 Import-specific metadata for marketplace and imported skills. This table is a
@@ -127,9 +106,8 @@ Workflow/refine session lifetimes keyed back to the owning skill.
 
 ### `agent_runs`
 
-Per-run telemetry for workflow and refine activity. In the target architecture,
-this remains app-owned execution telemetry, but spend and budget enforcement are
-expected to shift to LiteLLM.
+Per-run telemetry for workflow and refine activity. This remains app-owned
+execution telemetry.
 
 ### `skill_tags`
 
@@ -142,53 +120,48 @@ selected-skill session at once.
 
 ### `skill_conversations`
 
-Persistent mapping from `(plugin_slug, skill_name)` to OpenHands
-`conversation_id`.
+Persistent mapping from skill identity to OpenHands `conversation_id`.
 
 ### `documents` and `document_skills`
 
 Document attachments and their optional skill scoping.
 
-## LiteLLM Configuration Tables
+## Model Catalog Tables
 
-### `llm_providers`
+### `provider_catalog`
 
-App-owned provider configuration.
+Cached provider metadata from `models.dev`.
 
-Target owned fields:
+Target owned concerns:
 
+- provider identifier
 - provider display name
-- API key
-- optional base URL
-- enabled flag
-- LiteLLM provider prefix
-- forward-compatible provider settings blob
+- default API/base URL
+- lossless provider payload snapshot
+- refresh timestamp
 
-### `llm_profiles`
+### `model_catalog`
 
-App-owned model-routing profiles.
+Cached flat model rows used by the Settings UI and runtime model resolution.
 
-Target owned fields:
+Target owned concerns:
 
-- profile name
-- monthly and total budget caps
-- RPM and TPM limits
-- virtual key issued by LiteLLM
-- forward-compatible profile settings blob
+- owning provider foreign key
+- provider-scoped model identity
+- filterable capability columns
+- limits and cost fields projected from `models.dev`
+- lossless model payload snapshot
+- refresh timestamp
 
-The target architecture uses one shared LiteLLM user and one virtual key per
-profile.
+### `model_input_modalities` and `model_output_modalities`
 
-### `llm_profile_models`
+Child tables for repeated modality values.
 
-Ordered model membership within a profile.
+Target contract:
 
-Target owned fields:
-
-- `model_name`
-- owning provider
-- fallback priority
-- optional per-model budget cap
+- rows reference `model_catalog.full_id`
+- foreign keys use `ON DELETE CASCADE`
+- refreshes cannot leave orphaned child rows behind
 
 ## Eval Workbench Tables
 
@@ -214,20 +187,6 @@ Ordered migration ledger for the app database.
 ### `reconciliation_events`
 
 Append-only log of startup reconciliation actions.
-
-## LiteLLM-Owned Database
-
-The LiteLLM proxy maintains its own SQLite schema under
-`{app_local_data_dir}/litellm/litellm.db`. Target backend design assumes this
-database owns:
-
-- virtual-key records
-- spend logs
-- budget-enforcement state
-- shared-user records used by the proxy
-
-The Rust backend treats that database as LiteLLM-managed infrastructure rather
-than part of the app database contract.
 
 ## Current-State Deltas
 
