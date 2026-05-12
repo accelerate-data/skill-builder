@@ -4,7 +4,7 @@ functional-specs: []
 
 # OpenHands Event Display Projection
 
-> **Status:** Draft
+> **Status:** Implemented — projection, result detectors, store integration, and consumer migration complete. Lifecycle chip (`lifecycle-chip.tsx`) implemented but not yet mounted in the chat header (see Known Limitations).
 
 ## Overview
 
@@ -129,13 +129,13 @@ This replaces the per-status timeline card; lifecycle is frame state, not conten
 
 | File | Responsibility |
 |---|---|
-| `app/src/lib/openhands-event-projection.ts` (new) | Pure function `projectConversationEvent(event, pendingActionsByToolCallId) → { add, update }` returning DisplayItem mutations. Unit tested in isolation. |
-| `app/src/lib/openhands-result-summary.ts` (new) | Detector tiers for terminal results. Pure functions, unit tested. |
+| `app/src/lib/openhands-event-projection.ts` | Pure function `projectConversationEvent(event, pendingActionsByToolCallId) → { add, update }` returning DisplayItem mutations. Unit tested in isolation. |
+| `app/src/lib/openhands-result-summary.ts` | Detector tiers for terminal results. Pure functions, unit tested. |
 | `app/src/stores/agent-store.ts` | `addConversationEvent` invokes the projector and applies returned DisplayItem mutations alongside the existing append to `conversationEvents`. `applyConversationState` (terminal) appends a `result` or `error` DisplayItem via the result-summary detector. Both also keep `pendingActionsByToolCallId` per agent_id to handle pairing. |
-| `app/src/components/refine/agent-turn-inline.tsx` | Reverts to reading `run.displayItems` and rendering via `DisplayItemList`. Same component set the Claude Code path used. |
-| `app/src/components/agent-output-panel.tsx` | Switches to read `displayItems` and render via `DisplayItemList` exclusively. The dual conversationEvents/displayItems branch is removed. Workflow gets the same beautified rendering as refine. |
+| `app/src/components/refine/agent-turn-inline.tsx` | Reads `run.displayItems` and renders via `DisplayItemList`. |
+| `app/src/components/agent-output-panel.tsx` | Reads `displayItems` and renders via `DisplayItemList` exclusively. |
 | `app/src/components/agent-status-header.tsx` | Count uses `displayItems.length` only (single source). |
-| Refine chat header (e.g. `components/refine/chat-panel.tsx` or the workspace shell) | Adds a lifecycle chip bound to `runs[agentId]?.status`. Workflow surfaces already have status indicators via the step UI. |
+| `app/src/components/refine/lifecycle-chip.tsx` | `LifecycleChip` and `LifecycleChipView` components bound to `runs[agentId]?.status`. Implemented and unit tested; **not yet mounted** in the chat panel header (see Known Limitations). |
 | `app/src/components/agent-items/*` (no changes) | All existing item shells, viewers, and the activity grouping work unchanged. |
 | `app/src/components/agent-items/conversation-event-list.tsx` | Retained as a rendering primitive for future dev-tools / debug surfaces; no production consumer. |
 
@@ -179,21 +179,20 @@ Mutating in place preserves React keys and any user-controlled expand state.
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/openhands-runtime-model/README.md` | Defines the active OpenHands runtime and event model that this projection renders across surfaces. |
-| `docs/design/openhands-runtime-model/README.md` | Defines the active session model and event shapes (`conversation_event`, `conversation_state`) this projection consumes. |
+| `docs/design/openhands-runtime-model/README.md` | Defines the active OpenHands runtime, session model, and event shapes (`conversation_event`, `conversation_state`) this projection consumes. |
 | `app/src/lib/display-types.ts` | Canonical frontend definition of `DisplayItem`. The projection produces values matching this shape verbatim. |
 
 ## Key Source Files
 
 | File | Purpose |
 |---|---|
-| `app/src/lib/openhands-event-projection.ts` (new) | Event-to-DisplayItem projector |
-| `app/src/lib/openhands-result-summary.ts` (new) | Terminal result-summary detectors |
+| `app/src/lib/openhands-event-projection.ts` | Event-to-DisplayItem projector |
+| `app/src/lib/openhands-result-summary.ts` | Terminal result-summary detectors |
 | `app/src/stores/agent-store.ts` | Drives the projection from `addConversationEvent` and `applyConversationState` |
-| `app/src/lib/openhands-conversation-events.ts` | Existing extraction helpers (`getMessageText`, `getToolName`, `getToolInput`, `getCommandText`, etc.) — reused by the projector |
-| `app/src/lib/group-display-items.ts` | Existing activity-group logic — works unchanged on projected items |
-| `app/src/components/refine/agent-turn-inline.tsx` | Reverts to `DisplayItemList` |
-| `app/src/components/refine/chat-panel.tsx` | Adds lifecycle chip |
+| `app/src/lib/openhands-conversation-events.ts` | Extraction helpers (`getMessageText`, `getToolName`, `getToolInput`, `getCommandText`, etc.) — reused by the projector |
+| `app/src/lib/group-display-items.ts` | Activity-group logic — works unchanged on projected items |
+| `app/src/components/refine/agent-turn-inline.tsx` | Reads `displayItems` via `DisplayItemList` |
+| `app/src/components/refine/lifecycle-chip.tsx` | Lifecycle chip component — implemented, not yet mounted |
 
 ## Wire-format note: `kind` is the SDK's discriminator
 
@@ -206,6 +205,7 @@ Keep both fallback chains in sync: any future SDK that introduces a different di
 | Issue | Symptom | Status |
 |---|---|---|
 | Persistence dirs were created but no audit trail was written | `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` was empty for runs after the OpenHands runtime migration. | **Fixed** in commit `e8622297` — `OpenHandsRuntimeConfig.persistence_dir` is now plumbed through `OpenHandsOneShotRequest::try_from_runtime_config` into the `StartConversationRequest.persistence_dir` field on the wire. The SDK now writes its native per-event JSON tree at `{persistence_dir}/{conversation_id}/base_state.json + events/event-NNNNN-{uuid}.json`. We accept the SDK's native per-event JSON format as the on-disk audit shape. The earlier `.jsonl` fixtures (hr-analytics May 2, measuring-pipeline-value May 3) came from a different, older Skill Builder writer path that no longer runs — they remain valid as test inputs because the projection only consumes parsed event payloads. |
+| `LifecycleChip` implemented but not mounted | `app/src/components/refine/lifecycle-chip.tsx` exports `LifecycleChip` (wired to `runs[agentId]?.status`) and is unit tested, but no production parent component imports or renders it. The chat panel header shows no status pill during a run. | **Open** — wire `<LifecycleChip />` into the refine chat panel header (e.g., `workspace-refine.tsx` or the header bar above `ChatMessageList`). |
 
 ## Open Questions
 

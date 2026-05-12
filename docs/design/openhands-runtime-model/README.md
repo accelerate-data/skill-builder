@@ -56,7 +56,7 @@ The single place that knows how to configure and launch the skill-creator agent.
 
 `ensure_skill_session` is the enforced entry point. All product surfaces call it instead of the Layer 1 primitives directly — this guarantees the server lifecycle check always runs before a session is opened.
 
-See [implementation-gaps.md](implementation-gaps.md) Gap 1 for the struct definition and function signatures.
+The struct definition and function signatures are in `app/src-tauri/src/agents/skill_creator.rs`.
 
 ### Layer 3 — App Commands (`commands/`)
 
@@ -72,7 +72,7 @@ Layer 3 exports:
 
 | Export | Location | Purpose |
 |---|---|---|
-| `ensure_skill_runtime_ready` | `commands/skill_session.rs` | Validates the app runtime is initialized, ensures prompts are deployed, and ensures the canonical skill directory exists. Returns `InitializedRuntimeContext` (workspace path + LLM config). Layer 3 concern because it reads from the DB and touches app-owned paths. |
+| `ensure_skill_runtime_ready` | `commands/skill_session.rs` | Validates the app runtime is initialized, ensures prompts are deployed, and ensures the canonical skill directory exists. Returns `InitializedRuntimeContext` (skills root + LLM config). Layer 3 concern because it reads from the DB and touches app-owned paths. |
 | `build_skill_session_config` | `commands/skill_session.rs` | Thin wrapper over `skill_creator::build_skill_creator_config` with refine-fixed params: `task_kind: "refine"`, `step_id: -10`, `allowed_tools: ["file_editor", "terminal"]`, `max_turns: 500`, `run_source: "refine"`. |
 
 **Dispatch exception:** Layer 3 may call Layer 1 dispatch primitives (`send_openhands_message`, `pause_openhands_conversation`) directly for one-shot turn operations. These do not need Layer 2 helpers — they operate on an already-booted session and only append/pause. Layer 2 is required for session boot (`ensure_skill_session`) and config construction (`build_skill_creator_config`), not for individual turn dispatch.
@@ -315,4 +315,3 @@ This keeps session restore and turn dispatch separate. The first user message fo
 |---|---|
 | [optimistic-session-activation.md](optimistic-session-activation.md) | Async skill bootstrap optimization: navigate before server ready. |
 | [tools-included.md](tools-included.md) | Tool policy for OpenHands requests. |
-| [implementation-gaps.md](implementation-gaps.md) | Gaps between the target design and the current codebase. |

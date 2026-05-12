@@ -38,8 +38,6 @@ Unknown tool names fail conversation creation.
 "grep",
 "glob",
 "task_tool_set",
-"browser_tool_set",
-"planning_file_editor",
 ```
 
 | Tool | Why it is included |
@@ -50,8 +48,15 @@ Unknown tool names fail conversation creation.
 | `grep` | Fast read-only search. |
 | `glob` | Fast path discovery. |
 | `task_tool_set` | Default subagent capability. |
-| `browser_tool_set` | Web reads and research where needed. |
-| `planning_file_editor` | Structured plan editing support. |
+
+## Opt-In Tools
+
+These are recognized and normalized by the runtime but are **not** in the default set. Pass them via `allowed_tools` on `SkillCreatorConfigParams` for surfaces that need them.
+
+| Tool | Why it is opt-in |
+|---|---|
+| `browser_tool_set` | Was misfiring on local `file://` paths (SDK's SecurityWatchdog blocked navigation to the workspace dir). Safe for remote-URL research, but excluded from the default to avoid spurious blocks. |
+| `planning_file_editor` | PLAN.md-specific. Only needed on surfaces that produce structured plans. |
 
 ### `include_default_tools`
 
