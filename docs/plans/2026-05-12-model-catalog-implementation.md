@@ -14,7 +14,7 @@
 
 | PR | Title | Scope | Testable Outcome | Depends On |
 |---|---|---|---|---|
-| 1 | `chore: isolate and disable active LiteLLM surface` | Remove startup/shutdown wiring and command registration that keep LiteLLM in the active runtime path while preserving the legacy direct-provider flow | App no longer boots LiteLLM or exposes LiteLLM commands in the active Tauri surface | None |
+| 1 | `chore: remove LiteLLM subsystem` | Delete LiteLLM-specific agents, commands, DB modules, smoke scripts, and active app wiring while preserving the legacy direct-provider flow | App builds and tests without any LiteLLM subsystem or command surface | None |
 | 2 | `feat: model catalog cache schema + refresh service` | Add SQLite catalog tables, `models.dev` fetch/parse code, and transactional cache refresh | Rust can fetch `models.dev`, persist provider/model rows plus child tables, and read them back | PR 1 |
 | 3 | `feat: model catalog commands + filtering` | Add `refresh_model_catalog`, `get_cached_model_catalog`, and `filter_models` Tauri commands | Tauri command tests can refresh the cache, read cached vectors, and filter them deterministically | PR 2 |
 | 4 | `feat: settings model selection uses cached catalog` | Reshape settings contract to selected provider/model plus per-provider overrides; update Settings UI to use cached catalog and filters | User can load cached catalog, filter models, select a provider/model, and save settings without LiteLLM profile state | PR 3 |
@@ -24,15 +24,21 @@
 
 ## File Map
 
-### PR 1: Cleanup LiteLLM Active Surface
+### PR 1: Remove LiteLLM Subsystem
 
 | File | Action |
 |---|---|
+| `app/src-tauri/src/agents/litellm_proxy/` | Delete — entire LiteLLM proxy subsystem |
+| `app/src-tauri/src/agents/mod.rs` | Modify — remove LiteLLM module export |
+| `app/src-tauri/src/commands/litellm_providers.rs` | Delete |
+| `app/src-tauri/src/commands/litellm_profiles.rs` | Delete |
+| `app/src-tauri/src/commands/mod.rs` | Modify — remove LiteLLM command modules from exports |
+| `app/src-tauri/src/db/litellm_providers.rs` | Delete |
+| `app/src-tauri/src/db/litellm_profiles.rs` | Delete |
+| `app/src-tauri/src/db/mod.rs` | Modify — stop re-exporting LiteLLM DB modules |
 | `app/src-tauri/src/lib.rs` | Modify — remove LiteLLM startup/shutdown hooks and command registration |
-| `app/src-tauri/src/commands/mod.rs` | Modify — remove LiteLLM command modules from active exports |
-| `app/src-tauri/src/db/mod.rs` | Modify — stop re-exporting LiteLLM DB modules in the active path |
-| `app/src-tauri/src/agents/mod.rs` | Modify — remove active LiteLLM module export if no longer needed |
-| `docs/design/backend-design/implementation-gaps.md` | Modify — mark cleanup gap progress and leave catalog gaps intact |
+| `scripts/smoke/litellm-pr3-provisioning-smoke.mjs` | Delete |
+| `docs/design/backend-design/implementation-gaps.md` | Modify — mark LiteLLM removal done and leave catalog gaps intact |
 | `docs/plans/2026-05-12-model-catalog-implementation.md` | Modify — check off completed PR steps as work lands |
 
 ### PR 2: Model Catalog Cache Schema + Refresh Service
@@ -90,42 +96,60 @@
 
 ---
 
-## PR 1: Cleanup LiteLLM Active Surface
+## PR 1: Remove LiteLLM Subsystem
 
-**Goal:** The active app surface no longer starts LiteLLM or exposes LiteLLM commands, while the existing direct-provider path remains usable until the catalog work lands.
+**Goal:** The codebase no longer contains a LiteLLM subsystem, while the existing direct-provider path remains usable until the catalog work lands.
 
-### Task 1: Remove active startup/shutdown + command registration
+### Task 1: Delete LiteLLM-specific modules and command surface
 
 **Files:**
 
-- Modify: `app/src-tauri/src/lib.rs`
+- Delete: `app/src-tauri/src/agents/litellm_proxy/`
+- Delete: `app/src-tauri/src/commands/litellm_providers.rs`
+- Delete: `app/src-tauri/src/commands/litellm_profiles.rs`
+- Delete: `app/src-tauri/src/db/litellm_providers.rs`
+- Delete: `app/src-tauri/src/db/litellm_profiles.rs`
+- Modify: `app/src-tauri/src/agents/mod.rs`
 - Modify: `app/src-tauri/src/commands/mod.rs`
 - Modify: `app/src-tauri/src/db/mod.rs`
-- Modify: `app/src-tauri/src/agents/mod.rs`
+- Modify: `app/src-tauri/src/lib.rs`
+- Delete: `scripts/smoke/litellm-pr3-provisioning-smoke.mjs`
 - Modify: `docs/design/backend-design/implementation-gaps.md`
 
-- [ ] **Step 1: Remove LiteLLM startup/shutdown from app init**
+- [ ] **Step 1: Delete LiteLLM proxy sources**
 
-Delete or disable the active setup hook path that:
+Delete:
 
-- starts the LiteLLM proxy on app launch
-- shuts it down on app exit
+- `app/src-tauri/src/agents/litellm_proxy/`
+- `app/src-tauri/src/commands/litellm_providers.rs`
+- `app/src-tauri/src/commands/litellm_profiles.rs`
+- `app/src-tauri/src/db/litellm_providers.rs`
+- `app/src-tauri/src/db/litellm_profiles.rs`
+- `scripts/smoke/litellm-pr3-provisioning-smoke.mjs`
 
-- [ ] **Step 2: Remove LiteLLM command registration from the active invoke surface**
+- [ ] **Step 2: Remove LiteLLM module exports and registrations**
 
-Unregister:
+Update:
 
-- `litellm_providers::*`
-- `litellm_profiles::*`
+- `app/src-tauri/src/agents/mod.rs`
+- `app/src-tauri/src/commands/mod.rs`
+- `app/src-tauri/src/db/mod.rs`
+- `app/src-tauri/src/lib.rs`
 
-from the active app command surface while preserving the legacy direct-provider
-settings path.
+to remove:
 
-- [ ] **Step 3: Keep implementation gaps accurate**
+- LiteLLM module exports
+- LiteLLM command registration
+- LiteLLM startup hooks
+- LiteLLM shutdown hooks
+
+while preserving the legacy direct-provider settings path.
+
+- [ ] **Step 3: Remove stale LiteLLM references from the active plan/gap docs**
 
 Update `docs/design/backend-design/implementation-gaps.md` so it reflects:
 
-- LiteLLM is no longer in the active runtime path
+- LiteLLM codepath is removed rather than merely disabled
 - catalog/settings/runtime gaps remain open
 
 Run:
@@ -134,18 +158,23 @@ Run:
 markdownlint docs/design/backend-design/implementation-gaps.md
 ```
 
-Expected: PASS
+Expected: PASS with only still-true post-removal gaps left in the doc.
 
-- [ ] **Step 4: Run targeted startup/runtime verification**
+- [ ] **Step 4: Run targeted build/runtime verification**
 
 Run:
 
 ```bash
+rg -n "litellm" app/src-tauri/src scripts/smoke
 cargo test --manifest-path app/src-tauri/Cargo.toml runtime_config -- --nocapture
 cd app && npm run test:unit -- settings
 ```
 
-Expected: PASS with no LiteLLM startup dependency in the active app path.
+Expected:
+
+- `rg` finds no active LiteLLM subsystem files in the removed paths
+- Rust runtime-config tests PASS
+- frontend settings tests PASS
 
 ---
 
