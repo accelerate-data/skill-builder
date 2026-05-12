@@ -7,25 +7,28 @@ const MODELS_DEV_API_URL: &str = "https://models.dev/api.json";
 
 /// Fetch models.dev, store the exact provider/model key set in SQLite, and read it back.
 pub async fn refresh_model_catalog(
-    conn: &mut Connection,
+    db: &crate::db::Db,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
     let body = fetch_models_dev_json().await?;
-    let providers: Vec<CatalogProvider> =
-        serde_json::from_str(&body).map_err(|e| format!("Failed to parse models.dev payload: {e}"))?;
-
-    replace_model_catalog_snapshot(conn, &providers)
-        .map_err(|e| format!("Failed to write catalog snapshot: {e}"))?;
-
-    read_cached_model_catalog(conn).map_err(|e| format!("Failed to read cached catalog: {e}"))
+    let db_clone = db.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = db_clone.lock().map_err(|e| {
+            log::error!("[refresh_model_catalog] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        refresh_model_catalog_from_json(&mut conn, &body)
+    })
+    .await
+    .map_err(|e| format!("refresh task panicked: {}", e))?
 }
 
-/// Refresh from fixture JSON (for tests).
-pub fn refresh_model_catalog_from_fixture(
+/// Refresh from raw JSON string (used by the Tauri command after async fetch).
+pub fn refresh_model_catalog_from_json(
     conn: &mut Connection,
     json: &str,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
     let providers: Vec<CatalogProvider> =
-        serde_json::from_str(json).map_err(|e| format!("Failed to parse fixture payload: {e}"))?;
+        serde_json::from_str(json).map_err(|e| format!("Failed to parse models.dev payload: {e}"))?;
 
     replace_model_catalog_snapshot(conn, &providers)
         .map_err(|e| format!("Failed to write catalog snapshot: {e}"))?;
@@ -33,7 +36,8 @@ pub fn refresh_model_catalog_from_fixture(
     read_cached_model_catalog(conn).map_err(|e| format!("Failed to read cached catalog: {e}"))
 }
 
-async fn fetch_models_dev_json() -> Result<String, String> {
+/// Fetch the raw JSON from models.dev (public for use by the service).
+pub async fn fetch_models_dev_json() -> Result<String, String> {
     let resp = reqwest::get(MODELS_DEV_API_URL)
         .await
         .map_err(|e| format!("Failed to fetch {MODELS_DEV_API_URL}: {e}"))?;
@@ -64,12 +68,20 @@ pub fn filter_models(
         validate_filter(f)?;
     }
 
-    Ok(models
-        .into_iter()
-        .filter(|entry| {
-            filters.iter().all(|f| apply_filter(entry, f).unwrap_or(false))
-        })
-        .collect())
+    let mut result = Vec::new();
+    for entry in models {
+        let mut matches = true;
+        for f in filters {
+            if !apply_filter(&entry, f)? {
+                matches = false;
+                break;
+            }
+        }
+        if matches {
+            result.push(entry);
+        }
+    }
+    Ok(result)
 }
 
 fn validate_filter(filter: &ModelFilter) -> Result<(), String> {
@@ -213,7 +225,11 @@ mod tests {
     #[test]
     fn test_refresh_from_fixture_writes_all_tables() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         assert!(!entries.is_empty(), "should return cached entries");
 
@@ -233,7 +249,11 @@ mod tests {
     #[test]
     fn test_filter_models_provider_id_eq() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "provider_id".to_string(),
@@ -249,7 +269,11 @@ mod tests {
     #[test]
     fn test_filter_models_reasoning_false() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "reasoning".to_string(),
@@ -265,7 +289,11 @@ mod tests {
     #[test]
     fn test_filter_models_context_limit_gte() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "context_limit".to_string(),
@@ -281,7 +309,11 @@ mod tests {
     #[test]
     fn test_filter_models_input_modality_contains() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "input_modalities".to_string(),
@@ -297,7 +329,11 @@ mod tests {
     #[test]
     fn test_filter_models_empty_filters_returns_all() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let result = filter_models(entries, &[]).unwrap();
         assert_eq!(result.len(), 2);
@@ -306,7 +342,11 @@ mod tests {
     #[test]
     fn test_filter_models_unknown_field_returns_error() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "nonexistent_field".to_string(),
@@ -322,7 +362,11 @@ mod tests {
     #[test]
     fn test_filter_models_unknown_op_returns_error() {
         let mut conn = create_test_db_with_catalog();
-        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
 
         let filters = vec![ModelFilter {
             field: "provider_id".to_string(),
@@ -334,4 +378,24 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("unknown filter operator"));
     }
+
+
+    #[test]
+    fn test_filter_models_structured_output_true() {
+        let mut conn = create_test_db_with_catalog();
+        let entries = refresh_model_catalog_from_json(&mut conn, fixture_json()).unwrap();
+
+        let filters = vec![ModelFilter {
+            field: "structured_output".to_string(),
+            op: "eq".to_string(),
+            value: serde_json::Value::Bool(true),
+        }];
+
+        let result = filter_models(entries, &filters).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].model_id, "claude-sonnet-4-6");
+        assert_eq!(result[0].structured_output, Some(true));
+    }
+
+
 }
