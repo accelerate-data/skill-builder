@@ -179,7 +179,7 @@ pub(crate) fn read_workflow_settings(
 mod tests {
     use super::*;
     use crate::db::{create_test_db_for_tests, upsert_skill, write_settings, Db};
-    use crate::types::{AppSettings, ModelSettings, SecretString};
+    use crate::types::{AppSettings, ModelSettings, ProviderOverride, SecretString};
     use std::sync::Mutex;
 
     fn workflow_settings_for(app_settings: AppSettings) -> Result<WorkflowSettings, String> {
@@ -191,12 +191,20 @@ mod tests {
     }
 
     fn configured_settings(model: &str, api_key: Option<&str>) -> AppSettings {
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "test".to_string(),
+            ProviderOverride {
+                api_key: api_key.map(|key| SecretString::new(key.to_string())),
+                ..ProviderOverride::default()
+            },
+        );
         AppSettings {
             skills_path: Some("/tmp/skills".to_string()),
             model_settings: ModelSettings {
-                model: Some(model.to_string()),
-                api_key: api_key.map(|key| SecretString::new(key.to_string())),
-                ..ModelSettings::default()
+                provider_id: Some("test".to_string()),
+                model_id: Some(model.to_string()),
+                provider_overrides: overrides,
             },
             ..AppSettings::default()
         }
@@ -264,7 +272,9 @@ mod tests {
     #[test]
     fn read_workflow_settings_allows_model_without_api_key_and_keeps_base_url() {
         let mut app_settings = configured_settings("ollama/llama3.1", None);
-        app_settings.model_settings.base_url = Some("http://localhost:11434".to_string());
+        if let Some(override_entry) = app_settings.model_settings.provider_overrides.get_mut("test") {
+            override_entry.base_url_override = Some("http://localhost:11434".to_string());
+        }
 
         let settings = workflow_settings_for(app_settings).unwrap();
 

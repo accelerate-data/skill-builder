@@ -1,198 +1,143 @@
 import { describe, expect, it } from "vitest";
 import {
-  findCatalogModel,
   getCatalogModelOptions,
+  getModelsForProvider,
   getProviderApiKeyLabel,
   getProviderBaseUrlDefault,
   modelHasTextOutput,
-  normalizeCatalogProviders,
-  providerHasTextOutputModels,
+  modelMeetsRequiredCapabilities,
+  resolveSelectedCatalogModel,
+  type ModelCatalogEntry,
 } from "../../lib/model-catalog.js";
 
+function makeEntry(overrides: Partial<ModelCatalogEntry>): ModelCatalogEntry {
+  return {
+    full_id: "test/model",
+    provider_id: "test",
+    model_id: "model",
+    name: "Test Model",
+    family: null,
+    attachment: false,
+    reasoning: true,
+    tool_call: true,
+    structured_output: null,
+    temperature: null,
+    knowledge: null,
+    release_date: "2024-01-01",
+    last_updated: "2024-01-01",
+    open_weights: false,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
+    context_limit: null,
+    interleaved: null,
+    status: null,
+    experimental: null,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+    ...overrides,
+  };
+}
+
 describe("model catalog helpers", () => {
-  it("normalizes sorted providers and filters malformed provider entries", () => {
-    const providers = normalizeCatalogProviders({
-      zed: {
-        id: "zed",
-        name: "Zed",
-        env: ["ZED_API_KEY"],
-        api: "https://zed.example/v1",
-        doc: "https://zed.example/docs",
-        models: {
-          "zed-reasoner": {
-            id: "zed-reasoner",
-            name: "Zed Reasoner",
-            modalities: { output: ["text"] },
-          },
-        },
-      },
-      malformedProvider: {
-        id: "malformedProvider",
-        name: "Malformed",
-      },
-      alpha: {
-        id: "alpha",
-        name: "Alpha",
-        env: "ALPHA_API_KEY",
-        api: null,
-        models: {
-          "alpha-bad-model": {
-            id: "alpha-bad-model",
-          },
-          "alpha-good-model": {
-            id: "alpha-good-model",
-            name: "Alpha Good Model",
-          },
-        },
-      },
-      wrongId: {
-        id: "different",
-        name: "Wrong ID",
-        models: {},
-      },
-      nullProvider: null,
-    });
-
-    expect(providers.map((provider) => provider.id)).toEqual(["alpha", "zed"]);
-    expect(providers[0]).toMatchObject({
-      id: "alpha",
-      name: "Alpha",
-      env: [],
-      api: null,
-      doc: null,
-    });
-    expect(Object.keys(providers[0].models)).toEqual(["alpha-good-model"]);
-  });
-
-  it("detects text output support from model and provider modalities", () => {
+  it("detects text output support from entry output_modalities", () => {
     expect(
-      modelHasTextOutput({
-        id: "text-model",
-        name: "Text Model",
-        modalities: { output: ["text"] },
-      }),
+      modelHasTextOutput(makeEntry({ output_modalities: ["text"] })),
     ).toBe(true);
     expect(
-      modelHasTextOutput({
-        id: "image-model",
-        name: "Image Model",
-        modalities: { output: ["image"] },
-      }),
+      modelHasTextOutput(makeEntry({ output_modalities: ["image"] })),
     ).toBe(false);
     expect(
-      providerHasTextOutputModels({
-        id: "provider",
-        name: "Provider",
-        env: [],
-        api: null,
-        doc: null,
-        models: {
-          image: {
-            id: "image",
-            name: "Image",
-            modalities: { output: ["image"] },
-          },
-          text: {
-            id: "text",
-            name: "Text",
-            modalities: { output: ["text"] },
-          },
-        },
-      }),
+      modelHasTextOutput(makeEntry({ output_modalities: ["text", "image"] })),
     ).toBe(true);
   });
 
-  it("builds runtime model options for models with reasoning, tool calls, and text output", () => {
-    const [provider] = normalizeCatalogProviders({
-      anthropic: {
-        id: "anthropic",
-        name: "Anthropic",
-        models: {
-          "claude-sonnet": {
-            id: "claude-sonnet",
-            name: "Claude Sonnet",
-            reasoning: true,
-            tool_call: true,
-            modalities: { output: ["text"] },
-          },
-          "no-reasoning": {
-            id: "no-reasoning",
-            name: "No Reasoning",
-            tool_call: true,
-            modalities: { output: ["text"] },
-          },
-          "no-tools": {
-            id: "no-tools",
-            name: "No Tools",
-            reasoning: true,
-            modalities: { output: ["text"] },
-          },
-          "image-output": {
-            id: "image-output",
-            name: "Image Output",
-            reasoning: true,
-            tool_call: true,
-            modalities: { output: ["image"] },
-          },
-        },
-      },
-    });
-
-    expect(getCatalogModelOptions(provider)).toEqual([
-      expect.objectContaining({
-        providerId: "anthropic",
-        providerName: "Anthropic",
-        modelId: "claude-sonnet",
-        modelName: "Claude Sonnet",
-        runtimeModelId: "anthropic/claude-sonnet",
-      }),
-    ]);
+  it("checks required capabilities", () => {
+    expect(
+      modelMeetsRequiredCapabilities(makeEntry({ reasoning: true, tool_call: true })),
+    ).toBe(true);
+    expect(
+      modelMeetsRequiredCapabilities(makeEntry({ reasoning: false, tool_call: true })),
+    ).toBe(false);
+    expect(
+      modelMeetsRequiredCapabilities(makeEntry({ reasoning: true, tool_call: false })),
+    ).toBe(false);
   });
 
-  it("finds a catalog model by full runtime model ID", () => {
-    const catalog = normalizeCatalogProviders({
-      anthropic: {
-        id: "anthropic",
-        name: "Anthropic",
-        models: {
-          "claude-sonnet": {
-            id: "claude-sonnet",
-            name: "Claude Sonnet",
-            reasoning: true,
-            tool_call: true,
-            modalities: { output: ["text"] },
-          },
-        },
-      },
-    });
+  it("builds catalog model options filtering for required capabilities and text output", () => {
+    const entries = [
+      makeEntry({
+        full_id: "anthropic/claude-sonnet",
+        provider_id: "anthropic",
+        model_id: "claude-sonnet",
+        name: "Claude Sonnet",
+        reasoning: true,
+        tool_call: true,
+        output_modalities: ["text"],
+      }),
+      makeEntry({
+        full_id: "anthropic/no-reasoning",
+        provider_id: "anthropic",
+        model_id: "no-reasoning",
+        name: "No Reasoning",
+        reasoning: false,
+        tool_call: true,
+        output_modalities: ["text"],
+      }),
+      makeEntry({
+        full_id: "anthropic/image-output",
+        provider_id: "anthropic",
+        model_id: "image-output",
+        name: "Image Output",
+        reasoning: true,
+        tool_call: true,
+        output_modalities: ["image"],
+      }),
+    ];
 
-    expect(findCatalogModel(catalog, "anthropic/claude-sonnet")).toMatchObject({
-      providerId: "anthropic",
-      modelId: "claude-sonnet",
+    const options = getCatalogModelOptions(entries);
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({
+      full_id: "anthropic/claude-sonnet",
+      provider_id: "anthropic",
+      model_id: "claude-sonnet",
+      name: "Claude Sonnet",
       runtimeModelId: "anthropic/claude-sonnet",
     });
-    expect(findCatalogModel(catalog, "anthropic/unknown")).toBeNull();
+  });
+
+  it("filters entries by provider_id", () => {
+    const entries = [
+      makeEntry({ provider_id: "anthropic", model_id: "claude-1" }),
+      makeEntry({ provider_id: "anthropic", model_id: "claude-2" }),
+      makeEntry({ provider_id: "openai", model_id: "gpt-4" }),
+    ];
+
+    const anthropicEntries = getModelsForProvider(entries, "anthropic");
+    expect(anthropicEntries).toHaveLength(2);
+    expect(anthropicEntries.every((e) => e.provider_id === "anthropic")).toBe(true);
+  });
+
+  it("resolves selected catalog model by full_id", () => {
+    const entries = [
+      makeEntry({ full_id: "anthropic/claude-sonnet", model_id: "claude-sonnet" }),
+      makeEntry({ full_id: "openai/gpt-4", model_id: "gpt-4" }),
+    ];
+
+    expect(resolveSelectedCatalogModel(entries, "anthropic/claude-sonnet")).toMatchObject({
+      full_id: "anthropic/claude-sonnet",
+    });
+    expect(resolveSelectedCatalogModel(entries, "unknown/model")).toBeNull();
+    expect(resolveSelectedCatalogModel(entries, null)).toBeNull();
   });
 
   it("returns provider API base URL defaults", () => {
-    expect(
-      getProviderBaseUrlDefault("anthropic", { api: "https://api.example" }),
-    ).toBe("https://api.example");
-    expect(getProviderBaseUrlDefault("ollama", { api: null })).toBe(
-      "http://localhost:11434",
-    );
-    expect(getProviderBaseUrlDefault("custom", { api: null })).toBeNull();
+    expect(getProviderBaseUrlDefault("anthropic", "https://api.example")).toBe("https://api.example");
+    expect(getProviderBaseUrlDefault("ollama", null)).toBe("http://localhost:11434");
+    expect(getProviderBaseUrlDefault("custom", null)).toBeNull();
   });
 
   it("uses the first env var for the API key label with a provider-name fallback", () => {
-    expect(
-      getProviderApiKeyLabel({
-        env: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
-        name: "Anthropic",
-      }),
-    ).toBe("ANTHROPIC_API_KEY");
-    expect(getProviderApiKeyLabel({ env: [], name: "OpenAI" })).toBe(
-      "OpenAI API key",
-    );
+    expect(getProviderApiKeyLabel(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"], "Anthropic")).toBe("ANTHROPIC_API_KEY");
+    expect(getProviderApiKeyLabel([], "OpenAI")).toBe("OpenAI API key");
   });
 });

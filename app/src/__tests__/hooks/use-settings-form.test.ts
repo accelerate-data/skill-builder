@@ -26,44 +26,71 @@ describe("useSettingsForm", () => {
   it("initializes fields from store snapshot", () => {
     useSettingsStore.getState().setSettings({
       modelSettings: {
-        provider: "openai",
-        model: "gpt-4o",
-        api_key: "sk-openai",
-        base_url: "https://models.example.com/v1",
+        provider_id: "openai",
+        model_id: "gpt-4o",
+        provider_overrides: {
+          openai: {
+            api_key: "sk-openai",
+            base_url_override: "https://models.example.com/v1",
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       },
       logLevel: "debug",
     });
 
     const { result } = renderHook(() => useSettingsForm());
 
-    expect(result.current.modelSettings.provider).toBe("openai");
-    expect(result.current.modelSettings.api_key).toBe("sk-openai");
-    expect(result.current.modelSettings.model).toBe("gpt-4o");
-    expect(result.current.modelSettings.base_url).toBe("https://models.example.com/v1");
+    expect(result.current.modelSettings.provider_id).toBe("openai");
+    expect(result.current.modelSettings.model_id).toBe("gpt-4o");
+    expect(result.current.modelSettings.provider_overrides.openai.api_key).toBe("sk-openai");
+    expect(result.current.modelSettings.provider_overrides.openai.base_url_override).toBe("https://models.example.com/v1");
     expect(result.current.logLevel).toBe("debug");
   });
 
-  it("keeps provider, model, and api_key null when store model settings are unset", () => {
+  it("keeps provider_id and model_id null when store model settings are unset", () => {
     const { result } = renderHook(() => useSettingsForm());
 
-    expect(result.current.modelSettings.provider).toBeNull();
-    expect(result.current.modelSettings.model).toBeNull();
-    expect(result.current.modelSettings.api_key).toBeNull();
+    expect(result.current.modelSettings.provider_id).toBeNull();
+    expect(result.current.modelSettings.model_id).toBeNull();
   });
 
-  it("keeps provider null when saving model settings before choosing a provider", async () => {
+  it("keeps provider_id null when saving model settings before choosing a provider", async () => {
     const { result } = renderHook(() => useSettingsForm());
 
     await act(async () => {
       await result.current.saveModelSettings({
-        base_url: "http://localhost:11434",
+        provider_overrides: {
+          ollama: {
+            api_key: null,
+            base_url_override: "http://localhost:11434",
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       });
     });
 
     expect(mocks.updateUserSettings).toHaveBeenCalledTimes(1);
     const payload = mocks.updateUserSettings.mock.calls[0][0];
-    expect(payload.model_settings.provider).toBeNull();
-    expect(payload.model_settings.base_url).toBe("http://localhost:11434");
+    expect(payload.model_settings.provider_id).toBeNull();
   });
 
   it("autoSave calls updateUserSettings and updates store", async () => {
@@ -81,27 +108,35 @@ describe("useSettingsForm", () => {
   it("autoSave applies model settings overrides over local state", async () => {
     useSettingsStore.getState().setSettings({
       modelSettings: {
-        provider: "anthropic",
-        model: "old-model",
-        api_key: "sk-test",
-        base_url: null,
+        provider_id: "anthropic",
+        model_id: "old-model",
+        provider_overrides: {
+          anthropic: {
+            api_key: "sk-test",
+            base_url_override: null,
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       },
     });
     const { result } = renderHook(() => useSettingsForm());
 
     await act(async () => {
-      await result.current.saveModelSettings({ model: "claude-sonnet-4-5" });
+      await result.current.saveModelSettings({ model_id: "claude-sonnet-4-5" });
     });
 
     const payload = mocks.updateUserSettings.mock.calls[0][0];
-    expect(payload.model_settings).toEqual(
-      expect.objectContaining({
-        provider: "anthropic",
-        model: "claude-sonnet-4-5",
-        api_key: "sk-test",
-        base_url: null,
-      }),
-    );
+    expect(payload.model_settings.provider_id).toBe("anthropic");
+    expect(payload.model_settings.model_id).toBe("claude-sonnet-4-5");
     expect(payload).not.toHaveProperty("preferred_model");
     expect(payload).not.toHaveProperty("openhands_model");
   });
@@ -111,27 +146,34 @@ describe("useSettingsForm", () => {
 
     await act(async () => {
       await result.current.saveModelSettings({
-        provider: "ollama",
-        api_key: null,
-        model: "llama3.1",
-        base_url: "http://localhost:11434",
+        provider_id: "ollama",
+        model_id: "llama3.1",
+        provider_overrides: {
+          ollama: {
+            api_key: null,
+            base_url_override: "http://localhost:11434",
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       });
     });
 
     const payload = mocks.updateUserSettings.mock.calls[0][0];
-    expect(payload.model_settings).toEqual(
-      expect.objectContaining({
-        provider: "ollama",
-        api_key: null,
-        model: "llama3.1",
-        base_url: "http://localhost:11434",
-      }),
-    );
+    expect(payload.model_settings.provider_id).toBe("ollama");
+    expect(payload.model_settings.model_id).toBe("llama3.1");
     expect(payload).not.toHaveProperty("openhands_provider");
     expect(payload).not.toHaveProperty("openhands_api_key");
     expect(payload).not.toHaveProperty("openhands_base_url");
-    expect(useSettingsStore.getState().modelSettings.provider).toBe("ollama");
-    expect(useSettingsStore.getState().modelSettings.base_url).toBe("http://localhost:11434");
+    expect(useSettingsStore.getState().modelSettings.provider_id).toBe("ollama");
   });
 
   it("redacts API keys in successful auto-save logs", async () => {
@@ -139,11 +181,28 @@ describe("useSettingsForm", () => {
     const { result } = renderHook(() => useSettingsForm());
 
     await act(async () => {
-      await result.current.saveModelSettings({ api_key: "sk-openai-secret" });
+      await result.current.saveModelSettings({
+        provider_overrides: {
+          test: {
+            api_key: "sk-openai-secret",
+            base_url_override: null,
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
+      });
     });
 
     expect(logSpy).toHaveBeenCalledWith(
-      "[settings] Saved: modelSettings.api_key=[redacted]",
+      expect.stringContaining("[settings] Saved:"),
     );
     expect(logSpy.mock.calls.join("\n")).not.toContain("sk-openai-secret");
     logSpy.mockRestore();

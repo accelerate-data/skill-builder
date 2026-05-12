@@ -237,10 +237,24 @@ const defaultSettings: AppSettings = {
 
 const populatedSettings: AppSettings = {
   model_settings: {
-    provider: "anthropic",
-    model: "claude-sonnet-4-5",
-    api_key: "sk-ant-existing-key",
-    base_url: null,
+    provider_id: "anthropic",
+    model_id: "anthropic/claude-sonnet-4-5",
+    provider_overrides: {
+      anthropic: {
+        api_key: "sk-ant-existing-key",
+        base_url_override: null,
+        api_version: null,
+        temperature: null,
+        max_output_tokens: null,
+        timeout_seconds: 300,
+        num_retries: 5,
+        reasoning_effort: "auto",
+        extra_headers: null,
+        input_cost_per_token: null,
+        output_cost_per_token: null,
+        usage_id: "workflow",
+      },
+    },
   },
   workspace_path: "/home/user/workspace",
   skills_path: null,
@@ -269,24 +283,12 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     set_log_level: undefined,
   });
   // Populate the settings store with the mock settings
+  const ms = settings.model_settings;
   useSettingsStore.setState({
     modelSettings: {
-      provider: settings.model_settings?.provider ?? null,
-      model: settings.model_settings?.model ?? null,
-      api_key: settings.model_settings?.api_key ?? null,
-      base_url: settings.model_settings?.base_url ?? null,
-      api_version: settings.model_settings?.api_version ?? null,
-      temperature: settings.model_settings?.temperature ?? null,
-      max_output_tokens: settings.model_settings?.max_output_tokens ?? null,
-      timeout_seconds: settings.model_settings?.timeout_seconds ?? 300,
-      num_retries: settings.model_settings?.num_retries ?? 5,
-      reasoning_effort: settings.model_settings?.reasoning_effort ?? "auto",
-      extra_headers: settings.model_settings?.extra_headers ?? null,
-      input_cost_per_token:
-        settings.model_settings?.input_cost_per_token ?? null,
-      output_cost_per_token:
-        settings.model_settings?.output_cost_per_token ?? null,
-      usage_id: settings.model_settings?.usage_id ?? "workflow",
+      provider_id: ms?.provider_id ?? null,
+      model_id: ms?.model_id ?? null,
+      provider_overrides: ms?.provider_overrides ?? {},
     },
     workspacePath: settings.workspace_path,
     skillsPath: settings.skills_path,
@@ -471,9 +473,8 @@ describe("SettingsPage", () => {
       expect(updateUserSettings).toHaveBeenCalledWith(
         expect.objectContaining({
           model_settings: expect.objectContaining({
-            provider: "openrouter",
-            model: "openrouter/openai/gpt-5",
-            base_url: "https://openrouter.ai/api/v1",
+            provider_id: "openrouter",
+            model_id: "openrouter/openai/gpt-5",
           }),
         }),
       );
@@ -683,9 +684,8 @@ describe("SettingsPage", () => {
       expect(updateUserSettings).toHaveBeenCalledWith(
         expect.objectContaining({
           model_settings: expect.objectContaining({
-            provider: "ollama",
-            api_key: null,
-            base_url: "http://localhost:11435",
+            provider_id: "ollama",
+            model_id: "llama3.1",
           }),
         }),
       );
@@ -728,8 +728,8 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(testModelConnection).toHaveBeenCalledWith(
         expect.objectContaining({
-          api_key: "sk-ant-existing-key",
-          model: "claude-sonnet-4-5",
+          provider_id: "anthropic",
+          model_id: "anthropic/claude-sonnet-4-5",
         }),
       );
     });
@@ -810,7 +810,11 @@ describe("SettingsPage", () => {
       expect(updateUserSettings).toHaveBeenCalledWith(
         expect.objectContaining({
           model_settings: expect.objectContaining({
-            api_key: "sk-ant-new-key",
+            provider_overrides: expect.objectContaining({
+              anthropic: expect.objectContaining({
+                api_key: "sk-ant-new-key",
+              }),
+            }),
           }),
         }),
       );

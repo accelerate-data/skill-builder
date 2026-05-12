@@ -5,20 +5,9 @@ import { useSettingsStore } from "@/stores/settings-store"
 import { updateUserSettings } from "@/lib/tauri"
 
 const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-  provider: null,
-  model: null,
-  api_key: null,
-  base_url: null,
-  api_version: null,
-  temperature: null,
-  max_output_tokens: null,
-  timeout_seconds: 300,
-  num_retries: 5,
-  reasoning_effort: "auto",
-  extra_headers: null,
-  input_cost_per_token: null,
-  output_cost_per_token: null,
-  usage_id: "workflow",
+  provider_id: null,
+  model_id: null,
+  provider_overrides: {},
 }
 
 /** Fields managed by the settings form (local state mirroring the store). */
@@ -47,13 +36,9 @@ function normalizeModelSettings(settings: Partial<ModelSettings>): ModelSettings
   return {
     ...DEFAULT_MODEL_SETTINGS,
     ...settings,
-    provider: settings.provider ?? DEFAULT_MODEL_SETTINGS.provider,
-    model: settings.model?.trim() || null,
-    api_key: settings.api_key?.trim() || null,
-    base_url: settings.base_url?.trim() || null,
-    api_version: settings.api_version?.trim() || null,
-    reasoning_effort: settings.reasoning_effort ?? DEFAULT_MODEL_SETTINGS.reasoning_effort,
-    usage_id: settings.usage_id?.trim() || DEFAULT_MODEL_SETTINGS.usage_id,
+    provider_id: settings.provider_id ?? DEFAULT_MODEL_SETTINGS.provider_id,
+    model_id: settings.model_id?.trim() || null,
+    provider_overrides: settings.provider_overrides ?? DEFAULT_MODEL_SETTINGS.provider_overrides,
   }
 }
 

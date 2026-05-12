@@ -41,7 +41,7 @@ pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), S
 mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
-    use crate::types::{ModelSettings, SecretString};
+    use crate::types::{ModelSettings, ProviderOverride, SecretString};
 
     fn make_settings(workspace_path: Option<&str>, skills_path: Option<&str>) -> AppSettings {
         AppSettings {
@@ -63,7 +63,7 @@ mod tests {
         let settings = result.unwrap();
         // Defaults: no workspace path set.
         assert!(settings.workspace_path.is_none());
-        assert!(settings.model_settings.model.is_none());
+        assert!(settings.model_settings.model_id.is_none());
     }
 
     #[test]
@@ -143,17 +143,24 @@ mod tests {
 
     #[test]
     fn selected_workflow_llm_accepts_canonical_model_settings() {
-        let settings = AppSettings {
-            skills_path: Some("/tmp/skills".to_string()),
-            model_settings: ModelSettings {
-                provider: Some("anthropic".to_string()),
-                model: Some("claude-sonnet-4-5".to_string()),
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
                 api_key: Some(SecretString::new("sk-test".to_string())),
-                base_url: Some("https://models.example.com/v1".to_string()),
+                base_url_override: Some("https://models.example.com/v1".to_string()),
                 timeout_seconds: Some(300),
                 num_retries: Some(5),
                 reasoning_effort: Some("high".to_string()),
-                ..ModelSettings::default()
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            skills_path: Some("/tmp/skills".to_string()),
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
             },
             ..AppSettings::default()
         };
@@ -173,13 +180,20 @@ mod tests {
 
     #[test]
     fn selected_workflow_llm_uses_backend_owned_usage_id() {
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "ollama".to_string(),
+            ProviderOverride {
+                base_url_override: Some("http://localhost:11434".to_string()),
+                usage_id: Some("user-entered".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
         let settings = AppSettings {
             model_settings: ModelSettings {
-                provider: Some("ollama".to_string()),
-                model: Some("ollama/llama3.1".to_string()),
-                base_url: Some("http://localhost:11434".to_string()),
-                usage_id: Some("user-entered".to_string()),
-                ..ModelSettings::default()
+                provider_id: Some("ollama".to_string()),
+                model_id: Some("ollama/llama3.1".to_string()),
+                provider_overrides: overrides,
             },
             ..AppSettings::default()
         };
@@ -192,9 +206,9 @@ mod tests {
     fn selected_workflow_llm_rejects_cloud_model_without_api_key() {
         let settings = AppSettings {
             model_settings: ModelSettings {
-                provider: Some("anthropic".to_string()),
-                model: Some("claude-sonnet-4-5".to_string()),
-                ..ModelSettings::default()
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: std::collections::BTreeMap::new(),
             },
             ..AppSettings::default()
         };
@@ -205,13 +219,20 @@ mod tests {
 
     #[test]
     fn selected_workflow_llm_allows_local_base_url_without_api_key() {
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "openai".to_string(),
+            ProviderOverride {
+                base_url_override: Some("http://localhost:11434/v1".to_string()),
+                reasoning_effort: Some("auto".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
         let settings = AppSettings {
             model_settings: ModelSettings {
-                provider: Some("openai".to_string()),
-                model: Some("local/model".to_string()),
-                base_url: Some("http://localhost:11434/v1".to_string()),
-                reasoning_effort: Some("auto".to_string()),
-                ..ModelSettings::default()
+                provider_id: Some("openai".to_string()),
+                model_id: Some("local/model".to_string()),
+                provider_overrides: overrides,
             },
             ..AppSettings::default()
         };
@@ -224,20 +245,133 @@ mod tests {
 
     #[test]
     fn selected_workflow_llm_rejects_invalid_model_settings() {
-        let settings = AppSettings {
-            model_settings: ModelSettings {
-                provider: Some("anthropic".to_string()),
-                model: Some("claude-sonnet-4-5".to_string()),
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
                 api_key: Some(SecretString::new("sk-test".to_string())),
-                base_url: Some("ftp://models.example.com".to_string()),
+                base_url_override: Some("ftp://models.example.com".to_string()),
                 temperature: Some(4.0),
                 reasoning_effort: Some("maximum".to_string()),
-                ..ModelSettings::default()
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
             },
             ..AppSettings::default()
         };
 
         let err = selected_workflow_llm(&settings).unwrap_err();
         assert!(err.contains("Base URL"), "{err}");
+    }
+
+    #[test]
+    fn provider_specific_overrides_persist_independently() {
+        let conn = create_test_db_for_tests();
+
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-ant".to_string())),
+                base_url_override: Some("https://anthropic.example.com".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
+        overrides.insert(
+            "openai".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-openai".to_string())),
+                base_url_override: Some("https://openai.example.com".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
+        let initial = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+        write_settings(&conn, &initial).unwrap();
+
+        let read_back = read_settings(&conn).unwrap();
+        assert_eq!(read_back.model_settings.provider_id.as_deref(), Some("anthropic"));
+        assert!(read_back.model_settings.provider_overrides.contains_key("anthropic"));
+        assert!(read_back.model_settings.provider_overrides.contains_key("openai"));
+
+        let ant_override = &read_back.model_settings.provider_overrides["anthropic"];
+        assert_eq!(ant_override.api_key.as_ref().unwrap().expose(), "sk-ant");
+        assert_eq!(ant_override.base_url_override.as_deref(), Some("https://anthropic.example.com"));
+
+        let openai_override = &read_back.model_settings.provider_overrides["openai"];
+        assert_eq!(openai_override.api_key.as_ref().unwrap().expose(), "sk-openai");
+    }
+
+    #[test]
+    fn switching_provider_does_not_erase_other_overrides() {
+        let conn = create_test_db_for_tests();
+
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-ant".to_string())),
+                ..ProviderOverride::default()
+            },
+        );
+        overrides.insert(
+            "openai".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-openai".to_string())),
+                ..ProviderOverride::default()
+            },
+        );
+        let initial = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+        write_settings(&conn, &initial).unwrap();
+
+        // Switch to openai, keep both overrides
+        let mut overrides2 = std::collections::BTreeMap::new();
+        overrides2.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-ant".to_string())),
+                ..ProviderOverride::default()
+            },
+        );
+        overrides2.insert(
+            "openai".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-openai".to_string())),
+                ..ProviderOverride::default()
+            },
+        );
+        let switched = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("openai".to_string()),
+                model_id: Some("gpt-4o".to_string()),
+                provider_overrides: overrides2,
+            },
+            ..AppSettings::default()
+        };
+        write_settings(&conn, &switched).unwrap();
+
+        let read_back = read_settings(&conn).unwrap();
+        assert_eq!(read_back.model_settings.provider_id.as_deref(), Some("openai"));
+        assert_eq!(read_back.model_settings.model_id.as_deref(), Some("gpt-4o"));
+        assert!(read_back.model_settings.provider_overrides.contains_key("anthropic"));
+        assert!(read_back.model_settings.provider_overrides.contains_key("openai"));
     }
 }

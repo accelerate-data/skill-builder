@@ -5,7 +5,7 @@ use std::fmt;
 ///
 /// `Debug` and `Display` emit `[REDACTED]`; `Serialize` passes through the
 /// inner value transparently so JSON IPC (e.g. runtime stdin) still works.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SecretString(String);
 

@@ -19,18 +19,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ModelSettings } from "@/lib/types";
+import type { ModelSettings, ProviderOverride } from "@/lib/types";
 import type { ModelSettingsPatch } from "@/hooks/use-settings-form";
 import { testModelConnection } from "@/lib/tauri";
 import { modelSettingsRequireApiKey } from "@/lib/models";
 import {
-  fetchModelCatalog,
-  findCatalogModel,
+  fetchCachedModelCatalog,
   getCatalogModelOptions,
-  getProviderApiKeyLabel,
+  getModelsForProvider,
   getProviderBaseUrlDefault,
-  type CatalogModelOption,
-  type ModelCatalogProvider,
+  getProviderApiKeyLabel,
+  resolveSelectedCatalogModel,
+  type ModelCatalogEntry,
 } from "@/lib/model-catalog";
 
 interface ModelsSectionProps {
@@ -47,26 +47,8 @@ interface ModelsSectionProps {
   }) => void | Promise<void>;
 }
 
-const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
-  anthropic: "claude-sonnet-4-5",
-  openai: "gpt-4o",
-  google: "gemini-2.5-pro",
-  ollama: "llama3.1",
-};
-
 function clean(value: string): string | null {
   return value.trim() || null;
-}
-
-function getProviderModelId(
-  providerId: string,
-  runtimeModelId: string | null,
-): string | null {
-  if (!runtimeModelId) return null;
-  const prefix = `${providerId}/`;
-  return runtimeModelId.startsWith(prefix)
-    ? runtimeModelId.slice(prefix.length)
-    : runtimeModelId;
 }
 
 function formatTokenCount(value?: number): string {
@@ -75,38 +57,19 @@ function formatTokenCount(value?: number): string {
     : "Not specified";
 }
 
-function formatPricing(cost?: Record<string, unknown>): string {
-  if (!cost) return "Not listed";
-
-  const input = typeof cost.input === "number" ? `$${cost.input} input` : null;
-  const output =
-    typeof cost.output === "number" ? `$${cost.output} output` : null;
-  const parts = [input, output].filter(Boolean);
+function formatPricing(
+  inputCost?: number | null,
+  outputCost?: number | null,
+): string {
+  const parts: string[] = [];
+  if (typeof inputCost === "number") {
+    parts.push(`$${inputCost} input`);
+  }
+  if (typeof outputCost === "number") {
+    parts.push(`$${outputCost} output`);
+  }
   if (!parts.length) return "Not listed";
   return `${parts.join(" / ")} per 1M tokens`;
-}
-
-function resolveSelectedCatalogModel(
-  catalog: ModelCatalogProvider[],
-  providerId: string,
-  modelId: string | null,
-): CatalogModelOption | null {
-  if (!modelId) return null;
-
-  const direct = findCatalogModel(catalog, modelId);
-  if (direct) return direct;
-
-  const provider = catalog.find(
-    (catalogProvider) => catalogProvider.id === providerId,
-  );
-  if (!provider) return null;
-
-  const providerModelId = getProviderModelId(providerId, modelId);
-  return (
-    getCatalogModelOptions(provider).find(
-      (option) => option.modelId === providerModelId,
-    ) ?? null
-  );
 }
 
 function ModelDetailRow({ label, value }: { label: string; value: string }) {
@@ -147,6 +110,23 @@ function ModelDetailBooleanRow({
   );
 }
 
+function getDefaultProviderOverride(): ProviderOverride {
+  return {
+    api_key: null,
+    base_url_override: null,
+    api_version: null,
+    temperature: null,
+    max_output_tokens: null,
+    timeout_seconds: 300,
+    num_retries: 5,
+    reasoning_effort: "auto",
+    extra_headers: null,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
+    usage_id: "workflow",
+  };
+}
+
 export function ModelsSection({
   modelSettings,
   updateModelSettings,
@@ -160,51 +140,63 @@ export function ModelsSection({
   const [showApiKey, setShowApiKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
-  const [catalog, setCatalog] = useState<ModelCatalogProvider[]>([]);
+  const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const [catalogFailed, setCatalogFailed] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(true);
 
-  const provider = modelSettings.provider ?? "";
-  const selectedProvider = catalog.find(
-    (catalogProvider) => catalogProvider.id === provider,
+  const providerId = modelSettings.provider_id ?? "";
+  const catalogEntriesForProvider = useMemo(
+    () => getModelsForProvider(catalog, providerId),
+    [catalog, providerId],
   );
-  const catalogProviders = useMemo(
-    () =>
-      catalog.filter(
-        (catalogProvider) => getCatalogModelOptions(catalogProvider).length > 0,
-      ),
-    [catalog],
+  const modelOptions = useMemo(
+    () => getCatalogModelOptions(catalogEntriesForProvider),
+    [catalogEntriesForProvider],
   );
-  const showSelectedProviderFallback =
-    catalogProviders.length > 0 &&
-    Boolean(provider) &&
-    !selectedProvider &&
-    provider !== "custom";
-  const modelOptions = selectedProvider
-    ? getCatalogModelOptions(selectedProvider)
-    : [];
   const selectedCatalogModel = resolveSelectedCatalogModel(
     catalog,
-    provider,
-    modelSettings.model,
+    modelSettings.model_id,
   );
-  const selectedModelValue = selectedCatalogModel?.runtimeModelId ?? "";
-  const showCatalogPicker = Boolean(selectedProvider && modelOptions.length);
-  const apiKeyLabel = selectedProvider
-    ? getProviderApiKeyLabel(selectedProvider)
+  const selectedModelValue = selectedCatalogModel?.full_id ?? "";
+  const showCatalogPicker = Boolean(providerId && modelOptions.length);
+
+  const providerEntry = useMemo(() => {
+    if (!providerId || !catalog.length) return null;
+    const first = catalog.find((e) => e.provider_id === providerId);
+    if (!first) return null;
+    return {
+      id: first.provider_id,
+      name: first.provider_id,
+      api_base_url: null,
+      env: [],
+    };
+  }, [catalog, providerId]);
+
+  const activeOverride = useMemo((): ProviderOverride => {
+    if (providerId && modelSettings.provider_overrides[providerId]) {
+      return modelSettings.provider_overrides[providerId];
+    }
+    return getDefaultProviderOverride();
+  }, [providerId, modelSettings.provider_overrides]);
+
+  const effectiveBaseUrl = activeOverride.base_url_override ?? null;
+  const apiKeyLabel = providerEntry
+    ? getProviderApiKeyLabel(providerEntry.env, providerEntry.name)
     : "Provider API key";
   const apiKeyRequired = modelSettingsRequireApiKey(
-    provider,
-    modelSettings.model,
-    modelSettings.base_url,
+    providerId,
+    modelSettings.model_id,
+    effectiveBaseUrl,
   );
 
   useEffect(() => {
     let cancelled = false;
 
-    fetchModelCatalog()
-      .then((providers) => {
+    setCatalogLoading(true);
+    fetchCachedModelCatalog()
+      .then((entries) => {
         if (cancelled) return;
-        setCatalog(providers);
+        setCatalog(entries);
         setCatalogFailed(false);
       })
       .catch((err) => {
@@ -212,6 +204,9 @@ export function ModelsSection({
         console.warn("settings: model catalog fetch failed", err);
         setCatalog([]);
         setCatalogFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
       });
 
     return () => {
@@ -220,14 +215,20 @@ export function ModelsSection({
   }, []);
 
   const handleTestApiKey = async () => {
-    if (apiKeyRequired && !modelSettings.api_key) {
+    if (apiKeyRequired && !activeOverride.api_key) {
       toast.error("Enter an API key first", { duration: Infinity });
       return;
     }
     setTesting(true);
     setApiKeyValid(null);
     try {
-      await testModelConnection(modelSettings);
+      await testModelConnection({
+        provider_id: providerId,
+        model_id: modelSettings.model_id,
+        provider_overrides: {
+          ...(providerId ? { [providerId]: activeOverride } : {}),
+        },
+      });
       setApiKeyValid(true);
     } catch (err) {
       console.error("settings: API key test failed", err);
@@ -239,6 +240,71 @@ export function ModelsSection({
       setTesting(false);
     }
   };
+
+  const handleProviderChange = (val: string) => {
+    const nextOverride = getDefaultProviderOverride();
+    const providerModels = getModelsForProvider(catalog, val);
+    const options = getCatalogModelOptions(providerModels);
+    const firstModel = options[0]?.full_id ?? null;
+    const nextBaseUrl = getProviderBaseUrlDefault(val, null);
+
+    const nextOverrides = {
+      ...modelSettings.provider_overrides,
+      [val]: nextOverride,
+    };
+    if (nextBaseUrl) {
+      nextOverrides[val] = { ...nextOverride, base_url_override: nextBaseUrl };
+    }
+
+    const patch = {
+      provider_id: val,
+      model_id: firstModel,
+      provider_overrides: nextOverrides,
+    };
+    updateModelSettings(patch);
+    saveModelSettings(patch);
+  };
+
+  const handleModelChange = (val: string) => {
+    const patch = { model_id: val };
+    updateModelSettings(patch);
+    saveModelSettings(patch);
+  };
+
+  const handleOverrideFieldChange = (
+    field: keyof ProviderOverride,
+    value: string | number | null,
+  ) => {
+    const currentOverride = { ...activeOverride };
+    const nextOverride = { ...currentOverride, [field]: value };
+    const nextOverrides = {
+      ...modelSettings.provider_overrides,
+      [providerId]: nextOverride,
+    };
+    updateModelSettings({ provider_overrides: nextOverrides });
+  };
+
+  const handleOverrideFieldSave = (
+    field: keyof ProviderOverride,
+    value: string | number | null,
+  ) => {
+    const currentOverride = { ...activeOverride };
+    const nextOverride = { ...currentOverride, [field]: value };
+    const nextOverrides = {
+      ...modelSettings.provider_overrides,
+      [providerId]: nextOverride,
+    };
+    saveModelSettings({ provider_overrides: nextOverrides });
+  };
+
+  const uniqueProviders = useMemo(() => {
+    const seen = new Set<string>();
+    return catalog.filter((entry) => {
+      if (seen.has(entry.provider_id)) return false;
+      seen.add(entry.provider_id);
+      return true;
+    });
+  }, [catalog]);
 
   return (
     <div className="space-y-6 p-6">
@@ -260,43 +326,21 @@ export function ModelsSection({
           <div className="grid gap-2">
             <Label htmlFor="model-provider">Provider</Label>
             <Select
-              value={provider}
-              onValueChange={(val) => {
-                const nextProvider = catalog.find(
-                  (catalogProvider) => catalogProvider.id === val,
-                );
-                const nextModel = nextProvider
-                  ? (getCatalogModelOptions(nextProvider)[0]?.runtimeModelId ??
-                    null)
-                  : (modelSettings.model ??
-                    PROVIDER_DEFAULT_MODELS[val] ??
-                    null);
-                const nextBaseUrl = getProviderBaseUrlDefault(
-                  val,
-                  nextProvider,
-                );
-                const patch = {
-                  provider: val,
-                  model: nextModel,
-                  base_url: nextBaseUrl,
-                };
-                updateModelSettings(patch);
-                saveModelSettings(patch);
-              }}
+              value={providerId}
+              onValueChange={handleProviderChange}
             >
               <SelectTrigger id="model-provider" className="w-64">
                 <SelectValue placeholder="Select a provider" />
               </SelectTrigger>
               <SelectContent>
-                {catalogProviders.length ? (
-                  catalogProviders.map((catalogProvider) => (
-                    <SelectItem
-                      key={catalogProvider.id}
-                      value={catalogProvider.id}
-                    >
-                      {catalogProvider.name}
+                {uniqueProviders.length ? (
+                  uniqueProviders.map((p) => (
+                    <SelectItem key={p.provider_id} value={p.provider_id}>
+                      {p.provider_id}
                     </SelectItem>
                   ))
+                ) : catalogLoading ? (
+                  <SelectItem value="" disabled>Loading...</SelectItem>
                 ) : (
                   <>
                     <SelectItem value="anthropic">Anthropic</SelectItem>
@@ -305,8 +349,8 @@ export function ModelsSection({
                     <SelectItem value="ollama">Ollama</SelectItem>
                   </>
                 )}
-                {showSelectedProviderFallback ? (
-                  <SelectItem value={provider}>{provider}</SelectItem>
+                {providerId && !uniqueProviders.find((p) => p.provider_id === providerId) ? (
+                  <SelectItem value={providerId}>{providerId}</SelectItem>
                 ) : null}
                 <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
@@ -322,14 +366,14 @@ export function ModelsSection({
                   id="model-api-key"
                   type={showApiKey ? "text" : "password"}
                   placeholder="Provider API key"
-                  value={modelSettings.api_key ?? ""}
+                  value={activeOverride.api_key ?? ""}
                   required={apiKeyRequired}
                   onChange={(e) => {
-                    updateModelSettings({ api_key: e.target.value });
+                    handleOverrideFieldChange("api_key", e.target.value);
                     setApiKeyValid(null);
                   }}
                   onBlur={(e) =>
-                    saveModelSettings({ api_key: clean(e.target.value) })
+                    handleOverrideFieldSave("api_key", clean(e.target.value))
                   }
                 />
                 <Button
@@ -350,7 +394,7 @@ export function ModelsSection({
                 variant={apiKeyValid ? "default" : "outline"}
                 size="sm"
                 onClick={handleTestApiKey}
-                disabled={testing || (apiKeyRequired && !modelSettings.api_key)}
+                disabled={testing || (apiKeyRequired && !activeOverride.api_key)}
                 className={apiKeyValid ? "text-white" : ""}
                 style={
                   apiKeyValid
@@ -373,14 +417,14 @@ export function ModelsSection({
             <Input
               id="model-base-url"
               placeholder={
-                provider === "ollama" ? "http://localhost:11434" : "Optional"
+                providerId === "ollama" ? "http://localhost:11434" : "Optional"
               }
-              value={modelSettings.base_url ?? ""}
+              value={activeOverride.base_url_override ?? ""}
               onChange={(e) =>
-                updateModelSettings({ base_url: e.target.value })
+                handleOverrideFieldChange("base_url_override", e.target.value)
               }
               onBlur={(e) =>
-                saveModelSettings({ base_url: clean(e.target.value) })
+                handleOverrideFieldSave("base_url_override", clean(e.target.value))
               }
             />
           </div>
@@ -417,10 +461,7 @@ export function ModelsSection({
             {showCatalogPicker ? (
               <Select
                 value={selectedModelValue}
-                onValueChange={(val) => {
-                  updateModelSettings({ model: val });
-                  saveModelSettings({ model: val });
-                }}
+                onValueChange={handleModelChange}
               >
                 <SelectTrigger id="model-id" className="w-80">
                   <SelectValue />
@@ -428,10 +469,10 @@ export function ModelsSection({
                 <SelectContent>
                   {modelOptions.map((option) => (
                     <SelectItem
-                      key={option.runtimeModelId}
-                      value={option.runtimeModelId}
+                      key={option.full_id}
+                      value={option.full_id}
                     >
-                      {option.modelName}
+                      {option.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -439,19 +480,17 @@ export function ModelsSection({
             ) : (
               <Input
                 id="model-id"
-                placeholder={
-                  PROVIDER_DEFAULT_MODELS[provider] ?? "provider/model-id"
-                }
-                value={modelSettings.model ?? ""}
-                onChange={(e) => updateModelSettings({ model: e.target.value })}
+                placeholder="provider/model-id"
+                value={modelSettings.model_id ?? ""}
+                onChange={(e) => updateModelSettings({ model_id: e.target.value })}
                 onBlur={(e) =>
-                  saveModelSettings({ model: clean(e.target.value) })
+                  saveModelSettings({ model_id: clean(e.target.value) })
                 }
               />
             )}
-            {modelSettings.model ? (
+            {modelSettings.model_id ? (
               <span className="text-xs text-muted-foreground">
-                {modelSettings.model}
+                {modelSettings.model_id}
               </span>
             ) : null}
             {catalogFailed ? (
@@ -476,36 +515,32 @@ export function ModelsSection({
             <>
               <ModelDetailBooleanRow
                 label="Tool calling"
-                value={selectedCatalogModel.model.tool_call}
+                value={selectedCatalogModel.tool_call}
               />
               <ModelDetailBooleanRow
                 label="Reasoning"
-                value={selectedCatalogModel.model.reasoning}
+                value={selectedCatalogModel.reasoning}
               />
               <ModelDetailBooleanRow
                 label="Structured output"
-                value={selectedCatalogModel.model.structured_output}
+                value={selectedCatalogModel.structured_output ?? undefined}
               />
               <ModelDetailBooleanRow
                 label="Temperature"
-                value={selectedCatalogModel.model.temperature}
+                value={selectedCatalogModel.temperature ?? undefined}
               />
               <ModelDetailRow
                 label="Context window"
                 value={formatTokenCount(
-                  selectedCatalogModel.model.limit?.context ??
-                    selectedCatalogModel.model.limit?.input,
-                )}
-              />
-              <ModelDetailRow
-                label="Max output"
-                value={formatTokenCount(
-                  selectedCatalogModel.model.limit?.output,
+                  selectedCatalogModel.context_limit ?? undefined,
                 )}
               />
               <ModelDetailRow
                 label="Pricing"
-                value={formatPricing(selectedCatalogModel.model.cost)}
+                value={formatPricing(
+                  selectedCatalogModel.input_cost_per_token,
+                  selectedCatalogModel.output_cost_per_token,
+                )}
               />
             </>
           ) : (
@@ -528,10 +563,10 @@ export function ModelsSection({
           <div className="grid gap-2">
             <Label>Reasoning effort</Label>
             <Select
-              value={modelSettings.reasoning_effort ?? "auto"}
+              value={activeOverride.reasoning_effort ?? "auto"}
               onValueChange={(val) => {
-                updateModelSettings({ reasoning_effort: val });
-                saveModelSettings({ reasoning_effort: val });
+                handleOverrideFieldChange("reasoning_effort", val);
+                handleOverrideFieldSave("reasoning_effort", val);
               }}
             >
               <SelectTrigger className="w-64">
@@ -551,16 +586,18 @@ export function ModelsSection({
               id="timeout-seconds"
               type="number"
               min={1}
-              value={modelSettings.timeout_seconds ?? ""}
+              value={activeOverride.timeout_seconds ?? ""}
               onChange={(e) =>
-                updateModelSettings({
-                  timeout_seconds: Number(e.target.value) || null,
-                })
+                handleOverrideFieldChange(
+                  "timeout_seconds",
+                  Number(e.target.value) || null,
+                )
               }
               onBlur={(e) =>
-                saveModelSettings({
-                  timeout_seconds: Number(e.target.value) || null,
-                })
+                handleOverrideFieldSave(
+                  "timeout_seconds",
+                  Number(e.target.value) || null,
+                )
               }
             />
           </div>
@@ -570,16 +607,18 @@ export function ModelsSection({
               id="num-retries"
               type="number"
               min={0}
-              value={modelSettings.num_retries ?? ""}
+              value={activeOverride.num_retries ?? ""}
               onChange={(e) =>
-                updateModelSettings({
-                  num_retries: Number(e.target.value) || null,
-                })
+                handleOverrideFieldChange(
+                  "num_retries",
+                  Number(e.target.value) || null,
+                )
               }
               onBlur={(e) =>
-                saveModelSettings({
-                  num_retries: Number(e.target.value) || null,
-                })
+                handleOverrideFieldSave(
+                  "num_retries",
+                  Number(e.target.value) || null,
+                )
               }
             />
           </div>
@@ -629,12 +668,12 @@ export function ModelsSection({
             <Input
               id="api-version"
               placeholder="Optional"
-              value={modelSettings.api_version ?? ""}
+              value={activeOverride.api_version ?? ""}
               onChange={(e) =>
-                updateModelSettings({ api_version: e.target.value })
+                handleOverrideFieldChange("api_version", e.target.value)
               }
               onBlur={(e) =>
-                saveModelSettings({ api_version: clean(e.target.value) })
+                handleOverrideFieldSave("api_version", clean(e.target.value))
               }
             />
           </div>
