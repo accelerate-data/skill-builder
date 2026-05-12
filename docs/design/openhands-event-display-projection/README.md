@@ -4,7 +4,7 @@ functional-specs: []
 
 # OpenHands Event Display Projection
 
-> **Status:** Implemented — projection, result detectors, store integration, and consumer migration complete. Lifecycle chip (`lifecycle-chip.tsx`) implemented but not yet mounted in the chat header (see Known Limitations).
+> **Status:** Implemented — projection, result detectors, store integration, and consumer migration complete.
 
 ## Overview
 
@@ -135,7 +135,7 @@ This replaces the per-status timeline card; lifecycle is frame state, not conten
 | `app/src/components/refine/agent-turn-inline.tsx` | Reads `run.displayItems` and renders via `DisplayItemList`. |
 | `app/src/components/agent-output-panel.tsx` | Reads `displayItems` and renders via `DisplayItemList` exclusively. |
 | `app/src/components/agent-status-header.tsx` | Count uses `displayItems.length` only (single source). |
-| `app/src/components/refine/lifecycle-chip.tsx` | `LifecycleChip` and `LifecycleChipView` components bound to `runs[agentId]?.status`. Implemented and unit tested; **not yet mounted** in the chat panel header (see Known Limitations). |
+| `app/src/components/run-status-footer.tsx` + `agent-run-footer.tsx` | Common status footer pinned to the bottom of every agent-interactive surface (Refine, Evals, Workflow). Shows status dot, model, elapsed time, turns, tokens, and cost. Superseded the standalone `LifecycleChip` design. |
 | `app/src/components/agent-items/*` (no changes) | All existing item shells, viewers, and the activity grouping work unchanged. |
 | `app/src/components/agent-items/conversation-event-list.tsx` | Retained as a rendering primitive for future dev-tools / debug surfaces; no production consumer. |
 
@@ -192,7 +192,7 @@ Mutating in place preserves React keys and any user-controlled expand state.
 | `app/src/lib/openhands-conversation-events.ts` | Extraction helpers (`getMessageText`, `getToolName`, `getToolInput`, `getCommandText`, etc.) — reused by the projector |
 | `app/src/lib/group-display-items.ts` | Activity-group logic — works unchanged on projected items |
 | `app/src/components/refine/agent-turn-inline.tsx` | Reads `displayItems` via `DisplayItemList` |
-| `app/src/components/refine/lifecycle-chip.tsx` | Lifecycle chip component — implemented, not yet mounted |
+| `app/src/components/run-status-footer.tsx` | Common status footer — status, model, elapsed time, turns, tokens, cost. Present on all agent-interactive surfaces. |
 
 ## Wire-format note: `kind` is the SDK's discriminator
 

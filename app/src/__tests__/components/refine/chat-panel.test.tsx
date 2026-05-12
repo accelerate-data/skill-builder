@@ -105,19 +105,6 @@ describe("ChatPanel", () => {
     });
   });
 
-  it("does not render a duplicate running lifecycle chip in the refine header", () => {
-    useRefineStore.setState({
-      activeAgentId: "agent-1",
-    });
-    agentStoreState.runs = {
-      "agent-1": { status: "running" },
-    };
-
-    renderPanel({ isRunning: true });
-
-    expect(screen.queryByTestId("refine-lifecycle-chip")).not.toBeInTheDocument();
-  });
-
   it("blocks input and shows the scope warning when scope is blocked", () => {
     renderPanel({ scopeBlocked: true });
 
