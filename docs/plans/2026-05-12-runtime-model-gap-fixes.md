@@ -576,7 +576,7 @@ Read the four files above and verify:
 
 No fixes needed. All resolution paths already use `skills.id` as the canonical key.
 
-- [ ] **Step 3: Compile and test**
+- [x] **Step 3: Compile and test**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -585,15 +585,11 @@ cd app/src-tauri && cargo test commands::workflow
 
 Expected: no errors, all pass.
 
-- [ ] **Step 4: Commit**
+**VERIFIED**: `cargo check` clean, `cargo test` passes (1165 tests). No code changes were needed — all artifact resolution paths already use `skills.id` as the canonical key.
 
-```bash
-git add app/src-tauri/src/db/workflow_artifacts.rs \
-        app/src-tauri/src/commands/workflow/clarifications.rs \
-        app/src-tauri/src/commands/workflow/decisions.rs \
-        app/src-tauri/src/db/migrations.rs
-git commit -m "fix: ensure canonical skills.id for artifact identity resolution"
-```
+- [x] **Step 4: Commit**
+
+No commit needed — this was a verification-only task with no code changes. All four files were audited and confirmed correct.
 
 ---
 
@@ -614,12 +610,9 @@ No stale paths found.
 
 No updates needed. The README accurately reflects the current design folder structure.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
-```bash
-git add docs/design/README.md
-git commit -m "docs: fix design index to reference litellm-integration directory"
-```
+No commit needed — `docs/design/README.md` already correctly references `litellm-integration/` at line 7. No stale paths found.
 
 ---
 
