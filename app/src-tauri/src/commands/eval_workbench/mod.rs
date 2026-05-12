@@ -7,7 +7,8 @@ use crate::agents::runtime_config::{
     build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
 };
 use crate::commands::imported_skills::validate_skill_name;
-use crate::commands::refine::{content::get_skill_content_inner_for_plugin, resolve_skills_path};
+use crate::commands::refine::content::get_skill_content_inner_for_plugin;
+use crate::commands::skill_session::resolve_skills_path;
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::Db;
 use serde_json::Value;
@@ -308,7 +309,7 @@ where
 {
     let run_id = uuid::Uuid::new_v4().to_string();
     let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        std::path::Path::new(&runtime_ctx.workspace_path),
+        std::path::Path::new(&runtime_ctx.skills_root),
         "eval-workbench",
         &run_id,
     );
@@ -324,7 +325,7 @@ where
         plugin_slug,
         skill_name,
         prompt,
-        &runtime_ctx.workspace_path,
+        &runtime_ctx.skills_root,
         &runtime_run_dir.to_string_lossy(),
         suggested_scenario_output_format(),
         runtime_ctx,
@@ -452,7 +453,7 @@ pub async fn define_eval_scenario(
         load_define_eval_scenario_context(&conn, &skill_name)
     };
     let runtime_ctx = read_initialized_runtime_context(&db)?;
-    ensure_workspace_prompts(&app, &runtime_ctx.workspace_path).await?;
+    ensure_workspace_prompts(&app, &runtime_ctx.skills_root).await?;
     let prompt = build_suggest_scenario_prompt(
         &skill_name,
         &existing_scenario,
@@ -506,7 +507,7 @@ mod tests {
     fn define_eval_scenario_uses_throwaway_runtime_path() {
         let workspace = tempfile::tempdir().unwrap();
         let runtime_ctx = InitializedRuntimeContext {
-            workspace_path: workspace.path().to_string_lossy().into_owned(),
+            skills_root: workspace.path().to_string_lossy().into_owned(),
             llm: crate::types::WorkflowLlmConfig {
                 model: "gpt-4.1".to_string(),
                 api_key: Some(crate::types::SecretString::new("test-key".to_string())),

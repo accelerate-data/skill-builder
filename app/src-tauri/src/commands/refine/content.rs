@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
-use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::types::SkillFileContent;
 
 use super::{resolve_skill_output_dir, resolve_skills_path};
@@ -65,7 +65,11 @@ pub(crate) fn get_skill_content_inner(
     skill_name: &str,
     skills_path: &str,
 ) -> Result<Vec<SkillFileContent>, String> {
-    get_skill_content_inner_for_plugin(skill_name, skills_path, DEFAULT_PLUGIN_SLUG)
+    crate::skill_paths::read_skill_content_by_name(
+        Path::new(skills_path),
+        DEFAULT_PLUGIN_SLUG,
+        skill_name,
+    )
 }
 
 pub(crate) fn get_skill_content_inner_for_plugin(
@@ -73,8 +77,11 @@ pub(crate) fn get_skill_content_inner_for_plugin(
     skills_path: &str,
     plugin_slug: &str,
 ) -> Result<Vec<SkillFileContent>, String> {
-    let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    get_skill_content_from_dir(&skill_root)
+    crate::skill_paths::read_skill_content_by_name(
+        Path::new(skills_path),
+        plugin_slug,
+        skill_name,
+    )
 }
 
 pub(crate) fn get_skill_content_from_dir(

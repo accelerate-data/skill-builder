@@ -581,7 +581,7 @@ fn test_finalize_refine_run_ignores_result_payload() {
 #[test]
 fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
     let prev_mock_agents = std::env::var("MOCK_AGENTS").ok();
-    std::env::set_var("MOCK_AGENTS", "true");
+    unsafe { std::env::set_var("MOCK_AGENTS", "true") };
 
     let skills_dir = tempdir().unwrap();
     let workspace_dir = tempdir().unwrap();
@@ -620,8 +620,8 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
     assert!(result.diff.stat.contains("2 file(s) changed"));
 
     match prev_mock_agents {
-        Some(value) => std::env::set_var("MOCK_AGENTS", value),
-        None => std::env::remove_var("MOCK_AGENTS"),
+        Some(value) => unsafe { std::env::set_var("MOCK_AGENTS", value) },
+        None => unsafe { std::env::remove_var("MOCK_AGENTS") },
     }
 }
 
@@ -1035,10 +1035,7 @@ fn test_plan_skill_conversation_dispatch_reuses_saved_conversation() {
     };
 
     let plan = plan_refine_conversation_dispatch(&session, None).unwrap();
-    assert_eq!(
-        plan,
-        RefineConversationDispatchPlan::ReuseExisting("saved-conv".to_string())
-    );
+    assert_eq!(plan, "saved-conv");
 }
 
 #[test]
@@ -1071,10 +1068,7 @@ fn test_plan_skill_conversation_dispatch_reuses_existing_conversation_after_firs
 
     let plan =
         plan_refine_conversation_dispatch(&session, Some("active-conv".to_string())).unwrap();
-    assert_eq!(
-        plan,
-        RefineConversationDispatchPlan::ReuseExisting("active-conv".to_string())
-    );
+    assert_eq!(plan, "active-conv");
 }
 
 #[test]
@@ -1117,10 +1111,7 @@ fn plan_refine_dispatch_reuses_the_existing_conversation_id() {
     let plan = plan_refine_conversation_dispatch(&session, Some("conv-123".to_string()))
         .expect("dispatch plan");
 
-    assert_eq!(
-        plan,
-        RefineConversationDispatchPlan::ReuseExisting("conv-123".to_string())
-    );
+    assert_eq!(plan, "conv-123");
 }
 
 #[test]

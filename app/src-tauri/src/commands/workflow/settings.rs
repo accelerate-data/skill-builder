@@ -27,7 +27,7 @@ pub(crate) struct WorkflowSettings {
 /// through this API instead of re-projecting raw settings fields.
 #[derive(Debug)]
 pub(crate) struct InitializedRuntimeContext {
-    pub workspace_path: String,
+    pub skills_root: String,
     pub llm: crate::types::WorkflowLlmConfig,
 }
 
@@ -36,21 +36,21 @@ pub(crate) fn read_initialized_runtime_context(
 ) -> Result<InitializedRuntimeContext, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
-    let workspace_path = settings
+    let skills_root = settings
         .skills_path
         .clone()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "Skills path not configured".to_string())?;
-    if !std::path::Path::new(&workspace_path).is_dir() {
+    if !std::path::Path::new(&skills_root).is_dir() {
         return Err(format!(
             "Skills path is not initialized: {}. Update Settings -> Skills Path to a valid directory.",
-            workspace_path
+            skills_root
         ));
     }
     let llm = crate::db::selected_workflow_llm(&settings)?;
 
     Ok(InitializedRuntimeContext {
-        workspace_path,
+        skills_root,
         llm,
     })
 }
@@ -220,7 +220,7 @@ mod tests {
 
         let context = read_initialized_runtime_context(&db).unwrap();
 
-        assert_eq!(context.workspace_path, workspace_path);
+        assert_eq!(context.skills_root, workspace_path);
         assert_eq!(context.llm.model, "anthropic/claude-sonnet-4-5");
         assert_eq!(context.llm.api_key.as_ref().unwrap().expose(), "sk-test");
     }

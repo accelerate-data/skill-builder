@@ -41,6 +41,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
+  const conversationId = useRefineStore((s) => s.conversationId);
   const activeSkill = selectedSkill ?? skill;
 
   const activeRunStatus = useAgentStore((s) =>
@@ -368,6 +369,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
     : isRunning
       ? "running"
       : "idle";
+
+  if (!conversationId) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-muted-foreground text-sm">Connecting to session…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">

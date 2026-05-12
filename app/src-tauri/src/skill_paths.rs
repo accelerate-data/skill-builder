@@ -388,6 +388,84 @@ fn is_skill_dir(path: &Path) -> bool {
     path.join("SKILL.md").is_file() || path.join("references").is_dir()
 }
 
+// ─── Skill content reading ───────────────────────────────────────────────────
+
+/// Read SKILL.md and all references/ files from a skill directory.
+pub fn read_skill_content(skill_root: &Path) -> Result<Vec<crate::types::SkillFileContent>, String> {
+    if !skill_root.exists() {
+        return Err(format!(
+            "Skill directory not found at {}",
+            skill_root.display()
+        ));
+    }
+
+    let mut files = Vec::new();
+
+    let skill_md = skill_root.join("SKILL.md");
+    if skill_md.exists() {
+        let content = std::fs::read_to_string(&skill_md)
+            .map_err(|e| format!("Failed to read SKILL.md: {}", e))?;
+        files.push(crate::types::SkillFileContent {
+            path: "SKILL.md".to_string(),
+            content,
+        });
+    }
+
+    let references_dir = skill_root.join("references");
+    if references_dir.is_dir() {
+        collect_skill_content_files(&references_dir, "references", &mut files)?;
+    }
+
+    Ok(files)
+}
+
+/// Read skill content by name and plugin slug from a skills root.
+pub fn read_skill_content_by_name(
+    skills_root: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<Vec<crate::types::SkillFileContent>, String> {
+    let skill_root = resolve_skill_dir(skills_root, plugin_slug, skill_name);
+    read_skill_content(&skill_root)
+}
+
+fn collect_skill_content_files(
+    dir: &Path,
+    relative_prefix: &str,
+    files: &mut Vec<crate::types::SkillFileContent>,
+) -> Result<(), String> {
+    use std::ffi::OsStr;
+
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read {} dir: {}", relative_prefix, e))?
+        .flatten()
+        .collect();
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let rel = format!("{}/{}", relative_prefix, name);
+
+        if path.is_dir() {
+            collect_skill_content_files(&path, &rel, files)?;
+            continue;
+        }
+
+        let ext = path.extension().and_then(OsStr::to_str);
+        if !matches!(ext, Some("md" | "txt")) {
+            continue;
+        }
+
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {}", rel, e))?;
+        files.push(crate::types::SkillFileContent { path: rel, content });
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tag_format_tests {
     use super::*;

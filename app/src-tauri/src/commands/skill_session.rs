@@ -43,7 +43,7 @@ pub(crate) async fn ensure_skill_runtime_ready(
 ) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
     let skill_dir = crate::skill_paths::ensure_nested_skill_dir(
-        Path::new(&runtime_ctx.workspace_path),
+        Path::new(&runtime_ctx.skills_root),
         plugin_slug,
         skill_name,
     )?;
@@ -108,7 +108,7 @@ fn remove_skill_sessions(
     });
 }
 
-fn resolve_skills_path(db: &Db) -> Result<String, String> {
+pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = db::read_settings(&conn)?;
     settings
@@ -366,9 +366,12 @@ pub async fn pause_openhands_session(
     // This keeps lock ownership entirely in the backend — the frontend no longer
     // calls `release_lock` directly.
     if let Some(sid) = skill_id {
-        if let Ok(conn) = db.0.lock() {
-            let _ = crate::db::release_skill_lock_by_skill_id(&conn, sid, &instance.id);
-        }
+        let conn = db
+            .0
+            .lock()
+            .map_err(|e| format!("failed to lock DB during lock release: {e}"))?;
+        crate::db::release_skill_lock_by_skill_id(&conn, sid, &instance.id)
+            .map_err(|e| format!("failed to release skill lock {sid}: {e}"))?;
     }
 
     Ok(())
@@ -512,5 +515,19 @@ mod tests {
 
         assert_eq!(sessions.len(), 1);
         assert!(sessions.contains_key(&skill_session_key("sales-skill", "custom")));
+    }
+
+    #[test]
+    fn release_lock_on_nonexistent_row_succeeds_silently() {
+        // SQLite DELETE with no matching rows returns Ok(0 rows affected), not an error.
+        // The fix in pause_openhands_session propagates real DB errors (connection failure,
+        // constraint violations) rather than silently discarding them with `let _ =`.
+        let conn = crate::db::create_test_db_for_tests();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "no-lock-skill", "skill-builder", "domain").unwrap();
+
+        // DELETE with no matching lock row succeeds (0 rows affected)
+        let result = crate::db::release_skill_lock_by_skill_id(&conn, skill_id, "instance-x");
+        assert!(result.is_ok(), "DELETE with no matching rows should succeed");
     }
 }

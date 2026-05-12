@@ -7,24 +7,15 @@ pub(crate) mod protocol;
 use serde::Deserialize;
 use tauri::Manager;
 
-use crate::db::{self, Db};
+use crate::db::Db;
 use crate::skill_paths::resolve_skill_dir;
 use crate::types::RefineDispatchResult;
 
 use protocol::*;
 
+pub(crate) use crate::commands::skill_session::resolve_skills_path;
 pub(crate) use crate::commands::skill_session::skill_session_key;
 pub use crate::commands::skill_session::{SkillSession, SkillSessionManager};
-
-// ─── Shared helper ───────────────────────────────────────────────────────────
-
-pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = db::read_settings(&conn)?;
-    settings
-        .skills_path
-        .ok_or_else(|| "Skills path not configured in settings".to_string())
-}
 
 /// Resolve the directory that contains SKILL.md for the given skill.
 pub(super) fn resolve_skill_output_dir(
@@ -101,11 +92,6 @@ fn load_refine_prompt_context(
     Ok((user_context_block, clarifications_json, decisions_json))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum RefineConversationDispatchPlan {
-    ReuseExisting(String),
-}
-
 fn normalize_conversation_id(value: Option<String>) -> Option<String> {
     value.and_then(|candidate| {
         let trimmed = candidate.trim();
@@ -120,7 +106,7 @@ fn normalize_conversation_id(value: Option<String>) -> Option<String> {
 fn plan_refine_conversation_dispatch(
     session: &SkillSession,
     requested_conversation_id: Option<String>,
-) -> Result<RefineConversationDispatchPlan, String> {
+) -> Result<String, String> {
     let requested_conversation_id = normalize_conversation_id(requested_conversation_id);
 
     let active_conversation_id = session.conversation_id.clone().ok_or_else(|| {
@@ -139,9 +125,7 @@ fn plan_refine_conversation_dispatch(
         }
     }
 
-    Ok(RefineConversationDispatchPlan::ReuseExisting(
-        active_conversation_id,
-    ))
+    Ok(active_conversation_id)
 }
 
 // ─── send_refine_message ─────────────────────────────────────────────────────
@@ -221,10 +205,10 @@ pub async fn send_refine_message(
     let prompt = if is_first_turn {
         let skills_path = resolve_skills_path(&db)?;
         let (user_context_block, clarifications_json, decisions_json) =
-            load_refine_prompt_context(&db, &skill_name, &runtime_ctx.workspace_path)?;
+            load_refine_prompt_context(&db, &skill_name, &runtime_ctx.skills_root)?;
         build_refine_prompt_with_output_dir(RefinePromptRequest {
             skill_name: &skill_name,
-            workspace_path: &runtime_ctx.workspace_path,
+            workspace_path: &runtime_ctx.skills_root,
             plugin_slug: &plugin_slug,
             skill_output_dir: &resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?,
             user_message: &user_message,
@@ -260,7 +244,7 @@ pub async fn send_refine_message(
         chrono::Utc::now().timestamp_millis()
     );
 
-    let RefineConversationDispatchPlan::ReuseExisting(active_conversation_id) = dispatch_plan;
+    let active_conversation_id = dispatch_plan;
 
     log::info!(
         "[send_refine_message] skill={} plugin={} conversation_id={}",

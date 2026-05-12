@@ -185,6 +185,7 @@ export default function WorkflowPage() {
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const refineSelectedSkill = useRefineStore((s) => s.selectedSkill);
+  const conversationId = useRefineStore((s) => s.conversationId);
   const activeRunDisplayItemCount = useAgentStore((s) =>
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );
@@ -463,7 +464,7 @@ export default function WorkflowPage() {
     return "You have unsaved edits that will be lost if you leave.";
   };
 
-  if (!isLoaded) {
+  if (!isLoaded || !conversationId) {
     return <WorkflowLoadingSkeleton />;
   }
 

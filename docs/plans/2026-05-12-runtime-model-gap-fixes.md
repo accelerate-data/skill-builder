@@ -42,7 +42,7 @@ The optimistic-session-activation spec requires both `WorkflowPage` and the refi
 **Files:**
 - Modify: `app/src/pages/workflow.tsx`
 
-- [ ] **Step 1: Locate the `conversationId` selector block**
+- [x] **Step 1: Locate the `conversationId` selector block**
 
 Open `app/src/pages/workflow.tsx`. Around line 187 there is already a `useRefineStore` selector:
 
@@ -57,7 +57,7 @@ const refineSelectedSkill = useRefineStore((s) => s.selectedSkill);
 const conversationId = useRefineStore((s) => s.conversationId);
 ```
 
-- [ ] **Step 2: Update the loading guard (around line 466)**
+- [x] **Step 2: Update the loading guard (around line 466)**
 
 Change:
 
@@ -75,7 +75,7 @@ if (!isLoaded || !conversationId) {
 }
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 ```bash
 cd app && npx tsc --noEmit
@@ -83,7 +83,7 @@ cd app && npx tsc --noEmit
 
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/src/pages/workflow.tsx
@@ -97,7 +97,7 @@ git commit -m "fix: guard WorkflowPage on conversationId readiness"
 **Files:**
 - Modify: `app/src/components/workspace/workspace-refine.tsx`
 
-- [ ] **Step 1: Add `conversationId` selector at the top of the component**
+- [x] **Step 1: Add `conversationId` selector at the top of the component**
 
 In `WorkspaceRefine`, around line 40–44, add a reactive selector. The existing selectors are:
 
@@ -114,7 +114,7 @@ Add after them:
 const conversationId = useRefineStore((s) => s.conversationId);
 ```
 
-- [ ] **Step 2: Add the loading skeleton guard**
+- [x] **Step 2: Add the loading skeleton guard**
 
 Find the component's first `return` statement (the main JSX return, not an early return for `scopeBlocked` etc.). Add this guard immediately before that return, but after all hooks (hooks must not be called conditionally):
 
@@ -128,7 +128,7 @@ if (!conversationId) {
 }
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 ```bash
 cd app && npx tsc --noEmit
@@ -136,7 +136,7 @@ cd app && npx tsc --noEmit
 
 Expected: no errors.
 
-- [ ] **Step 4: Unit test — guard renders skeleton when conversationId is null**
+- [x] **Step 4: Unit test — guard renders skeleton when conversationId is null**
 
 Run existing unit tests to ensure no regressions:
 
@@ -146,7 +146,7 @@ cd app && npm run test:unit -- --run
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src/components/workspace/workspace-refine.tsx
@@ -172,7 +172,7 @@ The leave contract says: if pause fails, the current skill stays visible and the
 **Files:**
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Open `app/src-tauri/src/commands/skill_session.rs`. Add to the `#[cfg(test)]` block:
 
@@ -200,7 +200,7 @@ cd app/src-tauri && cargo test skill_session::tests::pause_with_nonexistent_lock
 
 Expected: this test may pass or fail depending on the current DB behavior — it validates the assumption before the fix.
 
-- [ ] **Step 2: Fix the lock-release code**
+- [x] **Step 2: Fix the lock-release code**
 
 Find the section in `pause_openhands_session` (around lines 367–374):
 
@@ -229,7 +229,7 @@ if let Some(sid) = skill_id {
 Ok(())
 ```
 
-- [ ] **Step 3: Compile**
+- [x] **Step 3: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -237,7 +237,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 4: Run the skill_session tests**
+- [x] **Step 4: Run the skill_session tests**
 
 ```bash
 cd app/src-tauri && cargo test skill_session::
@@ -245,7 +245,7 @@ cd app/src-tauri && cargo test skill_session::
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs
@@ -280,7 +280,7 @@ Three low-risk, high-clarity fixes batched together because they all touch the s
 - Modify: `app/src-tauri/src/commands/workflow/settings.rs`
 - Modify: all callers
 
-- [ ] **Step 1: Update the struct and constructor**
+- [x] **Step 1: Update the struct and constructor**
 
 In `app/src-tauri/src/commands/workflow/settings.rs`, rename the field:
 
@@ -343,7 +343,7 @@ Update the test in the same file that uses `workspace_path`:
 // Find: workspace_path.clone() variable naming in test setup → skills_root
 ```
 
-- [ ] **Step 2: Update all callers**
+- [x] **Step 2: Update all callers**
 
 Search for `.workspace_path` across the Rust codebase:
 
@@ -358,7 +358,7 @@ For each match, rename `.workspace_path` to `.skills_root`. Key callers:
 - `commands/eval_workbench/mod.rs`: same
 - `commands/workflow/runtime.rs`: same (if present)
 
-- [ ] **Step 3: Compile**
+- [x] **Step 3: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -366,7 +366,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 4: Run all Rust unit tests**
+- [x] **Step 4: Run all Rust unit tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -374,7 +374,7 @@ cd app/src-tauri && cargo test
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/settings.rs \
@@ -393,7 +393,7 @@ git commit -m "refactor: rename InitializedRuntimeContext.workspace_path -> skil
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Make `resolve_skills_path` pub(crate) in `skill_session.rs`**
+- [x] **Step 1: Make `resolve_skills_path` pub(crate) in `skill_session.rs`**
 
 In `app/src-tauri/src/commands/skill_session.rs`, change:
 
@@ -405,7 +405,7 @@ fn resolve_skills_path(db: &Db) -> Result<String, String> {
 pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
 ```
 
-- [ ] **Step 2: Delete the duplicate from `refine/mod.rs`**
+- [x] **Step 2: Delete the duplicate from `refine/mod.rs`**
 
 In `app/src-tauri/src/commands/refine/mod.rs`, delete the private `resolve_skills_path` function (lines ~20–26):
 
@@ -420,7 +420,7 @@ pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
 }
 ```
 
-- [ ] **Step 3: Update callers in `refine/mod.rs`**
+- [x] **Step 3: Update callers in `refine/mod.rs`**
 
 Any call to `resolve_skills_path(db)` within `refine/mod.rs` must now use the path from `skill_session.rs`. Since they're in the same crate and `skill_session` is a sibling module:
 
@@ -432,7 +432,7 @@ resolve_skills_path(db)?
 crate::commands::skill_session::resolve_skills_path(db)?
 ```
 
-- [ ] **Step 4: Compile**
+- [x] **Step 4: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -440,7 +440,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::refine && cargo test commands::skill_session
@@ -448,7 +448,7 @@ cd app/src-tauri && cargo test commands::refine && cargo test commands::skill_se
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs \
@@ -463,7 +463,7 @@ git commit -m "refactor: consolidate resolve_skills_path into skill_session"
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Delete the enum**
+- [x] **Step 1: Delete the enum**
 
 Find and delete:
 
@@ -474,7 +474,7 @@ enum RefineConversationDispatchPlan {
 }
 ```
 
-- [ ] **Step 2: Update `plan_refine_conversation_dispatch` to return `Result<String, String>`**
+- [x] **Step 2: Update `plan_refine_conversation_dispatch` to return `Result<String, String>`**
 
 Change the function signature and return:
 
@@ -500,7 +500,7 @@ fn plan_refine_conversation_dispatch(
 }
 ```
 
-- [ ] **Step 3: Update the caller in `send_refine_message`**
+- [x] **Step 3: Update the caller in `send_refine_message`**
 
 Find the destructuring that uses the enum (around line 393):
 
@@ -512,7 +512,7 @@ let RefineConversationDispatchPlan::ReuseExisting(active_conversation_id) = disp
 let active_conversation_id = dispatch_plan;
 ```
 
-- [ ] **Step 4: Compile**
+- [x] **Step 4: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -520,7 +520,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::refine
@@ -528,7 +528,7 @@ cd app/src-tauri && cargo test commands::refine
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/mod.rs
@@ -576,7 +576,7 @@ Read the four files above and verify:
 
 No fixes needed. All resolution paths already use `skills.id` as the canonical key.
 
-- [ ] **Step 3: Compile and test**
+- [x] **Step 3: Compile and test**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -585,15 +585,11 @@ cd app/src-tauri && cargo test commands::workflow
 
 Expected: no errors, all pass.
 
-- [ ] **Step 4: Commit**
+**VERIFIED**: `cargo check` clean, `cargo test` passes (1165 tests). No code changes were needed — all artifact resolution paths already use `skills.id` as the canonical key.
 
-```bash
-git add app/src-tauri/src/db/workflow_artifacts.rs \
-        app/src-tauri/src/commands/workflow/clarifications.rs \
-        app/src-tauri/src/commands/workflow/decisions.rs \
-        app/src-tauri/src/db/migrations.rs
-git commit -m "fix: ensure canonical skills.id for artifact identity resolution"
-```
+- [x] **Step 4: Commit**
+
+No commit needed — this was a verification-only task with no code changes. All four files were audited and confirmed correct.
 
 ---
 
@@ -614,12 +610,9 @@ No stale paths found.
 
 No updates needed. The README accurately reflects the current design folder structure.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
-```bash
-git add docs/design/README.md
-git commit -m "docs: fix design index to reference litellm-integration directory"
-```
+No commit needed — `docs/design/README.md` already correctly references `litellm-integration/` at line 7. No stale paths found.
 
 ---
 

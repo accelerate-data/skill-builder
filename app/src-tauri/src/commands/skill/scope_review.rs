@@ -204,7 +204,7 @@ pub async fn review_skill_scope(
 
     let run_id = uuid::Uuid::new_v4().to_string();
     let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        std::path::Path::new(&runtime_context.workspace_path),
+        std::path::Path::new(&runtime_context.skills_root),
         "scope-review",
         &run_id,
     );
