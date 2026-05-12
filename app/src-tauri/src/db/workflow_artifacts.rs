@@ -161,18 +161,20 @@ fn opt_int_to_bool(v: Option<i64>) -> Option<bool> {
 }
 
 fn resolve_skill_db_id(conn: &Connection, skill_identifier: &str) -> Result<i64, rusqlite::Error> {
-    crate::db::resolve_skill_master_id_from_identifier(conn, skill_identifier)
+    crate::db::SkillIdentifier::parse(skill_identifier)
         .map_err(|e| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                e,
+                std::io::ErrorKind::InvalidInput,
+                e.to_string(),
             )))
-        })?
-        .ok_or_else(|| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("skill identifier '{}' not found", skill_identifier),
-            )))
+        })
+        .and_then(|id| {
+            id.resolve_to_db_id(conn).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    e,
+                )))
+            })
         })
 }
 
@@ -180,12 +182,22 @@ fn resolve_skill_db_id_optional(
     conn: &Connection,
     skill_identifier: &str,
 ) -> Result<Option<i64>, rusqlite::Error> {
-    crate::db::resolve_skill_master_id_from_identifier(conn, skill_identifier).map_err(|e| {
-        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            e,
-        )))
-    })
+    match crate::db::SkillIdentifier::parse(skill_identifier) {
+        Ok(id) => id.resolve_to_db_id(conn)
+            .map(Some)
+            .or_else(|e| {
+                if e.contains("not found") {
+                    Ok(None)
+                } else {
+                    Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                        std::io::Error::new(std::io::ErrorKind::NotFound, e),
+                    )))
+                }
+            }),
+        Err(e) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()),
+        ))),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -888,6 +900,10 @@ mod tests {
         resolve_skill_db_id(conn, identifier).unwrap()
     }
 
+    fn skill_identifier(id: i64) -> String {
+        id.to_string()
+    }
+
     fn sample_record(skill_id: &str) -> ClarificationsRecord {
         ClarificationsRecord {
             skill_id: skill_id.to_string(),
@@ -979,15 +995,16 @@ mod tests {
     #[test]
     fn roundtrip_clarifications_insert_and_read() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-a");
+        let skill_id = seed_skill(&conn, "skill-a");
+        let identifier = skill_identifier(skill_id);
 
-        let record = sample_record("skill-a");
+        let record = sample_record(&identifier);
         let tx = conn.transaction().unwrap();
         upsert_clarifications(&tx, &record).unwrap();
         tx.commit().unwrap();
 
-        let read_back = read_clarifications(&conn, "skill-a").unwrap().unwrap();
-        assert_eq!(read_back.skill_id, "skill-a");
+        let read_back = read_clarifications(&conn, &identifier).unwrap().unwrap();
+        assert_eq!(read_back.skill_id, identifier);
         assert_eq!(read_back.version, "1");
         assert_eq!(read_back.scope_recommendation, Some(true));
         assert_eq!(read_back.sections.len(), 1);
@@ -1022,13 +1039,14 @@ mod tests {
     fn delete_clarifications_cascades_to_children() {
         let mut conn = create_test_db_for_tests();
         let skill_id = seed_skill(&conn, "skill-b");
+        let identifier = skill_identifier(skill_id);
 
-        let record = sample_record("skill-b");
+        let record = sample_record(&identifier);
         let tx = conn.transaction().unwrap();
         upsert_clarifications(&tx, &record).unwrap();
         tx.commit().unwrap();
 
-        delete_clarifications(&conn, "skill-b").unwrap();
+        delete_clarifications(&conn, &identifier).unwrap();
 
         // All five tables must be empty for this skill_id.
         let parent_count: i64 = conn
@@ -1073,15 +1091,16 @@ mod tests {
         assert_eq!(choice_count, 0);
         assert_eq!(note_count, 0);
 
-        assert!(read_clarifications(&conn, "skill-b").unwrap().is_none());
+        assert!(read_clarifications(&conn, &identifier).unwrap().is_none());
     }
 
     #[test]
     fn partial_verdict_update_preserves_answers() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-c");
+        let skill_id = seed_skill(&conn, "skill-c");
+        let identifier = skill_identifier(skill_id);
 
-        let record = sample_record("skill-c");
+        let record = sample_record(&identifier);
         let tx = conn.transaction().unwrap();
         upsert_clarifications(&tx, &record).unwrap();
         tx.commit().unwrap();
@@ -1089,7 +1108,7 @@ mod tests {
         // Update verdict on only q1; q2's answer + verdict must remain intact.
         update_question_verdicts(
             &mut conn,
-            "skill-c",
+            &identifier,
             &[(
                 "q1".to_string(),
                 Some("clear".to_string()),
@@ -1098,7 +1117,7 @@ mod tests {
         )
         .unwrap();
 
-        let read_back = read_clarifications(&conn, "skill-c").unwrap().unwrap();
+        let read_back = read_clarifications(&conn, &identifier).unwrap().unwrap();
         let q1 = read_back
             .questions
             .iter()
@@ -1129,8 +1148,9 @@ mod tests {
     fn recursive_refinement_insert_and_read() {
         let mut conn = create_test_db_for_tests();
         let skill_id = seed_skill(&conn, "skill-d");
+        let identifier = skill_identifier(skill_id);
 
-        let mut record = sample_record("skill-d");
+        let mut record = sample_record(&identifier);
         // Add a refinement under q1.
         record.refinement_count = 1;
         record.questions[0].refinements.push(ClarificationQuestion {
@@ -1191,7 +1211,7 @@ mod tests {
         assert!(q1_parent.is_none());
 
         // Tree reconstruction places refinement under q1.
-        let read_back = read_clarifications(&conn, "skill-d").unwrap().unwrap();
+        let read_back = read_clarifications(&conn, &identifier).unwrap().unwrap();
         let q1 = read_back
             .questions
             .iter()
@@ -1207,9 +1227,10 @@ mod tests {
     fn decisions_roundtrip_and_delete() {
         let mut conn = create_test_db_for_tests();
         let skill_id = seed_skill(&conn, "skill-e");
+        let identifier = skill_identifier(skill_id);
 
         let record = DecisionsRecord {
-            skill_id: "skill-e".to_string(),
+            skill_id: identifier.clone(),
             version: "1".to_string(),
             round: 0,
             decision_count: 2,
@@ -1244,11 +1265,11 @@ mod tests {
         upsert_decisions(&tx, &record).unwrap();
         tx.commit().unwrap();
 
-        let read_back = read_decisions(&conn, "skill-e").unwrap().unwrap();
+        let read_back = read_decisions(&conn, &identifier).unwrap().unwrap();
         assert_eq!(read_back, record);
 
-        delete_decisions(&conn, "skill-e").unwrap();
-        assert!(read_decisions(&conn, "skill-e").unwrap().is_none());
+        delete_decisions(&conn, &identifier).unwrap();
+        assert!(read_decisions(&conn, &identifier).unwrap().is_none());
         let item_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM decision_items WHERE skill_id = ?1",
@@ -1262,16 +1283,17 @@ mod tests {
     #[test]
     fn update_question_answer_clears_and_sets_columns() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-f");
+        let skill_id = seed_skill(&conn, "skill-f");
+        let identifier = skill_identifier(skill_id);
 
-        let record = sample_record("skill-f");
+        let record = sample_record(&identifier);
         let tx = conn.transaction().unwrap();
         upsert_clarifications(&tx, &record).unwrap();
         tx.commit().unwrap();
 
         // Replace q1's answer.
-        update_question_answer(&conn, "skill-f", "q1", Some("c2"), Some("now other")).unwrap();
-        let read_back = read_clarifications(&conn, "skill-f").unwrap().unwrap();
+        update_question_answer(&conn, &identifier, "q1", Some("c2"), Some("now other")).unwrap();
+        let read_back = read_clarifications(&conn, &identifier).unwrap().unwrap();
         let q1 = read_back
             .questions
             .iter()
@@ -1281,8 +1303,8 @@ mod tests {
         assert_eq!(q1.answer_text.as_deref(), Some("now other"));
 
         // Clear it.
-        update_question_answer(&conn, "skill-f", "q1", None, None).unwrap();
-        let read_back = read_clarifications(&conn, "skill-f").unwrap().unwrap();
+        update_question_answer(&conn, &identifier, "q1", None, None).unwrap();
+        let read_back = read_clarifications(&conn, &identifier).unwrap().unwrap();
         let q1 = read_back
             .questions
             .iter()
@@ -1296,16 +1318,17 @@ mod tests {
     fn delete_skill_purges_artifact_rows() {
         let mut conn = create_test_db_for_tests();
         let skill_id = seed_skill(&conn, "purge-test-skill");
+        let identifier = skill_identifier(skill_id);
 
         // Write a clarifications row.
-        let clar = sample_record("purge-test-skill");
+        let clar = sample_record(&identifier);
         let tx = conn.transaction().unwrap();
         upsert_clarifications(&tx, &clar).unwrap();
         tx.commit().unwrap();
 
         // Write a decisions row.
         let decisions = DecisionsRecord {
-            skill_id: "purge-test-skill".to_string(),
+            skill_id: identifier.clone(),
             version: "1".to_string(),
             round: 0,
             decision_count: 1,
@@ -1329,12 +1352,12 @@ mod tests {
         tx.commit().unwrap();
 
         // Confirm both rows exist.
-        assert!(read_clarifications(&conn, "purge-test-skill")
+        assert!(read_clarifications(&conn, &identifier)
             .unwrap()
             .is_some());
-        assert!(read_decisions(&conn, "purge-test-skill").unwrap().is_some());
+        assert!(read_decisions(&conn, &identifier).unwrap().is_some());
 
-        let parent_skill_id = skill_row_id(&conn, "purge-test-skill");
+        let parent_skill_id = skill_row_id(&conn, &identifier);
         assert_eq!(parent_skill_id, skill_id);
 
         // Delete via the skill-deletion DB hook.
@@ -1351,13 +1374,13 @@ mod tests {
 
         // Both artifact families must be gone.
         assert!(
-            read_clarifications(&conn, "purge-test-skill")
+            read_clarifications(&conn, &identifier)
                 .unwrap()
                 .is_none(),
             "delete_skill must purge clarifications rows"
         );
         assert!(
-            read_decisions(&conn, "purge-test-skill").unwrap().is_none(),
+            read_decisions(&conn, &identifier).unwrap().is_none(),
             "delete_skill must purge decisions rows"
         );
     }
@@ -1366,14 +1389,15 @@ mod tests {
     fn deleting_skill_row_cascades_to_artifact_tables() {
         let mut conn = create_test_db_for_tests();
         let skill_id = seed_skill(&conn, "cascade-test-skill");
+        let identifier = skill_identifier(skill_id);
 
-        let clar = sample_record("cascade-test-skill");
+        let clar = sample_record(&identifier);
         let tx = conn.transaction().unwrap();
         upsert_clarifications(&tx, &clar).unwrap();
         tx.commit().unwrap();
 
         let decisions = DecisionsRecord {
-            skill_id: "cascade-test-skill".to_string(),
+            skill_id: identifier.clone(),
             version: "1".to_string(),
             round: 0,
             decision_count: 1,
