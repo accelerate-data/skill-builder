@@ -1345,6 +1345,30 @@ mod reset_artifact_cleanup_tests {
     }
 
     #[test]
+    fn test_reset_from_step_1_clears_clarifications_and_decisions() {
+        let mut conn = create_test_db();
+        crate::db::save_workflow_run(&conn, "test-skill", 1, "pending", "domain").unwrap();
+
+        seed_clarifications(&mut conn, "test-skill");
+        seed_decisions(&mut conn, "test-skill");
+        assert!(has_clarifications(&conn, "test-skill"));
+        assert!(has_decisions(&conn, "test-skill"));
+
+        // Reset from step 1 should clear both because step 1 reruns
+        // clarifications-producing work and invalidates downstream decisions.
+        super::clear_artifacts_for_step_reset(&conn, "test-skill", 1).unwrap();
+
+        assert!(
+            !has_clarifications(&conn, "test-skill"),
+            "clarifications should be deleted when resetting from step 1"
+        );
+        assert!(
+            !has_decisions(&conn, "test-skill"),
+            "decisions should be deleted when resetting from step 1"
+        );
+    }
+
+    #[test]
     fn test_reset_from_step_2_clears_decisions_preserves_clarifications() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 2, "pending", "domain").unwrap();
@@ -1365,6 +1389,31 @@ mod reset_artifact_cleanup_tests {
             !has_decisions(&conn, "test-skill"),
             "decisions should be deleted when resetting from step 2"
         );
+    }
+
+    #[test]
+    fn test_reset_from_step_3_or_later_preserves_clarifications_and_decisions() {
+        for from_step in [3_u32, 4_u32] {
+            let mut conn = create_test_db();
+            crate::db::save_workflow_run(&conn, "test-skill", from_step as i32, "pending", "domain")
+                .unwrap();
+
+            seed_clarifications(&mut conn, "test-skill");
+            seed_decisions(&mut conn, "test-skill");
+            assert!(has_clarifications(&conn, "test-skill"));
+            assert!(has_decisions(&conn, "test-skill"));
+
+            super::clear_artifacts_for_step_reset(&conn, "test-skill", from_step).unwrap();
+
+            assert!(
+                has_clarifications(&conn, "test-skill"),
+                "clarifications should be preserved when resetting from step {from_step}"
+            );
+            assert!(
+                has_decisions(&conn, "test-skill"),
+                "decisions should be preserved when resetting from step {from_step}"
+            );
+        }
     }
 }
 
