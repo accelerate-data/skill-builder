@@ -1,7 +1,7 @@
 # LiteLLM Budget Hierarchy
 
 > **Status:** Draft
-> **Parent:** [Model Settings](../README.md)
+> **Parent:** [LiteLLM Integration](../README.md)
 
 ## LiteLLM Native Behavior
 
@@ -42,7 +42,7 @@ Per-model budgets act as sub-caps within the key's total. If a model hits its pe
 
 ### How Limits Compose
 
-```
+```text
 Global max_budget: $1000
   Global model_max_budget: {gpt-4: $500, claude: $300}
 
@@ -72,7 +72,7 @@ Skill Builder is a single-user desktop app. The user layer is eliminated entirel
 
 ### Budget Resolution for a Profile Key
 
-```
+```rust
 max_budget = budget_total.unwrap_or(budget_monthly)
 ```
 
@@ -82,7 +82,7 @@ If both are set, `budget_total` takes precedence. If neither is set, the key has
 
 Each model in a profile can optionally have its own budget cap. Models without a per-model budget inherit the key's total cap.
 
-```
+```text
 Profile "Pro" (max_budget: $100)
   ├── gpt-4: budget $50
   └── claude-sonnet-4-5: budget $30

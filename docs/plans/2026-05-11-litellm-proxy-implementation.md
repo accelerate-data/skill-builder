@@ -548,9 +548,10 @@ fn spawn_proxy(
     master_key: &str,
     config_path: &Path,
 ) -> Result<tokio::process::Child, String> {
-    let mut cmd = tokio::process::Command::new("uvx");
+    let mut cmd = tokio::process::Command::new(python_path);
     cmd.args([
-        "litellm[proxy]",
+        "-m",
+        "litellm",
         "--config",
         &config_path.to_string_lossy(),
         "--port",
@@ -569,7 +570,7 @@ fn spawn_proxy(
         if e.kind() == std::io::ErrorKind::NotFound {
             "Python uv tool is required. Install uv from https://docs.astral.sh/uv/".to_string()
         } else {
-            format!("Failed to spawn uvx: {e}")
+            format!("Failed to spawn LiteLLM proxy: {e}")
         }
     })
 }
@@ -1606,7 +1607,7 @@ Create helpers for:
   - runs `<venv>/bin/prisma generate` (or Windows equivalent)
   - returns the venv Python path
 
-- [ ] **Step 13: Export the venv module from `mod.rs`**
+- [x] **Step 13: Export the venv module from `mod.rs`**
 
 Add:
 
@@ -1631,15 +1632,15 @@ Keep the existing `LITELLM_MASTER_KEY`, `LITELLM_DATABASE_URL`, stderr capture, 
 - Modify: `scripts/smoke/litellm-pr3-provisioning-smoke.mjs`
 - Modify: `docs/design/litellm-integration/README.md`
 
-- [ ] **Step 15: Add targeted test coverage for the venv bootstrap boundary**
+- [x] **Step 15: Add targeted test coverage for the venv bootstrap boundary**
 
 At minimum, add a focused unit test proving `venv_exists(...)` is false by default in a temp dir. If the helper design supports it cleanly, also add narrow tests for path construction and/or early validation behavior without introducing network-dependent tests.
 
-- [ ] **Step 16: Update the PR3 smoke path to reflect the persistent-venv contract**
+- [x] **Step 16: Update the PR3 smoke path to reflect the persistent-venv contract**
 
 Replace smoke assumptions that directly spawn `uvx litellm[proxy]`. The smoke for remaining PR3 work should validate the venv-backed startup contract instead of the old transient `uvx` path.
 
-- [ ] **Step 17: Remove stale `uvx`-era wording from the design/plan text**
+- [x] **Step 17: Remove stale `uvx`-era wording from the design/plan text**
 
 Update this plan and `docs/design/litellm-integration/README.md` so the documented PR3 contract matches the actual implementation:
 
@@ -1659,7 +1660,7 @@ Run the targeted provisioning smoke as part of PR3 verification once it matches 
 
 ### Task 11: Commit
 
-- [ ] **Step 19: Commit**
+- [x] **Step 19: Commit**
 
 ```bash
 git add app/src-tauri/ scripts/smoke/ docs/design/ docs/plans/
