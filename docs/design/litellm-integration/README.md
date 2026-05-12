@@ -39,13 +39,14 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 | Decision | Rationale |
 |---|---|
 | LiteLLM runs as a Rust-managed sidecar process | Matches existing OpenHands process management pattern; users don't manage external processes |
+| Persistent venv for LiteLLM + Prisma in `{app_data}/litellm/venv/` | LiteLLM's admin API requires Prisma. `uvx --with prisma` is slow on first run and unreliable offline. A persistent venv installs once, caches forever, and works offline after first launch. |
 | Separate LiteLLM SQLite DB in `{app_data}/litellm/litellm.db` | Avoids schema conflicts, lock contention, and corruption risk from sharing `skill-builder.db` |
 | Provider API keys stored in app SQLite, not LiteLLM config.yaml | Keys are sensitive; config.yaml is regenerated on every change. Keys passed via config at startup only |
 | One virtual key per profile | LiteLLM tracks spend and enforces budgets per key; profiles map 1:1 to keys |
 | Drop `agent_runs` table entirely | Dev mode; no migration needed. LiteLLM's `LiteLLM_SpendLogs` is the new usage source |
 | OpenHands points to proxy, not direct provider | Single routing authority; fallbacks, budgets, and rate limits enforced centrally |
 | Config regeneration triggers proxy restart | LiteLLM reads config at startup only; changes require restart. Virtual keys preserved via admin API |
-| `uvx litellm[proxy]` at runtime (latest, no version pin) | Same pattern as OpenHands; LiteLLM auto-syncs model pricing from GitHub. Breaking changes are caught by proxy startup failure, not runtime errors |
+| Persistent venv with latest LiteLLM + Prisma (no version pin) | Same pattern as OpenHands; LiteLLM auto-syncs model pricing from GitHub. Breaking changes are caught by proxy startup failure, not runtime errors |
 | Proxy starts async on app launch, not blocking UI | App renders immediately. Background thread spawns proxy. Frontend shows "LLM proxy starting..." if user runs skill before healthy |
 | No fallback to direct provider calls | Single proxy-only architecture. If proxy fails to start, agent runs are blocked with a clear error. No dual code path to maintain |
 
@@ -59,7 +60,7 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 │                                                     │
 │  ┌────────────┐    ┌────────────────────────────┐   │
 │  │  Rust      │───▶│  LiteLLM Proxy Process     │   │
-│  │  Backend   │    │  (uvx litellm[proxy])      │   │
+│  │  Backend   │    │  (venv: litellm[proxy])    │   │
 │  │            │◀───│  :<port>/v1 + admin API    │   │
 │  └─────┬──────┘    └──────────┬─────────────────┘   │
 │        │                      │                     │
@@ -89,6 +90,9 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 │   └── skill-builder.db          ← App DB (skills, settings, workflow)
 ├── openhands/                    ← OpenHands conversations, logs
 └── litellm/
+    ├── venv/                     ← Persistent Python venv (litellm[proxy] + prisma)
+    │   ├── bin/python            ← Python interpreter
+    │   └── lib/...               ← Installed packages
     ├── config.yaml               ← Generated proxy config
     ├── .master_key               ← LiteLLM master key (0600 permissions)
     └── litellm.db                ← LiteLLM usage/budgets
@@ -99,17 +103,20 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 **Startup** (runs on Tauri app launch, async background thread):
 
 1. Rust spawns proxy setup on a background Tokio task; app UI renders immediately
-2. Rust reads `llm_providers` + `llm_profiles` from app SQLite
-3. Rust generates `{app_data}/litellm/config.yaml` from provider/profile data
-4. Rust reads or generates `{app_data}/litellm/.master_key` (0600 permissions)
-5. Rust selects a random available port (same pattern as `select_random_local_port()`)
-6. Rust spawns: `uvx litellm[proxy] --config config.yaml --port <port>`
-7. Rust polls `http://127.0.0.1:<port>/health` until healthy (5s timeout, 100ms intervals)
-8. Rust calls LiteLLM admin API to bootstrap a single shared user `"skill-builder"` (409 ignored if exists), then provisions virtual keys for each profile in a detached task:
+2. Rust ensures persistent venv at `{app_data}/litellm/venv/`:
+   - If venv missing: `uv venv {app_data}/litellm/venv` → `uv pip install "litellm[proxy]" prisma` → `{venv}/bin/prisma generate`
+   - First run is slow (~30s download + install); subsequent launches are fast
+3. Rust reads `llm_providers` + `llm_profiles` from app SQLite
+4. Rust generates `{app_data}/litellm/config.yaml` from provider/profile data
+5. Rust reads or generates `{app_data}/litellm/.master_key` (0600 permissions)
+6. Rust selects a random available port (same pattern as `select_random_local_port()`)
+7. Rust spawns: `{venv}/bin/python -m litellm --config config.yaml --port <port>`
+8. Rust polls `http://127.0.0.1:<port>/health` until healthy (5s timeout, 100ms intervals)
+9. Rust calls LiteLLM admin API to bootstrap a single shared user `"skill-builder"` (409 ignored if exists), then provisions virtual keys for each profile in a detached task:
    - `POST /key/generate` → Create virtual key with models, budget, rate limits, per-model budgets
-9. Rust stores virtual keys back in `llm_profiles` table
-10. Port and master key stored in static registry (pattern: `OpenHandsAgentServerRegistry`)
-11. On completion, Rust emits a Tauri event (`litellm-proxy-ready`) that the frontend listens to for enabling "Run" buttons
+10. Rust stores virtual keys back in `llm_profiles` table
+11. Port and master key stored in static registry (pattern: `OpenHandsAgentServerRegistry`)
+12. On completion, Rust emits a Tauri event (`litellm-proxy-ready`) that the frontend listens to for enabling "Run" buttons
 
 **Shutdown** (on app quit):
 
@@ -391,11 +398,12 @@ provider_auth_error
 - UI shows provider auth error with link to Providers settings page
 - Provider card shows "Invalid API key" status
 
-### uvx Download Failure
+### Venv Bootstrap Failure
 
-- If `uvx` is not installed or network is unavailable, proxy startup fails
+- If `uv` is not installed, network is unavailable, or `prisma generate` fails, proxy startup fails
 - Error message: "Python uv tool is required. Install uv from https://docs.astral.sh/uv/"
 - Same blocked state as proxy startup failure
+- First run requires internet; subsequent launches work offline from cached venv
 
 ## Open Questions
 

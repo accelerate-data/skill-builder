@@ -17,7 +17,8 @@
 | 1 | `feat: LiteLLM proxy process management` | Rust spawns/manages proxy, health check, shutdown, master key, port selection | None |
 | 2 | `feat: provider/profile DB schema + config generation` | New SQLite tables, CRUD commands, config.yaml generation | PR 1 |
 | 3 | `feat: virtual key management + profile activation` | Create LiteLLM users/keys, bind profiles to virtual keys | PR 2 |
-| 4 | `feat: OpenHands runtime config → proxy routing` | Change OpenHands to use proxy URL + virtual key | PR 3 |
+| 3a | `fix: persistent venv for LiteLLM + Prisma` | Replace `uvx` with persistent venv, bootstrap Prisma, update spawn command | PR 1 |
+| 4 | `feat: OpenHands runtime config → proxy routing` | Change OpenHands to use proxy URL + virtual key | PR 3, PR 3a |
 | 5 | `feat: Providers settings page` | Frontend UI for managing providers | PR 2 |
 | 6 | `feat: Models settings page` | Frontend UI for profiles, budgets, virtual keys | PR 3, PR 5 |
 | 7 | `feat: usage migration to LiteLLM` | Drop agent_runs, new LiteLLM-backed usage commands + UI | PR 3 |
@@ -77,6 +78,7 @@
 | `app/src-tauri/src/commands/workflow/runtime.rs` | Modify — pass proxy URL + virtual key to OpenHands config |
 | `app/src/lib/types.ts` | Modify — update ModelSettings TypeScript type |
 | `app/src-tauri/src/agents/runtime_config.rs` (tests) | Modify — update tests for new config shape |
+| `app/src-tauri/src/agents/litellm_proxy/process.rs` | Modify — spawn uses venv python path (from PR 3a) |
 
 ### PR 5: Providers Frontend Page
 | File | Action |
@@ -1607,6 +1609,243 @@ git commit -m "feat: virtual key provisioning with single shared user, per-model
 - [ ] Check logs for `[litellm-proxy] provisioned virtual key for profile '...'`
 - [ ] Call `invoke('verify_profile_virtual_key', { profile_id: '...' })` — should return `true`
 - [ ] Verify `{app_data}/litellm/litellm.db` exists and has LiteLLM tables
+
+---
+
+## PR 3a: Persistent Venv for LiteLLM + Prisma
+
+**Goal:** Replace `uvx litellm[proxy]` with a persistent Python venv at `{app_data}/litellm/venv/` that includes both `litellm[proxy]` and `prisma`. LiteLLM's admin API (`/user/new`, `/key/generate`, `/key/info`) requires Prisma — without it, all admin endpoints fail. The persistent venv installs once on first launch, caches forever, and works offline thereafter.
+
+### Task 1: Add venv bootstrap module
+
+**Files:**
+- Create: `app/src-tauri/src/agents/litellm_proxy/venv.rs`
+- Modify: `app/src-tauri/src/agents/litellm_proxy/mod.rs`
+
+- [ ] **Step 1: Create venv.rs**
+
+```rust
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+const VENV_DIR: &str = "venv";
+
+#[cfg(unix)]
+fn python_path(venv_root: &Path) -> PathBuf {
+    venv_root.join("bin/python")
+}
+
+#[cfg(windows)]
+fn python_path(venv_root: &Path) -> PathBuf {
+    venv_root.join("Scripts/python.exe")
+}
+
+#[cfg(unix)]
+fn prisma_path(venv_root: &Path) -> PathBuf {
+    venv_root.join("bin/prisma")
+}
+
+#[cfg(windows)]
+fn prisma_path(venv_root: &Path) -> PathBuf {
+    venv_root.join("Scripts/prisma.exe")
+}
+
+/// Check if the venv already exists and has the required packages.
+pub fn venv_exists(app_data_root: &Path) -> bool {
+    let venv_root = app_data_root.join("litellm").join(VENV_DIR);
+    python_path(&venv_root).exists()
+}
+
+/// Bootstrap the persistent venv for LiteLLM + Prisma.
+/// Returns the path to the Python interpreter in the venv.
+pub fn ensure_venv(app_data_root: &Path) -> Result<PathBuf, String> {
+    let litellm_dir = app_data_root.join("litellm");
+    let venv_root = litellm_dir.join(VENV_DIR);
+    let python = python_path(&venv_root);
+
+    if python.exists() {
+        log::info!("[litellm-proxy] venv already exists at {:?}", venv_root);
+        return Ok(python);
+    }
+
+    log::info!("[litellm-proxy] bootstrapping venv at {:?}", venv_root);
+
+    // Step 1: Create venv
+    let status = Command::new("uv")
+        .args(["venv", venv_root.to_str().ok_or("Invalid venv path")?])
+        .status()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "Python uv tool is required. Install uv from https://docs.astral.sh/uv/".to_string()
+            } else {
+                format!("Failed to create venv: {e}")
+            }
+        })?;
+
+    if !status.success() {
+        return Err("Failed to create LiteLLM venv".to_string());
+    }
+
+    // Step 2: Install litellm[proxy] + prisma
+    let python_str = python.to_str().ok_or("Invalid python path")?;
+    let status = Command::new("uv")
+        .args([
+            "pip",
+            "install",
+            "--python",
+            python_str,
+            "litellm[proxy]",
+            "prisma",
+        ])
+        .status()
+        .map_err(|e| format!("Failed to install packages: {e}"))?;
+
+    if !status.success() {
+        return Err("Failed to install LiteLLM + Prisma in venv".to_string());
+    }
+
+    // Step 3: Run prisma generate
+    let status = Command::new(prisma_path(&venv_root))
+        .arg("generate")
+        .status()
+        .map_err(|e| format!("Failed to run prisma generate: {e}"))?;
+
+    if !status.success() {
+        return Err("prisma generate failed".to_string());
+    }
+
+    log::info!("[litellm-proxy] venv bootstrapped successfully");
+    Ok(python)
+}
+```
+
+- [ ] **Step 2: Update mod.rs to export venv module**
+
+```rust
+// Add to existing mod.rs:
+pub mod venv;
+```
+
+### Task 2: Update process.rs to use venv instead of `uvx`
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/litellm_proxy/process.rs`
+
+- [ ] **Step 3: Update `spawn_proxy` to accept python_path**
+
+Change the spawn function signature and implementation:
+
+```rust
+fn spawn_proxy(
+    port: u16,
+    master_key: &str,
+    config_path: &Path,
+    python_path: &Path,
+) -> Result<tokio::process::Child, String> {
+    let mut cmd = tokio::process::Command::new(python_path);
+    cmd.args([
+        "-m",
+        "litellm",
+        "--config",
+        &config_path.to_string_lossy(),
+        "--port",
+        &port.to_string(),
+    ])
+    .env("LITELLM_MASTER_KEY", master_key)
+    .env("LITELLM_DATABASE_URL", &format!("sqlite:///{}/litellm.db", config_path.parent().unwrap().to_string_lossy()))
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .kill_on_drop(true);
+    #[cfg(unix)]
+    cmd.process_group(0);
+
+    cmd.spawn().map_err(|e| {
+        format!("Failed to spawn LiteLLM proxy: {e}")
+    })
+}
+```
+
+- [ ] **Step 4: Update `LiteLLMProxyProcess::start` to call `ensure_venv`**
+
+```rust
+impl LiteLLMProxyProcess {
+    pub async fn start(timeout: Duration, app_data_root: &Path) -> Result<Self, String> {
+        // Bootstrap venv first
+        let python_path = crate::agents::litellm_proxy::venv::ensure_venv(app_data_root)?;
+
+        let port = select_random_local_port()?;
+        let master_key = read_or_create_master_key(app_data_root)?;
+        let config_path = ensure_config_dir(app_data_root)?;
+
+        let mut child = spawn_proxy(port, &master_key, &config_path, &python_path)
+            .map_err(|e| format!("Failed to spawn LiteLLM proxy: {e}"))?;
+
+        // ... rest of existing startup logic (stderr tail, health check)
+    }
+}
+```
+
+### Task 3: Update tests
+
+**Files:**
+- Modify: `app/src-tauri/src/agents/litellm_proxy/tests.rs`
+
+- [ ] **Step 5: Add venv_exists test**
+
+```rust
+#[test]
+fn venv_does_not_exist_by_default() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(!crate::agents::litellm_proxy::venv::venv_exists(tmp.path()));
+}
+```
+
+### Task 4: Update File Map
+
+**Files:**
+- Modify: `docs/plans/2026-05-11-litellm-proxy-implementation.md`
+
+- [ ] **Step 6: Add PR 3a entries to File Map**
+
+Add to the File Map section:
+
+```markdown
+### PR 3a: Persistent Venv
+| File | Action |
+|---|---|
+| `app/src-tauri/src/agents/litellm_proxy/venv.rs` | Create — venv bootstrap, existence check, python/prisma paths |
+| `app/src-tauri/src/agents/litellm_proxy/mod.rs` | Modify — add `pub mod venv` |
+| `app/src-tauri/src/agents/litellm_proxy/process.rs` | Modify — use venv python instead of `uvx`, update spawn signature |
+| `app/src-tauri/src/agents/litellm_proxy/tests.rs` | Modify — add venv_exists test |
+```
+
+### Task 5: Run tests
+
+- [ ] **Step 7: Run tests**
+
+```bash
+cd app/src-tauri && cargo test litellm_proxy -- --nocapture
+```
+
+### Task 6: Commit
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add app/src-tauri/src/agents/litellm_proxy/venv.rs app/src-tauri/src/agents/litellm_proxy/mod.rs app/src-tauri/src/agents/litellm_proxy/process.rs app/src-tauri/src/agents/litellm_proxy/tests.rs
+git commit -m "fix: persistent venv for LiteLLM + Prisma (replaces uvx)"
+```
+
+### Manual smoke test for PR 3a
+
+- [ ] Delete any existing `{app_data}/litellm/venv/` directory
+- [ ] Run `cd app && npm run dev`
+- [ ] Verify logs show `[litellm-proxy] bootstrapping venv at ...`
+- [ ] Verify venv directory is created with `bin/python` and `bin/prisma`
+- [ ] Verify proxy starts successfully after venv bootstrap
+- [ ] Restart app — verify logs show `[litellm-proxy] venv already exists at ...` (fast startup)
+- [ ] Verify admin API endpoints work: `invoke('verify_profile_virtual_key', { profile_id: '...' })` returns `true`
 
 ---
 
