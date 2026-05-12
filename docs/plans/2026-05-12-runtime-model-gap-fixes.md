@@ -172,7 +172,7 @@ The leave contract says: if pause fails, the current skill stays visible and the
 **Files:**
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Open `app/src-tauri/src/commands/skill_session.rs`. Add to the `#[cfg(test)]` block:
 
@@ -200,7 +200,7 @@ cd app/src-tauri && cargo test skill_session::tests::pause_with_nonexistent_lock
 
 Expected: this test may pass or fail depending on the current DB behavior — it validates the assumption before the fix.
 
-- [ ] **Step 2: Fix the lock-release code**
+- [x] **Step 2: Fix the lock-release code**
 
 Find the section in `pause_openhands_session` (around lines 367–374):
 
@@ -229,7 +229,7 @@ if let Some(sid) = skill_id {
 Ok(())
 ```
 
-- [ ] **Step 3: Compile**
+- [x] **Step 3: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -237,7 +237,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 4: Run the skill_session tests**
+- [x] **Step 4: Run the skill_session tests**
 
 ```bash
 cd app/src-tauri && cargo test skill_session::
@@ -245,7 +245,7 @@ cd app/src-tauri && cargo test skill_session::
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs
