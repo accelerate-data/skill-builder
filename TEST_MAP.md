@@ -100,6 +100,7 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/skill_session.rs` | `commands::skill_session` | `@workflow`, `@refine` |
 | `app/src-tauri/src/commands/workflow_lifecycle.rs` | `commands::workflow_lifecycle` | `@workflow` |
 | `app/src-tauri/src/commands/refine/mod.rs` | `commands::refine` | `@refine` |
+| `app/src-tauri/src/commands/refine/events.rs` | `commands::refine::events` | `@refine` |
 | `app/src-tauri/src/commands/eval_workbench/mod.rs` | `commands::eval_workbench` | `@evals` |
 | `app/src-tauri/src/commands/git.rs` | -- | `@dashboard` |
 | `app/src-tauri/src/commands/lifecycle.rs` | -- | -- |
