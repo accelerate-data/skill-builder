@@ -1804,9 +1804,7 @@ fn test_materialize_step1_rejects_wrong_status() {
         "clarifications_json": valid_clarifications_value()
     });
     let err = materialize_workflow_step_output_value(&db, "my-skill", 1, &payload).unwrap_err();
-    assert!(err.contains(
-        "workflow result payload status must be 'detailed_research_complete'"
-    ));
+    assert!(err.contains("workflow result payload status must be 'detailed_research_complete'"));
 }
 
 #[test]
@@ -2188,13 +2186,8 @@ fn publish_commit_and_tag_generated_skill_creates_initial_version_tag() {
     .unwrap();
     std::fs::write(generated_refs.join("terms.md"), "# Terms\n").unwrap();
 
-    publish_commit_and_tag_generated_skill(
-        &skill_dir,
-        skills.path(),
-        "skills",
-        "tagged-skill",
-    )
-    .unwrap();
+    publish_commit_and_tag_generated_skill(&skill_dir, skills.path(), "skills", "tagged-skill")
+        .unwrap();
 
     let skill_dir = crate::skill_paths::resolve_skill_dir(skills.path(), "skills", "tagged-skill");
     assert!(
@@ -2216,13 +2209,8 @@ fn publish_commit_and_tag_generated_skill_accepts_skill_without_metadata_version
     )
     .unwrap();
 
-    publish_commit_and_tag_generated_skill(
-        &skill_dir,
-        skills.path(),
-        "skills",
-        "tagged-skill",
-    )
-    .unwrap();
+    publish_commit_and_tag_generated_skill(&skill_dir, skills.path(), "skills", "tagged-skill")
+        .unwrap();
 }
 
 #[test]
@@ -2238,13 +2226,8 @@ fn publish_commit_and_tag_generated_skill_accepts_non_initial_metadata_version_i
     )
     .unwrap();
 
-    publish_commit_and_tag_generated_skill(
-        &skill_dir,
-        skills.path(),
-        "skills",
-        "tagged-skill",
-    )
-    .unwrap();
+    publish_commit_and_tag_generated_skill(&skill_dir, skills.path(), "skills", "tagged-skill")
+        .unwrap();
 }
 
 #[test]
@@ -2274,13 +2257,9 @@ fn publish_commit_and_tag_generated_skill_surfaces_duplicate_tag_error() {
     )
     .unwrap();
 
-    let err = publish_commit_and_tag_generated_skill(
-        &skill_dir,
-        skills.path(),
-        plugin_slug,
-        skill_name,
-    )
-    .unwrap_err();
+    let err =
+        publish_commit_and_tag_generated_skill(&skill_dir, skills.path(), plugin_slug, skill_name)
+            .unwrap_err();
 
     assert!(
         err.contains("Generated skill version tag failed"),
@@ -2756,10 +2735,7 @@ fn test_ensure_workspace_prompts_inner_deploys_workflow_agents_to_openhands_layo
         .path()
         .join(".agents/agents/skill-verifier.md")
         .is_file());
-    assert!(!workspace
-        .path()
-        .join(".agents/agents/README.txt")
-        .exists());
+    assert!(!workspace.path().join(".agents/agents/README.txt").exists());
     // Skills deployed to workspace root .agents/skills/
     assert!(workspace
         .path()

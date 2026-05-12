@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::frontmatter::parse_frontmatter_full;
 use super::helpers::copy_dir_recursive;
-    use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 
 const WORKFLOW_INTERNAL_SKILLS: &[&str] = &["research"];
 const BUNDLED_WORKSPACE_MARKER: &str = ".skill-builder-bundled";
@@ -171,11 +171,8 @@ pub(crate) fn seed_bundled_skills(
         }
 
         // Copy directory to the canonical workspace skill location.
-        let dest_dir = resolve_skill_dir(
-            Path::new(workspace_path),
-            DEFAULT_PLUGIN_SLUG,
-            &skill_name,
-        );
+        let dest_dir =
+            resolve_skill_dir(Path::new(workspace_path), DEFAULT_PLUGIN_SLUG, &skill_name);
         if dest_dir.exists() {
             fs::remove_dir_all(&dest_dir)
                 .map_err(|e| format!("Failed to remove existing bundled skill dir: {}", e))?;
@@ -208,7 +205,7 @@ pub(crate) fn seed_bundled_skills(
 #[cfg(test)]
 mod tests {
     use super::{purge_stale_bundled_skills, seed_bundled_skills, BUNDLED_WORKSPACE_MARKER};
-use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+    use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 
     #[test]
     fn seed_bundled_skills_uses_canonical_workspace_layout() {

@@ -199,7 +199,7 @@ fn spawn_proxy(
     let mut cmd = tokio::process::Command::new(python_path);
     cmd.args([
         "-m",
-        "litellm",
+        "litellm.proxy.proxy_cli",
         "--config",
         &config_path.to_string_lossy(),
         "--port",
@@ -207,7 +207,7 @@ fn spawn_proxy(
     ])
     .env("LITELLM_MASTER_KEY", master_key)
     .env(
-        "LITELLM_DATABASE_URL",
+        "DATABASE_URL",
         format!("sqlite:///{}", litellm_db.to_string_lossy()),
     )
     .stdin(Stdio::null())

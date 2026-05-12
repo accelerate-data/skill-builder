@@ -38,11 +38,13 @@ const pythonPath = process.platform === "win32"
 const prismaPath = process.platform === "win32"
   ? path.join(venvDir, "Scripts", "prisma.exe")
   : path.join(venvDir, "bin", "prisma");
+const venvBinDir = path.dirname(prismaPath);
+const databaseUrl = `sqlite:///${litellmDir}/litellm.db`;
 
 const configYaml = `model_list: []
 general_settings:
   master_key: ${masterKey}
-  database_url: sqlite:///${litellmDir}/litellm.db
+  database_url: ${databaseUrl}
 `;
 
 await mkdir(litellmDir, { recursive: true });
@@ -54,19 +56,33 @@ await run("uv", ["venv", venvDir], { cwd: litellmDir });
 await run("uv", ["pip", "install", "--python", pythonPath, "litellm[proxy]", "prisma"], {
   cwd: litellmDir,
 });
-await run(prismaPath, ["generate"], { cwd: litellmDir });
+const schemaPath = await capture(
+  pythonPath,
+  [
+    "-c",
+    "import litellm, os; print(os.path.join(os.path.dirname(litellm.__file__), 'proxy', 'schema.prisma'))",
+  ],
+  { cwd: litellmDir }
+);
+await assertExists(schemaPath, "LiteLLM packaged schema");
+await run(prismaPath, ["generate", "--schema", schemaPath], {
+  cwd: path.dirname(schemaPath),
+  env: {
+    PATH: `${venvBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
+  },
+});
 await assertExists(pythonPath, "LiteLLM venv python");
 await assertExists(prismaPath, "LiteLLM venv prisma");
 
 const proxy = spawn(
   pythonPath,
-  ["-m", "litellm", "--config", configPath, "--port", String(port)],
+  ["-m", "litellm.proxy.proxy_cli", "--config", configPath, "--port", String(port)],
   {
     cwd: litellmDir,
     env: {
       ...process.env,
       LITELLM_MASTER_KEY: masterKey,
-      LITELLM_DATABASE_URL: `sqlite:///${litellmDir}/litellm.db`,
+      DATABASE_URL: databaseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],
   }
@@ -245,7 +261,11 @@ function sleep(ms) {
 }
 
 async function run(command, args, options = {}) {
-  await new Promise((resolve, reject) => {
+  await capture(command, args, options, false);
+}
+
+async function capture(command, args, options = {}, trim = true) {
+  return await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       ...options,
       stdio: ["ignore", "pipe", "pipe"],
@@ -262,7 +282,7 @@ async function run(command, args, options = {}) {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) {
-        resolve();
+        resolve(trim ? stdout.trim() : stdout);
       } else {
         reject(
           new Error(

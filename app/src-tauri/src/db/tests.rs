@@ -4597,16 +4597,20 @@ fn test_litellm_provider_insert_and_list() {
 fn test_litellm_provider_list_ordered_by_name() {
     let conn = create_test_db();
     for name in &["zeta", "alpha", "middle"] {
-        insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-            id: name.to_string(),
-            name: name.to_string(),
-            api_key: SecretString::new("key".to_string()),
-            base_url: None,
-            enabled: true,
-            created_at: 1700000000,
-        }).unwrap();
+        insert_provider(
+            &conn,
+            &LlmProvider {
+                litellm_provider_prefix: None,
+                settings_json: None,
+                id: name.to_string(),
+                name: name.to_string(),
+                api_key: SecretString::new("key".to_string()),
+                base_url: None,
+                enabled: true,
+                created_at: 1700000000,
+            },
+        )
+        .unwrap();
     }
     let providers = list_providers(&conn).unwrap();
     assert_eq!(providers[0].name, "alpha");
@@ -4617,27 +4621,35 @@ fn test_litellm_provider_list_ordered_by_name() {
 #[test]
 fn test_litellm_provider_update() {
     let conn = create_test_db();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p1".to_string(),
-        name: "old".to_string(),
-        api_key: SecretString::new("old-key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p1".to_string(),
+            name: "old".to_string(),
+            api_key: SecretString::new("old-key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    update_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p1".to_string(),
-        name: "new".to_string(),
-        api_key: SecretString::new("new-key".to_string()),
-        base_url: Some("https://custom.api".to_string()),
-        enabled: false,
-        created_at: 1700000000,
-    }).unwrap();
+    update_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p1".to_string(),
+            name: "new".to_string(),
+            api_key: SecretString::new("new-key".to_string()),
+            base_url: Some("https://custom.api".to_string()),
+            enabled: false,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
     let p = get_provider(&conn, "p1").unwrap().unwrap();
     assert_eq!(p.name, "new");
@@ -4655,16 +4667,20 @@ fn test_litellm_provider_get_not_found() {
 #[test]
 fn test_litellm_provider_delete() {
     let conn = create_test_db();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "del-me".to_string(),
-        name: "temp".to_string(),
-        api_key: SecretString::new("key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "del-me".to_string(),
+            name: "temp".to_string(),
+            api_key: SecretString::new("key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
     delete_provider(&conn, "del-me").unwrap();
     assert_eq!(list_providers(&conn).unwrap().len(), 0);
@@ -4699,17 +4715,21 @@ fn test_litellm_profile_insert_and_list() {
 #[test]
 fn test_litellm_profile_get() {
     let conn = create_test_db();
-    insert_profile(&conn, &LlmProfile {
-        id: "pg1".to_string(),
-        name: "test".to_string(),
-        budget_monthly: None,
-        budget_total: None,
-        tpm_limit: None,
-        rpm_limit: None,
-        virtual_key: None,
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_profile(
+        &conn,
+        &LlmProfile {
+            id: "pg1".to_string(),
+            name: "test".to_string(),
+            budget_monthly: None,
+            budget_total: None,
+            tpm_limit: None,
+            rpm_limit: None,
+            virtual_key: None,
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
     let p = get_profile(&conn, "pg1").unwrap().unwrap();
     assert_eq!(p.name, "test");
@@ -4720,29 +4740,37 @@ fn test_litellm_profile_get() {
 #[test]
 fn test_litellm_profile_update() {
     let conn = create_test_db();
-    insert_profile(&conn, &LlmProfile {
-        id: "pu1".to_string(),
-        name: "old".to_string(),
-        budget_monthly: Some(50.0),
-        budget_total: None,
-        tpm_limit: None,
-        rpm_limit: None,
-        virtual_key: Some("vk-old".to_string()),
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_profile(
+        &conn,
+        &LlmProfile {
+            id: "pu1".to_string(),
+            name: "old".to_string(),
+            budget_monthly: Some(50.0),
+            budget_total: None,
+            tpm_limit: None,
+            rpm_limit: None,
+            virtual_key: Some("vk-old".to_string()),
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    update_profile(&conn, &LlmProfile {
-        id: "pu1".to_string(),
-        name: "new".to_string(),
-        budget_monthly: Some(200.0),
-        budget_total: Some(1000.0),
-        tpm_limit: Some(5000),
-        rpm_limit: Some(30),
-        virtual_key: None,
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    update_profile(
+        &conn,
+        &LlmProfile {
+            id: "pu1".to_string(),
+            name: "new".to_string(),
+            budget_monthly: Some(200.0),
+            budget_total: Some(1000.0),
+            tpm_limit: Some(5000),
+            rpm_limit: Some(30),
+            virtual_key: None,
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
     let p = get_profile(&conn, "pu1").unwrap().unwrap();
     assert_eq!(p.name, "new");
@@ -4757,56 +4785,76 @@ fn test_litellm_profile_update() {
 #[test]
 fn test_litellm_profile_delete_cascades_to_models() {
     let conn = create_test_db();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p1".to_string(),
-        name: "anthropic".to_string(),
-        api_key: SecretString::new("key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p2".to_string(),
-        name: "openai".to_string(),
-        api_key: SecretString::new("key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p1".to_string(),
+            name: "anthropic".to_string(),
+            api_key: SecretString::new("key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p2".to_string(),
+            name: "openai".to_string(),
+            api_key: SecretString::new("key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile(&conn, &LlmProfile {
-        id: "del-prof".to_string(),
-        name: "to-delete".to_string(),
-        budget_monthly: None,
-        budget_total: None,
-        tpm_limit: None,
-        rpm_limit: None,
-        virtual_key: None,
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_profile(
+        &conn,
+        &LlmProfile {
+            id: "del-prof".to_string(),
+            name: "to-delete".to_string(),
+            budget_monthly: None,
+            budget_total: None,
+            tpm_limit: None,
+            rpm_limit: None,
+            virtual_key: None,
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile_model(&conn, &LlmProfileModel {
-        budget: None,
-        id: "m1".to_string(),
-        profile_id: "del-prof".to_string(),
-        model_name: "claude-sonnet".to_string(),
-        provider_id: "p1".to_string(),
-        priority: 0,
-    }).unwrap();
+    insert_profile_model(
+        &conn,
+        &LlmProfileModel {
+            budget: None,
+            id: "m1".to_string(),
+            profile_id: "del-prof".to_string(),
+            model_name: "claude-sonnet".to_string(),
+            provider_id: "p1".to_string(),
+            priority: 0,
+        },
+    )
+    .unwrap();
 
-    insert_profile_model(&conn, &LlmProfileModel {
-        budget: None,
-        id: "m2".to_string(),
-        profile_id: "del-prof".to_string(),
-        model_name: "gpt-4".to_string(),
-        provider_id: "p2".to_string(),
-        priority: 1,
-    }).unwrap();
+    insert_profile_model(
+        &conn,
+        &LlmProfileModel {
+            budget: None,
+            id: "m2".to_string(),
+            profile_id: "del-prof".to_string(),
+            model_name: "gpt-4".to_string(),
+            provider_id: "p2".to_string(),
+            priority: 1,
+        },
+    )
+    .unwrap();
 
     delete_profile(&conn, "del-prof").unwrap();
 
@@ -4817,37 +4865,49 @@ fn test_litellm_profile_delete_cascades_to_models() {
 #[test]
 fn test_litellm_profile_delete_is_atomic() {
     let conn = create_test_db();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p1".to_string(),
-        name: "anthropic".to_string(),
-        api_key: SecretString::new("key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p1".to_string(),
+            name: "anthropic".to_string(),
+            api_key: SecretString::new("key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile(&conn, &LlmProfile {
-        id: "atomic-prof".to_string(),
-        name: "atomic".to_string(),
-        budget_monthly: None,
-        budget_total: None,
-        tpm_limit: None,
-        rpm_limit: None,
-        virtual_key: None,
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_profile(
+        &conn,
+        &LlmProfile {
+            id: "atomic-prof".to_string(),
+            name: "atomic".to_string(),
+            budget_monthly: None,
+            budget_total: None,
+            tpm_limit: None,
+            rpm_limit: None,
+            virtual_key: None,
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile_model(&conn, &LlmProfileModel {
-        budget: None,
-        id: "am1".to_string(),
-        profile_id: "atomic-prof".to_string(),
-        model_name: "model".to_string(),
-        provider_id: "p1".to_string(),
-        priority: 0,
-    }).unwrap();
+    insert_profile_model(
+        &conn,
+        &LlmProfileModel {
+            budget: None,
+            id: "am1".to_string(),
+            profile_id: "atomic-prof".to_string(),
+            model_name: "model".to_string(),
+            provider_id: "p1".to_string(),
+            priority: 0,
+        },
+    )
+    .unwrap();
 
     delete_profile(&conn, "atomic-prof").unwrap();
 
@@ -4860,28 +4920,36 @@ fn test_litellm_profile_delete_is_atomic() {
 #[test]
 fn test_litellm_profile_model_crud() {
     let conn = create_test_db();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p1".to_string(),
-        name: "anthropic".to_string(),
-        api_key: SecretString::new("key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p1".to_string(),
+            name: "anthropic".to_string(),
+            api_key: SecretString::new("key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile(&conn, &LlmProfile {
-        id: "prof-x".to_string(),
-        name: "test".to_string(),
-        budget_monthly: None,
-        budget_total: None,
-        tpm_limit: None,
-        rpm_limit: None,
-        virtual_key: None,
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_profile(
+        &conn,
+        &LlmProfile {
+            id: "prof-x".to_string(),
+            name: "test".to_string(),
+            budget_monthly: None,
+            budget_total: None,
+            tpm_limit: None,
+            rpm_limit: None,
+            virtual_key: None,
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
     let model = LlmProfileModel {
         budget: None,
@@ -4902,37 +4970,49 @@ fn test_litellm_profile_model_crud() {
 #[test]
 fn test_litellm_delete_profile_model() {
     let conn = create_test_db();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p1".to_string(),
-        name: "anthropic".to_string(),
-        api_key: SecretString::new("key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p1".to_string(),
+            name: "anthropic".to_string(),
+            api_key: SecretString::new("key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile(&conn, &LlmProfile {
-        id: "prof-y".to_string(),
-        name: "test".to_string(),
-        budget_monthly: None,
-        budget_total: None,
-        tpm_limit: None,
-        rpm_limit: None,
-        virtual_key: None,
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_profile(
+        &conn,
+        &LlmProfile {
+            id: "prof-y".to_string(),
+            name: "test".to_string(),
+            budget_monthly: None,
+            budget_total: None,
+            tpm_limit: None,
+            rpm_limit: None,
+            virtual_key: None,
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile_model(&conn, &LlmProfileModel {
-        budget: None,
-        id: "del-m1".to_string(),
-        profile_id: "prof-y".to_string(),
-        model_name: "gpt-4".to_string(),
-        provider_id: "p1".to_string(),
-        priority: 0,
-    }).unwrap();
+    insert_profile_model(
+        &conn,
+        &LlmProfileModel {
+            budget: None,
+            id: "del-m1".to_string(),
+            profile_id: "prof-y".to_string(),
+            model_name: "gpt-4".to_string(),
+            provider_id: "p1".to_string(),
+            priority: 0,
+        },
+    )
+    .unwrap();
 
     delete_profile_model(&conn, "del-m1").unwrap();
 
@@ -4943,38 +5023,50 @@ fn test_litellm_delete_profile_model() {
 #[test]
 fn test_litellm_profile_models_ordered_by_priority() {
     let conn = create_test_db();
-    insert_provider(&conn, &LlmProvider {
-        litellm_provider_prefix: None,
-        settings_json: None,
-        id: "p1".to_string(),
-        name: "anthropic".to_string(),
-        api_key: SecretString::new("key".to_string()),
-        base_url: None,
-        enabled: true,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_provider(
+        &conn,
+        &LlmProvider {
+            litellm_provider_prefix: None,
+            settings_json: None,
+            id: "p1".to_string(),
+            name: "anthropic".to_string(),
+            api_key: SecretString::new("key".to_string()),
+            base_url: None,
+            enabled: true,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
-    insert_profile(&conn, &LlmProfile {
-        id: "prof-ord".to_string(),
-        name: "ordered".to_string(),
-        budget_monthly: None,
-        budget_total: None,
-        tpm_limit: None,
-        rpm_limit: None,
-        virtual_key: None,
-        settings_json: None,
-        created_at: 1700000000,
-    }).unwrap();
+    insert_profile(
+        &conn,
+        &LlmProfile {
+            id: "prof-ord".to_string(),
+            name: "ordered".to_string(),
+            budget_monthly: None,
+            budget_total: None,
+            tpm_limit: None,
+            rpm_limit: None,
+            virtual_key: None,
+            settings_json: None,
+            created_at: 1700000000,
+        },
+    )
+    .unwrap();
 
     for (id, priority) in [("m3", 2), ("m1", 0), ("m2", 1)] {
-        insert_profile_model(&conn, &LlmProfileModel {
-        budget: None,
-            id: id.to_string(),
-            profile_id: "prof-ord".to_string(),
-            model_name: format!("model-{id}"),
-            provider_id: "p1".to_string(),
-            priority,
-        }).unwrap();
+        insert_profile_model(
+            &conn,
+            &LlmProfileModel {
+                budget: None,
+                id: id.to_string(),
+                profile_id: "prof-ord".to_string(),
+                model_name: format!("model-{id}"),
+                provider_id: "p1".to_string(),
+                priority,
+            },
+        )
+        .unwrap();
     }
 
     let models = get_profile_models(&conn, "prof-ord").unwrap();
@@ -4991,5 +5083,8 @@ fn test_litellm_fk_constraint_profile_models() {
          VALUES ('fk-test', 'nonexistent', 'model', 'nonexistent', 0)",
         [],
     );
-    assert!(result.is_err(), "FK constraint should reject non-existent profile_id/provider_id");
+    assert!(
+        result.is_err(),
+        "FK constraint should reject non-existent profile_id/provider_id"
+    );
 }

@@ -223,8 +223,9 @@ pub async fn review_skill_scope(
         .to_string_lossy()
         .replace('\\', "/");
 
-    let skills_path = crate::commands::refine::resolve_skills_path(&db)
-        .inspect_err(|e| log::error!("[review_skill_scope] Failed to resolve skills path: {}", e))?;
+    let skills_path = crate::commands::refine::resolve_skills_path(&db).inspect_err(|e| {
+        log::error!("[review_skill_scope] Failed to resolve skills path: {}", e)
+    })?;
 
     let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
         app_data_root: &app_data_root,

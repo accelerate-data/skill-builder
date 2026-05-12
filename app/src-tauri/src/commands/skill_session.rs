@@ -156,12 +156,7 @@ pub async fn select_skill_openhands_session(
 ) -> Result<SkillSessionInfo, String> {
     let (skill_name, plugin_slug, saved_conversation_id) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let skill = acquire_or_verify_skill_lock(
-            &conn,
-            skill_id,
-            &instance.id,
-            instance.pid,
-        )?;
+        let skill = acquire_or_verify_skill_lock(&conn, skill_id, &instance.id, instance.pid)?;
         let saved_conversation_id =
             crate::db::get_skill_conversation_id(&conn, &skill.plugin_slug, &skill.name)?;
         (skill.name, skill.plugin_slug, saved_conversation_id)
@@ -312,11 +307,8 @@ pub async fn pause_openhands_session(
 
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
     let skills_root = resolve_skills_path(&db)?;
-    let skill_dir = crate::skill_paths::resolve_skill_dir(
-        Path::new(&skills_root),
-        &plugin_slug,
-        &skill_name,
-    );
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(&skills_root), &plugin_slug, &skill_name);
     if !skill_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&skill_dir) {
             log::warn!(
@@ -380,8 +372,8 @@ pub async fn pause_openhands_session(
 #[cfg(test)]
 mod tests {
     use super::{
-        acquire_or_verify_skill_lock, remove_skill_sessions, skill_session_key, upsert_skill_session,
-        SkillSession,
+        acquire_or_verify_skill_lock, remove_skill_sessions, skill_session_key,
+        upsert_skill_session, SkillSession,
     };
     use std::collections::HashMap;
 
@@ -403,9 +395,8 @@ mod tests {
         let skill_id =
             crate::db::upsert_skill(&conn, "locked-skill", "skill-builder", "domain").unwrap();
 
-        let skill =
-            acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
-                .unwrap();
+        let skill = acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
+            .unwrap();
 
         assert_eq!(skill.id, skill_id);
 
@@ -428,9 +419,8 @@ mod tests {
         )
         .unwrap();
 
-        let error =
-            acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
-                .unwrap_err();
+        let error = acquire_or_verify_skill_lock(&conn, skill_id, "instance-a", std::process::id())
+            .unwrap_err();
 
         assert_eq!(
             error,
@@ -454,14 +444,10 @@ mod tests {
         crate::db::release_skill_lock_by_skill_id(&conn, skill_id, "instance-a").unwrap();
 
         let lock_after = crate::db::get_skill_lock_by_skill_id(&conn, skill_id).unwrap();
-        assert!(
-            lock_after.is_none(),
-            "lock should be gone after release"
-        );
+        assert!(lock_after.is_none(), "lock should be gone after release");
 
-        let skill =
-            acquire_or_verify_skill_lock(&conn, skill_id, "instance-b", std::process::id())
-                .unwrap();
+        let skill = acquire_or_verify_skill_lock(&conn, skill_id, "instance-b", std::process::id())
+            .unwrap();
         assert_eq!(skill.id, skill_id);
     }
 

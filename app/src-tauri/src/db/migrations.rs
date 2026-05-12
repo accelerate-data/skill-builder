@@ -2628,8 +2628,11 @@ pub(super) fn run_skill_id_artifact_fk_reset_migration(
 }
 
 /// Migration 52: Add LiteLLM provider/profile tables for multi-provider routing.
-pub(super) fn run_litellm_provider_profile_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    conn.execute_batch(r#"
+pub(super) fn run_litellm_provider_profile_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        r#"
         CREATE TABLE IF NOT EXISTS llm_providers (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -2660,7 +2663,8 @@ pub(super) fn run_litellm_provider_profile_migration(conn: &Connection) -> Resul
             FOREIGN KEY (profile_id) REFERENCES llm_profiles(id) ON DELETE CASCADE,
             FOREIGN KEY (provider_id) REFERENCES llm_providers(id) ON DELETE CASCADE
         );
-    "#)?;
+    "#,
+    )?;
     log::info!("migration 52: created llm_providers, llm_profiles, llm_profile_models tables");
     Ok(())
 }

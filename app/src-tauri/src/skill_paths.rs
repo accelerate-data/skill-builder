@@ -145,7 +145,11 @@ pub fn resolve_eval_dir(skills_root: &Path, plugin_slug: &str, skill_name: &str)
     )
 }
 
-pub fn skill_dir_candidates(skills_root: &Path, plugin_slug: &str, skill_name: &str) -> Vec<PathBuf> {
+pub fn skill_dir_candidates(
+    skills_root: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Vec<PathBuf> {
     dedupe_paths([
         resolve_skill_dir(skills_root, plugin_slug, skill_name),
         skills_root.join(plugin_slug).join(skill_name),
@@ -153,7 +157,11 @@ pub fn skill_dir_candidates(skills_root: &Path, plugin_slug: &str, skill_name: &
     ])
 }
 
-pub fn resolve_existing_skill_dir(skills_root: &Path, plugin_slug: &str, skill_name: &str) -> PathBuf {
+pub fn resolve_existing_skill_dir(
+    skills_root: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> PathBuf {
     skill_dir_candidates(skills_root, plugin_slug, skill_name)
         .into_iter()
         .find(|path| path.exists())
@@ -196,11 +204,11 @@ pub fn enumerate_skill_locations(skills_root: &Path) -> Result<Vec<SkillLocation
     let mut discovered = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    for entry in
-        fs::read_dir(skills_root).map_err(|e| format!("Failed to read '{}': {}", skills_root.display(), e))?
+    for entry in fs::read_dir(skills_root)
+        .map_err(|e| format!("Failed to read '{}': {}", skills_root.display(), e))?
     {
-        let entry =
-            entry.map_err(|e| format!("Failed to read entry in '{}': {}", skills_root.display(), e))?;
+        let entry = entry
+            .map_err(|e| format!("Failed to read entry in '{}': {}", skills_root.display(), e))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -307,11 +315,11 @@ pub fn enumerate_skill_locations_legacy(skills_root: &Path) -> Result<Vec<SkillL
     }
 
     let mut discovered = Vec::new();
-    for entry in
-        fs::read_dir(skills_root).map_err(|e| format!("Failed to read '{}': {}", skills_root.display(), e))?
+    for entry in fs::read_dir(skills_root)
+        .map_err(|e| format!("Failed to read '{}': {}", skills_root.display(), e))?
     {
-        let entry =
-            entry.map_err(|e| format!("Failed to read entry in '{}': {}", skills_root.display(), e))?;
+        let entry = entry
+            .map_err(|e| format!("Failed to read entry in '{}': {}", skills_root.display(), e))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -503,7 +511,10 @@ mod tests {
         let skills_root = tmp.path();
         assert_eq!(
             resolve_skill_dir(skills_root, "analytics", "weekly-report"),
-            skills_root.join("analytics").join("skills").join("weekly-report")
+            skills_root
+                .join("analytics")
+                .join("skills")
+                .join("weekly-report")
         );
     }
 
@@ -514,7 +525,10 @@ mod tests {
 
         assert_eq!(
             resolve_eval_dir(skills_root, "analytics", "weekly-report"),
-            skills_root.join("analytics").join("evals").join("weekly-report")
+            skills_root
+                .join("analytics")
+                .join("evals")
+                .join("weekly-report")
         );
     }
 

@@ -12,7 +12,9 @@ pub struct CreateProviderRequest {
 }
 
 #[tauri::command]
-pub fn list_litellm_providers(db: tauri::State<'_, Db>) -> Result<Vec<crate::db::LlmProvider>, String> {
+pub fn list_litellm_providers(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<crate::db::LlmProvider>, String> {
     log::info!("[list_litellm_providers]");
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::list_providers(&conn)

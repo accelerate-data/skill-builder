@@ -1,5 +1,5 @@
-use rusqlite::{Connection, OptionalExtension};
 use crate::types::SecretString;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,7 +45,8 @@ pub fn update_provider(conn: &Connection, provider: &LlmProvider) -> Result<(), 
             provider.litellm_provider_prefix,
             provider.settings_json,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -53,7 +54,8 @@ pub fn delete_provider(conn: &Connection, id: &str) -> Result<(), String> {
     conn.execute(
         "DELETE FROM llm_providers WHERE id = ?1",
         rusqlite::params![id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -61,19 +63,22 @@ pub fn list_providers(conn: &Connection) -> Result<Vec<LlmProvider>, String> {
     let mut stmt = conn.prepare(
         "SELECT id, name, api_key, base_url, enabled, litellm_provider_prefix, settings_json, created_at FROM llm_providers ORDER BY name"
     ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| {
-        Ok(LlmProvider {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            api_key: SecretString::new(row.get(2)?),
-            base_url: row.get(3)?,
-            enabled: row.get::<_, i32>(4)? != 0,
-            litellm_provider_prefix: row.get(5)?,
-            settings_json: row.get(6)?,
-            created_at: row.get(7)?,
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(LlmProvider {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                api_key: SecretString::new(row.get(2)?),
+                base_url: row.get(3)?,
+                enabled: row.get::<_, i32>(4)? != 0,
+                litellm_provider_prefix: row.get(5)?,
+                settings_json: row.get(6)?,
+                created_at: row.get(7)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[allow(dead_code)]
@@ -92,5 +97,7 @@ pub fn get_provider(conn: &Connection, id: &str) -> Result<Option<LlmProvider>, 
             settings_json: row.get(6)?,
             created_at: row.get(7)?,
         })
-    }).optional().map_err(|e| e.to_string())
+    })
+    .optional()
+    .map_err(|e| e.to_string())
 }
