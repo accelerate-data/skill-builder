@@ -4571,6 +4571,22 @@ fn test_skill_conversation_round_trip_by_plugin_and_skill() {
 // --- Model catalog cache migration tests (VU-1185 PR2) ---
 
 #[test]
+fn test_migration_54_drops_litellm_tables() {
+    let conn = create_test_db();
+
+    for table in ["llm_providers", "llm_profiles", "llm_profile_models"] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                [table],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(exists, 0, "table {} should be dropped after migration 54", table);
+    }
+}
+
+#[test]
 fn test_migration_55_creates_catalog_tables() {
     let conn = create_test_db();
 

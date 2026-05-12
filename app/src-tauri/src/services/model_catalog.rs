@@ -54,20 +54,42 @@ async fn fetch_models_dev_json() -> Result<String, String> {
 pub fn filter_models(
     models: Vec<ModelCatalogEntry>,
     filters: &[ModelFilter],
-) -> Vec<ModelCatalogEntry> {
+) -> Result<Vec<ModelCatalogEntry>, String> {
     if filters.is_empty() {
-        return models;
+        return Ok(models);
     }
 
-    models
+    // Validate all filters first before applying
+    for f in filters {
+        validate_filter(f)?;
+    }
+
+    Ok(models
         .into_iter()
         .filter(|entry| {
-            filters.iter().all(|f| apply_filter(entry, f))
+            filters.iter().all(|f| apply_filter(entry, f).unwrap_or(false))
         })
-        .collect()
+        .collect())
 }
 
-fn apply_filter(entry: &ModelCatalogEntry, filter: &ModelFilter) -> bool {
+fn validate_filter(filter: &ModelFilter) -> Result<(), String> {
+    match filter.field.as_str() {
+        "provider_id" | "model_id" | "name" | "family" | "reasoning" | "tool_call"
+        | "attachment" | "structured_output" | "temperature" | "open_weights"
+        | "context_limit" | "input_cost_per_token" | "output_cost_per_token"
+        | "status" | "experimental" | "input_modalities" | "output_modalities" => {}
+        _ => return Err(format!("unknown filter field: {}", filter.field)),
+    }
+
+    match filter.op.as_str() {
+        "eq" | "neq" | "contains" | "gte" | "lte" => {}
+        _ => return Err(format!("unknown filter operator: {}", filter.op)),
+    }
+
+    Ok(())
+}
+
+fn apply_filter(entry: &ModelCatalogEntry, filter: &ModelFilter) -> Result<bool, String> {
     let field = &filter.field;
     let op = &filter.op;
     let value = &filter.value;
@@ -90,13 +112,13 @@ fn apply_filter(entry: &ModelCatalogEntry, filter: &ModelFilter) -> bool {
         "experimental" => entry.experimental.map_or(serde_json::Value::Null, serde_json::Value::Bool),
         "input_modalities" => serde_json::Value::Array(entry.input_modalities.iter().map(|m| serde_json::Value::String(m.clone())).collect()),
         "output_modalities" => serde_json::Value::Array(entry.output_modalities.iter().map(|m| serde_json::Value::String(m.clone())).collect()),
-        _ => return true,
+        _ => return Err(format!("unknown filter field: {}", field)),
     };
 
     match op.as_str() {
-        "eq" => field_value == *value,
-        "neq" => field_value != *value,
-        "contains" => match (&field_value, value) {
+        "eq" => Ok(field_value == *value),
+        "neq" => Ok(field_value != *value),
+        "contains" => Ok(match (&field_value, value) {
             (serde_json::Value::Array(arr), serde_json::Value::String(s)) => {
                 arr.iter().any(|v| v.as_str() == Some(s))
             }
@@ -104,20 +126,20 @@ fn apply_filter(entry: &ModelCatalogEntry, filter: &ModelFilter) -> bool {
                 field_str.contains(s)
             }
             _ => false,
-        },
-        "gte" => match (&field_value, value) {
+        }),
+        "gte" => Ok(match (&field_value, value) {
             (serde_json::Value::Number(a), serde_json::Value::Number(b)) => {
                 a.as_f64().unwrap_or(f64::MIN) >= b.as_f64().unwrap_or(f64::MIN)
             }
             _ => false,
-        },
-        "lte" => match (&field_value, value) {
+        }),
+        "lte" => Ok(match (&field_value, value) {
             (serde_json::Value::Number(a), serde_json::Value::Number(b)) => {
                 a.as_f64().unwrap_or(f64::MAX) <= b.as_f64().unwrap_or(f64::MAX)
             }
             _ => false,
-        },
-        _ => true,
+        }),
+        _ => Err(format!("unknown filter operator: {}", op)),
     }
 }
 
@@ -127,47 +149,7 @@ mod tests {
     use rusqlite::Connection;
 
     fn fixture_json() -> &'static str {
-        r#"[
-            {
-                "id": "anthropic",
-                "env": ["ANTHROPIC_API_KEY"],
-                "npm": "@anthropic-ai/sdk",
-                "api": "https://api.anthropic.com",
-                "name": "Anthropic",
-                "doc": "https://docs.anthropic.com",
-                "models": {
-                    "claude-sonnet-4-6": {
-                        "id": "claude-sonnet-4-6",
-                        "name": "Claude Sonnet 4.6",
-                        "family": "claude",
-                        "attachment": true,
-                        "reasoning": false,
-                        "tool_call": true,
-                        "structured_output": true,
-                        "temperature": true,
-                        "knowledge": null,
-                        "release_date": "2025-01-01",
-                        "last_updated": "2025-01-01",
-                        "modalities": {
-                            "input": ["text", "image"],
-                            "output": ["text"]
-                        },
-                        "open_weights": false,
-                        "cost": {
-                            "input": 0.000003,
-                            "output": 0.000015
-                        },
-                        "limit": {
-                            "context": 200000
-                        },
-                        "interleaved": null,
-                        "provider": null,
-                        "status": null,
-                        "experimental": null
-                    }
-                }
-            }
-        ]"#
+        include_str!("../fixtures/model-catalog.json")
     }
 
     fn create_test_db_with_catalog() -> Connection {
@@ -259,13 +241,13 @@ mod tests {
             value: serde_json::Value::String("anthropic".to_string()),
         }];
 
-        let result = filter_models(entries, &filters);
+        let result = filter_models(entries, &filters).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].provider_id, "anthropic");
     }
 
     #[test]
-    fn test_filter_models_reasoning_true() {
+    fn test_filter_models_reasoning_false() {
         let mut conn = create_test_db_with_catalog();
         let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
 
@@ -275,9 +257,9 @@ mod tests {
             value: serde_json::Value::Bool(false),
         }];
 
-        let result = filter_models(entries, &filters);
-        assert_eq!(result.len(), 1);
-        assert!(!result[0].reasoning);
+        let result = filter_models(entries, &filters).unwrap();
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().all(|e| !e.reasoning));
     }
 
     #[test]
@@ -291,7 +273,7 @@ mod tests {
             value: serde_json::Value::Number(serde_json::Number::from(100000)),
         }];
 
-        let result = filter_models(entries, &filters);
+        let result = filter_models(entries, &filters).unwrap();
         assert_eq!(result.len(), 1);
         assert!(result[0].context_limit.unwrap() >= 100000);
     }
@@ -307,7 +289,7 @@ mod tests {
             value: serde_json::Value::String("image".to_string()),
         }];
 
-        let result = filter_models(entries, &filters);
+        let result = filter_models(entries, &filters).unwrap();
         assert_eq!(result.len(), 1);
         assert!(result[0].input_modalities.contains(&"image".to_string()));
     }
@@ -317,7 +299,39 @@ mod tests {
         let mut conn = create_test_db_with_catalog();
         let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
 
-        let result = filter_models(entries, &[]);
-        assert_eq!(result.len(), 1);
+        let result = filter_models(entries, &[]).unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_models_unknown_field_returns_error() {
+        let mut conn = create_test_db_with_catalog();
+        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let filters = vec![ModelFilter {
+            field: "nonexistent_field".to_string(),
+            op: "eq".to_string(),
+            value: serde_json::Value::String("test".to_string()),
+        }];
+
+        let result = filter_models(entries, &filters);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown filter field"));
+    }
+
+    #[test]
+    fn test_filter_models_unknown_op_returns_error() {
+        let mut conn = create_test_db_with_catalog();
+        let entries = refresh_model_catalog_from_fixture(&mut conn, fixture_json()).unwrap();
+
+        let filters = vec![ModelFilter {
+            field: "provider_id".to_string(),
+            op: "regex".to_string(),
+            value: serde_json::Value::String("test".to_string()),
+        }];
+
+        let result = filter_models(entries, &filters);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown filter operator"));
     }
 }
