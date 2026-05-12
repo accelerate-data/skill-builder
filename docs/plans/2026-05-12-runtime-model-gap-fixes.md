@@ -18,7 +18,7 @@
 | PR B | #2 — lock release propagation | Low (error path only) | `skill_session.rs` |
 | PR C | #4 + #6 + #7 — Rust rename + cleanup | Low (search-replace + trivial) | `workflow/settings.rs`, `skill_session.rs`, `refine/mod.rs`, 3 callers |
 | PR D | #6 (gaps) + #7 (gaps) — artifact identity + docs index | Low (DB contract + docs) | `workflow_artifacts.rs`, `clarifications.rs`, `decisions.rs`, `migrations.rs`, `docs/design/README.md` |
-| PR E (optional) | #5 — move event helpers | Medium (structural refactor) | `agents/openhands_server/events.rs`, `refine/mod.rs`, `skill_session.rs` |
+| PR E (optional) | #5 — move event helpers | Medium (structural refactor) | `agents/openhands_server/events.rs`, `refine/mod.rs`, `skill_session.rs` | **MERGED** |
 
 Do PRs A, B, C, D in order (each merges before next starts). PR E can be deferred.
 
@@ -561,19 +561,20 @@ Two low-risk items from the implementation-gaps backlog:
 - Review: `app/src-tauri/src/commands/workflow/decisions.rs`
 - Review: `app/src-tauri/src/db/migrations.rs`
 
-- [ ] **Step 1: Audit artifact resolution paths**
+- [x] **Step 1: Audit artifact resolution paths**
 
 Read the four files above and verify:
 
 1. Clarifications and decisions resolve skills by `skills.id` (primary key), not
-   by name or redundant parent identity.
-2. No name-based ambiguity exists in artifact resolution queries.
-3. The migration history reflects the canonical `skills.id` contract.
+   by name or redundant parent identity. **VERIFIED**: `resolve_skill_db_id()` →
+   `resolve_skill_master_id_from_identifier()` always returns `skills.id` (integer).
+2. No name-based ambiguity exists in artifact resolution queries. **VERIFIED**: All
+   artifact tables use `skill_id INTEGER` as FK; commands pass `skill_id` directly.
+3. The migration history reflects the canonical `skills.id` contract. **VERIFIED**.
 
-- [ ] **Step 2: Fix any remaining name-based or redundant identity resolution**
+- [x] **Step 2: Fix any remaining name-based or redundant identity resolution**
 
-If any query or command still resolves artifacts by skill name or a redundant
-parent identifier, update it to use `skills.id` as the canonical key.
+No fixes needed. All resolution paths already use `skills.id` as the canonical key.
 
 - [ ] **Step 3: Compile and test**
 
@@ -601,15 +602,17 @@ git commit -m "fix: ensure canonical skills.id for artifact identity resolution"
 **Files:**
 - Modify: `docs/design/README.md`
 
-- [ ] **Step 1: Read `docs/design/README.md`**
+- [x] **Step 1: Read `docs/design/README.md`**
 
 Check for any references to old design directories (e.g., `docs/design/model-settings/`)
 that should now point to `docs/design/litellm-integration/`.
 
-- [ ] **Step 2: Update links**
+**VERIFIED**: `docs/design/README.md` line 7 correctly references `litellm-integration/`.
+No stale paths found.
 
-Replace stale paths with the correct `docs/design/litellm-integration/` references.
-Ensure the README accurately reflects the current design folder structure.
+- [x] **Step 2: Update links**
+
+No updates needed. The README accurately reflects the current design folder structure.
 
 - [ ] **Step 3: Commit**
 
@@ -646,7 +649,7 @@ The coupling works correctly today. The fix is purely architectural and has no c
 - Create: `app/src-tauri/src/commands/refine/events.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Create `events.rs` with the extracted helpers**
+- [x] **Step 1: Create `events.rs` with the extracted helpers**
 
 Create `app/src-tauri/src/commands/refine/events.rs` and move these functions from `refine/mod.rs`:
 
@@ -662,7 +665,7 @@ Create `app/src-tauri/src/commands/refine/events.rs` and move these functions fr
 
 The three `pub(crate)` functions keep their visibility. The private helpers stay private within the new file.
 
-- [ ] **Step 2: Declare the module in `refine/mod.rs`**
+- [x] **Step 2: Declare the module in `refine/mod.rs`**
 
 Add at the top of `app/src-tauri/src/commands/refine/mod.rs`:
 
@@ -674,7 +677,7 @@ Remove the moved functions from `mod.rs`.
 
 Update any internal calls in `mod.rs` to use `events::extract_conversation_messages(...)` etc.
 
-- [ ] **Step 3: Update `skill_session.rs` callers**
+- [x] **Step 3: Update `skill_session.rs` callers**
 
 In `commands/skill_session.rs`, `restore_skill_conversation_state` currently calls:
 
@@ -692,7 +695,7 @@ crate::commands::refine::events::extract_restored_conversation_events(events)
 crate::commands::refine::events::restored_conversation_user_turn_count(events)
 ```
 
-- [ ] **Step 4: Compile**
+- [x] **Step 4: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -700,7 +703,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 5: Run all Rust tests**
+- [x] **Step 5: Run all Rust tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -708,7 +711,7 @@ cd app/src-tauri && cargo test
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/events.rs \

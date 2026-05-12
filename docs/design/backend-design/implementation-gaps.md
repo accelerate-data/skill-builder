@@ -85,27 +85,7 @@ Gap:
 - the backend still presents app-owned usage aggregation as the primary usage
   surface instead of treating LiteLLM spend logs as the canonical spend source
 
-## 6. Artifact Identity Cleanup Is In Progress
-
-Target architecture requires canonical skill resolution for clarifications and
-decisions through `skills.id`.
-
-Latest `main` has already moved substantially in that direction, but this area
-is exactly the one under active VU-1179 work. The target docs assume the final
-contract:
-
-- canonical `skills.id`
-- no redundant artifact parent identity
-- no name-based ambiguity in artifact resolution
-
-Relevant files:
-
-- `app/src-tauri/src/db/workflow_artifacts.rs`
-- `app/src-tauri/src/commands/workflow/clarifications.rs`
-- `app/src-tauri/src/commands/workflow/decisions.rs`
-- `app/src-tauri/src/db/migrations.rs`
-
-## 7. Documentation Index Drift Exists Outside This Folder Too
+## 6. Documentation Index Drift Exists Outside This Folder Too
 
 The target backend design now points to the LiteLLM design under
 `docs/design/litellm-integration/`, but the broader design index still needs to
