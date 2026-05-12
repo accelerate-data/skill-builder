@@ -1,4 +1,5 @@
 mod github;
+mod model_catalog;
 mod refine;
 mod secret;
 mod session;
@@ -10,6 +11,7 @@ mod workflow;
 
 // Re-export all types at the crate::types level so callers don't need to change.
 pub use github::*;
+pub use model_catalog::*;
 pub use refine::*;
 pub use secret::*;
 pub use session::*;
@@ -161,5 +163,120 @@ mod tests {
         assert!(!json.contains("\"betas\""));
         // thinking is None with skip_serializing_if, so should not appear
         assert!(!json.contains("\"thinking\""));
+    }
+
+    #[test]
+    fn test_model_catalog_types_serde_fixture() {
+        use super::model_catalog::{CatalogModel, CatalogProvider};
+
+        let fixture = r#"[
+            {
+                "id": "anthropic",
+                "env": ["ANTHROPIC_API_KEY"],
+                "npm": "@anthropic-ai/sdk",
+                "api": "https://api.anthropic.com",
+                "name": "Anthropic",
+                "doc": "https://docs.anthropic.com",
+                "models": {
+                    "claude-sonnet-4-6": {
+                        "id": "claude-sonnet-4-6",
+                        "name": "Claude Sonnet 4.6",
+                        "family": "claude",
+                        "attachment": true,
+                        "reasoning": false,
+                        "tool_call": true,
+                        "structured_output": true,
+                        "temperature": true,
+                        "knowledge": null,
+                        "release_date": "2025-01-01",
+                        "last_updated": "2025-01-01",
+                        "modalities": {
+                            "input": ["text", "image"],
+                            "output": ["text"]
+                        },
+                        "open_weights": false,
+                        "cost": {
+                            "input": 0.000003,
+                            "output": 0.000015
+                        },
+                        "limit": {
+                            "context": 200000
+                        },
+                        "interleaved": null,
+                        "provider": null,
+                        "status": null,
+                        "experimental": null
+                    }
+                }
+            },
+            {
+                "id": "ollama",
+                "env": [],
+                "npm": "ollama",
+                "name": "Ollama",
+                "doc": "https://ollama.com",
+                "models": {
+                    "llama3": {
+                        "id": "llama3",
+                        "name": "Llama 3",
+                        "family": "llama",
+                        "attachment": false,
+                        "reasoning": false,
+                        "tool_call": true,
+                        "structured_output": null,
+                        "temperature": true,
+                        "knowledge": null,
+                        "release_date": "2024-04-01",
+                        "last_updated": "2024-06-01",
+                        "modalities": {
+                            "input": ["text"],
+                            "output": ["text"]
+                        },
+                        "open_weights": true,
+                        "cost": null,
+                        "limit": {
+                            "context": 8192
+                        },
+                        "interleaved": {"some": "value"},
+                        "provider": null,
+                        "status": "active",
+                        "experimental": false
+                    }
+                }
+            }
+        ]"#;
+
+        let providers: Vec<CatalogProvider> = serde_json::from_str(fixture).unwrap();
+        assert_eq!(providers.len(), 2);
+
+        // Provider with api
+        let anthropic = &providers[0];
+        assert_eq!(anthropic.id, "anthropic");
+        assert_eq!(anthropic.api, Some("https://api.anthropic.com".to_string()));
+        assert_eq!(anthropic.models.len(), 1);
+
+        let sonnet = anthropic.models.get("claude-sonnet-4-6").unwrap();
+        assert!(sonnet.attachment);
+        assert!(!sonnet.reasoning);
+        assert!(sonnet.tool_call);
+        assert_eq!(sonnet.structured_output, Some(true));
+        assert_eq!(sonnet.modalities.input, vec!["text", "image"]);
+        assert_eq!(sonnet.modalities.output, vec!["text"]);
+        assert!(sonnet.cost.is_some());
+        assert_eq!(sonnet.cost.as_ref().unwrap().input, Some(0.000003));
+        assert_eq!(sonnet.limit.context, Some(200000));
+
+        // Provider without api
+        let ollama = &providers[1];
+        assert_eq!(ollama.id, "ollama");
+        assert!(ollama.api.is_none());
+
+        let llama = ollama.models.get("llama3").unwrap();
+        assert!(llama.open_weights);
+        assert!(llama.cost.is_none());
+        assert_eq!(llama.structured_output, None);
+        assert!(llama.interleaved.is_some());
+        assert_eq!(llama.status, Some("active".to_string()));
+        assert_eq!(llama.experimental, Some(false));
     }
 }

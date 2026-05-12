@@ -57,6 +57,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (52, run_litellm_provider_profile_migration),
     (53, run_litellm_pr3_schema_migration),
     (54, run_drop_litellm_provider_profile_tables_migration),
+    (55, run_model_catalog_cache_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2736,5 +2737,75 @@ pub(super) fn run_drop_litellm_provider_profile_tables_migration(
     "#,
     )?;
     log::info!("migration 54: dropped orphaned llm_providers, llm_profiles, llm_profile_models tables");
+    Ok(())
+}
+
+/// Migration 55: Model catalog cache tables.
+///
+/// SQLite-backed cache of provider and model metadata sourced from models.dev.
+/// Five tables with cascade FKs and indexes for filtering.
+pub(super) fn run_model_catalog_cache_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS provider_catalog (
+            provider_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            npm TEXT NOT NULL,
+            api_base_url TEXT,
+            doc_url TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_env (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider_id TEXT NOT NULL REFERENCES provider_catalog(provider_id) ON DELETE CASCADE,
+            env_var TEXT NOT NULL,
+            UNIQUE(provider_id, env_var)
+        );
+
+        CREATE TABLE IF NOT EXISTS model_catalog (
+            full_id TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL REFERENCES provider_catalog(provider_id) ON DELETE CASCADE,
+            model_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            family TEXT,
+            attachment INTEGER NOT NULL DEFAULT 0,
+            reasoning INTEGER NOT NULL DEFAULT 0,
+            tool_call INTEGER NOT NULL DEFAULT 0,
+            structured_output INTEGER,
+            temperature INTEGER,
+            knowledge TEXT,
+            release_date TEXT NOT NULL,
+            last_updated TEXT NOT NULL,
+            open_weights INTEGER NOT NULL DEFAULT 0,
+            input_cost_per_token REAL,
+            output_cost_per_token REAL,
+            context_limit INTEGER,
+            interleaved TEXT,
+            status TEXT,
+            experimental INTEGER,
+            UNIQUE(provider_id, model_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS model_input_modalities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_id TEXT NOT NULL REFERENCES model_catalog(full_id) ON DELETE CASCADE,
+            modality TEXT NOT NULL,
+            UNIQUE(full_id, modality)
+        );
+
+        CREATE TABLE IF NOT EXISTS model_output_modalities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_id TEXT NOT NULL REFERENCES model_catalog(full_id) ON DELETE CASCADE,
+            modality TEXT NOT NULL,
+            UNIQUE(full_id, modality)
+        );
+
+        CREATE INDEX IF NOT EXISTS model_catalog_provider_idx ON model_catalog(provider_id);
+        CREATE INDEX IF NOT EXISTS model_catalog_reasoning_idx ON model_catalog(reasoning);
+        CREATE INDEX IF NOT EXISTS model_catalog_tool_call_idx ON model_catalog(tool_call);
+        CREATE INDEX IF NOT EXISTS model_catalog_structured_output_idx ON model_catalog(structured_output);
+        "#,
+    )?;
+    log::info!("migration 55: created model catalog cache tables");
     Ok(())
 }

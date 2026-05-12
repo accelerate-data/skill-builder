@@ -10,6 +10,7 @@ pub mod git;
 mod logging;
 mod marketplace_manifest;
 mod reconciliation;
+mod services;
 mod skill_paths;
 mod types;
 
