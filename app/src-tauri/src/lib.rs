@@ -60,12 +60,6 @@ async fn shutdown_openhands_agent_server_for_exit() {
     }
 }
 
-async fn shutdown_litellm_proxy_for_exit() {
-    if let Err(e) = crate::agents::litellm_proxy::shutdown_litellm_proxy().await {
-        log::warn!("[exit] LiteLLM proxy shutdown failed: {e}");
-    }
-}
-
 fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
     Ok(fs::read_dir(path)?.next().is_none())
 }
@@ -347,26 +341,6 @@ pub fn run() {
             // Non-fatal: errors are logged as warnings and startup continues.
             logging::prune_transcript_files(&workspace_path);
 
-            // Start LiteLLM proxy asynchronously (non-blocking).
-            // The proxy is required for all model calls; runs will fail if not configured.
-            let proxy_data_dir = data_dir.clone();
-            let proxy_app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let db = proxy_app_handle.state::<db::Db>();
-                match crate::agents::litellm_proxy::ensure_litellm_proxy(
-                    std::time::Duration::from_secs(30),
-                    &proxy_data_dir,
-                    (*db).clone(),
-                ).await {
-                    Ok(handle) => {
-                        log::info!("[litellm-proxy] proxy started on port {}", handle.port);
-                    }
-                    Err(e) => {
-                        log::error!("[litellm-proxy] proxy startup failed: {e}");
-                    }
-                }
-            });
-
             Ok(())
         })
         .manage(CloseGuardState::default())
@@ -486,19 +460,34 @@ pub fn run() {
             commands::documents::update_document,
             commands::documents::delete_document,
 
-            commands::litellm_providers::list_litellm_providers,
-            commands::litellm_providers::create_litellm_provider,
-            commands::litellm_providers::update_litellm_provider,
-            commands::litellm_providers::delete_litellm_provider,
-            commands::litellm_profiles::list_litellm_profiles,
-            commands::litellm_profiles::get_litellm_profile_models,
-            commands::litellm_profiles::create_litellm_profile,
-            commands::litellm_profiles::update_litellm_profile,
-            commands::litellm_profiles::delete_litellm_profile,
-            commands::litellm_profiles::add_profile_model,
-            commands::litellm_profiles::remove_profile_model,
-            commands::litellm_profiles::reorder_profile_models,
-            commands::litellm_profiles::verify_profile_virtual_key,
+            commands::usage::get_usage_summary,
+            commands::usage::get_usage_by_step,
+            commands::usage::get_usage_by_model,
+            commands::usage::reset_usage,
+            commands::usage::get_recent_workflow_sessions,
+            commands::usage::get_step_agent_runs,
+            commands::usage::get_agent_runs,
+            commands::usage::get_usage_by_day,
+            commands::usage::get_workflow_skill_names,
+            commands::git::get_skill_history,
+            commands::git::restore_skill_version,
+            commands::git::get_skill_files_at_sha,
+            commands::refine::content::get_skill_content_at_path,
+            commands::refine::content::get_skill_content_for_refine,
+            commands::skill_session::select_skill_openhands_session,
+            commands::refine::send_refine_message,
+            commands::skill_session::pause_openhands_session,
+            commands::refine::output::finalize_refine_run,
+            commands::refine::output::clean_benchmark_snapshot,
+            commands::workflow::evaluation::read_latest_benchmark,
+            commands::imported_skills::upload::parse_skill_file,
+            commands::imported_skills::upload::import_skill_from_file,
+            commands::eval_workbench::list_scenarios,
+            commands::eval_workbench::load_scenario,
+            commands::eval_workbench::create_scenario,
+            commands::eval_workbench::save_scenario,
+            commands::eval_workbench::delete_scenario,
+            commands::eval_workbench::define_eval_scenario,
         ])
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager};
@@ -555,12 +544,10 @@ pub fn run() {
                 // Shut down the OpenHands Agent Server.
                 if let Ok(rt) = tokio::runtime::Handle::try_current() {
                     rt.block_on(shutdown_openhands_agent_server_for_exit());
-                    rt.block_on(shutdown_litellm_proxy_for_exit());
                 } else if let Ok(rt) = tokio::runtime::Runtime::new() {
                     rt.block_on(shutdown_openhands_agent_server_for_exit());
-                    rt.block_on(shutdown_litellm_proxy_for_exit());
                 } else {
-                    log::warn!("[exit] No Tokio runtime available — skipping OpenHands server and LiteLLM proxy shutdown");
+                    log::warn!("[exit] No Tokio runtime available — skipping OpenHands server shutdown");
                 }
             }
             _ => {}

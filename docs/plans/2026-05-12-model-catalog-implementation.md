@@ -116,7 +116,7 @@
 - Delete: `scripts/smoke/litellm-pr3-provisioning-smoke.mjs`
 - Modify: `docs/design/backend-design/implementation-gaps.md`
 
-- [ ] **Step 1: Delete LiteLLM proxy sources**
+- [x] **Step 1: Delete LiteLLM proxy sources**
 
 Delete:
 
@@ -127,7 +127,7 @@ Delete:
 - `app/src-tauri/src/db/litellm_profiles.rs`
 - `scripts/smoke/litellm-pr3-provisioning-smoke.mjs`
 
-- [ ] **Step 2: Remove LiteLLM module exports and registrations**
+- [x] **Step 2: Remove LiteLLM module exports and registrations**
 
 Update:
 
@@ -145,7 +145,7 @@ to remove:
 
 while preserving the legacy direct-provider settings path.
 
-- [ ] **Step 3: Remove stale LiteLLM references from the active plan/gap docs**
+- [x] **Step 3: Remove stale LiteLLM references from the active plan/gap docs**
 
 Update `docs/design/backend-design/implementation-gaps.md` so it reflects:
 
@@ -160,7 +160,7 @@ markdownlint docs/design/backend-design/implementation-gaps.md
 
 Expected: PASS with only still-true post-removal gaps left in the doc.
 
-- [ ] **Step 4: Run targeted build/runtime verification**
+- [x] **Step 4: Run targeted build/runtime verification**
 
 Run:
 

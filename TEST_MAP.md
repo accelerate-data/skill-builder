@@ -20,7 +20,6 @@ Use the tables below for cases tooling cannot infer safely.
 | Live eval smoke | `cd tests/evals && npm run eval:smoke` | `tests/evals/packages/` | Automated OpenCode eval; run when prompt, agent, or runtime behavior changes |
 | OpenHands Agent Server live smoke | `cd app && OPENHANDS_AGENT_SERVER_LIVE_SMOKE=1 npm run test:openhands:live-smoke` | `scripts/smoke/openhands-agent-server-live-smoke.mjs` | Gated live Agent Server run; reads app DB model settings by default, env vars may override |
 | OpenHands AgentSkill live smoke | `cd app && OPENHANDS_AGENT_SERVER_LIVE_SMOKE=1 npm run test:openhands:agentskill-smoke` | `scripts/smoke/openhands-agentskill-live-smoke.mjs` | Gated live skill-loading smoke; verifies AgentSkill is surfaced in SystemPromptEvent and invoke_skill is called |
-| LiteLLM proxy live smoke | `cd app && LITELLM_PROXY_LIVE_SMOKE=1 npm run test:litellm:live-smoke` | `scripts/smoke/litellm-proxy-live-smoke.mjs` | Gated live proxy run; verifies spawn, health, admin API auth, and shutdown |
 
 ## Directory Boundaries
 
@@ -112,8 +111,6 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/types/mod.rs` | `types` | -- |
 | `app/src-tauri/src/cleanup.rs` | `cleanup` | -- |
 | `app/src-tauri/src/fs_validation.rs` | `fs_validation` | -- |
-| `app/src-tauri/src/commands/litellm_providers.rs` | `commands::litellm_providers` | -- |
-| `app/src-tauri/src/commands/litellm_profiles.rs` | `commands::litellm_profiles` | -- |
 | `app/src-tauri/src/commands/reconciliation.rs` | `commands::reconciliation` | `@dashboard` |
 | `app/src-tauri/src/reconciliation/mod.rs` | `reconciliation` | `@dashboard` |
 | `app/src-tauri/src/reconciliation/` | `reconciliation` | `@dashboard` |

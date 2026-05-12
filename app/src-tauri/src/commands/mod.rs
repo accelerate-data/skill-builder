@@ -8,8 +8,6 @@ pub mod github_auth;
 pub mod github_import;
 pub mod imported_skills;
 pub mod lifecycle;
-pub mod litellm_profiles;
-pub mod litellm_providers;
 pub mod node;
 pub mod reconciliation;
 pub mod refine;

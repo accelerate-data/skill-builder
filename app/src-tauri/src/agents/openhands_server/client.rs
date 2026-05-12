@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn conversation_payload_marks_opencode_zen_models_as_openai_compatible_for_litellm() {
+    fn conversation_payload_marks_opencode_zen_models_as_openai_compatible() {
         let mut config = base_config(
             "/workspace-root",
             "/workspace-root",

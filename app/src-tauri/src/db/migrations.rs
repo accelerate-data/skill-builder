@@ -56,6 +56,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (51, run_skill_id_artifact_fk_reset_migration),
     (52, run_litellm_provider_profile_migration),
     (53, run_litellm_pr3_schema_migration),
+    (54, run_drop_litellm_provider_profile_tables_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2714,5 +2715,26 @@ pub(super) fn run_litellm_pr3_schema_migration(conn: &Connection) -> Result<(), 
     }
 
     log::info!("migration 53: dropped litellm_user_id, added budget, litellm_provider_prefix, settings_json");
+    Ok(())
+}
+
+/// Migration 54: Drop orphaned LiteLLM provider/profile tables.
+///
+/// The LiteLLM subsystem was removed (PR 1 of the model catalog plan), but
+/// migrations 52/53 still created `llm_providers`, `llm_profiles`, and
+/// `llm_profile_models`. No Rust code interacts with these tables anymore,
+/// so they are cleaned up here.
+pub(super) fn run_drop_litellm_provider_profile_tables_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    // Drop child table first (FK references parent tables).
+    conn.execute_batch(
+        r#"
+        DROP TABLE IF EXISTS llm_profile_models;
+        DROP TABLE IF EXISTS llm_profiles;
+        DROP TABLE IF EXISTS llm_providers;
+    "#,
+    )?;
+    log::info!("migration 54: dropped orphaned llm_providers, llm_profiles, llm_profile_models tables");
     Ok(())
 }
