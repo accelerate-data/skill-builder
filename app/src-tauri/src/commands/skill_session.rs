@@ -43,7 +43,7 @@ pub(crate) async fn ensure_skill_runtime_ready(
 ) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
     let skill_dir = crate::skill_paths::ensure_nested_skill_dir(
-        Path::new(&runtime_ctx.workspace_path),
+        Path::new(&runtime_ctx.skills_root),
         plugin_slug,
         skill_name,
     )?;
@@ -108,7 +108,7 @@ fn remove_skill_sessions(
     });
 }
 
-fn resolve_skills_path(db: &Db) -> Result<String, String> {
+pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = db::read_settings(&conn)?;
     settings

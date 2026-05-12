@@ -280,7 +280,7 @@ Three low-risk, high-clarity fixes batched together because they all touch the s
 - Modify: `app/src-tauri/src/commands/workflow/settings.rs`
 - Modify: all callers
 
-- [ ] **Step 1: Update the struct and constructor**
+- [x] **Step 1: Update the struct and constructor**
 
 In `app/src-tauri/src/commands/workflow/settings.rs`, rename the field:
 
@@ -343,7 +343,7 @@ Update the test in the same file that uses `workspace_path`:
 // Find: workspace_path.clone() variable naming in test setup → skills_root
 ```
 
-- [ ] **Step 2: Update all callers**
+- [x] **Step 2: Update all callers**
 
 Search for `.workspace_path` across the Rust codebase:
 
@@ -358,7 +358,7 @@ For each match, rename `.workspace_path` to `.skills_root`. Key callers:
 - `commands/eval_workbench/mod.rs`: same
 - `commands/workflow/runtime.rs`: same (if present)
 
-- [ ] **Step 3: Compile**
+- [x] **Step 3: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -366,7 +366,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 4: Run all Rust unit tests**
+- [x] **Step 4: Run all Rust unit tests**
 
 ```bash
 cd app/src-tauri && cargo test
@@ -374,7 +374,7 @@ cd app/src-tauri && cargo test
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/settings.rs \
@@ -393,7 +393,7 @@ git commit -m "refactor: rename InitializedRuntimeContext.workspace_path -> skil
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Make `resolve_skills_path` pub(crate) in `skill_session.rs`**
+- [x] **Step 1: Make `resolve_skills_path` pub(crate) in `skill_session.rs`**
 
 In `app/src-tauri/src/commands/skill_session.rs`, change:
 
@@ -405,7 +405,7 @@ fn resolve_skills_path(db: &Db) -> Result<String, String> {
 pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
 ```
 
-- [ ] **Step 2: Delete the duplicate from `refine/mod.rs`**
+- [x] **Step 2: Delete the duplicate from `refine/mod.rs`**
 
 In `app/src-tauri/src/commands/refine/mod.rs`, delete the private `resolve_skills_path` function (lines ~20–26):
 
@@ -420,7 +420,7 @@ pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
 }
 ```
 
-- [ ] **Step 3: Update callers in `refine/mod.rs`**
+- [x] **Step 3: Update callers in `refine/mod.rs`**
 
 Any call to `resolve_skills_path(db)` within `refine/mod.rs` must now use the path from `skill_session.rs`. Since they're in the same crate and `skill_session` is a sibling module:
 
@@ -432,7 +432,7 @@ resolve_skills_path(db)?
 crate::commands::skill_session::resolve_skills_path(db)?
 ```
 
-- [ ] **Step 4: Compile**
+- [x] **Step 4: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -440,7 +440,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::refine && cargo test commands::skill_session
@@ -448,7 +448,7 @@ cd app/src-tauri && cargo test commands::refine && cargo test commands::skill_se
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/skill_session.rs \
@@ -463,7 +463,7 @@ git commit -m "refactor: consolidate resolve_skills_path into skill_session"
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/mod.rs`
 
-- [ ] **Step 1: Delete the enum**
+- [x] **Step 1: Delete the enum**
 
 Find and delete:
 
@@ -474,7 +474,7 @@ enum RefineConversationDispatchPlan {
 }
 ```
 
-- [ ] **Step 2: Update `plan_refine_conversation_dispatch` to return `Result<String, String>`**
+- [x] **Step 2: Update `plan_refine_conversation_dispatch` to return `Result<String, String>`**
 
 Change the function signature and return:
 
@@ -500,7 +500,7 @@ fn plan_refine_conversation_dispatch(
 }
 ```
 
-- [ ] **Step 3: Update the caller in `send_refine_message`**
+- [x] **Step 3: Update the caller in `send_refine_message`**
 
 Find the destructuring that uses the enum (around line 393):
 
@@ -512,7 +512,7 @@ let RefineConversationDispatchPlan::ReuseExisting(active_conversation_id) = disp
 let active_conversation_id = dispatch_plan;
 ```
 
-- [ ] **Step 4: Compile**
+- [x] **Step 4: Compile**
 
 ```bash
 cd app/src-tauri && cargo check
@@ -520,7 +520,7 @@ cd app/src-tauri && cargo check
 
 Expected: no errors.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd app/src-tauri && cargo test commands::refine
@@ -528,7 +528,7 @@ cd app/src-tauri && cargo test commands::refine
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/refine/mod.rs
