@@ -3,24 +3,11 @@
 Current gaps between latest `main` and the target backend architecture
 described in this folder.
 
-## 1. Latest `main` Still Carries LiteLLM-Specific Runtime Plumbing
+## 1. ~~Latest `main` Still Carries LiteLLM-Specific Runtime Plumbing~~ — Resolved
 
-Target architecture assumes model selection is resolved through the app-owned
-model catalog and that OpenHands is configured directly from the selected
-provider/model pair.
-
-Latest `main` still contains LiteLLM-specific runtime and admin concepts:
-
-- `app/src-tauri/src/agents/litellm_proxy/`
-- `app/src-tauri/src/commands/litellm_providers.rs`
-- `app/src-tauri/src/commands/litellm_profiles.rs`
-- `app/src-tauri/src/lib.rs`
-
-Current consequence:
-
-- target docs and implementation are intentionally divergent until the LiteLLM
-  subsystem is removed or replaced
-- runtime model resolution is not yet centered on the catalog contract
+The LiteLLM subsystem (`litellm_proxy/`, `litellm_providers`, `litellm_profiles`,
+startup/shutdown hooks, and command surface) has been removed. The legacy
+direct-provider path remains usable until the catalog work lands.
 
 ## 2. The Cached Model Catalog Does Not Exist Yet
 
