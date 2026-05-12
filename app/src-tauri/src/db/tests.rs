@@ -4567,3 +4567,142 @@ fn test_skill_conversation_round_trip_by_plugin_and_skill() {
         Some("conv-999".to_string())
     );
 }
+
+// --- Model catalog cache migration tests (VU-1185 PR2) ---
+
+#[test]
+fn test_migration_54_drops_litellm_tables() {
+    let conn = create_test_db();
+
+    for table in ["llm_providers", "llm_profiles", "llm_profile_models"] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                [table],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(exists, 0, "table {} should be dropped after migration 54", table);
+    }
+}
+
+#[test]
+fn test_migration_55_creates_catalog_tables() {
+    let conn = create_test_db();
+
+    for table in [
+        "provider_catalog",
+        "provider_env",
+        "model_catalog",
+        "model_input_modalities",
+        "model_output_modalities",
+    ] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                [table],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(exists, 1, "table {} should exist after migration 55", table);
+    }
+}
+
+#[test]
+fn test_migration_55_fk_cascade_deletes_children() {
+    let conn = create_test_db();
+
+    // Insert a provider
+    conn.execute(
+        "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
+         VALUES ('test-provider', 'Test Provider', '@test/provider', 'https://api.test.com', 'https://docs.test.com')",
+        [],
+    ).unwrap();
+
+    // Insert provider env
+    conn.execute(
+        "INSERT INTO provider_env (provider_id, env_var) VALUES ('test-provider', 'TEST_API_KEY')",
+        [],
+    ).unwrap();
+
+    // Insert a model
+    conn.execute(
+        "INSERT INTO model_catalog (full_id, provider_id, model_id, name, attachment, reasoning, tool_call, open_weights, release_date, last_updated)
+         VALUES ('test-provider:model-1', 'test-provider', 'model-1', 'Test Model 1', 0, 1, 1, 0, '2025-01-01', '2025-01-01')",
+        [],
+    ).unwrap();
+
+    // Insert modalities
+    conn.execute(
+        "INSERT INTO model_input_modalities (full_id, modality) VALUES ('test-provider:model-1', 'text')",
+        [],
+    ).unwrap();
+    conn.execute(
+        "INSERT INTO model_output_modalities (full_id, modality) VALUES ('test-provider:model-1', 'text')",
+        [],
+    ).unwrap();
+
+    // Delete the provider — CASCADE should remove env, model, and modalities
+    conn.execute("DELETE FROM provider_catalog WHERE provider_id = 'test-provider'", [])
+        .unwrap();
+
+    let env_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM provider_env WHERE provider_id = 'test-provider'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(env_count, 0, "provider_env rows should be cascaded");
+
+    let model_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM model_catalog WHERE provider_id = 'test-provider'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(model_count, 0, "model_catalog rows should be cascaded");
+
+    let input_mod_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'test-provider:model-1'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(input_mod_count, 0, "input modalities should be cascaded");
+
+    let output_mod_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'test-provider:model-1'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(output_mod_count, 0, "output modalities should be cascaded");
+}
+
+#[test]
+fn test_migration_55_model_cascade_deletes_modalities() {
+    let conn = create_test_db();
+
+    conn.execute(
+        "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
+         VALUES ('prov-2', 'Provider 2', '@test/p2', NULL, 'https://docs.p2.com')",
+        [],
+    ).unwrap();
+
+    conn.execute(
+        "INSERT INTO model_catalog (full_id, provider_id, model_id, name, attachment, reasoning, tool_call, open_weights, release_date, last_updated)
+         VALUES ('prov-2:m1', 'prov-2', 'm1', 'Model 1', 0, 0, 0, 0, '2025-01-01', '2025-01-01')",
+        [],
+    ).unwrap();
+
+    conn.execute(
+        "INSERT INTO model_input_modalities (full_id, modality) VALUES ('prov-2:m1', 'image')",
+        [],
+    ).unwrap();
+    conn.execute(
+        "INSERT INTO model_output_modalities (full_id, modality) VALUES ('prov-2:m1', 'text')",
+        [],
+    ).unwrap();
+
+    // Delete the model — CASCADE should remove modalities
+    conn.execute("DELETE FROM model_catalog WHERE full_id = 'prov-2:m1'", [])
+        .unwrap();
+
+    let in_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'prov-2:m1'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(in_count, 0, "input modalities should be cascaded on model delete");
+
+    let out_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'prov-2:m1'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(out_count, 0, "output modalities should be cascaded on model delete");
+}

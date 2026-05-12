@@ -1,4 +1,5 @@
 mod github;
+mod model_catalog;
 mod refine;
 mod secret;
 mod session;
@@ -10,6 +11,7 @@ mod workflow;
 
 // Re-export all types at the crate::types level so callers don't need to change.
 pub use github::*;
+pub use model_catalog::*;
 pub use refine::*;
 pub use secret::*;
 pub use session::*;
@@ -161,5 +163,45 @@ mod tests {
         assert!(!json.contains("\"betas\""));
         // thinking is None with skip_serializing_if, so should not appear
         assert!(!json.contains("\"thinking\""));
+    }
+
+    #[test]
+    fn test_model_catalog_types_serde_fixture() {
+        use super::model_catalog::{CatalogModel, CatalogProvider};
+
+        let fixture = include_str!("../fixtures/model-catalog.json");
+
+        let providers: Vec<CatalogProvider> = serde_json::from_str(fixture).unwrap();
+        assert_eq!(providers.len(), 2);
+
+        // Provider with api
+        let anthropic = &providers[0];
+        assert_eq!(anthropic.id, "anthropic");
+        assert_eq!(anthropic.api, Some("https://api.anthropic.com".to_string()));
+        assert_eq!(anthropic.models.len(), 1);
+
+        let sonnet = anthropic.models.get("claude-sonnet-4-6").unwrap();
+        assert!(sonnet.attachment);
+        assert!(!sonnet.reasoning);
+        assert!(sonnet.tool_call);
+        assert_eq!(sonnet.structured_output, Some(true));
+        assert_eq!(sonnet.modalities.input, vec!["text", "image"]);
+        assert_eq!(sonnet.modalities.output, vec!["text"]);
+        assert!(sonnet.cost.is_some());
+        assert_eq!(sonnet.cost.as_ref().unwrap().input, Some(0.000003));
+        assert_eq!(sonnet.limit.context, Some(200000));
+
+        // Provider without api
+        let ollama = &providers[1];
+        assert_eq!(ollama.id, "ollama");
+        assert!(ollama.api.is_none());
+
+        let llama = ollama.models.get("llama3").unwrap();
+        assert!(llama.open_weights);
+        assert!(llama.cost.is_none());
+        assert_eq!(llama.structured_output, None);
+        assert!(llama.interleaved.is_some());
+        assert_eq!(llama.status, Some("active".to_string()));
+        assert_eq!(llama.experimental, Some(false));
     }
 }
