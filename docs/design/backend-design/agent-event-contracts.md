@@ -1,235 +1,220 @@
 # Agent Event Contracts
 
-As-built reference for all Tauri events emitted from the Rust backend to the React frontend.
-All payload structs live in `app/src-tauri/src/contracts/agent_events.rs` (canonical Rust types).
-TypeScript types are generated from Rust via codegen into `app/src/generated/contracts.ts`.
+Target event contract from the Rust backend to the React frontend.
+
+## Contract Sources
+
+The target contract is split across two Rust surfaces:
+
+- `app/src-tauri/src/contracts/agent_events.rs`
+  Canonical typed payloads for structured runtime `agent_event` messages.
+- `app/src-tauri/src/agents/event_types.rs`
+  Auxiliary payloads for non-`agent_event` channels such as `agent-exit`,
+  `agent-shutdown`, and `agent-init-error`.
+
+Rust routing and emission live in:
+
+- `app/src-tauri/src/agents/event_router.rs`
+- `app/src-tauri/src/agents/openhands_server/events.rs`
+
 Frontend listener registration lives in `app/src/hooks/use-agent-stream.ts`.
 
----
-
-## Event Inventory
-
-### `agent-exit`
-
-Emitted by `handle_runtime_exit` when the runtime agent process terminates.
-
-**Rust struct:** `AgentExitPayload`
-
-| Field | Type | Description |
-|---|---|---|
-| `agent_id` | `String` | Identifier of the agent that exited |
-| `success` | `bool` | `true` if the process exited cleanly (exit code 0) |
-
----
-
-### `agent-shutdown`
-
-Emitted by `handle_agent_shutdown` when an agent is stopped via a graceful shutdown command
-(e.g. `graceful_shutdown`).
-
-**Rust struct:** `AgentShutdownPayload`
-
-| Field | Type | Description |
-|---|---|---|
-| `agent_id` | `String` | Identifier of the agent that was shut down |
-
----
-
-### `agent-init-error`
-
-Emitted by `emit_init_error` (runtime startup failure) and `emit_runtime_error`
-(runtime failure detected from agent output, e.g. authentication failure).
-
-**Rust struct:** `AgentInitError`
-
-| Field | Type | Description |
-|---|---|---|
-| `error_type` | `String` | Machine-readable error category (e.g. `invalid_api_key`) |
-| `message` | `String` | Human-readable description of the failure |
-| `fix_hint` | `String` | Actionable hint shown to the user |
-
----
+## Event Families
 
 ### `agent-message`
 
-Emitted by `handle_runtime_message` for all raw runtime protocol messages that are not
-internally consumed (i.e. everything except `run_result` and structured `agent_event` subtypes).
+Pass-through channel for runtime protocol messages that are not consumed and
+re-emitted as dedicated typed frontend events.
 
-**Rust struct:** `AgentEvent`
+Payload:
 
-| Field | Type | Description |
+| Field | Type | Meaning |
 |---|---|---|
-| `agent_id` | `String` | Identifier of the originating agent |
-| `message` | `serde_json::Value` | Full JSON message from the runtime |
+| `agent_id` | `string` | Originating agent |
+| `message` | `unknown JSON` | Raw runtime message |
 
-> **Note:** Individual structured agent events (run_config, turn_usage, etc.) are now typed
-> via the `AgentEvent` tagged union in `contracts/agent_events.rs` rather than remaining
-> as opaque `serde_json::Value`. The `agent-message` channel still carries untyped JSON for
-> messages that are not internally consumed structured events.
+### `agent-exit`
 
----
+Terminal process exit notification.
 
-### `agent-run-config`
+Payload:
 
-Emitted when the runtime emits a `run_config` agent event.
+| Field | Type | Meaning |
+|---|---|---|
+| `agent_id` | `string` | Agent that exited |
+| `success` | `boolean` | Whether the process exited successfully |
+| `error_detail` | `string?` | Optional terminal error detail |
 
-**Payload shape:** `{ agent_id, timestamp, type, thinkingEnabled, agentName? }`
+### `agent-shutdown`
 
----
+Explicit runtime shutdown notification.
 
-### `agent-run-init`
+Payload:
 
-Emitted when the runtime emits a `run_init` agent event (SDK session established).
+| Field | Type | Meaning |
+|---|---|---|
+| `agent_id` | `string` | Agent that was shut down |
 
-**Payload shape:** `{ agent_id, timestamp, type, sessionId, model }`
+### `agent-init-error`
 
----
+Structured startup or runtime-init failure surfaced to the frontend.
 
-### `agent-turn-usage`
+Payload:
 
-Emitted after each agent turn with token usage metrics.
+| Field | Type | Meaning |
+|---|---|---|
+| `error_type` | `string` | Machine-readable category |
+| `message` | `string` | Human-readable failure |
+| `fix_hint` | `string` | User-facing remediation hint |
 
-**Payload shape:** `{ agent_id, timestamp, type, turn, inputTokens, outputTokens }`
+## Structured Runtime Event Channels
 
----
+The backend emits dedicated channels for structured runtime `agent_event`
+payloads:
 
-### `agent-compaction`
+- `agent-run-config`
+- `agent-run-init`
+- `agent-turn-usage`
+- `agent-compaction`
+- `agent-context-window`
+- `agent-session-exhausted`
+- `agent-init-progress`
+- `agent-turn-complete`
 
-Emitted when the agent context window is compacted.
-
-**Payload shape:** `{ agent_id, timestamp, type, turn, preTokens, timestamp }`
-
----
-
-### `agent-context-window`
-
-Emitted to report the current context window size.
-
-**Payload shape:** `{ agent_id, timestamp, type, contextWindow }`
-
----
-
-### `agent-session-exhausted`
-
-Emitted when a refine session has reached its message limit.
-
-**Payload shape:** `{ agent_id, timestamp, type, sessionId }`
-
----
-
-### `agent-init-progress`
-
-Emitted during runtime startup to report initialization stages.
-
-**Payload shape:** `{ agent_id, timestamp, type, stage }` where `stage` is `"init_start"` or `"runtime_ready"`.
-
----
-
-### `agent-turn-complete`
-
-Emitted after each assistant turn completes.
-
-**Payload shape:** `{ agent_id, timestamp, type, streaming }`
-
----
-
-## Error Payload Notes
-
-The `agent-init-error` channel is shared between startup errors and
-runtime errors detected from agent output (e.g. authentication failures detected by
-`is_authentication_error`). Both paths produce an `AgentInitError` payload.
-
-**Error classification does not happen in Rust.** The Rust layer emits the raw
-`success: bool` on `agent-exit` and structured `error_type` / `message` / `fix_hint` on
-`agent-init-error`. All higher-level run status classification (e.g. mapping `success=false`
-to a terminal `"error"` state) is performed in `app/src/stores/agent-store.ts` (introduced in
-VU-552). Rust is intentionally kept free of UI-level status semantics.
-
----
-
-## Structured Agent Event Payload Pattern
-
-For runtime-originated `agent_event` messages (all events except `agent-exit`,
-`agent-shutdown`, `agent-init-error`, and `agent-message`), Rust merges the event fields
-into a common envelope via `build_frontend_event_payload`:
+Target payload shape for each of these channels is:
 
 ```text
 {
-  agent_id:  string   — added by Rust
-  timestamp: number   — taken from the runtime message envelope
-  type:      string   — from the inner event object
-  ...rest            — all other fields from the inner event object
+  agent_id: string,
+  timestamp: number,
+  type: string,
+  ...event-specific fields
 }
 ```
 
-This means frontend payload types have the shape
-`{ agent_id: string; timestamp: number } & <EventType>`.
+The common envelope is built in `event_router.rs` before the payload is emitted
+to the frontend.
 
----
+## Structured Event Payloads
 
-## RunResultEvent Fields
+### `agent-run-config`
 
-The `run_result` event (emitted at the end of every agent run) carries the complete run summary. Key fields added since the initial implementation:
+```text
+{ agent_id, timestamp, type, thinkingEnabled, agentName? }
+```
 
-| Field | Type | Notes |
+### `agent-run-init`
+
+```text
+{ agent_id, timestamp, type, sessionId, model }
+```
+
+### `agent-turn-usage`
+
+```text
+{ agent_id, timestamp, type, turn, inputTokens, outputTokens }
+```
+
+### `agent-compaction`
+
+```text
+{ agent_id, timestamp, type, turn, preTokens, timestamp }
+```
+
+### `agent-context-window`
+
+```text
+{ agent_id, timestamp, type, contextWindow }
+```
+
+### `agent-session-exhausted`
+
+```text
+{ agent_id, timestamp, type, sessionId }
+```
+
+### `agent-init-progress`
+
+```text
+{ agent_id, timestamp, type, stage }
+```
+
+`stage` is one of:
+
+- `init_start`
+- `runtime_ready`
+
+### `agent-turn-complete`
+
+```text
+{ agent_id, timestamp, type, streaming }
+```
+
+## `run_result` Contract
+
+`run_result` is the canonical terminal run summary emitted by the runtime and
+typed in `contracts/agent_events.rs`.
+
+Target fields:
+
+| Field | Type | Meaning |
 |---|---|---|
-| `skill_name` | `String` | Skill that was run |
-| `step_id` | `i64` | Workflow step index |
-| `plugin_slug` | `String` | Plugin that owns the skill |
-| `model` | `String` | Primary model used |
-| `input_tokens` | `i64` | Total input tokens |
-| `output_tokens` | `i64` | Total output tokens |
-| `cache_read_tokens` | `i64` | Prompt-cache read tokens |
-| `cache_write_tokens` | `i64` | Prompt-cache write tokens |
-| `total_cost_usd` | `f64` | Aggregate cost |
-| `model_usage_breakdown` | `Vec<ModelUsageEntry>` | Per-model token/cost breakdown for multi-model runs |
-| `context_window` | `i64` | Final context window size |
-| `num_turns` | `i64` | Agent turns taken |
-| `duration_ms` | `i64` | Wall-clock duration |
-| `duration_api_ms` | `i64?` | Time spent waiting for API responses |
-| `tool_use_count` | `i64` | Total tool calls |
-| `compaction_count` | `i64` | Number of context compactions |
-| `status` | `RunResultStatus` | Terminal status: `completed`, `error`, or `shutdown` |
-| `run_source` | `RunSource?` | Discriminator: `workflow`, `refine`, or `test` |
-| `result_subtype` | `String?` | Fine-grained classification of the result type |
-| `result_errors` | `Vec<String>?` | Error messages when `status = error` |
-| `result_text` | `String?` | Raw agent output text |
-| `workspace_path` | `String?` | Working directory used for the run |
-| `workflow_session_id` | `String?` | Links to `workflow_sessions` |
-| `usage_session_id` | `String?` | Links to usage tracking session |
-| `stop_reason` | `String?` | SDK stop reason (e.g. `end_turn`, `max_turns`) |
+| `skill_name` | `string` | Skill name used for the run |
+| `step_id` | `number` | Workflow/refine step discriminator |
+| `usage_session_id` | `string?` | Usage/session grouping key |
+| `run_source` | `workflow` / `refine` / `test` | Origin of the run |
+| `session_id` | `string?` | OpenHands session identifier |
+| `model` | `string` | Primary model name |
+| `input_tokens` | `number` | Aggregate input tokens |
+| `output_tokens` | `number` | Aggregate output tokens |
+| `cache_read_tokens` | `number` | Prompt-cache reads |
+| `cache_write_tokens` | `number` | Prompt-cache writes |
+| `total_cost_usd` | `number` | Aggregate run cost |
+| `model_usage_breakdown` | `ModelUsageEntry[]` | Per-model usage/cost breakdown |
+| `context_window` | `number` | Final context window |
+| `result_subtype` | `string?` | Fine-grained terminal subtype |
+| `result_errors` | `string[]?` | Terminal error list |
+| `stop_reason` | `string?` | Runtime stop reason |
+| `num_turns` | `number` | Total turns |
+| `duration_ms` | `number` | Wall-clock duration |
+| `duration_api_ms` | `number?` | API-only duration |
+| `tool_use_count` | `number` | Tool-call count |
+| `compaction_count` | `number` | Compaction count |
+| `status` | `completed` / `error` / `shutdown` | Terminal status |
 
-`ModelUsageEntry` carries `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cost`.
+## Related Design
 
-## Structured Output Handling
+This page stops at emitted backend events and typed payloads. Product-wide
+projection of OpenHands event streams into frontend display items is documented
+separately in
+[../openhands-event-display-projection/README.md](../openhands-event-display-projection/README.md).
+| `result_text` | `string?` | Raw terminal result text |
+| `workspace_path` | `string?` | Effective working directory |
+| `plugin_slug` | `string` | Owning plugin |
 
-When a workflow step completes, the result message may include:
+## Error Classification Boundary
 
-- `result_text` — the agent's final output text
-- `structured_output` — optional parsed JSON; the OpenHands Agent Server delivers structured output via the conversation state, which Rust extracts from the result text
+Rust emits transport- and runtime-level facts. The frontend owns UI-level run
+status interpretation.
 
-For JSON-contract runs, the app extracts a JSON object from the terminal result text and forwards that object to Rust validation. If no parseable JSON object is present, the run fails with `result_subtype: "structured_output_missing"`.
+Examples:
 
-The `result_text` field is used when:
+- `agent-exit.success = false` is backend output
+- mapping that to an error badge or banner is frontend behavior
+- `agent-init-error` carries the machine category and remediation hint, but the
+  frontend chooses how to present it
 
-- The run has no structured-output contract
-- The agent returned an error (non-JSON output)
+## Structured Output Boundary
 
-Rust is the final validator — it deserializes the extracted JSON object into typed contract structs defined in `contracts/workflow_outputs.rs`, `contracts/clarifications.rs`, and `contracts/decisions.rs`.
+For structured-output runs, the backend is the final validator between terminal
+result text and typed contract structs. The target contract assumes:
 
----
+- runtime output may contain raw result text
+- the backend extracts or reconstructs structured JSON when required
+- Rust validates that JSON against typed workflow/output contracts before
+  frontend consumers rely on it
 
-## Source References
+## Current-State Deltas
 
-- Canonical Rust contract types (agent events): `app/src-tauri/src/contracts/agent_events.rs`
-- Canonical Rust contract types (workflow outputs): `app/src-tauri/src/contracts/workflow_outputs.rs`
-- Canonical Rust contract types (clarifications): `app/src-tauri/src/contracts/clarifications.rs`
-- Canonical Rust contract types (decisions): `app/src-tauri/src/contracts/decisions.rs`
-- Canonical Rust contract types (workflow artifacts): `app/src-tauri/src/contracts/workflow_artifacts.rs`
-- Rust emit logic: `app/src-tauri/src/agents/events.rs`
-- Rust event routing: `app/src-tauri/src/agents/event_router.rs`
-- Generated TypeScript types: `app/src/generated/contracts.ts`
-- Generated JSON Schema (inline, no `$ref`): `agent-sources/workspace/skills/shared/output-schemas/`
-- Frontend listener registration: `app/src/hooks/use-agent-stream.ts`
-- Frontend TypeScript event types: `app/src/lib/agent-events.ts`
-- Frontend run state and error classification: `app/src/stores/agent-store.ts`
+Any mismatches on latest `main` belong in
+[implementation-gaps.md](implementation-gaps.md).

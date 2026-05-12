@@ -1,212 +1,189 @@
-# Tauri Command Reference
+# Tauri Command Surface
 
-All commands are exposed via `#[tauri::command]` and return `Result<T, String>`. Async commands use Tokio.
+Target backend command surface for the Skill Builder desktop app.
 
-## Settings
+All commands are exposed through Tauri IPC. The backend groups them by product
+domain rather than by module layout.
 
-| Command | Description |
+## Settings And Lifecycle
+
+| Command | Target responsibility |
 |---|---|
-| `get_settings` | Read `AppSettings` from DB |
-| `save_settings` | Write `AppSettings`; handles `skills_path` init/move |
-| `test_model_connection` | Validate model connectivity with a live call |
-| `set_log_level` | Change runtime log level without restarting |
-| `get_log_file_path` | Path to the Tauri app log file |
-| `get_default_skills_path` | Platform default for `skills_path` |
-| `get_data_dir` | Tauri `app_data_dir` |
-| `update_user_settings` | Update user-specific preferences |
-| `update_github_identity` | Update stored GitHub user identity |
-| `log_frontend` | Bridge frontend `console.*` calls into Rust logging |
-| `allow_app_exit` | Signal that the app can safely exit (closes close-guard) |
+| `get_settings` | Read app settings |
+| `save_settings` | Persist app settings and trigger any required backend side effects |
+| `update_user_settings` | Persist user-only preferences |
+| `update_github_identity` | Persist authenticated GitHub identity |
+| `get_default_skills_path` | Return the platform-default skills root |
+| `get_data_dir` | Return the app data directory |
+| `set_log_level` | Change backend log verbosity at runtime |
+| `get_log_file_path` | Return the app log path |
+| `log_frontend` | Bridge frontend logging into Rust logging |
+| `allow_app_exit` | Release the close guard after the frontend confirms exit |
+| `graceful_shutdown` | Release leases/session state and stop managed runtimes |
 
-## Skill Management
+## Skills Library
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `list_skills` | All Skills Library entries with tags and workflow metadata |
-| `get_dashboard_skill_names` | Skill names for the dashboard view |
-| `get_workflow_skill_names` | Skill names for the workflow context |
-| `create_skill` | Create workspace directories and DB entries |
-| `delete_skill` | Remove skill from all tables and disk |
-| `rename_skill` | Rename skill on disk and in all DB tables |
-| `update_skill_tags` | Upsert tags for a skill |
-| `update_skill_metadata` | Update description, version, model, argument hint, flags |
-| `get_all_tags` | Sorted list of all tags across all skills |
-| `acquire_lock` | Lock a skill to this instance |
-| `release_lock` | Release a skill lock |
-| `get_externally_locked_skills` | Locks held by other app instances |
-| `check_skill_customized` | Check whether a skill has local customizations |
-| `review_skill_scope` | Run a scope review agent against a skill |
-| `navigate_back_to_step` | Return the workflow to a previous step |
+| `list_skills` | Return the unified Skills Library view |
+| `create_skill` | Create a new skill and its initial backend records |
+| `delete_skill` | Remove a skill and all owned backend state |
+| `rename_skill` | Rename a skill when that behavior is enabled by product policy |
+| `update_skill_metadata` | Update skill metadata and behavior flags |
+| `get_all_tags` | Return the global tag list |
+| `get_dashboard_skill_names` | Return dashboard skill names |
+| `get_workflow_skill_names` | Return workflow-eligible skill names |
+| `check_skill_customized` | Detect local changes against the imported source |
+
+## Skill Leasing And Persistent Sessions
+
+| Command | Target responsibility |
+|---|---|
+| `acquire_lock` | Acquire a backend lease for a skill |
+| `release_lock` | Release a backend lease for a skill |
+| `get_externally_locked_skills` | Return skills leased by another instance |
+| `select_skill_openhands_session` | Resolve the canonical skill, verify the lease, and restore or create the selected-skill conversation |
+| `pause_openhands_session` | Pause the active selected-skill run without destroying the persistent conversation |
+| `send_refine_message` | Dispatch the next turn on the selected-skill conversation |
+| `get_skill_content_for_refine` | Load the current skill contents for refine |
+| `get_skill_content_at_path` | Read skill contents directly from a path |
+| `finalize_refine_run` | Persist the final refine outcome |
+| `clean_benchmark_snapshot` | Clean transient refine benchmark artifacts |
 
 ## Workflow Execution
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `run_workflow_step` | Execute a workflow step (dispatches to OpenHands Agent Server) |
-| `get_workflow_state` | Current step and all step statuses |
-| `save_workflow_state` | Persist workflow run and step data |
-| `verify_step_output` | Check that expected output files exist |
-| `get_step_output_files` | List artifact files produced by a step |
-| `reset_workflow_step` | Reset a step and all subsequent steps to pending |
-| `preview_step_reset` | List files that would be deleted by a step reset |
-| `cancel_workflow_step` | Cancel an in-progress workflow step |
-| `run_answer_evaluator` | LLM gate decision validation |
-| `log_gate_decision` | Record a gate decision in logs |
-| `get_disabled_steps` | Steps disabled for the current skill type |
-| `materialize_answer_evaluation_output` | Generate gate decision output artifact |
-| `materialize_workflow_step_output` | Materialize full workflow step artifacts to disk |
+| `run_workflow_step` | Dispatch a workflow step through OpenHands |
+| `run_answer_evaluator` | Dispatch the answer-evaluator gate |
+| `get_workflow_state` | Read workflow run and step state by canonical skill identity |
+| `save_workflow_state` | Persist workflow run and step state |
+| `verify_step_output` | Verify that required step output exists |
+| `preview_step_reset` | Show the reset blast radius |
+| `reset_workflow_step` | Reset a step and clean owned artifacts |
+| `navigate_back_to_step` | Return workflow state to an earlier step |
+| `get_disabled_steps` | Return workflow steps blocked by current artifact state |
+| `materialize_workflow_step_output` | Persist step outputs to app-owned artifacts |
+| `materialize_answer_evaluation_output` | Persist gate outputs to app-owned artifacts |
+| `log_gate_decision` | Emit structured gate-decision logs |
+| `read_latest_benchmark` | Read the latest benchmark result |
 
-## Workflow Artifacts
+## Workflow Artifact Editing
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `get_clarifications` | Retrieve clarification data for a skill |
-| `update_clarification_answer` | Update an answer on a clarification question |
-| `update_clarification_verdicts` | Update per-question evaluation verdicts |
-| `get_decisions` | Retrieve decision data for a skill |
-| `save_decisions_edit` | Persist edits to decision items |
+| `get_clarifications` | Read normalized clarifications by canonical skill identity |
+| `update_clarification_answer` | Persist a question answer edit |
+| `update_clarification_verdicts` | Persist evaluator verdicts |
+| `get_decisions` | Read normalized decisions by canonical skill identity |
+| `save_decisions_edit` | Persist editable decision changes |
 
-## Agent Lifecycle
+## Marketplace And Import
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `cancel_agent_run` | Cancel a running agent |
-| `cancel_session` | Cancel an OpenHands session |
-| `graceful_shutdown` | Stop all agent processes with a timeout before app exit |
-
-## File I/O
-
-| Command | Description |
-|---|---|
-| `list_skill_files` | Recursive directory listing for a skill |
-| `read_file` | Read a file as text (5 MB cap) |
-| `write_file` | Write a text file (validated to skills dir) |
-
-## Imported Skills
-
-| Command | Description |
-|---|---|
-| `import_skill_from_file` | Import a skill from a local file and register in the Skills Library |
-| `parse_skill_file` | Parse SKILL.md frontmatter from a file path |
-| `list_imported_skills` | All imported skill entries with plugin and metadata |
-| `delete_imported_skill` | Remove an imported skill from the library |
-| `export_skill_as_file` | Package a skill as a file for download |
-| `get_skill_content_at_path` | Read SKILL.md content by path |
-
-## GitHub Integration
-
-| Command | Description |
-|---|---|
-| `parse_github_url` | Parse a GitHub URL into owner/repo/branch/subpath |
-| `check_marketplace_url` | Verify a marketplace repo is valid |
-| `list_github_skills` | List available skills from `.claude-plugin/marketplace.json` in a GitHub repo |
-| `list_github_plugins` | Available plugins from marketplace registries |
-| `import_marketplace_to_library` | Bulk import all marketplace skills into Skills Library |
-| `import_marketplace_plugin_to_library` | Import an entire marketplace plugin into the Skills Library |
-| `check_marketplace_updates` | Check for available updates to installed marketplace plugins |
-| `github_start_device_flow` | Start GitHub OAuth device flow |
-| `github_poll_for_token` | Poll for OAuth token completion |
-| `github_get_user` | Fetch authenticated GitHub user info |
-| `github_logout` | Clear GitHub auth tokens |
-
-## Usage Analytics
-
-| Command | Description |
-|---|---|
-| `get_usage_summary` | Aggregate cost and run counts |
-| `get_agent_runs` | Agent run records with filtering |
-| `get_recent_workflow_sessions` | Last N sessions with cost summaries |
-| `get_step_agent_runs` | Completed agent runs for a (skill, step) pair |
-| `get_usage_by_step` | Cost aggregated by workflow step |
-| `get_usage_by_model` | Cost aggregated by model |
-| `get_usage_by_day` | Cost aggregated by day |
-| `reset_usage` | Soft-delete all runs/sessions via `reset_marker` |
-
-## Workspace & Reconciliation
-
-| Command | Description |
-|---|---|
-| `get_workspace_path` | Current `workspace_path` from settings |
-| `init_workspace` | Initialize the workspace directory structure |
-| `clear_workspace` | Delete the entire workspace directory |
-| `invalidate_workspace_cache` | Force workspace state refresh |
-| `ensure_workspace_prompts` | Ensure workspace prompt files are up to date |
-| `ensure_openhands_runtime_dir` | Ensure the OpenHands runtime directory exists |
-| `reconcile_startup` | Compare disk state to DB; return orphans and discoveries |
-| `record_reconciliation_cancel` | Record that the user cancelled a reconciliation prompt |
-| `resolve_orphan` | Register a discovered orphan into the Skills Library |
-| `resolve_discovery` | Register a discovered skill into the Skills Library |
-| `create_workflow_session` | Start a refine or workflow session |
-| `end_workflow_session` | Close a session |
-
-## Selected Skill And Refine
-
-| Command | Description |
-|---|---|
-| `get_skill_content_for_refine` | Load skill files into the refine editor |
-| `select_skill_openhands_session` | Activate the selected skill's persistent OpenHands conversation and return restored session state |
-| `send_refine_message` | Dispatch the next Refine turn on that conversation |
-| `cancel_agent_run` | Pause the active live run by `agent_id` |
-| `pause_openhands_session` | Pause the selected skill's current live run during switch-away cleanup without discarding the persistent conversation |
-| `graceful_shutdown` | Release selected-skill locks and workflow sessions, then shut down the cached OpenHands Agent Server |
-| `finalize_refine_run` | Write final summary and close run metrics |
-
-## Git History
-
-| Command | Description |
-|---|---|
-| `get_skill_history` | Commit log for a skill |
-| `get_skill_files_at_sha` | Get skill file contents at a specific git commit |
-| `restore_skill_version` | Restore skill to a previous commit |
-
-## Node & Dependencies
-
-| Command | Description |
-|---|---|
-| `check_node` | Verify Node.js availability (bundled or system) |
-| `check_startup_deps` | Check all startup dependencies, including OpenHands Agent Server |
+| `parse_skill_file` | Parse frontmatter from a local skill file |
+| `import_skill_from_file` | Import a local skill into the library |
+| `list_imported_skills` | List imported and marketplace skill records |
+| `delete_imported_skill` | Remove an imported skill entry |
+| `export_skill_as_file` | Export a skill as a distributable file |
+| `list_plugins` | List library plugins |
+| `create_plugin_from_skills` | Create a plugin grouping from selected skills |
+| `delete_plugin` | Delete a plugin |
+| `move_skill_to_plugin` | Reassign a skill to another plugin |
+| `remove_skill_from_plugin` | Remove a skill from a plugin |
+| `set_plugin_upgrade_lock` | Lock or unlock plugin upgrades |
+| `parse_github_url` | Parse a GitHub URL into import coordinates |
+| `check_marketplace_url` | Validate a marketplace source |
+| `list_github_plugins` | List plugins from a marketplace source |
+| `list_github_skills` | List skills from a marketplace source |
+| `import_marketplace_to_library` | Bulk-import marketplace content |
+| `import_marketplace_plugin_to_library` | Import a single marketplace plugin |
+| `check_marketplace_updates` | Check for marketplace updates |
 
 ## Documents
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `add_document_file` | Attach a file as a document |
-| `add_document_url` | Attach a URL as a document |
-| `add_document_folder` | Attach a folder as a document |
+| `list_documents` | List document attachments |
+| `list_skills_for_documents` | Return skill choices for scoped attachments |
+| `add_document_file` | Attach a file-backed document |
+| `add_document_url` | Attach a URL-backed document |
+| `add_document_folder` | Attach a folder-backed document |
 | `update_document` | Update document metadata |
-| `delete_document` | Remove a document attachment |
-| `list_documents` | All document attachments with scope info |
-| `list_skills_for_documents` | Skills eligible for skill-scoped document attachment |
+| `delete_document` | Delete a document attachment |
 
-## Plugins
+## GitHub Authentication And Feedback
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `list_plugins` | All registered plugins with metadata |
-| `create_plugin_from_skills` | Create a plugin grouping from selected skills |
-| `delete_plugin` | Remove a plugin and its skills |
-| `move_skill_to_plugin` | Reassign a skill to a different plugin |
-| `remove_skill_from_plugin` | Remove a skill from its plugin |
-| `set_plugin_upgrade_lock` | Lock/unlock a plugin from marketplace upgrades |
+| `github_start_device_flow` | Start GitHub device auth |
+| `github_poll_for_token` | Poll for GitHub auth completion |
+| `github_get_user` | Return the authenticated GitHub user |
+| `github_logout` | Clear GitHub auth state |
+| `create_github_issue` | Create a feedback issue |
 
-## Eval Workbench
+## Usage And History
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `list_scenarios` | List scenario summaries for a plugin skill from disk |
-| `load_scenario` | Read one full scenario from disk |
-| `create_scenario` | Create a new performance scenario draft for a plugin skill |
-| `save_scenario` | Persist a performance scenario to disk and mirror it into the prompt-set store |
-| `delete_scenario` | Delete a saved performance scenario file while preserving historical eval runs |
-| `define_eval_scenario` | Rewrite an existing scenario from skill context and saved workflow artifacts |
-| `run_eval_workbench` | Run the Promptfoo-backed Eval Workbench for a selected scenario and mode |
-| `cancel_eval_workbench_run` | Cancel an in-flight Eval Workbench run and pause any active OpenHands session |
-| `list_eval_runs` | List Promptfoo-backed Eval Workbench runs for a skill and mode |
-| `read_eval_run` | Read one Eval Workbench run with results and persisted run metadata |
-| `build_refine_improvement_brief` | Build a Refine-ready improvement brief from a saved workbench run |
+| `get_usage_summary` | Return aggregated usage summaries |
+| `get_usage_by_step` | Return usage grouped by workflow step |
+| `get_usage_by_model` | Return usage grouped by model |
+| `get_usage_by_day` | Return usage grouped by day |
+| `get_recent_workflow_sessions` | Return recent workflow/refine sessions |
+| `get_step_agent_runs` | Return runs for one workflow step |
+| `get_agent_runs` | Return detailed run rows |
+| `reset_usage` | Reset usage-visible telemetry state |
+| `get_skill_history` | Return git history for a skill |
+| `get_skill_files_at_sha` | Return files for a historical revision |
+| `restore_skill_version` | Restore a historical revision |
 
-## Feedback
+## Workspace And Reconciliation
 
-| Command | Description |
+| Command | Target responsibility |
 |---|---|
-| `create_github_issue` | Create an issue in the feedback repo |
+| `get_workspace_path` | Return the configured workspace path |
+| `clear_workspace` | Clear app-owned workspace state |
+| `reconcile_startup` | Compare disk and DB state on startup |
+| `record_reconciliation_cancel` | Record a cancelled reconciliation action |
+| `resolve_orphan` | Resolve an orphaned skill |
+| `resolve_discovery` | Resolve a discovered skill |
+| `create_workflow_session` | Create a workflow/refine session record |
+| `end_workflow_session` | End a workflow/refine session record |
+
+## LiteLLM Provider And Profile Management
+
+| Command | Target responsibility |
+|---|---|
+| `list_litellm_providers` | List configured providers |
+| `create_litellm_provider` | Create a provider record |
+| `update_litellm_provider` | Update a provider record |
+| `delete_litellm_provider` | Delete a provider record |
+| `list_litellm_profiles` | List model-routing profiles |
+| `get_litellm_profile_models` | List ordered models for a profile |
+| `create_litellm_profile` | Create a profile |
+| `update_litellm_profile` | Update a profile |
+| `delete_litellm_profile` | Delete a profile |
+| `add_profile_model` | Add a model/provider entry to a profile |
+| `remove_profile_model` | Remove a model from a profile |
+| `reorder_profile_models` | Reorder profile fallback priority |
+| `verify_profile_virtual_key` | Verify that the profile virtual key exists in the proxy |
+
+## Eval Scenarios
+
+| Command | Target responsibility |
+|---|---|
+| `list_scenarios` | List saved eval scenarios |
+| `load_scenario` | Load one saved eval scenario |
+| `create_scenario` | Create a new scenario draft |
+| `save_scenario` | Persist a scenario and its assertions |
+| `delete_scenario` | Delete a saved scenario |
+| `define_eval_scenario` | Generate a scenario from skill context and workflow artifacts |
+
+## Notes
+
+- This page documents the target backend command families, not every internal
+  helper function.
+- Any commands or behaviors that still differ on latest `main` belong in
+  [implementation-gaps.md](implementation-gaps.md).

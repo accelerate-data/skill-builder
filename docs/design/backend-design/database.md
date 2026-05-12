@@ -1,80 +1,235 @@
 # Database Design
 
-SQLite database at `{app_data_dir}/skill-builder.db` (macOS: `~/Library/Application Support/com.vibedata.skill-builder/`). Single `Mutex<Connection>`, WAL mode, 5-second busy timeout.
+Target database architecture for the Skill Builder backend.
 
-47 sequential migrations run at startup, tracked in `schema_migrations`. A startup repair pass also runs unconditionally to guard against dev builds with partially-applied migrations.
+## Storage Model
 
----
+The backend uses two SQLite databases:
 
-## Table map
+1. **App database**: `{app_local_data_dir}/db/skill-builder.db`
+   This is the durable product database owned by the Rust backend.
+2. **LiteLLM database**: `{app_local_data_dir}/litellm/litellm.db`
+   This is owned by LiteLLM for spend logs, verification tokens, and related
+   proxy-managed state.
+
+The app database remains the source of truth for product entities. LiteLLM owns
+usage and budget-enforcement internals.
+
+## App Database Topology
 
 ```text
-Skills Library
-──────────────────────────────────────────────────────────────
-plugins  (plugin registry)
- └── skills  (master catalog — plugin_id FK → plugins.id)
-      ├── workflow_runs
-      │    ├── workflow_steps
-      │    └── workflow_artifacts
-      ├── imported_skills
-      ├── workflow_sessions
-      │    └── agent_runs
-      ├── skill_tags
-      └── skill_locks
+plugins
+└── skills
+    ├── workflow_runs
+    │   ├── workflow_steps
+    │   └── workflow_artifacts
+    ├── clarifications
+    │   ├── clarification_sections
+    │   ├── clarification_questions
+    │   │   └── clarification_choices
+    │   └── clarification_notes
+    ├── decisions
+    │   └── decision_items
+    ├── imported_skills
+    ├── workflow_sessions
+    │   └── agent_runs
+    ├── skill_tags
+    ├── skill_locks
+    ├── skill_conversations
+    └── document_skills
 
-Workflow Artifacts                      Eval Workbench
-──────────────────────────────────────  ───────────────────────────────
-clarifications                          eval_prompt_sets
- ├── clarification_sections              └── eval_prompt_cases
- ├── clarification_questions            eval_runs (plugin_slug/skill/scenario)
- │    └── clarification_choices          └── eval_run_results
- └── clarification_notes                description_candidates
-decisions
- └── decision_items
+documents
 
-Agent Sessions                          Documents
-──────────────────                      ──────────────────────
-skill_conversations                     documents
-                                         └── document_skills
+llm_providers
+llm_profiles
+└── llm_profile_models
 
-Supporting
-──────────
+scenarios
+└── assertions
+
 settings
 schema_migrations
 reconciliation_events
 ```
 
----
+## Skill Library Tables
 
-## Tables
+### `plugins`
 
-| Table | PK | FKs | Purpose |
-|---|---|---|---|
-| `plugins` | `id` INTEGER | — | Plugin registry; one row per managed plugin (bundled or marketplace). Skills are owned by a plugin via `plugin_id → plugins(id)` |
-| `skills` | `id` INTEGER | `plugin_id → plugins(id)` | Master catalog for the Skills Library. One row per skill; `skill_source` discriminates between `skill-builder`, `marketplace`, and `imported`. Uniqueness is enforced on `(plugin_id, name)` |
-| `workflow_runs` | `id` INTEGER | `skill_id → skills(id)` | Builder workflow state for `skill-builder` skills — current step, status, intake data, frontmatter |
-| `workflow_steps` | `(skill_name, step_id)` | `workflow_run_id → workflow_runs(id)` | Per-step status and timing for each step in the builder workflow |
-| `workflow_artifacts` | `(skill_name, step_id, relative_path)` | `workflow_run_id → workflow_runs(id)` | Step output files stored inline; source of truth for resets and version history |
-| `imported_skills` | `skill_id` TEXT (UUID) | `skill_master_id → skills(id)` | Disk path and import metadata for `marketplace` skills in the library |
-| `workflow_sessions` | `session_id` TEXT (UUID) | `skill_id → skills(id)` | Refine and workflow session lifetimes; tracks PID for crash detection |
-| `agent_runs` | `(agent_id, model)` | `workflow_run_id → workflow_runs(id)` | One row per agent invocation; all token, cost, and timing metrics for usage analytics. Composite PK allows sub-agents using different models to each have their own row |
-| `skill_tags` | `(skill_name, tag)` | `skill_id → skills(id)` | Many-to-many skill→tag associations, normalized to lowercase |
-| `skill_locks` | `skill_name` TEXT | `skill_id → skills(id)` | Prevents two app instances from editing the same skill simultaneously; stale locks (dead PID) are reclaimed on acquire |
-| `clarifications` | `id` INTEGER | — | Parent for step-1 research refinement artifacts; stores question metadata and evaluation verdicts |
-| `clarification_sections` | `id` INTEGER | `clarification_id → clarifications(id)` | Hierarchical section groupings within a clarifications document |
-| `clarification_questions` | `id` INTEGER | `clarification_id → clarifications(id)` | Individual research questions with answers and per-question verdicts |
-| `clarification_choices` | `id` INTEGER | `question_id → clarification_questions(id)` | Multiple-choice options for a clarification question |
-| `clarification_notes` | `id` INTEGER | `clarification_id → clarifications(id)` | Free-form notes attached to a clarifications document |
-| `decisions` | `id` INTEGER | — | Parent for step-2 decision confirmation artifacts; stores decision metadata and reconciliation state |
-| `decision_items` | `id` INTEGER | `decision_id → decisions(id)` | Individual decision items with original questions, implications, and conflict state |
-| `eval_prompt_sets` | `id` INTEGER | — | Eval Workbench scenario definitions (migration 44) |
-| `eval_prompt_cases` | `id` INTEGER | `prompt_set_id → eval_prompt_sets(id)` | Individual test cases within a prompt set |
-| `eval_runs` | `id` INTEGER | — | Eval Workbench run history; keyed by `(plugin_slug, skill_name, scenario_name)` (identity added in migration 46) |
-| `eval_run_results` | `id` INTEGER | `eval_run_id → eval_runs(id)` | Per-case results for an eval run |
-| `description_candidates` | `id` INTEGER | — | Generated trigger-description candidates from eval runs |
-| `skill_conversations` | `id` INTEGER | — | Maps `(plugin_slug, skill_name)` to OpenHands conversation IDs for session persistence (migration 47) |
-| `documents` | `id` INTEGER | — | Documents attached to agents (file, URL, or folder). Scope `all` applies globally; scope `skill` links via `document_skills` |
-| `document_skills` | `(document_id, skill_id)` | `document_id → documents(id)`, `skill_id → skills(id)` | Many-to-many join for skill-scoped document attachments |
-| `reconciliation_events` | `id` INTEGER | — | Audit log of startup reconciliation actions (type + details). Append-only |
-| `settings` | `key` TEXT | — | KV store; single row with key `app_settings` holds the full `AppSettings` JSON blob |
-| `schema_migrations` | `version` INTEGER | — | Migration version tracker; one row per applied migration |
+Plugin registry for all managed skill containers. `skills.plugin_id` scopes
+skill uniqueness and ownership.
+
+### `skills`
+
+Master skill catalog. Canonical identity is `skills.id`.
+
+Owned concerns:
+
+- plugin ownership
+- skill name
+- skill source (`skill-builder`, `marketplace`, `imported`)
+- skill metadata and behavior flags
+
+Every product-facing skill reference should resolve to this row.
+
+### `workflow_runs`
+
+Builder-workflow run state for `skill-builder` skills.
+
+Owned concerns:
+
+- current step
+- overall workflow status
+- intake snapshot and workflow-authoring metadata
+
+### `workflow_steps`
+
+Per-step execution state for a workflow run.
+
+### `workflow_artifacts`
+
+Disk-backed workflow outputs that are persisted inline for reset, recovery, and
+history behavior.
+
+These are distinct from the normalized clarifications/decisions artifact tables.
+
+### `clarifications` and `decisions`
+
+Normalized workflow artifact parents keyed by canonical `skills.id`.
+
+Target contract:
+
+- `clarifications.skill_id` is the canonical foreign key to `skills.id`
+- `decisions.skill_id` is the canonical foreign key to `skills.id`
+- child tables cascade from those parents
+- all lookup and mutation paths resolve artifact ownership through canonical
+  `skills.id`, not ambiguous skill-name matching
+
+#### Clarifications child tables
+
+- `clarification_sections`
+- `clarification_questions`
+- `clarification_choices`
+- `clarification_notes`
+
+#### Decisions child tables
+
+- `decision_items`
+
+### `imported_skills`
+
+Import-specific metadata for marketplace and imported skills. This table is a
+child of `skills`; it does not define canonical identity.
+
+### `workflow_sessions`
+
+Workflow/refine session lifetimes keyed back to the owning skill.
+
+### `agent_runs`
+
+Per-run telemetry for workflow and refine activity. In the target architecture,
+this remains app-owned execution telemetry, but spend and budget enforcement are
+expected to shift to LiteLLM.
+
+### `skill_tags`
+
+Normalized tag assignments for the Skills Library.
+
+### `skill_locks`
+
+Backend-enforced leases that prevent two app instances from owning the same
+selected-skill session at once.
+
+### `skill_conversations`
+
+Persistent mapping from `(plugin_slug, skill_name)` to OpenHands
+`conversation_id`.
+
+### `documents` and `document_skills`
+
+Document attachments and their optional skill scoping.
+
+## LiteLLM Configuration Tables
+
+### `llm_providers`
+
+App-owned provider configuration.
+
+Target owned fields:
+
+- provider display name
+- API key
+- optional base URL
+- enabled flag
+- LiteLLM provider prefix
+- forward-compatible provider settings blob
+
+### `llm_profiles`
+
+App-owned model-routing profiles.
+
+Target owned fields:
+
+- profile name
+- monthly and total budget caps
+- RPM and TPM limits
+- virtual key issued by LiteLLM
+- forward-compatible profile settings blob
+
+The target architecture uses one shared LiteLLM user and one virtual key per
+profile.
+
+### `llm_profile_models`
+
+Ordered model membership within a profile.
+
+Target owned fields:
+
+- `model_name`
+- owning provider
+- fallback priority
+- optional per-model budget cap
+
+## Eval Workbench Tables
+
+### `scenarios`
+
+Saved eval scenarios owned by the app database. Scenario identity is durable
+`scenarios.id`; `name` is editable display data.
+
+### `assertions`
+
+Ordered assertion list for a scenario.
+
+## Supporting Tables
+
+### `settings`
+
+Application settings blob and related key-value storage.
+
+### `schema_migrations`
+
+Ordered migration ledger for the app database.
+
+### `reconciliation_events`
+
+Append-only log of startup reconciliation actions.
+
+## LiteLLM-Owned Database
+
+The LiteLLM proxy maintains its own SQLite schema under
+`{app_local_data_dir}/litellm/litellm.db`. Target backend design assumes this
+database owns:
+
+- virtual-key records
+- spend logs
+- budget-enforcement state
+- shared-user records used by the proxy
+
+The Rust backend treats that database as LiteLLM-managed infrastructure rather
+than part of the app database contract.
+
+## Current-State Deltas
+
+Any mismatches between latest `main` and this target schema belong in
+[implementation-gaps.md](implementation-gaps.md).

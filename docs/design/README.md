@@ -4,11 +4,11 @@
 |---|---|
 | [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
 | [product-architecture/](product-architecture/README.md) | Product-level architecture entrypoint: UI, Rust backend, OpenHands runtime, persistent state, and doc routing |
-| [model-settings/](model-settings/README.md) | LiteLLM proxy sidecar: provider routing, budget enforcement, spend tracking, multi-profile model configuration — replaces single-provider model settings |
+| [litellm-integration/](litellm-integration/README.md) | LiteLLM proxy sidecar target design: provider routing, budget enforcement, spend tracking, virtual keys, and multi-profile model configuration |
 | [openhands-runtime-model/](openhands-runtime-model/README.md) | Canonical OpenHands runtime model: frontend-to-backend product commands, backend-to-OpenHands session primitives, persistent versus throwaway sessions, workspace ownership, and surface mapping |
 | [skill-purpose-taxonomy/](skill-purpose-taxonomy/README.md) | Skill purpose taxonomy: three live create-skill purposes, harness-owned exclusions, and source-system-semantics boundaries |
 | [creating-skills-generator-verifier/](creating-skills-generator-verifier/README.md) | Creating skills generator-verifier: runtime `creating-skills` guidance under `agent-sources/workspace/skills`, app-owned workflow context loading, and fresh-context validation |
-| [backend-design/](backend-design/README.md) | Tauri/Rust backend: DB schema, API surface, key data flows, OpenHands runtime integration — see [database.md](backend-design/database.md) for full schema |
+| [backend-design/](backend-design/README.md) | Target Tauri/Rust backend architecture: DB topology, API surface, event contracts, metadata ownership, and current implementation gaps |
 | [cheap-ci-design/](cheap-ci-design/README.md) | Release, help docs, and cheap CI design: release resource staging, docs freshness, and scoped PR validation |
 | [plugin-path-restructure/](plugin-path-restructure/README.md) | Plugin directory restructure: fixed `skills/` subdirectory inside each plugin root, default plugin rename, and legacy path compatibility |
 | [per-skill-git-repos/](per-skill-git-repos/README.md) | Per-skill git repositories: topology change from shared root repo to one `.git/` per skill, tag simplification, migration, and impact on reset/restore/publish |

@@ -1,94 +1,124 @@
 # Skill Metadata Ownership
 
-This document defines which table owns each category of skill data, the write path
-for each, and the rationale for the ownership boundaries.
+Target ownership model for skill-related metadata and adjacent runtime
+configuration.
 
-## Table Roles
+## Core Rule
 
-### `skills` — Authoritative Catalog
+Canonical skill identity lives in `skills.id`. Tables that describe a skill,
+bind runtime state to a skill, or persist workflow artifacts should resolve
+through that canonical row rather than through ambiguous skill-name matching.
 
-`skills` is the single source of truth for all skill metadata. Every skill, regardless
-of origin (skill-builder, marketplace, or imported), has exactly one row here.
+## Ownership Boundaries
 
-Owned fields:
+### `skills`
 
-- `description` — human-readable description of the skill
-- `version` — semver string (e.g. `1.0.0`)
-- `model` — preferred Claude model override, or `NULL` to inherit the global setting
-- `argument_hint` — optional free-text hint passed to the agent at invocation
-- `user_invocable` — whether the skill can be triggered directly by the user
-- `disable_model_invocation` — whether the skill suppresses model calls entirely
-- `purpose` — high-level category (e.g. `domain`, `source`, `data-engineering`)
-- `skill_source` — origin: `skill-builder`, `marketplace`, or `imported`
+`skills` is the authoritative store for skill metadata.
 
-**These fields must only be written via `set_skill_behaviour` (or `upsert_skill` for
-`purpose`/`skill_source`). No other write path is permitted.**
+Target owned fields:
 
-### `workflow_runs` — Immutable Point-in-Time Execution Snapshot
+- `name`
+- `plugin_id`
+- `skill_source`
+- `purpose`
+- `description`
+- `version`
+- `user_invocable`
+- `disable_model_invocation`
 
-`workflow_runs` records the execution state of a skill-builder workflow run. It is
-scoped to skills with `skill_source = 'skill-builder'`.
+This table defines what the skill is. It does not own transient execution state
+or model-routing infrastructure.
 
-Fields in this table:
+### `workflow_runs`
 
-- `current_step`, `status`, `purpose` — mutable execution state
-- `source`, `author_login`, `author_avatar`, `display_name`, `intake_json` — snapshot
-  captured at workflow creation; immutable after the run begins
+`workflow_runs` owns builder execution state and workflow-authoring snapshots.
 
-**Metadata fields (`description`, `version`, `model`, `argument_hint`,
-`user_invocable`, `disable_model_invocation`) were removed from this table in
-migration 35.** They existed here transitionally (migrations 16–34) and were moved to
-`skills` in migration 24. After migration 35 these columns do not exist in
-`workflow_runs` and cannot be written here even accidentally.
+Target owned concerns:
 
-The `save_workflow_state` Tauri command reflects this: it accepts only execution-state
-parameters and has no metadata parameters. See the doc-comment on that command for
-the full rationale.
+- `current_step`
+- `status`
+- `purpose` as the workflow-run purpose snapshot
+- intake and display metadata captured during workflow creation
 
-### `workspace_skills` — Dropped
+`workflow_runs` must not become a second source of truth for canonical skill
+metadata.
 
-`workspace_skills` was dropped in migration 36. It held transient bundled/toggle state
-for imported skills.
+### Workflow artifact tables
 
-### `plugins` — Plugin Registry (migration 38)
+`clarifications`, `decisions`, and their child tables own normalized workflow
+artifacts. They do not own skill metadata. They depend on canonical skill
+identity and should reference the owning skill through `skills.id`.
 
-Migration 38 introduced the `plugins` table and added a `plugin_id INTEGER` foreign key to `skills`. Skills are now scoped by plugin — the uniqueness constraint changed from `UNIQUE(name)` to `UNIQUE(plugin_id, name)`. All imported skills belong to a plugin row; the `imported_skills` table retains disk-path and version metadata but is joined via `skill_master_id → skills(id)` rather than holding ownership directly.
+### `skill_locks`
+
+`skill_locks` owns backend lease state only. It does not own any skill metadata.
+
+### `skill_conversations`
+
+`skill_conversations` owns persistent conversation bindings only. It does not
+own any skill metadata.
+
+### LiteLLM tables
+
+The LiteLLM configuration tables are adjacent backend configuration, not skill
+metadata:
+
+- `llm_providers` owns provider credentials and provider-specific routing data
+- `llm_profiles` owns profile budgets, rate limits, settings blobs, and virtual
+  keys
+- `llm_profile_models` owns per-profile model membership, priority, and
+  per-model budgets
+
+These tables define how model traffic is routed. They do not define what a
+skill is.
 
 ## Write Paths
 
-| Data category | Table | Write function |
+| Data category | Target owner | Target write path |
 |---|---|---|
-| Skill metadata (description, version, model, …) | `skills` | `db::set_skill_behaviour` |
-| Skill purpose / source | `skills` | `db::upsert_skill` / `db::upsert_skill_with_source` |
-| Workflow execution state | `workflow_runs` | `db::save_workflow_run` |
-| Workflow step progress | `workflow_steps` | `db::save_workflow_step` |
-| Intake JSON | `workflow_runs` | `db::set_skill_intake` |
-| Author / avatar | `workflow_runs` | `db::set_skill_author` |
-| Tags | `skill_tags` | `db::set_skill_tags` |
+| Skill metadata | `skills` | skill CRUD and metadata commands |
+| Workflow execution state | `workflow_runs` | workflow state commands |
+| Workflow step progress | `workflow_steps` | workflow state commands |
+| Clarifications / decisions | artifact tables | workflow artifact materialization and edit commands |
+| Skill lease state | `skill_locks` | lease-acquire/release commands |
+| Persistent conversation binding | `skill_conversations` | selected-skill session bootstrap and cleanup |
+| Provider config | `llm_providers` | LiteLLM provider commands |
+| Profile config | `llm_profiles` | LiteLLM profile commands |
+| Profile model routing | `llm_profile_models` | LiteLLM profile-model commands |
 
-## Read Path for Agent Execution
+## Runtime Resolution Rules
 
-`read_workflow_settings` (in `commands/workflow/runtime.rs`) assembles all data
-needed to launch a workflow step. Metadata is always fetched via `get_skill_master`
-from the `skills` table. The function never reads metadata from `workflow_runs` or
-from any frontend-supplied payload.
+### Skill resolution
 
-## Migration History
+Target behavior:
 
-| Migration | Change |
-|---|---|
-| 16 | Added `description`, `version`, `model`, … to `workflow_runs` |
-| 24 | Added the same fields to `skills`; backfilled from `workflow_runs` |
-| 35 | Dropped metadata columns from `workflow_runs`; `skills` is now sole owner |
-| 36 | Dropped `workspace_skills` table entirely |
-| 37 | Added foreign-key cascade constraints |
-| 38 | Added `plugins` table; added `plugin_id → plugins(id)` FK to `skills`; uniqueness changed to `(plugin_id, name)` |
-| 39 | Added `upgrade_locked` flag to `plugins` |
-| 40 | Added `documents` and `document_skills` tables |
-| 41 | Legacy tag cleanup |
-| 42 | Performance indexes |
-| 43 | Reserved migration for OpenHands LLM settings (no schema change) |
-| 44 | Added Eval Workbench tables: `eval_prompt_sets`, `eval_prompt_cases`, `eval_runs`, `eval_run_results`, `description_candidates` |
-| 45 | Added workflow artifact tables: `clarifications`, `clarification_sections`, `clarification_questions`, `clarification_choices`, `clarification_notes`, `decisions`, `decision_items` |
-| 46 | Added `plugin_slug`, `skill_name`, `scenario_name` identity columns to `eval_runs` |
-| 47 | Added `skill_conversations` table for OpenHands conversation-ID persistence |
+- frontend-selected skills resolve to canonical `skills.id`
+- backend commands use that canonical identity as the starting point
+- artifact lookup must not depend on cross-plugin name fallback
+
+### Model resolution
+
+Target behavior:
+
+- the selected LiteLLM profile defines the virtual key, budgets, and fallback
+  order
+- OpenHands runtime config points at LiteLLM rather than a direct provider
+  credential
+- provider credentials are never treated as skill metadata
+
+## What Does Not Belong In `skills`
+
+The following are not skill metadata in the target design:
+
+- transient workflow state
+- runtime leases
+- OpenHands conversation IDs
+- provider API keys
+- LiteLLM virtual keys
+- profile budgets and rate limits
+- usage/spend logs
+
+## Current-State Deltas
+
+Any mismatches on latest `main` belong in
+[implementation-gaps.md](implementation-gaps.md).
