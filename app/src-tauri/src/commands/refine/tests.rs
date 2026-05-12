@@ -1,5 +1,9 @@
 use super::content::get_skill_content_inner;
 use super::diff::get_refine_diff_inner;
+use super::events::{
+    extract_conversation_messages, extract_restored_conversation_events,
+    restored_conversation_user_turn_count,
+};
 use super::output::{
     cleanup_skill_snapshot, finalize_refine_run_inner, finalize_refine_run_inner_for_plugin,
 };
