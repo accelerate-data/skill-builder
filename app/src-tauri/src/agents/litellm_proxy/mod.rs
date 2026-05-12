@@ -4,6 +4,7 @@ pub mod client;
 pub mod config;
 pub mod process;
 pub mod types;
+pub mod venv;
 
 #[cfg(test)]
 mod tests;
@@ -49,7 +50,9 @@ pub async fn ensure_litellm_proxy(
         if process_alive && health_result.is_ok() {
             return Ok(managed.handle.clone());
         }
-        log::warn!("[litellm-proxy] cached proxy failed health check or is not running; restarting");
+        log::warn!(
+            "[litellm-proxy] cached proxy failed health check or is not running; restarting"
+        );
         let _ = managed.process.shutdown().await;
         *registry = None;
     }
@@ -160,18 +163,8 @@ async fn bootstrap_shared_user_and_provision_keys(
         };
 
         let model_names: Vec<String> = models.iter().map(|m| m.model_name.clone()).collect();
-
-        let model_max_budget: std::collections::HashMap<String, f64> = models
-            .iter()
-            .filter_map(|m| m.budget.map(|b| (m.model_name.clone(), b)))
-            .collect();
-        let model_max_budget = if model_max_budget.is_empty() {
-            None
-        } else {
-            Some(model_max_budget)
-        };
-
-        let max_budget = profile.budget_total.or(profile.budget_monthly);
+        let model_max_budget = build_model_max_budget(&models);
+        let max_budget = resolve_profile_max_budget(profile);
 
         let key_req = GenerateKeyRequest {
             user_id: "skill-builder".to_string(),
@@ -186,22 +179,37 @@ async fn bootstrap_shared_user_and_provision_keys(
 
         {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
-            let updated_profile = crate::db::LlmProfile {
-                id: profile.id.clone(),
-                name: profile.name.clone(),
-                budget_monthly: profile.budget_monthly,
-                budget_total: profile.budget_total,
-                tpm_limit: profile.tpm_limit,
-                rpm_limit: profile.rpm_limit,
-                virtual_key: Some(key_resp.key.clone()),
-                settings_json: profile.settings_json.clone(),
-                created_at: profile.created_at,
-            };
-            crate::db::update_profile(&conn, &updated_profile)?;
+            crate::db::update_profile_virtual_key(&conn, &profile.id, Some(&key_resp.key))?;
         }
 
-        log::info!("[litellm-proxy] provisioned virtual key for profile '{}'", profile.name);
+        log::info!(
+            "[litellm-proxy] provisioned virtual key for profile '{}'",
+            profile.name
+        );
     }
 
     Ok(())
+}
+
+fn build_model_max_budget(
+    models: &[crate::db::LlmProfileModel],
+) -> Option<std::collections::HashMap<String, f64>> {
+    let model_max_budget: std::collections::HashMap<String, f64> = models
+        .iter()
+        .filter_map(|model| {
+            model
+                .budget
+                .map(|budget| (model.model_name.clone(), budget))
+        })
+        .collect();
+
+    if model_max_budget.is_empty() {
+        None
+    } else {
+        Some(model_max_budget)
+    }
+}
+
+fn resolve_profile_max_budget(profile: &crate::db::LlmProfile) -> Option<f64> {
+    profile.budget_total.or(profile.budget_monthly)
 }

@@ -54,7 +54,7 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 
 ### Process Model
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │                    Tauri App                        │
 │                                                     │
@@ -84,7 +84,7 @@ This design replaces the per-run provider+API-key model with a multi-provider, m
 
 ### Directory Layout
 
-```
+```text
 {app_local_data_dir}/
 ├── db/
 │   └── skill-builder.db          ← App DB (skills, settings, workflow)
@@ -244,7 +244,7 @@ LiteLLM creates and manages its own tables via SQLAlchemy migrations:
 
 ## States / Transitions
 
-```
+```text
 no_providers_configured
   No providers exist in app SQLite
   → "Run" buttons disabled
@@ -407,7 +407,7 @@ provider_auth_error
 
 ## Open Questions
 
-1. ~~`[design]` Should we pin a specific LiteLLM version (e.g. `litellm[proxy]==1.60.0`) or use latest?~~ **Resolved:** Use latest (`uvx litellm[proxy]` with no version pin). LiteLLM auto-syncs model pricing from GitHub. Breaking changes are caught by proxy startup failure, not runtime errors.
+1. ~~`[design]` Should we pin a specific LiteLLM version (e.g. `litellm[proxy]==1.60.0`) or use latest?~~ **Resolved:** Use latest (`uv pip install litellm[proxy]` into the persistent LiteLLM venv, with no version pin). LiteLLM auto-syncs model pricing from GitHub. Breaking changes are caught by proxy startup failure, not runtime errors.
 2. ~~`[design]` Should we expose LiteLLM's built-in Admin UI (`/ui`) via a "View Detailed Usage" link that opens in the system browser?~~ **Resolved:** No. It would be confusing to bundle a generic LLM observability UI with a simple desktop app. All usage analytics stay in-app.
 3. ~~`[design]` Should the proxy start on app launch or on-demand (first agent run)?~~ **Resolved:** On app launch, but on a background thread. App renders and becomes usable immediately. Proxy starts asynchronously. If the user tries to run a skill before the proxy is healthy, show a "LLM proxy starting..." loading state. Once healthy, proxy is ready for all subsequent runs.
 4. ~~`[design]` How should we handle the case where the user has no providers configured?~~ **Resolved:** Block agent runs with guided redirect. If no providers are configured, disable "Run" buttons and show a banner: "Configure an LLM provider to get started" with a link to the Providers page. No fallback code path — single proxy-only architecture.

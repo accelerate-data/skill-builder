@@ -13,6 +13,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::agents::litellm_proxy::client::LiteLLMAdminClient;
+use crate::agents::litellm_proxy::venv;
 
 const SHUTDOWN_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const STDERR_TAIL_MAX_LINES: usize = 200;
@@ -81,14 +82,17 @@ impl LiteLLMProxyProcess {
     }
 
     pub async fn start(timeout: Duration, app_data_root: &Path) -> Result<Self, String> {
+        let python_path = venv::ensure_venv(app_data_root)?;
         let port = select_random_local_port()?;
         let master_key = read_or_create_master_key(app_data_root)?;
         let config_path = ensure_config_dir(app_data_root)?;
 
-        let mut child = spawn_proxy(port, &master_key, &config_path)
+        let mut child = spawn_proxy(port, &master_key, &config_path, &python_path)
             .map_err(|e| format!("Failed to spawn LiteLLM proxy: {e}"))?;
 
-        let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(STDERR_TAIL_MAX_LINES)));
+        let stderr_tail = Arc::new(AsyncMutex::new(VecDeque::with_capacity(
+            STDERR_TAIL_MAX_LINES,
+        )));
         if let Some(stderr) = child.stderr.take() {
             let tail = Arc::clone(&stderr_tail);
             tokio::spawn(async move {
@@ -125,13 +129,21 @@ impl LiteLLMProxyProcess {
         let deadline = Instant::now() + timeout;
         loop {
             let url = format!("http://127.0.0.1:{}/health", self.port);
-            if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(1)).send().await {
+            if let Ok(resp) = client
+                .get(&url)
+                .timeout(Duration::from_secs(1))
+                .send()
+                .await
+            {
                 if resp.status().is_success() {
                     return Ok(());
                 }
             }
             if Instant::now() >= deadline {
-                return Err(format!("Timed out waiting for LiteLLM proxy health on port {}", self.port));
+                return Err(format!(
+                    "Timed out waiting for LiteLLM proxy health on port {}",
+                    self.port
+                ));
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -144,7 +156,10 @@ impl LiteLLMProxyProcess {
         #[cfg(unix)]
         if let Some(pid) = self._child.id() {
             let process_group = -(pid as i32);
-            log::info!("[litellm-proxy] shutting down process group {} with SIGTERM", process_group);
+            log::info!(
+                "[litellm-proxy] shutting down process group {} with SIGTERM",
+                process_group
+            );
             kill(Pid::from_raw(process_group), Signal::SIGTERM)
                 .map_err(|e| format!("Failed to signal LiteLLM proxy: {e}"))?;
             let deadline = Instant::now() + SHUTDOWN_WAIT_TIMEOUT;
@@ -174,20 +189,27 @@ fn spawn_proxy(
     port: u16,
     master_key: &str,
     config_path: &Path,
+    python_path: &Path,
 ) -> Result<tokio::process::Child, String> {
-    let config_dir = config_path.parent().expect("config path must have a parent");
+    let config_dir = config_path
+        .parent()
+        .expect("config path must have a parent");
     let litellm_db = config_dir.join("litellm.db");
 
-    let mut cmd = tokio::process::Command::new("uvx");
+    let mut cmd = tokio::process::Command::new(python_path);
     cmd.args([
-        "litellm[proxy]",
+        "-m",
+        "litellm",
         "--config",
         &config_path.to_string_lossy(),
         "--port",
         &port.to_string(),
     ])
     .env("LITELLM_MASTER_KEY", master_key)
-    .env("LITELLM_DATABASE_URL", format!("sqlite:///{}", litellm_db.to_string_lossy()))
+    .env(
+        "LITELLM_DATABASE_URL",
+        format!("sqlite:///{}", litellm_db.to_string_lossy()),
+    )
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::piped())
@@ -197,9 +219,12 @@ fn spawn_proxy(
 
     cmd.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
-            "Python uv tool is required. Install uv from https://docs.astral.sh/uv/".to_string()
+            format!(
+                "LiteLLM venv Python executable is missing at {}",
+                python_path.display()
+            )
         } else {
-            format!("Failed to spawn uvx: {e}")
+            format!("Failed to spawn LiteLLM proxy: {e}")
         }
     })
 }
@@ -228,9 +253,8 @@ pub fn select_random_local_port() -> Result<u16, String> {
 
 pub fn read_or_create_master_key(app_data_root: &Path) -> Result<String, String> {
     let litellm_dir = app_data_root.join("litellm");
-    fs::create_dir_all(&litellm_dir).map_err(|e| {
-        format!("Failed to create litellm directory: {e}")
-    })?;
+    fs::create_dir_all(&litellm_dir)
+        .map_err(|e| format!("Failed to create litellm directory: {e}"))?;
     let key_path = litellm_dir.join(MASTER_KEY_FILENAME);
 
     if let Ok(existing) = fs::read_to_string(&key_path) {
@@ -241,9 +265,8 @@ pub fn read_or_create_master_key(app_data_root: &Path) -> Result<String, String>
     }
 
     let key = format!("sk-{}", uuid::Uuid::new_v4().simple());
-    fs::write(&key_path, format!("{key}\n")).map_err(|e| {
-        format!("Failed to write master key: {e}")
-    })?;
+    fs::write(&key_path, format!("{key}\n"))
+        .map_err(|e| format!("Failed to write master key: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -254,9 +277,8 @@ pub fn read_or_create_master_key(app_data_root: &Path) -> Result<String, String>
 
 pub fn ensure_config_dir(app_data_root: &Path) -> Result<PathBuf, String> {
     let litellm_dir = app_data_root.join("litellm");
-    fs::create_dir_all(&litellm_dir).map_err(|e| {
-        format!("Failed to create litellm directory: {e}")
-    })?;
+    fs::create_dir_all(&litellm_dir)
+        .map_err(|e| format!("Failed to create litellm directory: {e}"))?;
     Ok(litellm_dir.join("config.yaml"))
 }
 
