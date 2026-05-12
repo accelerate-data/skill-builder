@@ -72,7 +72,7 @@ fn test_scenario_10_master_row_no_workflow_runs() {
     let conn = create_test_db();
 
     // Insert into skills master directly (skill-builder, but no workflow_runs row)
-    crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "domain").unwrap();
     // Create step 0 output on disk so detect_furthest_step finds it
     create_step_output(skills_tmp.path(), "orphan-skill", 0);
 
@@ -85,7 +85,7 @@ fn test_scenario_10_master_row_no_workflow_runs() {
     assert!(result.notifications[0].contains("workflow record recreated at step 1"));
 
     // Verify workflow_runs record was auto-created
-    let run = crate::db::get_workflow_run(&conn, "orphan-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 0);
@@ -107,7 +107,8 @@ fn test_db_consistency_reset_no_clarifications() {
     let conn = create_test_db();
 
     // Skill at step 2, status "pending", but NO clarifications row inserted
-    crate::db::save_workflow_run(&conn, "stale-skill", 2, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "stale-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "pending", "domain").unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -121,7 +122,7 @@ fn test_db_consistency_reset_no_clarifications() {
         result.notifications
     );
 
-    let run = crate::db::get_workflow_run(&conn, "stale-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -141,7 +142,8 @@ fn test_db_consistency_reset_no_decisions() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "stale-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "stale-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "stale-skill");
     // Deliberately NO insert_stub_decisions — simulates pre-VU-1157 state.
 
@@ -156,7 +158,7 @@ fn test_db_consistency_reset_no_decisions() {
         result.notifications
     );
 
-    let run = crate::db::get_workflow_run(&conn, "stale-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -180,7 +182,7 @@ fn test_scenario_2_db_ahead_of_disk() {
     // Steps 0-2 are DB-authoritative; only SKILL.md is filesystem-based.
     // Scenario 4 fires: reset to step 2 so the user can re-run step 3.
     let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     insert_stub_decisions(&conn, "my-skill");
     // Verify the stubs were inserted
@@ -206,7 +208,7 @@ fn test_scenario_2_db_ahead_of_disk() {
     );
 
     // Verify DB was reset to step 2 (= "step 3" in 1-indexed display)
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 2);
@@ -225,7 +227,8 @@ fn test_reconcile_sets_completed_when_all_steps_done() {
 
     // DB says step 3 (last step), status "pending" — simulates the race where
     // the frontend debounced save never sent "completed"
-    crate::db::save_workflow_run(&conn, "done-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "done-skill");
     insert_stub_decisions(&conn, "done-skill");
     create_skill_dir(tmp.path(), "done-skill", "sales");
@@ -241,7 +244,7 @@ fn test_reconcile_sets_completed_when_all_steps_done() {
     assert!(result.notifications.is_empty());
 
     // Status should now be "completed"
-    let run = crate::db::get_workflow_run(&conn, "done-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.status, "completed");
@@ -256,7 +259,8 @@ fn test_reconcile_leaves_pending_when_not_all_steps_done() {
     let conn = create_test_db();
 
     // DB at step 2, status "pending" — not yet at the last step
-    crate::db::save_workflow_run(&conn, "mid-skill", 2, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "mid-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "mid-skill");
     create_skill_dir(tmp.path(), "mid-skill", "sales");
     create_step_output(skills_tmp.path(), "mid-skill", 0);
@@ -264,7 +268,7 @@ fn test_reconcile_leaves_pending_when_not_all_steps_done() {
 
     let _result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    let run = crate::db::get_workflow_run(&conn, "mid-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.status, "pending");
@@ -308,7 +312,8 @@ fn test_marketplace_skill_preserved_when_skill_md_exists() {
     assert_eq!(master.skill_source, "marketplace");
 
     // No workflow_runs row should exist for marketplace skills
-    assert!(crate::db::get_workflow_run(&conn, "my-skill")
+    let skill_id = crate::db::get_skill_master_id(&conn, "my-skill").unwrap().unwrap();
+    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .is_none());
 }
@@ -366,7 +371,8 @@ fn test_missing_workspace_dir_is_recreated() {
     let conn = create_test_db();
 
     // DB record exists at step 0 but workspace dir was deleted
-    crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     // No workspace dir on disk
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -376,7 +382,7 @@ fn test_missing_workspace_dir_is_recreated() {
     // No notification — just silently recreated the transient dir
 
     // DB record must still exist
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 0);
@@ -401,7 +407,8 @@ fn test_scenario_5_normal_db_and_disk_agree() {
     let conn = create_test_db();
 
     // DB at step 2, disk has step 0 and 2 output
-    crate::db::save_workflow_run(&conn, "healthy-skill", 2, "in_progress", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "healthy-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "healthy-skill");
     create_skill_dir(tmp.path(), "healthy-skill", "analytics");
     create_step_output(tmp.path(), "healthy-skill", 0);
@@ -415,7 +422,7 @@ fn test_scenario_5_normal_db_and_disk_agree() {
     assert!(result.notifications.is_empty());
 
     // DB should be unchanged
-    let run = crate::db::get_workflow_run(&conn, "healthy-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 2);
@@ -431,7 +438,8 @@ fn test_fresh_skill_step_0_not_falsely_completed() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "fresh-skill", 0, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "fresh-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     // Only create the canonical working directory — no output files
     std::fs::create_dir_all(crate::skill_paths::resolve_skill_dir(
         tmp.path(),
@@ -446,7 +454,7 @@ fn test_fresh_skill_step_0_not_falsely_completed() {
     assert!(result.notifications.is_empty());
 
     // Step 0 should still be absent from steps table (not falsely completed)
-    let steps = crate::db::get_workflow_steps(&conn, "fresh-skill").unwrap();
+    let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     assert!(
         steps.is_empty() || steps.iter().all(|s| s.status != "completed"),
         "Step 0 should not be marked completed for a fresh skill with no output"
@@ -465,7 +473,8 @@ fn test_db_at_step2_no_skill_md_stays_at_step2() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "lost-skill", 2, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "lost-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "lost-skill");
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -477,7 +486,7 @@ fn test_db_at_step2_no_skill_md_stays_at_step2() {
         result.notifications
     );
 
-    let run = crate::db::get_workflow_run(&conn, "lost-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     // current_step stays at 2; no filesystem evidence is needed for steps 0-2
@@ -495,12 +504,13 @@ fn test_reset_does_not_mark_non_detectable_steps_completed() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     insert_stub_decisions(&conn, "my-skill");
     // Mark steps 0-2 as completed in DB (pre-existing state)
     for s in 0..=2 {
-        crate::db::save_workflow_step(&conn, "my-skill", s, "completed").unwrap();
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, s, "completed").unwrap();
     }
     create_skill_dir(tmp.path(), "my-skill", "sales");
     // No SKILL.md on disk
@@ -508,14 +518,14 @@ fn test_reset_does_not_mark_non_detectable_steps_completed() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert!(result.notifications[0].contains("reset from step 4 to step 3"));
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     // Reset to step 2 (index 2 = "step 3" in 1-indexed display)
     assert_eq!(run.current_step, 2);
 
     // Steps 0-2 should remain completed (DB-authoritative); step 3 reset
-    let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
+    let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     for step in &steps {
         if step.step_id <= 2 {
             assert_eq!(
@@ -543,7 +553,8 @@ fn test_step_4_not_reset_when_step_3_output_exists() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "done-skill", 4, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 4, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "done-skill");
     insert_stub_decisions(&conn, "done-skill");
     create_skill_dir(tmp.path(), "done-skill", "analytics");
@@ -555,7 +566,7 @@ fn test_step_4_not_reset_when_step_3_output_exists() {
 
     // Should NOT reset — step 4 is beyond last step but step 3 output exists
     assert!(result.notifications.is_empty());
-    let run = crate::db::get_workflow_run(&conn, "done-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 4);
@@ -569,7 +580,8 @@ fn test_step_4_reset_when_step_3_output_missing() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "bad-skill", 4, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "bad-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 4, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "bad-skill");
     insert_stub_decisions(&conn, "bad-skill");
     create_skill_dir(tmp.path(), "bad-skill", "analytics");
@@ -583,7 +595,7 @@ fn test_step_4_reset_when_step_3_output_missing() {
     // Should reset — disk is genuinely behind
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("reset from step 5 to step 3"));
-    let run = crate::db::get_workflow_run(&conn, "bad-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 2);
@@ -597,7 +609,8 @@ fn test_step_1_not_reset_when_step_0_output_exists() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "review-skill", 1, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "review-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "review-skill");
     create_skill_dir(tmp.path(), "review-skill", "sales");
     create_step_output(skills_tmp.path(), "review-skill", 0);
@@ -605,7 +618,7 @@ fn test_step_1_not_reset_when_step_0_output_exists() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert!(result.notifications.is_empty());
-    let run = crate::db::get_workflow_run(&conn, "review-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 1);
@@ -621,7 +634,8 @@ fn test_step_3_with_all_prior_output_exists() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "review-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "review-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "review-skill");
     insert_stub_decisions(&conn, "review-skill");
     create_skill_dir(tmp.path(), "review-skill", "sales");
@@ -632,7 +646,7 @@ fn test_step_3_with_all_prior_output_exists() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert!(result.notifications.is_empty());
-    let run = crate::db::get_workflow_run(&conn, "review-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 3);
@@ -652,7 +666,8 @@ fn test_step_completed_advances_to_next_not_reset() {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "my-skill", db_step, "pending", "domain").unwrap();
+        let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+        crate::db::save_workflow_run_by_skill_id(&conn, skill_id, db_step, "pending", "domain").unwrap();
         insert_stub_clarifications(&conn, "my-skill");
         if db_step >= 3 {
             insert_stub_decisions(&conn, "my-skill");
@@ -671,7 +686,7 @@ fn test_step_completed_advances_to_next_not_reset() {
             disk_steps.last(),
             result.notifications
         );
-        let run = crate::db::get_workflow_run(&conn, "my-skill")
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -692,7 +707,8 @@ fn test_step_1_on_db_but_step_0_on_disk_ok() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     create_skill_dir(tmp.path(), "my-skill", "sales");
     create_step_output(skills_tmp.path(), "my-skill", 0);
@@ -700,7 +716,7 @@ fn test_step_1_on_db_but_step_0_on_disk_ok() {
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert!(result.notifications.is_empty());
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 1);
@@ -717,7 +733,8 @@ fn test_step_3_on_db_but_no_skill_md_resets_to_step_2() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     insert_stub_decisions(&conn, "my-skill");
     create_skill_dir(tmp.path(), "my-skill", "sales");
@@ -726,7 +743,7 @@ fn test_step_3_on_db_but_no_skill_md_resets_to_step_2() {
 
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("reset from step 4 to step 3"));
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 2);
@@ -742,7 +759,8 @@ fn test_disk_ahead_stale_db_advances_current_step() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     create_skill_dir(tmp.path(), "my-skill", "sales");
     create_step_output(tmp.path(), "my-skill", 0);
     create_step_output(tmp.path(), "my-skill", 2);
@@ -752,7 +770,7 @@ fn test_disk_ahead_stale_db_advances_current_step() {
 
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("advanced from step 1 to step 4"));
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 3);
@@ -784,10 +802,12 @@ fn test_reconcile_mixed_scenarios() {
     let conn = create_test_db();
 
     // Skill-builder skill with workspace dir missing — should recreate it
-    crate::db::save_workflow_run(&conn, "db-only", 0, "pending", "domain").unwrap();
+    let db_only_id = crate::db::upsert_skill(&conn, "db-only", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, db_only_id, 0, "pending", "domain").unwrap();
 
     // Normal — skill in skills_path with matching DB record
-    crate::db::save_workflow_run(&conn, "normal", 0, "pending", "domain").unwrap();
+    let normal_id = crate::db::upsert_skill(&conn, "normal", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, normal_id, 0, "pending", "domain").unwrap();
     create_skill_dir(tmp.path(), "normal", "domain-c");
     create_step_output(skills_tmp.path(), "normal", 0);
 
@@ -824,10 +844,10 @@ fn test_reconcile_mixed_scenarios() {
         .exists());
 
     // DB records for all skills should still be present
-    assert!(crate::db::get_workflow_run(&conn, "db-only")
+    assert!(crate::db::get_workflow_run_by_skill_id(&conn, db_only_id)
         .unwrap()
         .is_some());
-    assert!(crate::db::get_workflow_run(&conn, "normal")
+    assert!(crate::db::get_workflow_run_by_skill_id(&conn, normal_id)
         .unwrap()
         .is_some());
     assert!(crate::db::get_skill_master_id(&conn, "mkt-skill")
@@ -865,18 +885,19 @@ fn test_reconcile_skips_skill_with_active_session_from_current_pid() {
     let conn = create_test_db();
 
     create_skill_dir(tmp.path(), "active-skill", "test");
-    crate::db::save_workflow_run(&conn, "active-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "active-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     create_step_output(skills_tmp.path(), "active-skill", 0);
 
     let current_pid = std::process::id();
-    crate::db::create_workflow_session(&conn, "sess-active", "active-skill", current_pid).unwrap();
+    crate::db::create_workflow_session_by_skill_id(&conn, "sess-active", skill_id, current_pid).unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("skipped"));
     assert!(result.notifications[0].contains("active session"));
-    let run = crate::db::get_workflow_run(&conn, "active-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 3, "Step should remain at 3 (untouched)");
@@ -891,12 +912,13 @@ fn test_reconcile_processes_skill_with_dead_session() {
     let conn = create_test_db();
 
     create_skill_dir(tmp.path(), "crashed-skill", "test");
-    crate::db::save_workflow_run(&conn, "crashed-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "crashed-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "crashed-skill");
     insert_stub_decisions(&conn, "crashed-skill");
     // No SKILL.md on disk (crashed before completing step 3)
 
-    crate::db::create_workflow_session(&conn, "sess-dead", "crashed-skill", 999999).unwrap();
+    crate::db::create_workflow_session_by_skill_id(&conn, "sess-dead", skill_id, 999999).unwrap();
     crate::db::reconcile_orphaned_sessions(&conn).unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -904,7 +926,7 @@ fn test_reconcile_processes_skill_with_dead_session() {
     assert_eq!(result.notifications.len(), 1);
     // Scenario 4: DB=3 but no SKILL.md → reset to step 2
     assert!(result.notifications[0].contains("reset from step 4 to step 3"));
-    let run = crate::db::get_workflow_run(&conn, "crashed-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 2);
@@ -921,13 +943,14 @@ fn test_reconcile_resets_to_step2_when_skill_md_missing() {
     let conn = create_test_db();
 
     create_skill_dir(tmp.path(), "my-skill", "test");
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     insert_stub_decisions(&conn, "my-skill");
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -951,7 +974,8 @@ fn test_disk_ahead_with_all_steps_sets_status_completed() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     create_skill_dir(tmp.path(), "my-skill", "sales");
     for step in [0u32, 2, 3] {
@@ -964,7 +988,7 @@ fn test_disk_ahead_with_all_steps_sets_status_completed() {
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("advanced from step 2 to step 4"));
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 3);
@@ -985,7 +1009,8 @@ fn test_skill_at_step0_no_skill_md_stays_at_step0() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     create_skill_dir(tmp.path(), "my-skill", "sales");
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -997,7 +1022,7 @@ fn test_skill_at_step0_no_skill_md_stays_at_step0() {
         result.notifications
     );
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 0);
@@ -1017,13 +1042,14 @@ fn test_completed_step_statuses_preserved_after_reconcile() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
-    crate::db::save_workflow_step(&conn, "my-skill", 0, "completed").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
+    crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
 
     reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
+    let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     let step0 = steps
         .iter()
         .find(|s| s.step_id == 0)
@@ -1034,7 +1060,7 @@ fn test_completed_step_statuses_preserved_after_reconcile() {
         step0.status
     );
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 1, "current_step should remain at 1");
@@ -1060,7 +1086,8 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
     let conn = create_test_db();
 
     // Insert DB record at step 1 with a workspace_path pointing to a nonexistent dir
-    crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     // DO NOT create the workspace dir — it is missing
     // Create step 0 output in skills_path (detectable)
@@ -1087,7 +1114,7 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
     );
 
     // current_step should remain at 1 (DB is valid)
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 1, "current_step should not be reset");
@@ -1113,7 +1140,8 @@ fn test_step_3_on_db_but_step_3_missing_resets_to_2() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     insert_stub_decisions(&conn, "my-skill");
     create_skill_dir(tmp.path(), "my-skill", "sales");
@@ -1131,7 +1159,7 @@ fn test_step_3_on_db_but_step_3_missing_resets_to_2() {
         result.notifications
     );
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 2, "should be reset to disk_step=2");
@@ -1155,7 +1183,8 @@ fn test_skill_md_marks_all_prior_steps_completed() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 1, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     create_skill_dir(tmp.path(), "my-skill", "sales");
     // Create SKILL.md in skills_path to simulate a completed workflow
@@ -1168,13 +1197,13 @@ fn test_skill_md_marks_all_prior_steps_completed() {
     assert!(result.notifications[0].contains("my-skill"));
 
     // DB should be advanced to disk_step=3
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 3);
 
     // Steps 0, 2, 3 are detectable and confirmed by disk → completed
-    let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
+    let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     for &step_id in &[0i32, 2, 3] {
         let s = steps.iter().find(|s| s.step_id == step_id);
         assert!(
@@ -1193,7 +1222,8 @@ fn test_resolve_orphan_delete() {
     let skills_path = tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 7, "completed", "domain").unwrap();
     let output_dir = resolve_skill_dir(
         tmp.path(),
         crate::skill_paths::DEFAULT_PLUGIN_SLUG,
@@ -1204,7 +1234,7 @@ fn test_resolve_orphan_delete() {
 
     resolve_orphan(&conn, "orphan", "delete", skills_path).unwrap();
 
-    assert!(crate::db::get_workflow_run(&conn, "orphan")
+    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .is_none());
     assert!(!output_dir.exists());
@@ -1216,14 +1246,15 @@ fn test_resolve_orphan_keep() {
     let skills_path = tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "orphan", 7, "completed", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 7, "completed", "domain").unwrap();
     let output_dir = tmp.path().join("orphan");
     std::fs::create_dir_all(&output_dir).unwrap();
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
     resolve_orphan(&conn, "orphan", "keep", skills_path).unwrap();
 
-    let run = crate::db::get_workflow_run(&conn, "orphan")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 0);
@@ -1235,10 +1266,11 @@ fn test_resolve_orphan_keep() {
 fn test_resolve_orphan_delete_already_gone() {
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "orphan", 5, "completed", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 5, "completed", "domain").unwrap();
 
     resolve_orphan(&conn, "orphan", "delete", "/nonexistent/path").unwrap();
-    assert!(crate::db::get_workflow_run(&conn, "orphan")
+    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .is_none());
 }
@@ -1248,7 +1280,8 @@ fn test_resolve_orphan_invalid_action() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let conn = create_test_db();
-    crate::db::save_workflow_run(&conn, "orphan", 5, "completed", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 5, "completed", "domain").unwrap();
 
     let result = resolve_orphan(&conn, "orphan", "invalid", skills_path);
     assert!(result.is_err());
@@ -1270,7 +1303,7 @@ fn test_scenario_10_master_row_no_workflow_runs_with_step_output() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::upsert_skill(&conn, "real-skill", "skill-builder", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "real-skill", "skill-builder", "domain").unwrap();
     create_skill_dir(tmp.path(), "real-skill", "analytics");
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1279,7 +1312,7 @@ fn test_scenario_10_master_row_no_workflow_runs_with_step_output() {
     assert!(result.notifications[0].contains("real-skill"));
     assert!(result.notifications[0].contains("workflow record recreated at step 1"));
 
-    let run = crate::db::get_workflow_run(&conn, "real-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 0);
@@ -1295,7 +1328,7 @@ fn test_scenario_10_master_row_no_workflow_runs_all_steps_complete() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "done-skill", "skill-builder", "domain").unwrap();
     // detect_furthest_step requires workspace dir to exist
     create_skill_dir(tmp.path(), "done-skill", "analytics");
     for step in [0u32, 2, 3] {
@@ -1307,7 +1340,7 @@ fn test_scenario_10_master_row_no_workflow_runs_all_steps_complete() {
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("workflow record recreated at step 4"));
 
-    let run = crate::db::get_workflow_run(&conn, "done-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 3);
@@ -1323,14 +1356,14 @@ fn test_scenario_10_master_row_no_workflow_runs_no_output() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::upsert_skill(&conn, "bare-skill", "skill-builder", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "bare-skill", "skill-builder", "domain").unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("workflow record recreated at step 1"));
 
-    let run = crate::db::get_workflow_run(&conn, "bare-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 0);
@@ -1348,8 +1381,9 @@ fn test_disk_ahead_advances_db_with_old_steps() {
     let workspace = tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
-    crate::db::save_workflow_step(&conn, "my-skill", 0, "completed").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
+    crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
 
     create_skill_dir(tmp.path(), "my-skill", "sales");
     create_step_output(tmp.path(), "my-skill", 0);
@@ -1363,7 +1397,7 @@ fn test_disk_ahead_advances_db_with_old_steps() {
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("advanced from step 1 to step 4"));
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 3);
@@ -1378,7 +1412,8 @@ fn test_no_skill_md_resets_step3_to_step2() {
     let workspace = tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
     insert_stub_decisions(&conn, "my-skill");
 
@@ -1387,7 +1422,7 @@ fn test_no_skill_md_resets_step3_to_step2() {
     let result = reconcile_on_startup(&conn, workspace, workspace).unwrap();
 
     // DB had step 3 → reset to step 2 (SKILL.md not found)
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.current_step, 2);
@@ -1403,7 +1438,8 @@ fn test_reconcile_full_with_fallback_to_workspace_path() {
     let workspace = tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 1, "in_progress", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
 
     create_skill_dir(tmp.path(), "my-skill", "test");
@@ -1418,7 +1454,7 @@ fn test_reconcile_full_with_fallback_to_workspace_path() {
 
     // DB should be reconciled: disk has step 2, DB had step 1.
     // Step 1 is non-detectable, disk ahead → advance to step 2.
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert!(run.current_step >= 1);
@@ -1431,7 +1467,8 @@ fn test_reconcile_when_workspace_and_skills_paths_identical() {
     let path = tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::save_workflow_run(&conn, "my-skill", 3, "completed", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "completed", "domain").unwrap();
 
     create_skill_dir(tmp.path(), "my-skill", "test");
     create_step_output(tmp.path(), "my-skill", 0);
@@ -1444,7 +1481,7 @@ fn test_reconcile_when_workspace_and_skills_paths_identical() {
     assert!(result.orphans.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 
-    let run = crate::db::get_workflow_run(&conn, "my-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(run.status, "completed");
@@ -1489,7 +1526,8 @@ fn test_db_record_with_workspace_dir_reconciles_normally() {
     let conn = create_test_db();
 
     // DB record + workspace folder, but nothing in skills_path
-    crate::db::save_workflow_run(&conn, "old-skill", 0, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "old-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     create_skill_dir(&workspace, "old-skill", "test");
 
     let result = reconcile_on_startup(&conn, workspace_str, skills_str).unwrap();
@@ -1497,7 +1535,7 @@ fn test_db_record_with_workspace_dir_reconciles_normally() {
     // DB record should be preserved (not auto-cleaned)
     assert_eq!(result.auto_cleaned, 0);
     assert!(result.orphans.is_empty());
-    assert!(crate::db::get_workflow_run(&conn, "old-skill")
+    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .is_some());
 }
@@ -1523,7 +1561,8 @@ fn test_reconcile_detects_multiple_orphans() {
     let conn = create_test_db();
 
     for name in &["skill-a", "skill-b", "skill-c"] {
-        crate::db::save_workflow_run(&conn, name, 5, "completed", "domain").unwrap();
+        let sid = crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
+        crate::db::save_workflow_run_by_skill_id(&conn, sid, 5, "completed", "domain").unwrap();
         let output_dir = skills.join(name);
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
@@ -1537,7 +1576,8 @@ fn test_reconcile_detects_multiple_orphans() {
 
     // All DB records should still exist
     for name in &["skill-a", "skill-b", "skill-c"] {
-        assert!(crate::db::get_workflow_run(&conn, name).unwrap().is_some());
+        let sid = crate::db::get_skill_master_id(&conn, name).unwrap().unwrap();
+        assert!(crate::db::get_workflow_run_by_skill_id(&conn, sid).unwrap().is_some());
     }
 }
 
@@ -1550,7 +1590,7 @@ fn test_scenario_10_uses_unknown_domain() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    crate::db::upsert_skill(&conn, "new-skill", "skill-builder", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "new-skill", "skill-builder", "domain").unwrap();
     // No step output — just a master row
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -1558,7 +1598,7 @@ fn test_scenario_10_uses_unknown_domain() {
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("new-skill"));
 
-    let run = crate::db::get_workflow_run(&conn, "new-skill")
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     // domain column dropped - no longer checking "unknown" // domain defaults to "unknown" when workflow_runs row is recreated
@@ -1576,14 +1616,16 @@ fn test_reconcile_skips_only_protected_skill() {
     let conn = create_test_db();
 
     // Skill A: active session with current PID
-    crate::db::save_workflow_run(&conn, "protected", 3, "in_progress", "domain").unwrap();
+    let protected_id = crate::db::upsert_skill(&conn, "protected", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, protected_id, 3, "in_progress", "domain").unwrap();
     create_skill_dir(tmp.path(), "protected", "test");
     let pid = std::process::id();
     let session_id = uuid::Uuid::new_v4().to_string();
-    crate::db::create_workflow_session(&conn, &session_id, "protected", pid).unwrap();
+    crate::db::create_workflow_session_by_skill_id(&conn, &session_id, protected_id, pid).unwrap();
 
     // Skill B: DB at step 5, disk at step 0 → needs reset
-    crate::db::save_workflow_run(&conn, "reset-me", 5, "in_progress", "domain").unwrap();
+    let reset_id = crate::db::upsert_skill(&conn, "reset-me", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, reset_id, 5, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "reset-me");
     insert_stub_decisions(&conn, "reset-me");
     create_skill_dir(tmp.path(), "reset-me", "test");
@@ -1602,14 +1644,14 @@ fn test_reconcile_skips_only_protected_skill() {
         .any(|n| n.contains("reset-me") && n.contains("reset from step 6")));
 
     // A's DB state should be unchanged
-    let run_a = crate::db::get_workflow_run(&conn, "protected")
+    let run_a = crate::db::get_workflow_run_by_skill_id(&conn, protected_id)
         .unwrap()
         .unwrap();
     assert_eq!(run_a.current_step, 3);
     assert_eq!(run_a.status, "in_progress");
 
     // B should be reset to step 2 (Scenario 4: DB=5 >= 3, no SKILL.md)
-    let run_b = crate::db::get_workflow_run(&conn, "reset-me")
+    let run_b = crate::db::get_workflow_run_by_skill_id(&conn, reset_id)
         .unwrap()
         .unwrap();
     assert_eq!(run_b.current_step, 2);
@@ -1624,19 +1666,21 @@ fn test_notification_messages_exact_text() {
     let conn = create_test_db();
 
     // Case 1: DB at step 5, no SKILL.md → Scenario 4: reset to step 2
-    crate::db::save_workflow_run(&conn, "ahead-skill", 5, "in_progress", "domain").unwrap();
+    let ahead_id = crate::db::upsert_skill(&conn, "ahead-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, ahead_id, 5, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "ahead-skill");
     insert_stub_decisions(&conn, "ahead-skill");
     create_skill_dir(tmp.path(), "ahead-skill", "test");
 
     // Case 2: DB at step 3, no SKILL.md → Scenario 4: reset to step 2
-    crate::db::save_workflow_run(&conn, "empty-skill", 3, "in_progress", "domain").unwrap();
+    let empty_id = crate::db::upsert_skill(&conn, "empty-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, empty_id, 3, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "empty-skill");
     insert_stub_decisions(&conn, "empty-skill");
     create_skill_dir(tmp.path(), "empty-skill", "test");
 
     // Case 3: Scenario 10 — master row, no workflow_runs, no DB artifacts
-    crate::db::upsert_skill(&conn, "found-skill", "skill-builder", "domain").unwrap();
+    let _found_id = crate::db::upsert_skill(&conn, "found-skill", "skill-builder", "domain").unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -1768,7 +1812,8 @@ fn test_pass2_skips_skills_already_in_master() {
     let conn = create_test_db();
 
     // Add skill to master and create it on disk
-    crate::db::save_workflow_run(&conn, "known-skill", 5, "completed", "domain").unwrap();
+    let known_id = crate::db::upsert_skill(&conn, "known-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, known_id, 5, "completed", "domain").unwrap();
     create_skill_dir(tmp.path(), "known-skill", "test");
     create_step_output(skills_tmp.path(), "known-skill", 0);
     create_step_output(skills_tmp.path(), "known-skill", 4);
@@ -1859,10 +1904,10 @@ fn test_reconcile_no_disk_dirs_adopted_without_master_row() {
     // No skills in master → no notifications
     assert!(result.notifications.is_empty());
     assert!(result.discovered_skills.is_empty()); // disk-only-skill is in workspace, not skills_path
-    assert!(crate::db::get_workflow_run(&conn, "disk-only-skill")
+    assert!(crate::db::get_skill_master_id(&conn, "disk-only-skill")
         .unwrap()
         .is_none());
-    assert!(crate::db::get_workflow_run(&conn, ".git")
+    assert!(crate::db::get_skill_master_id(&conn, ".git")
         .unwrap()
         .is_none());
 }
@@ -1905,7 +1950,8 @@ fn test_resolve_orphan_delete_rejects_traversal_name() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let conn = create_test_db();
-    crate::db::save_workflow_run(&conn, "some-skill", 1, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "some-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
 
     // skill_name contains path traversal sequences — must be rejected before any FS op
     let result = resolve_orphan(&conn, "../escape", "delete", skills_path);
@@ -1918,7 +1964,7 @@ fn test_resolve_orphan_delete_rejects_traversal_name() {
     );
     // DB row must NOT have been deleted (error before db write)
     assert!(
-        crate::db::get_workflow_run(&conn, "some-skill")
+        crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
             .unwrap()
             .is_some(),
         "unrelated skill should be untouched"
@@ -1963,11 +2009,11 @@ fn test_reconcile_skill_builder_resets_stale_in_progress_steps() {
     let name = "sb-stale-reset";
 
     // Create skill in master + workflow_runs
-    crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run(&conn, name, 0, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
 
     // Mark step 0 as in_progress (simulating a crash)
-    crate::db::save_workflow_step(&conn, name, 0, "in_progress").unwrap();
+    crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 0, "in_progress").unwrap();
 
     // Create workspace dir (scenario 5 guard)
     create_skill_dir(tmp.path(), name, "");
@@ -1984,7 +2030,7 @@ fn test_reconcile_skill_builder_resets_stale_in_progress_steps() {
     .unwrap();
 
     // The stale in_progress step should be reset to pending
-    let steps = crate::db::get_workflow_steps(&conn, name).unwrap();
+    let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     let step0 = steps.iter().find(|s| s.step_id == 0).unwrap();
     assert_eq!(
         step0.status, "pending",
@@ -2002,7 +2048,7 @@ fn test_reconcile_skill_builder_scenario_10_missing_workflow_run() {
     let name = "sb-scenario10";
 
     // Create skill in master but NO workflow_runs row
-    crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
 
     // Create workspace dir with step 0 output (clarifications.json)
     create_skill_dir(tmp.path(), name, "");
@@ -2020,7 +2066,7 @@ fn test_reconcile_skill_builder_scenario_10_missing_workflow_run() {
     .unwrap();
 
     // Should auto-create workflow_runs row
-    let run = crate::db::get_workflow_run(&conn, name).unwrap();
+    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id).unwrap();
     assert!(run.is_some(), "workflow_runs row should be auto-created");
     assert!(
         notifications.iter().any(|n| n.contains("recreated")),
@@ -2038,8 +2084,8 @@ fn test_reconcile_skill_builder_recreates_missing_skill_dir() {
     let name = "sb-missing-ws";
 
     // Create skill + workflow_runs but do NOT create skill dir
-    crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run(&conn, name, 0, "pending", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, name, "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
 
     let mut notifications = Vec::new();
     super::skill_builder::reconcile_skill_builder(
@@ -2125,7 +2171,8 @@ fn test_startup_normalization_moves_legacy_skills_and_workspace_dirs_to_default_
     let conn = create_test_db();
 
     crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
-    crate::db::save_workflow_run(&conn, "analyzing-bookings", 3, "completed", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "analyzing-bookings", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "completed", "domain").unwrap();
     insert_stub_clarifications(&conn, "analyzing-bookings");
     insert_stub_decisions(&conn, "analyzing-bookings");
 

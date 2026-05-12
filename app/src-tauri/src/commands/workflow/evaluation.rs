@@ -310,7 +310,7 @@ mod tests {
     fn test_all_steps_completed_overrides_in_progress_status() {
         let conn = create_test_db();
 
-        // Create a skill and workflow run with status "in_progress".
+        let skill_id = crate::db::upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         crate::db::save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
 
         let step_statuses = vec![
@@ -334,19 +334,17 @@ mod tests {
 
         let effective_status = compute_effective_status("in_progress", &step_statuses);
 
-        // The backend-authoritative override must produce "completed".
         assert_eq!(
             effective_status, "completed",
             "status should be overridden to 'completed' when all steps are completed"
         );
 
-        // Persist the effective status and verify it lands in the DB.
         crate::db::save_workflow_run(&conn, "test-skill", 3, &effective_status, "domain").unwrap();
         for step in &step_statuses {
-            crate::db::save_workflow_step(&conn, "test-skill", step.step_id, &step.status).unwrap();
+            crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status).unwrap();
         }
 
-        let run = crate::db::get_workflow_run(&conn, "test-skill")
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -447,7 +445,7 @@ mod tests {
         let skill_name = "reset-me";
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+        let skill_id = crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
             .unwrap();
         crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
             .unwrap();
@@ -467,7 +465,7 @@ mod tests {
             None
         );
 
-        let run = crate::db::get_workflow_run(&conn, skill_name)
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
             .unwrap()
             .unwrap();
         assert_eq!(run.current_step, 0);
@@ -481,10 +479,9 @@ mod tests {
     fn test_all_completed_override_full_db_path() {
         let conn = create_test_db();
 
-        // Create initial workflow run as "in_progress"
+        let skill_id = crate::db::upsert_skill(&conn, "tc06-skill", "skill-builder", "domain").unwrap();
         crate::db::save_workflow_run(&conn, "tc06-skill", 3, "in_progress", "domain").unwrap();
 
-        // Simulate what save_workflow_state does: compute effective status, then persist
         let step_statuses = vec![
             StepStatusUpdate {
                 step_id: 0,
@@ -504,24 +501,20 @@ mod tests {
             },
         ];
 
-        // Frontend sends "pending" but all steps are completed
         let effective_status = compute_effective_status("pending", &step_statuses);
         assert_eq!(effective_status, "completed");
 
-        // Persist the override status and all step statuses to DB
         crate::db::save_workflow_run(&conn, "tc06-skill", 3, &effective_status, "domain").unwrap();
         for step in &step_statuses {
-            crate::db::save_workflow_step(&conn, "tc06-skill", step.step_id, &step.status).unwrap();
+            crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status).unwrap();
         }
 
-        // Verify DB state: run status must be "completed"
-        let run = crate::db::get_workflow_run(&conn, "tc06-skill")
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
             .unwrap()
             .unwrap();
         assert_eq!(run.status, "completed");
 
-        // Verify all steps are "completed" in DB
-        let steps = crate::db::get_workflow_steps(&conn, "tc06-skill").unwrap();
+        let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
         assert_eq!(steps.len(), 4);
         for step in &steps {
             assert_eq!(

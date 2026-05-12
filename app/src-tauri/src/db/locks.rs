@@ -62,22 +62,6 @@ pub fn acquire_skill_lock_by_skill_id(
     result
 }
 
-/// Convenience wrapper: resolves skill_id from name + default plugin, then acquires lock.
-pub fn acquire_skill_lock(
-    conn: &Connection,
-    skill_name: &str,
-    instance_id: &str,
-    pid: u32,
-) -> Result<(), String> {
-    let skill_id = get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )?
-    .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
-    acquire_skill_lock_by_skill_id(conn, skill_id, instance_id, pid)
-}
-
 pub fn release_skill_lock_by_skill_id(
     conn: &Connection,
     skill_id: i64,
@@ -89,21 +73,6 @@ pub fn release_skill_lock_by_skill_id(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-/// Convenience wrapper: resolves skill_id from name + default plugin, then releases lock.
-pub fn release_skill_lock(
-    conn: &Connection,
-    skill_name: &str,
-    instance_id: &str,
-) -> Result<(), String> {
-    let skill_id = get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )?
-    .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
-    release_skill_lock_by_skill_id(conn, skill_id, instance_id)
 }
 
 pub fn release_all_instance_locks(conn: &Connection, instance_id: &str) -> Result<u32, String> {
@@ -140,22 +109,6 @@ pub fn get_skill_lock_by_skill_id(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
-}
-
-/// Convenience wrapper: resolves skill_id from name + default plugin, then queries lock.
-pub fn get_skill_lock(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<crate::types::SkillLock>, String> {
-    let skill_id = match get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )? {
-        Some(id) => id,
-        None => return Ok(None),
-    };
-    get_skill_lock_by_skill_id(conn, skill_id)
 }
 
 pub fn get_all_skill_locks(conn: &Connection) -> Result<Vec<crate::types::SkillLock>, String> {

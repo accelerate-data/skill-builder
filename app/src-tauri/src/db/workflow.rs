@@ -23,22 +23,6 @@ pub fn get_workflow_run_id_by_skill_id(
     .map_err(|e| e.to_string())
 }
 
-/// Convenience wrapper: resolves skill_id from name + default plugin, then queries.
-pub fn get_workflow_run_id(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<i64>, String> {
-    let skill_id = match get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )? {
-        Some(id) => id,
-        None => return Ok(None),
-    };
-    get_workflow_run_id_by_skill_id(conn, skill_id)
-}
-
 pub fn save_workflow_run_by_skill_id(
     conn: &Connection,
     skill_id: i64,
@@ -154,40 +138,11 @@ pub fn get_workflow_run_by_skill_id(
     }
 }
 
-/// Convenience wrapper: resolves skill_id from name + default plugin, then queries.
-pub fn get_workflow_run(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<WorkflowRunRow>, String> {
-    let skill_id = match get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )? {
-        Some(id) => id,
-        None => return Ok(None),
-    };
-    get_workflow_run_by_skill_id(conn, skill_id)
-}
-
 pub fn get_purpose_by_skill_id(conn: &Connection, skill_id: i64) -> Result<String, String> {
     get_workflow_run_by_skill_id(conn, skill_id).map(|opt| {
         opt.map(|run| run.purpose)
             .unwrap_or_else(|| "domain".to_string())
     })
-}
-
-/// Convenience wrapper: resolves skill_id from name + default plugin, then queries.
-pub fn get_purpose(conn: &Connection, skill_name: &str) -> Result<String, String> {
-    let skill_id = match get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )? {
-        Some(id) => id,
-        None => return Ok("domain".to_string()),
-    };
-    get_purpose_by_skill_id(conn, skill_id)
 }
 
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
@@ -322,22 +277,6 @@ pub fn save_workflow_step_by_skill_id(
     Ok(())
 }
 
-/// Convenience wrapper: resolves skill_id from name + default plugin, then saves.
-pub fn save_workflow_step(
-    conn: &Connection,
-    skill_name: &str,
-    step_id: i32,
-    status: &str,
-) -> Result<(), String> {
-    let skill_id = get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )?
-    .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
-    save_workflow_step_by_skill_id(conn, skill_id, step_id, status)
-}
-
 pub fn get_workflow_steps_by_skill_id(
     conn: &Connection,
     skill_id: i64,
@@ -368,22 +307,6 @@ pub fn get_workflow_steps_by_skill_id(
         .map_err(|e| e.to_string())
 }
 
-/// Convenience wrapper: resolves skill_id from name + default plugin, then queries.
-pub fn get_workflow_steps(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Vec<WorkflowStepRow>, String> {
-    let skill_id = match get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )? {
-        Some(id) => id,
-        None => return Ok(vec![]),
-    };
-    get_workflow_steps_by_skill_id(conn, skill_id)
-}
-
 pub fn reset_workflow_steps_from_by_skill_id(
     conn: &Connection,
     skill_id: i64,
@@ -402,21 +325,6 @@ pub fn reset_workflow_steps_from_by_skill_id(
     Ok(())
 }
 
-/// Convenience wrapper: resolves skill_id from name + default plugin, then resets.
-pub fn reset_workflow_steps_from(
-    conn: &Connection,
-    skill_name: &str,
-    from_step: i32,
-) -> Result<(), String> {
-    let skill_id = get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )?
-    .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
-    reset_workflow_steps_from_by_skill_id(conn, skill_id, from_step)
-}
-
 // --- Workflow Sessions ---
 
 pub fn create_workflow_session_by_skill_id(
@@ -433,22 +341,6 @@ pub fn create_workflow_session_by_skill_id(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-/// Convenience wrapper: resolves skill_id from name + default plugin, then creates session.
-pub fn create_workflow_session(
-    conn: &Connection,
-    session_id: &str,
-    skill_name: &str,
-    pid: u32,
-) -> Result<(), String> {
-    let skill_id = get_skill_master_id_in_plugin(
-        conn,
-        skill_name,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-    )?
-    .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
-    create_workflow_session_by_skill_id(conn, session_id, skill_id, pid)
 }
 
 pub fn end_workflow_session(conn: &Connection, session_id: &str) -> Result<(), String> {

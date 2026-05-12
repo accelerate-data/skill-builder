@@ -58,6 +58,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (53, run_litellm_pr3_schema_migration),
     (54, run_drop_litellm_provider_profile_tables_migration),
     (55, run_model_catalog_cache_migration),
+    (56, run_canonical_skill_identity_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2807,5 +2808,18 @@ pub(super) fn run_model_catalog_cache_migration(conn: &Connection) -> Result<(),
         "#,
     )?;
     log::info!("migration 55: created model catalog cache tables");
+    Ok(())
+}
+
+/// Migration 56: Canonical skill identity — code-only cleanup.
+///
+/// This migration slot records the removal of name-based skill resolution.
+/// No schema changes — the artifact tables were already rebuilt on integer
+/// skill_id FKs in migration 51. This migration exists so the migration
+/// counter advances and the code change is tracked in schema_migrations.
+pub(super) fn run_canonical_skill_identity_migration(
+    _conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    log::info!("migration 56: canonical skill identity (code-only, no schema changes)");
     Ok(())
 }
