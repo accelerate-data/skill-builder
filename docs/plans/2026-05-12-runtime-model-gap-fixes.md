@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Resolve six gaps between the OpenHands runtime model design spec and the current codebase, identified by adversarial review on 2026-05-12.
+**Goal:** Resolve eight gaps between the OpenHands runtime model design spec and the current codebase, identified by adversarial review on 2026-05-12 and the implementation-gaps backlog.
 
-**Architecture:** Three-layer Rust+TypeScript app (Layer 1: raw OpenHands API, Layer 2: skill_creator model, Layer 3: Tauri commands). Fixes span both the Rust backend (session lifecycle, naming) and the React frontend (session readiness guards). Finding 3 was already closed (implementation-gaps.md deleted).
+**Architecture:** Three-layer Rust+TypeScript app (Layer 1: raw OpenHands API, Layer 2: skill_creator model, Layer 3: Tauri commands). Fixes span both the Rust backend (session lifecycle, naming, artifact identity) and the React frontend (session readiness guards). Finding 3 was already closed (implementation-gaps.md deleted). Items #6 and #7 from `docs/design/backend-design/implementation-gaps.md` (artifact identity cleanup, docs index drift) are added as PR D.
 
 **Tech Stack:** Rust (Tauri commands, rusqlite), React 19 (Zustand, TanStack Router), TypeScript
 
@@ -17,9 +17,10 @@
 | PR A | #1 — conversationId guard | Low (frontend only) | `workflow.tsx`, `workspace-refine.tsx` |
 | PR B | #2 — lock release propagation | Low (error path only) | `skill_session.rs` |
 | PR C | #4 + #6 + #7 — Rust rename + cleanup | Low (search-replace + trivial) | `workflow/settings.rs`, `skill_session.rs`, `refine/mod.rs`, 3 callers |
-| PR D (optional) | #5 — move event helpers | Medium (structural refactor) | `agents/openhands_server/events.rs`, `refine/mod.rs`, `skill_session.rs` |
+| PR D | #6 (gaps) + #7 (gaps) — artifact identity + docs index | Low (DB contract + docs) | `workflow_artifacts.rs`, `clarifications.rs`, `decisions.rs`, `migrations.rs`, `docs/design/README.md` |
+| PR E (optional) | #5 — move event helpers | Medium (structural refactor) | `agents/openhands_server/events.rs`, `refine/mod.rs`, `skill_session.rs` |
 
-Do PRs A, B, C in order (each merges before next starts). PR D can be deferred.
+Do PRs A, B, C, D in order (each merges before next starts). PR E can be deferred.
 
 ---
 
@@ -536,7 +537,90 @@ git commit -m "refactor: remove single-variant RefineConversationDispatchPlan en
 
 ---
 
-## PR D (Optional) — Finding #5: Move Event Helpers Out of `refine/`
+## PR D — Findings #6 + #7 (gaps): Artifact Identity + Docs Index
+
+### Background
+
+Two low-risk items from the implementation-gaps backlog:
+
+- **#6 (gaps)**: Artifact identity cleanup — target architecture requires canonical
+  skill resolution for clarifications and decisions through `skills.id`, with no
+  redundant artifact parent identity or name-based ambiguity. VU-1179 work is
+  actively addressing this area.
+- **#7 (gaps)**: Documentation index drift — `docs/design/README.md` needs to
+  reference the live LiteLLM design directory under
+  `docs/design/litellm-integration/` correctly.
+
+---
+
+### Task D1: Verify artifact identity uses canonical `skills.id`
+
+**Files:**
+- Review: `app/src-tauri/src/db/workflow_artifacts.rs`
+- Review: `app/src-tauri/src/commands/workflow/clarifications.rs`
+- Review: `app/src-tauri/src/commands/workflow/decisions.rs`
+- Review: `app/src-tauri/src/db/migrations.rs`
+
+- [ ] **Step 1: Audit artifact resolution paths**
+
+Read the four files above and verify:
+
+1. Clarifications and decisions resolve skills by `skills.id` (primary key), not
+   by name or redundant parent identity.
+2. No name-based ambiguity exists in artifact resolution queries.
+3. The migration history reflects the canonical `skills.id` contract.
+
+- [ ] **Step 2: Fix any remaining name-based or redundant identity resolution**
+
+If any query or command still resolves artifacts by skill name or a redundant
+parent identifier, update it to use `skills.id` as the canonical key.
+
+- [ ] **Step 3: Compile and test**
+
+```bash
+cd app/src-tauri && cargo check
+cd app/src-tauri && cargo test commands::workflow
+```
+
+Expected: no errors, all pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/src-tauri/src/db/workflow_artifacts.rs \
+        app/src-tauri/src/commands/workflow/clarifications.rs \
+        app/src-tauri/src/commands/workflow/decisions.rs \
+        app/src-tauri/src/db/migrations.rs
+git commit -m "fix: ensure canonical skills.id for artifact identity resolution"
+```
+
+---
+
+### Task D2: Fix documentation index drift
+
+**Files:**
+- Modify: `docs/design/README.md`
+
+- [ ] **Step 1: Read `docs/design/README.md`**
+
+Check for any references to old design directories (e.g., `docs/design/model-settings/`)
+that should now point to `docs/design/litellm-integration/`.
+
+- [ ] **Step 2: Update links**
+
+Replace stale paths with the correct `docs/design/litellm-integration/` references.
+Ensure the README accurately reflects the current design folder structure.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/design/README.md
+git commit -m "docs: fix design index to reference litellm-integration directory"
+```
+
+---
+
+## PR E (Optional) — Finding #5: Move Event Helpers Out of `refine/`
 
 ### Background
 
