@@ -307,11 +307,8 @@ pub(crate) fn rename_skill_inner(
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
     // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
     let workspace_root = Path::new(workspace_path);
-    let workspace_old = crate::skill_paths::resolve_existing_skill_dir(
-        workspace_root,
-        &plugin_slug,
-        old_name,
-    );
+    let workspace_old =
+        crate::skill_paths::resolve_existing_skill_dir(workspace_root, &plugin_slug, old_name);
     let workspace_new =
         crate::skill_paths::resolve_skill_dir(workspace_root, &plugin_slug, new_name);
     if workspace_old.exists() {

@@ -831,9 +831,11 @@ pub async fn start_openhands_session(
     conversation_id: Option<String>,
 ) -> Result<StartedOpenHandsSession, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    let requested_conversation_id = conversation_id
-        .clone()
-        .or_else(|| load_saved_skill_conversation_id(app, &request).ok().flatten());
+    let requested_conversation_id = conversation_id.clone().or_else(|| {
+        load_saved_skill_conversation_id(app, &request)
+            .ok()
+            .flatten()
+    });
     let conversation_id = resolve_openhands_conversation_id(
         app,
         &request,
@@ -1188,13 +1190,8 @@ async fn dispatch_openhands_turn_with_request(
     selection: OpenHandsConversationSelection,
     prompt_delivery: PromptDelivery,
 ) -> Result<String, String> {
-    let conversation_id = resolve_openhands_conversation_id(
-        app,
-        &request,
-        conversation_id,
-        selection,
-    )
-    .await?;
+    let conversation_id =
+        resolve_openhands_conversation_id(app, &request, conversation_id, selection).await?;
     let server =
         ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
             .await?;
@@ -2902,5 +2899,4 @@ mod tests {
             })
         );
     }
-
 }

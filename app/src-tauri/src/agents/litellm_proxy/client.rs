@@ -2,8 +2,8 @@ use reqwest::Client;
 use url::Url;
 
 use crate::agents::litellm_proxy::types::{
-    CreateUserRequest, CreateUserResponse, GenerateKeyRequest, GenerateKeyResponse,
-    HealthResponse, KeyInfoResponse,
+    CreateUserRequest, CreateUserResponse, GenerateKeyRequest, GenerateKeyResponse, HealthResponse,
+    KeyInfoResponse,
 };
 
 #[allow(dead_code)]
@@ -59,8 +59,14 @@ impl LiteLLMAdminClient {
             .map_err(|e| format!("Failed to parse create user response: {e}"))
     }
 
-    pub async fn generate_key(&self, req: &GenerateKeyRequest) -> Result<GenerateKeyResponse, String> {
-        let url = self.base_url.join("/key/generate").map_err(|e| e.to_string())?;
+    pub async fn generate_key(
+        &self,
+        req: &GenerateKeyRequest,
+    ) -> Result<GenerateKeyResponse, String> {
+        let url = self
+            .base_url
+            .join("/key/generate")
+            .map_err(|e| e.to_string())?;
         let resp = self
             .client
             .post(url)
@@ -80,7 +86,8 @@ impl LiteLLMAdminClient {
     }
 
     pub async fn key_info(&self, key: &str) -> Result<KeyInfoResponse, String> {
-        let url = self.base_url
+        let url = self
+            .base_url
             .join(&format!("/key/info?key={}", key))
             .map_err(|e| e.to_string())?;
         let resp = self

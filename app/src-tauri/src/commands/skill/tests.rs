@@ -3,9 +3,7 @@ use super::crud::{
     delete_skill_db_records_inner, delete_skill_filesystem_inner, delete_skill_inner,
     list_refinable_skills_inner, list_skills_inner, prepare_skill_runtime_shutdown_inner,
 };
-use super::metadata::{
-    externally_locked_skills_log_message, is_valid_kebab, rename_skill_inner,
-};
+use super::metadata::{externally_locked_skills_log_message, is_valid_kebab, rename_skill_inner};
 use crate::commands::skill_session::{SkillSession, SkillSessionManager};
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::runtime::{WorkflowStepRun, WorkflowStepRunManager};

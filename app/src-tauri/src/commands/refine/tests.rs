@@ -1117,8 +1117,7 @@ fn plan_refine_dispatch_reuses_the_existing_conversation_id() {
 #[test]
 fn selected_skill_lease_guard_rejects_other_instance_before_refine_dispatch() {
     let conn = crate::db::create_test_db_for_tests();
-    let skill_id =
-        crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     crate::db::acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-b", std::process::id())
         .unwrap();
 
@@ -1223,8 +1222,8 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     crate::git::commit_all(&skill_dir, "initial").unwrap();
 
     // Create a stale snapshot in the workspace (under default plugin slug)
-    let snapshot_dir =
-        resolve_skill_dir(workspace_dir.path(), DEFAULT_PLUGIN_SLUG, "my-skill").join("skill-snapshot");
+    let snapshot_dir = resolve_skill_dir(workspace_dir.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+        .join("skill-snapshot");
     std::fs::create_dir_all(&snapshot_dir).unwrap();
     std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
     assert!(snapshot_dir.exists());

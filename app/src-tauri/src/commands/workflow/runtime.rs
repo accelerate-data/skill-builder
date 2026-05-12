@@ -184,13 +184,10 @@ async fn dispatch_persistent_skill_turn(
     agent_id: &str,
     config: OpenHandsRuntimeConfig,
 ) -> Result<String, String> {
-    let conversation_id = crate::agents::skill_creator::ensure_skill_session(
-        app,
-        config.clone(),
-        None,
-    )
-    .await?
-    .conversation_id;
+    let conversation_id =
+        crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None)
+            .await?
+            .conversation_id;
 
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,
@@ -602,9 +599,12 @@ pub async fn run_workflow_step(
         settings.function_role,
     );
 
-    let skill_dir =
-        crate::skill_paths::ensure_nested_skill_dir(Path::new(&settings.skills_path), &settings.plugin_slug, &skill_name)
-            .map_err(|e| format!("Failed to create skill dir: {}", e))?;
+    let skill_dir = crate::skill_paths::ensure_nested_skill_dir(
+        Path::new(&settings.skills_path),
+        &settings.plugin_slug,
+        &skill_name,
+    )
+    .map_err(|e| format!("Failed to create skill dir: {}", e))?;
     std::fs::create_dir_all(&skill_dir)
         .map_err(|e| format!("Failed to create skill dir: {}", e))?;
 

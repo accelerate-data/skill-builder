@@ -42,8 +42,7 @@ pub fn list_step_output_files(
         workspace_path,
         skills_path
     );
-    let skill_dir =
-        resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir = resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     let mut files = Vec::new();
 
     match step_id {
@@ -118,8 +117,7 @@ pub fn clean_step_output(
         skills_path
     );
 
-    let skill_dir =
-        resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir = resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
 
     match step_id {
         0 => {

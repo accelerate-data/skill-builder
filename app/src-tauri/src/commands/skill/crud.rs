@@ -2,8 +2,7 @@ use crate::commands::skill_session::SkillSessionManager;
 use crate::commands::workflow::runtime::WorkflowStepRunManager;
 use crate::db::Db;
 use crate::skill_paths::{
-    ensure_nested_skill_dir, resolve_existing_skill_dir,
-    skill_library_key, DEFAULT_PLUGIN_SLUG,
+    ensure_nested_skill_dir, resolve_existing_skill_dir, skill_library_key, DEFAULT_PLUGIN_SLUG,
 };
 use crate::types::SkillSummary;
 use std::fs;

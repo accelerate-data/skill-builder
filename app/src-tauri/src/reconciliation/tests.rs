@@ -2052,8 +2052,12 @@ fn test_reconcile_skill_builder_recreates_missing_skill_dir() {
 
     // The canonical skill dir should be recreated under skills_path (scenario 5)
     // Steps 0-2 are DB-authoritative; no context/ subdir is created.
-    let skill_dir = crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, name);
-    assert!(skill_dir.exists(), "skill dir should be recreated under skills_path");
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, name);
+    assert!(
+        skill_dir.exists(),
+        "skill dir should be recreated under skills_path"
+    );
 }
 
 #[test]

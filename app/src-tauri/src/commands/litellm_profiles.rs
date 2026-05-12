@@ -26,7 +26,9 @@ pub struct ReorderProfileModelsRequest {
 }
 
 #[tauri::command]
-pub fn list_litellm_profiles(db: tauri::State<'_, Db>) -> Result<Vec<crate::db::LlmProfile>, String> {
+pub fn list_litellm_profiles(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<crate::db::LlmProfile>, String> {
     log::info!("[list_litellm_profiles]");
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::list_profiles(&conn)
@@ -73,8 +75,8 @@ pub fn update_litellm_profile(
 ) -> Result<(), String> {
     log::info!("[update_litellm_profile] id={}", id);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let existing = crate::db::get_profile(&conn, &id)?
-        .ok_or_else(|| "Profile not found".to_string())?;
+    let existing =
+        crate::db::get_profile(&conn, &id)?.ok_or_else(|| "Profile not found".to_string())?;
     let profile = crate::db::LlmProfile {
         id,
         name: request.name,
@@ -101,7 +103,11 @@ pub fn add_profile_model(
     db: tauri::State<'_, Db>,
     request: AddProfileModelRequest,
 ) -> Result<String, String> {
-    log::info!("[add_profile_model] profile_id={} model={}", request.profile_id, request.model_name);
+    log::info!(
+        "[add_profile_model] profile_id={} model={}",
+        request.profile_id,
+        request.model_name
+    );
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let model = crate::db::LlmProfileModel {
@@ -117,10 +123,7 @@ pub fn add_profile_model(
 }
 
 #[tauri::command]
-pub fn remove_profile_model(
-    db: tauri::State<'_, Db>,
-    model_id: String,
-) -> Result<(), String> {
+pub fn remove_profile_model(db: tauri::State<'_, Db>, model_id: String) -> Result<(), String> {
     log::info!("[remove_profile_model] model_id={}", model_id);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::delete_profile_model(&conn, &model_id)
@@ -137,7 +140,8 @@ pub fn reorder_profile_models(
         conn.execute(
             "UPDATE llm_profile_models SET priority = ?1 WHERE id = ?2 AND profile_id = ?3",
             rusqlite::params![i as i32, model_id, request.profile_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -152,7 +156,9 @@ pub async fn verify_profile_virtual_key(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let profile = crate::db::get_profile(&conn, &profile_id)?
             .ok_or_else(|| "Profile not found".to_string())?;
-        profile.virtual_key.clone()
+        profile
+            .virtual_key
+            .clone()
             .ok_or_else(|| "Profile has no virtual key".to_string())?
     };
 

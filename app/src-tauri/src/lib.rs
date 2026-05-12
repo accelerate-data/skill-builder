@@ -630,7 +630,10 @@ mod tests {
         let summary = startup_context_summary(
             4242,
             Some(111),
-            &["/Applications/Skill Builder.app".to_string(), "--flag".to_string()],
+            &[
+                "/Applications/Skill Builder.app".to_string(),
+                "--flag".to_string(),
+            ],
         );
 
         assert_eq!(

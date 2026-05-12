@@ -1,9 +1,9 @@
-use std::path::Path;
 use rusqlite::Connection;
 use serde::Serialize;
+use std::path::Path;
 
-use crate::db::{list_providers, list_profiles, get_profile_models};
 use crate::agents::litellm_proxy::process::litellm_db_url;
+use crate::db::{get_profile_models, list_profiles, list_providers};
 
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]

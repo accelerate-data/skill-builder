@@ -155,14 +155,13 @@ pub async fn send_refine_message(
 
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let skill_id =
-            crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
-                .ok_or_else(|| {
-                    format!(
-                        "Skill '{}' in plugin '{}' was not found in the skills master",
-                        skill_name, plugin_slug
-                    )
-                })?;
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
+            .ok_or_else(|| {
+                format!(
+                    "Skill '{}' in plugin '{}' was not found in the skills master",
+                    skill_name, plugin_slug
+                )
+            })?;
         crate::commands::skill_session::acquire_or_verify_skill_lock(
             &conn,
             skill_id,

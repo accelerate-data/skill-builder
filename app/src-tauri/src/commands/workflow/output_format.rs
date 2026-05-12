@@ -748,7 +748,7 @@ pub(crate) fn materialize_workflow_step_output_value(
         0 => {
             let parsed =
                 serde_json::from_value::<ResearchStepOutput>(workflow_result_payload.clone())
-                .map_err(|e| format!("invalid research step output: {}", e))?;
+                    .map_err(|e| format!("invalid research step output: {}", e))?;
 
             if parsed.status != "research_complete" {
                 return Err(format!(
@@ -799,9 +799,9 @@ pub(crate) fn materialize_workflow_step_output_value(
             persist_clarifications(db, &record)
         }
         2 => {
-            let parsed =
-                match serde_json::from_value::<DecisionsOutput>(workflow_result_payload.clone())
-            {
+            let parsed = match serde_json::from_value::<DecisionsOutput>(
+                workflow_result_payload.clone(),
+            ) {
                 Ok(parsed) => parsed,
                 Err(parse_error) => {
                     if let Some(normalized) =

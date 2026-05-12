@@ -590,5 +590,4 @@ mod tests {
         );
         invalidate_workspace_cache(&workspace_str);
     }
-
 }

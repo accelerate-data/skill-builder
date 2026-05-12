@@ -11,7 +11,7 @@ The backend is the product control plane for Skill Builder. It owns:
 - skill lifecycle operations on disk
 - selected-skill session ownership and conversation persistence
 - OpenHands Agent Server orchestration for workflow and refine
-- LiteLLM proxy orchestration for provider routing, budgets, and virtual keys
+- model catalog caching and filtering for provider/model selection
 
 This directory describes the intended backend architecture. Any places where
 latest `main` is still transitional are tracked in
@@ -34,10 +34,7 @@ database is the source of truth for:
 - workflow execution state and workflow artifacts
 - documents and reconciliation events
 - eval scenarios and assertions
-- LiteLLM provider/profile configuration
-
-The LiteLLM proxy also owns its own separate SQLite database for spend logs and
-virtual-key state. The app does not co-mingle that schema with `skill-builder.db`.
+- model catalog cache and selected model settings
 
 ### Runtime orchestration
 
@@ -48,8 +45,6 @@ translation:
   session primitives
 - `agents/skill_creator.rs` builds OpenHands runtime config for skill-creator
   work
-- `agents/litellm_proxy/` manages the LiteLLM proxy lifecycle, config
-  generation, health checks, and virtual-key provisioning
 - `agents/event_router.rs` translates runtime messages into Tauri events and
   persistence writes
 
@@ -69,27 +64,24 @@ Persistent selected-skill sessions are skill-owned, lease-guarded, and resume
 from `skill_conversations`. Throwaway workflow/eval runs use the same runtime
 but do not depend on a saved persistent conversation.
 
-The canonical product-level runtime contract lives in
+The canonical runtime contract lives in
 [../openhands-runtime-model/README.md](../openhands-runtime-model/README.md).
 
-### LiteLLM
+### Model Catalog
 
-LiteLLM is the target model-routing layer for all OpenHands traffic. The target
-architecture is:
+The backend owns a cached model-catalog subsystem that resolves the final
+provider/model pair used for OpenHands traffic. The target architecture is:
 
-- provider credentials live in app-owned `llm_providers`
-- profile selection, fallback order, budgets, and rate limits live in
-  `llm_profiles` and `llm_profile_models`
-- Rust generates LiteLLM `config.yaml` from those app tables
-- Rust provisions one virtual key per profile through the LiteLLM admin API
-- OpenHands uses the proxy URL plus a profile virtual key rather than a direct
-  provider API key
-- spend tracking and budget enforcement come from LiteLLM rather than the
-  app-owned `agent_runs` table
+- provider and model metadata are ingested from `models.dev`
+- provider defaults are cached in `provider_catalog`
+- filterable model rows are cached in `model_catalog`
+- the Settings UI filters those cached rows to choose one final model
+- OpenHands runtime config is built directly from the selected provider/model
+  plus app-owned credentials/base-URL overrides
 
-The canonical LiteLLM target design lives in
-[../litellm-integration/README.md](../litellm-integration/README.md) and
-[../litellm-integration/budgets.md](../litellm-integration/budgets.md).
+The canonical model-catalog design lives in
+[../model-catalog/README.md](../model-catalog/README.md) and
+[../model-catalog/schema.md](../model-catalog/schema.md).
 
 ## Key Data Flows
 
@@ -111,12 +103,13 @@ The canonical LiteLLM target design lives in
 4. Refine turns dispatch against that persistent conversation until the user
    pauses, switches, or exits.
 
-### Model routing
+### Model selection
 
-1. The backend starts and health-checks the LiteLLM proxy.
-2. LiteLLM provider/profile config is loaded from app SQLite.
-3. The proxy config and virtual keys are generated from that app-owned state.
-4. OpenHands runtime config points at the local LiteLLM proxy.
+1. The backend refreshes and caches provider/model metadata from `models.dev`.
+2. The Settings UI reads the cached catalog and applies filters.
+3. The user selects one provider/model pair.
+4. OpenHands runtime config is built from that selected provider/model plus
+   app-owned credentials and any base-URL override.
 
 ## Documents In This Folder
 

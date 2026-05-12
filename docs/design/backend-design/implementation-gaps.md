@@ -1,96 +1,104 @@
 # Backend Implementation Gaps
 
-Current gaps between latest `main` and the target backend architecture described
-in this folder.
+Current gaps between latest `main` and the target backend architecture
+described in this folder.
 
-## 1. LiteLLM Is Not Yet The Sole Runtime Gateway
+## 1. Latest `main` Still Carries LiteLLM-Specific Runtime Plumbing
 
-Target architecture assumes all OpenHands traffic routes through the Rust-managed
-LiteLLM proxy using a selected profile's virtual key.
+Target architecture assumes model selection is resolved through the app-owned
+model catalog and that OpenHands is configured directly from the selected
+provider/model pair.
 
-Latest `main` still keeps the older direct-model settings path alive:
+Latest `main` still contains LiteLLM-specific runtime and admin concepts:
 
-- `app/src-tauri/src/types/settings.rs`
-- `app/src-tauri/src/commands/workflow/settings.rs`
-- `app/src-tauri/src/agents/runtime_config.rs`
+- `app/src-tauri/src/agents/litellm_proxy/`
+- `app/src-tauri/src/commands/litellm_providers.rs`
+- `app/src-tauri/src/commands/litellm_profiles.rs`
+- `app/src-tauri/src/lib.rs`
 
 Current consequence:
 
-- runtime config can still be built from direct `model` / `api_key` /
-  `base_url` settings
-- profile selection is not yet the single model-routing contract
+- target docs and implementation are intentionally divergent until the LiteLLM
+  subsystem is removed or replaced
+- runtime model resolution is not yet centered on the catalog contract
 
-## 2. LiteLLM Config Generation Is Partial
+## 2. The Cached Model Catalog Does Not Exist Yet
 
-Target LiteLLM design expects config generation to honor:
+Target design expects a cached `models.dev` snapshot in app-owned SQLite with:
 
-- `litellm_provider_prefix`
-- provider `base_url`
-- provider and profile `settings_json`
-- per-profile fallback order
-- per-model budget semantics described in
-  `docs/design/litellm-integration/budgets.md`
+- `provider_catalog`
+- `model_catalog`
+- modality child tables
+- lossless upstream payload retention
+- cascade foreign keys between parent and child tables
 
-Latest `main` config generation in
-`app/src-tauri/src/agents/litellm_proxy/config.rs` is still simpler:
-
-- it derives provider routing from `provider.name` when `model_name` is not
-  already fully-qualified
-- it does not incorporate provider `base_url`
-- it does not project `settings_json`
-- it does not express the full target budget configuration in `config.yaml`
-
-## 3. Provider/Profile Mutations Do Not Yet Own Proxy Reconfiguration
-
-Target architecture expects provider/profile changes to regenerate LiteLLM
-config and restart or refresh the proxy as needed.
-
-Latest `main` provider/profile commands update SQLite rows, but that is not yet
-the full lifecycle contract:
-
-- `app/src-tauri/src/commands/litellm_providers.rs`
-- `app/src-tauri/src/commands/litellm_profiles.rs`
-
-Gap:
-
-- config regeneration and proxy restart/refresh are not yet the obvious
-  first-class side effect of every provider/profile mutation
-
-## 4. No Frontend Readiness Event For The Proxy
-
-The LiteLLM design expects an explicit readiness handshake so the frontend can
-gate model-using actions until the proxy is healthy.
-
-Latest `main` starts the proxy at app startup, but there is no dedicated
-`litellm-proxy-ready` event contract emitted from the backend.
+Latest `main` does not yet have that cache schema or refresh flow.
 
 Relevant files:
 
-- `app/src-tauri/src/lib.rs`
-- `app/src-tauri/src/agents/litellm_proxy/mod.rs`
+- `app/src-tauri/src/db/`
+- `app/src-tauri/src/types/settings.rs`
 
-## 5. Usage Ownership Is Still Transitional
+## 3. Catalog Commands Are Missing
 
-Target architecture moves budget enforcement and spend tracking to LiteLLM.
+Target architecture expects:
 
-Latest `main` still has app-owned usage telemetry centered on:
+- `refresh_model_catalog`
+- `get_cached_model_catalog`
+- `filter_models`
 
-- `agent_runs`
-- `workflow_sessions`
-- `app/src-tauri/src/commands/usage.rs`
-- `app/src-tauri/src/agents/run_persist.rs`
+Latest `main` does not yet expose those commands as first-class Tauri IPC
+surface.
 
-Gap:
+## 4. Settings Still Reflect Legacy Direct-Provider State
 
-- the backend still presents app-owned usage aggregation as the primary usage
-  surface instead of treating LiteLLM spend logs as the canonical spend source
+Target architecture keeps direct provider credentials/base-URL overrides and the
+selected provider/model, but removes profile, proxy, and virtual-key concepts.
 
-## 6. Documentation Index Drift Exists Outside This Folder Too
+Latest `main` settings still mix older direct-provider selection with newer
+LiteLLM-specific seams.
 
-The target backend design now points to the LiteLLM design under
-`docs/design/litellm-integration/`, but the broader design index still needs to
-reference that live directory correctly.
+Relevant files:
 
-Relevant file:
+- `app/src-tauri/src/types/settings.rs`
+- `app/src-tauri/src/commands/settings.rs`
+- `app/src/components/settings/models-section.tsx`
 
-- `docs/design/README.md`
+## 5. OpenHands Runtime Config Is Not Yet Catalog-Driven
+
+Target architecture expects `OpenHandsRuntimeConfig` to be built from:
+
+- selected provider
+- selected model
+- provider credentials
+- optional base-URL override
+
+Latest `main` does not yet resolve runtime configuration through the target
+catalog boundary.
+
+Relevant files:
+
+- `app/src-tauri/src/agents/runtime_config.rs`
+- `app/src-tauri/src/agents/skill_creator.rs`
+- `app/src-tauri/src/commands/workflow/settings.rs`
+
+## 6. Artifact Identity Still Allows Legacy Name-Based Resolution
+
+Target architecture requires canonical skill resolution for clarifications and
+decisions through `skills.id`.
+
+Latest `main` has already moved the clarifications/decisions command surface to
+`skill_id`, but the underlying resolver path still accepts legacy skill-name
+fallback:
+
+- canonical `skills.id`
+- no redundant artifact parent identity
+- no name-based ambiguity in artifact resolution
+
+Relevant files:
+
+- `app/src-tauri/src/db/skills.rs`
+- `app/src-tauri/src/db/workflow_artifacts.rs`
+- `app/src-tauri/src/commands/workflow/clarifications.rs`
+- `app/src-tauri/src/commands/workflow/decisions.rs`
+- `app/src-tauri/src/db/migrations.rs`
