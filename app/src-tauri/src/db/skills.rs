@@ -559,21 +559,6 @@ pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option
     get_skill_master_id_in_plugin(conn, skill_name, DEFAULT_PLUGIN_SLUG)
 }
 
-/// Look up a skill's row ID across all plugins (not just the default one).
-/// Used by lock acquisition, which must work for imported and marketplace skills.
-pub fn get_skill_master_id_any_plugin(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<i64>, String> {
-    conn.query_row(
-        "SELECT id FROM skills WHERE name = ?1 AND COALESCE(deleted_at, '') = '' LIMIT 1",
-        rusqlite::params![skill_name],
-        |row| row.get(0),
-    )
-    .optional()
-    .map_err(|e| e.to_string())
-}
-
 pub fn get_skill_master_id_in_plugin(
     conn: &Connection,
     skill_name: &str,
@@ -589,68 +574,6 @@ pub fn get_skill_master_id_in_plugin(
     )
     .optional()
     .map_err(|e| e.to_string())
-}
-
-/// Resolve a skill identifier to the canonical `skills.id` row.
-///
-/// Accepted identifiers:
-/// - builder library key: `skill-builder:{plugin_slug}:{skill_name}`
-/// - imported library key: `imported:{imported_skill_id}` or `imported:{skills.id}`
-/// - raw `skills.id` string
-/// - legacy unique skill name
-pub fn resolve_skill_master_id_from_identifier(
-    conn: &Connection,
-    identifier: &str,
-) -> Result<Option<i64>, String> {
-    if let Ok(skill_id) = identifier.parse::<i64>() {
-        let row = conn
-            .query_row(
-                "SELECT id FROM skills WHERE id = ?1 AND COALESCE(deleted_at, '') = ''",
-                rusqlite::params![skill_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-        if row.is_some() {
-            return Ok(row);
-        }
-    }
-
-    if let Some(rest) = identifier.strip_prefix("skill-builder:") {
-        if let Some((plugin_slug, skill_name)) = rest.split_once(':') {
-            return get_skill_master_id_in_plugin(conn, skill_name, plugin_slug);
-        }
-    }
-
-    if let Some(imported_id) = identifier.strip_prefix("imported:") {
-        if let Ok(skill_id) = imported_id.parse::<i64>() {
-            let row = conn
-                .query_row(
-                    "SELECT id FROM skills WHERE id = ?1 AND COALESCE(deleted_at, '') = ''",
-                    rusqlite::params![skill_id],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|e| e.to_string())?;
-            if row.is_some() {
-                return Ok(row);
-            }
-        }
-
-        return conn
-            .query_row(
-                "SELECT skill_master_id
-                 FROM imported_skills
-                 WHERE skill_id = ?1 AND skill_master_id IS NOT NULL
-                 LIMIT 1",
-                rusqlite::params![imported_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string());
-    }
-
-    get_skill_master_id_any_plugin(conn, identifier)
 }
 
 pub fn move_skill_to_plugin(
@@ -677,41 +600,6 @@ pub fn move_skill_to_plugin(
         ));
     }
     move_skill_conversation_to_plugin(conn, skill_name, from_plugin_slug, to_plugin_slug)?;
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn set_skill_behaviour(
-    conn: &Connection,
-    skill_name: &str,
-    description: Option<&str>,
-    version: Option<&str>,
-    user_invocable: Option<bool>,
-    disable_model_invocation: Option<bool>,
-) -> Result<(), String> {
-    let user_invocable_i: Option<i32> = user_invocable.map(|v| if v { 1 } else { 0 });
-    let disable_model_invocation_i: Option<i32> =
-        disable_model_invocation.map(|v| if v { 1 } else { 0 });
-
-    // Write to skills master — canonical store for all skill sources
-    conn.execute(
-        "UPDATE skills SET
-            description = COALESCE(?2, description),
-            version = COALESCE(?3, version),
-            user_invocable = COALESCE(?4, user_invocable),
-            disable_model_invocation = COALESCE(?5, disable_model_invocation),
-            updated_at = datetime('now')
-         WHERE name = ?1",
-        rusqlite::params![
-            skill_name,
-            description,
-            version,
-            user_invocable_i,
-            disable_model_invocation_i,
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
@@ -983,37 +871,6 @@ mod tests {
     }
 
     #[test]
-    fn get_skill_master_id_any_plugin_finds_imported_skill() {
-        let conn = create_test_db_for_tests();
-        ensure_plugin(
-            &conn,
-            "ext-plugin",
-            "Ext Plugin",
-            "marketplace",
-            Some("https://example.com/ext"),
-            None,
-            false,
-        )
-        .expect("ensure_plugin");
-        upsert_skill_in_plugin(&conn, "ext-skill", "marketplace", "domain", "ext-plugin")
-            .expect("upsert skill");
-
-        // get_skill_master_id (default-plugin-only) should NOT find it
-        let default_id = get_skill_master_id(&conn, "ext-skill").expect("query ok");
-        assert!(
-            default_id.is_none(),
-            "default-plugin lookup must not find skills in other plugins"
-        );
-
-        // get_skill_master_id_any_plugin SHOULD find it
-        let any_id = get_skill_master_id_any_plugin(&conn, "ext-skill").expect("query ok");
-        assert!(
-            any_id.is_some(),
-            "any-plugin lookup must find skills in non-default plugins"
-        );
-    }
-
-    #[test]
     fn plugin_aware_operations_work_for_non_default_plugin() {
         let conn = create_test_db_for_tests();
         // Create a non-default plugin and a skill in it.
@@ -1142,9 +999,10 @@ mod tests {
         upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         upsert_skill_in_plugin(&conn, "my-skill", "marketplace", "domain", &target_slug).unwrap();
 
-        set_skill_behaviour(
+        set_skill_behaviour_in_plugin(
             &conn,
             "my-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             Some("default description"),
             None,
             None,
