@@ -37,8 +37,8 @@ pub struct OpenHandsRuntimeConfig {
     pub llm: Option<crate::types::WorkflowLlmConfig>,
     #[serde(rename = "modelBaseUrl", skip_serializing_if = "Option::is_none")]
     pub model_base_url: Option<String>,
-    #[serde(rename = "apiKey")]
-    pub api_key: SecretString,
+    #[serde(rename = "openhandsApiKey")]
+    pub openhands_api_key: SecretString,
     /// App-local data directory (`~/Library/Application Support/com.vibedata.skill-builder/`).
     /// Owns `openhands/` (conversations, bash_events, logs, secret.key), the SQLite DB, and documents.
     #[serde(rename = "appDataRoot")]
@@ -117,7 +117,7 @@ impl std::fmt::Debug for OpenHandsRuntimeConfig {
             .field("model", &self.model)
             .field("llm", &self.llm)
             .field("model_base_url", &self.model_base_url)
-            .field("api_key", &"[redacted]")
+            .field("openhands_api_key", &"[redacted]")
             .field("app_data_root", &self.app_data_root)
             .field("skills_root", &self.skills_root)
             .field("skill_dir", &self.skill_dir)
@@ -193,7 +193,7 @@ pub fn build_openhands_runtime_config(
         model: Some(params.llm.model.clone()),
         llm: Some(params.llm.clone()),
         model_base_url: params.llm.base_url.clone(),
-        api_key: params
+        openhands_api_key: params
             .llm
             .api_key
             .clone()
@@ -237,7 +237,7 @@ mod tests {
             model: Some("sonnet".to_string()),
             llm: None,
             model_base_url: Some("https://models.example.com/v1".to_string()),
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/home/user/app-data".to_string(),
             skills_root: "/home/user/project".to_string(),
             skill_dir: "/home/user/project".to_string(),
@@ -267,7 +267,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         // Verify camelCase field names from serde rename
-        assert_eq!(parsed["apiKey"], "sk-ant-test");
+        assert_eq!(parsed["openhandsApiKey"], "sk-ant-test");
         assert_eq!(parsed["allowedTools"][0], "Read");
         assert_eq!(parsed["maxTurns"], 25);
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
@@ -290,7 +290,7 @@ mod tests {
             model: Some("opus".to_string()),
             llm: None,
             model_base_url: None,
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/home/user/app-data".to_string(),
             skills_root: "/home/user/project".to_string(),
             skill_dir: "/home/user/project".to_string(),
@@ -337,7 +337,7 @@ mod tests {
             model: None,
             llm: None,
             model_base_url: None,
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/tmp".to_string(),
             skills_root: "/tmp".to_string(),
             skill_dir: "/tmp".to_string(),
@@ -384,7 +384,7 @@ mod tests {
             model: None,
             llm: None,
             model_base_url: None,
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/tmp".to_string(),
             skills_root: "/tmp".to_string(),
             skill_dir: "/tmp".to_string(),
@@ -440,7 +440,7 @@ mod tests {
                 usage_id: Some("workflow".to_string()),
             }),
             model_base_url: None,
-            api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
+            openhands_api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
             app_data_root: "/tmp/app-data".to_string(),
             skills_root: "/tmp/workspace".to_string(),
             skill_dir: "/tmp/workspace/skills/new-skill".to_string(),
@@ -566,7 +566,7 @@ mod tests {
             config.model_base_url.as_deref(),
             Some("https://api.anthropic.com/v1")
         );
-        assert_eq!(config.api_key.expose(), "sk-test");
+        assert_eq!(config.openhands_api_key.expose(), "sk-test");
     }
 
     #[test]
@@ -692,7 +692,7 @@ mod tests {
             plugin_slug: "default".to_string(),
         });
 
-        assert_eq!(config.api_key.expose(), "");
+        assert_eq!(config.openhands_api_key.expose(), "");
         assert_eq!(config.model.as_deref(), Some("ollama/llama3.1"));
         assert_eq!(
             config.model_base_url.as_deref(),

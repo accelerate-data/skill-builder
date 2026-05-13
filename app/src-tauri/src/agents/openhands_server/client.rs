@@ -306,7 +306,7 @@ mod tests {
                 usage_id: Some("workflow".to_string()),
             }),
             model_base_url: None,
-            api_key: SecretString::new("openhands-llm-config".to_string()),
+            openhands_api_key: SecretString::new("openhands-llm-config".to_string()),
             app_data_root: app_data_root.to_string(),
             skills_root: skills_root.to_string(),
             skill_dir: skill_dir.to_string(),
