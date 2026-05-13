@@ -989,25 +989,25 @@ test_save_workflow_state_preserves_skills_metadata."
 
 ---
 
-### Task 9: Add migration 54 slot
+### Task 9: Add migration 56 slot
 
 **Files:**
 - Modify: `app/src-tauri/src/db/migrations.rs`
 
-- [ ] **Step 1: Add migration 54 to NUMBERED_MIGRATIONS**
+- [ ] **Step 1: Add migration 56 to NUMBERED_MIGRATIONS**
 
-Add to the `NUMBERED_MIGRATIONS` array (after migration 53):
+Add to the `NUMBERED_MIGRATIONS` array (after migration 55):
 
 ```rust
-(54, run_canonical_skill_identity_migration),
+(56, run_canonical_skill_identity_migration),
 ```
 
 - [ ] **Step 2: Add the migration function**
 
-Add after `run_litellm_pr3_schema_migration`:
+Add after `run_model_catalog_cache_migration`:
 
 ```rust
-/// Migration 54: Canonical skill identity — code-only cleanup.
+/// Migration 56: Canonical skill identity — code-only cleanup.
 ///
 /// This migration slot records the removal of name-based skill resolution.
 /// No schema changes — the artifact tables were already rebuilt on integer
@@ -1016,7 +1016,7 @@ Add after `run_litellm_pr3_schema_migration`:
 pub(super) fn run_canonical_skill_identity_migration(
     _conn: &Connection,
 ) -> Result<(), rusqlite::Error> {
-    log::info!("migration 54: canonical skill identity (code-only, no schema changes)");
+    log::info!("migration 56: canonical skill identity (code-only, no schema changes)");
     Ok(())
 }
 ```

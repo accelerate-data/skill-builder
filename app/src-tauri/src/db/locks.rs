@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-use super::skills::{get_skill_master_by_id, get_skill_master_id_in_plugin};
+use super::skills::get_skill_master_by_id;
 
 // --- Skill Locks ---
 

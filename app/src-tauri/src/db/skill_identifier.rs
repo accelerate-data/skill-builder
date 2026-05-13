@@ -5,6 +5,7 @@ use rusqlite::{Connection, OptionalExtension};
 /// Bare skill names are intentionally excluded — name-based resolution requires
 /// `(skill_name, plugin_slug)` via `get_skill_master_id_in_plugin`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)]
 pub enum SkillIdentifier {
     /// Direct `skills.id` integer (e.g. `"42"`).
     ById(i64),
