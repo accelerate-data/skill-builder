@@ -18,6 +18,18 @@ export const REQUIRED_MODEL_CAPABILITIES = {
   tool_call: true,
 } as const;
 
+export type CapabilityFilter = {
+  reasoning: boolean;
+  tool_call: boolean;
+  structured_output: boolean;
+};
+
+export const DEFAULT_CAPABILITY_FILTER: CapabilityFilter = {
+  reasoning: true,
+  tool_call: true,
+  structured_output: false,
+};
+
 const OLLAMA_BASE_URL = "http://localhost:11434";
 
 export function modelHasTextOutput(entry: ModelCatalogEntry): boolean {
@@ -31,14 +43,24 @@ export function modelMeetsRequiredCapabilities(entry: ModelCatalogEntry): boolea
   );
 }
 
+export function filterByCapabilities(
+  entries: ModelCatalogEntry[],
+  filter: CapabilityFilter,
+): ModelCatalogEntry[] {
+  return entries.filter((entry) => {
+    if (!modelHasTextOutput(entry)) return false;
+    if (filter.reasoning && entry.reasoning !== true) return false;
+    if (filter.tool_call && entry.tool_call !== true) return false;
+    if (filter.structured_output && entry.structured_output !== true) return false;
+    return true;
+  });
+}
+
 export function getCatalogModelOptions(
   entries: ModelCatalogEntry[],
 ): CatalogModelOption[] {
   return entries
-    .filter(
-      (entry) =>
-        modelHasTextOutput(entry) && modelMeetsRequiredCapabilities(entry),
-    )
+    .filter(modelHasTextOutput)
     .map((entry) => ({
       full_id: entry.full_id,
       provider_id: entry.provider_id,

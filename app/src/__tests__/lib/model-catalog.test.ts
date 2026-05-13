@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterByCapabilities,
   getCatalogModelOptions,
   getModelsForProvider,
   getProviderApiKeyLabel,
@@ -7,6 +8,7 @@ import {
   modelHasTextOutput,
   modelMeetsRequiredCapabilities,
   resolveSelectedCatalogModel,
+  DEFAULT_CAPABILITY_FILTER,
   type ModelCatalogEntry,
 } from "../../lib/model-catalog.js";
 
@@ -94,7 +96,8 @@ describe("model catalog helpers", () => {
       }),
     ];
 
-    const options = getCatalogModelOptions(entries);
+    const filtered = filterByCapabilities(entries, DEFAULT_CAPABILITY_FILTER);
+    const options = getCatalogModelOptions(filtered);
     expect(options).toHaveLength(1);
     expect(options[0]).toMatchObject({
       full_id: "anthropic/claude-sonnet",
@@ -139,5 +142,52 @@ describe("model catalog helpers", () => {
   it("uses the first env var for the API key label with a provider-name fallback", () => {
     expect(getProviderApiKeyLabel(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"], "Anthropic")).toBe("ANTHROPIC_API_KEY");
     expect(getProviderApiKeyLabel([], "OpenAI")).toBe("OpenAI API key");
+  });
+
+  it("filterByCapabilities narrows results when toggles are disabled", () => {
+    const entries = [
+      makeEntry({
+        full_id: "anthropic/claude-sonnet",
+        provider_id: "anthropic",
+        model_id: "claude-sonnet",
+        name: "Claude Sonnet",
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        output_modalities: ["text"],
+      }),
+      makeEntry({
+        full_id: "anthropic/no-reasoning",
+        provider_id: "anthropic",
+        model_id: "no-reasoning",
+        name: "No Reasoning",
+        reasoning: false,
+        tool_call: true,
+        structured_output: false,
+        output_modalities: ["text"],
+      }),
+      makeEntry({
+        full_id: "anthropic/no-structured",
+        provider_id: "anthropic",
+        model_id: "no-structured",
+        name: "No Structured",
+        reasoning: true,
+        tool_call: true,
+        structured_output: false,
+        output_modalities: ["text"],
+      }),
+    ];
+
+    const allOn = filterByCapabilities(entries, { reasoning: true, tool_call: true, structured_output: true });
+    expect(allOn).toHaveLength(1);
+    expect(allOn[0].model_id).toBe("claude-sonnet");
+
+    const noStructured = filterByCapabilities(entries, { reasoning: true, tool_call: true, structured_output: false });
+    expect(noStructured).toHaveLength(2);
+    expect(noStructured.map((e) => e.model_id)).toContain("claude-sonnet");
+    expect(noStructured.map((e) => e.model_id)).toContain("no-structured");
+
+    const noReasoning = filterByCapabilities(entries, { reasoning: false, tool_call: true, structured_output: false });
+    expect(noReasoning).toHaveLength(3);
   });
 });

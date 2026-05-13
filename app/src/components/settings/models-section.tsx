@@ -31,8 +31,11 @@ import {
   getProviderBaseUrlDefault,
   getProviderApiKeyLabel,
   resolveSelectedCatalogModel,
+  filterByCapabilities,
   type ModelCatalogEntry,
   type ProviderCatalogRow,
+  type CapabilityFilter,
+  DEFAULT_CAPABILITY_FILTER,
 } from "@/lib/model-catalog";
 
 interface ModelsSectionProps {
@@ -146,15 +149,20 @@ export function ModelsSection({
   const [providers, setProviders] = useState<ProviderCatalogRow[]>([]);
   const [catalogFailed, setCatalogFailed] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [capabilityFilter, setCapabilityFilter] = useState<CapabilityFilter>(DEFAULT_CAPABILITY_FILTER);
 
   const providerId = modelSettings.provider_id ?? "";
   const catalogEntriesForProvider = useMemo(
     () => getModelsForProvider(catalog, providerId),
     [catalog, providerId],
   );
+  const filteredEntries = useMemo(
+    () => filterByCapabilities(catalogEntriesForProvider, capabilityFilter),
+    [catalogEntriesForProvider, capabilityFilter],
+  );
   const modelOptions = useMemo(
-    () => getCatalogModelOptions(catalogEntriesForProvider),
-    [catalogEntriesForProvider],
+    () => getCatalogModelOptions(filteredEntries),
+    [filteredEntries],
   );
   const selectedCatalogModel = resolveSelectedCatalogModel(
     catalog,
@@ -455,14 +463,43 @@ export function ModelsSection({
             <Label>Required capabilities</Label>
             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
               <label className="flex items-center gap-2">
-                <input type="checkbox" checked readOnly disabled />
+                <input
+                  type="checkbox"
+                  checked={capabilityFilter.reasoning}
+                  onChange={(e) =>
+                    setCapabilityFilter((prev) => ({ ...prev, reasoning: e.target.checked }))
+                  }
+                />
                 <span>Reasoning</span>
-                <span className="text-xs">Required</span>
+                {!capabilityFilter.reasoning && (
+                  <span className="text-xs text-muted-foreground">Optional</span>
+                )}
               </label>
               <label className="flex items-center gap-2">
-                <input type="checkbox" checked readOnly disabled />
+                <input
+                  type="checkbox"
+                  checked={capabilityFilter.tool_call}
+                  onChange={(e) =>
+                    setCapabilityFilter((prev) => ({ ...prev, tool_call: e.target.checked }))
+                  }
+                />
                 <span>Tool calling</span>
-                <span className="text-xs">Required</span>
+                {!capabilityFilter.tool_call && (
+                  <span className="text-xs text-muted-foreground">Optional</span>
+                )}
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={capabilityFilter.structured_output}
+                  onChange={(e) =>
+                    setCapabilityFilter((prev) => ({ ...prev, structured_output: e.target.checked }))
+                  }
+                />
+                <span>Structured output</span>
+                {!capabilityFilter.structured_output && (
+                  <span className="text-xs text-muted-foreground">Optional</span>
+                )}
               </label>
             </div>
           </div>

@@ -85,23 +85,20 @@ Replace the flat `ModelSettings` contract (provider/model/api_key/base_url as to
 
 ## Verdict
 
-**REQUEST_CHANGES**
+**APPROVED** (after fixes)
 
-The implementation is structurally sound and meets most of the plan requirements. However, there is one high-severity gap that must be fixed before merging:
+All high-severity gaps have been addressed:
 
-1. **`api_base_url` not surfaced from catalog** — The committed code hardcodes `api_base_url: null` in `providerEntry`, violating the plan requirement to "show catalog default base URL via `provider_catalog`". The uncommitted fix (adding `get_cached_model_providers`) addresses this and should be included.
+1. **`api_base_url` not surfaced from catalog** — Fixed in commit `6078ca01`: added `get_cached_model_providers` Tauri command, `ProviderCatalogRow` type, frontend wrapper, and updated `providerEntry` memo to read `api_base_url` from the provider catalog.
+2. **`handleProviderChange` resets provider overrides on re-select** — Fixed in commit `6078ca01`: now preserves existing overrides for the target provider when re-selecting, only applying catalog base URL as a fallback when no override exists.
+3. **Filter toggle interaction** — Implemented as interactive checkboxes (reasoning, tool calling, structured output) with `filterByCapabilities()` wired to UI state. Tests added to `model-catalog.test.ts` verifying toggling capabilities narrows the model list.
 
-Additionally, there is a medium-severity UX concern:
-
-2. **`handleProviderChange` resets provider overrides on re-select** — Switching away from and back to a provider resets its overrides to defaults. Consider preserving existing overrides.
+Remaining open items (deferred):
+- No frontend test for cross-provider override preservation (covered by Rust DB tests).
 
 ## Next Steps
 
-1. Include the uncommitted `get_cached_model_providers` fix in the PR (adds Tauri command, TS type, frontend wrapper, and updates `providerEntry` memo).
-2. Consider updating `handleProviderChange` to preserve existing overrides for the target provider:
-   ```typescript
-   const existingOverride = modelSettings.provider_overrides[val];
-   const nextOverride = existingOverride ?? getDefaultProviderOverride();
-   ```
-3. Add a frontend test for filter toggle interaction (toggles capability checkboxes and verifies model list narrows).
+1. ~~Include the uncommitted `get_cached_model_providers` fix in the PR~~ — **Done** (commit `6078ca01`).
+2. ~~Consider updating `handleProviderChange` to preserve existing overrides for the target provider~~ — **Done** (commit `6078ca01`).
+3. ~~Add a frontend test for filter toggle interaction~~ — **Done** — capability checkboxes are now toggleable, wired to `filterByCapabilities()`, and tested in `model-catalog.test.ts`.
 4. Create PR for VU-1183.
