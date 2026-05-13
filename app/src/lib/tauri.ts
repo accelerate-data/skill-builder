@@ -224,11 +224,9 @@ export const reconcileStartup = (apply = false) =>
 
 export const recordReconciliationCancel = (
   notificationCount: number,
-  discoveredCount: number,
 ) =>
   invokeCommand("record_reconciliation_cancel", {
     notificationCount,
-    discoveredCount,
   });
 
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>

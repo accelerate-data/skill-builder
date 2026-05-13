@@ -90,7 +90,6 @@ pub fn reconcile_startup(
 
         let details = serde_json::to_string(&serde_json::json!({
             "notifications": result.notifications,
-            "discovered_skills": result.discovered_skills,
             "auto_cleaned": result.auto_cleaned,
         }))
         .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
@@ -105,7 +104,6 @@ pub fn reconcile_startup(
     if !apply {
         let details = serde_json::to_string(&serde_json::json!({
             "notifications": result.notifications.len(),
-            "discovered_skills": result.discovered_skills.len(),
         }))
         .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
         if let Err(e) = crate::db::record_reconciliation_event(&conn, "previewed", &details) {
@@ -150,12 +148,10 @@ fn cleanup_app_local_startup_state(data_dir: &Path) -> Result<u32, String> {
 pub fn record_reconciliation_cancel(
     db: tauri::State<'_, Db>,
     notification_count: Option<usize>,
-    discovered_count: Option<usize>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let details = serde_json::to_string(&serde_json::json!({
         "notifications": notification_count.unwrap_or(0),
-        "discovered_skills": discovered_count.unwrap_or(0),
     }))
     .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
     crate::db::record_reconciliation_event(&conn, "cancelled", &details)

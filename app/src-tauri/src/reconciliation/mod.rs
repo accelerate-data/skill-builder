@@ -1,7 +1,7 @@
 mod skill_builder;
 
 use crate::skill_paths::{enumerate_skill_locations, DEFAULT_PLUGIN_SLUG};
-use crate::types::{DiscoveredSkill, ReconciliationResult};
+use crate::types::ReconciliationResult;
 use std::path::{Path, PathBuf};
 
 fn normalized_plugin_slug(plugin_slug: &str) -> &str {
@@ -402,7 +402,6 @@ pub fn reconcile_on_startup(
         orphans: Vec::new(),
         notifications,
         auto_cleaned: 0,
-        discovered_skills: Vec::<DiscoveredSkill>::new(),
     })
 }
 

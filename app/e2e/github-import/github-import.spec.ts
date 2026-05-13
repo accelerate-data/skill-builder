@@ -58,7 +58,7 @@ const BASE_OVERRIDES = {
   import_marketplace_plugin_to_library: [{ success: true, error: null }],
   check_marketplace_updates: { library: [], workspace: [], registry_names: [] },
   check_skill_customized: false,
-  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
+  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0 },
 };
 
 function marketplaceActionButton(page: import("@playwright/test").Page) {

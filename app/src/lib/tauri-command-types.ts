@@ -186,7 +186,7 @@ export interface TauriCommandMap {
   check_startup_deps: { args: NoArgs; result: StartupResult };
   reconcile_startup: { args: NoArgs | { apply: true }; result: ReconciliationResult };
   record_reconciliation_cancel: {
-    args: { notificationCount: number; discoveredCount: number };
+    args: { notificationCount: number };
     result: void;
   };
   delete_skill: { args: { workspacePath: string; name: string }; result: void };

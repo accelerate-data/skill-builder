@@ -246,20 +246,10 @@ export interface OrphanSkill {
   purpose: string
 }
 
-export interface DiscoveredSkill {
-  name: string
-  plugin_slug?: string | null
-  plugin_display_name?: string | null
-  is_default_plugin?: boolean | null
-  detected_step: number
-  scenario: string
-}
-
 export interface ReconciliationResult {
   orphans: OrphanSkill[]
   notifications: string[]
   auto_cleaned: number
-  discovered_skills: DiscoveredSkill[]
 }
 
 export interface AgentRunRecord {

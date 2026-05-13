@@ -77,7 +77,6 @@ export function AppLayout() {
     reconciled,
     orphans,
     reconNotifications,
-    reconDiscovered,
     ackDone,
     reconRequiresApply,
     reconApplying,
@@ -438,7 +437,6 @@ export function AppLayout() {
       {!ackDone && (
         <ReconciliationAckDialog
           notifications={reconNotifications}
-          discoveredSkills={reconDiscovered}
           requireApply={reconRequiresApply}
           applying={reconApplying}
           open
