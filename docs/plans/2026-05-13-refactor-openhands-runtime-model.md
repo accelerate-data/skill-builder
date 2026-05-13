@@ -328,14 +328,18 @@ git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/ski
 git commit -m "refactor: make skill creator config intent-driven"
 ```
 
-## Task 4: Route Delete and Reset Through Real Pause
+## Task 4: Route Delete Through Pause and Reset Through Pause-Then-Fork
 
 **Files:**
 
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+- Modify: `app/src-tauri/src/agents/skill_creator.rs`
 - Modify: `app/src-tauri/src/commands/skill/crud.rs`
 - Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
 - Test: `app/src-tauri/src/commands/skill/tests.rs`
 - Test: `app/src-tauri/src/commands/workflow/evaluation.rs`
+- Test: `app/src-tauri/src/agents/openhands_server/mod.rs`
 
 - [ ] **Step 1: Update `delete_skill(...)` to pause with real runtime config**
 
@@ -370,39 +374,85 @@ pub async fn delete_skill(
 
 Important: keep delete as best-effort at the call site. Failure to pause must log and continue; it must not block deletion.
 
-- [ ] **Step 2: Update `reset_workflow_step(...)` to pause with real runtime config**
+- [ ] **Step 2: Add raw and shared fork APIs**
 
-Build the same config once and use it for each stored conversation before deleting the conversation directory:
+Add the raw runtime wrapper:
 
 ```rust
-let pause_config = crate::commands::skill_session::build_pause_runtime_config(
-    &app_handle,
-    &db,
-    &skill_name,
-    &plugin_slug,
-);
+pub struct ForkedOpenHandsSession {
+    pub conversation_id: String,
+    pub restored_events: Vec<serde_json::Value>,
+}
 
-for (_, conv_id) in &conversation_ids {
-    if let Ok(config) = pause_config.clone() {
-        if let Err(error) =
-            crate::agents::openhands_server::pause_openhands_conversation(config, conv_id).await
-        {
-            log::warn!(
-                "[reset_workflow_step] failed to pause conversation {}: {}",
-                conv_id,
-                error
-            );
-        }
-    }
-
-    let conv_dir = openhands_conversations_dir.join(conv_id);
-    // existing delete logic
+pub async fn fork_openhands_conversation(
+    app: &tauri::AppHandle,
+    config: OpenHandsRuntimeConfig,
+    source_conversation_id: &str,
+) -> Result<ForkedOpenHandsSession, String> {
+    // call OpenHands fork
+    // fetch restored events for the fork
 }
 ```
 
-Important: reset keeps the same best-effort policy, but the pause operation is now the single real pause API instead of a second helper.
+Add the shared session wrapper:
 
-- [ ] **Step 3: Add or update tests around the new boundary**
+```rust
+pub async fn fork_skill_session(
+    app: &tauri::AppHandle,
+    config: OpenHandsRuntimeConfig,
+    source_conversation_id: &str,
+) -> Result<ForkedOpenHandsSession, String> {
+    // fork raw conversation
+    // bind skill to fork conversation_id
+}
+```
+
+Fork creates a new `conversation_id`. It does not create a new `agent_id`.
+
+- [ ] **Step 3: Update `reset_workflow_step(...)` to pause, reset, fork, and rebind**
+
+Change reset to this sequence:
+
+1. pause current conversation
+2. reset files, artifacts, and DB state to the target step
+3. fork the paused conversation
+4. bind the skill to the fork ID
+5. leave future live execution to the normal workflow send/run path
+
+The old conversation must remain persisted. Remove the conversation-dir deletion
+and do not clear conversation state as a destructive reset primitive.
+
+Sketch:
+
+```rust
+let pause_config =
+    crate::commands::skill_session::build_pause_runtime_config(&app_handle, &db, &skill_name, &plugin_slug)?;
+
+crate::agents::openhands_server::pause_openhands_conversation(
+    pause_config.clone(),
+    &active_conversation_id,
+)
+.await?;
+
+// reset files/artifacts/db to target step
+
+let forked = crate::agents::skill_creator::fork_skill_session(
+    &app_handle,
+    pause_config,
+    &active_conversation_id,
+)
+.await?;
+```
+
+- [ ] **Step 4: Keep `agent_id` creation in the next live send/run path**
+
+Do not create a new `agent_id` during fork. The next live execution on the fork
+should create the new tracked `agent_id` through the existing product send/run
+entrypoint, for example in `run_workflow_step(...)`.
+
+If needed, add a short code comment or helper boundary to make this explicit.
+
+- [ ] **Step 5: Add or update tests around the new boundary**
 
 Cover these cases with the smallest existing suites:
 
@@ -411,27 +461,35 @@ Cover these cases with the smallest existing suites:
 // Assert delete still completes when pause config resolution fails or pause returns an error.
 
 // commands/workflow/evaluation.rs tests
-// Assert reset still removes conversation dirs and updates DB even if pause fails.
+// Assert reset does not delete conversation storage.
+// Assert reset forks and rebinds the skill conversation.
+// Assert the previous conversation remains persisted.
 ```
 
-If a direct async command test is too expensive, extract a small helper for "best-effort pause all conversations" and unit-test that helper instead.
+If a direct async command test is too expensive, extract smaller helpers for:
 
-- [ ] **Step 4: Run the affected command tests**
+- pause-and-log behavior
+- reset-state mutation
+- fork-and-rebind behavior
+
+- [ ] **Step 6: Run the affected command tests**
 
 Run:
 
 ```bash
+cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server --quiet
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill --quiet
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow --quiet
 ```
 
-Expected: PASS with no remaining references to `pause_conversation_if_server_running`.
+Expected: PASS with no remaining destructive reset of conversation storage and
+with reset moving to pause → reset → fork → rebind semantics.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/skill/tests.rs app/src-tauri/src/commands/workflow/evaluation.rs
-git commit -m "refactor: use real OpenHands pause outside app shutdown"
+git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/skill/tests.rs
+git commit -m "refactor: fork workflow conversations on reset"
 ```
 
 ## Task 5: Keep Server Shutdown App-Lifecycle Only and Update Docs

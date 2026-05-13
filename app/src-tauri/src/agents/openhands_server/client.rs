@@ -67,15 +67,6 @@ impl OpenHandsServerClient {
         .build()
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub fn build_delete_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
-        self.request(
-            Method::DELETE,
-            &format!("api/conversations/{conversation_id}"),
-        )
-        .build()
-    }
-
     pub fn build_agent_final_response_request(
         &self,
         conversation_id: &str,
@@ -500,9 +491,6 @@ mod tests {
             client.build_pause_request("abc").unwrap().url().path(),
             "/api/conversations/abc/pause"
         );
-        let delete = client.build_delete_request("abc").unwrap();
-        assert_eq!(delete.method(), reqwest::Method::DELETE);
-        assert_eq!(delete.url().path(), "/api/conversations/abc");
         assert_eq!(
             client
                 .build_agent_final_response_request("abc")

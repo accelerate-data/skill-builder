@@ -51,7 +51,6 @@ Conversation API:
 - `GET /api/conversations/{conversation_id}`
 - `POST /api/conversations/{conversation_id}/run`
 - `POST /api/conversations/{conversation_id}/pause`
-- `DELETE /api/conversations/{conversation_id}`
 - `GET /api/conversations/{conversation_id}/agent_final_response`
 - `POST /api/conversations/{conversation_id}/switch_llm`
 - `POST /api/conversations/{conversation_id}/secrets`
@@ -95,7 +94,8 @@ execution.
 4. Rust calls `POST /api/conversations/{conversation_id}/run`.
 5. Rust normalizes socket events to Skill Builder `conversation_event` and
    terminal `conversation_state` messages.
-6. Rust deletes the conversation after terminal state or cancellation.
+6. Rust pauses, resumes, or forks conversations as needed. It does not delete
+   persisted conversations.
 
 ## Packaging Note
 

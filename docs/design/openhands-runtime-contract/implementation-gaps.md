@@ -140,3 +140,60 @@ Relevant files:
 - `app/src-tauri/src/agents/tracked_openhands.rs`
 - `app/src-tauri/src/agents/event_router.rs`
 - `app/src-tauri/src/agents/event_types.rs`
+
+## 8. Workflow Reset Still Deletes Conversation State Instead of Forking
+
+Target model for reset/redo is:
+
+1. pause current conversation
+2. reset files, artifacts, and DB state to the target step
+3. fork the paused conversation into a new `conversation_id`
+4. bind the skill to the fork ID
+5. continue future work on the fork
+
+The old conversation remains persisted. Reset must never delete conversation
+storage.
+
+Latest `main` still:
+
+- deletes the per-conversation directory under app data
+- clears the skill's saved conversation binding
+- forces the next run onto a fresh conversation instead of a fork
+
+Relevant files:
+
+- `app/src-tauri/src/commands/workflow/evaluation.rs`
+- `app/src-tauri/src/db/skills.rs`
+
+## 9. Fork APIs Are Missing at the Raw and Shared Session Layers
+
+Target model expects:
+
+- raw `fork_openhands_conversation(app, config, source_conversation_id)`
+- shared `fork_skill_session(app, config, source_conversation_id)`
+
+Fork returns a new `conversation_id` plus restored events for hydration. It does
+not create a new `agent_id`.
+
+Latest `main` does not yet expose fork at either layer.
+
+Relevant files:
+
+- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- `app/src-tauri/src/agents/skill_creator.rs`
+
+## 10. New `agent_id` Creation Is Not Yet Explicitly Tied to the Next Live Send/Run
+
+Target model says:
+
+- fork creates a new `conversation_id`
+- the next live send/run on that fork creates the new tracked `agent_id`
+
+Latest `main` still lacks the fork path entirely, so the agent-id boundary for
+post-reset fork continuation is not yet implemented.
+
+Relevant files:
+
+- `app/src-tauri/src/agents/tracked_openhands.rs`
+- `app/src-tauri/src/commands/workflow/runtime.rs`
+- `app/src-tauri/src/commands/workflow/evaluation.rs`
