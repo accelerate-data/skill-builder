@@ -1,4 +1,4 @@
-We are refining the skill {{skill_name}}. The skill directory is: {{skill_dir}}. YOU CAN ONLY CHANGE FILES IN THIS DIRECTORY. The workspace directory is: {{workspace_dir}}. You may read files from this directory for context, but do not edit files in this directory.{{target_files_clause}}
+We are refining the skill {{skill_name}}. The skill directory is: {{skill_dir}}. YOU CAN ONLY CHANGE FILES IN THIS DIRECTORY.{{target_files_clause}}
 
 Read SKILL.md and any reference files in the references/ directory to understand the current skill before making any changes.
 

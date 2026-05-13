@@ -931,11 +931,11 @@ pub fn resolve_benchmark_baseline(
     skills_repo_path: &Path,
     plugin_slug: &str,
     skill_name: &str,
-    workspace_dir: &Path,
+    skill_dir: &Path,
 ) -> BenchmarkBaseline {
     match prior_skill_tag(skills_repo_path, plugin_slug, skill_name) {
         Some(tag) => {
-            let dest = workspace_dir.join("skill-snapshot");
+            let dest = skill_dir.join("skill-snapshot");
             match extract_skill_at_tag(skills_repo_path, plugin_slug, skill_name, &tag, &dest) {
                 Ok(()) => {
                     let snapshot_str = dest.to_string_lossy().replace('\\', "/");

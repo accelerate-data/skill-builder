@@ -32,12 +32,12 @@ fn render_workspace_prompt(
     workspace_path: &str,
     plugin_slug: &str,
 ) -> String {
-    let workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     template
         .trim_end_matches('\n')
         .replace("{{skill_name}}", skill_name)
-        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{skill_dir}}", &skill_dir_str)
 }
 
 /// Build the prompt for step 0 (research).
@@ -109,8 +109,8 @@ pub(crate) fn build_step3_prompt(
     clarifications_json: &str,
     decisions_json: &str,
 ) -> String {
-    let workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .to_string_lossy()
         .replace('\\', "/");
@@ -134,7 +134,7 @@ pub(crate) fn build_step3_prompt(
     SKILL_GENERATION_TEMPLATE
         .trim_end_matches('\n')
         .replace("{{skill_name}}", skill_name)
-        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{skill_dir}}", &skill_dir_str)
         .replace("{{skill_output_dir}}", &skill_output_str)
         .replace("{{author_context}}", &author_context)
         .replace("{{user_context_block}}", user_context_block)
@@ -450,8 +450,8 @@ pub(crate) fn build_evaluator_prompt(
     user_context_block: &str,
     clarifications_json: &str,
 ) -> String {
-    let workspace_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .to_string_lossy()
         .replace('\\', "/");
@@ -459,7 +459,7 @@ pub(crate) fn build_evaluator_prompt(
     ANSWER_EVALUATOR_TEMPLATE
         .trim_end_matches('\n')
         .replace("{{skill_name}}", skill_name)
-        .replace("{{workspace_dir}}", &workspace_str)
+        .replace("{{skill_dir}}", &skill_dir_str)
         .replace("{{skill_output_dir}}", &skill_output_str)
         .replace("{{user_context_block}}", user_context_block)
         .replace("{{clarifications_json}}", clarifications_json)

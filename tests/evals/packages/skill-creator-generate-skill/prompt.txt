@@ -3,7 +3,7 @@ Your final response MUST be ONLY a raw JSON object - no markdown, no explanation
 
 App-provided run context:
 - skill_name: fabric-dbt-standards
-- workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
+- skill_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
 - context_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards/context
 - skill_output_dir: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
 - user-context.md raw content:

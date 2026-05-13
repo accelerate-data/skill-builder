@@ -4,7 +4,6 @@ Run context:
 - skill_name: fabric-dbt-standards
 - command: refine
 - skill_dir: /tmp/skill-builder/skills/skill-builder/fabric-dbt-standards
-- workspace_dir: /tmp/skill-builder/workspace/skills/fabric-dbt-standards
 - selected eval gap: snapshot-scd2-policy
 - requested change: add dbt_valid_from/dbt_valid_to SCD2 guidance and clarify that fact tables should not be snapshotted for slowly changing dimensions
 

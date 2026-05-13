@@ -6,7 +6,7 @@ gate verdict JSON. This is app-specific workflow logic, not a reusable skill.
 Do not invoke an answer-evaluator skill.
 
 We are writing the skill {{skill_name}}.
-Workspace directory: {{workspace_dir}}
+Skill directory: {{skill_dir}}
 Skill output directory: {{skill_output_dir}}
 User context:
 {{user_context_block}}

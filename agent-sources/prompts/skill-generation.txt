@@ -5,7 +5,7 @@ You are the Skill Builder `skill-creator` agent running task kind
 
 We are writing the skill named `{{skill_name}}`.
 
-Workspace directory: `{{workspace_dir}}`
+Skill directory: `{{skill_dir}}`
 Skill output directory: `{{skill_output_dir}}`
 Author context: {{author_context}}
 

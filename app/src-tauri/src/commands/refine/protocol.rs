@@ -31,8 +31,8 @@ pub(super) struct RefinePromptRequest<'a> {
 pub(super) fn build_refine_prompt_with_output_dir(request: RefinePromptRequest<'_>) -> String {
     let RefinePromptRequest {
         skill_name,
-        workspace_path,
-        plugin_slug,
+        workspace_path: _,
+        plugin_slug: _,
         skill_output_dir,
         user_message,
         target_files,
@@ -44,9 +44,6 @@ pub(super) fn build_refine_prompt_with_output_dir(request: RefinePromptRequest<'
             },
     } = request;
 
-    let skill_dir =
-        crate::skill_paths::resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let workspace_str = skill_dir.to_string_lossy().replace('\\', "/");
     let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let target_files_clause = match target_files {
         Some(files) if !files.is_empty() => format!(
@@ -63,7 +60,6 @@ pub(super) fn build_refine_prompt_with_output_dir(request: RefinePromptRequest<'
     REFINE_PROMPT_TEMPLATE
         .replace("{{skill_name}}", skill_name)
         .replace("{{skill_dir}}", &skill_output_str)
-        .replace("{{workspace_dir}}", &workspace_str)
         .replace("{{target_files_clause}}", &target_files_clause)
         .replace("{{user_context_block}}", user_context_block)
         .replace("{{clarifications_json}}", clarifications_json)

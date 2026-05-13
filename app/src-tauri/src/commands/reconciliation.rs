@@ -336,12 +336,12 @@ pub fn resolve_discovery(
             .map_err(|e| e.to_string())?;
             // Validate workspace path before creating directory
             let ws_path = Path::new(&workspace_path);
-            let workspace_dir = ensure_nested_skill_dir(ws_path, &plugin_slug, &skill_name)?;
-            if workspace_dir.exists() {
+            let skill_dir = ensure_nested_skill_dir(ws_path, &plugin_slug, &skill_name)?;
+            if skill_dir.exists() {
                 validate_path_within(ws_path, &skill_name, "workspace_path")?;
             }
             // Create workspace marker
-            let _ = fs::create_dir_all(&workspace_dir);
+            let _ = fs::create_dir_all(&skill_dir);
             log::info!(
                 "[resolve_discovery] '{}': added as skill-builder (completed) in plugin '{}'",
                 skill_name,
