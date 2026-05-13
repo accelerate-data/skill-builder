@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{Emitter, Listener, Manager};
 
-use crate::agents::openhands_server;
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::db::Db;
 
@@ -196,7 +195,7 @@ async fn dispatch_persistent_skill_turn(
         |agent_id, config, conversation_id| {
             let agent_id = agent_id.to_string();
             Box::pin(async move {
-                crate::agents::openhands_server::openhands_send_message(
+                crate::agents::tracked_openhands::send_tracked_openhands_message(
                     app,
                     &agent_id,
                     config,
@@ -579,7 +578,7 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        openhands_server::abort_openhands_run(stale_agent_id);
+        crate::agents::tracked_openhands::abort_tracked_openhands_run(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;

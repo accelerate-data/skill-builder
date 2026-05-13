@@ -257,8 +257,7 @@ None blocking. Remaining detail decisions live in the migration plan task notes.
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/agent-specs/storage.md` | Predecessor; refresh after this lands |
-| `docs/design/openhands-runtime-model/README.md` | Runtime/session model for workflow and refine surfaces that consume these artifacts |
+| `docs/design/openhands-runtime-contract/README.md` | Runtime/session model and storage-root contract for workflow and refine surfaces that consume these artifacts |
 
 ## Migration Sequencing
 

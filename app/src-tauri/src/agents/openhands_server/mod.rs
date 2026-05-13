@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
-use tauri::{Emitter, Listener, Manager};
+use tauri::{Emitter, Manager};
 use thiserror::Error;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::Message;
@@ -29,12 +29,6 @@ use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::db::Db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-
-pub struct OpenHandsThrowawayRunParams {
-    pub agent_id: String,
-    pub config: OpenHandsRuntimeConfig,
-    pub timeout: Duration,
-}
 
 pub struct OpenHandsThrowawayRun {
     pub conversation_state: serde_json::Value,
@@ -156,13 +150,13 @@ pub struct StartedOpenHandsSession {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OpenHandsConversationSelection {
+pub(crate) enum OpenHandsConversationSelection {
     ResumeOrCreate,
     SendExistingOnly,
     CreateFresh,
 }
 
-enum OpenHandsRuntimeEvent {
+pub(crate) enum OpenHandsRuntimeEvent {
     TerminalState(Result<serde_json::Value, String>),
     Lifecycle(Result<(), String>),
 }
@@ -213,7 +207,7 @@ struct OpenHandsConversationTask {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PromptDelivery {
+pub(crate) enum PromptDelivery {
     ViaSendEvent,
 }
 
@@ -876,42 +870,7 @@ async fn list_openhands_conversation_events_from_request(
     client.list_all_events(conversation_id).await
 }
 
-pub async fn send_openhands_message(
-    app: &tauri::AppHandle,
-    agent_id: &str,
-    config: OpenHandsRuntimeConfig,
-    conversation_id: String,
-) -> Result<String, String> {
-    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    dispatch_openhands_turn_with_request(
-        app,
-        agent_id,
-        config,
-        request,
-        Some(conversation_id),
-        OpenHandsConversationSelection::SendExistingOnly,
-        PromptDelivery::ViaSendEvent,
-    )
-    .await
-}
-
-pub async fn openhands_send_message(
-    app: &tauri::AppHandle,
-    agent_id: &str,
-    config: OpenHandsRuntimeConfig,
-    conversation_id: String,
-) -> Result<String, String> {
-    send_openhands_message(app, agent_id, config, conversation_id).await
-}
-
-/// Force-abort the local Tokio task for an agent. Only for edge-case cleanup
-/// (stale runs, timed-out throwaway sessions). Normal user-initiated stops
-/// must go through `pause_openhands_conversation` so OpenHands is notified.
-pub fn abort_openhands_run(agent_id: &str) -> bool {
-    close_local_openhands_run(agent_id)
-}
-
-fn close_local_openhands_run(agent_id: &str) -> bool {
+pub(crate) fn close_local_openhands_run(agent_id: &str) -> bool {
     let mut found = false;
 
     if let Some((_, previous)) = cancel_registry().remove(agent_id) {
@@ -931,7 +890,7 @@ fn close_local_openhands_run(agent_id: &str) -> bool {
 
 /// Send the cancel oneshot signal to a registered agent's Tokio task.
 /// Returns `true` if the agent is registered (or was already signaled), `false` if not found.
-fn send_cancel_signal(agent_id: &str) -> bool {
+pub(crate) fn send_cancel_signal(agent_id: &str) -> bool {
     let mut handle = match cancel_registry().get_mut(agent_id) {
         Some(h) => h,
         None => return false,
@@ -950,8 +909,7 @@ fn send_cancel_signal(agent_id: &str) -> bool {
 pub async fn pause_openhands_conversation(
     config: OpenHandsRuntimeConfig,
     conversation_id: &str,
-    agent_id: Option<&str>,
-) -> Result<bool, String> {
+) -> Result<(), String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let server =
         ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
@@ -978,11 +936,7 @@ pub async fn pause_openhands_conversation(
             .to_string()
         })?;
 
-    // Signal the in-process task so it sets cancel_pending=true before the socket closes.
-    // This keeps the WebSocket alive long enough for the task to receive the PAUSED terminal
-    // state and exit cleanly via build_cancelled_state rather than the error recovery path.
-    let signaled = agent_id.map(send_cancel_signal).unwrap_or(false);
-    Ok(signaled)
+    Ok(())
 }
 
 /// Best-effort pause of a conversation using the cached server handle.
@@ -1024,142 +978,8 @@ pub async fn pause_conversation_if_server_running(conversation_id: &str) {
     }
 }
 
-pub async fn terminate_openhands_session(agent_id: &str, timeout: Duration) -> bool {
-    // Signal the in-process task to stop gracefully before the force-abort timeout.
-    let mut found = send_cancel_signal(agent_id);
-
-    if task_registry().contains_key(agent_id) {
-        found = true;
-    }
-
-    let deadline = Instant::now() + timeout;
-    loop {
-        let task_present = task_registry().contains_key(agent_id);
-        let cancel_present = cancel_registry().contains_key(agent_id);
-        if !task_present && !cancel_present {
-            return found;
-        }
-
-        if Instant::now() >= deadline {
-            if let Some((_, handle)) = task_registry().remove(agent_id) {
-                handle.abort();
-                found = true;
-            }
-            unregister_cancel(agent_id);
-            unregister_task_handle(agent_id);
-            return found;
-        }
-
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-}
-
-pub async fn run_throwaway_openhands_session(
-    app: &tauri::AppHandle,
-    params: OpenHandsThrowawayRunParams,
-) -> Result<OpenHandsThrowawayRun, String> {
-    let config = params.config;
-    let agent_id = params.agent_id.clone();
-    let started_at = Instant::now();
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsRuntimeEvent>();
-    let target_agent_id = agent_id.clone();
-    let tx_message = tx.clone();
-    let message_listener = app.listen("agent-message", move |event| {
-        if let Some(result) =
-            parse_openhands_runtime_terminal_state(event.payload(), target_agent_id.as_str())
-        {
-            let _ = tx_message.send(OpenHandsRuntimeEvent::TerminalState(result));
-        }
-    });
-
-    let target_agent_id = agent_id.clone();
-    let tx_exit = tx.clone();
-    let exit_listener = app.listen("agent-exit", move |event| {
-        if let Some(result) = parse_openhands_lifecycle_state(event.payload(), &target_agent_id) {
-            let _ = tx_exit.send(OpenHandsRuntimeEvent::Lifecycle(result));
-        }
-    });
-    let target_agent_id = agent_id.clone();
-    let tx_shutdown = tx.clone();
-    let shutdown_listener = app.listen("agent-shutdown", move |event| {
-        if event.payload().contains(target_agent_id.as_str()) {
-            let _ = tx_shutdown.send(OpenHandsRuntimeEvent::Lifecycle(Err(
-                "OpenHands throwaway run cancelled".to_string(),
-            )));
-        }
-    });
-
-    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    dispatch_openhands_turn_with_request(
-        app,
-        &agent_id,
-        config,
-        request,
-        None,
-        OpenHandsConversationSelection::CreateFresh,
-        PromptDelivery::ViaSendEvent,
-    )
-    .await
-    .inspect_err(|_| {
-        app.unlisten(message_listener);
-        app.unlisten(exit_listener);
-        app.unlisten(shutdown_listener);
-    })?;
-
-    let mut terminal_state: Option<Result<serde_json::Value, String>> = None;
-    let mut lifecycle_result: Option<Result<(), String>> = None;
-    let wait_result = tokio::time::timeout(params.timeout, async {
-        while terminal_state.is_none() || lifecycle_result.is_none() {
-            match rx.recv().await {
-                Some(OpenHandsRuntimeEvent::TerminalState(result)) => {
-                    terminal_state.get_or_insert(result);
-                }
-                Some(OpenHandsRuntimeEvent::Lifecycle(result)) => {
-                    result?;
-                    lifecycle_result.get_or_insert(Ok(()));
-                }
-                None => {
-                    return Err("OpenHands runtime listener closed unexpectedly".to_string());
-                }
-            }
-        }
-        Ok(())
-    })
-    .await;
-
-    app.unlisten(message_listener);
-    app.unlisten(exit_listener);
-    app.unlisten(shutdown_listener);
-
-    match wait_result {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => return Err(error),
-        Err(_) => {
-            if !close_local_openhands_run(&agent_id) {
-                log::warn!(
-                    "[openhands-agent-server] throwaway_run_timeout agent_id={} cleanup=not-found",
-                    agent_id
-                );
-            }
-            return Err("OpenHands throwaway run timed out".to_string());
-        }
-    };
-
-    let conversation_state = terminal_state.unwrap_or_else(|| {
-        Err("OpenHands throwaway run completed without conversation_state".into())
-    })?;
-    lifecycle_result.unwrap_or_else(|| {
-        Err("OpenHands throwaway lifecycle listener closed unexpectedly".to_string())
-    })?;
-
-    log::info!(
-        "[openhands-agent-server] throwaway_run_completed agent_id={} duration_ms={}",
-        agent_id,
-        started_at.elapsed().as_millis()
-    );
-
-    Ok(OpenHandsThrowawayRun { conversation_state })
+pub(crate) fn has_registered_local_run(agent_id: &str) -> bool {
+    task_registry().contains_key(agent_id) || cancel_registry().contains_key(agent_id)
 }
 
 async fn run_conversation_task(
@@ -1181,7 +1001,7 @@ async fn run_conversation_task(
     result
 }
 
-async fn dispatch_openhands_turn_with_request(
+pub(crate) async fn dispatch_openhands_turn_with_request(
     app: &tauri::AppHandle,
     agent_id: &str,
     config: OpenHandsRuntimeConfig,
@@ -1774,7 +1594,7 @@ fn extract_conversation_id(conversation: &serde_json::Value) -> Result<String, S
         })
 }
 
-fn parse_openhands_runtime_terminal_state(
+pub(crate) fn parse_openhands_runtime_terminal_state(
     payload: &str,
     target_agent_id: &str,
 ) -> Option<Result<serde_json::Value, String>> {
@@ -1802,7 +1622,7 @@ fn parse_openhands_runtime_terminal_state(
     }
 }
 
-fn parse_openhands_lifecycle_state(
+pub(crate) fn parse_openhands_lifecycle_state(
     payload: &str,
     target_agent_id: &str,
 ) -> Option<Result<(), String>> {
@@ -2774,7 +2594,11 @@ mod tests {
         register_task_handle(&agent_id, &handle);
 
         assert!(
-            terminate_openhands_session(&agent_id, Duration::from_millis(10)).await,
+            crate::agents::tracked_openhands::terminate_tracked_openhands_session(
+                &agent_id,
+                Duration::from_millis(10),
+            )
+            .await,
             "terminate should report that a live session was present"
         );
         assert!(cancel_rx.try_recv().is_ok(), "cancel signal should be sent");

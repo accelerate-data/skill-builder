@@ -1,4 +1,4 @@
-use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
+use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::agents::runtime_config::{
     BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
 };
@@ -236,7 +236,7 @@ pub async fn review_skill_scope(
         llm: runtime_context.llm,
     });
 
-    let run = openhands_server::run_throwaway_openhands_session(
+    let run = tracked_openhands::run_tracked_throwaway_openhands_session(
         &app,
         OpenHandsThrowawayRunParams {
             agent_id: format!("{}-scope-review-{}", skill_name, uuid::Uuid::new_v4()),

@@ -1,8 +1,7 @@
 pub mod scenarios;
 pub mod types;
 
-use crate::agents::openhands_server;
-use crate::agents::openhands_server::OpenHandsThrowawayRunParams;
+use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::agents::runtime_config::{
     build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
 };
@@ -299,13 +298,15 @@ async fn run_define_eval_scenario_throwaway_turn<
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
     ensure_runtime_dir: EnsureRuntimeDir,
     run_turn: RunTurn,
-) -> Result<openhands_server::OpenHandsThrowawayRun, String>
+) -> Result<crate::agents::openhands_server::OpenHandsThrowawayRun, String>
 where
     EnsureRuntimeDir: FnOnce(&std::path::Path) -> EnsureRuntimeDirFuture,
     EnsureRuntimeDirFuture: std::future::Future<Output = Result<(), String>>,
     RunTurn: FnOnce(OpenHandsThrowawayRunParams) -> RunTurnFuture,
     RunTurnFuture:
-        std::future::Future<Output = Result<openhands_server::OpenHandsThrowawayRun, String>>,
+        std::future::Future<
+            Output = Result<crate::agents::openhands_server::OpenHandsThrowawayRun, String>,
+        >,
 {
     let run_id = uuid::Uuid::new_v4().to_string();
     let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
@@ -486,7 +487,12 @@ pub async fn define_eval_scenario(
         },
         |params| {
             let app = app.clone();
-            async move { openhands_server::run_throwaway_openhands_session(&app, params).await }
+            async move {
+                crate::agents::tracked_openhands::run_tracked_throwaway_openhands_session(
+                    &app, params,
+                )
+                .await
+            }
         },
     )
     .await?;

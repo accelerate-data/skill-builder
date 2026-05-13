@@ -6,3 +6,4 @@ pub mod openhands_server;
 pub mod run_persist;
 pub mod runtime_config;
 pub mod skill_creator;
+pub mod tracked_openhands;

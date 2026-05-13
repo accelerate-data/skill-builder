@@ -65,7 +65,7 @@ from `skill_conversations`. Throwaway workflow/eval runs use the same runtime
 but do not depend on a saved persistent conversation.
 
 The canonical runtime contract lives in
-[../openhands-runtime-model/README.md](../openhands-runtime-model/README.md).
+[../openhands-runtime-contract/README.md](../openhands-runtime-contract/README.md).
 
 ### Model Catalog
 

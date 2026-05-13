@@ -4,24 +4,20 @@ functional-specs: [custom-plugin-management]
 
 # Optimistic Session Activation
 
-> **Parent design:** [openhands-runtime-model/README.md](README.md)
+> **Parent design:** [../openhands-runtime-contract/README.md](../openhands-runtime-contract/README.md)
 
 ## Overview
 
-Skill activation splits into a synchronous navigation phase and an asynchronous
-session-boot phase. The UI responds immediately to a skill click instead of
-blocking on Agent Server startup.
+Skill activation splits into a synchronous navigation phase and an asynchronous session-boot phase. The UI responds immediately to a skill click instead of blocking on Agent Server startup.
 
-The sync phase (navigate) must complete before anything else. The async
-phase (server ensure + conversation resolve + history hydration) runs in the
-background while the target page shows its loading skeleton.
+The sync phase (navigate) must complete before anything else. The async phase (server ensure + conversation resolve + history hydration) runs in the background while the target page shows its loading skeleton.
 
 ## Design Scope
 
 **Covers**
 
 - The sync/async split of `activateSkill` and its interaction with the
-  three-layer runtime contract.
+  four-layer runtime contract.
 - Page loading states that wait for `conversationId` hydration.
 - Failure handling and lock cleanup when background boot fails.
 - Race conditions: double-click, navigate-away, concurrent skill switches.
@@ -32,7 +28,7 @@ background while the target page shows its loading skeleton.
 **Does not cover**
 
 - Agent Server lifecycle or workspace path resolution — owned by the parent
-  runtime model.
+  runtime contract.
 
 ## Key Decisions
 
@@ -73,52 +69,38 @@ click skill → navigate → page shows skeleton
 | `hydrateSelectedSkillOpenHandsSession` | <50ms | Store writes, no I/O. Populates `refineStore.conversationId`, `selectedSkill`, `messages`, and `availableAgents`. |
 | `setActiveSessionSkillName` | sync | Marks the session as fully active. |
 
-### Interaction with the Three-Layer Model
+### Interaction with the Runtime Contract
 
-The optimistic flow preserves the [three-layer runtime contract](README.md#three-layer-architecture):
+The optimistic flow preserves the parent [runtime contract](../openhands-runtime-contract/README.md):
 
-- **Frontend → Backend**: `selectSkillOpenHandsSession` is still called as a
-  single product command. The frontend does not call runtime primitives directly.
-- **Backend → OpenHands**: The backend still owns server ensure (via
-  `ensure_skill_session`), lease acquisition/verification, conversation
-  resolution, and event normalization. No changes to the runtime primitive
-  layer.
+- **Product command layer**: `selectSkillOpenHandsSession` remains a single backend command. The frontend does not call runtime primitives directly.
+- **Shared session layer**: the backend still owns server ensure and persistent conversation bootstrap through `ensure_skill_session`.
+- **Raw runtime layer**: conversation resolution and event normalization remain below the product boundary.
 
-The only change is *when* the product command is called relative to navigation,
-not *what* it does.
+The only change is *when* the product command is called relative to navigation, not *what* it does.
 
 ### Interaction with the Active Skill Leave Contract
 
-The [leave sequence](README.md#active-skill-leave-contract) remains synchronous
-in `handleSelectSkill`:
+The leave sequence remains synchronous in `handleSelectSkill`:
 
 1. Pause the current persistent conversation and release the skill lock (`pause_openhands_session` with `skill_id`)
 2. Clear app-level UI state (`teardownWorkflowSession`, `selectSkill(null)`, `setActiveSkill(null)`)
 
-Lock release is now performed by the backend as part of `pause_openhands_session`
-when `skill_id` is provided. The frontend no longer calls `release_lock` directly.
+Lock release is now performed by the backend as part of `pause_openhands_session` when `skill_id` is provided. The frontend no longer calls `release_lock` directly.
 
 Only after leave completes does the new skill's sync phase begin:
 
 1. Navigate immediately
 2. Background: call `select_skill_openhands_session`
-3. Backend acquires or verifies the new skill lease before any OpenHands
-   session work
+3. Backend acquires or verifies the new skill lease before any OpenHands session work
 
-This ordering prevents a window where two skills appear active simultaneously.
-The Agent Server stays alive during skill switches — `ensure_skill_session`
-on the new skill reuses the running server if the conversations root matches,
-or restarts it if the root changes.
+This ordering prevents a window where two skills appear active simultaneously. The Agent Server stays alive during skill switches. `ensure_skill_session` on the new skill reuses the running server if the conversations root matches, or restarts it if the root changes.
 
 ### Page Loading States
 
-`WorkflowPage` and `WorkspaceRoutePage` already show skeletons when
-`isLoaded === false`. The `useWorkflowPersistence` hook sets `isLoaded = true`
-after `getWorkflowState` resolves from the database.
+`WorkflowPage` and `WorkspaceRoutePage` already show skeletons when `isLoaded === false`. The `useWorkflowPersistence` hook sets `isLoaded = true` after `getWorkflowState` resolves from the database.
 
-The page must also wait for `refineStore.conversationId` to be non-null before
-showing content. This prevents the page from rendering with an empty chat panel
-or missing transcript history.
+The page must also wait for `refineStore.conversationId` to be non-null before showing content. This prevents the page from rendering with an empty chat panel or missing transcript history.
 
 ```typescript
 const conversationId = useRefineStore((s) => s.conversationId);
@@ -144,21 +126,14 @@ If the background session boot fails:
 
 ### Double-click on same skill
 
-The existing `sessionAlreadyActive` check in `activateSkill` still
-short-circuits if the session is already hydrated. Before hydration completes,
-duplicate background boot requests are harmless because backend lease
-acquisition is idempotent for the same app instance and rejects competing
-instances before any OpenHands session work begins.
+The existing `sessionAlreadyActive` check in `activateSkill` still short-circuits if the session is already hydrated. Before hydration completes, duplicate background boot requests are harmless because backend lease acquisition is idempotent for the same app instance and rejects competing instances before any OpenHands session work begins.
 
 ### Navigate away before session ready
 
 If the user clicks a different skill before the background boot completes:
 
-- The new skill's `handleSelectSkill` calls `leaveCurrentSkill` synchronously,
-  which pauses the in-progress conversation (if any) — the backend releases the lock as part of the pause
-- The background `selectSkillOpenHandsSession` for the old skill will either
-  succeed (and hydrate a store that's no longer active) or fail (and show a
-  toast that the user has already navigated away from)
+- The new skill's `handleSelectSkill` calls `leaveCurrentSkill` synchronously, which pauses the in-progress conversation (if any), and the backend releases the lock as part of the pause
+- The background `selectSkillOpenHandsSession` for the old skill will either succeed (and hydrate a store that's no longer active) or fail (and show a toast that the user has already navigated away from)
 - The stale hydration is harmless — the new skill's activation will overwrite
   the refine store state
 

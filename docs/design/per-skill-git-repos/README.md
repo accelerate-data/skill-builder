@@ -149,9 +149,8 @@ Migration is a one-way transition triggered once on startup when the shared root
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/agent-specs/storage.md` | **Partial supersedes** — the skills-path git repo section changes. Update after this lands |
+| `docs/design/openhands-runtime-contract/README.md` | **Partial supersedes** — the runtime contract now owns canonical skills-tree and storage-root language; this doc narrows the per-skill git topology decision |
 | `docs/design/workflow-artifact-storage/README.md` | **No change** — skills path layout (`SKILL.md`, `references/`) is unchanged |
-| `docs/design/openhands-runtime-model/README.md` | **Compatible** — workflow still routes through backend-owned runtime commands; this topology change does not alter the session model |
 
 ## Key Source Files
 

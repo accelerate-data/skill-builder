@@ -5,12 +5,23 @@ functional-specs: []
 # OpenHands Event Display Projection
 
 > **Status:** Implemented — projection, result detectors, store integration, and consumer migration complete.
+> **Runtime prerequisite:** See [../openhands-runtime-contract/README.md](../openhands-runtime-contract/README.md) for session lifecycle, storage roots, normalized event ingress, and backend runtime ownership.
 
 ## Overview
 
-OpenHands events arrive on the wire as `conversation_event` payloads with an `event_class` discriminator and land on `run.conversationEvents` in the frontend agent-store. The existing UI surfaces — Refine chat (`agent-turn-inline`), Workflow output panel (`agent-output-panel`), feedback dialog, status header, structured-output extraction — were all designed around the Claude Code `DisplayItem` shape (a transformed event format produced by the legacy Node runtime) on `run.displayItems`. After the OpenHands runtime migration, every run completes successfully on the backend but the UI either renders nothing (Refine) or renders a dense, unreadable raw-event timeline (Workflow's `agent-output-panel` via `ConversationEventList`).
+This doc starts after the backend runtime contract has already done its work.
+Its input is the **normalized runtime event stream** exposed to the frontend
+agent store. Its output is the projected `DisplayItem` stream consumed by chat-
+style and workflow-style UI surfaces.
 
-This design defines a **product-wide projection rule**: an agent-store layer that converts every incoming OpenHands `conversation_event` into one or more `DisplayItem` mutations on `run.displayItems`, while preserving the raw native event stream on `run.conversationEvents` as an immutable audit trail. All UI surfaces consume `displayItems` uniformly via the existing `BaseItem` / `ToolItem` / `SubagentItem` / `ThinkingItem` / `OutputItem` / `ToolActivityGroupView` component set. There is no new design system, no toggle, no per-page rendering logic.
+This design defines a **product-wide frontend projection rule**: the
+agent-store converts every normalized OpenHands runtime event into zero or more
+`DisplayItem` mutations on `run.displayItems`, while preserving the raw event
+stream on `run.conversationEvents` as an immutable frontend audit trail. All
+UI surfaces consume `displayItems` uniformly via the existing `BaseItem` /
+`ToolItem` / `SubagentItem` / `ThinkingItem` / `OutputItem` /
+`ToolActivityGroupView` component set. There is no new design system, no
+toggle, and no per-page rendering fork.
 
 The decision was surfaced by the VU-1155 Refine migration but applies to **every UI surface that displays an OpenHands run** — Refine chat, Workflow output, feedback dialog, scope review chat, description optimization, and any future surface.
 
@@ -18,8 +29,8 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 
 **Covers**
 
-- A single store-level projection that runs for every OpenHands run regardless of `run_source`
-- Lossless contract: every `conversation_event` produces at least one `DisplayItem` mutation; the projection decides visual weight, never filters
+- A single store-level projection that runs for every normalized runtime event stream regardless of `run_source`
+- The projection contract from normalized runtime events to frontend `DisplayItem` mutations
 - Pairing of `ActionEvent` + `ObservationEvent` by `tool_call_id` into a single `DisplayItem`
 - Mapping rules per OpenHands `event_class` and `tool_name` (file_editor / terminal / invoke_skill / think / etc.)
 - Result-summary detectors that produce a one-line outcome from `result_text` / `structured_output` for terminal `conversation_state`
@@ -29,9 +40,12 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 
 **Does not cover**
 
-- New rendering components — the existing component set on `main` is the visual surface for every UI consumer
+- Runtime session lifecycle, storage roots, or persistent-versus-throwaway behavior
+- Backend event normalization or raw Agent Server wire-format details
+- Typed workflow artifact persistence or terminal result extraction rules below the frontend boundary
+- New rendering components — the existing component set is the visual surface for every UI consumer
 - A toggle between "beautified" and "raw" rendering — the projected view is the only production path
-- Translation of historical Claude Code-shaped `displayItems` (the Claude Code runtime is being removed in the broader VU-1145 migration; this design assumes OpenHands events as the only future input)
+- Translation of historical Claude Code-shaped `displayItems`
 - A new dev-tools / debug surface that reads `conversationEvents` directly (out of scope; `ConversationEventList` is retained as the rendering primitive for that future surface)
 
 ## Key Decisions
@@ -39,7 +53,7 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 | Decision | Rationale |
 |---|---|
 | Project events into `DisplayItem` at the agent-store layer rather than at the renderer | Reuses the entire `BaseItem`/`ToolItem`/`SubagentItem` component tree and the `groupDisplayItems` activity-group logic on main without forking. Renderer stays runtime-agnostic. |
-| Keep `conversationEvents` populated alongside `displayItems` | The raw native event stream is the audit trail and powers `agent-output-panel` for workflow debugging. The projection is a UI concern, not a data-model replacement. |
+| Keep `conversationEvents` populated alongside `displayItems` | The raw normalized event stream remains the frontend audit trail. The projection is a UI concern, not a data-model replacement. |
 | Pair `ActionEvent` + `ObservationEvent` by `tool_call_id` into one `DisplayItem` | Matches the chat-conventional "single tool call card with observation inside" pattern and matches how the legacy Claude Code runtime already shaped `tool_call` items. |
 | Hide `ConversationStateUpdateEvent` from chat; keep it in `conversationEvents` audit trail | Pure internal counter/state churn (token deltas, `execution_status` flips, `agent_state`). The lifecycle chip in the chat header already represents the user-facing transitions semantically; rendering each intermediate diff as a "Lifecycle update" row was noise. The Rust normalizer also promotes meaningful terminal state transitions to `conversation_state` — there is no information loss. |
 | Keep `SystemPromptEvent`, `Condensation*Event`, `PauseEvent`, and user `MessageEvent` visible as collapsed rows | Each carries genuine user-facing meaning that `ConversationStateUpdateEvent` does not — system prompt is a one-time setup the user can audit, condensations explain why context shifted mid-turn, pause is a real user action with intent, and the user MessageEvent shows the exact text dispatched (including any system suffix). All collapsed by default, low visual weight. |
@@ -52,7 +66,12 @@ The decision was surfaced by the VU-1155 Refine migration but applies to **every
 
 The agent-store owns the projection. Each incoming OpenHands event is processed by `addConversationEvent` which (a) appends to `run.conversationEvents` for the audit trail AND (b) drives a derived `DisplayItem` mutation on `run.displayItems`.
 
-**No event is dropped from the audit trail.** Every `conversation_event` is appended to `run.conversationEvents` exactly as received. The projection layer then decides what the chat shows.
+The projection assumes the backend/runtime boundary has already normalized the
+incoming event shapes. This doc does not redefine wire-format cleanup.
+
+**No event is dropped from the frontend audit trail.** Every normalized
+`conversation_event` is appended to `run.conversationEvents`. The projection
+layer then decides what the chat shows.
 
 **Editorial rule for the chat surface:** every **user-facing** event becomes at least one `DisplayItem`; **pure internal-state events** (`ConversationStateUpdateEvent`) are suppressed. The projection decides **visual weight** for the rest — high-signal events (the agent's reply, errors, tool actions) become prominent cards; low-signal-but-meaningful events (system prompt, condensation, pause, user prompt echo) become collapsed low-contrast rows. Internal counter/state churn does not appear in the chat at all because the lifecycle chip already represents the user-facing transitions and the JSON diffs are not content.
 
@@ -179,7 +198,7 @@ Mutating in place preserves React keys and any user-controlled expand state.
 
 | Spec | Relationship |
 |---|---|
-| `docs/design/openhands-runtime-model/README.md` | Defines the active OpenHands runtime, session model, and event shapes (`conversation_event`, `conversation_state`) this projection consumes. |
+| `docs/design/openhands-runtime-contract/README.md` | Defines the runtime/session/storage contract and the normalized event/result boundary this projection consumes. |
 | `app/src/lib/display-types.ts` | Canonical frontend definition of `DisplayItem`. The projection produces values matching this shape verbatim. |
 
 ## Key Source Files
@@ -189,22 +208,15 @@ Mutating in place preserves React keys and any user-controlled expand state.
 | `app/src/lib/openhands-event-projection.ts` | Event-to-DisplayItem projector |
 | `app/src/lib/openhands-result-summary.ts` | Terminal result-summary detectors |
 | `app/src/stores/agent-store.ts` | Drives the projection from `addConversationEvent` and `applyConversationState` |
-| `app/src/lib/openhands-conversation-events.ts` | Extraction helpers (`getMessageText`, `getToolName`, `getToolInput`, `getCommandText`, etc.) — reused by the projector |
+| `app/src/lib/openhands-conversation-events.ts` | Frontend helpers over normalized runtime events (`getMessageText`, `getToolName`, `getToolInput`, `getCommandText`, etc.) |
 | `app/src/lib/group-display-items.ts` | Activity-group logic — works unchanged on projected items |
 | `app/src/components/refine/agent-turn-inline.tsx` | Reads `displayItems` via `DisplayItemList` |
 | `app/src/components/run-status-footer.tsx` | Common status footer — status, model, elapsed time, turns, tokens, cost. Present on all agent-interactive surfaces. |
-
-## Wire-format note: `kind` is the SDK's discriminator
-
-OpenHands SDK events arrive on the WebSocket with `kind: "ActionEvent"` (etc.) as the type discriminator, not `event_class`. The Rust normalizer in `app/src-tauri/src/agents/openhands_server/events.rs::normalize_server_event` and the frontend normalizer in `app/src/lib/openhands-conversation-events.ts::normalizeConversationEventMessage` both fall back to `kind` when `event_class` / `eventClass` are absent. Without this fallback every live event ends up labelled `event_class: "event"` (the literal hard-coded fallback string) and the projection routes everything through the unknown-event branch.
-
-Keep both fallback chains in sync: any future SDK that introduces a different discriminator field needs to be added in both places.
 
 ## Known limitations / follow-ups
 
 | Issue | Symptom | Status |
 |---|---|---|
-| Persistence dirs were created but no audit trail was written | `~/Library/Application Support/com.vibedata.skill-builder/workspace/skills/{skill}/logs/{agent_id}-{ts}/` was empty for runs after the OpenHands runtime migration. | **Fixed** in commit `e8622297` — `OpenHandsRuntimeConfig.persistence_dir` is now plumbed through `OpenHandsOneShotRequest::try_from_runtime_config` into the `StartConversationRequest.persistence_dir` field on the wire. The SDK now writes its native per-event JSON tree at `{persistence_dir}/{conversation_id}/base_state.json + events/event-NNNNN-{uuid}.json`. We accept the SDK's native per-event JSON format as the on-disk audit shape. The earlier `.jsonl` fixtures (hr-analytics May 2, measuring-pipeline-value May 3) came from a different, older Skill Builder writer path that no longer runs — they remain valid as test inputs because the projection only consumes parsed event payloads. |
 | `LifecycleChip` implemented but not mounted | `app/src/components/refine/lifecycle-chip.tsx` exports `LifecycleChip` (wired to `runs[agentId]?.status`) and is unit tested, but no production parent component imports or renders it. The chat panel header shows no status pill during a run. | **Open** — wire `<LifecycleChip />` into the refine chat panel header (e.g., `workspace-refine.tsx` or the header bar above `ChatMessageList`). |
 
 ## Open Questions

@@ -2,10 +2,9 @@
 
 | Directory | What it covers |
 |---|---|
-| [agent-specs/](agent-specs/README.md) | Agent layer architecture: workflow steps, artifact contracts, infrastructure files, storage layout |
+| [openhands-runtime-contract/](openhands-runtime-contract/README.md) | Canonical OpenHands runtime contract: runtime layers, session model, storage roots, normalized event ingress, and workflow artifact authority |
 | [product-architecture/](product-architecture/README.md) | Product-level architecture entrypoint: UI, Rust backend, OpenHands runtime, persistent state, and doc routing |
 | [model-catalog/](model-catalog/README.md) | Model catalog target design: `models.dev` ingestion, SQLite cache, provider/model filtering, and OpenHands model-resolution contract |
-| [openhands-runtime-model/](openhands-runtime-model/README.md) | Canonical OpenHands runtime model: frontend-to-backend product commands, backend-to-OpenHands session primitives, persistent versus throwaway sessions, workspace ownership, and surface mapping |
 | [skill-purpose-taxonomy/](skill-purpose-taxonomy/README.md) | Skill purpose taxonomy: three live create-skill purposes, harness-owned exclusions, and source-system-semantics boundaries |
 | [creating-skills-generator-verifier/](creating-skills-generator-verifier/README.md) | Creating skills generator-verifier: runtime `creating-skills` guidance under `agent-sources/workspace/skills`, app-owned workflow context loading, and fresh-context validation |
 | [backend-design/](backend-design/README.md) | Target Tauri/Rust backend architecture: DB topology, API surface, event contracts, metadata ownership, and current implementation gaps |
@@ -14,5 +13,5 @@
 | [per-skill-git-repos/](per-skill-git-repos/README.md) | Per-skill git repositories: topology change from shared root repo to one `.git/` per skill, tag simplification, migration, and impact on reset/restore/publish |
 | [workspace-ui-refinement/](workspace-ui-refinement/README.md) | Workspace UI polish: design review and improvement plan for Skills Overview, Refine, and Skill List Panel |
 | [skill-scope-review/](skill-scope-review/README.md) | Skill scope review: advisory LLM check during skill creation — detects overly broad skills and suggests gerund-named alternatives |
+| [openhands-event-display-projection/](openhands-event-display-projection/README.md) | Frontend-only projection rules for normalized runtime events: agent-store mapping into `DisplayItem`, pairing/grouping rules, result summaries, and consumer rendering expectations |
 | [write-eval-test-refine-loop/](write-eval-test-refine-loop/README.md) | Historical pre-clean-break eval/design doc. Keep for reference only; the Eval Workbench design is the current source for active eval behavior. |
-| [openhands-event-display-projection/](openhands-event-display-projection/README.md) | Product-wide rendering rule for OpenHands `conversation_event` payloads: agent-store projection into `DisplayItem`, lossless mapping, uniform consumption across Refine chat, Workflow output, feedback dialog, status header |

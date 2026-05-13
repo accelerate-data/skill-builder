@@ -171,7 +171,7 @@ filter expressions. It receives a final provider/model choice.
 
 | Spec | Relationship |
 |---|---|
-| [`docs/design/openhands-runtime-model/README.md`](../openhands-runtime-model/README.md) | OpenHands consumes the resolved provider/model selection from this subsystem. It does not own catalog refresh or filtering. |
+| [`docs/design/openhands-runtime-contract/README.md`](../openhands-runtime-contract/README.md) | OpenHands consumes the resolved provider/model selection from this subsystem. It does not own catalog refresh or filtering. |
 | [`docs/design/backend-design/README.md`](../backend-design/README.md) | Backend design owns the Tauri command surface, SQLite cache, and runtime config construction described here. |
 
 ## Key Source Files

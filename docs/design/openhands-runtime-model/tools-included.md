@@ -5,16 +5,13 @@ functional-specs: [custom-plugin-management]
 # OpenHands Tools Included
 
 > **Status:** Draft
-> **Parent:** [README.md](README.md)
+> **Parent:** [../openhands-runtime-contract/README.md](../openhands-runtime-contract/README.md)
 
 ## Overview
 
-This document records what Skill Builder sends in `agent.tools` and
-`include_default_tools` on OpenHands requests, why each entry is included or
-excluded, and which SDK validation rules matter when changing that set.
+This document records what Skill Builder sends in `agent.tools` and `include_default_tools` on OpenHands requests, why each entry is included or excluded, and which SDK validation rules matter when changing that set.
 
-The request construction lives in
-`app/src-tauri/src/agents/openhands_server/types.rs`.
+The request construction lives in `app/src-tauri/src/agents/openhands_server/types.rs`.
 
 ## SDK Validation Rules
 
@@ -51,7 +48,7 @@ Unknown tool names fail conversation creation.
 
 ## Opt-In Tools
 
-These are recognized and normalized by the runtime but are **not** in the default set. Pass them via `allowed_tools` on `SkillCreatorConfigParams` for surfaces that need them.
+These are recognized and normalized by the runtime but are **not** in the default set. They should be enabled by typed runtime intent in the canonical `build_skill_creator_config(...)` path for surfaces that need them.
 
 | Tool | Why it is opt-in |
 |---|---|
@@ -70,9 +67,15 @@ the active `agent_context.skills` set requires it.
 
 ## Override Policy
 
-`allowed_tools` on `OpenHandsRuntimeConfig` is an explicit backend override:
+Tool selection is a backend-owned runtime policy:
 
-- known tool names are normalized and used
+- the canonical path derives tool policy from typed runtime intent
+- runtime normalization still drops unknown tool names
+- if the result is empty, the runtime falls back to the default set above
+
+`allowed_tools` on `OpenHandsRuntimeConfig` remains the low-level emitted field:
+
+- after intent-derived selection, known tool names are normalized and used
 - unknown names are dropped
 - if the result is empty, the runtime falls back to the default set above
 
@@ -83,5 +86,4 @@ the active `agent_context.skills` set requires it.
 - `tom_consult` is not currently part of the Agent Server-registered default
   set
 
-Any change here should be coordinated with the runtime request builder in
-`types.rs` and the Agent Server boot-time registration behavior.
+Any change here should be coordinated with the canonical skill-creator config builder, the runtime request builder in `types.rs`, and the Agent Server boot-time registration behavior.

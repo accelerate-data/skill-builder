@@ -585,7 +585,7 @@ pub async fn delete_skill(
     }
 
     for agent_id in &shutdown_plan.agent_ids {
-        let stopped = crate::agents::openhands_server::terminate_openhands_session(
+        let stopped = crate::agents::tracked_openhands::terminate_tracked_openhands_session(
             agent_id,
             Duration::from_secs(2),
         )

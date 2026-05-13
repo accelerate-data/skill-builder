@@ -335,7 +335,7 @@ pub async fn pause_openhands_session(
         runtime_ctx.llm.clone(),
     );
 
-    let local_closed = crate::agents::openhands_server::pause_openhands_conversation(
+    let local_closed = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
         config,
         &conversation_id,
         agent_id.as_deref(),

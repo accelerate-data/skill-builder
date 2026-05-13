@@ -96,7 +96,7 @@ restores a run, the reconstruction comes from backend-owned state and artifacts.
 
 Related docs:
 
-- [openhands-runtime-model](../openhands-runtime-model/README.md)
+- [openhands-runtime-contract](../openhands-runtime-contract/README.md)
 - [openhands-event-display-projection](../openhands-event-display-projection/README.md)
 
 ### 2. Product Backend Layer
@@ -139,7 +139,7 @@ entire app.
 
 Related docs:
 
-- [openhands-runtime-model](../openhands-runtime-model/README.md)
+- [openhands-runtime-contract](../openhands-runtime-contract/README.md)
 
 ## Canonical Data Flow
 
@@ -175,8 +175,8 @@ Skill Builder has three durable state domains:
 | Domain | Owner | Purpose |
 |---|---|---|
 | SQLite | Rust | Canonical product state for workflow progress, settings, usage, imported skills, and related metadata |
-| Workspace folders | Rust | Plugin-scoped and skill-scoped working directories where runtime execution occurs and `.agents/**` content is deployed |
-| Generated skill artifacts | Rust-managed filesystem | The durable plugin-managed skill outputs that users keep, refine, publish, export, or evaluate |
+| App data runtime roots | Rust | App-local OpenHands persistence roots, DB-adjacent runtime files, and throwaway runtime scratch space |
+| Skills tree | Rust-managed filesystem | The durable plugin-managed skill outputs and canonical skill working directories that users keep, refine, publish, export, or evaluate |
 
 The runtime may read and write inside a prepared workspace during execution, but
 product ownership of path selection, deployment shape, and post-run persistence
@@ -188,15 +188,15 @@ Use this page as the entrypoint, then drop to the next level only when needed:
 
 | Need | Doc |
 |---|---|
-| Runtime process boundary, session model, and event transport | [openhands-runtime-model](../openhands-runtime-model/README.md) |
+| Runtime process boundary, session model, normalized event ingress, and storage roots | [openhands-runtime-contract](../openhands-runtime-contract/README.md) |
 | Backend persistence, command surface, and storage | [backend-design](../backend-design/README.md) |
-| Workflow step lifecycle and runtime routing | [openhands-runtime-model](../openhands-runtime-model/README.md) |
+| Workflow step lifecycle and runtime routing | [openhands-runtime-contract](../openhands-runtime-contract/README.md) |
 | Artifact ownership and storage rules | [workflow-artifact-storage](../workflow-artifact-storage/README.md) |
-| Workspace preparation, main-agent suffix wiring, and conversation storage | [openhands-runtime-model](../openhands-runtime-model/README.md) |
-| Agent and artifact contract details | [agent-specs](../agent-specs/README.md) |
+| Workspace preparation, main-agent suffix wiring, and conversation storage | [openhands-runtime-contract](../openhands-runtime-contract/README.md) |
+| Frontend rendering of normalized runtime events | [openhands-event-display-projection](../openhands-event-display-projection/README.md) |
 
 ## Open Questions
 
 1. `[docs]` Keep the deeper [backend-design](../backend-design/README.md) page in
-   sync with the product-level OpenHands runtime model so the implementation
+   sync with the product-level OpenHands runtime contract so the implementation
    reference does not drift again.

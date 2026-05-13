@@ -252,7 +252,7 @@ pub async fn send_refine_message(
         active_conversation_id
     );
 
-    let returned_conversation_id = crate::agents::openhands_server::send_openhands_message(
+    let returned_conversation_id = crate::agents::tracked_openhands::send_tracked_openhands_message(
         &app,
         &agent_id,
         config,

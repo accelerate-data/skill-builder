@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tauri::{Manager, State};
 
-use crate::agents::openhands_server::{self, OpenHandsThrowawayRunParams};
+use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::agents::runtime_config::{
     BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
 };
@@ -55,7 +55,7 @@ pub async fn test_model_connection(
         .replace('\\', "/");
     let config =
         build_model_connection_test_config(&app_data_root, &workspace_path, &runtime_run_dir, llm);
-    let run = openhands_server::run_throwaway_openhands_session(
+    let run = tracked_openhands::run_tracked_throwaway_openhands_session(
         &app,
         OpenHandsThrowawayRunParams {
             agent_id: format!("model-connection-test-{}", uuid::Uuid::new_v4()),
