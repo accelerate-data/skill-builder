@@ -47,7 +47,7 @@ pub(crate) fn read_initialized_runtime_context(
             skills_root
         ));
     }
-    let mut llm = crate::db::selected_workflow_llm(&settings)?;
+    let mut llm = crate::db::selected_workflow_llm(&conn, &settings)?;
     llm.base_url = crate::db::resolve_effective_base_url(&conn, &llm, &settings);
 
     Ok(InitializedRuntimeContext {
@@ -72,7 +72,7 @@ pub(crate) fn read_workflow_settings_by_skill_id(
         "Skills path not configured. Please set it in Settings before running workflow steps."
             .to_string()
     })?;
-    let mut llm = crate::db::selected_workflow_llm(&settings)?;
+    let mut llm = crate::db::selected_workflow_llm(&conn, &settings)?;
     llm.base_url = crate::db::resolve_effective_base_url(&conn, &llm, &settings);
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;

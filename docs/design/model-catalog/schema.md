@@ -104,7 +104,7 @@ Provider metadata used for display and runtime defaults.
 |---|---|---|
 | `provider_id` | TEXT PRIMARY KEY | Stable provider identifier |
 | `name` | TEXT NOT NULL | Provider display name |
-| `npm` | TEXT NOT NULL | Upstream `npm` value |
+| `npm` | TEXT NOT NULL | Upstream provider adapter family; used to derive the runtime model prefix for OpenHands/LiteLLM |
 | `api_base_url` | TEXT | Upstream `api` value when present |
 | `doc_url` | TEXT NOT NULL | Upstream provider documentation URL |
 
@@ -200,6 +200,20 @@ The refresh path should follow these rules:
    local filter contract.
 4. Never fail refresh just because wrapper metadata or experimental-mode
    metadata uses nested objects.
+
+## Runtime Qualification Rule
+
+Skill Builder persists catalog ids in settings, then derives the runtime model
+string from provider metadata in `provider_catalog`:
+
+- `@ai-sdk/openai-compatible` -> `openai/<model_id>`
+- `@ai-sdk/openai` -> `openai/<model_id>`
+- `@ai-sdk/anthropic` -> `anthropic/<model_id>`
+- already-qualified model ids containing `/` stay unchanged
+- if the provider row is missing, fall back to `<provider_id>/<model_id>`
+
+This is intentionally metadata-driven. The runtime seam must not hardcode
+special provider-id exceptions like `opencode-go`.
 
 That applies especially to:
 

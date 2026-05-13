@@ -6,8 +6,42 @@ pub(crate) fn normalize_model_settings(mut settings: AppSettings) -> AppSettings
     settings
 }
 
-pub(crate) fn selected_workflow_llm(settings: &AppSettings) -> Result<WorkflowLlmConfig, String> {
-    settings.model_settings.selected_workflow_llm()
+fn runtime_provider_prefix(conn: &Connection, provider_id: &str) -> String {
+    let npm: Option<String> = conn
+        .prepare("SELECT npm FROM provider_catalog WHERE provider_id = ?1")
+        .ok()
+        .and_then(|mut stmt| stmt.query_row([provider_id], |row| row.get(0)).ok());
+
+    match npm.as_deref() {
+        Some("@ai-sdk/openai-compatible" | "@ai-sdk/openai") => "openai".to_string(),
+        Some("@ai-sdk/anthropic") => "anthropic".to_string(),
+        _ => provider_id.to_string(),
+    }
+}
+
+fn normalize_runtime_model_id(conn: &Connection, settings: &AppSettings) -> Option<String> {
+    let provider_id = settings.model_settings.provider_id.as_deref()?.trim();
+    let model_id = settings.model_settings.model_id.as_deref()?.trim();
+    if provider_id.is_empty() || model_id.is_empty() || model_id.contains('/') {
+        return Some(model_id.to_string());
+    }
+
+    let stripped = model_id
+        .strip_prefix(&format!("{provider_id}:"))
+        .unwrap_or(model_id);
+    let runtime_prefix = runtime_provider_prefix(conn, provider_id);
+    Some(format!("{runtime_prefix}/{stripped}"))
+}
+
+pub(crate) fn selected_workflow_llm(
+    conn: &Connection,
+    settings: &AppSettings,
+) -> Result<WorkflowLlmConfig, String> {
+    let mut llm = settings.model_settings.selected_workflow_llm()?;
+    if let Some(model) = normalize_runtime_model_id(conn, settings) {
+        llm.model = model;
+    }
+    Ok(llm)
 }
 
 /// Resolve the effective base URL for runtime config.
@@ -64,6 +98,26 @@ mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
     use crate::types::{ModelSettings, ProviderOverride, SecretString};
+
+    fn insert_provider_catalog(
+        conn: &Connection,
+        provider_id: &str,
+        npm: &str,
+        api_base_url: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                provider_id,
+                provider_id,
+                npm,
+                api_base_url,
+                format!("https://docs.example.com/{provider_id}")
+            ],
+        )
+        .unwrap();
+    }
 
     fn make_settings(workspace_path: Option<&str>, skills_path: Option<&str>) -> AppSettings {
         AppSettings {
@@ -165,6 +219,13 @@ mod tests {
 
     #[test]
     fn selected_workflow_llm_derives_provider_qualified_runtime_model() {
+        let conn = create_test_db_for_tests();
+        insert_provider_catalog(
+            &conn,
+            "anthropic",
+            "@ai-sdk/anthropic",
+            Some("https://models.example.com/v1"),
+        );
         let mut overrides = std::collections::BTreeMap::new();
         overrides.insert(
             "anthropic".to_string(),
@@ -187,7 +248,7 @@ mod tests {
             ..AppSettings::default()
         };
 
-        let llm = selected_workflow_llm(&settings).unwrap();
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
         assert_eq!(llm.model, "anthropic/claude-sonnet-4-5");
         assert_eq!(llm.api_key.as_ref().unwrap().expose(), "sk-test");
         assert_eq!(
@@ -202,6 +263,7 @@ mod tests {
 
     #[test]
     fn selected_workflow_llm_uses_backend_owned_usage_id() {
+        let conn = create_test_db_for_tests();
         let mut overrides = std::collections::BTreeMap::new();
         overrides.insert(
             "ollama".to_string(),
@@ -220,12 +282,19 @@ mod tests {
             ..AppSettings::default()
         };
 
-        let llm = selected_workflow_llm(&settings).unwrap();
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
         assert_eq!(llm.usage_id.as_deref(), Some("workflow"));
     }
 
     #[test]
     fn selected_workflow_llm_strips_legacy_catalog_full_id_prefix() {
+        let conn = create_test_db_for_tests();
+        insert_provider_catalog(
+            &conn,
+            "opencode-go",
+            "@ai-sdk/openai-compatible",
+            Some("https://opencode.ai/zen/go/v1"),
+        );
         let mut overrides = std::collections::BTreeMap::new();
         overrides.insert(
             "opencode-go".to_string(),
@@ -244,12 +313,44 @@ mod tests {
             ..AppSettings::default()
         };
 
-        let llm = selected_workflow_llm(&settings).unwrap();
-        assert_eq!(llm.model, "opencode-go/deepseek-v4-flash");
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
+        assert_eq!(llm.model, "openai/deepseek-v4-flash");
+    }
+
+    #[test]
+    fn selected_workflow_llm_maps_openai_compatible_provider_to_openai_prefix() {
+        let conn = create_test_db_for_tests();
+        insert_provider_catalog(
+            &conn,
+            "opencode-go",
+            "@ai-sdk/openai-compatible",
+            Some("https://opencode.ai/zen/go/v1"),
+        );
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "opencode-go".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-test".to_string())),
+                base_url_override: Some("https://opencode.ai/zen/go/v1".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("opencode-go".to_string()),
+                model_id: Some("deepseek-v4-pro".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
+        assert_eq!(llm.model, "openai/deepseek-v4-pro");
     }
 
     #[test]
     fn selected_workflow_llm_rejects_cloud_model_without_api_key() {
+        let conn = create_test_db_for_tests();
         let settings = AppSettings {
             model_settings: ModelSettings {
                 provider_id: Some("anthropic".to_string()),
@@ -259,12 +360,13 @@ mod tests {
             ..AppSettings::default()
         };
 
-        let err = selected_workflow_llm(&settings).unwrap_err();
+        let err = selected_workflow_llm(&conn, &settings).unwrap_err();
         assert!(err.contains("Add an API key"), "{err}");
     }
 
     #[test]
     fn selected_workflow_llm_allows_local_base_url_without_api_key() {
+        let conn = create_test_db_for_tests();
         let mut overrides = std::collections::BTreeMap::new();
         overrides.insert(
             "openai".to_string(),
@@ -283,7 +385,7 @@ mod tests {
             ..AppSettings::default()
         };
 
-        let llm = selected_workflow_llm(&settings).unwrap();
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
         assert_eq!(llm.model, "local/model");
         assert!(llm.api_key.is_none());
         assert!(llm.reasoning_effort.is_none());
@@ -291,6 +393,7 @@ mod tests {
 
     #[test]
     fn selected_workflow_llm_rejects_invalid_model_settings() {
+        let conn = create_test_db_for_tests();
         let mut overrides = std::collections::BTreeMap::new();
         overrides.insert(
             "anthropic".to_string(),
@@ -311,7 +414,7 @@ mod tests {
             ..AppSettings::default()
         };
 
-        let err = selected_workflow_llm(&settings).unwrap_err();
+        let err = selected_workflow_llm(&conn, &settings).unwrap_err();
         assert!(err.contains("Base URL"), "{err}");
     }
 
@@ -447,7 +550,7 @@ mod tests {
             },
             ..AppSettings::default()
         };
-        let llm = selected_workflow_llm(&settings).unwrap();
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
 
         let resolved = super::resolve_effective_base_url(&conn, &llm, &settings);
         assert_eq!(resolved.as_deref(), Some("https://custom.example.com/v1"));
@@ -478,7 +581,7 @@ mod tests {
             },
             ..AppSettings::default()
         };
-        let llm = selected_workflow_llm(&settings).unwrap();
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
 
         let resolved = super::resolve_effective_base_url(&conn, &llm, &settings);
         assert_eq!(resolved.as_deref(), Some("https://api.anthropic.com"));
@@ -504,7 +607,7 @@ mod tests {
             },
             ..AppSettings::default()
         };
-        let llm = selected_workflow_llm(&settings).unwrap();
+        let llm = selected_workflow_llm(&conn, &settings).unwrap();
 
         let resolved = super::resolve_effective_base_url(&conn, &llm, &settings);
         assert!(resolved.is_none());

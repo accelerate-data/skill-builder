@@ -48,6 +48,7 @@ The catalog has two responsibilities:
 | Model rows keep both typed columns and the full upstream payload | Filtering needs first-class columns, but the cache must stay lossless |
 | `provider` is just another filterable field | The backend API stays generic instead of hardcoding provider-specific list endpoints |
 | OpenHands receives one resolved provider/model selection, not a filter expression | Catalog discovery belongs to the app; runtime execution belongs to OpenHands |
+| Runtime model prefixes are derived from provider adapter metadata | LiteLLM/OpenHands need provider-family prefixes like `openai/...` or `anthropic/...`, which should come from catalog metadata rather than provider-id special cases |
 | LiteLLM proxy, profiles, and virtual keys are removed from the target design | The app is Rust-native and the model-catalog problem is independent of a Python sidecar |
 
 ## Architecture
@@ -100,6 +101,10 @@ The Settings flow is:
 Provider selection is not a separate backend query shape. It is a filter on the
 catalog, usually `provider_id = ...`, backed by `provider_catalog` so the UI
 can show provider names and defaults.
+
+The persisted `model_id` is the provider-scoped catalog id, not necessarily the
+final runtime string sent to OpenHands. Runtime qualification happens later
+from provider metadata.
 
 The UI can filter on any `models.dev` field that the backend projects into the
 cached schema. Typical examples:
@@ -172,10 +177,29 @@ Target runtime behavior:
    - selected provider
    - selected model
    - user-entered provider credentials and optional base-URL override
-5. the backend builds `OpenHandsRuntimeConfig` directly from that resolved selection
+5. the backend derives the runtime model prefix from `provider_catalog.npm`
+6. the backend builds `OpenHandsRuntimeConfig` directly from that resolved selection
 
 OpenHands does not know about cached catalogs, provider metadata refresh, or
 filter expressions. It receives a final provider/model choice.
+
+### Runtime Model Qualification Rule
+
+The backend persists the catalog-facing `provider_id` plus `model_id`, then
+derives the OpenHands/LiteLLM runtime model string from the provider adapter
+family:
+
+- `@ai-sdk/openai-compatible` -> `openai/<model_id>`
+- `@ai-sdk/openai` -> `openai/<model_id>`
+- `@ai-sdk/anthropic` -> `anthropic/<model_id>`
+- already-qualified saved ids such as `openrouter/...` or `ollama/...` stay unchanged
+- if provider metadata is missing, the backend falls back to `<provider_id>/<model_id>`
+
+Examples:
+
+- `opencode-go` + `deepseek-v4-pro` -> `openai/deepseek-v4-pro`
+- `anthropic` + `claude-sonnet-4-5` -> `anthropic/claude-sonnet-4-5`
+- `openai` + `gpt-4.1` -> `openai/gpt-4.1`
 
 ## Relationship To Other Design Docs
 
