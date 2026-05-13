@@ -3,7 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, refreshModelCatalog } from "@/lib/tauri";
 import type { AppSettings, DiscoveredSkill, ModelSettings, OrphanSkill } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
 import { queryKeys } from "@/lib/queries/query-keys";
@@ -87,6 +87,11 @@ export function useAppStartup(): UseAppStartupReturn {
   // Both read from SQLite/filesystem independently — no frontend data dependency.
   useEffect(() => {
     const cancelledRef = { current: false };
+
+    refreshModelCatalog().catch((err) => {
+      if (cancelledRef.current) return;
+      console.warn("[app-layout] model catalog refresh failed:", err);
+    });
 
     // Settings load
     getSettings().then((s) => {

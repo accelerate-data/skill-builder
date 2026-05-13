@@ -42,19 +42,14 @@ pub(crate) async fn ensure_skill_runtime_ready(
     plugin_slug: &str,
 ) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
-    let skill_dir = crate::skill_paths::ensure_nested_skill_dir(
-        Path::new(&runtime_ctx.skills_root),
-        plugin_slug,
-        skill_name,
-    )?;
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(&runtime_ctx.skills_root), plugin_slug, skill_name);
     if !skill_dir.exists() {
-        std::fs::create_dir_all(&skill_dir).map_err(|e| {
-            format!(
-                "Failed to create skill directory '{}': {}",
-                skill_dir.display(),
-                e
-            )
-        })?;
+        return Err(format!(
+            "Skill content is missing at '{}' for '{}'. Restore the skill files before continuing.",
+            skill_dir.display(),
+            skill_name
+        ));
     }
     crate::commands::workflow::deploy::seed_skill_agents_dir(app, &skill_dir)?;
     Ok(runtime_ctx)
@@ -310,13 +305,11 @@ pub async fn pause_openhands_session(
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(Path::new(&skills_root), &plugin_slug, &skill_name);
     if !skill_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&skill_dir) {
-            log::warn!(
-                "[pause_openhands_session] failed to create skill dir '{}': {}",
-                skill_dir.display(),
-                e
-            );
-        }
+        return Err(format!(
+            "Skill content is missing at '{}' for '{}'. Restore the skill files before continuing.",
+            skill_dir.display(),
+            skill_name
+        ));
     }
 
     let skills_path = resolve_skills_path(&db)?;

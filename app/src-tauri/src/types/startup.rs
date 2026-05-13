@@ -1,17 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeStatus {
-    pub available: bool,
-    pub version: Option<String>,
-    pub meets_minimum: bool,
-    pub error: Option<String>,
-    /// Where the Node.js binary was found: "bundled", "system", or "" on failure.
-    #[serde(default)]
-    pub source: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DepStatus {
     /// Stable machine-readable identifier for this check.
     #[serde(default)]

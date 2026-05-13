@@ -334,6 +334,8 @@ import {
   updateGithubIdentity as _updateGithubIdentity,
   updateUserSettings as _updateUserSettings,
   testModelConnection as _testModelConnection,
+  getCachedModelCatalog as _getCachedModelCatalog,
+  getCachedModelProviders as _getCachedModelProviders,
 } from "@/lib/tauri";
 
 const defaultSettings: AppSettings = {
@@ -464,6 +466,8 @@ describe("SettingsPage", () => {
     vi.mocked(_testModelConnection).mockReset().mockResolvedValue(true);
     vi.mocked(_githubGetUser).mockReset().mockResolvedValue(null);
     vi.mocked(_updateGithubIdentity).mockReset().mockResolvedValue(undefined);
+    vi.mocked(_getCachedModelCatalog).mockReset().mockResolvedValue(modelCatalogEntries);
+    vi.mocked(_getCachedModelProviders).mockReset().mockResolvedValue(providerCatalogRows);
     useSettingsStore.getState().reset();
     // Reset URL search params so tab defaults to "general"
     window.history.replaceState({}, "", window.location.pathname);
@@ -750,6 +754,50 @@ describe("SettingsPage", () => {
     expect(emptyValueOptions).toHaveLength(1);
     expect(emptyValueOptions[0]).toHaveTextContent("Select a provider");
     expect(screen.getByLabelText(/^Model$/i)).toHaveValue("");
+  });
+
+  it("filters blank provider and model ids from cached catalog data", async () => {
+    vi.mocked(_getCachedModelCatalog).mockResolvedValueOnce([
+      ...modelCatalogEntries,
+      {
+        ...modelCatalogEntries[0],
+        full_id: "",
+        provider_id: "",
+        model_id: "",
+        name: "Broken Entry",
+      },
+    ]);
+    vi.mocked(_getCachedModelProviders).mockResolvedValueOnce([
+      ...providerCatalogRows,
+      {
+        provider_id: "",
+        name: "Broken Provider",
+        npm: "",
+        api_base_url: null,
+        doc_url: "",
+        env_vars: [],
+      },
+    ]);
+    setupDefaultMocks(populatedSettings);
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Models/i);
+
+    const providerSelect = screen.getByRole("combobox", {
+      name: /^Provider$/i,
+    });
+    const optionValues = Array.from(providerSelect.querySelectorAll("option")).map(
+      (option) => option.getAttribute("value"),
+    );
+    const emptyValueOptions = optionValues.filter((value) => value === "");
+
+    expect(emptyValueOptions).toHaveLength(1);
+    expect(screen.queryByRole("option", { name: "Broken Provider" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Broken Entry" })).not.toBeInTheDocument();
   });
 
   it("shows catalog API key help and selected model details", async () => {

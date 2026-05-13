@@ -193,11 +193,15 @@ describe("AppLayout", () => {
   it("calls reconcile_startup after settings load and renders content", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
+      refresh_model_catalog: [],
       reconcile_startup: emptyReconciliation,
     });
 
     render(<AppLayout />);
 
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("refresh_model_catalog", {});
+    });
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup", {});
     });

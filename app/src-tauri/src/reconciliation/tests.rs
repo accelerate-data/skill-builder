@@ -61,6 +61,93 @@ fn create_step_output(workspace: &Path, name: &str, step_id: u32) {
     }
 }
 
+#[test]
+fn test_vu_1190_startup_does_not_recreate_missing_workflow_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    let skill_id =
+        crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "domain").unwrap();
+    create_step_output(skills_tmp.path(), "orphan-skill", 3);
+
+    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    assert!(result.notifications.is_empty(), "notifications: {:?}", result.notifications);
+    assert!(
+        crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .is_none(),
+        "startup should not recreate workflow_runs rows from disk content"
+    );
+}
+
+#[test]
+fn test_vu_1190_startup_does_not_discover_skill_from_disk() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    let discovered_dir = resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "found-skill");
+    std::fs::create_dir_all(&discovered_dir).unwrap();
+    std::fs::write(discovered_dir.join("SKILL.md"), "# Found Skill").unwrap();
+
+    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    assert!(result.notifications.is_empty(), "notifications: {:?}", result.notifications);
+    assert!(result.discovered_skills.is_empty());
+    assert!(
+        crate::db::get_skill_master(&conn, "found-skill").unwrap().is_none(),
+        "startup should not import skills from disk into the library"
+    );
+}
+
+#[test]
+fn test_vu_1190_startup_does_not_delete_tracked_marketplace_plugin_when_skill_md_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_str().unwrap();
+    let skills_path = skills_tmp.path().to_str().unwrap();
+    let conn = create_test_db();
+
+    crate::db::ensure_plugin(
+        &conn,
+        "analytics",
+        "Analytics",
+        "marketplace",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    crate::db::upsert_skill_in_plugin(&conn, "broken-skill", "imported", "domain", "analytics")
+        .unwrap();
+
+    let broken_dir = resolve_skill_dir(skills_tmp.path(), "analytics", "broken-skill");
+    std::fs::create_dir_all(&broken_dir).unwrap();
+
+    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+    assert!(result.discovered_skills.is_empty());
+    assert!(
+        crate::db::list_plugins(&conn)
+            .unwrap()
+            .iter()
+            .any(|plugin| plugin.slug == "analytics"),
+        "startup should leave tracked marketplace plugins alone when content is missing"
+    );
+    assert!(
+        crate::db::get_skill_master_in_plugin(&conn, "broken-skill", "analytics")
+            .unwrap()
+            .is_some(),
+        "startup should not delete tracked skills because SKILL.md is missing"
+    );
+}
+
 // --- Scenario 10: Master row exists but no workflow_runs row ---
 
 #[test]

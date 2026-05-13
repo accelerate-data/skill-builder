@@ -93,7 +93,7 @@
     },
     "frontend_hooks": {
       "path": "app/src/hooks/",
-      "description": "Custom React hooks: agent streaming, workflow state machine, workflow session/persistence/autosave, settings form, scope blocking, marketplace registries, marketplace updates, app startup, node validation, leave guard"
+      "description": "Custom React hooks: agent streaming, workflow state machine, workflow session/persistence/autosave, settings form, scope blocking, marketplace registries, marketplace updates, app startup, startup dependency validation, leave guard"
     },
     "frontend_lib": {
       "path": "app/src/lib/",
@@ -109,7 +109,7 @@
     },
     "rust_agents": {
       "path": "app/src-tauri/src/agents/",
-      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, persistent-session plus throwaway runtime helpers), events.rs (re-export facade for handle_runtime_message and handle_runtime_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), run_persist.rs (run result persistence helpers), runtime_config.rs (runtime config builders for persistent and throwaway OpenHands runs), node_resolver.rs (Node.js binary resolution with platform-specific logic), skill_creator.rs (runtime config builder and persistent-session helper for skill-creator agent runs)."
+      "description": "Agent runtime. Files: openhands_server/ (Rust-managed local OpenHands Agent Server process, REST client, WebSocket event stream, persistent-session plus throwaway runtime helpers), events.rs (re-export facade for handle_runtime_message and handle_runtime_exit_with_detail), event_router.rs (routes agent_event subtypes, persists run_result, emits Tauri frontend events), event_types.rs (shared Tauri event payload types), run_persist.rs (run result persistence helpers), runtime_config.rs (runtime config builders for persistent and throwaway OpenHands runs), node_resolver.rs (Windows git-bash detection helper for runtime shell execution), skill_creator.rs (runtime config builder and persistent-session helper for skill-creator agent runs)."
     },
     "frontend_agent_events": {
       "path": "app/src/lib/agent-events.ts",

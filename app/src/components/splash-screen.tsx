@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, RefreshCw, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useNodeValidation } from "@/hooks/use-node-validation";
+import { useStartupValidation } from "@/hooks/use-node-validation";
 import type { DepStatus } from "@/lib/types";
 
 interface SplashScreenProps {
@@ -51,7 +51,7 @@ function DepRow({ dep }: { dep: DepStatus }) {
 
 export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   const [fading, setFading] = useState(false);
-  const { deps, isChecking, error, retry } = useNodeValidation();
+  const { deps, isChecking, error, retry } = useStartupValidation();
 
   const onReadyRef = useRef(onReady);
   const onDismissRef = useRef(onDismiss);

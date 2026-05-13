@@ -1,9 +1,7 @@
 mod skill_builder;
 
-use crate::fs_validation::detect_furthest_step;
 use crate::skill_paths::{enumerate_skill_locations, DEFAULT_PLUGIN_SLUG};
 use crate::types::{DiscoveredSkill, ReconciliationResult};
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 fn normalized_plugin_slug(plugin_slug: &str) -> &str {
@@ -288,13 +286,11 @@ fn normalize_legacy_startup_state(
 ///
 /// - DB is the starting point, disk always wins on contention
 /// - a. Ensure the canonical default plugin exists in DB
-/// - b. DB → disk: for each plugin in DB, verify folder exists; if gone, delete plugin + skills from DB
-/// - c. Disk → DB: for each plugin folder on disk, ensure DB row exists; for each skill with SKILL.md, ensure DB row
-/// - d. Sync display names from marketplace.json (source of truth); do NOT regenerate marketplace.json
+/// - b. Sync display names from marketplace.json (source of truth); do NOT regenerate marketplace.json
 ///
-/// Phase 2: Workflow recon (incomplete skills only)
+/// Phase 2: Workflow recon (DB-owned state only)
 ///
-/// - For each skill-builder skill where status != completed, check step artifacts and reset/advance
+/// - For each skill-builder skill where status != completed, repair stale DB-owned state only
 pub fn reconcile_on_startup(
     conn: &rusqlite::Connection,
     workspace_path: &str,
@@ -309,7 +305,7 @@ pub fn reconcile_on_startup(
     normalize_legacy_startup_state(conn, workspace_dir, skills_dir, &mut notifications)?;
 
     // ════════════════════════════════════════════════════════════════════════
-    // Phase 1: Plugin recon
+    // Phase 1: App-owned plugin/layout normalization
     // ════════════════════════════════════════════════════════════════════════
 
     // 1a. Ensure the canonical default plugin exists in DB and on disk
@@ -348,290 +344,7 @@ pub fn reconcile_on_startup(
         }
     }
 
-    // 1b. DB → disk cleanup: delete plugins (and their skills) whose folders are gone
-    {
-        let db_plugins = crate::db::list_plugins(conn)?;
-        for plugin in &db_plugins {
-            if plugin.is_default {
-                continue;
-            }
-            let plugin_dir = skills_dir.join(&plugin.slug);
-            if !plugin_dir.exists() {
-                // Folder gone — delete all skills in this plugin, then the plugin row.
-                // This fires on intentional deletion AND on a crash mid-import (plugin DB row
-                // was created but the folder was never written). Either way the DB record is
-                // stale. Log at WARN so the event is clearly visible in logs.
-                log::warn!(
-                    "[reconcile] plugin '{}': folder not found on disk — removing plugin and all skills from DB \
-                     (this may indicate a deleted plugin or a crash during import)",
-                    plugin.slug
-                );
-                // Hard-delete all skills (including soft-deleted) in this plugin
-                if let Err(e) = conn.execute(
-                    "DELETE FROM skills WHERE plugin_id = ?1",
-                    rusqlite::params![plugin.id],
-                ) {
-                    log::warn!(
-                        "[reconcile] plugin '{}': failed to delete skills: {}",
-                        plugin.slug,
-                        e
-                    );
-                    continue;
-                }
-                if let Err(e) = crate::db::delete_plugin_by_slug(conn, &plugin.slug) {
-                    log::warn!(
-                        "[reconcile] plugin '{}': failed to delete plugin row: {}",
-                        plugin.slug,
-                        e
-                    );
-                } else {
-                    notifications.push(format!(
-                        "Plugin '{}' removed — folder not found on disk. \
-                         If this was an in-progress import, re-import from the marketplace to restore it.",
-                        plugin.slug
-                    ));
-                }
-            }
-        }
-    }
-
-    // 1c. Disk → DB discovery: create DB rows for plugins/skills found on disk
-    let mut discovered_skills = Vec::new();
-    if skills_dir.exists() {
-        let db_plugins: HashSet<String> = crate::db::list_plugins(conn)?
-            .into_iter()
-            .map(|p| p.slug)
-            .collect();
-
-        // Discover plugin folders
-        for entry in std::fs::read_dir(skills_dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-        {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let slug = entry.file_name().to_string_lossy().to_string();
-            if slug.starts_with('.') {
-                continue;
-            }
-            let is_plugin = path.join("skills").is_dir() || path.join(".claude-plugin").is_dir();
-            if !is_plugin {
-                continue;
-            }
-            if !db_plugins.contains(&slug) {
-                let display_name = crate::skill_paths::plugin_display_name(&slug);
-                log::info!(
-                    "[reconcile] discovered plugin '{}' on disk, creating DB row",
-                    slug
-                );
-                if let Err(e) = crate::db::ensure_plugin(
-                    conn,
-                    &slug,
-                    &display_name,
-                    "local",
-                    None,
-                    None,
-                    slug == DEFAULT_PLUGIN_SLUG,
-                ) {
-                    log::warn!("[reconcile] failed to create plugin '{}': {}", slug, e);
-                }
-            }
-        }
-
-        // Discover skills inside plugins
-        let all_skills_in_db_list = crate::db::list_all_skills(conn)?;
-        let all_skills_in_db: HashSet<String> = all_skills_in_db_list
-            .iter()
-            .map(|s| format!("{}:{}", s.plugin_slug, s.name))
-            .collect();
-        // Name-only set: used to detect skills already tracked under a different plugin.
-        // If a skill name exists in the DB under any plugin, it is already known — Phase 1c
-        // must not create a second row, which would trigger Phase 1f dedup every startup.
-        let all_skill_names_in_db: HashSet<String> = all_skills_in_db_list
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
-
-        for loc in enumerate_skill_locations(skills_dir)? {
-            let key = format!("{}:{}", loc.plugin_slug, loc.skill_name);
-            if all_skills_in_db.contains(&key) {
-                continue;
-            }
-            // Skill exists in DB under a different plugin — already tracked, nothing to discover.
-            // Creating a second DB row here would trigger Phase 1f dedup on every startup.
-            if all_skill_names_in_db.contains(&loc.skill_name) {
-                log::debug!(
-                    "[reconcile] skipping '{}' in plugin '{}' — already tracked in DB under another plugin",
-                    loc.skill_name, loc.plugin_slug
-                );
-                continue;
-            }
-
-            let skill_md = loc.dir.join("SKILL.md");
-            if !skill_md.exists() {
-                // Folder with no SKILL.md — skip (not a valid skill)
-                continue;
-            }
-
-            // New skill on disk not in DB — create it
-            log::info!(
-                "[reconcile] discovered skill '{}' in plugin '{}', creating DB row",
-                loc.skill_name,
-                loc.plugin_slug
-            );
-            match crate::db::upsert_skill_in_plugin(
-                conn,
-                &loc.skill_name,
-                "skill-builder",
-                "domain",
-                &loc.plugin_slug,
-            ) {
-                Ok(skill_id) => {
-                    // Create a workflow_runs row at step 3 (completed) since SKILL.md exists.
-                    // Insert directly using the known skill_id to avoid save_workflow_run's
-                    // upsert_skill call which always targets the default plugin and would create
-                    // a duplicate skills row for non-default-plugin skills.
-                    let disk_step = detect_furthest_step(
-                        workspace_path,
-                        &loc.plugin_slug,
-                        &loc.skill_name,
-                        skills_path,
-                    )
-                    .map(|s| s as i32)
-                    .unwrap_or(3);
-                    let status = if disk_step >= 3 {
-                        "completed"
-                    } else {
-                        "pending"
-                    };
-                    conn.execute(
-                        "INSERT INTO workflow_runs \
-                             (skill_name, current_step, status, purpose, skill_id, updated_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z') \
-                         ON CONFLICT(skill_name) DO UPDATE SET \
-                             current_step = ?2, status = ?3, purpose = ?4, \
-                             skill_id = ?5, updated_at = datetime('now') || 'Z'",
-                        rusqlite::params![loc.skill_name, disk_step, status, "domain", skill_id],
-                    )
-                    .map_err(|e| e.to_string())?;
-                    discovered_skills.push(DiscoveredSkill {
-                        name: loc.skill_name.clone(),
-                        plugin_slug: Some(loc.plugin_slug.clone()),
-                        plugin_display_name: Some(loc.plugin_display_name.clone()),
-                        is_default_plugin: Some(loc.is_default_plugin),
-                        detected_step: disk_step,
-                        scenario: "discovered".to_string(),
-                    });
-                    notifications.push(format!(
-                        "'{}' discovered in plugin '{}'",
-                        loc.skill_name, loc.plugin_slug
-                    ));
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[reconcile] failed to create skill '{}' in plugin '{}': {}",
-                        loc.skill_name,
-                        loc.plugin_slug,
-                        e
-                    );
-                }
-            }
-        }
-    }
-
-    // 1c-ii. Marketplace plugin integrity: if any skill in a marketplace plugin
-    // is missing SKILL.md, delete the entire plugin (someone tampered with it).
-    // For created/local plugins, missing SKILL.md is fine (work in progress).
-    {
-        let db_plugins = crate::db::list_plugins(conn)?;
-        for plugin in &db_plugins {
-            if plugin.is_default || plugin.source_type != "marketplace" {
-                continue;
-            }
-            let plugin_root_dir = skills_dir.join(&plugin.slug);
-            if !plugin_root_dir.is_dir() {
-                continue;
-            }
-            let skills_subdir = plugin_root_dir.join("skills");
-            let missing_in_canonical = if skills_subdir.is_dir() {
-                std::fs::read_dir(&skills_subdir)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .any(|entry| {
-                        let path = entry.path();
-                        path.is_dir()
-                            && !entry.file_name().to_string_lossy().starts_with('.')
-                            && !path.join("SKILL.md").is_file()
-                    })
-            } else {
-                false
-            };
-            let missing_in_legacy = std::fs::read_dir(&plugin_root_dir)
-                .into_iter()
-                .flatten()
-                .flatten()
-                .any(|entry| {
-                    let path = entry.path();
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    path.is_dir()
-                        && !name.starts_with('.')
-                        && name != "skills"
-                        && !path.join("SKILL.md").is_file()
-                });
-            let has_missing_skill_md = missing_in_canonical || missing_in_legacy;
-            if has_missing_skill_md {
-                log::info!(
-                    "[reconcile] marketplace plugin '{}': skill with missing SKILL.md detected, deleting plugin",
-                    plugin.slug
-                );
-                // Hard-delete all skills then the plugin
-                if let Err(e) = conn.execute(
-                    "DELETE FROM skills WHERE plugin_id = ?1",
-                    rusqlite::params![plugin.id],
-                ) {
-                    log::warn!(
-                        "[reconcile] marketplace plugin '{}': failed to delete skills: {}, skipping plugin delete",
-                        plugin.slug, e
-                    );
-                    continue;
-                }
-                if let Err(e) = crate::db::delete_plugin_by_slug(conn, &plugin.slug) {
-                    log::warn!(
-                        "[reconcile] failed to delete marketplace plugin '{}': {}",
-                        plugin.slug,
-                        e
-                    );
-                } else {
-                    // Remove from disk — guard against path traversal via a crafted plugin slug
-                    let plugin_dir = skills_dir.join(&plugin.slug);
-                    if plugin_dir.exists() {
-                        let safe = std::fs::canonicalize(skills_dir)
-                            .and_then(|base| std::fs::canonicalize(&plugin_dir).map(|t| (base, t)))
-                            .map(|(base, target)| target.starts_with(&base))
-                            .unwrap_or(false);
-                        if safe {
-                            let _ = std::fs::remove_dir_all(&plugin_dir);
-                        } else {
-                            log::warn!(
-                                "[reconcile] marketplace plugin '{}': skipping disk delete — path traversal guard triggered",
-                                plugin.slug
-                            );
-                        }
-                    }
-                    notifications.push(format!(
-                        "Marketplace plugin '{}' removed — skill with missing SKILL.md detected",
-                        plugin.slug
-                    ));
-                }
-            }
-        }
-    }
-
-    // 1d. Sync display names from marketplace.json (source of truth)
+    // 1b. Sync display names from marketplace.json (source of truth)
     // Do NOT regenerate marketplace.json — it's git-backed
     {
         let display_names = crate::marketplace_manifest::read_plugin_display_names(skills_dir);
@@ -647,195 +360,7 @@ pub fn reconcile_on_startup(
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Phase 1e: Reconcile skills against skills_path
-    //
-    // Signal: does the skill have a directory in skills_path?
-    // create_skill always creates this directory immediately, so any skill
-    // that was legitimately created has a presence here regardless of how
-    // far the workflow has progressed.
-    //
-    // Pass A: restore skills that were previously soft-deleted but DO have
-    //         a directory in skills_path (recovers from over-aggressive
-    //         prior cleanup runs).
-    // Pass B: soft-delete active skills that have NO directory in
-    //         skills_path — genuine orphans with no on-disk footprint.
-    //
-    // Wrapped in BEGIN IMMEDIATE so Pass A and Pass B see a consistent
-    // DB snapshot and a concurrent IPC call cannot race between them.
-    // ════════════════════════════════════════════════════════════════════════
-    conn.execute_batch("BEGIN IMMEDIATE")
-        .map_err(|e| e.to_string())?;
-    let phase1e_result: Result<Vec<String>, String> = (|| {
-        let mut phase_notifs: Vec<String> = Vec::new();
-        let skills_dir_1e = Path::new(skills_path);
-
-        // Returns true if the skill has ANY directory in skills_path, checking
-        // both the current nested layout and the legacy flat layout.
-        //
-        // Guard: skip the legacy flat check when name == DEFAULT_PLUGIN_SLUG
-        // to avoid a false positive — skills_path/skills/ is the default
-        // plugin directory itself, not a skill named "skills".
-        let skill_dir_exists = |plugin_slug: &str, name: &str| -> bool {
-            crate::skill_paths::resolve_existing_skill_dir(skills_dir_1e, plugin_slug, name)
-                .exists()
-        };
-
-        // Pass A: hard-delete active skills (builder or imported) with no directory in skills_path.
-        // Skip in-progress skill-builder skills — they don't have a skills_path dir until
-        // the workflow completes and deploys SKILL.md.
-        let all_active = crate::db::list_all_skills(conn)?;
-        for skill in &all_active {
-            if skill_dir_exists(&skill.plugin_slug, &skill.name) {
-                continue;
-            }
-            if skill.skill_source == "skill-builder" {
-                let run = crate::db::get_workflow_run_by_skill_id(conn, skill.id)?;
-                let is_completed = run
-                    .as_ref()
-                    .map(|r| r.status == "completed")
-                    .unwrap_or(false);
-                if !is_completed {
-                    continue;
-                }
-            }
-            log::info!(
-                "[reconcile] deleting '{}' in plugin '{}': no directory in skills_path",
-                skill.name,
-                skill.plugin_slug
-            );
-            if let Err(e) = conn.execute(
-                "DELETE FROM skills WHERE id = ?1",
-                rusqlite::params![skill.id],
-            ) {
-                log::warn!("[reconcile] failed to delete '{}': {}", skill.name, e);
-            } else {
-                phase_notifs.push(format!(
-                    "'{}' removed — no directory found in skills_path",
-                    skill.name
-                ));
-            }
-        }
-        Ok(phase_notifs)
-    })();
-    match phase1e_result {
-        Ok(phase_notifs) => {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-            notifications.extend(phase_notifs);
-        }
-        Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            return Err(e);
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // Phase 1f: Dedup — remove stale skills rows created by a failed move
-    //
-    // A failed move (disk moved, DB update silently returned 0 rows) leaves
-    // one row in the old plugin and a second row added by Phase 1c discovery.
-    // Detect all skill names with more than one active row and keep only the
-    // row whose plugin directory contains SKILL.md on disk.
-    //
-    // Tie-break: when SKILL.md exists in both plugins, prefer the non-default
-    // plugin (the intended destination of the move).
-    // ════════════════════════════════════════════════════════════════════════
-    {
-        // Find skill names that appear in multiple active rows.
-        let mut dup_stmt = conn
-            .prepare(
-                "SELECT s.name
-                 FROM skills s
-                 WHERE COALESCE(s.deleted_at, '') = ''
-                 GROUP BY s.name
-                 HAVING COUNT(*) > 1",
-            )
-            .map_err(|e| e.to_string())?;
-        let dup_names: Vec<String> = dup_stmt
-            .query_map([], |r| r.get(0))
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        for name in &dup_names {
-            log::info!(
-                "[reconcile] dedup: '{}' has multiple active rows — resolving using disk state",
-                name
-            );
-            // Collect all (plugin_slug, plugin_id, is_default) rows for this name.
-            let mut rows_stmt = conn
-                .prepare(
-                    "SELECT p.slug, p.id, p.is_default
-                     FROM skills s
-                     JOIN plugins p ON p.id = s.plugin_id
-                     WHERE s.name = ?1 AND COALESCE(s.deleted_at, '') = ''",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows: Vec<(String, i64, bool)> = rows_stmt
-                .query_map(rusqlite::params![name], |r| {
-                    Ok((
-                        r.get::<_, String>(0)?,
-                        r.get::<_, i64>(1)?,
-                        r.get::<_, bool>(2)?,
-                    ))
-                })
-                .map_err(|e| e.to_string())?
-                .filter_map(|r| r.ok())
-                .collect();
-
-            // Determine which rows have SKILL.md on disk.
-            let has_skill_md: Vec<bool> = rows
-                .iter()
-                .map(|(plugin_slug, _, _)| {
-                    crate::skill_paths::resolve_skill_dir(skills_dir, plugin_slug, name)
-                        .join("SKILL.md")
-                        .is_file()
-                })
-                .collect();
-
-            // Choose the row to keep:
-            // 1. Any non-default plugin with SKILL.md on disk (preferred destination)
-            // 2. Any plugin with SKILL.md on disk
-            // 3. First row (fallback)
-            let keep_idx = rows
-                .iter()
-                .enumerate()
-                .find(|(i, (_, _, is_default))| has_skill_md[*i] && !is_default)
-                .or_else(|| rows.iter().enumerate().find(|(i, _)| has_skill_md[*i]))
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-
-            for (i, (_slug, plugin_id, _)) in rows.iter().enumerate() {
-                if i == keep_idx {
-                    continue;
-                }
-                log::info!(
-                    "[reconcile] dedup: '{}' removing stale row in plugin '{}' (keeping '{}')",
-                    name,
-                    rows[i].0,
-                    rows[keep_idx].0
-                );
-                if let Err(e) = conn.execute(
-                    "DELETE FROM skills WHERE name = ?1 AND plugin_id = ?2",
-                    rusqlite::params![name, plugin_id],
-                ) {
-                    log::warn!(
-                        "[reconcile] dedup: failed to delete stale row for '{}' in plugin '{}': {}",
-                        name,
-                        rows[i].0,
-                        e
-                    );
-                } else {
-                    notifications.push(format!(
-                        "'{}': removed stale duplicate row in plugin '{}' (kept in '{}')",
-                        name, rows[i].0, rows[keep_idx].0
-                    ));
-                }
-            }
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // Phase 2: Workflow recon (incomplete skills only)
+    // Phase 2: Workflow recon (DB-owned state only)
     // ════════════════════════════════════════════════════════════════════════
 
     let all_skills = crate::db::list_all_skills(conn)?;
@@ -871,17 +396,13 @@ pub fn reconcile_on_startup(
         )?;
     }
 
-    log::info!(
-        "[reconcile] done: {} notifications, {} discovered skills",
-        notifications.len(),
-        discovered_skills.len()
-    );
+    log::info!("[reconcile] done: {} notifications", notifications.len());
 
     Ok(ReconciliationResult {
         orphans: Vec::new(),
         notifications,
         auto_cleaned: 0,
-        discovered_skills,
+        discovered_skills: Vec::<DiscoveredSkill>::new(),
     })
 }
 

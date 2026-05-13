@@ -49,17 +49,9 @@ const mockResponses: Record<string, unknown> = {
   set_log_level: undefined,
   get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
   get_data_dir: `${E2E_ROOT}/data`,
-  check_node: {
-    available: true,
-    version: "v20.11.0",
-    meets_minimum: true,
-    error: null,
-    source: "system",
-  },
   check_startup_deps: {
     all_ok: true,
     checks: [
-      { code: "node_runtime", name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
       { code: "openhands_agent_server", name: "OpenHands Agent Server", ok: true, detail: "python3 -m openhands.agent_server" },
       { code: "git_binary", name: "Git", ok: true, detail: "git version 2.50.1" },
     ],

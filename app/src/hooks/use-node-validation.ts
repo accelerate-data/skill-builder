@@ -9,7 +9,7 @@ interface UseStartupDepsReturn {
   retry: () => void;
 }
 
-export function useNodeValidation(): UseStartupDepsReturn {
+export function useStartupValidation(): UseStartupDepsReturn {
   const [deps, setDeps] = useState<StartupDeps | null>(null);
   const [isChecking, setIsChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -64,7 +64,7 @@ export function AppLayout() {
   const setWorkspaceSurface = useWorkspaceStore((s) => s.setActiveSurface);
 
   const [splashDismissed, setSplashDismissed] = useState(false);
-  const [nodeReady, setNodeReady] = useState(false);
+  const [startupReady, setStartupReady] = useState(false);
 
   // Keep refs for Escape handler to avoid stale closure over skills query data
   const builderSkillsRef = useRef(builderSkills);
@@ -337,7 +337,7 @@ export function AppLayout() {
     });
   }, [activateSkill, pendingSkillSwitch]);
 
-  const ready = settingsLoaded && reconciled && nodeReady && ackDone;
+  const ready = settingsLoaded && reconciled && startupReady && ackDone;
 
   const [skillPanelWidth, setSkillPanelWidth] = useState(260);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
@@ -424,7 +424,7 @@ export function AppLayout() {
       {!splashDismissed && (
         <SplashScreen
           onDismiss={() => setSplashDismissed(true)}
-          onReady={() => setNodeReady(true)}
+          onReady={() => setStartupReady(true)}
         />
       )}
       {splashDismissed && !isConfigured && <SetupScreen />}
