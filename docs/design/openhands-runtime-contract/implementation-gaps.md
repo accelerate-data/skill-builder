@@ -244,3 +244,25 @@ Relevant files:
 - `app/src-tauri/src/agents/openhands_server/mod.rs`
 - `app/src-tauri/src/commands/workflow/runtime.rs`
 - `app/src-tauri/src/commands/refine/mod.rs`
+
+## 13. Raw `ask_agent` Support Is Not Exposed Yet
+
+Target model expects a raw OpenHands inspection primitive:
+
+- `ask_openhands_agent(config, conversation_id, question) -> Result<String, String>`
+
+Backed by raw client support for the Agent Server conversation API:
+
+- `build_ask_agent_request(conversation_id, question)`
+- `ask_agent(conversation_id, question)`
+
+This capability is intentionally scoped only to the raw OpenHands layer for
+now. It does not yet imply tracked wrappers, workflow semantics, or UI usage.
+
+Latest `main` does not expose `ask_agent` anywhere in the client or raw wrapper
+layer.
+
+Relevant files:
+
+- `app/src-tauri/src/agents/openhands_server/client.rs`
+- `app/src-tauri/src/agents/openhands_server/mod.rs`

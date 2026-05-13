@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `pause` the only non-shutdown OpenHands control path, reserve OpenHands server shutdown for app shutdown only, split raw OpenHands conversation APIs into `send message` and `run`, and make `build_skill_creator_config(...)` the single canonical runtime-config API.
+**Goal:** Make `pause` the only non-shutdown OpenHands control path, reserve OpenHands server shutdown for app shutdown only, split raw OpenHands conversation APIs into `send message` and `run`, add raw `ask_agent` support, and make `build_skill_creator_config(...)` the single canonical runtime-config API.
 
-**Architecture:** Keep the lifecycle boundary explicit. Conversation-level control stays on the runtime/session path through `pause_openhands_conversation(...)`, tracked wrappers only own app-run identity plus throwaway waiting, and process shutdown stays confined to app-exit orchestration in `lib.rs` and `commands/runtime_lifecycle.rs`. Raw conversation operations must mirror the OpenHands model: send message, start run, send more messages while the run is active, then pause if needed. Skill-related throwaway runs use the canonical skill dir as their working directory; non-skill-related throwaways use `/tmp/skill-builder/throwaway/{surface}/{run_id}`. At the config boundary, replace specialized session/workflow config builders with one canonical `build_skill_creator_config(...)` API driven by typed `SkillCreatorIntent` rather than magic `step_id` values or caller-filled policy fields. Remove the cached-server-only pause helper, remove tracked abort/terminate APIs, make delete/reset/stale-run cleanup use the same real pause path as normal session flows, and ensure one local runner owns each live conversation.
+**Architecture:** Keep the lifecycle boundary explicit. Conversation-level control stays on the runtime/session path through `pause_openhands_conversation(...)`, tracked wrappers only own app-run identity plus throwaway waiting, and process shutdown stays confined to app-exit orchestration in `lib.rs` and `commands/runtime_lifecycle.rs`. Raw conversation operations must mirror the OpenHands model: send message, start run, send more messages while the run is active, then pause if needed. Raw `ask_agent` support should exist at the OpenHands layer as a non-authoritative inspection primitive, but its tracked/product usage is intentionally deferred. Skill-related throwaway runs use the canonical skill dir as their working directory; non-skill-related throwaways use `/tmp/skill-builder/throwaway/{surface}/{run_id}`. At the config boundary, replace specialized session/workflow config builders with one canonical `build_skill_creator_config(...)` API driven by typed `SkillCreatorIntent` rather than magic `step_id` values or caller-filled policy fields. Remove the cached-server-only pause helper, remove tracked abort/terminate APIs, make delete/reset/stale-run cleanup use the same real pause path as normal session flows, and ensure one local runner owns each live conversation.
 
 **Tech Stack:** Rust, Tauri commands, OpenHands Agent Server runtime, SQLite-backed runtime settings, markdown docs
 
@@ -43,7 +43,38 @@ pub async fn run_openhands_conversation(
 `run_openhands_conversation(...)` should own the local socket/task lifecycle for
 that run.
 
-- [ ] **Step 2: Remove the cached-server-only pause helper from the raw wrapper surface**
+- [ ] **Step 2: Add raw `ask_agent` client and wrapper support**
+
+Add raw Agent Server support in `app/src-tauri/src/agents/openhands_server/client.rs`:
+
+```rust
+pub fn build_ask_agent_request(
+    &self,
+    conversation_id: &str,
+    question: &str,
+) -> Result<Request, reqwest::Error>
+
+pub async fn ask_agent(
+    &self,
+    conversation_id: &str,
+    question: &str,
+) -> Result<String, String>
+```
+
+Add the raw wrapper in `app/src-tauri/src/agents/openhands_server/mod.rs`:
+
+```rust
+pub async fn ask_openhands_agent(
+    config: OpenHandsRuntimeConfig,
+    conversation_id: &str,
+    question: &str,
+) -> Result<String, String>
+```
+
+This step is intentionally limited to the raw layer. Do not add tracked,
+workflow, or UI usage in this plan.
+
+- [ ] **Step 3: Remove the cached-server-only pause helper from the raw wrapper surface**
 
 Delete `pause_conversation_if_server_running(...)` from `app/src-tauri/src/agents/openhands_server/mod.rs` and keep only the real pause API:
 
@@ -79,7 +110,7 @@ pub async fn pause_openhands_conversation(
 }
 ```
 
-- [ ] **Step 3: Unbundle the current send-plus-run path**
+- [ ] **Step 4: Unbundle the current send-plus-run path**
 
 Refactor `dispatch_openhands_turn_with_request(...)` so it is no longer the
 public raw entrypoint for both message send and run start.
@@ -95,7 +126,7 @@ Today it conflates:
 After the refactor, those concerns should be reachable through the explicit raw
 APIs above.
 
-- [ ] **Step 4: Run the focused raw-wrapper tests**
+- [ ] **Step 5: Run the focused raw-wrapper tests**
 
 Run:
 
@@ -103,14 +134,14 @@ Run:
 cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server --quiet
 ```
 
-Expected: PASS with distinct raw send/run operations and no references to
-`pause_conversation_if_server_running`.
+Expected: PASS with distinct raw send/run operations, raw `ask_agent` support,
+and no references to `pause_conversation_if_server_running`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/agents/openhands_server/client.rs
-git commit -m "refactor: split raw OpenHands conversation APIs"
+git commit -m "refactor: expand raw OpenHands conversation APIs"
 ```
 
 ## Task 2: Narrow the Tracked Wrapper Surface and Reuse Live Conversation Runners

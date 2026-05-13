@@ -20,6 +20,7 @@ This doc is the canonical source for:
 - runtime layers and responsibilities
 - core wrapper APIs at each layer
 - raw conversation lifecycle primitives
+- raw side-channel inspection primitives
 - persistent versus throwaway session behavior
 - storage roots and canonical path ownership
 - normalized event ingress and terminal result handling
@@ -53,6 +54,7 @@ This doc is the canonical source for:
 | Throwaway runs declare tool-access mode. | The backend must know whether a throwaway run is read-only or write-capable before selecting allowed tools. |
 | Conversations are paused and never deleted by Skill Builder. | Conversation history is durable runtime state. Reset and redo may fork and rebind, but the app does not destroy persisted conversations. |
 | Raw conversation APIs mirror the OpenHands send-then-run model. | Sending a user message and starting agent processing are separate operations. That separation is required for send-while-running behavior. |
+| `ask_agent` starts at the raw OpenHands layer only. | It is a non-authoritative side-channel inspection capability. How product surfaces use it is intentionally deferred. |
 | App data owns shared OpenHands persistence roots. | Conversations, bash events, logs, DB state, and app-local runtime files belong to app data rather than the user-configured skills tree. |
 | Steps 0-2 are DB-authoritative; step 3 is file-output-authoritative. | Clarifications and decisions are canonical typed records in SQLite; generated skill files remain canonical on disk. |
 | Runtime events are normalized before frontend projection. | Lower layers own wire-shape cleanup so upper layers consume a stable event model regardless of SDK field naming differences. |
@@ -73,6 +75,7 @@ agents/openhands_server/     ← Layer 1: raw Agent Server process, HTTP, WebSoc
 
 - Agent Server process lifecycle
 - raw conversation create / send / run / pause / fork operations
+- raw side-channel ask-agent operations
 - WebSocket event ingestion
 - normalization of runtime event payloads before they reach higher layers
 
@@ -96,6 +99,7 @@ Core APIs:
 | `start_openhands_session(app, config, saved_conversation_id)` | Resume or create a persistent conversation and return restored events for hydration. |
 | `send_message_to_openhands_conversation(config, conversation_id, prompt)` | Append a user message to an existing conversation without starting a new local run task. |
 | `run_openhands_conversation(app, agent_id, config, conversation_id)` | Start or resume active processing for a conversation and own the live socket/task for that run. |
+| `ask_openhands_agent(config, conversation_id, question)` | Ask the agent a non-authoritative question about the current conversation state without changing product-layer runtime ownership. |
 | `pause_openhands_conversation(config, conversation_id)` | Pause active execution without deleting the conversation. |
 | `fork_openhands_conversation(app, config, source_conversation_id)` | Fork an existing paused conversation into a new conversation ID and return restored events for the fork. |
 
@@ -115,6 +119,9 @@ Important rule:
 - The raw layer may reuse OpenHands server-side "already running" behavior, but
   Skill Builder still treats live socket/task ownership as a single-runner
   concern.
+- `ask_openhands_agent(...)` is a raw inspection primitive only. It does not
+  create local run ownership, does not replace typed workflow outputs, and does
+  not yet imply any tracked or product wrapper behavior.
 
 ### Layer 2: Shared Skill-Creator Model
 
@@ -329,6 +336,9 @@ Higher layers should prefer the highest wrapper that matches their intent:
   `run_openhands_conversation(...)`
 - follow-up sends to an already running conversation should call only
   `send_message_to_openhands_conversation(...)` through the tracked wrapper
+- `ask_openhands_agent(...)` may be called directly from a future product
+  wrapper, but that wiring is intentionally out of scope for this contract
+  revision
 - workflow reset/redo should pause the active conversation, reset local product
   state, fork the paused conversation, rebind the skill to the fork, and only
   create a new `agent_id` when the next live send/run begins
