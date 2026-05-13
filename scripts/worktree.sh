@@ -83,6 +83,20 @@ link_env_file() {
   echo "ENV: symlink $env_dst -> $env_src"
 }
 
+link_sqlite_db() {
+  local db_src="$HOME/Library/Application Support/com.vibedata.skill-builder/db/skill-builder.db"
+  local db_dst="$worktree_path/skill-builder.db"
+
+  if [[ ! -f "$db_src" ]]; then
+    echo "DB: skipped (no skill-builder.db at $db_src)"
+    return
+  fi
+
+  rm -f "$db_dst"
+  ln -s "$db_src" "$db_dst"
+  echo "DB: symlink $db_dst -> $db_src"
+}
+
 bootstrap_app_dependencies() {
   local app_dir="$worktree_path/app"
   local npm_command=(
@@ -143,6 +157,7 @@ existing_branch_worktree() {
 
 bootstrap_worktree() {
   link_env_file
+  link_sqlite_db
   bootstrap_app_dependencies
 }
 
