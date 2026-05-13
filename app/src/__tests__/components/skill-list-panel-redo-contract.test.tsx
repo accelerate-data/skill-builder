@@ -45,6 +45,7 @@ import { SkillListPanel } from "@/components/skill-list-panel";
 
 function makeBuilderSkill(name: string): SkillSummary {
   return {
+    id: 42,
     name,
     library_key: `skill-builder:skills:${name}`,
     current_step: null,
@@ -126,9 +127,7 @@ describe("SkillListPanel redo restart contract", () => {
 
     await waitFor(() => {
       expect(tauriMocks.selectSkillOpenHandsSession).toHaveBeenCalledWith(
-        "redo-builder",
-        "/tmp/workspace",
-        "skills",
+        42,
       );
     });
 

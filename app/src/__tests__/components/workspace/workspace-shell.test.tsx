@@ -3,6 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SkillSummary } from "@/lib/types";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 
 const mockNavigate = vi.fn();
 
@@ -24,6 +25,7 @@ vi.mock("@/stores/settings-store", () => ({
 
 vi.mock("@/stores/skill-store", () => ({
   useSkillStore: vi.fn((selector) => selector({ skills: [], lockedSkills: new Set() })),
+  useIsSkillLocked: vi.fn(() => false),
 }));
 
 const refineState = vi.hoisted(() => ({
@@ -156,6 +158,10 @@ const alternatePerformanceScenarioSummary = {
   name: "Smoke",
 };
 
+function renderEvalWorkbench() {
+  useWorkspaceStore.setState({ activeSurface: "evals" });
+  return render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
+}
 
 
 function createDeferred<T>() {
@@ -192,6 +198,7 @@ const baseBuilderSkill: SkillSummary = {
 describe("WorkspaceShell", () => {
   beforeEach(() => {
     refineState.isRunning = false;
+    useWorkspaceStore.setState({ activeSurface: "overview" });
     mockUseScenarios.mockReset().mockReturnValue({
       data: [performanceScenarioSummary],
       isLoading: false,
@@ -245,7 +252,7 @@ describe("WorkspaceShell", () => {
   });
 
   it("keeps eval workbench performance-only with no trigger authoring tab", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
+    renderEvalWorkbench();
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Trigger" })).not.toBeInTheDocument();
@@ -253,14 +260,14 @@ describe("WorkspaceShell", () => {
   });
 
   it("renders scenarios inside one owning eval panel", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
+    renderEvalWorkbench();
 
     const panel = await screen.findByTestId("eval-workbench-panel");
     expect(within(panel).getByRole("heading", { name: "Scenarios" })).toBeInTheDocument();
   });
 
   it("gives the eval panel a flex parent so it can expand to the full tab height", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
+    renderEvalWorkbench();
 
     const panel = await screen.findByTestId("eval-workbench-panel");
     const panelParent = panel.parentElement;
@@ -271,7 +278,7 @@ describe("WorkspaceShell", () => {
   });
 
   it("does not pad the outer eval workbench wrapper, keeping the panel flush with the tab area", async () => {
-    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />);
+    renderEvalWorkbench();
 
     const panel = await screen.findByTestId("eval-workbench-panel");
     const wrapper = panel.parentElement?.parentElement;
@@ -284,9 +291,10 @@ describe("WorkspaceShell", () => {
   it("shows dialog when switching away from Refine while agent is running", async () => {
     const user = userEvent.setup();
     refineState.isRunning = true;
+    useWorkspaceStore.setState({ activeSurface: "refine" });
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
     );
 
     const refineTab = container.querySelector('[role="tab"][data-state="active"]');
@@ -307,10 +315,10 @@ describe("WorkspaceShell", () => {
   it("switches tab after confirming Leave in the guard dialog", async () => {
     const user = userEvent.setup();
     refineState.isRunning = true;
-    const onNavigateSurface = vi.fn();
+    useWorkspaceStore.setState({ activeSurface: "refine" });
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" onNavigateSurface={onNavigateSurface} />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
     );
 
     const overviewTab = container.querySelector('[role="tab"]');
@@ -319,7 +327,7 @@ describe("WorkspaceShell", () => {
 
     await user.click(screen.getByRole("button", { name: "Leave" }));
 
-    expect(onNavigateSurface).toHaveBeenCalledWith("overview");
+    expect(useWorkspaceStore.getState().activeSurface).toBe("overview");
 
     refineState.isRunning = false;
   });
@@ -327,9 +335,10 @@ describe("WorkspaceShell", () => {
   it("stays on Refine tab when clicking Stay in the guard dialog", async () => {
     const user = userEvent.setup();
     refineState.isRunning = true;
+    useWorkspaceStore.setState({ activeSurface: "refine" });
 
     const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="refine" />,
+      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
     );
 
     const overviewTab = container.querySelector('[role="tab"]');
@@ -368,9 +377,7 @@ describe("WorkspaceShell", () => {
       }),
     );
 
-    render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
-    );
+    renderEvalWorkbench();
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Regression" }));
@@ -396,9 +403,7 @@ describe("WorkspaceShell", () => {
       isPending: false,
     });
 
-    render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
-    );
+    renderEvalWorkbench();
 
     await screen.findByText("Regression");
     await user.click(screen.getByRole("button", { name: /new scenario/i }));
@@ -407,9 +412,7 @@ describe("WorkspaceShell", () => {
   });
 
   it("does not render a scenario editor until the user expands or creates a scenario", async () => {
-    render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
-    );
+    renderEvalWorkbench();
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
@@ -418,9 +421,7 @@ describe("WorkspaceShell", () => {
   it("expands a scenario inline when its row is opened", async () => {
     const user = userEvent.setup();
 
-    render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
-    );
+    renderEvalWorkbench();
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     expect(screen.queryByLabelText(/scenario name/i)).not.toBeInTheDocument();
@@ -454,9 +455,7 @@ describe("WorkspaceShell", () => {
       }),
     );
 
-    render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
-    );
+    renderEvalWorkbench();
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Regression" }));
@@ -498,9 +497,7 @@ describe("WorkspaceShell", () => {
       isPending: false,
     });
 
-    render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" initialSurface="evals" />,
-    );
+    renderEvalWorkbench();
 
     expect(await screen.findByText("Regression")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Regression" }));

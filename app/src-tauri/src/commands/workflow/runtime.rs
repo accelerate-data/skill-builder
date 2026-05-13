@@ -247,6 +247,7 @@ fn install_workflow_step_materialization_listener(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
     agent_id: &str,
+    skill_id: i64,
     skill_name: &str,
     step_id: u32,
 ) -> tauri::EventId {
@@ -264,7 +265,7 @@ fn install_workflow_step_materialization_listener(
     let listener_to_remove = listener_id;
     let agent_id = agent_id.to_string();
     let skill_name = skill_name.to_string();
-    let skill_id_for_db = skill_name.clone();
+    let skill_id_for_db = skill_id.to_string();
     tokio::spawn(async move {
         let result = match rx.recv().await {
             Some(state) => {
@@ -326,6 +327,7 @@ fn install_workflow_step_materialization_listener(
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
+    skill_id: i64,
     skill_name: &str,
     step_id: u32,
     workspace_path: &str,
@@ -351,6 +353,7 @@ async fn run_workflow_step_inner(
     )
     .unwrap_or_default();
 
+    let skill_id_str = skill_id.to_string();
     let prompt = match step_id {
         0 => build_step0_prompt(
             skill_name,
@@ -362,7 +365,7 @@ async fn run_workflow_step_inner(
         1 => {
             let (clarifications_json, answer_verdicts_block) = {
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
-                match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
+                match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str) {
                     Ok(Some(rec)) => {
                         let json_str = super::prompt::clarifications_record_to_json_string(&rec);
                         let verdicts = super::prompt::render_answer_verdicts(&rec);
@@ -387,7 +390,7 @@ async fn run_workflow_step_inner(
         2 => {
             let clarifications_json = {
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
-                match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
+                match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str) {
                     Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
                     _ => "{}".to_string(),
                 }
@@ -403,12 +406,15 @@ async fn run_workflow_step_inner(
         3 => {
             let (clarifications_json, decisions_json) = {
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
-                let clar =
-                    match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
-                        Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
-                        _ => "{}".to_string(),
-                    };
-                let dec = match crate::db::workflow_artifacts::read_decisions(&conn, skill_name) {
+                let clar = match crate::db::workflow_artifacts::read_clarifications(
+                    &conn,
+                    &skill_id_str,
+                ) {
+                    Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
+                    _ => "{}".to_string(),
+                };
+                let dec = match crate::db::workflow_artifacts::read_decisions(&conn, &skill_id_str)
+                {
                     Ok(Some(rec)) => super::prompt::decisions_record_to_json_string(&rec),
                     _ => "{}".to_string(),
                 };
@@ -507,7 +513,7 @@ async fn run_workflow_step_inner(
     );
 
     let materialization_listener = Some(install_workflow_step_materialization_listener(
-        app, runs, &agent_id, skill_name, step_id,
+        app, runs, &agent_id, skill_id, skill_name, step_id,
     ));
 
     // Register before dispatch so a fast terminal conversation_state can clean
@@ -665,6 +671,7 @@ pub async fn run_workflow_step(
     run_workflow_step_inner(
         &app,
         runs.inner(),
+        skill_id,
         &skill_name,
         step_id,
         &workspace_path,

@@ -45,4 +45,7 @@ __pycache__
 app/sidecar/openhands/.pyinstaller-build/
 app/sidecar/openhands/.pyinstaller-spec/
 
+# SQLite DB folder symlink at repo root
+/db
+
 .mcp.json

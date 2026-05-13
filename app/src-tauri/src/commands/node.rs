@@ -1,5 +1,6 @@
+#[cfg(target_os = "windows")]
 use crate::agents::node_resolver;
-use crate::types::{DepStatus, NodeStatus, StartupDeps};
+use crate::types::{DepStatus, StartupDeps};
 
 fn dep_ok(code: &str, name: &str, detail: String) -> DepStatus {
     DepStatus {
@@ -30,78 +31,15 @@ fn dep_fail(
 }
 
 #[tauri::command]
-pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
-    log::info!("[check_node]");
-    match node_resolver::resolve_node_binary(&app).await {
-        Ok(resolution) => {
-            let meets_minimum = resolution.meets_minimum;
-            let error = if !meets_minimum {
-                resolution.version.as_ref().map(|v| {
-                    format!(
-                        "Node.js {} found ({}) but version 18+ is required",
-                        v, resolution.source
-                    )
-                })
-            } else {
-                None
-            };
-
-            Ok(NodeStatus {
-                available: true,
-                version: resolution.version,
-                meets_minimum,
-                error,
-                source: resolution.source,
-            })
-        }
-        Err(e) => Ok(NodeStatus {
-            available: false,
-            version: None,
-            meets_minimum: false,
-            error: Some(e),
-            source: String::new(),
-        }),
-    }
-}
-
-#[tauri::command]
-pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, String> {
+pub async fn check_startup_deps(_app: tauri::AppHandle) -> Result<StartupDeps, String> {
     log::info!("[check_startup_deps]");
     let mut checks = Vec::new();
 
-    // 1. Node.js
-    let node = match node_resolver::resolve_node_binary(&app).await {
-        Ok(res) if res.meets_minimum => dep_ok(
-            "node_runtime",
-            "Node.js",
-            format!("{} ({})", res.version.unwrap_or_default(), res.source),
-        ),
-        Ok(res) => dep_fail(
-            "node_runtime",
-            "compatibility",
-            "Node.js",
-            format!(
-                "{} found ({}) — need 18+",
-                res.version.unwrap_or("unknown".to_string()),
-                res.source
-            ),
-            "Install Node.js 18+ from https://nodejs.org and restart Skill Builder.",
-        ),
-        Err(e) => dep_fail(
-            "node_runtime",
-            "missing_dependency",
-            "Node.js",
-            e,
-            "Install Node.js 18+ from https://nodejs.org and restart Skill Builder.",
-        ),
-    };
-    checks.push(node);
-
-    // 2. OpenHands Agent Server Python package.
+    // 1. OpenHands Agent Server Python package.
     let agent_server = check_openhands_agent_server_available().await;
     checks.push(agent_server);
 
-    // 3. Git (required by agent runtime for version control operations)
+    // 2. Git (required by agent runtime for version control operations)
     //    Windows: also validates git-bash for shell-compatible tool execution.
     let git_check = check_git_available().await;
     checks.push(git_check);

@@ -3,7 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, refreshModelCatalog } from "@/lib/tauri";
 import type { AppSettings, DiscoveredSkill, ModelSettings, OrphanSkill } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
 import { queryKeys } from "@/lib/queries/query-keys";
@@ -33,20 +33,9 @@ export interface UseAppStartupReturn extends StartupState {
 
 export function settingsToStorePatch(s: AppSettings) {
   const modelSettings: ModelSettings = {
-    provider: s.model_settings?.provider ?? null,
-    model: s.model_settings?.model ?? null,
-    api_key: s.model_settings?.api_key ?? null,
-    base_url: s.model_settings?.base_url ?? null,
-    api_version: s.model_settings?.api_version ?? null,
-    temperature: s.model_settings?.temperature ?? null,
-    max_output_tokens: s.model_settings?.max_output_tokens ?? null,
-    timeout_seconds: s.model_settings?.timeout_seconds ?? 300,
-    num_retries: s.model_settings?.num_retries ?? 5,
-    reasoning_effort: s.model_settings?.reasoning_effort ?? "auto",
-    extra_headers: s.model_settings?.extra_headers ?? null,
-    input_cost_per_token: s.model_settings?.input_cost_per_token ?? null,
-    output_cost_per_token: s.model_settings?.output_cost_per_token ?? null,
-    usage_id: s.model_settings?.usage_id ?? "workflow",
+    provider_id: s.model_settings?.provider_id ?? null,
+    model_id: s.model_settings?.model_id ?? null,
+    provider_overrides: s.model_settings?.provider_overrides ?? {},
   };
 
   return {
@@ -87,6 +76,11 @@ export function useAppStartup(): UseAppStartupReturn {
   // Both read from SQLite/filesystem independently — no frontend data dependency.
   useEffect(() => {
     const cancelledRef = { current: false };
+
+    refreshModelCatalog().catch((err) => {
+      if (cancelledRef.current) return;
+      console.warn("[app-layout] model catalog refresh failed:", err);
+    });
 
     // Settings load
     getSettings().then((s) => {

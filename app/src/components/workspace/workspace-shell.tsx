@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useRefineStore } from "@/stores/refine-store";
 import { requestEvalsCancel } from "@/lib/eval-running-state";
 import { loadSkillFiles } from "@/lib/skill-file-loader";
@@ -28,13 +29,12 @@ export type WorkspaceSurface = "overview" | "refine" | "evals";
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
   skillType: "builder" | "imported" | "marketplace";
-  initialSurface?: WorkspaceSurface;
-  onNavigateSurface?: (surface: WorkspaceSurface) => void;
   className?: string;
 }
 
-export function WorkspaceShell({ skill, skillType, initialSurface = "overview", onNavigateSurface, className }: WorkspaceShellProps) {
-  const activeTab = initialSurface;
+export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellProps) {
+  const activeTab = useWorkspaceStore((s) => s.activeSurface);
+  const setActiveTab = useWorkspaceStore((s) => s.setActiveSurface);
   const [pendingTab, setPendingTab] = useState<WorkspaceSurface | null>(null);
   const workbenchRunningRef = useRef(false);
 
@@ -51,8 +51,8 @@ export function WorkspaceShell({ skill, skillType, initialSurface = "overview", 
       setPendingTab(nextTab);
       return;
     }
-    onNavigateSurface?.(nextTab);
-  }, [activeTab, onNavigateSurface]);
+    setActiveTab(nextTab);
+  }, [activeTab, setActiveTab]);
 
   const skillName = "name" in skill ? skill.name : skill.skill_name;
   const skillId = "id" in skill ? skill.id : skill.skill_id;
@@ -78,10 +78,10 @@ export function WorkspaceShell({ skill, skillType, initialSurface = "overview", 
           return;
         }
       }
-      onNavigateSurface?.(pendingTab);
+      setActiveTab(pendingTab);
       setPendingTab(null);
     }
-  }, [pendingTab, activeTab, onNavigateSurface]);
+  }, [pendingTab, activeTab, setActiveTab]);
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);

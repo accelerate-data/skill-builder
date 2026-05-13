@@ -82,12 +82,10 @@ pub async fn run_tracked_throwaway_openhands_session(
     let target_agent_id = agent_id.clone();
     let tx_message = tx.clone();
     let message_listener = app.listen("agent-message", move |event| {
-        if let Some(result) =
-            openhands_server::parse_openhands_runtime_terminal_state(
-                event.payload(),
-                target_agent_id.as_str(),
-            )
-        {
+        if let Some(result) = openhands_server::parse_openhands_runtime_terminal_state(
+            event.payload(),
+            target_agent_id.as_str(),
+        ) {
             let _ = tx_message.send(OpenHandsRuntimeEvent::TerminalState(result));
         }
     });

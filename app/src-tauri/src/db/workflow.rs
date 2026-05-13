@@ -4,8 +4,7 @@ use crate::types::{WorkflowRunRow, WorkflowStepRow};
 
 use super::locks::check_pid_alive;
 use super::skills::{
-    delete_skill_in_plugin, get_skill_master_by_id, get_skill_master_id_any_plugin,
-    get_skill_master_id_in_plugin,
+    delete_skill_in_plugin, get_skill_master_by_id, get_skill_master_id_in_plugin,
 };
 
 // --- Workflow Run ---
@@ -22,13 +21,6 @@ pub fn get_workflow_run_id_by_skill_id(
     )
     .optional()
     .map_err(|e| e.to_string())
-}
-
-pub fn get_workflow_run_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
-    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
-        return Ok(None);
-    };
-    get_workflow_run_id_by_skill_id(conn, skill_id)
 }
 
 pub fn save_workflow_run_by_skill_id(
@@ -146,26 +138,8 @@ pub fn get_workflow_run_by_skill_id(
     }
 }
 
-pub fn get_workflow_run(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Option<WorkflowRunRow>, String> {
-    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
-        return Ok(None);
-    };
-    get_workflow_run_by_skill_id(conn, skill_id)
-}
-
 pub fn get_purpose_by_skill_id(conn: &Connection, skill_id: i64) -> Result<String, String> {
     get_workflow_run_by_skill_id(conn, skill_id).map(|opt| {
-        opt.map(|run| run.purpose)
-            .unwrap_or_else(|| "domain".to_string())
-    })
-}
-
-#[allow(dead_code)]
-pub fn get_purpose(conn: &Connection, skill_name: &str) -> Result<String, String> {
-    get_workflow_run(conn, skill_name).map(|opt| {
         opt.map(|run| run.purpose)
             .unwrap_or_else(|| "domain".to_string())
     })
@@ -207,14 +181,14 @@ pub fn delete_workflow_run(
     plugin_slug: &str,
 ) -> Result<(), String> {
     // Look up FK ids before deleting the parent rows
-    let wr_id = get_workflow_run_id(conn, skill_name)?
-        .ok_or_else(|| format!("Workflow run not found for skill '{}'", skill_name))?;
     let s_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?.ok_or_else(|| {
         format!(
             "Skill '{}' not found in plugin '{}'",
             skill_name, plugin_slug
         )
     })?;
+    let wr_id = get_workflow_run_id_by_skill_id(conn, s_id)?
+        .ok_or_else(|| format!("Workflow run not found for skill '{}'", skill_name))?;
 
     // Delete workflow-state child rows by FK columns only.
     // Usage history tables (agent_runs/workflow_sessions) are intentionally retained.
@@ -303,17 +277,6 @@ pub fn save_workflow_step_by_skill_id(
     Ok(())
 }
 
-pub fn save_workflow_step(
-    conn: &Connection,
-    skill_name: &str,
-    step_id: i32,
-    status: &str,
-) -> Result<(), String> {
-    let skill_id = get_skill_master_id_any_plugin(conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
-    save_workflow_step_by_skill_id(conn, skill_id, step_id, status)
-}
-
 pub fn get_workflow_steps_by_skill_id(
     conn: &Connection,
     skill_id: i64,
@@ -344,16 +307,6 @@ pub fn get_workflow_steps_by_skill_id(
         .map_err(|e| e.to_string())
 }
 
-pub fn get_workflow_steps(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Vec<WorkflowStepRow>, String> {
-    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
-        return Ok(vec![]);
-    };
-    get_workflow_steps_by_skill_id(conn, skill_id)
-}
-
 pub fn reset_workflow_steps_from_by_skill_id(
     conn: &Connection,
     skill_id: i64,
@@ -372,17 +325,6 @@ pub fn reset_workflow_steps_from_by_skill_id(
     Ok(())
 }
 
-pub fn reset_workflow_steps_from(
-    conn: &Connection,
-    skill_name: &str,
-    from_step: i32,
-) -> Result<(), String> {
-    let Some(skill_id) = get_skill_master_id_any_plugin(conn, skill_name)? else {
-        return Ok(());
-    };
-    reset_workflow_steps_from_by_skill_id(conn, skill_id, from_step)
-}
-
 // --- Workflow Sessions ---
 
 pub fn create_workflow_session_by_skill_id(
@@ -399,18 +341,6 @@ pub fn create_workflow_session_by_skill_id(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[allow(dead_code)]
-pub fn create_workflow_session(
-    conn: &Connection,
-    session_id: &str,
-    skill_name: &str,
-    pid: u32,
-) -> Result<(), String> {
-    let skill_id = get_skill_master_id_any_plugin(conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
-    create_workflow_session_by_skill_id(conn, session_id, skill_id, pid)
 }
 
 pub fn end_workflow_session(conn: &Connection, session_id: &str) -> Result<(), String> {
@@ -464,7 +394,11 @@ pub fn record_reconciliation_event(
 /// whose PID is still alive. Used by startup reconciliation to skip skills owned by
 /// another running instance.
 pub fn has_active_session_with_live_pid(conn: &Connection, skill_name: &str) -> bool {
-    let s_id = match get_skill_master_id_any_plugin(conn, skill_name) {
+    let s_id = match crate::db::get_skill_master_id_in_plugin(
+        conn,
+        skill_name,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    ) {
         Ok(Some(id)) => id,
         _ => return false,
     };

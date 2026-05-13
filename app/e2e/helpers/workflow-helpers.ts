@@ -33,6 +33,7 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   check_workspace_path: true,
   list_skills: [
     {
+      id: 301,
       name: "test-skill",
       purpose: "domain",
       current_step: null,
@@ -115,7 +116,7 @@ export async function navigateToWorkflow(
   await page.addInitScript((o) => {
     (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = o;
   }, merged);
-  await page.goto("/skill/test-skill");
+  await page.goto("/workflow/301");
   await waitForAppReady(page);
   await page.getByText("STEPS").waitFor({ timeout: 10_000 });
 }

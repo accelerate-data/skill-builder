@@ -480,7 +480,7 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
       }
     });
 
-    await page.goto("/skill/test-skill");
+    await page.goto("/workflow/301");
     await waitForAppReady(page);
 
     // Should redirect to dashboard after lock failure

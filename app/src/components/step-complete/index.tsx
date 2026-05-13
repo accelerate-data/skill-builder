@@ -100,12 +100,12 @@ export function WorkflowStepComplete({
 
   // --- Step 0: Research ---
   if (stepId === 0) {
-    return <ResearchStepComplete {...baseProps} {...clarProps} skillName={skillName} />;
+    return <ResearchStepComplete {...baseProps} {...clarProps} skillId={skillId != null ? String(skillId) : null} />;
   }
 
   // --- Step 1: Detailed Research ---
   if (stepId === 1) {
-    return <DetailedResearchStepComplete {...baseProps} {...clarProps} skillName={skillName} />;
+    return <DetailedResearchStepComplete {...baseProps} {...clarProps} skillId={skillId != null ? String(skillId) : null} />;
   }
 
   // --- Step 2: Decisions ---

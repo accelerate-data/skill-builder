@@ -136,6 +136,7 @@ vi.mock("@/components/refine/chat-panel", () => ({
 // --- Helpers ---
 function makeSkill(name: string): SkillSummary {
   return {
+    id: 1,
     name,
     status: "completed",
     current_step: null,
@@ -160,7 +161,7 @@ describe("WorkspaceRefine", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     refineStoreState.selectedSkill = null;
-    refineStoreState.conversationId = null;
+    refineStoreState.conversationId = "conv-1";
     refineStoreState.selectedModifiedFile = null;
     refineStoreState.isRunning = false;
     refineStoreState.activeAgentId = null;
@@ -269,15 +270,9 @@ describe("WorkspaceRefine", () => {
       renderRefine(skill);
     });
 
-    await act(async () => {
-      screen.getByTestId("chat-panel").click();
-    });
+    expect(screen.queryByTestId("chat-panel")).not.toBeInTheDocument();
 
     expect(tauriMocks.sendRefineMessage).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
-      "Refine session for 'my-skill' has no active conversation",
-      { duration: Infinity },
-    );
   });
 
   it("does not handle Escape locally; layout owns the global pause shortcut", async () => {

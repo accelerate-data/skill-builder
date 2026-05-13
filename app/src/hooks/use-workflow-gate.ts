@@ -70,7 +70,7 @@ export function useWorkflowGate({
   const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const agentStartRun = useAgentStore((s) => s.startRun);
-  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model_id);
 
   const gateAgentIdRef = useRef<string | null>(null);
   const gateStepRef = useRef<number | null>(null);

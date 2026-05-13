@@ -35,21 +35,6 @@ const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workspace/$skillId",
   component: WorkspaceRoutePage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    tab: typeof search.tab === "string" ? search.tab : undefined,
-  }),
-});
-
-const workspaceRefineRoute = createRoute({
-  getParentRoute: () => workspaceRoute,
-  path: "/refine",
-  component: WorkspaceRoutePage,
-});
-
-const workspaceEvalsRoute = createRoute({
-  getParentRoute: () => workspaceRoute,
-  path: "/evals",
-  component: WorkspaceRoutePage,
 });
 
 const skillsRedirectRoute = createRoute({
@@ -65,8 +50,6 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
   workflowRoute,
   workspaceRoute,
-  workspaceRefineRoute,
-  workspaceEvalsRoute,
   skillsRedirectRoute,
 ]);
 

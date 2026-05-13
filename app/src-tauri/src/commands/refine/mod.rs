@@ -33,11 +33,13 @@ pub(super) fn resolve_skill_output_dir(
 fn load_refine_prompt_context(
     db: &Db,
     skill_name: &str,
+    plugin_slug: &str,
     workspace_path: &str,
 ) -> Result<(String, String, String), String> {
     let settings = crate::commands::workflow::settings::read_workflow_settings(
         db,
         skill_name,
+        plugin_slug,
         0,
         workspace_path,
     )?;
@@ -59,8 +61,16 @@ fn load_refine_prompt_context(
     .unwrap_or_else(|| "No additional user context available.".to_string());
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, skill_name, plugin_slug)?
+        .ok_or_else(|| {
+            format!(
+                "Skill '{}' not found in plugin '{}'",
+                skill_name, plugin_slug
+            )
+        })?;
+    let skill_id_str = skill_id.to_string();
     let clarifications_json =
-        match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
+        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str) {
             Ok(Some(record)) => {
                 crate::commands::workflow::prompt::clarifications_record_to_json_string(&record)
             }
@@ -74,7 +84,7 @@ fn load_refine_prompt_context(
                 "{}".to_string()
             }
         };
-    let decisions_json = match crate::db::workflow_artifacts::read_decisions(&conn, skill_name) {
+    let decisions_json = match crate::db::workflow_artifacts::read_decisions(&conn, &skill_id_str) {
         Ok(Some(record)) => {
             crate::commands::workflow::prompt::decisions_record_to_json_string(&record)
         }
@@ -204,7 +214,7 @@ pub async fn send_refine_message(
     let prompt = if is_first_turn {
         let skills_path = resolve_skills_path(&db)?;
         let (user_context_block, clarifications_json, decisions_json) =
-            load_refine_prompt_context(&db, &skill_name, &runtime_ctx.skills_root)?;
+            load_refine_prompt_context(&db, &skill_name, &plugin_slug, &runtime_ctx.skills_root)?;
         build_refine_prompt_with_output_dir(RefinePromptRequest {
             skill_name: &skill_name,
             workspace_path: &runtime_ctx.skills_root,
@@ -252,13 +262,14 @@ pub async fn send_refine_message(
         active_conversation_id
     );
 
-    let returned_conversation_id = crate::agents::tracked_openhands::send_tracked_openhands_message(
-        &app,
-        &agent_id,
-        config,
-        active_conversation_id,
-    )
-    .await?;
+    let returned_conversation_id =
+        crate::agents::tracked_openhands::send_tracked_openhands_message(
+            &app,
+            &agent_id,
+            config,
+            active_conversation_id,
+        )
+        .await?;
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;

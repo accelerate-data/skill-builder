@@ -281,7 +281,7 @@ export async function initAgentStream() {
     }).then((u) => { _unlisteners.push(u); }),
     // skill-session-reset fires when a saved conversation is missing and a new one is created.
     listen<{ reason: string; conversation_id: string }>("skill-session-reset", () => {
-      toast.warning("Previous session not found — started a new conversation.", { duration: 6000 });
+      toast.warning("Previous session not found — started a new conversation.", { duration: Infinity });
     }).then((u) => { _unlisteners.push(u); }),
   ]).then(() => {
     initialized = true;

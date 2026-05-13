@@ -168,6 +168,7 @@ pub fn clean_step_output(
 /// Clean up files from all steps after the reconciled step.
 /// Removes both partial and complete output for future steps to prevent
 /// stale files from causing incorrect reconciliation on next startup.
+#[allow(dead_code)]
 pub fn cleanup_future_steps(
     workspace_path: &str,
     skill_name: &str,

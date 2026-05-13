@@ -349,7 +349,6 @@ pub fn run() {
         .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
 
         .invoke_handler(tauri::generate_handler![
-            commands::node::check_node,
             commands::node::check_startup_deps,
             commands::settings::get_data_dir,
             commands::settings::get_settings,
@@ -376,7 +375,6 @@ pub fn run() {
             commands::files::read_file,
             commands::files::write_file,
             commands::workflow::runtime::run_workflow_step,
-            commands::workflow::output_format::materialize_workflow_step_output,
             commands::workflow::evaluation::reset_workflow_step,
             commands::workflow::evaluation::navigate_back_to_step,
             commands::workflow::evaluation::preview_step_reset,

@@ -77,11 +77,7 @@ pub(crate) fn get_skill_content_inner_for_plugin(
     skills_path: &str,
     plugin_slug: &str,
 ) -> Result<Vec<SkillFileContent>, String> {
-    crate::skill_paths::read_skill_content_by_name(
-        Path::new(skills_path),
-        plugin_slug,
-        skill_name,
-    )
+    crate::skill_paths::read_skill_content_by_name(Path::new(skills_path), plugin_slug, skill_name)
 }
 
 pub(crate) fn get_skill_content_from_dir(
@@ -102,14 +98,15 @@ pub(crate) fn get_skill_content_from_dir(
 
     // 1. SKILL.md (the main skill file)
     let skill_md = skill_root.join("SKILL.md");
-    if skill_md.exists() {
-        let content = std::fs::read_to_string(&skill_md)
-            .map_err(|e| format!("Failed to read SKILL.md: {}", e))?;
-        files.push(SkillFileContent {
-            path: "SKILL.md".to_string(),
-            content,
-        });
+    if !skill_md.is_file() {
+        return Err(format!("SKILL.md not found in {}", skill_root.display()));
     }
+    let content = std::fs::read_to_string(&skill_md)
+        .map_err(|e| format!("Failed to read SKILL.md: {}", e))?;
+    files.push(SkillFileContent {
+        path: "SKILL.md".to_string(),
+        content,
+    });
 
     // 2. references/** only. Runtime context artifacts live under the
     // workspace directory and must not pollute authored skill preview.

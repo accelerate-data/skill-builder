@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::path::{Path, PathBuf};
 
 use crate::commands::workflow_artifacts::{
@@ -715,6 +716,19 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// Resolve a skill identifier (bare name or structured key) to a canonical
+/// `SkillIdentifier` string. Bare names are resolved via the skills master
+/// table to find the owning plugin, then formatted as `skill-builder:{plugin}:{name}`.
+fn resolve_skill_to_canonical_id(conn: &rusqlite::Connection, skill_id: &str) -> String {
+    // Already a structured identifier or numeric ID — pass through.
+    if crate::db::SkillIdentifier::parse(skill_id).is_ok() {
+        return skill_id.to_string();
+    }
+    // Bare name: look up the owning plugin and construct a builder key.
+    let plugin_slug = super::evaluation::lookup_plugin_slug(conn, skill_id);
+    format!("skill-builder:{}:{}", plugin_slug, skill_id)
+}
+
 /// Persist agent step output to the workflow artifact tables.
 ///
 /// Steps 0/1 unpack to `clarifications` (+ children) and call
@@ -734,6 +748,14 @@ pub(crate) fn materialize_workflow_step_output_value(
     if !workflow_result_payload.is_object() {
         return Err("workflow result payload must be a JSON object".to_string());
     }
+
+    // Resolve bare skill names to a structured identifier at the boundary.
+    let canonical_id = {
+        let conn =
+            db.0.lock()
+                .map_err(|e| format!("Failed to lock DB: {}", e))?;
+        resolve_skill_to_canonical_id(&conn, skill_id)
+    };
 
     log::info!(
         "[materialize_step] step_id={} skill_id={} output_keys={:?}",
@@ -764,7 +786,7 @@ pub(crate) fn materialize_workflow_step_output_value(
             );
 
             let record = agent_json_to_clarifications_record(
-                skill_id,
+                &canonical_id,
                 0, // step 0 always starts at refinement 0
                 parsed.research_output,
                 now_ms(),
@@ -791,7 +813,7 @@ pub(crate) fn materialize_workflow_step_output_value(
             );
 
             let record = agent_json_to_clarifications_record(
-                skill_id,
+                &canonical_id,
                 parsed.refinement_count,
                 parsed.clarifications_json,
                 now_ms(),
@@ -828,7 +850,7 @@ pub(crate) fn materialize_workflow_step_output_value(
                 parsed.metadata.decision_count
             );
 
-            let record = agent_json_to_decisions_record(skill_id, parsed, now_ms())?;
+            let record = agent_json_to_decisions_record(&canonical_id, parsed, now_ms())?;
             persist_decisions(db, &record)
         }
         3 => {
@@ -916,6 +938,7 @@ fn persist_decisions(db: &Db, record: &DecisionsRecord) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn publish_generated_skill_output(
     workspace_skill_root: &Path,
     skills_path: &Path,
@@ -966,6 +989,7 @@ pub(crate) fn publish_generated_skill_output(
     Ok(published_dir)
 }
 
+#[cfg(test)]
 pub(crate) fn publish_commit_and_tag_generated_skill(
     workspace_skill_root: &Path,
     skills_dir: &Path,
@@ -1023,98 +1047,6 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
         skill_name,
         tag_name
     );
-
-    Ok(())
-}
-
-#[tauri::command]
-pub fn materialize_workflow_step_output(
-    skill_name: String,
-    step_id: u32,
-    workflow_result_payload: serde_json::Value,
-    db: tauri::State<'_, crate::db::Db>,
-) -> Result<(), String> {
-    log::info!(
-        "[materialize_workflow_step_output] skill={} step={} step_id={}",
-        skill_name,
-        super::evaluation::workflow_step_log_name(step_id as i32),
-        step_id
-    );
-    materialize_workflow_step_output_value(&db, &skill_name, step_id, &workflow_result_payload)
-        .map_err(|e| {
-            log::error!(
-                "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
-                skill_name,
-                super::evaluation::workflow_step_log_name(step_id as i32),
-                step_id,
-                e
-            );
-            e
-        })?;
-
-    // After successful generate materialization, publish, commit, and tag the skill.
-    // Benchmark output does not trigger a commit (benchmark data is in workspace, not git).
-    // Rewrite/refine commit+tag is handled by finalize_refine_run.
-    if step_id == 3 {
-        let status = workflow_result_payload
-            .get("status")
-            .and_then(|s| s.as_str())
-            .unwrap_or("");
-        let skipped = workflow_result_payload
-            .get("skipped")
-            .and_then(|s| s.as_bool())
-            .unwrap_or(false);
-
-        if status == "generated" && !skipped {
-            let workspace_path = super::evaluation::read_workspace_path(&db).ok_or_else(|| {
-                "Workspace path not configured. Please set it in Settings.".to_string()
-            })?;
-            let plugin_slug = {
-                let conn = db.0.lock().map_err(|e| e.to_string())?;
-                super::evaluation::lookup_plugin_slug(&conn, &skill_name)
-            };
-
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            let settings = crate::db::read_settings(&conn)?;
-            let skills_path = settings
-                .skills_path
-                .unwrap_or_else(|| workspace_path.clone());
-            drop(conn);
-
-            let skills_dir = Path::new(&skills_path);
-            let skill_dir =
-                crate::skill_paths::resolve_skill_dir(skills_dir, &plugin_slug, &skill_name);
-            publish_commit_and_tag_generated_skill(
-                &skill_dir,
-                skills_dir,
-                &plugin_slug,
-                &skill_name,
-            )?;
-
-            match git2::Repository::open(&skill_dir) {
-                Ok(repo) => {
-                    if let Some(sha) = repo
-                        .head()
-                        .ok()
-                        .and_then(|h| h.peel_to_commit().ok())
-                        .map(|c| c.id().to_string())
-                    {
-                        log::info!(
-                            "[materialize_workflow_step_output] generated skill repo head skill={} sha={}",
-                            skill_name, &sha[..8.min(sha.len())]
-                        );
-                    }
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[materialize_workflow_step_output] could not open repo for skill={}: {}",
-                        skill_name,
-                        e
-                    );
-                }
-            }
-        }
-    }
 
     Ok(())
 }

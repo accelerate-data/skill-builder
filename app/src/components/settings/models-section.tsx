@@ -152,9 +152,13 @@ export function ModelsSection({
   const [capabilityFilter, setCapabilityFilter] = useState<CapabilityFilter>(DEFAULT_CAPABILITY_FILTER);
 
   const providerId = modelSettings.provider_id ?? "";
+  const normalizedProviderId = providerId.trim();
   const catalogEntriesForProvider = useMemo(
-    () => getModelsForProvider(catalog, providerId),
-    [catalog, providerId],
+    () =>
+      getModelsForProvider(catalog, normalizedProviderId).filter(
+        (entry) => entry.full_id.trim().length > 0,
+      ),
+    [catalog, normalizedProviderId],
   );
   const filteredEntries = useMemo(
     () => filterByCapabilities(catalogEntriesForProvider, capabilityFilter),
@@ -167,14 +171,15 @@ export function ModelsSection({
   const selectedCatalogModel = resolveSelectedCatalogModel(
     catalog,
     modelSettings.model_id,
+    normalizedProviderId,
   );
-  const selectedModelValue = selectedCatalogModel?.full_id ?? "";
-  const showCatalogPicker = Boolean(providerId && modelOptions.length);
+  const selectedModelValue = selectedCatalogModel?.model_id ?? "";
+  const showCatalogPicker = Boolean(normalizedProviderId && modelOptions.length);
 
   const providerEntry = useMemo(() => {
-    if (!providerId || !catalog.length) return null;
-    const providerRow = providers.find((p) => p.provider_id === providerId);
-    const first = catalog.find((e) => e.provider_id === providerId);
+    if (!normalizedProviderId || !catalog.length) return null;
+    const providerRow = providers.find((p) => p.provider_id === normalizedProviderId);
+    const first = catalog.find((e) => e.provider_id === normalizedProviderId);
     if (!first) return null;
     return {
       id: first.provider_id,
@@ -182,7 +187,7 @@ export function ModelsSection({
       api_base_url: providerRow?.api_base_url ?? null,
       env: [],
     };
-  }, [catalog, providers, providerId]);
+  }, [catalog, providers, normalizedProviderId]);
 
   const activeOverride = useMemo((): ProviderOverride => {
     if (providerId && modelSettings.provider_overrides[providerId]) {
@@ -260,7 +265,7 @@ export function ModelsSection({
     const nextOverride = existingOverride ?? getDefaultProviderOverride();
     const providerModels = getModelsForProvider(catalog, val);
     const options = getCatalogModelOptions(providerModels);
-    const firstModel = options[0]?.full_id ?? null;
+    const firstModel = options[0]?.model_id ?? null;
     const providerRow = providers.find((p) => p.provider_id === val);
     const catalogBaseUrl = providerRow?.api_base_url ?? null;
     const effectiveBaseUrl = nextOverride.base_url_override ?? getProviderBaseUrlDefault(val, catalogBaseUrl);
@@ -319,8 +324,10 @@ export function ModelsSection({
   const uniqueProviders = useMemo(() => {
     const seen = new Set<string>();
     return catalog.filter((entry) => {
-      if (seen.has(entry.provider_id)) return false;
-      seen.add(entry.provider_id);
+      const nextProviderId = entry.provider_id.trim();
+      if (!nextProviderId) return false;
+      if (seen.has(nextProviderId)) return false;
+      seen.add(nextProviderId);
       return true;
     });
   }, [catalog]);
@@ -359,7 +366,9 @@ export function ModelsSection({
                     </SelectItem>
                   ))
                 ) : catalogLoading ? (
-                  <SelectItem value="" disabled>Loading...</SelectItem>
+                  <SelectItem value="__loading__" disabled>
+                    Loading...
+                  </SelectItem>
                 ) : (
                   <>
                     <SelectItem value="anthropic">Anthropic</SelectItem>
@@ -368,8 +377,11 @@ export function ModelsSection({
                     <SelectItem value="ollama">Ollama</SelectItem>
                   </>
                 )}
-                {providerId && !uniqueProviders.find((p) => p.provider_id === providerId) ? (
-                  <SelectItem value={providerId}>{providerId}</SelectItem>
+                {normalizedProviderId &&
+                !uniqueProviders.find((p) => p.provider_id === normalizedProviderId) ? (
+                  <SelectItem value={normalizedProviderId}>
+                    {normalizedProviderId}
+                  </SelectItem>
                 ) : null}
                 <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
@@ -518,7 +530,7 @@ export function ModelsSection({
                   {modelOptions.map((option) => (
                     <SelectItem
                       key={option.full_id}
-                      value={option.full_id}
+                      value={option.model_id}
                     >
                       {option.name}
                     </SelectItem>

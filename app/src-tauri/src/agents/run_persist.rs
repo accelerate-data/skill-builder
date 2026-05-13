@@ -136,7 +136,11 @@ mod tests {
     fn persist_run_summary_writes_aggregate_row_for_workflow_session() {
         let conn = crate::db::create_test_db_for_tests();
         crate::db::save_workflow_run(&conn, "demo-skill", 2, "in_progress", "domain").unwrap();
-        crate::db::create_workflow_session(&conn, "wf-aggregate", "demo-skill", 1000).unwrap();
+        let demo_skill_id = crate::db::get_skill_master_id(&conn, "demo-skill")
+            .unwrap()
+            .unwrap();
+        crate::db::create_workflow_session_by_skill_id(&conn, "wf-aggregate", demo_skill_id, 1000)
+            .unwrap();
 
         let summary = RuntimeRunSummary {
             skill_name: "demo-skill".to_string(),

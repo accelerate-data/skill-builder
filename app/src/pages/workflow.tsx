@@ -54,6 +54,7 @@ import { useClarifications } from "@/lib/queries/clarifications";
 import type { ClarificationsDto, ClarificationQuestionDto } from "@/generated/contracts";
 import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
 import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 
 // ─── ClarificationsDto → ClarificationsFile mapper ───────────────────────────
 
@@ -160,6 +161,7 @@ function WorkflowMainHeader({ skillName, currentStep, stepStatus }: WorkflowMain
 }
 
 export default function WorkflowPage() {
+  const setWorkspaceSurface = useWorkspaceStore((s) => s.setActiveSurface);
   const { skillId } = useParams({ from: "/workflow/$skillId" });
   const navigate = useNavigate();
   const location = useLocation();
@@ -324,12 +326,16 @@ export default function WorkflowPage() {
     const nextStepBlocked = !isTerminalStep && disabledSteps.includes(nextStep);
     const showDecisionConflictResolution = currentStep === 2 && nextStepBlocked;
     const isLastStep = isTerminalStep || (nextStepBlocked && !showDecisionConflictResolution);
-    const handleClose = () => navigate({ to: "/workspace/$skillId", params: { skillId }, search: { tab: undefined } });
+    const handleClose = () => {
+      setWorkspaceSurface("overview");
+      navigate({ to: "/workspace/$skillId", params: { skillId } });
+    };
     const handleEval = () => {
       useSkillStore.getState().setActiveSkill(
         currentSkillId != null ? String(currentSkillId) : null,
       );
-      navigate({ to: "/workspace/$skillId/evals", params: { skillId }, search: { tab: "evals" } });
+      setWorkspaceSurface("evals");
+      navigate({ to: "/workspace/$skillId", params: { skillId } });
     };
     const nextStepLabel = !isTerminalStep ? steps[nextStep]?.name ?? "Next Step" : undefined;
 

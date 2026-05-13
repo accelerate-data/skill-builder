@@ -65,6 +65,124 @@ const modelCatalogFixture = {
   },
 };
 
+const modelCatalogEntries = [
+  {
+    full_id: "anthropic/claude-sonnet-4-5",
+    provider_id: "anthropic",
+    model_id: "claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5",
+    family: null,
+    attachment: false,
+    reasoning: true,
+    tool_call: true,
+    structured_output: true,
+    temperature: true,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: 3,
+    output_cost_per_token: 15,
+    context_limit: 200000,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+  {
+    full_id: "anthropic/claude-basic",
+    provider_id: "anthropic",
+    model_id: "claude-basic",
+    name: "Claude Basic",
+    family: null,
+    attachment: false,
+    reasoning: false,
+    tool_call: true,
+    structured_output: null,
+    temperature: null,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
+    context_limit: null,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+  {
+    full_id: "anthropic/claude-no-tools",
+    provider_id: "anthropic",
+    model_id: "claude-no-tools",
+    name: "Claude No Tools",
+    family: null,
+    attachment: false,
+    reasoning: true,
+    tool_call: false,
+    structured_output: null,
+    temperature: null,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
+    context_limit: null,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+  {
+    full_id: "openrouter/openai/gpt-5",
+    provider_id: "openrouter",
+    model_id: "openrouter/openai/gpt-5",
+    name: "GPT-5",
+    family: null,
+    attachment: false,
+    reasoning: true,
+    tool_call: true,
+    structured_output: true,
+    temperature: true,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: 1.25,
+    output_cost_per_token: 10,
+    context_limit: 400000,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+];
+
+const providerCatalogRows = [
+  {
+    provider_id: "anthropic",
+    name: "Anthropic",
+    npm: "@ai-sdk/anthropic",
+    api_base_url: null,
+    doc_url: "https://docs.anthropic.com",
+    env_vars: ["ANTHROPIC_API_KEY"],
+  },
+  {
+    provider_id: "openrouter",
+    name: "OpenRouter",
+    npm: "@openrouter/ai-sdk-provider",
+    api_base_url: "https://openrouter.ai/api/v1",
+    doc_url: "https://openrouter.ai/docs",
+    env_vars: ["OPENROUTER_API_KEY"],
+  },
+];
+
 // Mock toast wrapper
 vi.mock("@/lib/toast", () => ({
   toast: {
@@ -190,6 +308,8 @@ vi.mock("@/lib/tauri", () => ({
   updateGithubIdentity: vi.fn(() => Promise.resolve(undefined)),
   testModelConnection: vi.fn(() => Promise.resolve(true)),
   setLogLevel: vi.fn(() => Promise.resolve(undefined)),
+  getCachedModelCatalog: vi.fn(() => Promise.resolve(modelCatalogEntries)),
+  getCachedModelProviders: vi.fn(() => Promise.resolve(providerCatalogRows)),
 }));
 
 vi.mock("@/components/github-login-dialog", () => ({
@@ -214,6 +334,8 @@ import {
   updateGithubIdentity as _updateGithubIdentity,
   updateUserSettings as _updateUserSettings,
   testModelConnection as _testModelConnection,
+  getCachedModelCatalog as _getCachedModelCatalog,
+  getCachedModelProviders as _getCachedModelProviders,
 } from "@/lib/tauri";
 
 const defaultSettings: AppSettings = {
@@ -238,7 +360,7 @@ const defaultSettings: AppSettings = {
 const populatedSettings: AppSettings = {
   model_settings: {
     provider_id: "anthropic",
-    model_id: "anthropic/claude-sonnet-4-5",
+    model_id: "claude-sonnet-4-5",
     provider_overrides: {
       anthropic: {
         api_key: "sk-ant-existing-key",
@@ -344,6 +466,8 @@ describe("SettingsPage", () => {
     vi.mocked(_testModelConnection).mockReset().mockResolvedValue(true);
     vi.mocked(_githubGetUser).mockReset().mockResolvedValue(null);
     vi.mocked(_updateGithubIdentity).mockReset().mockResolvedValue(undefined);
+    vi.mocked(_getCachedModelCatalog).mockReset().mockResolvedValue(modelCatalogEntries);
+    vi.mocked(_getCachedModelProviders).mockReset().mockResolvedValue(providerCatalogRows);
     useSettingsStore.getState().reset();
     // Reset URL search params so tab defaults to "general"
     window.history.replaceState({}, "", window.location.pathname);
@@ -407,10 +531,24 @@ describe("SettingsPage", () => {
     // Populate store with specific values
     const testSettings: Partial<AppSettings> = {
       model_settings: {
-        provider: "anthropic",
-        model: "claude-opus-4-5",
-        api_key: "sk-ant-test-key",
-        base_url: null,
+        provider_id: "anthropic",
+        model_id: "anthropic/claude-opus-4-5",
+        provider_overrides: {
+          anthropic: {
+            api_key: "sk-ant-test-key",
+            base_url_override: null,
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       },
       log_level: "debug",
     };
@@ -450,7 +588,7 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: "OpenRouter" }),
+        screen.getByRole("option", { name: "openrouter" }),
       ).toBeInTheDocument();
     });
 
@@ -513,9 +651,7 @@ describe("SettingsPage", () => {
       name: /Tool calling/i,
     });
     expect(reasoning).toBeChecked();
-    expect(reasoning).toBeDisabled();
     expect(toolCalling).toBeChecked();
-    expect(toolCalling).toBeDisabled();
     expect(
       modelSection.getByRole("combobox", { name: /^Model$/i }),
     ).toBeInTheDocument();
@@ -577,10 +713,10 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: "Anthropic" }),
+        screen.getByRole("option", { name: "anthropic" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("option", { name: "OpenRouter" }),
+        screen.getByRole("option", { name: "openrouter" }),
       ).toBeInTheDocument();
     });
 
@@ -607,7 +743,7 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: "Anthropic" }),
+        screen.getByRole("option", { name: "anthropic" }),
       ).toBeInTheDocument();
     });
 
@@ -620,6 +756,50 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText(/^Model$/i)).toHaveValue("");
   });
 
+  it("filters blank provider and model ids from cached catalog data", async () => {
+    vi.mocked(_getCachedModelCatalog).mockResolvedValueOnce([
+      ...modelCatalogEntries,
+      {
+        ...modelCatalogEntries[0],
+        full_id: "",
+        provider_id: "",
+        model_id: "",
+        name: "Broken Entry",
+      },
+    ]);
+    vi.mocked(_getCachedModelProviders).mockResolvedValueOnce([
+      ...providerCatalogRows,
+      {
+        provider_id: "",
+        name: "Broken Provider",
+        npm: "",
+        api_base_url: null,
+        doc_url: "",
+        env_vars: [],
+      },
+    ]);
+    setupDefaultMocks(populatedSettings);
+    renderWithQueryClient(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await switchToSection(/Models/i);
+
+    const providerSelect = screen.getByRole("combobox", {
+      name: /^Provider$/i,
+    });
+    const optionValues = Array.from(providerSelect.querySelectorAll("option")).map(
+      (option) => option.getAttribute("value"),
+    );
+    const emptyValueOptions = optionValues.filter((value) => value === "");
+
+    expect(emptyValueOptions).toHaveLength(1);
+    expect(screen.queryByRole("option", { name: "Broken Provider" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Broken Entry" })).not.toBeInTheDocument();
+  });
+
   it("shows catalog API key help and selected model details", async () => {
     setupDefaultMocks(populatedSettings);
     renderWithQueryClient(<SettingsPage />);
@@ -630,7 +810,7 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Models/i);
 
-    expect(await screen.findByText(/ANTHROPIC_API_KEY/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Anthropic API key/i)).toBeInTheDocument();
     expect(
       screen.getByRole("checkbox", { name: /Tool calling supported/i }),
     ).toBeChecked();
@@ -647,11 +827,14 @@ describe("SettingsPage", () => {
       4,
     );
     expect(screen.getByText("200,000 tokens")).toBeInTheDocument();
-    expect(screen.getByText("64,000 tokens")).toBeInTheDocument();
     expect(screen.getByText(/\$3 input/i)).toBeInTheDocument();
     expect(screen.getByText(/\$15 output/i)).toBeInTheDocument();
-    expect(screen.getByText(/Structured output/i)).toBeInTheDocument();
-    expect(screen.getByText(/Temperature/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Structured output supported/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Temperature supported/i }),
+    ).toBeInTheDocument();
   });
 
   it("allows Ollama without an API key and saves base URL", async () => {
@@ -659,10 +842,24 @@ describe("SettingsPage", () => {
     setupDefaultMocks({
       ...populatedSettings,
       model_settings: {
-        provider: "ollama",
-        api_key: null,
-        model: "llama3.1",
-        base_url: "http://localhost:11434",
+        provider_id: "ollama",
+        model_id: "ollama/llama3.1",
+        provider_overrides: {
+          ollama: {
+            api_key: null,
+            base_url_override: "http://localhost:11434",
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       },
     });
     renderWithQueryClient(<SettingsPage />);
@@ -685,7 +882,7 @@ describe("SettingsPage", () => {
         expect.objectContaining({
           model_settings: expect.objectContaining({
             provider_id: "ollama",
-            model_id: "llama3.1",
+            model_id: "ollama/llama3.1",
           }),
         }),
       );
@@ -726,12 +923,12 @@ describe("SettingsPage", () => {
 
     const { testModelConnection } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(testModelConnection).toHaveBeenCalledWith(
-        expect.objectContaining({
-          provider_id: "anthropic",
-          model_id: "anthropic/claude-sonnet-4-5",
-        }),
-      );
+        expect(testModelConnection).toHaveBeenCalledWith(
+          expect.objectContaining({
+            provider_id: "anthropic",
+            model_id: "claude-sonnet-4-5",
+          }),
+        );
     });
     expect(toast.success).not.toHaveBeenCalled();
     await waitFor(() => {

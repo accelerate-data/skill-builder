@@ -45,14 +45,23 @@ mod tests {
     use super::*;
     use crate::db::create_test_db_for_tests;
     use crate::db::workflow_artifacts as db_artifacts;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-    fn seed_skill(conn: &rusqlite::Connection, skill_id: &str) {
+    fn seed_skill(conn: &rusqlite::Connection, name: &str) -> String {
         conn.execute(
             "INSERT OR IGNORE INTO skills (name, skill_source, plugin_id) \
-             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = 'default'))",
-            rusqlite::params![skill_id],
+             VALUES (?1, 'skill-builder', (SELECT id FROM plugins WHERE slug = ?2))",
+            rusqlite::params![name, DEFAULT_PLUGIN_SLUG],
         )
         .unwrap();
+        let id: i64 = conn
+            .query_row(
+                "SELECT id FROM skills WHERE name = ?1 AND skill_source = 'skill-builder'",
+                rusqlite::params![name],
+                |row| row.get(0),
+            )
+            .unwrap();
+        id.to_string()
     }
 
     fn make_clarifications_record(
@@ -114,40 +123,40 @@ mod tests {
     #[test]
     fn scope_recommendation_true_db() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-scope-true");
-        let record = make_clarifications_record("skill-scope-true", Some(true), 0);
+        let id = seed_skill(&conn, "skill-scope-true");
+        let record = make_clarifications_record(&id, Some(true), 0);
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_clarifications(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(check_scope_recommendation_db(&conn, "skill-scope-true"));
+        assert!(check_scope_recommendation_db(&conn, &id));
     }
 
     #[test]
     fn scope_recommendation_false_db() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-scope-false");
-        let record = make_clarifications_record("skill-scope-false", Some(false), 0);
+        let id = seed_skill(&conn, "skill-scope-false");
+        let record = make_clarifications_record(&id, Some(false), 0);
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_clarifications(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(!check_scope_recommendation_db(&conn, "skill-scope-false"));
+        assert!(!check_scope_recommendation_db(&conn, &id));
     }
 
     #[test]
     fn scope_recommendation_none_db() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-scope-none");
-        let record = make_clarifications_record("skill-scope-none", None, 0);
+        let id = seed_skill(&conn, "skill-scope-none");
+        let record = make_clarifications_record(&id, None, 0);
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_clarifications(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(!check_scope_recommendation_db(&conn, "skill-scope-none"));
+        assert!(!check_scope_recommendation_db(&conn, &id));
     }
 
     #[test]
     fn scope_recommendation_no_record_db() {
         let conn = create_test_db_for_tests();
-        assert!(!check_scope_recommendation_db(&conn, "nonexistent-skill"));
+        assert!(!check_scope_recommendation_db(&conn, "999999"));
     }
 
     // ── check_decisions_guard_db ──────────────────────────────────────────
@@ -155,18 +164,18 @@ mod tests {
     #[test]
     fn decisions_guard_zero_count_db() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-dec-zero");
-        let record = make_decisions_record("skill-dec-zero", 0, vec![]);
+        let id = seed_skill(&conn, "skill-dec-zero");
+        let record = make_decisions_record(&id, 0, vec![]);
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_decisions(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(check_decisions_guard_db(&conn, "skill-dec-zero"));
+        assert!(check_decisions_guard_db(&conn, &id));
     }
 
     #[test]
     fn decisions_guard_needs_review_db() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-dec-review");
+        let id = seed_skill(&conn, "skill-dec-review");
         let items = vec![db_artifacts::DecisionItem {
             decision_id: "d1".to_string(),
             ordinal: 0,
@@ -176,17 +185,17 @@ mod tests {
             implication: "TBD".to_string(),
             status: "needs-review".to_string(),
         }];
-        let record = make_decisions_record("skill-dec-review", 1, items);
+        let record = make_decisions_record(&id, 1, items);
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_decisions(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(check_decisions_guard_db(&conn, "skill-dec-review"));
+        assert!(check_decisions_guard_db(&conn, &id));
     }
 
     #[test]
     fn decisions_guard_normal_resolved_db() {
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-dec-normal");
+        let id = seed_skill(&conn, "skill-dec-normal");
         let items = vec![db_artifacts::DecisionItem {
             decision_id: "d1".to_string(),
             ordinal: 0,
@@ -196,24 +205,23 @@ mod tests {
             implication: "Good".to_string(),
             status: "resolved".to_string(),
         }];
-        let record = make_decisions_record("skill-dec-normal", 1, items);
+        let record = make_decisions_record(&id, 1, items);
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_decisions(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(!check_decisions_guard_db(&conn, "skill-dec-normal"));
+        assert!(!check_decisions_guard_db(&conn, &id));
     }
 
     #[test]
     fn decisions_guard_no_record_db() {
         let conn = create_test_db_for_tests();
-        assert!(!check_decisions_guard_db(&conn, "nonexistent-skill"));
+        assert!(!check_decisions_guard_db(&conn, "999999"));
     }
 
     #[test]
     fn decisions_guard_conflict_resolved_not_blocked_db() {
-        // 'conflict-resolved' is resolved, not 'needs-review'
         let mut conn = create_test_db_for_tests();
-        seed_skill(&conn, "skill-dec-conflict-resolved");
+        let id = seed_skill(&conn, "skill-dec-conflict-resolved");
         let items = vec![db_artifacts::DecisionItem {
             decision_id: "d1".to_string(),
             ordinal: 0,
@@ -223,13 +231,10 @@ mod tests {
             implication: "OK".to_string(),
             status: "conflict-resolved".to_string(),
         }];
-        let record = make_decisions_record("skill-dec-conflict-resolved", 1, items);
+        let record = make_decisions_record(&id, 1, items);
         let tx = conn.transaction().unwrap();
         db_artifacts::upsert_decisions(&tx, &record).unwrap();
         tx.commit().unwrap();
-        assert!(!check_decisions_guard_db(
-            &conn,
-            "skill-dec-conflict-resolved"
-        ));
+        assert!(!check_decisions_guard_db(&conn, &id));
     }
 }

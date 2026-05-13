@@ -32,9 +32,9 @@ pub struct CatalogModel {
     pub cost: Option<CatalogCost>,
     pub limit: CatalogLimit,
     pub interleaved: Option<serde_json::Value>,
-    pub provider: Option<String>,
+    pub provider: Option<serde_json::Value>,
     pub status: Option<String>,
-    pub experimental: Option<bool>,
+    pub experimental: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

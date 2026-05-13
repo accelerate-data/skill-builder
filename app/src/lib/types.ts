@@ -210,14 +210,6 @@ export interface RefineDispatchResult {
 }
 
 
-export interface NodeStatus {
-  available: boolean
-  version: string | null
-  meets_minimum: boolean
-  error: string | null
-  source: string
-}
-
 export interface DepStatus {
   code?: string | null
   failure_kind?: string | null

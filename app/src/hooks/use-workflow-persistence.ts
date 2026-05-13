@@ -158,8 +158,8 @@ export function useWorkflowPersistence({
         }
       } else {
         const workspacePath = useSettingsStore.getState().workspacePath;
-        if (workspacePath) {
-          verifyStepOutput(workspacePath, skillName, currentStep)
+        if (workspacePath && skillId != null) {
+          verifyStepOutput(workspacePath, skillId, currentStep)
             .then((has) => setErrorHasArtifacts(has))
             .catch(() => setErrorHasArtifacts(false));
         } else {
@@ -169,7 +169,7 @@ export function useWorkflowPersistence({
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, skillsPath, skillName, stepConfig?.outputFiles]);
+  }, [currentStep, steps, skillsPath, skillId, skillName, stepConfig?.outputFiles]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   useEffect(() => {

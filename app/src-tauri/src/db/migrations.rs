@@ -58,6 +58,8 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (53, run_litellm_pr3_schema_migration),
     (54, run_drop_litellm_provider_profile_tables_migration),
     (55, run_model_catalog_cache_migration),
+    (56, run_canonical_skill_identity_migration),
+    (57, run_settings_table_normalization_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -109,6 +111,54 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         "CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            selected_provider_id TEXT,
+            selected_model_id TEXT,
+            workspace_path TEXT,
+            skills_path TEXT,
+            debug_mode INTEGER NOT NULL DEFAULT 0,
+            log_level TEXT NOT NULL DEFAULT 'info',
+            extended_context INTEGER NOT NULL DEFAULT 0,
+            refine_prompt_suggestions INTEGER NOT NULL DEFAULT 1,
+            splash_shown INTEGER NOT NULL DEFAULT 0,
+            github_oauth_token TEXT,
+            github_user_login TEXT,
+            github_user_avatar TEXT,
+            github_user_email TEXT,
+            marketplace_url TEXT,
+            marketplace_initialized INTEGER NOT NULL DEFAULT 0,
+            legacy_tags_migrated INTEGER NOT NULL DEFAULT 0,
+            max_dimensions INTEGER NOT NULL DEFAULT 5 CHECK (max_dimensions > 0),
+            industry TEXT,
+            function_role TEXT,
+            dashboard_view_mode TEXT,
+            auto_update INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS model_provider_overrides (
+            provider_id TEXT PRIMARY KEY,
+            api_key TEXT,
+            base_url_override TEXT,
+            api_version TEXT,
+            temperature REAL,
+            max_output_tokens INTEGER,
+            timeout_seconds INTEGER,
+            num_retries INTEGER,
+            reasoning_effort TEXT,
+            extra_headers_json TEXT,
+            input_cost_per_token REAL,
+            output_cost_per_token REAL,
+            usage_id TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS marketplace_registries (
+            sort_order INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            source_url TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS plugins (
@@ -208,6 +258,34 @@ pub(super) fn run_openhands_settings_migration(_conn: &Connection) -> Result<(),
     // Reserved migration slot. The final OpenHands LLM settings design is a
     // clean break: legacy Anthropic/OpenHands fields are not backfilled into the
     // canonical `model_settings` object.
+    Ok(())
+}
+
+pub(super) fn run_settings_table_normalization_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    let json: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'app_settings'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+
+    if let Some(json) = json {
+        let settings: crate::types::AppSettings = serde_json::from_str(&json)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        crate::db::write_settings(conn, &settings).map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e)))
+        })?;
+
+        conn.execute("DELETE FROM settings WHERE key = 'app_settings'", [])?;
+        log::info!("migration 57: moved app_settings JSON blob into typed settings tables");
+    } else {
+        log::info!("migration 57: typed settings tables already authoritative");
+    }
+
     Ok(())
 }
 
@@ -2736,7 +2814,9 @@ pub(super) fn run_drop_litellm_provider_profile_tables_migration(
         DROP TABLE IF EXISTS llm_providers;
     "#,
     )?;
-    log::info!("migration 54: dropped orphaned llm_providers, llm_profiles, llm_profile_models tables");
+    log::info!(
+        "migration 54: dropped orphaned llm_providers, llm_profiles, llm_profile_models tables"
+    );
     Ok(())
 }
 
@@ -2807,5 +2887,18 @@ pub(super) fn run_model_catalog_cache_migration(conn: &Connection) -> Result<(),
         "#,
     )?;
     log::info!("migration 55: created model catalog cache tables");
+    Ok(())
+}
+
+/// Migration 56: Canonical skill identity — code-only cleanup.
+///
+/// This migration slot records the removal of name-based skill resolution.
+/// No schema changes — the artifact tables were already rebuilt on integer
+/// skill_id FKs in migration 51. This migration exists so the migration
+/// counter advances and the code change is tracked in schema_migrations.
+pub(super) fn run_canonical_skill_identity_migration(
+    _conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    log::info!("migration 56: canonical skill identity (code-only, no schema changes)");
     Ok(())
 }

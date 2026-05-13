@@ -50,7 +50,6 @@ vi.mock("@/lib/tauri", () => ({
   createWorkflowSession: vi.fn(() => Promise.resolve()),
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),
-  materializeWorkflowStepOutput: vi.fn(() => Promise.resolve()),
   materializeAnswerEvaluationOutput: vi.fn(() => Promise.resolve()),
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
@@ -134,7 +133,6 @@ import {
   previewStepReset,
   runAnswerEvaluator,
   getDisabledSteps,
-  materializeWorkflowStepOutput,
   materializeAnswerEvaluationOutput,
   getContextFileContent,
   navigateBackToStepDb,
@@ -228,6 +226,7 @@ beforeEach(() => {
     status: null,
     current_step: null,
   });
+  useRefineStore.getState().setConversationId("conv-1");
 });
 
 describe("WorkflowPage — agent completion lifecycle", () => {
@@ -250,6 +249,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       status: null,
       current_step: null,
     });
+    useRefineStore.getState().setConversationId("conv-1");
     useSettingsStore.getState().reset();
 
     // Hydrate settings so workflow handlers don't bail
@@ -257,8 +257,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -284,6 +285,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
     useRefineStore.getState().selectSkill(null);
+    useRefineStore.getState().setConversationId(null);
     useSettingsStore.getState().reset();
   });
 
@@ -641,8 +643,9 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -726,8 +729,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -745,7 +749,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     vi.mocked(writeFile).mockClear();
     vi.mocked(invokeCommand).mockClear();
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
-    vi.mocked(materializeWorkflowStepOutput).mockClear();
     vi.mocked(materializeAnswerEvaluationOutput).mockClear();
   });
 
@@ -876,10 +879,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     expect(vi.mocked(verifyStepOutput)).toHaveBeenCalledWith(
       "/test/workspace",
-      "test-skill",
+      1,
       0,
     );
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 waits for backend materialization after terminal state when files are not verified yet", async () => {
@@ -911,7 +913,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
 
     act(() => {
       materializedListener?.({
@@ -927,7 +928,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 waits for backend materialization when output verification errors", async () => {
@@ -974,7 +974,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 completes when backend materialization arrives before terminal state", async () => {
@@ -1019,7 +1018,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 does not require legacy structured output when backend output verifies", async () => {
@@ -1040,7 +1038,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
     expect(mockToast.error).not.toHaveBeenCalledWith(
       "Step 1 completed but produced no structured output",
       expect.anything(),
@@ -1084,7 +1081,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       expect(useWorkflowStore.getState().steps[0].status).toBe("error");
     });
     expect(useWorkflowStore.getState().isRunning).toBe(false);
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
     expect(mockToast.error).toHaveBeenCalledWith(
       "Step 1 backend materialization failed: clarifications.json failed schema validation",
       { duration: Infinity },
@@ -1668,8 +1664,9 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -1880,8 +1877,9 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -1980,8 +1978,9 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2112,8 +2111,9 @@ describe("WorkflowPage — review mode default state", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2186,8 +2186,9 @@ describe("step reset behavior regressions", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2343,7 +2344,6 @@ describe("step reset behavior regressions", () => {
         "test-skill",
         0,
         "/test/workspace",
-        expect.anything(),
       );
     });
     expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
@@ -2381,7 +2381,6 @@ describe("step reset behavior regressions", () => {
         "test-skill",
         0,
         "/test/workspace",
-        expect.anything(),
       );
     });
     expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
@@ -2560,8 +2559,9 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2580,7 +2580,6 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     vi.mocked(getWorkflowState).mockReset().mockResolvedValue({ run: null, steps: [] });
     vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
     vi.mocked(runAnswerEvaluator).mockRejectedValue("not available");
-    vi.mocked(materializeWorkflowStepOutput).mockResolvedValue(undefined);
     vi.mocked(materializeAnswerEvaluationOutput).mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
     vi.mocked(readFile).mockRejectedValue("not found");
@@ -2796,7 +2795,6 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
         "test-skill",
         0,
         "/test/workspace",
-        expect.anything(),
       );
     });
     expect(useWorkflowStore.getState().isRunning).toBe(true);
@@ -2992,8 +2990,9 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -3078,8 +3077,9 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -3096,7 +3096,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     vi.mocked(writeFile).mockClear();
     vi.mocked(runAnswerEvaluator).mockClear();
     vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
-    vi.mocked(materializeWorkflowStepOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(materializeAnswerEvaluationOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
     vi.mocked(invokeCommand).mockClear();
@@ -3914,8 +3913,9 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -3932,7 +3932,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
     vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
-    vi.mocked(materializeWorkflowStepOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
@@ -3969,7 +3968,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     });
 
     // Should not have attempted materialization
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
 });
@@ -3982,7 +3980,7 @@ describe("WorkflowPage — loading shimmer", () => {
     useSettingsStore.getState().reset();
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
-      modelSettings: { model: "sonnet", api_key: "sk-test" },
+      modelSettings: { provider_id: "anthropic", model_id: "sonnet", provider_overrides: {} },
     });
     mockNavigate.mockReset();
     mockBlocker.status = "idle";

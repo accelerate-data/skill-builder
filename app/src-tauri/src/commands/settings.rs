@@ -204,9 +204,10 @@ fn backfill_missing_skill_versions(
             log::info!("[startup] normalized metadata.version for '{}'", skill_name);
         }
 
-        crate::db::set_skill_behaviour(
+        crate::db::set_skill_behaviour_in_plugin(
             conn,
             &skill_name,
+            &skill.plugin_slug,
             None,
             Some(&normalized.version),
             None,
@@ -932,28 +933,25 @@ mod tests {
 
     #[test]
     fn test_skills_path_change_does_not_affect_db_records() {
-        // Workflow runs are keyed by skill_name (not path), so changing
-        // skills_path should leave DB records intact and resolvable.
         let conn = crate::commands::test_utils::create_test_db();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         let old_path = dir.path().join("old-skills");
         let new_path = dir.path().join("new-skills");
 
-        // Set up old path with the skill directory
         fs::create_dir_all(old_path.join("my-skill")).unwrap();
         fs::write(old_path.join("my-skill").join("SKILL.md"), "# Test").unwrap();
 
-        // Migrate
         handle_skills_path_change(
             Some(old_path.to_str().unwrap()),
             Some(new_path.to_str().unwrap()),
         )
         .unwrap();
 
-        // Verify DB records are unchanged — skill_name still resolves
-        let run = crate::db::get_workflow_run(&conn, "my-skill")
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
             .unwrap()
             .unwrap();
         assert_eq!(run.skill_name, "my-skill");

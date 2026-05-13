@@ -2,10 +2,10 @@ use std::time::Duration;
 
 use tauri::{Manager, State};
 
-use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::agents::runtime_config::{
     BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
 };
+use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::commands::workflow::deploy::ensure_openhands_runtime_dir;
 use crate::db::Db;
 use crate::types::ModelSettings;
@@ -22,7 +22,14 @@ pub async fn test_model_connection(
 ) -> Result<bool, String> {
     log::info!("[test_model_connection]");
 
-    let llm = settings.selected_workflow_llm()?;
+    let llm = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let app_settings = crate::types::AppSettings {
+            model_settings: settings,
+            ..crate::types::AppSettings::default()
+        };
+        crate::db::selected_workflow_llm(&conn, &app_settings)?
+    };
     let workspace_path = read_initialized_workspace_path(&db)?;
 
     let run_id = uuid::Uuid::new_v4().to_string();

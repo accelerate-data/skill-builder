@@ -48,7 +48,7 @@ vi.mock("@/components/skill-list-panel", () => ({
     onSelectSkill,
     onActivateSkill,
   }: {
-    onSelectSkill?: (name: string, tab?: string) => void;
+    onSelectSkill?: (name: string, targetSurface?: "overview" | "refine" | "evals") => void;
     onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   }) => (
     <div data-testid="skill-list-panel">
@@ -193,11 +193,15 @@ describe("AppLayout", () => {
   it("calls reconcile_startup after settings load and renders content", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
+      refresh_model_catalog: [],
       reconcile_startup: emptyReconciliation,
     });
 
     render(<AppLayout />);
 
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("refresh_model_catalog", {});
+    });
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup", {});
     });
@@ -1460,7 +1464,6 @@ describe("AppLayout", () => {
         expect(mockNavigate).toHaveBeenCalledWith({
           to: "/workspace/$skillId",
           params: { skillId: SALES_SKILL_ID },
-          search: { tab: undefined },
         });
       });
     });

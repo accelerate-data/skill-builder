@@ -47,13 +47,10 @@ pub(crate) fn read_initialized_runtime_context(
             skills_root
         ));
     }
-    let mut llm = crate::db::selected_workflow_llm(&settings)?;
+    let mut llm = crate::db::selected_workflow_llm(&conn, &settings)?;
     llm.base_url = crate::db::resolve_effective_base_url(&conn, &llm, &settings);
 
-    Ok(InitializedRuntimeContext {
-        skills_root,
-        llm,
-    })
+    Ok(InitializedRuntimeContext { skills_root, llm })
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -72,7 +69,7 @@ pub(crate) fn read_workflow_settings_by_skill_id(
         "Skills path not configured. Please set it in Settings before running workflow steps."
             .to_string()
     })?;
-    let mut llm = crate::db::selected_workflow_llm(&settings)?;
+    let mut llm = crate::db::selected_workflow_llm(&conn, &settings)?;
     llm.base_url = crate::db::resolve_effective_base_url(&conn, &llm, &settings);
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
@@ -167,12 +164,18 @@ pub(crate) fn read_workflow_settings_by_skill_id(
 pub(crate) fn read_workflow_settings(
     db: &Db,
     skill_name: &str,
+    plugin_slug: &str,
     step_id: u32,
     workspace_path: &str,
 ) -> Result<WorkflowSettings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let skill_id = crate::db::get_skill_master_id_any_plugin(&conn, skill_name)?
-        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
+    let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, skill_name, plugin_slug)?
+        .ok_or_else(|| {
+            format!(
+                "Skill '{}' not found in plugin '{}'",
+                skill_name, plugin_slug
+            )
+        })?;
     drop(conn);
     read_workflow_settings_by_skill_id(db, skill_id, skill_name, step_id, workspace_path)
 }
@@ -189,7 +192,13 @@ mod tests {
         upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         write_settings(&conn, &app_settings).unwrap();
         let db = Db(std::sync::Arc::new(Mutex::new(conn)));
-        read_workflow_settings(&db, "test-skill", 0, "/tmp/workspace")
+        read_workflow_settings(
+            &db,
+            "test-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            0,
+            "/tmp/workspace",
+        )
     }
 
     fn configured_settings(model: &str, api_key: Option<&str>) -> AppSettings {
@@ -255,11 +264,11 @@ mod tests {
     }
 
     #[test]
-    fn read_workflow_settings_uses_canonical_model_id_as_runtime_authority() {
+    fn read_workflow_settings_derives_provider_qualified_runtime_model() {
         let settings =
             workflow_settings_for(configured_settings("claude-sonnet-4-5", Some("sk-test")))
                 .unwrap();
-        assert_eq!(settings.llm.model, "claude-sonnet-4-5");
+        assert_eq!(settings.llm.model, "test/claude-sonnet-4-5");
         assert_eq!(settings.llm.api_key.as_ref().unwrap().expose(), "sk-test");
     }
 
@@ -274,7 +283,11 @@ mod tests {
     #[test]
     fn read_workflow_settings_allows_model_without_api_key_and_keeps_base_url() {
         let mut app_settings = configured_settings("ollama/llama3.1", None);
-        if let Some(override_entry) = app_settings.model_settings.provider_overrides.get_mut("test") {
+        if let Some(override_entry) = app_settings
+            .model_settings
+            .provider_overrides
+            .get_mut("test")
+        {
             override_entry.base_url_override = Some("http://localhost:11434".to_string());
         }
 
@@ -322,7 +335,7 @@ mod tests {
 
         let context = read_initialized_runtime_context(&db).unwrap();
 
-        assert_eq!(context.llm.model, "claude-sonnet-4-5");
+        assert_eq!(context.llm.model, "anthropic/claude-sonnet-4-5");
         assert_eq!(
             context.llm.base_url.as_deref(),
             Some("https://api.anthropic.com"),

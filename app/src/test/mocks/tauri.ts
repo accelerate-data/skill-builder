@@ -8,7 +8,8 @@ const defaultInvokeImpl = (cmd: string) => {
     cmd === "list_imported_skills" ||
     cmd === "get_skill_history" ||
     cmd === "list_documents" ||
-    cmd === "list_skills_for_documents"
+    cmd === "list_skills_for_documents" ||
+    cmd === "refresh_model_catalog"
   ) {
     return Promise.resolve([]);
   }

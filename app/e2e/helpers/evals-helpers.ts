@@ -29,6 +29,7 @@ export const EVALS_OVERRIDES: Record<string, unknown> = {
   check_workspace_path: true,
   list_skills: [
     {
+      id: 401,
       name: "test-skill",
       purpose: "domain",
       current_step: null,

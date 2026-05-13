@@ -49,17 +49,9 @@ const mockResponses: Record<string, unknown> = {
   set_log_level: undefined,
   get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
   get_data_dir: `${E2E_ROOT}/data`,
-  check_node: {
-    available: true,
-    version: "v20.11.0",
-    meets_minimum: true,
-    error: null,
-    source: "system",
-  },
   check_startup_deps: {
     all_ok: true,
     checks: [
-      { code: "node_runtime", name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
       { code: "openhands_agent_server", name: "OpenHands Agent Server", ok: true, detail: "python3 -m openhands.agent_server" },
       { code: "git_binary", name: "Git", ok: true, detail: "git version 2.50.1" },
     ],
@@ -233,7 +225,6 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   // Workflow extras
   write_file: undefined,
   materialize_answer_evaluation_output: undefined,
-  materialize_workflow_step_output: undefined,
   get_disabled_steps: [],
   end_workflow_session: undefined,
   navigate_back_to_step: undefined,

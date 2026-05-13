@@ -1,10 +1,10 @@
 pub mod scenarios;
 pub mod types;
 
-use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::agents::runtime_config::{
     build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
 };
+use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::content::get_skill_content_inner_for_plugin;
 use crate::commands::skill_session::resolve_skills_path;
@@ -193,14 +193,15 @@ fn build_suggest_scenario_prompt(
 
 fn load_define_eval_scenario_context(
     conn: &rusqlite::Connection,
-    skill_name: &str,
+    skill_id: i64,
 ) -> (String, String) {
-    let clarifications = crate::db::workflow_artifacts::read_clarifications(conn, skill_name)
+    let skill_id_str = skill_id.to_string();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(conn, &skill_id_str)
         .ok()
         .flatten()
         .map(|r| serde_json::to_string(&r).unwrap_or_default())
         .unwrap_or_default();
-    let decisions = crate::db::workflow_artifacts::read_decisions(conn, skill_name)
+    let decisions = crate::db::workflow_artifacts::read_decisions(conn, &skill_id_str)
         .ok()
         .flatten()
         .map(|r| serde_json::to_string(&r).unwrap_or_default())
@@ -303,10 +304,9 @@ where
     EnsureRuntimeDir: FnOnce(&std::path::Path) -> EnsureRuntimeDirFuture,
     EnsureRuntimeDirFuture: std::future::Future<Output = Result<(), String>>,
     RunTurn: FnOnce(OpenHandsThrowawayRunParams) -> RunTurnFuture,
-    RunTurnFuture:
-        std::future::Future<
-            Output = Result<crate::agents::openhands_server::OpenHandsThrowawayRun, String>,
-        >,
+    RunTurnFuture: std::future::Future<
+        Output = Result<crate::agents::openhands_server::OpenHandsThrowawayRun, String>,
+    >,
 {
     let run_id = uuid::Uuid::new_v4().to_string();
     let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
@@ -451,7 +451,14 @@ pub async fn define_eval_scenario(
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))?;
     let (clarifications_json, decisions_json) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        load_define_eval_scenario_context(&conn, &skill_name)
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
+            .ok_or_else(|| {
+                format!(
+                    "Skill '{}' not found in plugin '{}'",
+                    skill_name, plugin_slug
+                )
+            })?;
+        load_define_eval_scenario_context(&conn, skill_id)
     };
     let runtime_ctx = read_initialized_runtime_context(&db)?;
     ensure_workspace_prompts(&app, &runtime_ctx.skills_root).await?;

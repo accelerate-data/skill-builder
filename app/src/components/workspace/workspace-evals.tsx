@@ -57,7 +57,7 @@ export function WorkspaceEvals({
   const [suggestingScenario, setSuggestingScenario] = useState(false);
   const [draft, setDraft] = useState<SaveScenario>(() => createDraftScenario());
   const [actionError, setActionError] = useState<string | null>(null);
-  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model_id);
   const skillName = "name" in skill ? skill.name : skill.skill_name;
 
   const [evalsRunning, setEvalsRunningReactive] = useState(getEvalsRunning());

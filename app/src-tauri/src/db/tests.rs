@@ -1,6 +1,6 @@
 use super::migrations::*;
 use super::*;
-use crate::types::{AppSettings, ImportedSkill, SecretString};
+use crate::types::{AppSettings, ImportedSkill};
 
 fn create_test_db() -> Connection {
     create_test_db_for_tests()
@@ -204,6 +204,86 @@ fn test_migration_count_matches_expected() {
         "Expected {expected} migrations in schema_migrations; got {count}. \
          Did you add a migration without registering it in NUMBERED_MIGRATIONS, or remove one?"
     );
+}
+
+#[test]
+fn test_settings_migration_57_backfills_typed_tables_and_removes_legacy_blob() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    conn.pragma_update(None, "foreign_keys", false).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 57 {
+            break;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('app_settings', ?1)",
+        [r#"{
+            "model_settings":{
+                "provider_id":"anthropic",
+                "model_id":"claude-sonnet-4-5",
+                "provider_overrides":{
+                    "anthropic":{
+                        "api_key":"sk-test",
+                        "base_url_override":"https://api.anthropic.com",
+                        "timeout_seconds":300,
+                        "num_retries":5,
+                        "reasoning_effort":"auto",
+                        "usage_id":"workflow"
+                    }
+                }
+            },
+            "skills_path":"/tmp/skills",
+            "marketplace_registries":[
+                {"name":"Default","source_url":"owner/repo","enabled":true}
+            ],
+            "marketplace_initialized":true,
+            "legacy_tags_migrated":true
+        }"#],
+    )
+    .unwrap();
+
+    run_settings_table_normalization_migration(&conn).unwrap();
+
+    let settings = read_settings(&conn).unwrap();
+    assert_eq!(settings.skills_path.as_deref(), Some("/tmp/skills"));
+    assert_eq!(
+        settings.model_settings.provider_id.as_deref(),
+        Some("anthropic")
+    );
+    assert_eq!(
+        settings.model_settings.model_id.as_deref(),
+        Some("claude-sonnet-4-5")
+    );
+    assert_eq!(settings.marketplace_registries.len(), 1);
+    assert!(settings.marketplace_initialized);
+    assert!(settings.legacy_tags_migrated);
+    assert_eq!(
+        settings.model_settings.provider_overrides["anthropic"]
+            .api_key
+            .as_ref()
+            .unwrap()
+            .expose(),
+        "sk-test"
+    );
+
+    let legacy_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM settings WHERE key = 'app_settings'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(legacy_count, 0);
+
+    let typed_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(typed_count, 1);
 }
 
 #[test]
@@ -613,21 +693,27 @@ fn test_scenarios_migration_flattens_legacy_trigger_rows_to_performance() {
 #[test]
 fn test_workflow_run_crud() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
-    let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.skill_name, "test-skill");
     assert_eq!(run.current_step, 3);
     assert_eq!(run.status, "in_progress");
-    let none = get_workflow_run(&conn, "nonexistent").unwrap();
+    let none = get_workflow_run_by_skill_id(&conn, 99999).unwrap();
     assert!(none.is_none());
 }
 
 #[test]
 fn test_workflow_run_upsert() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 5, "in_progress", "domain").unwrap();
-    let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.current_step, 5);
     assert_eq!(run.status, "in_progress");
 }
@@ -635,6 +721,7 @@ fn test_workflow_run_upsert() {
 #[test]
 fn test_set_skill_author() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
 
     // Set author with avatar
@@ -645,7 +732,9 @@ fn test_set_skill_author() {
         Some("https://avatars.example.com/u/123"),
     )
     .unwrap();
-    let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.author_login.as_deref(), Some("testuser"));
     assert_eq!(
         run.author_avatar.as_deref(),
@@ -656,11 +745,14 @@ fn test_set_skill_author() {
 #[test]
 fn test_set_skill_author_without_avatar() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
 
     // Set author without avatar
     set_skill_author(&conn, "test-skill", "testuser", None).unwrap();
-    let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.author_login.as_deref(), Some("testuser"));
     assert!(run.author_avatar.is_none());
 }
@@ -668,8 +760,11 @@ fn test_set_skill_author_without_avatar() {
 #[test]
 fn test_workflow_run_default_no_author() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
-    let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert!(run.author_login.is_none());
     assert!(run.author_avatar.is_none());
 }
@@ -689,11 +784,12 @@ fn test_author_migration_is_idempotent() {
 fn test_workflow_steps_crud() {
     let conn = create_test_db();
     // Workflow run must exist so get_workflow_steps can resolve the FK
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
-    save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
-    save_workflow_step(&conn, "test-skill", 1, "in_progress").unwrap();
-    save_workflow_step(&conn, "test-skill", 2, "pending").unwrap();
-    let steps = get_workflow_steps(&conn, "test-skill").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 1, "in_progress").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 2, "pending").unwrap();
+    let steps = get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     assert_eq!(steps.len(), 3);
     assert_eq!(steps[0].status, "completed");
     assert_eq!(steps[1].status, "in_progress");
@@ -704,15 +800,16 @@ fn test_workflow_steps_crud() {
 fn test_workflow_steps_reset() {
     let conn = create_test_db();
     // Workflow run must exist so reset_workflow_steps_from can resolve the FK
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
-    save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
-    save_workflow_step(&conn, "test-skill", 1, "completed").unwrap();
-    save_workflow_step(&conn, "test-skill", 2, "completed").unwrap();
-    save_workflow_step(&conn, "test-skill", 3, "in_progress").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 1, "completed").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 2, "completed").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 3, "in_progress").unwrap();
 
-    reset_workflow_steps_from(&conn, "test-skill", 2).unwrap();
+    reset_workflow_steps_from_by_skill_id(&conn, skill_id, 2).unwrap();
 
-    let steps = get_workflow_steps(&conn, "test-skill").unwrap();
+    let steps = get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     assert_eq!(steps[0].status, "completed");
     assert_eq!(steps[1].status, "completed");
     assert_eq!(steps[2].status, "pending");
@@ -722,11 +819,16 @@ fn test_workflow_steps_reset() {
 #[test]
 fn test_delete_workflow_run() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
-    save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
     delete_workflow_run(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
-    assert!(get_workflow_run(&conn, "test-skill").unwrap().is_none());
-    assert!(get_workflow_steps(&conn, "test-skill").unwrap().is_empty());
+    assert!(get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
+    assert!(get_workflow_steps_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_empty());
 }
 
 // --- Skills Master CRUD tests ---
@@ -829,7 +931,8 @@ fn test_marketplace_skill_creates_master_row_only() {
     assert_eq!(skill.skill_source, "marketplace");
 
     // No workflow_runs row should be created
-    let run = get_workflow_run(&conn, "mkt-skill").unwrap();
+    let skill_id = get_skill_master_id(&conn, "mkt-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap();
     assert!(run.is_none());
 }
 
@@ -899,13 +1002,16 @@ fn test_redo_workflow_moves_non_default_plugin_skill_to_default_plugin() {
 #[test]
 fn test_delete_workflow_run_hard_deletes_skills_master() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
     assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
 
     delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Workflow state is removed and the canonical skills row is deleted.
-    assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
+    assert!(get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
     let row_exists: bool = conn
         .query_row(
             "SELECT COUNT(*) > 0 FROM skills WHERE name = 'my-skill'",
@@ -924,8 +1030,9 @@ fn test_delete_workflow_run_hard_deletes_skills_master() {
 #[test]
 fn test_delete_workflow_run_preserves_agent_run_usage_history() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
-    create_workflow_session(&conn, "sess-usage", "my-skill", 12345).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-usage", skill_id, 12345).unwrap();
 
     persist_agent_run(
         &conn,
@@ -1042,14 +1149,26 @@ fn test_backfill_migration_populates_skills_from_workflow_runs() {
     );
 
     // Marketplace row should be removed from workflow_runs
-    let run = get_workflow_run(&conn, "mkt-skill").unwrap();
+    let run: Option<String> = conn
+        .query_row(
+            "SELECT skill_name FROM workflow_runs WHERE skill_name = 'mkt-skill'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
     assert!(
         run.is_none(),
         "marketplace rows should be removed from workflow_runs"
     );
 
     // Created skill should still have a workflow_runs row
-    let run = get_workflow_run(&conn, "created-skill").unwrap();
+    let run: Option<String> = conn
+        .query_row(
+            "SELECT skill_name FROM workflow_runs WHERE skill_name = 'created-skill'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
     assert!(run.is_some());
 
     // workflow_runs should have skill_id FK populated
@@ -1238,8 +1357,11 @@ fn test_skill_type_migration() {
     let conn = create_test_db();
 
     // Verify purpose column exists by inserting a row with it
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "platform").unwrap();
-    let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.purpose, "platform");
 }
 
@@ -1256,15 +1378,16 @@ fn test_skill_type_migration_is_idempotent() {
 fn test_get_purpose_default() {
     let conn = create_test_db();
     // No workflow run exists — should return "domain" default
-    let skill_type = get_purpose(&conn, "nonexistent-skill").unwrap();
+    let skill_type = get_purpose_by_skill_id(&conn, 99999).unwrap();
     assert_eq!(skill_type, "domain");
 }
 
 #[test]
 fn test_get_purpose_explicit() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "my-skill", 0, "pending", "source").unwrap();
-    let skill_type = get_purpose(&conn, "my-skill").unwrap();
+    let skill_type = get_purpose_by_skill_id(&conn, skill_id).unwrap();
     assert_eq!(skill_type, "source");
 }
 
@@ -1309,13 +1432,18 @@ fn test_list_all_workflow_runs_after_delete() {
 #[test]
 fn test_workflow_run_preserves_skill_type() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "my-skill", 0, "pending", "data-engineering").unwrap();
-    let run = get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.purpose, "data-engineering");
 
     // Update step/status — skill_type should be preserved
     save_workflow_run(&conn, "my-skill", 3, "in_progress", "data-engineering").unwrap();
-    let run = get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.purpose, "data-engineering");
     assert_eq!(run.current_step, 3);
 }
@@ -1345,31 +1473,40 @@ fn test_busy_timeout_set() {
 
 // --- Skill Lock tests ---
 
+fn insert_skill_for_lock_tests(conn: &Connection, name: &str) -> i64 {
+    upsert_skill(conn, name, "skill-builder", "domain").unwrap();
+    crate::db::get_skill_master_id_in_plugin(conn, name, crate::skill_paths::DEFAULT_PLUGIN_SLUG)
+        .unwrap()
+        .unwrap()
+}
+
 #[test]
 fn test_acquire_and_release_lock() {
     let conn = create_test_db();
     run_lock_table_migration(&conn).unwrap();
-    // Skill must exist in master for FK-based locking
-    upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
-    acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
-    let lock = get_skill_lock(&conn, "test-skill").unwrap().unwrap();
+    let skill_id = insert_skill_for_lock_tests(&conn, "test-skill");
+    acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", 12345).unwrap();
+    let lock = get_skill_lock_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(lock.skill_name, "test-skill");
     assert_eq!(lock.instance_id, "inst-1");
     assert_eq!(lock.pid, 12345);
 
-    release_skill_lock(&conn, "test-skill", "inst-1").unwrap();
-    assert!(get_skill_lock(&conn, "test-skill").unwrap().is_none());
+    release_skill_lock_by_skill_id(&conn, skill_id, "inst-1").unwrap();
+    assert!(get_skill_lock_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
 }
 
 #[test]
 fn test_acquire_lock_conflict() {
     let conn = create_test_db();
     run_lock_table_migration(&conn).unwrap();
-    upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
-    // Use the current PID so the lock appears "live"
+    let skill_id = insert_skill_for_lock_tests(&conn, "test-skill");
     let pid = std::process::id();
-    acquire_skill_lock(&conn, "test-skill", "inst-1", pid).unwrap();
-    let result = acquire_skill_lock(&conn, "test-skill", "inst-2", pid);
+    acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", pid).unwrap();
+    let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-2", pid);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("being edited"));
 }
@@ -1378,39 +1515,37 @@ fn test_acquire_lock_conflict() {
 fn test_acquire_lock_idempotent_same_instance() {
     let conn = create_test_db();
     run_lock_table_migration(&conn).unwrap();
-    upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
-    acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
-    // Acquiring again from the same instance should succeed
-    acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
+    let skill_id = insert_skill_for_lock_tests(&conn, "test-skill");
+    acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", 12345).unwrap();
+    acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", 12345).unwrap();
 }
 
 #[test]
 fn test_release_all_instance_locks() {
     let conn = create_test_db();
     run_lock_table_migration(&conn).unwrap();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
-    acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
-    acquire_skill_lock(&conn, "skill-b", "inst-1", 12345).unwrap();
-    acquire_skill_lock(&conn, "skill-c", "inst-2", 67890).unwrap();
+    let id_a = insert_skill_for_lock_tests(&conn, "skill-a");
+    let id_b = insert_skill_for_lock_tests(&conn, "skill-b");
+    let id_c = insert_skill_for_lock_tests(&conn, "skill-c");
+    acquire_skill_lock_by_skill_id(&conn, id_a, "inst-1", 12345).unwrap();
+    acquire_skill_lock_by_skill_id(&conn, id_b, "inst-1", 12345).unwrap();
+    acquire_skill_lock_by_skill_id(&conn, id_c, "inst-2", 67890).unwrap();
 
     let count = release_all_instance_locks(&conn, "inst-1").unwrap();
     assert_eq!(count, 2);
 
-    // inst-2's lock should remain
-    assert!(get_skill_lock(&conn, "skill-c").unwrap().is_some());
-    assert!(get_skill_lock(&conn, "skill-a").unwrap().is_none());
+    assert!(get_skill_lock_by_skill_id(&conn, id_c).unwrap().is_some());
+    assert!(get_skill_lock_by_skill_id(&conn, id_a).unwrap().is_none());
 }
 
 #[test]
 fn test_get_all_skill_locks() {
     let conn = create_test_db();
     run_lock_table_migration(&conn).unwrap();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
-    acquire_skill_lock(&conn, "skill-b", "inst-2", 67890).unwrap();
+    let id_a = insert_skill_for_lock_tests(&conn, "skill-a");
+    let id_b = insert_skill_for_lock_tests(&conn, "skill-b");
+    acquire_skill_lock_by_skill_id(&conn, id_a, "inst-1", 12345).unwrap();
+    acquire_skill_lock_by_skill_id(&conn, id_b, "inst-2", 67890).unwrap();
 
     let locks = get_all_skill_locks(&conn).unwrap();
     assert_eq!(locks.len(), 2);
@@ -1649,9 +1784,9 @@ fn test_persist_agent_run_shutdown_overwrites_running() {
 #[test]
 fn test_get_usage_summary_correct_aggregates() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-1");
-    create_workflow_session(&conn, "wf-session-1", "skill-a", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-1", skill_id, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1",
@@ -1742,9 +1877,9 @@ fn test_get_usage_summary_empty() {
 #[test]
 fn test_reset_usage_marks_runs() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-r");
-    create_workflow_session(&conn, "wf-session-r", "skill-a", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-r", skill_id_a, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1",
@@ -1808,8 +1943,8 @@ fn test_reset_usage_marks_runs() {
     assert!(sessions.is_empty());
 
     // New runs after reset should still be visible
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "wf-session-r2", "skill-b", 1000).unwrap();
+    let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-r2", skill_id_b, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-3",
@@ -1842,9 +1977,9 @@ fn test_reset_usage_marks_runs() {
 #[test]
 fn test_get_usage_by_step_groups_correctly() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-s");
-    create_workflow_session(&conn, "wf-session-s", "skill-a", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-s", skill_id, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1",
@@ -1933,9 +2068,9 @@ fn test_get_usage_by_step_groups_correctly() {
 #[test]
 fn test_get_usage_by_model_groups_correctly() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-m");
-    create_workflow_session(&conn, "wf-session-m", "skill-a", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-m", skill_id, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1",
@@ -2021,11 +2156,11 @@ fn test_get_usage_by_model_groups_correctly() {
 
 #[test]
 fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
-    // Verify model filtering matches the persisted provider model string directly.
+    // Verify models filtering matches the persisted provider model string directly.
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-mf");
-    create_workflow_session(&conn, "wf-session-mf", "skill-a", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-mf", skill_id, 1000).unwrap();
 
     persist_agent_run(
         &conn,
@@ -2130,9 +2265,9 @@ fn test_persist_agent_run_stores_model_exactly() {
     // Runtime callers are responsible for passing the Settings-selected provider
     // model ID. Persistence stores whatever it receives without alias mapping.
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-x", "skill-builder", "domain").unwrap();
+    let skill_id = upsert_skill(&conn, "skill-x", "skill-builder", "domain").unwrap();
     let ws = Some("wf-norm");
-    create_workflow_session(&conn, "wf-norm", "skill-x", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-norm", skill_id, 1000).unwrap();
 
     persist_agent_run(
         &conn,
@@ -2225,8 +2360,8 @@ fn test_migration_32_preserves_existing_models() {
     // Migration 32 is a reserved historical slot; clean-break model routing does
     // not rewrite persisted model values.
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-y", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "wf-mig32", "skill-y", 1000).unwrap();
+    let skill_id = upsert_skill(&conn, "skill-y", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-mig32", skill_id, 1000).unwrap();
     conn.execute(
         "INSERT INTO agent_runs (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id)
          VALUES ('old-sonnet', 'skill-y', 0, 'Sonnet', 'completed', 0.10, 'wf-mig32'),
@@ -2389,9 +2524,9 @@ fn test_reset_usage_excludes_from_by_step_and_by_model() {
 #[test]
 fn test_composite_pk_allows_same_agent_different_models() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-cpk");
-    create_workflow_session(&conn, "wf-session-cpk", "skill-a", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-cpk", skill_id, 1000).unwrap();
 
     // Insert same agent_id with two different models (simulates sub-agent spawning)
     persist_agent_run(
@@ -2545,9 +2680,9 @@ fn test_composite_pk_migration_is_idempotent() {
 #[test]
 fn test_composite_pk_session_agent_count_uses_distinct() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-distinct");
-    create_workflow_session(&conn, "wf-session-distinct", "skill-a", 1000).unwrap();
+    create_workflow_session_by_skill_id(&conn, "wf-session-distinct", skill_id, 1000).unwrap();
 
     // Same agent uses two models
     persist_agent_run(
@@ -2648,8 +2783,8 @@ fn test_step_name_mapping() {
 #[test]
 fn test_create_workflow_session() {
     let conn = create_test_db();
-    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, 12345).unwrap();
 
     let ended_at: Option<String> = conn
         .query_row(
@@ -2664,10 +2799,10 @@ fn test_create_workflow_session() {
 #[test]
 fn test_create_workflow_session_idempotent() {
     let conn = create_test_db();
-    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, 12345).unwrap();
     // Second insert with same ID should be ignored (INSERT OR IGNORE)
-    create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, 12345).unwrap();
 
     let count: i64 = conn
         .query_row(
@@ -2682,8 +2817,8 @@ fn test_create_workflow_session_idempotent() {
 #[test]
 fn test_end_workflow_session() {
     let conn = create_test_db();
-    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, 12345).unwrap();
     end_workflow_session(&conn, "sess-1").unwrap();
 
     let ended_at: Option<String> = conn
@@ -2699,8 +2834,8 @@ fn test_end_workflow_session() {
 #[test]
 fn test_end_workflow_session_idempotent() {
     let conn = create_test_db();
-    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, 12345).unwrap();
     end_workflow_session(&conn, "sess-1").unwrap();
 
     let first_ended: String = conn
@@ -2727,12 +2862,12 @@ fn test_end_workflow_session_idempotent() {
 #[test]
 fn test_end_all_sessions_for_pid() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "skill-a", 100).unwrap();
-    create_workflow_session(&conn, "sess-2", "skill-b", 100).unwrap();
-    create_workflow_session(&conn, "sess-3", "skill-c", 200).unwrap();
+    let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    let skill_id_c = upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id_a, 100).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-2", skill_id_b, 100).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-3", skill_id_c, 200).unwrap();
 
     let count = end_all_sessions_for_pid(&conn, 100).unwrap();
     assert_eq!(count, 2);
@@ -2751,11 +2886,11 @@ fn test_end_all_sessions_for_pid() {
 #[test]
 fn test_end_active_workflow_sessions_for_skill() {
     let conn = create_test_db();
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "skill-a", 100).unwrap();
-    create_workflow_session(&conn, "sess-2", "skill-a", 200).unwrap();
-    create_workflow_session(&conn, "sess-3", "skill-b", 100).unwrap();
+    let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id_a, 100).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-2", skill_id_a, 200).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-3", skill_id_b, 100).unwrap();
     end_workflow_session(&conn, "sess-2").unwrap();
 
     let count = end_active_workflow_sessions_for_skill(&conn, "skill-a").unwrap();
@@ -2793,8 +2928,8 @@ fn test_end_active_workflow_sessions_for_skill() {
 fn test_reconcile_orphaned_sessions_dead_pid() {
     let conn = create_test_db();
     // PID 99999999 is dead
-    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "my-skill", 99999999).unwrap();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, 99999999).unwrap();
 
     let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
     assert_eq!(reconciled, 1);
@@ -2827,6 +2962,13 @@ fn test_delete_workflow_run_non_default_plugin() {
     // save_workflow_run always places skills in the default plugin (handles redo
     // workflow case). Use it to create the workflow run + skill.
     save_workflow_run(&conn, "mkt-skill-del", 0, "pending", "domain").unwrap();
+    let skill_id = get_skill_master_id_in_plugin(
+        &conn,
+        "mkt-skill-del",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap()
+    .unwrap();
     set_skill_tags(
         &conn,
         "mkt-skill-del",
@@ -2844,7 +2986,9 @@ fn test_delete_workflow_run_non_default_plugin() {
     .unwrap();
 
     // Workflow run should be gone
-    assert!(get_workflow_run(&conn, "mkt-skill-del").unwrap().is_none());
+    assert!(get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
     // Skill master row should be removed
     let row_exists: bool = conn
         .query_row(
@@ -2914,8 +3058,8 @@ fn test_delete_imported_skill_by_name_non_default_plugin() {
 fn test_reconcile_orphaned_sessions_live_pid() {
     let conn = create_test_db();
     let pid = std::process::id();
-    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "my-skill", pid).unwrap();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, pid).unwrap();
 
     let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
     assert_eq!(reconciled, 0);
@@ -2934,9 +3078,9 @@ fn test_reconcile_orphaned_sessions_live_pid() {
 #[test]
 fn test_delete_workflow_run_preserves_usage_sessions() {
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
-    upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id, 12345).unwrap();
 
     delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
@@ -2964,8 +3108,8 @@ fn test_get_usage_summary_hide_cancelled() {
     let conn = create_test_db();
 
     // Session with real cost
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-cost", "skill-a", 1000).unwrap();
+    let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-cost", skill_id_a, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1",
@@ -2991,8 +3135,8 @@ fn test_get_usage_summary_hide_cancelled() {
     .unwrap();
 
     // Session with zero cost (cancelled)
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-zero", "skill-b", 2000).unwrap();
+    let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-zero", skill_id_b, 2000).unwrap();
     persist_agent_run(
         &conn,
         "agent-2",
@@ -3027,8 +3171,8 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
     let conn = create_test_db();
 
     // Session 1
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
+    let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id_a, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1",
@@ -3054,8 +3198,8 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
     .unwrap();
 
     // Session 2
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
+    let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-2", skill_id_b, 2000).unwrap();
     persist_agent_run(
         &conn,
         "agent-2",
@@ -3102,8 +3246,8 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
     let conn = create_test_db();
 
     // Session with cost
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-good", "skill-a", 1000).unwrap();
+    let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-good", skill_id_a, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1",
@@ -3129,8 +3273,8 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
     .unwrap();
 
     // Session with zero cost
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-cancelled", "skill-b", 2000).unwrap();
+    let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-cancelled", skill_id_b, 2000).unwrap();
     persist_agent_run(
         &conn,
         "agent-2",
@@ -3165,8 +3309,8 @@ fn test_get_usage_summary_multiple_sessions() {
     let conn = create_test_db();
 
     // Session 1: two agent runs
-    upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
+    let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-1", skill_id_a, 1000).unwrap();
     persist_agent_run(
         &conn,
         "agent-1a",
@@ -3215,8 +3359,8 @@ fn test_get_usage_summary_multiple_sessions() {
     .unwrap();
 
     // Session 2: one agent run
-    upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
+    let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-2", skill_id_b, 2000).unwrap();
     persist_agent_run(
         &conn,
         "agent-2a",
@@ -3242,8 +3386,8 @@ fn test_get_usage_summary_multiple_sessions() {
     .unwrap();
 
     // Session 3: two agent runs
-    upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
-    create_workflow_session(&conn, "sess-3", "skill-c", 3000).unwrap();
+    let skill_id_c = upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-3", skill_id_c, 3000).unwrap();
     persist_agent_run(
         &conn,
         "agent-3a",
@@ -3722,13 +3866,14 @@ fn test_fk_columns_migration_is_idempotent() {
     let conn = create_test_db();
 
     // Create a skill row (also creates skills master via save_workflow_run).
+    let skill_id = upsert_skill(&conn, "fk-idempotent-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "fk-idempotent-skill", 0, "pending", "domain").unwrap();
 
     // Run migration 22 again — must not error.
     run_fk_columns_migration(&conn).unwrap();
 
     // Save a workflow step and verify workflow_run_id is populated.
-    save_workflow_step(&conn, "fk-idempotent-skill", 1, "in_progress").unwrap();
+    save_workflow_step_by_skill_id(&conn, skill_id, 1, "in_progress").unwrap();
 
     let workflow_run_id: Option<i64> = conn
         .query_row(
@@ -3742,7 +3887,7 @@ fn test_fk_columns_migration_is_idempotent() {
         "workflow_run_id must be non-NULL after save_workflow_step"
     );
 
-    let expected_wr_id = get_workflow_run_id(&conn, "fk-idempotent-skill")
+    let expected_wr_id = get_workflow_run_id_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -3877,10 +4022,11 @@ fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
     let conn = create_test_db();
 
     // Create skill via save_workflow_run (also creates skills master row).
+    let skill_id = upsert_skill(&conn, "step-test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "step-test-skill", 0, "pending", "domain").unwrap();
 
     // Create a workflow session.
-    create_workflow_session(&conn, "session-1", "step-test-skill", std::process::id()).unwrap();
+    create_workflow_session_by_skill_id(&conn, "session-1", skill_id, std::process::id()).unwrap();
 
     // Insert agent run with step_id=3 and status="completed" so it appears in get_step_agent_runs.
     persist_agent_run(
@@ -3909,7 +4055,7 @@ fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
 
     // persist_agent_run does not populate workflow_run_id — backfill it here, mirroring
     // what run_fk_columns_migration does for pre-existing rows.
-    let wr_id = get_workflow_run_id(&conn, "step-test-skill")
+    let wr_id = get_workflow_run_id_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     conn.execute(
@@ -3940,6 +4086,7 @@ fn test_has_active_session_with_live_pid_uses_skill_id_fk() {
     let conn = create_test_db();
 
     // Create skill via save_workflow_run (also creates skills master row).
+    let skill_id = upsert_skill(&conn, "session-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "session-skill", 0, "pending", "domain").unwrap();
 
     // No session yet — must return false.
@@ -3950,7 +4097,7 @@ fn test_has_active_session_with_live_pid_uses_skill_id_fk() {
 
     // Create session using current PID (guaranteed alive).
     let current_pid = std::process::id();
-    create_workflow_session(&conn, "sess-live", "session-skill", current_pid).unwrap();
+    create_workflow_session_by_skill_id(&conn, "sess-live", skill_id, current_pid).unwrap();
 
     // Session exists with live PID — must return true.
     assert!(
@@ -4358,9 +4505,10 @@ fn test_save_workflow_state_preserves_skills_metadata() {
     save_workflow_run(&conn, "meta-skill", 0, "pending", "domain").unwrap();
 
     // 2. Write canonical metadata to the skills master table.
-    set_skill_behaviour(
+    set_skill_behaviour_in_plugin(
         &conn,
         "meta-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
         Some("Canonical description"),
         Some("2.0.0"),
         Some(true),
@@ -4397,7 +4545,12 @@ fn test_save_workflow_state_preserves_skills_metadata() {
     );
 
     // 5. Confirm the execution state was updated correctly.
-    let run = get_workflow_run(&conn, "meta-skill").unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(
+        &conn,
+        get_skill_master_id(&conn, "meta-skill").unwrap().unwrap(),
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(run.current_step, 3);
     assert_eq!(run.status, "completed");
 }
@@ -4511,14 +4664,17 @@ fn test_acquire_lock_works_for_marketplace_skill() {
     )
     .unwrap();
     upsert_skill_in_plugin(&conn, "mkt-lockable", "marketplace", "domain", "mkt-lock").unwrap();
+    let skill_id = get_skill_master_id_in_plugin(&conn, "mkt-lockable", "mkt-lock")
+        .unwrap()
+        .unwrap();
 
-    let result = acquire_skill_lock(&conn, "mkt-lockable", "inst-1", std::process::id());
+    let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", std::process::id());
     assert!(
         result.is_ok(),
         "acquire_skill_lock should succeed for marketplace skill with active master row"
     );
 
-    release_skill_lock(&conn, "mkt-lockable", "inst-1").unwrap();
+    release_skill_lock_by_skill_id(&conn, skill_id, "inst-1").unwrap();
 }
 
 #[test]
@@ -4582,7 +4738,11 @@ fn test_migration_54_drops_litellm_tables() {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(exists, 0, "table {} should be dropped after migration 54", table);
+        assert_eq!(
+            exists, 0,
+            "table {} should be dropped after migration 54",
+            table
+        );
     }
 }
 
@@ -4623,7 +4783,8 @@ fn test_migration_55_fk_cascade_deletes_children() {
     conn.execute(
         "INSERT INTO provider_env (provider_id, env_var) VALUES ('test-provider', 'TEST_API_KEY')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Insert a model
     conn.execute(
@@ -4643,26 +4804,45 @@ fn test_migration_55_fk_cascade_deletes_children() {
     ).unwrap();
 
     // Delete the provider — CASCADE should remove env, model, and modalities
-    conn.execute("DELETE FROM provider_catalog WHERE provider_id = 'test-provider'", [])
-        .unwrap();
+    conn.execute(
+        "DELETE FROM provider_catalog WHERE provider_id = 'test-provider'",
+        [],
+    )
+    .unwrap();
 
     let env_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM provider_env WHERE provider_id = 'test-provider'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM provider_env WHERE provider_id = 'test-provider'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(env_count, 0, "provider_env rows should be cascaded");
 
     let model_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_catalog WHERE provider_id = 'test-provider'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_catalog WHERE provider_id = 'test-provider'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(model_count, 0, "model_catalog rows should be cascaded");
 
     let input_mod_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'test-provider:model-1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'test-provider:model-1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(input_mod_count, 0, "input modalities should be cascaded");
 
     let output_mod_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'test-provider:model-1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'test-provider:model-1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(output_mod_count, 0, "output modalities should be cascaded");
 }
@@ -4675,7 +4855,8 @@ fn test_migration_55_model_cascade_deletes_modalities() {
         "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
          VALUES ('prov-2', 'Provider 2', '@test/p2', NULL, 'https://docs.p2.com')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     conn.execute(
         "INSERT INTO model_catalog (full_id, provider_id, model_id, name, attachment, reasoning, tool_call, open_weights, release_date, last_updated)
@@ -4686,23 +4867,39 @@ fn test_migration_55_model_cascade_deletes_modalities() {
     conn.execute(
         "INSERT INTO model_input_modalities (full_id, modality) VALUES ('prov-2:m1', 'image')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO model_output_modalities (full_id, modality) VALUES ('prov-2:m1', 'text')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Delete the model — CASCADE should remove modalities
     conn.execute("DELETE FROM model_catalog WHERE full_id = 'prov-2:m1'", [])
         .unwrap();
 
     let in_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'prov-2:m1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'prov-2:m1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert_eq!(in_count, 0, "input modalities should be cascaded on model delete");
+    assert_eq!(
+        in_count, 0,
+        "input modalities should be cascaded on model delete"
+    );
 
     let out_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'prov-2:m1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'prov-2:m1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert_eq!(out_count, 0, "output modalities should be cascaded on model delete");
+    assert_eq!(
+        out_count, 0,
+        "output modalities should be cascaded on model delete"
+    );
 }

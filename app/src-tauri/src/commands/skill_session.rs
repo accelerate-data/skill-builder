@@ -42,19 +42,17 @@ pub(crate) async fn ensure_skill_runtime_ready(
     plugin_slug: &str,
 ) -> Result<crate::commands::workflow::settings::InitializedRuntimeContext, String> {
     let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
-    let skill_dir = crate::skill_paths::ensure_nested_skill_dir(
+    let skill_dir = crate::skill_paths::resolve_skill_dir(
         Path::new(&runtime_ctx.skills_root),
         plugin_slug,
         skill_name,
-    )?;
+    );
     if !skill_dir.exists() {
-        std::fs::create_dir_all(&skill_dir).map_err(|e| {
-            format!(
-                "Failed to create skill directory '{}': {}",
-                skill_dir.display(),
-                e
-            )
-        })?;
+        return Err(format!(
+            "Skill content is missing at '{}' for '{}'. Restore the skill files before continuing.",
+            skill_dir.display(),
+            skill_name
+        ));
     }
     crate::commands::workflow::deploy::seed_skill_agents_dir(app, &skill_dir)?;
     Ok(runtime_ctx)
@@ -127,7 +125,9 @@ fn restore_skill_conversation_state(
     let restored_transcript_events =
         crate::commands::refine::events::extract_restored_conversation_events(events);
     let dispatched_user_turn_count =
-        crate::commands::refine::events::restored_conversation_user_turn_count(&restored_transcript_events);
+        crate::commands::refine::events::restored_conversation_user_turn_count(
+            &restored_transcript_events,
+        );
     (
         restored_messages,
         restored_transcript_events,
@@ -310,13 +310,11 @@ pub async fn pause_openhands_session(
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(Path::new(&skills_root), &plugin_slug, &skill_name);
     if !skill_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&skill_dir) {
-            log::warn!(
-                "[pause_openhands_session] failed to create skill dir '{}': {}",
-                skill_dir.display(),
-                e
-            );
-        }
+        return Err(format!(
+            "Skill content is missing at '{}' for '{}'. Restore the skill files before continuing.",
+            skill_dir.display(),
+            skill_name
+        ));
     }
 
     let skills_path = resolve_skills_path(&db)?;
@@ -358,10 +356,9 @@ pub async fn pause_openhands_session(
     // This keeps lock ownership entirely in the backend — the frontend no longer
     // calls `release_lock` directly.
     if let Some(sid) = skill_id {
-        let conn = db
-            .0
-            .lock()
-            .map_err(|e| format!("failed to lock DB during lock release: {e}"))?;
+        let conn =
+            db.0.lock()
+                .map_err(|e| format!("failed to lock DB during lock release: {e}"))?;
         crate::db::release_skill_lock_by_skill_id(&conn, sid, &instance.id)
             .map_err(|e| format!("failed to release skill lock {sid}: {e}"))?;
     }
@@ -514,6 +511,9 @@ mod tests {
 
         // DELETE with no matching lock row succeeds (0 rows affected)
         let result = crate::db::release_skill_lock_by_skill_id(&conn, skill_id, "instance-x");
-        assert!(result.is_ok(), "DELETE with no matching rows should succeed");
+        assert!(
+            result.is_ok(),
+            "DELETE with no matching rows should succeed"
+        );
     }
 }

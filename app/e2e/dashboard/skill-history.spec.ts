@@ -3,6 +3,7 @@ import { reloadWithOverrides } from "../helpers/app-helpers";
 import { E2E_MODEL_SETTINGS, E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
 
 const COMPLETED_SKILL = {
+  id: 501,
   name: "test-skill",
   purpose: "domain",
   current_step: null,

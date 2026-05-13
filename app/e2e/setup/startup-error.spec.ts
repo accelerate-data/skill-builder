@@ -9,7 +9,7 @@ test.describe("Startup Error (agent-init-error)", { tag: "@setup" }, () => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
     }, WORKFLOW_OVERRIDES);
 
-    await page.goto("/skill/test-skill");
+    await page.goto("/workflow/301");
     await waitForAppReady(page);
     await page.getByText("STEPS").waitFor({ timeout: 10_000 });
 

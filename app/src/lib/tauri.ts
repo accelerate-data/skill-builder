@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, AnswerEvaluationOutput, PerQuestionEntry, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
 import type { TauriCommandInvocation, TauriCommandResult, ModelCatalogEntry, ModelFilter, ProviderCatalogRow } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
@@ -14,7 +14,7 @@ export const logFrontend = (level: "info" | "warn" | "error" | "debug", message:
   invokeCommand("log_frontend", { level, message }).catch(() => {});
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, SkillCommit, NodeStatus, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, SkillSessionInfo, RefineDispatchResult, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepResultPayload, AnswerEvaluationOutput, PerQuestionEntry, Document, ConversationMessage, RestoredConversationEvent } from "@/lib/types";
+export type { AppSettings, SkillSummary, SkillCommit, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, UsageByDay, ImportedSkill, GitHubRepoInfo, AvailablePlugin, AvailableSkill, SkillFileContent, RefineDiff, RefineFinalizeResult, SkillSessionInfo, RefineDispatchResult, MarketplaceImportResult, MarketplaceUpdateResult, SkillMetadataOverride, SkillUpdateInfo, SkillFileMeta, ModelInfo, StartupDeps, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, WorkflowStepResultPayload, AnswerEvaluationOutput, PerQuestionEntry, Document, ConversationMessage, RestoredConversationEvent } from "@/lib/types";
 export type { ScopeReviewResult, ScopeReviewSuggestion } from "@/lib/tauri-command-types";
 
 // --- Settings ---
@@ -99,16 +99,6 @@ export const runWorkflowStep = (
   workspacePath: string,
 ) => invokeCommand("run_workflow_step", { skillId, skillName, stepId, workspacePath });
 
-export const materializeWorkflowStepOutput = (
-  skillName: string,
-  stepId: 0 | 1 | 2 | 3,
-  workflowResultPayload: ResearchStepOutput | DetailedResearchOutput | DecisionsOutput | GenerateSkillOutput,
-) => invokeCommand("materialize_workflow_step_output", {
-  skillName,
-  stepId,
-  workflowResultPayload,
-});
-
 export const resetWorkflowStep = (
   workspacePath: string,
   skillName: string,
@@ -138,9 +128,9 @@ export const previewStepReset = (
 
 export const verifyStepOutput = (
   workspacePath: string,
-  skillName: string,
+  skillId: number,
   stepId: number,
-) => invokeCommand("verify_step_output", { workspacePath, skillName, stepId });
+) => invokeCommand("verify_step_output", { workspacePath, skillId, stepId });
 
 export const getDisabledSteps = (skillId: number) =>
   invokeCommand("get_disabled_steps", { skillId });
