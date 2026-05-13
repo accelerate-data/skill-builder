@@ -121,9 +121,11 @@ jobs:
           mkdir -p "$STAGE"
           cp -R "app/src-tauri/target/release/bundle/macos/Skill Builder.app" "$STAGE/"
 
-          # Inject bundled uv into the app bundle so users don't need uv pre-installed
-          cp "$UV_BIN" "$STAGE/Skill Builder.app/Contents/Resources/uv"
-          chmod +x "$STAGE/Skill Builder.app/Contents/Resources/uv"
+          # Inject bundled uv and workspace assets into the app bundle under runtime/
+          mkdir -p "$STAGE/Skill Builder.app/Contents/Resources/runtime/workspace"
+          cp "$UV_BIN" "$STAGE/Skill Builder.app/Contents/Resources/runtime/uv"
+          chmod +x "$STAGE/Skill Builder.app/Contents/Resources/runtime/uv"
+          cp -r "agent-sources/workspace/." "$STAGE/Skill Builder.app/Contents/Resources/runtime/workspace/"
 
           cat > "$STAGE/run.sh" << 'SCRIPT'
           #!/bin/bash
@@ -145,12 +147,11 @@ jobs:
           mkdir -p "$STAGE"
           cp "app/src-tauri/target/release/skill-builder.exe" "$STAGE/"
 
-          mkdir -p "$STAGE/agent-sources" "$STAGE/workspace"
-          cp -r "agent-sources/skills" "$STAGE/agent-sources/skills"
-          cp -r "agent-sources/workspace/." "$STAGE/workspace/"
+          mkdir -p "$STAGE/runtime/workspace"
+          cp -r "agent-sources/workspace/." "$STAGE/runtime/workspace/"
 
-          # Include bundled uv so users don't need uv pre-installed
-          cp "$UV_BIN" "$STAGE/uv.exe"
+          # Include bundled uv under runtime/ so users don't need uv pre-installed
+          cp "$UV_BIN" "$STAGE/runtime/uv.exe"
 
           node scripts/ci/verify-release-stage.mjs "$STAGE" windows
 
