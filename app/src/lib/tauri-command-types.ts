@@ -3,7 +3,6 @@ import type {
   AnswerEvaluationOutput,
   AppSettings,
   AvailablePlugin,
-  AvailableSkill,
   DeviceFlowResponse,
   DiscoveryResolutionAction,
   Document,
@@ -251,8 +250,6 @@ export interface TauriCommandMap {
   github_poll_for_token: { args: { deviceCode: string }; result: GitHubAuthResult };
   github_get_user: { args: NoArgs; result: GitHubUser | null };
   github_logout: { args: NoArgs; result: void };
-  acquire_lock: { args: { skillId: number }; result: void };
-  release_lock: { args: { skillId: number }; result: void };
   get_externally_locked_skills: { args: NoArgs; result: number[] };
   get_usage_summary: {
     args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
@@ -299,10 +296,6 @@ export interface TauriCommandMap {
   remove_skill_from_plugin: { args: { skillKey: string }; result: void };
   parse_github_url: { args: { url: string }; result: GitHubRepoInfo };
   check_marketplace_url: { args: { url: string }; result: string };
-  list_github_skills: {
-    args: { owner: string; repo: string; branch: string; subpath: string | null };
-    result: AvailableSkill[];
-  };
   list_github_plugins: {
     args: { owner: string; repo: string; branch: string; subpath: string | null };
     result: AvailablePlugin[];
@@ -441,7 +434,6 @@ export interface TauriCommandMap {
     };
     result: number;
   };
-  get_all_tags: { args: NoArgs; result: string[] };
   read_latest_benchmark: {
     args: { skillName: string; workspacePath: string };
     result: LatestBenchmarkResult | null;

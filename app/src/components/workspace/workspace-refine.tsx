@@ -35,7 +35,6 @@ interface WorkspaceRefineProps {
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model_id);
-  const availableModels = useSettingsStore((s) => s.availableModels);
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
   const skillFiles = useRefineStore((s) => s.skillFiles);
@@ -358,8 +357,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
   const activeModel = selectedModel;
   const modelLabel = activeModel
-    ? (availableModels.find((m) => m.id === activeModel)?.displayName ??
-      deriveModelLabel(activeModel))
+    ? deriveModelLabel(activeModel)
     : null;
 
   const isStopping = useRefineStore((s) => s.isStopping);

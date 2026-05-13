@@ -14,7 +14,6 @@ import {
   importMarketplaceToLibrary,
   importSkillFromFile,
   listGitHubPlugins,
-  listGitHubSkills,
   listImportedSkills,
   listPlugins,
   listSkills,
@@ -223,12 +222,6 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
       call: () => checkMarketplaceUrl("https://github.com/acme/skills"),
       command: "check_marketplace_url",
       args: { url: "https://github.com/acme/skills" },
-    },
-    {
-      name: "listGitHubSkills",
-      call: () => listGitHubSkills("acme", "skills", "main"),
-      command: "list_github_skills",
-      args: { owner: "acme", repo: "skills", branch: "main", subpath: null },
     },
     {
       name: "listGitHubPlugins",

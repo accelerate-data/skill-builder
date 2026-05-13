@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
-import type { AnswerEvaluation } from "@/lib/tauri";
+import type { AnswerEvaluationOutput } from "@/lib/types";
 import {
   runAnswerEvaluator,
   materializeAnswerEvaluationOutput,
@@ -149,7 +149,7 @@ export function useWorkflowGate({
       console.debug("[workflow] Gate evaluation payload:", evaluationPayload);
 
       try {
-        let evaluation: AnswerEvaluation;
+        let evaluation: AnswerEvaluationOutput;
 
         if (evaluationPayload != null) {
           await materializeAnswerEvaluationOutput(
@@ -157,7 +157,7 @@ export function useWorkflowGate({
             workspacePath,
             evaluationPayload as import("@/lib/types").AnswerEvaluationOutput,
           );
-          evaluation = evaluationPayload as AnswerEvaluation;
+          evaluation = evaluationPayload as AnswerEvaluationOutput;
         } else {
           stayOnCurrentStep(
             "Answer evaluation output was missing from the completed runtime result. Review the workflow logs and retry.",

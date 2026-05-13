@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, AnswerEvaluationOutput, PerQuestionEntry, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, AnswerEvaluationOutput, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
 import type { TauriCommandInvocation, TauriCommandResult, ModelCatalogEntry, ModelFilter, ProviderCatalogRow } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
@@ -267,12 +267,6 @@ export const githubGetUser = () =>
 export const githubLogout = () =>
   invokeCommand("github_logout", {});
 
-export const acquireLock = (skillId: number) =>
-  invokeCommand("acquire_lock", { skillId });
-
-export const releaseLock = (skillId: number) =>
-  invokeCommand("release_lock", { skillId });
-
 export const getExternallyLockedSkills = () =>
   invokeCommand("get_externally_locked_skills", {});
 
@@ -373,9 +367,6 @@ export const parseGitHubUrl = (url: string) =>
 /** Validates the URL and returns the registry name from marketplace.json. */
 export const checkMarketplaceUrl = (url: string) =>
   invokeCommand("check_marketplace_url", { url });
-
-export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
-  invokeCommand("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
 
 export const listGitHubPlugins = (owner: string, repo: string, branch: string, subpath?: string) =>
   invokeCommand("list_github_plugins", { owner, repo, branch, subpath: subpath ?? null });
@@ -491,12 +482,6 @@ export const getSkillFilesAtSha = (workspacePath: string, skillName: string, plu
 
 // --- Answer Evaluation (Transition Gate) ---
 
-/** @deprecated Use {@link PerQuestionEntry} from `@/lib/types` instead. */
-export type PerQuestionVerdict = PerQuestionEntry;
-
-/** @deprecated Use {@link AnswerEvaluationOutput} from `@/lib/types` instead. */
-export type AnswerEvaluation = AnswerEvaluationOutput;
-
 export const runAnswerEvaluator = (
   skillId: number,
   skillName: string,
@@ -571,9 +556,6 @@ export const setLogLevel = (level: string) =>
 
 export const checkStartupDeps = () =>
   invokeCommand("check_startup_deps", {});
-
-export const getAllTags = () =>
-  invokeCommand("get_all_tags", {});
 
 // --- Benchmark ---
 
