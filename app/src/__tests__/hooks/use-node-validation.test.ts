@@ -10,10 +10,10 @@ describe("useStartupValidation", () => {
 
   it("returns deps on successful check", async () => {
     const mockDeps = {
-      all_ok: true,
+      status: { status: "Ready" },
       checks: [
-        { code: "openhands_agent_server", name: "OpenHands Agent Server", ok: true, detail: "available" },
-        { code: "git_binary", name: "Git", ok: true, detail: "git version 2.49.0" },
+        { name: "OpenHands Agent Server", ok: true, detail: "available" },
+        { name: "Git", ok: true, detail: "git version 2.49.0" },
       ],
     };
     mockInvoke.mockResolvedValue(mockDeps);
@@ -60,10 +60,10 @@ describe("useStartupValidation", () => {
     mockInvoke
       .mockRejectedValueOnce(new Error("First attempt failed"))
       .mockResolvedValueOnce({
-        all_ok: true,
+        status: { status: "Ready" },
         checks: [
-          { code: "openhands_agent_server", name: "OpenHands Agent Server", ok: true, detail: "available" },
-          { code: "git_binary", name: "Git", ok: true, detail: "git version 2.49.0" },
+          { name: "OpenHands Agent Server", ok: true, detail: "available" },
+          { name: "Git", ok: true, detail: "git version 2.49.0" },
         ],
       });
 
@@ -85,10 +85,10 @@ describe("useStartupValidation", () => {
     });
 
     expect(result.current.deps).toEqual({
-      all_ok: true,
+      status: { status: "Ready" },
       checks: [
-        { code: "openhands_agent_server", name: "OpenHands Agent Server", ok: true, detail: "available" },
-        { code: "git_binary", name: "Git", ok: true, detail: "git version 2.49.0" },
+        { name: "OpenHands Agent Server", ok: true, detail: "available" },
+        { name: "Git", ok: true, detail: "git version 2.49.0" },
       ],
     });
     expect(result.current.error).toBeNull();

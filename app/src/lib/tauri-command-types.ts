@@ -24,7 +24,7 @@ import type {
   SkillFileMeta,
   SkillMetadataOverride,
   SkillSummary,
-  StartupDeps,
+  StartupResult,
   UsageByDay,
   UsageByModel,
   UsageByStep,
@@ -183,7 +183,7 @@ export interface TauriCommandMap {
   get_data_dir: { args: NoArgs; result: string };
   get_default_skills_path: { args: NoArgs; result: string };
   set_log_level: { args: { level: string }; result: void };
-  check_startup_deps: { args: NoArgs; result: StartupDeps };
+  check_startup_deps: { args: NoArgs; result: StartupResult };
   reconcile_startup: { args: NoArgs | { apply: true }; result: ReconciliationResult };
   record_reconciliation_cancel: {
     args: { notificationCount: number; discoveredCount: number };

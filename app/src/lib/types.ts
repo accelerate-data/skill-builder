@@ -210,6 +210,23 @@ export interface RefineDispatchResult {
 }
 
 
+export interface BootstrapCheck {
+  name: string
+  ok: boolean
+  detail: string
+}
+
+export type BootstrapStatus =
+  | { status: "Ready" }
+  | { status: "Installing"; detail: string }
+  | { status: "Failed"; detail: string; remediation?: string | null }
+
+export interface StartupResult {
+  status: BootstrapStatus
+  checks: BootstrapCheck[]
+}
+
+// Legacy aliases for backward compatibility during transition
 export interface DepStatus {
   code?: string | null
   failure_kind?: string | null
