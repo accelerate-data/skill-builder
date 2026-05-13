@@ -34,21 +34,25 @@ export interface MarketplaceRegistry {
   enabled: boolean
 }
 
-export interface ModelSettings {
-  provider: string | null
-  model: string | null
+export interface ProviderOverride {
   api_key: string | null
-  base_url: string | null
-  api_version?: string | null
-  temperature?: number | null
-  max_output_tokens?: number | null
-  timeout_seconds?: number | null
-  num_retries?: number | null
-  reasoning_effort?: string | null
-  extra_headers?: Record<string, string> | null
-  input_cost_per_token?: number | null
-  output_cost_per_token?: number | null
-  usage_id?: string | null
+  base_url_override: string | null
+  api_version: string | null
+  temperature: number | null
+  max_output_tokens: number | null
+  timeout_seconds: number | null
+  num_retries: number | null
+  reasoning_effort: string | null
+  extra_headers: Record<string, string> | null
+  input_cost_per_token: number | null
+  output_cost_per_token: number | null
+  usage_id: string | null
+}
+
+export interface ModelSettings {
+  provider_id: string | null
+  model_id: string | null
+  provider_overrides: Record<string, ProviderOverride>
 }
 
 export interface AppSettings {

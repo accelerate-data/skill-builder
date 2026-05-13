@@ -136,6 +136,45 @@ type SkillMetadataArgs = {
   disableModelInvocation: boolean | null;
 };
 
+export interface ModelCatalogEntry {
+  full_id: string;
+  provider_id: string;
+  model_id: string;
+  name: string;
+  family: string | null;
+  attachment: boolean;
+  reasoning: boolean;
+  tool_call: boolean;
+  structured_output: boolean | null;
+  temperature: boolean | null;
+  knowledge: string | null;
+  release_date: string;
+  last_updated: string;
+  open_weights: boolean;
+  input_cost_per_token: number | null;
+  output_cost_per_token: number | null;
+  context_limit: number | null;
+  interleaved: unknown;
+  status: string | null;
+  experimental: boolean | null;
+  input_modalities: string[];
+  output_modalities: string[];
+}
+
+export interface ModelFilter {
+  field: string;
+  op: string;
+  value: unknown;
+}
+
+export interface ProviderCatalogRow {
+  provider_id: string;
+  name: string;
+  npm: string;
+  api_base_url: string | null;
+  doc_url: string;
+}
+
 export interface TauriCommandMap {
   log_frontend: { args: { level: "info" | "warn" | "error" | "debug"; message: string }; result: void };
   get_settings: { args: NoArgs; result: AppSettings };
@@ -465,6 +504,11 @@ export interface TauriCommandMap {
   };
   update_document: { args: { id: number; scope: DocumentScope; skillIds: number[] }; result: Document };
   delete_document: { args: { id: number }; result: void };
+  // Model catalog commands (PR 3)
+  refresh_model_catalog: { args: NoArgs; result: ModelCatalogEntry[] };
+  get_cached_model_catalog: { args: NoArgs; result: ModelCatalogEntry[] };
+  get_cached_model_providers: { args: NoArgs; result: ProviderCatalogRow[] };
+  filter_models: { args: { models: ModelCatalogEntry[]; filters: ModelFilter[] }; result: ModelCatalogEntry[] };
 }
 
 export type TauriCommandName = keyof TauriCommandMap;

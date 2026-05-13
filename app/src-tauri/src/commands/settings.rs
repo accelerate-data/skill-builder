@@ -367,38 +367,9 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
         };
     }
     // Skip: API keys and OAuth token/login/avatar/email (auth-managed or sensitive)
-    if old.model_settings.model != new.model_settings.model
-        || old.model_settings.provider != new.model_settings.provider
-        || old.model_settings.base_url != new.model_settings.base_url
-        || old.model_settings.api_version != new.model_settings.api_version
-        || old.model_settings.temperature != new.model_settings.temperature
-        || old.model_settings.max_output_tokens != new.model_settings.max_output_tokens
-        || old.model_settings.timeout_seconds != new.model_settings.timeout_seconds
-        || old.model_settings.num_retries != new.model_settings.num_retries
-        || old.model_settings.reasoning_effort != new.model_settings.reasoning_effort
-        || old
-            .model_settings
-            .extra_headers
-            .as_ref()
-            .map(|h| h.keys().collect::<Vec<_>>())
-            != new
-                .model_settings
-                .extra_headers
-                .as_ref()
-                .map(|h| h.keys().collect::<Vec<_>>())
-        || old.model_settings.input_cost_per_token != new.model_settings.input_cost_per_token
-        || old.model_settings.output_cost_per_token != new.model_settings.output_cost_per_token
-        || old.model_settings.usage_id != new.model_settings.usage_id
-        || old
-            .model_settings
-            .api_key
-            .as_ref()
-            .map(|key| key.expose().is_empty())
-            != new
-                .model_settings
-                .api_key
-                .as_ref()
-                .map(|key| key.expose().is_empty())
+    if old.model_settings.model_id != new.model_settings.model_id
+        || old.model_settings.provider_id != new.model_settings.provider_id
+        || old.model_settings.provider_overrides != new.model_settings.provider_overrides
     {
         changes.push("model_settings=updated".to_string());
     }

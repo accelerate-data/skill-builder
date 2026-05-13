@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 // ─── marketplace.json deserialization types ──────────────────────────────────
 
@@ -81,16 +81,15 @@ fn trimmed_opt(value: Option<String>) -> Option<String> {
     })
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ModelSettings {
-    #[serde(default)]
-    pub provider: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
+// ─── New model settings contract (PR 4) ─────────────────────────────────────
+
+/// Per-provider runtime overrides keyed by provider id.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProviderOverride {
     #[serde(default)]
     pub api_key: Option<crate::types::SecretString>,
-    #[serde(default)]
-    pub base_url: Option<String>,
+    #[serde(default, rename = "base_url_override")]
+    pub base_url_override: Option<String>,
     #[serde(default)]
     pub api_version: Option<String>,
     #[serde(default)]
@@ -113,29 +112,45 @@ pub struct ModelSettings {
     pub usage_id: Option<String>,
 }
 
+impl Default for ProviderOverride {
+    fn default() -> Self {
+        Self {
+            api_key: None,
+            base_url_override: None,
+            api_version: None,
+            temperature: None,
+            max_output_tokens: None,
+            timeout_seconds: Some(300),
+            num_retries: Some(5),
+            reasoning_effort: Some("auto".to_string()),
+            extra_headers: None,
+            input_cost_per_token: None,
+            output_cost_per_token: None,
+            usage_id: Some("workflow".to_string()),
+        }
+    }
+}
+
+/// Active model selection plus per-provider overrides.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ModelSettings {
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub provider_overrides: BTreeMap<String, ProviderOverride>,
+}
+
 impl std::fmt::Debug for ModelSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ModelSettings")
-            .field("provider", &self.provider)
-            .field("model", &self.model)
-            .field("api_key", &"[REDACTED]")
-            .field("base_url", &self.base_url)
-            .field("api_version", &self.api_version)
-            .field("temperature", &self.temperature)
-            .field("max_output_tokens", &self.max_output_tokens)
-            .field("timeout_seconds", &self.timeout_seconds)
-            .field("num_retries", &self.num_retries)
-            .field("reasoning_effort", &self.reasoning_effort)
+            .field("provider_id", &self.provider_id)
+            .field("model_id", &self.model_id)
             .field(
-                "extra_headers",
-                &self
-                    .extra_headers
-                    .as_ref()
-                    .map(|headers| headers.keys().collect::<Vec<_>>()),
+                "provider_overrides",
+                &self.provider_overrides.keys().collect::<Vec<_>>(),
             )
-            .field("input_cost_per_token", &self.input_cost_per_token)
-            .field("output_cost_per_token", &self.output_cost_per_token)
-            .field("usage_id", &self.usage_id)
             .finish()
     }
 }
@@ -143,21 +158,114 @@ impl std::fmt::Debug for ModelSettings {
 impl Default for ModelSettings {
     fn default() -> Self {
         Self {
-            provider: None,
-            model: None,
-            api_key: None,
-            base_url: None,
-            api_version: None,
-            temperature: None,
-            max_output_tokens: None,
-            timeout_seconds: None,
-            num_retries: None,
-            reasoning_effort: None,
-            extra_headers: None,
-            input_cost_per_token: None,
-            output_cost_per_token: None,
-            usage_id: Some("workflow".to_string()),
+            provider_id: None,
+            model_id: None,
+            provider_overrides: BTreeMap::new(),
         }
+    }
+}
+
+impl ModelSettings {
+    pub(crate) fn normalized(mut self) -> Self {
+        self.provider_id = trimmed_opt(self.provider_id);
+        self.model_id = trimmed_opt(self.model_id);
+        for override_value in self.provider_overrides.values_mut() {
+            override_value.api_key = override_value.api_key.take().and_then(|key| {
+                let trimmed = key.expose().trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(crate::types::SecretString::new(trimmed))
+                }
+            });
+            override_value.base_url_override = trimmed_opt(override_value.base_url_override.clone());
+            override_value.api_version = trimmed_opt(override_value.api_version.clone());
+            override_value.reasoning_effort = trimmed_opt(override_value.reasoning_effort.clone());
+            override_value.usage_id = trimmed_opt(override_value.usage_id.clone());
+            override_value.extra_headers = override_value.extra_headers.take().and_then(|headers| {
+                let normalized: HashMap<String, String> = headers
+                    .into_iter()
+                    .filter_map(|(key, value)| {
+                        let key = key.trim().to_string();
+                        let value = value.trim().to_string();
+                        if key.is_empty() || value.is_empty() {
+                            None
+                        } else {
+                            Some((key, value))
+                        }
+                    })
+                    .collect();
+                if normalized.is_empty() {
+                    None
+                } else {
+                    Some(normalized)
+                }
+            });
+        }
+        self
+    }
+
+    /// Resolve the active provider override, falling back to defaults.
+    fn active_override(&self) -> ProviderOverride {
+        self.provider_id
+            .as_ref()
+            .and_then(|pid| self.provider_overrides.get(pid))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn selected_workflow_llm(&self) -> Result<WorkflowLlmConfig, String> {
+        let settings = self.clone().normalized();
+        let provider = settings.provider_id.as_deref().unwrap_or("").to_ascii_lowercase();
+        let model = settings.model_id.clone().ok_or_else(|| {
+            "Model not configured. Select a model in Settings before running workflow steps."
+                .to_string()
+        })?;
+
+        let override_cfg = settings.active_override();
+
+        if let Some(base_url) = override_cfg.base_url_override.as_deref() {
+            validate_model_base_url(base_url)?;
+        }
+        validate_model_numbers(&override_cfg)?;
+        let reasoning_effort = match override_cfg.reasoning_effort.as_deref() {
+            None | Some("auto") => None,
+            Some("low" | "medium" | "high") => override_cfg.reasoning_effort,
+            Some(_) => {
+                return Err(
+                    "Reasoning effort must be one of auto, low, medium, or high.".to_string(),
+                )
+            }
+        };
+
+        let local_model = provider == "ollama"
+            || model.starts_with("ollama/")
+            || override_cfg
+                .base_url_override
+                .as_deref()
+                .is_some_and(is_local_model_base_url);
+        if !local_model && override_cfg.api_key.is_none() {
+            return Err(
+                "Add an API key or configure a local provider base URL before running workflow agents."
+                    .to_string(),
+            );
+        }
+
+        Ok(WorkflowLlmConfig {
+            model,
+            api_key: override_cfg.api_key,
+            base_url: override_cfg.base_url_override,
+            api_version: override_cfg.api_version,
+            temperature: override_cfg.temperature,
+            max_output_tokens: override_cfg.max_output_tokens,
+            timeout_seconds: override_cfg.timeout_seconds,
+            num_retries: override_cfg.num_retries,
+            reasoning_effort,
+            extra_headers: override_cfg.extra_headers,
+            input_cost_per_token: override_cfg.input_cost_per_token,
+            output_cost_per_token: override_cfg.output_cost_per_token,
+            usage_id: Some("workflow".to_string()),
+        })
     }
 }
 
@@ -190,101 +298,6 @@ pub struct WorkflowLlmConfig {
     pub usage_id: Option<String>,
 }
 
-impl ModelSettings {
-    pub(crate) fn normalized(mut self) -> Self {
-        self.provider = trimmed_opt(self.provider);
-        self.model = trimmed_opt(self.model);
-        self.api_key = self.api_key.and_then(|key| {
-            let trimmed = key.expose().trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(crate::types::SecretString::new(trimmed))
-            }
-        });
-        self.base_url = trimmed_opt(self.base_url);
-        self.api_version = trimmed_opt(self.api_version);
-        self.reasoning_effort = trimmed_opt(self.reasoning_effort);
-        self.usage_id = trimmed_opt(self.usage_id);
-        self.extra_headers = self.extra_headers.and_then(|headers| {
-            let normalized: HashMap<String, String> = headers
-                .into_iter()
-                .filter_map(|(key, value)| {
-                    let key = key.trim().to_string();
-                    let value = value.trim().to_string();
-                    if key.is_empty() || value.is_empty() {
-                        None
-                    } else {
-                        Some((key, value))
-                    }
-                })
-                .collect();
-            if normalized.is_empty() {
-                None
-            } else {
-                Some(normalized)
-            }
-        });
-        self
-    }
-
-    pub(crate) fn selected_workflow_llm(&self) -> Result<WorkflowLlmConfig, String> {
-        let model_settings = self.clone().normalized();
-        let provider = model_settings
-            .provider
-            .as_deref()
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        let model = model_settings.model.clone().ok_or_else(|| {
-            "Model not configured. Select a model in Settings before running workflow steps."
-                .to_string()
-        })?;
-
-        if let Some(base_url) = model_settings.base_url.as_deref() {
-            validate_model_base_url(base_url)?;
-        }
-        validate_model_numbers(&model_settings)?;
-        let reasoning_effort = match model_settings.reasoning_effort.as_deref() {
-            None | Some("auto") => None,
-            Some("low" | "medium" | "high") => model_settings.reasoning_effort,
-            Some(_) => {
-                return Err(
-                    "Reasoning effort must be one of auto, low, medium, or high.".to_string(),
-                )
-            }
-        };
-
-        let local_model = provider == "ollama"
-            || model.starts_with("ollama/")
-            || model_settings
-                .base_url
-                .as_deref()
-                .is_some_and(is_local_model_base_url);
-        if !local_model && model_settings.api_key.is_none() {
-            return Err(
-                "Add an API key or configure a local provider base URL before running workflow agents."
-                    .to_string(),
-            );
-        }
-
-        Ok(WorkflowLlmConfig {
-            model,
-            api_key: model_settings.api_key,
-            base_url: model_settings.base_url,
-            api_version: model_settings.api_version,
-            temperature: model_settings.temperature,
-            max_output_tokens: model_settings.max_output_tokens,
-            timeout_seconds: model_settings.timeout_seconds,
-            num_retries: model_settings.num_retries,
-            reasoning_effort,
-            extra_headers: model_settings.extra_headers,
-            input_cost_per_token: model_settings.input_cost_per_token,
-            output_cost_per_token: model_settings.output_cost_per_token,
-            usage_id: Some("workflow".to_string()),
-        })
-    }
-}
-
 fn validate_model_base_url(base_url: &str) -> Result<(), String> {
     let url = reqwest::Url::parse(base_url)
         .map_err(|_| "Base URL must be a valid HTTP(S) URL.".to_string())?;
@@ -301,7 +314,7 @@ fn is_local_model_base_url(base_url: &str) -> bool {
         .is_some_and(|host| host == "localhost" || host == "127.0.0.1" || host == "::1")
 }
 
-fn validate_model_numbers(settings: &ModelSettings) -> Result<(), String> {
+fn validate_model_numbers(settings: &ProviderOverride) -> Result<(), String> {
     if let Some(temperature) = settings.temperature {
         if !temperature.is_finite() || !(0.0..=2.0).contains(&temperature) {
             return Err("Temperature must be between 0 and 2.".to_string());

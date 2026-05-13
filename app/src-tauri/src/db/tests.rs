@@ -177,7 +177,7 @@ fn test_openhands_settings_migration_does_not_backfill_legacy_model() {
 
     let settings = read_settings(&conn).unwrap();
     // Legacy fields silently dropped; model_settings not backfilled
-    assert!(settings.model_settings.model.is_none());
+    assert!(settings.model_settings.model_id.is_none());
 }
 
 #[test]
