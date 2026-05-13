@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_workflow_llm_accepts_canonical_model_settings() {
+    fn selected_workflow_llm_derives_provider_qualified_runtime_model() {
         let mut overrides = std::collections::BTreeMap::new();
         overrides.insert(
             "anthropic".to_string(),
@@ -188,7 +188,7 @@ mod tests {
         };
 
         let llm = selected_workflow_llm(&settings).unwrap();
-        assert_eq!(llm.model, "claude-sonnet-4-5");
+        assert_eq!(llm.model, "anthropic/claude-sonnet-4-5");
         assert_eq!(llm.api_key.as_ref().unwrap().expose(), "sk-test");
         assert_eq!(
             llm.base_url.as_deref(),
@@ -245,7 +245,7 @@ mod tests {
         };
 
         let llm = selected_workflow_llm(&settings).unwrap();
-        assert_eq!(llm.model, "deepseek-v4-flash");
+        assert_eq!(llm.model, "opencode-go/deepseek-v4-flash");
     }
 
     #[test]

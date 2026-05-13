@@ -256,11 +256,11 @@ mod tests {
     }
 
     #[test]
-    fn read_workflow_settings_uses_canonical_model_id_as_runtime_authority() {
+    fn read_workflow_settings_derives_provider_qualified_runtime_model() {
         let settings =
             workflow_settings_for(configured_settings("claude-sonnet-4-5", Some("sk-test")))
                 .unwrap();
-        assert_eq!(settings.llm.model, "claude-sonnet-4-5");
+        assert_eq!(settings.llm.model, "test/claude-sonnet-4-5");
         assert_eq!(settings.llm.api_key.as_ref().unwrap().expose(), "sk-test");
     }
 

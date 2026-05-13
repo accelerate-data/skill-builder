@@ -167,10 +167,16 @@ impl Default for ModelSettings {
 
 impl ModelSettings {
     fn normalize_runtime_model_id(provider_id: &str, model_id: String) -> String {
+        if model_id.contains('/') || provider_id.is_empty() {
+            return model_id;
+        }
+
         let legacy_prefix = format!("{provider_id}:");
-        model_id
-            .strip_prefix(&legacy_prefix)
-            .map_or(model_id.clone(), str::to_string)
+        if let Some(stripped) = model_id.strip_prefix(&legacy_prefix) {
+            return format!("{provider_id}/{stripped}");
+        }
+
+        format!("{provider_id}/{model_id}")
     }
 
     pub(crate) fn normalized(mut self) -> Self {
