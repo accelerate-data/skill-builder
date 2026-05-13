@@ -615,45 +615,45 @@ Expected: PASS with the Settings page using cached catalog data instead of LiteL
 - Test: `app/src-tauri/src/db/settings.rs`
 - Test: `app/src-tauri/src/agents/runtime_config.rs`
 
-- [ ] **Step 26: Resolve runtime config from selected provider/model**
+- [x] **Step 26: Resolve runtime config from selected provider/model**
 
 Update the runtime builder so it resolves:
 
-- provider id
-- model id
-- effective base URL = `base_url_override ?? provider_catalog.api_base_url`
-- API key from the provider override map
+- provider id — `types/settings.rs:219` via `selected_workflow_llm`
+- model id — `types/settings.rs:220-223` via `settings.model_id`
+- effective base URL = `base_url_override ?? provider_catalog.api_base_url` — `db/settings.rs:16-33` via `resolve_effective_base_url`, applied in `commands/workflow/settings.rs:51,76`
+- API key from the provider override map — `types/settings.rs:256` via `active_override()`
 
 Runtime contract for the catalog-backed path:
 
-- runtime must use `provider_catalog.api_base_url` directly when no override is set
-- runtime must preserve catalog model ids verbatim
-- do not remap catalog-backed model ids based on URL or provider alias heuristics
+- runtime must use `provider_catalog.api_base_url` directly when no override is set — ✅ `db/settings.rs:26-32`
+- runtime must preserve catalog model ids verbatim — ✅ `runtime_config.rs:193`
+- do not remap catalog-backed model ids based on URL or provider alias heuristics — ✅ `normalize_model_for_openai` removed from `types.rs`
 
-- [ ] **Step 27: Remove active dependence on profile/virtual-key inputs**
+- [x] **Step 27: Remove active dependence on profile/virtual-key inputs**
 
 Adjust the runtime config path so it no longer expects:
 
-- LiteLLM proxy port
-- virtual key
-- profile id
+- LiteLLM proxy port — ✅ only in migration SQL
+- virtual key — ✅ only in migration SQL
+- profile id — ✅ only in migration SQL
 
 in the active target flow.
 
 Remove the legacy remapping helper in `app/src-tauri/src/agents/openhands_server/types.rs`
 (`openhands_litellm_model`) once the catalog-backed runtime path sends the
-catalog provider/model identity through unchanged.
+catalog provider/model identity through unchanged — ✅ `normalize_model_for_openai` removed, `openhands_llm_json` sends model verbatim
 
-- [ ] **Step 28: Add runtime config tests**
+- [x] **Step 28: Add runtime config tests**
 
 Cover:
 
-- selected provider/model resolves correctly
-- override base URL wins over catalog default
-- missing API key for a remote provider fails validation
-- local-compatible base URLs still allow no API key where existing rules intend that
-- catalog-backed model ids are sent unchanged even when `provider_catalog.api_base_url` is set
-- no `opencode/... -> openai/...` rewrite occurs in the catalog-backed runtime path
+- selected provider/model resolves correctly — ✅ `runtime_config.rs:530-570`
+- override base URL wins over catalog default — ✅ `db/settings.rs:401-430`, `commands/workflow/settings.rs:333-373`
+- missing API key for a remote provider fails validation — ✅ `db/settings.rs:228-240`
+- local-compatible base URLs still allow no API key where existing rules intend that — ✅ `db/settings.rs:243-266`, `runtime_config.rs:661-701`
+- catalog-backed model ids are sent unchanged even when `provider_catalog.api_base_url` is set — ✅ `runtime_config.rs:573-612`
+- no `opencode/... -> openai/...` rewrite occurs in the catalog-backed runtime path — ✅ `runtime_config.rs:615-658`, `types.rs` tests for opencode/ and opencode-go/ passthrough
 
 Run:
 
@@ -669,7 +669,7 @@ Expected: PASS with config built directly from selected provider/model state.
 
 - Test only
 
-- [ ] **Step 29: Run Rust backend tests**
+- [x] **Step 29: Run Rust backend tests**
 
 Run:
 
@@ -677,9 +677,9 @@ Run:
 cargo test --manifest-path app/src-tauri/Cargo.toml model_catalog runtime_config db::tests -- --nocapture
 ```
 
-Expected: PASS
+Expected: PASS — ✅ 1180 tests pass
 
-- [ ] **Step 30: Run frontend unit tests for settings/model selection**
+- [x] **Step 30: Run frontend unit tests for settings/model selection**
 
 Run:
 
@@ -687,14 +687,16 @@ Run:
 cd app && npm run test:unit -- settings use-settings-form model-catalog
 ```
 
-Expected: PASS
+Expected: PASS — ✅ 656 tests pass (use-settings-form); pre-existing `settings.test.tsx` mock failures unrelated to PR 5
 
-- [ ] **Step 31: Commit**
+- [x] **Step 31: Commit**
 
 ```bash
 git add app/src-tauri app/src docs/design docs/plans
 git commit -m "feat: replace litellm routing plan with model catalog"
 ```
+
+✅ Two commits: `b641ebd` (PR 5 implementation) + `c6696ced` (gap fixes)
 
 ---
 

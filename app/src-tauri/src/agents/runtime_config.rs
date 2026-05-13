@@ -37,8 +37,8 @@ pub struct OpenHandsRuntimeConfig {
     pub llm: Option<crate::types::WorkflowLlmConfig>,
     #[serde(rename = "modelBaseUrl", skip_serializing_if = "Option::is_none")]
     pub model_base_url: Option<String>,
-    #[serde(rename = "apiKey")]
-    pub api_key: SecretString,
+    #[serde(rename = "openhandsApiKey")]
+    pub openhands_api_key: SecretString,
     /// App-local data directory (`~/Library/Application Support/com.vibedata.skill-builder/`).
     /// Owns `openhands/` (conversations, bash_events, logs, secret.key), the SQLite DB, and documents.
     #[serde(rename = "appDataRoot")]
@@ -117,7 +117,7 @@ impl std::fmt::Debug for OpenHandsRuntimeConfig {
             .field("model", &self.model)
             .field("llm", &self.llm)
             .field("model_base_url", &self.model_base_url)
-            .field("api_key", &"[redacted]")
+            .field("openhands_api_key", &"[redacted]")
             .field("app_data_root", &self.app_data_root)
             .field("skills_root", &self.skills_root)
             .field("skill_dir", &self.skill_dir)
@@ -190,10 +190,14 @@ pub fn build_openhands_runtime_config(
         mode: params.mode.map(|mode| mode.as_str().to_string()),
         prompt: params.prompt,
         system_prompt: None,
-        model: None,
-        llm: Some(params.llm),
-        model_base_url: None,
-        api_key: SecretString::new("openhands-llm-config".to_string()),
+        model: Some(params.llm.model.clone()),
+        llm: Some(params.llm.clone()),
+        model_base_url: params.llm.base_url.clone(),
+        openhands_api_key: params
+            .llm
+            .api_key
+            .clone()
+            .unwrap_or_else(|| SecretString::new(String::new())),
         app_data_root: params.app_data_root.replace('\\', "/"),
         skills_root: params.skills_root.replace('\\', "/"),
         skill_dir: params.skill_dir.replace('\\', "/"),
@@ -233,7 +237,7 @@ mod tests {
             model: Some("sonnet".to_string()),
             llm: None,
             model_base_url: Some("https://models.example.com/v1".to_string()),
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/home/user/app-data".to_string(),
             skills_root: "/home/user/project".to_string(),
             skill_dir: "/home/user/project".to_string(),
@@ -263,7 +267,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         // Verify camelCase field names from serde rename
-        assert_eq!(parsed["apiKey"], "sk-ant-test");
+        assert_eq!(parsed["openhandsApiKey"], "sk-ant-test");
         assert_eq!(parsed["allowedTools"][0], "Read");
         assert_eq!(parsed["maxTurns"], 25);
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
@@ -286,7 +290,7 @@ mod tests {
             model: Some("opus".to_string()),
             llm: None,
             model_base_url: None,
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/home/user/app-data".to_string(),
             skills_root: "/home/user/project".to_string(),
             skill_dir: "/home/user/project".to_string(),
@@ -333,7 +337,7 @@ mod tests {
             model: None,
             llm: None,
             model_base_url: None,
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/tmp".to_string(),
             skills_root: "/tmp".to_string(),
             skill_dir: "/tmp".to_string(),
@@ -380,7 +384,7 @@ mod tests {
             model: None,
             llm: None,
             model_base_url: None,
-            api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
+            openhands_api_key: crate::types::SecretString::new("sk-ant-test".to_string()),
             app_data_root: "/tmp".to_string(),
             skills_root: "/tmp".to_string(),
             skill_dir: "/tmp".to_string(),
@@ -436,7 +440,7 @@ mod tests {
                 usage_id: Some("workflow".to_string()),
             }),
             model_base_url: None,
-            api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
+            openhands_api_key: crate::types::SecretString::new("openhands-llm-config".to_string()),
             app_data_root: "/tmp/app-data".to_string(),
             skills_root: "/tmp/workspace".to_string(),
             skill_dir: "/tmp/workspace/skills/new-skill".to_string(),
@@ -520,5 +524,179 @@ mod tests {
         });
 
         assert!(config.system_message_suffix.is_none());
+    }
+
+    #[test]
+    fn build_openhands_runtime_config_uses_model_from_llm_config() {
+        let config = build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+            prompt: "test".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: Some("https://api.anthropic.com/v1".to_string()),
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            app_data_root: "/tmp".to_string(),
+            skills_root: "/tmp".to_string(),
+            skill_dir: "/tmp".to_string(),
+            mode: None,
+            agent_name: "test".to_string(),
+            task_kind: None,
+            user_message_suffix: None,
+            allowed_tools: vec![],
+            max_turns: 1,
+            output_format: None,
+            skill_name: None,
+            step_id: None,
+            run_source: None,
+            plugin_slug: "default".to_string(),
+        });
+
+        assert_eq!(config.model.as_deref(), Some("claude-sonnet-4-5"));
+        assert_eq!(
+            config.model_base_url.as_deref(),
+            Some("https://api.anthropic.com/v1")
+        );
+        assert_eq!(config.openhands_api_key.expose(), "sk-test");
+    }
+
+    #[test]
+    fn build_openhands_runtime_config_preserves_catalog_model_id_unchanged() {
+        let config = build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+            prompt: "test".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: Some("https://api.anthropic.com/v1".to_string()),
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            app_data_root: "/tmp".to_string(),
+            skills_root: "/tmp".to_string(),
+            skill_dir: "/tmp".to_string(),
+            mode: None,
+            agent_name: "test".to_string(),
+            task_kind: None,
+            user_message_suffix: None,
+            allowed_tools: vec![],
+            max_turns: 1,
+            output_format: None,
+            skill_name: None,
+            step_id: None,
+            run_source: None,
+            plugin_slug: "default".to_string(),
+        });
+
+        assert_eq!(
+            config.model.as_deref(),
+            Some("claude-sonnet-4-5"),
+            "catalog-backed model id must be sent unchanged"
+        );
+    }
+
+    #[test]
+    fn build_openhands_runtime_config_no_model_id_rewrite_with_catalog_base_url() {
+        let config = build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+            prompt: "test".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: Some("https://api.anthropic.com/v1".to_string()),
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            app_data_root: "/tmp".to_string(),
+            skills_root: "/tmp".to_string(),
+            skill_dir: "/tmp".to_string(),
+            mode: None,
+            agent_name: "test".to_string(),
+            task_kind: None,
+            user_message_suffix: None,
+            allowed_tools: vec![],
+            max_turns: 1,
+            output_format: None,
+            skill_name: None,
+            step_id: None,
+            run_source: None,
+            plugin_slug: "default".to_string(),
+        });
+
+        assert_eq!(
+            config.model.as_deref(),
+            Some("claude-sonnet-4-5"),
+            "no opencode/... -> openai/... rewrite should occur in catalog-backed path"
+        );
+        assert_eq!(
+            config.model_base_url.as_deref(),
+            Some("https://api.anthropic.com/v1")
+        );
+    }
+
+    #[test]
+    fn build_openhands_runtime_config_empty_api_key_for_local_model() {
+        let config = build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+            prompt: "test".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "ollama/llama3.1".to_string(),
+                api_key: None,
+                base_url: Some("http://localhost:11434/v1".to_string()),
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            app_data_root: "/tmp".to_string(),
+            skills_root: "/tmp".to_string(),
+            skill_dir: "/tmp".to_string(),
+            mode: None,
+            agent_name: "test".to_string(),
+            task_kind: None,
+            user_message_suffix: None,
+            allowed_tools: vec![],
+            max_turns: 1,
+            output_format: None,
+            skill_name: None,
+            step_id: None,
+            run_source: None,
+            plugin_slug: "default".to_string(),
+        });
+
+        assert_eq!(config.openhands_api_key.expose(), "");
+        assert_eq!(config.model.as_deref(), Some("ollama/llama3.1"));
+        assert_eq!(
+            config.model_base_url.as_deref(),
+            Some("http://localhost:11434/v1")
+        );
     }
 }

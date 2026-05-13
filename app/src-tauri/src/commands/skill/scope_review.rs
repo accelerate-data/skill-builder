@@ -485,8 +485,8 @@ mod tests {
             serde_json::Value::String(expected_suffix)
         );
         assert_eq!(json["llm"]["model"], "anthropic/claude-sonnet-4-5");
-        assert!(json.get("model").is_none());
-        assert_eq!(json["apiKey"], "openhands-llm-config");
+        assert_eq!(json["model"], "anthropic/claude-sonnet-4-5");
+        assert_eq!(json["openhandsApiKey"], "sk-test");
         assert_eq!(json["skillsRoot"], "/tmp/skills");
         assert!(json["skillDir"]
             .as_str()

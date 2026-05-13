@@ -1547,9 +1547,9 @@ fn redact_openhands_config_for_log(
 ) -> serde_json::Value {
     let mut value = serde_json::to_value(config).unwrap_or(serde_json::Value::Null);
     if let Some(obj) = value.as_object_mut() {
-        if obj.contains_key("apiKey") {
+        if obj.contains_key("openhandsApiKey") {
             obj.insert(
-                "apiKey".to_string(),
+                "openhandsApiKey".to_string(),
                 serde_json::Value::String("[REDACTED]".to_string()),
             );
         }

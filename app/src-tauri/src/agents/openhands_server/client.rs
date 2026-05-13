@@ -306,7 +306,7 @@ mod tests {
                 usage_id: Some("workflow".to_string()),
             }),
             model_base_url: None,
-            api_key: SecretString::new("openhands-llm-config".to_string()),
+            openhands_api_key: SecretString::new("openhands-llm-config".to_string()),
             app_data_root: app_data_root.to_string(),
             skills_root: skills_root.to_string(),
             skill_dir: skill_dir.to_string(),
@@ -402,7 +402,7 @@ mod tests {
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
-        assert_eq!(json["agent"]["llm"]["model"], "openai/minimax-m2.7");
+        assert_eq!(json["agent"]["llm"]["model"], "opencode/minimax-m2.7");
         assert_eq!(
             json["agent"]["llm"]["base_url"],
             "https://opencode.ai/zen/go/v1"
@@ -424,7 +424,7 @@ mod tests {
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
-        assert_eq!(json["agent"]["llm"]["model"], "openai/minimax-m2.7");
+        assert_eq!(json["agent"]["llm"]["model"], "opencode-go/minimax-m2.7");
     }
 
     #[test]

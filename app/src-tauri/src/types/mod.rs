@@ -127,7 +127,7 @@ mod tests {
             model: Some("sonnet".to_string()),
             llm: None,
             model_base_url: None,
-            api_key: SecretString::new("sk-test".to_string()),
+            openhands_api_key: SecretString::new("sk-test".to_string()),
             app_data_root: "/tmp/app-data".to_string(),
             skills_root: "/tmp".to_string(),
             skill_dir: "/tmp".to_string(),
@@ -153,7 +153,7 @@ mod tests {
             system_message_suffix: None,
         };
         let json = serde_json::to_string(&config).unwrap();
-        assert!(json.contains("\"apiKey\""));
+        assert!(json.contains("\"openhandsApiKey\""));
         assert!(json.contains("\"allowedTools\""));
         assert!(json.contains("\"maxTurns\""));
         assert!(json.contains("\"permissionMode\""));
