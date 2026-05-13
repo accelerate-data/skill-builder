@@ -1,6 +1,7 @@
 # Python packages used by the OpenHands agent server.
-# This file exists solely for Dependabot pip tracking. The actual versions are
-# pinned in src/agents/openhands_server/process.rs and must be kept in sync
-# manually when Dependabot opens a PR.
-openhands-agent-server==1.21.1
-openhands-tools==1.21.1
+# IMPORTANT: versions MUST match process.rs constants:
+#   OPENHANDS_AGENT_SERVER_PACKAGE
+#   OPENHANDS_TOOLS_PACKAGE
+# This file exists solely for Dependabot pip tracking.
+openhands-agent-server==1.21.0
+openhands-tools==1.21.0
