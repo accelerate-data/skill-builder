@@ -10,6 +10,28 @@ pub(crate) fn selected_workflow_llm(settings: &AppSettings) -> Result<WorkflowLl
     settings.model_settings.selected_workflow_llm()
 }
 
+/// Resolve the effective base URL for runtime config.
+///
+/// Priority: user override > provider catalog default > None.
+pub(crate) fn resolve_effective_base_url(
+    conn: &Connection,
+    llm: &WorkflowLlmConfig,
+    settings: &AppSettings,
+) -> Option<String> {
+    if llm.base_url.is_some() {
+        return llm.base_url.clone();
+    }
+
+    let provider_id = settings.model_settings.provider_id.as_ref()?;
+    let mut stmt = conn
+        .prepare("SELECT api_base_url FROM provider_catalog WHERE provider_id = ?1")
+        .ok()?;
+    let url: Option<String> = stmt
+        .query_row([provider_id], |row| row.get(0))
+        .ok();
+    url
+}
+
 pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
     let mut stmt = conn
         .prepare("SELECT value FROM settings WHERE key = ?1")
@@ -373,5 +395,94 @@ mod tests {
         assert_eq!(read_back.model_settings.model_id.as_deref(), Some("gpt-4o"));
         assert!(read_back.model_settings.provider_overrides.contains_key("anthropic"));
         assert!(read_back.model_settings.provider_overrides.contains_key("openai"));
+    }
+
+    #[test]
+    fn resolve_effective_base_url_override_wins_over_catalog() {
+        let conn = create_test_db_for_tests();
+        conn.execute(
+            "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
+             VALUES ('anthropic', 'Anthropic', '@anthropic/sdk', 'https://api.anthropic.com', 'https://docs.anthropic.com')",
+            [],
+        ).unwrap();
+
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-test".to_string())),
+                base_url_override: Some("https://custom.example.com/v1".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+        let llm = selected_workflow_llm(&settings).unwrap();
+
+        let resolved = super::resolve_effective_base_url(&conn, &llm, &settings);
+        assert_eq!(resolved.as_deref(), Some("https://custom.example.com/v1"));
+    }
+
+    #[test]
+    fn resolve_effective_base_url_falls_back_to_catalog_default() {
+        let conn = create_test_db_for_tests();
+        conn.execute(
+            "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
+             VALUES ('anthropic', 'Anthropic', '@anthropic/sdk', 'https://api.anthropic.com', 'https://docs.anthropic.com')",
+            [],
+        ).unwrap();
+
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-test".to_string())),
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+        let llm = selected_workflow_llm(&settings).unwrap();
+
+        let resolved = super::resolve_effective_base_url(&conn, &llm, &settings);
+        assert_eq!(resolved.as_deref(), Some("https://api.anthropic.com"));
+    }
+
+    #[test]
+    fn resolve_effective_base_url_returns_none_when_no_catalog_entry() {
+        let conn = create_test_db_for_tests();
+
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "unknown".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-test".to_string())),
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("unknown".to_string()),
+                model_id: Some("some-model".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+        let llm = selected_workflow_llm(&settings).unwrap();
+
+        let resolved = super::resolve_effective_base_url(&conn, &llm, &settings);
+        assert!(resolved.is_none());
     }
 }

@@ -47,7 +47,8 @@ pub(crate) fn read_initialized_runtime_context(
             skills_root
         ));
     }
-    let llm = crate::db::selected_workflow_llm(&settings)?;
+    let mut llm = crate::db::selected_workflow_llm(&settings)?;
+    llm.base_url = crate::db::resolve_effective_base_url(&conn, &llm, &settings);
 
     Ok(InitializedRuntimeContext {
         skills_root,
@@ -71,7 +72,8 @@ pub(crate) fn read_workflow_settings_by_skill_id(
         "Skills path not configured. Please set it in Settings before running workflow steps."
             .to_string()
     })?;
-    let llm = crate::db::selected_workflow_llm(&settings)?;
+    let mut llm = crate::db::selected_workflow_llm(&settings)?;
+    llm.base_url = crate::db::resolve_effective_base_url(&conn, &llm, &settings);
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
     let function_role = settings.function_role;
@@ -283,6 +285,90 @@ mod tests {
         assert_eq!(
             settings.llm.base_url.as_deref(),
             Some("http://localhost:11434")
+        );
+    }
+
+    #[test]
+    fn read_initialized_runtime_context_resolves_catalog_base_url_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = initialized_skills_root(tmp.path());
+        let conn = create_test_db_for_tests();
+
+        conn.execute(
+            "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
+             VALUES ('anthropic', 'Anthropic', '@anthropic/sdk', 'https://api.anthropic.com', 'https://docs.anthropic.com')",
+            [],
+        ).unwrap();
+
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            skills_path: Some(workspace_path.clone()),
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+        write_settings(&conn, &settings).unwrap();
+        let db = Db(std::sync::Arc::new(Mutex::new(conn)));
+
+        let context = read_initialized_runtime_context(&db).unwrap();
+
+        assert_eq!(context.llm.model, "claude-sonnet-4-5");
+        assert_eq!(
+            context.llm.base_url.as_deref(),
+            Some("https://api.anthropic.com"),
+            "catalog base URL should be used as fallback when no override is set"
+        );
+    }
+
+    #[test]
+    fn read_initialized_runtime_context_override_wins_over_catalog() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = initialized_skills_root(tmp.path());
+        let conn = create_test_db_for_tests();
+
+        conn.execute(
+            "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
+             VALUES ('anthropic', 'Anthropic', '@anthropic/sdk', 'https://api.anthropic.com', 'https://docs.anthropic.com')",
+            [],
+        ).unwrap();
+
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "anthropic".to_string(),
+            ProviderOverride {
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url_override: Some("https://custom.example.com/v1".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            skills_path: Some(workspace_path.clone()),
+            model_settings: ModelSettings {
+                provider_id: Some("anthropic".to_string()),
+                model_id: Some("claude-sonnet-4-5".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+        write_settings(&conn, &settings).unwrap();
+        let db = Db(std::sync::Arc::new(Mutex::new(conn)));
+
+        let context = read_initialized_runtime_context(&db).unwrap();
+
+        assert_eq!(
+            context.llm.base_url.as_deref(),
+            Some("https://custom.example.com/v1"),
+            "user override should win over catalog default"
         );
     }
 }
