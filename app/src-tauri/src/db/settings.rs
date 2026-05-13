@@ -225,6 +225,30 @@ mod tests {
     }
 
     #[test]
+    fn selected_workflow_llm_strips_legacy_catalog_full_id_prefix() {
+        let mut overrides = std::collections::BTreeMap::new();
+        overrides.insert(
+            "opencode-go".to_string(),
+            ProviderOverride {
+                api_key: Some(SecretString::new("sk-test".to_string())),
+                base_url_override: Some("https://opencode.ai/zen/go/v1".to_string()),
+                ..ProviderOverride::default()
+            },
+        );
+        let settings = AppSettings {
+            model_settings: ModelSettings {
+                provider_id: Some("opencode-go".to_string()),
+                model_id: Some("opencode-go:deepseek-v4-flash".to_string()),
+                provider_overrides: overrides,
+            },
+            ..AppSettings::default()
+        };
+
+        let llm = selected_workflow_llm(&settings).unwrap();
+        assert_eq!(llm.model, "deepseek-v4-flash");
+    }
+
+    #[test]
     fn selected_workflow_llm_rejects_cloud_model_without_api_key() {
         let settings = AppSettings {
             model_settings: ModelSettings {

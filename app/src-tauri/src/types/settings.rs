@@ -166,6 +166,13 @@ impl Default for ModelSettings {
 }
 
 impl ModelSettings {
+    fn normalize_runtime_model_id(provider_id: &str, model_id: String) -> String {
+        let legacy_prefix = format!("{provider_id}:");
+        model_id
+            .strip_prefix(&legacy_prefix)
+            .map_or(model_id.clone(), str::to_string)
+    }
+
     pub(crate) fn normalized(mut self) -> Self {
         self.provider_id = trimmed_opt(self.provider_id);
         self.model_id = trimmed_opt(self.model_id);
@@ -217,10 +224,11 @@ impl ModelSettings {
     pub(crate) fn selected_workflow_llm(&self) -> Result<WorkflowLlmConfig, String> {
         let settings = self.clone().normalized();
         let provider = settings.provider_id.as_deref().unwrap_or("").to_ascii_lowercase();
-        let model = settings.model_id.clone().ok_or_else(|| {
+        let raw_model = settings.model_id.clone().ok_or_else(|| {
             "Model not configured. Select a model in Settings before running workflow steps."
                 .to_string()
         })?;
+        let model = Self::normalize_runtime_model_id(&provider, raw_model);
 
         let override_cfg = settings.active_override();
 

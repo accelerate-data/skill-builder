@@ -104,7 +104,7 @@ describe("model catalog helpers", () => {
       provider_id: "anthropic",
       model_id: "claude-sonnet",
       name: "Claude Sonnet",
-      runtimeModelId: "anthropic/claude-sonnet",
+      runtimeModelId: "claude-sonnet",
     });
   });
 
@@ -120,13 +120,16 @@ describe("model catalog helpers", () => {
     expect(anthropicEntries.every((e) => e.provider_id === "anthropic")).toBe(true);
   });
 
-  it("resolves selected catalog model by full_id", () => {
+  it("resolves selected catalog model by model_id and supports full_id fallback", () => {
     const entries = [
-      makeEntry({ full_id: "anthropic/claude-sonnet", model_id: "claude-sonnet" }),
+      makeEntry({ provider_id: "anthropic", full_id: "anthropic/claude-sonnet", model_id: "claude-sonnet" }),
       makeEntry({ full_id: "openai/gpt-4", model_id: "gpt-4" }),
     ];
 
-    expect(resolveSelectedCatalogModel(entries, "anthropic/claude-sonnet")).toMatchObject({
+    expect(resolveSelectedCatalogModel(entries, "claude-sonnet", "anthropic")).toMatchObject({
+      full_id: "anthropic/claude-sonnet",
+    });
+    expect(resolveSelectedCatalogModel(entries, "anthropic/claude-sonnet", "anthropic")).toMatchObject({
       full_id: "anthropic/claude-sonnet",
     });
     expect(resolveSelectedCatalogModel(entries, "unknown/model")).toBeNull();

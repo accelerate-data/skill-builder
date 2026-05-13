@@ -171,8 +171,9 @@ export function ModelsSection({
   const selectedCatalogModel = resolveSelectedCatalogModel(
     catalog,
     modelSettings.model_id,
+    normalizedProviderId,
   );
-  const selectedModelValue = selectedCatalogModel?.full_id ?? "";
+  const selectedModelValue = selectedCatalogModel?.model_id ?? "";
   const showCatalogPicker = Boolean(normalizedProviderId && modelOptions.length);
 
   const providerEntry = useMemo(() => {
@@ -264,7 +265,7 @@ export function ModelsSection({
     const nextOverride = existingOverride ?? getDefaultProviderOverride();
     const providerModels = getModelsForProvider(catalog, val);
     const options = getCatalogModelOptions(providerModels);
-    const firstModel = options[0]?.full_id ?? null;
+    const firstModel = options[0]?.model_id ?? null;
     const providerRow = providers.find((p) => p.provider_id === val);
     const catalogBaseUrl = providerRow?.api_base_url ?? null;
     const effectiveBaseUrl = nextOverride.base_url_override ?? getProviderBaseUrlDefault(val, catalogBaseUrl);
@@ -529,7 +530,7 @@ export function ModelsSection({
                   {modelOptions.map((option) => (
                     <SelectItem
                       key={option.full_id}
-                      value={option.full_id}
+                      value={option.model_id}
                     >
                       {option.name}
                     </SelectItem>

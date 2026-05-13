@@ -66,7 +66,7 @@ export function getCatalogModelOptions(
       provider_id: entry.provider_id,
       model_id: entry.model_id,
       name: entry.name,
-      runtimeModelId: entry.full_id,
+      runtimeModelId: entry.model_id,
       entry,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -81,10 +81,20 @@ export function getModelsForProvider(
 
 export function resolveSelectedCatalogModel(
   entries: ModelCatalogEntry[],
-  fullId: string | null,
+  selectedModelId: string | null,
+  providerId?: string | null,
 ): ModelCatalogEntry | null {
-  if (!fullId) return null;
-  return entries.find((e) => e.full_id === fullId) ?? null;
+  if (!selectedModelId) return null;
+
+  const providerEntries = providerId
+    ? entries.filter((entry) => entry.provider_id === providerId)
+    : entries;
+
+  return (
+    providerEntries.find((entry) => entry.model_id === selectedModelId)
+    ?? providerEntries.find((entry) => entry.full_id === selectedModelId)
+    ?? null
+  );
 }
 
 export function getProviderBaseUrlDefault(

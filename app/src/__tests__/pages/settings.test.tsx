@@ -69,7 +69,7 @@ const modelCatalogEntries = [
   {
     full_id: "anthropic/claude-sonnet-4-5",
     provider_id: "anthropic",
-    model_id: "anthropic/claude-sonnet-4-5",
+    model_id: "claude-sonnet-4-5",
     name: "Claude Sonnet 4.5",
     family: null,
     attachment: false,
@@ -93,7 +93,7 @@ const modelCatalogEntries = [
   {
     full_id: "anthropic/claude-basic",
     provider_id: "anthropic",
-    model_id: "anthropic/claude-basic",
+    model_id: "claude-basic",
     name: "Claude Basic",
     family: null,
     attachment: false,
@@ -117,7 +117,7 @@ const modelCatalogEntries = [
   {
     full_id: "anthropic/claude-no-tools",
     provider_id: "anthropic",
-    model_id: "anthropic/claude-no-tools",
+    model_id: "claude-no-tools",
     name: "Claude No Tools",
     family: null,
     attachment: false,
@@ -360,7 +360,7 @@ const defaultSettings: AppSettings = {
 const populatedSettings: AppSettings = {
   model_settings: {
     provider_id: "anthropic",
-    model_id: "anthropic/claude-sonnet-4-5",
+    model_id: "claude-sonnet-4-5",
     provider_overrides: {
       anthropic: {
         api_key: "sk-ant-existing-key",
@@ -923,12 +923,12 @@ describe("SettingsPage", () => {
 
     const { testModelConnection } = await import("@/lib/tauri");
     await waitFor(() => {
-      expect(testModelConnection).toHaveBeenCalledWith(
-        expect.objectContaining({
-          provider_id: "anthropic",
-          model_id: "anthropic/claude-sonnet-4-5",
-        }),
-      );
+        expect(testModelConnection).toHaveBeenCalledWith(
+          expect.objectContaining({
+            provider_id: "anthropic",
+            model_id: "claude-sonnet-4-5",
+          }),
+        );
     });
     expect(toast.success).not.toHaveBeenCalled();
     await waitFor(() => {

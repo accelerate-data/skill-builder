@@ -84,15 +84,15 @@ link_env_file() {
 }
 
 link_sqlite_db() {
-  local db_src="$HOME/Library/Application Support/com.vibedata.skill-builder/db/skill-builder.db"
-  local db_dst="$worktree_path/skill-builder.db"
+  local db_src="$HOME/Library/Application Support/com.vibedata.skill-builder/db"
+  local db_dst="$worktree_path/db"
 
-  if [[ ! -f "$db_src" ]]; then
-    echo "DB: skipped (no skill-builder.db at $db_src)"
+  if [[ ! -d "$db_src" ]]; then
+    echo "DB: skipped (no db dir at $db_src)"
     return
   fi
 
-  rm -f "$db_dst"
+  rm -rf "$db_dst"
   ln -s "$db_src" "$db_dst"
   echo "DB: symlink $db_dst -> $db_src"
 }
