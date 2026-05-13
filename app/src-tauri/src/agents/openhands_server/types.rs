@@ -251,7 +251,7 @@ fn openhands_tag_value(value: &str) -> String {
 
 fn openhands_llm_json(llm: &crate::types::WorkflowLlmConfig) -> serde_json::Value {
     let mut value = serde_json::json!({
-        "model": normalize_model_for_openai(&llm.model, llm.base_url.as_deref()),
+        "model": llm.model,
     });
     if let Some(obj) = value.as_object_mut() {
         if let Some(api_key) = &llm.api_key {
@@ -319,19 +319,6 @@ fn openhands_llm_json(llm: &crate::types::WorkflowLlmConfig) -> serde_json::Valu
         }
     }
     value
-}
-
-fn normalize_model_for_openai(model: &str, base_url: Option<&str>) -> String {
-    if base_url.is_some() {
-        if let Some(model_name) = model
-            .strip_prefix("opencode-go/")
-            .or_else(|| model.strip_prefix("opencode/"))
-        {
-            return format!("openai/{model_name}");
-        }
-    }
-
-    model.to_string()
 }
 
 /// Discover deployed AgentSkills under the conversation working directory.
@@ -668,6 +655,57 @@ mod skill_discovery_tests {
         assert_eq!(
             skills[0].description.as_deref(),
             Some("Missing explicit name")
+        );
+    }
+
+    #[test]
+    fn openhands_llm_json_sends_catalog_model_id_unchanged() {
+        let llm = crate::types::WorkflowLlmConfig {
+            model: "opencode/claude-sonnet-4-5".to_string(),
+            api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            api_version: None,
+            temperature: None,
+            max_output_tokens: None,
+            timeout_seconds: None,
+            num_retries: None,
+            reasoning_effort: None,
+            extra_headers: None,
+            input_cost_per_token: None,
+            output_cost_per_token: None,
+            usage_id: Some("workflow".to_string()),
+        };
+
+        let json = openhands_llm_json(&llm);
+        assert_eq!(
+            json["model"], "opencode/claude-sonnet-4-5",
+            "catalog-backed model id must not be rewritten (no opencode/... -> openai/... rewrite)"
+        );
+        assert_eq!(json["base_url"], "https://api.anthropic.com/v1");
+    }
+
+    #[test]
+    fn openhands_llm_json_preserves_opencode_go_prefix() {
+        let llm = crate::types::WorkflowLlmConfig {
+            model: "opencode-go/gpt-4o".to_string(),
+            api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+            base_url: Some("https://api.openai.com/v1".to_string()),
+            api_version: None,
+            temperature: None,
+            max_output_tokens: None,
+            timeout_seconds: None,
+            num_retries: None,
+            reasoning_effort: None,
+            extra_headers: None,
+            input_cost_per_token: None,
+            output_cost_per_token: None,
+            usage_id: Some("workflow".to_string()),
+        };
+
+        let json = openhands_llm_json(&llm);
+        assert_eq!(
+            json["model"], "opencode-go/gpt-4o",
+            "opencode-go/ prefix must not be rewritten to openai/"
         );
     }
 }

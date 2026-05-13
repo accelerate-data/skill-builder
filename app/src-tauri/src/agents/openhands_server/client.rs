@@ -402,7 +402,7 @@ mod tests {
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
-        assert_eq!(json["agent"]["llm"]["model"], "openai/minimax-m2.7");
+        assert_eq!(json["agent"]["llm"]["model"], "opencode/minimax-m2.7");
         assert_eq!(
             json["agent"]["llm"]["base_url"],
             "https://opencode.ai/zen/go/v1"
@@ -424,7 +424,7 @@ mod tests {
         let payload = StartConversationRequest::from_runtime_request(&request);
         let json = serde_json::to_value(payload).unwrap();
 
-        assert_eq!(json["agent"]["llm"]["model"], "openai/minimax-m2.7");
+        assert_eq!(json["agent"]["llm"]["model"], "opencode-go/minimax-m2.7");
     }
 
     #[test]
