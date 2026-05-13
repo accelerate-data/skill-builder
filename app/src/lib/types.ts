@@ -218,7 +218,6 @@ export interface BootstrapCheck {
 
 export type BootstrapStatus =
   | { status: "Ready" }
-  | { status: "Installing"; detail: string }
   | { status: "Failed"; detail: string; remediation?: string | null }
 
 export interface StartupResult {
@@ -226,7 +225,8 @@ export interface StartupResult {
   checks: BootstrapCheck[]
 }
 
-// Legacy aliases for backward compatibility during transition
+// Legacy types — deprecated, use BootstrapCheck / StartupResult instead.
+/** @deprecated Use StartupResult */
 export interface DepStatus {
   code?: string | null
   failure_kind?: string | null

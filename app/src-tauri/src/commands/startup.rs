@@ -76,9 +76,9 @@ async fn check_git_available() -> BootstrapCheck {
                     ver
                 ),
             ),
-            (None, Some(_bash_path)) => check_fail(
+            (None, Some(bash_path)) => check_fail(
                 "Git",
-                "git not on PATH".to_string(),
+                format!("git not on PATH (git-bash found at {})", bash_path),
             ),
             (None, None) => check_fail(
                 "Git",
