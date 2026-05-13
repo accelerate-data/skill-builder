@@ -522,8 +522,12 @@ describe("SkillDialog (create mode)", () => {
 
   it("navigates to skill editor after successful creation", async () => {
     const user = userEvent.setup({ delay: null });
-    const onCreated = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-    mockInvoke.mockResolvedValue(undefined);
+    const onCreated = vi.fn<(skillId: string) => Promise<void>>().mockResolvedValue(undefined);
+    mockInvoke.mockImplementation(async (command) => {
+      if (command === "create_skill") return 123;
+      if (command === "list_documents") return [];
+      return undefined;
+    });
     renderDialog({ onCreated });
 
     await openDialog(user);
@@ -533,12 +537,12 @@ describe("SkillDialog (create mode)", () => {
     await user.click(createButton);
 
     await waitFor(() => {
-      expect(onCreated).toHaveBeenCalled();
+      expect(onCreated).toHaveBeenCalledWith("123");
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/workflow/$skillName",
-      params: { skillName: "sales-pipeline" },
+      to: "/workflow/$skillId",
+      params: { skillId: "123" },
       state: { autoStart: true },
     });
   });

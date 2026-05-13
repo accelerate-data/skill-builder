@@ -43,6 +43,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
       check_workspace_path: true,
       list_skills: [
         {
+          id: 101,
           name: "my-skill",
           purpose: "domain",
           current_step: null,
@@ -58,10 +59,15 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
 
     // Click the skill in the sidebar
     await page.getByRole("button", { name: /my-skill/ }).click();
-    await expect(page).toHaveURL(/\/skill\/my-skill/);
+    await expect(page).toHaveURL(/\/workflow\/101/);
   });
 
   test("can submit create skill form", async ({ page }) => {
+    await reloadWithOverrides(page, {
+      ...WORKSPACE_OVERRIDES,
+      create_skill: 123,
+    });
+
     const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
     await newSkillButton.click();
 
@@ -83,7 +89,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     // Dialog should close (mock returns success) or navigate away
     await expect(page.getByRole("heading", { name: "Create New Skill" })).not.toBeVisible({ timeout: 5_000 });
     // Should navigate to the workflow page for the new skill
-    await expect(page).toHaveURL(/\/skill\/hr-analytics/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/workflow\/123/, { timeout: 5_000 });
   });
 
   test("can confirm skill deletion", async ({ page }) => {
@@ -96,6 +102,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
       check_workspace_path: true,
       list_skills: [
         {
+          id: 102,
           name: "delete-me",
           purpose: "domain",
           current_step: null,
@@ -129,15 +136,11 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     await expect(page.getByRole("heading", { name: "Delete Skill" })).not.toBeVisible();
   });
 
-  test("redirect routes send /skills to settings import and /refine to dashboard refine", async ({ page }) => {
+  test("redirect routes send /skills to settings import only", async ({ page }) => {
     await reloadWithOverrides(page, WORKSPACE_OVERRIDES);
 
     await page.goto("/skills");
     await expect(page).toHaveURL(/\/settings\?tab=skills/);
-
-    await page.goto("/refine");
-    await expect(page).toHaveURL(/\/\?tab=refine/);
-    await expect(page.getByText("Select a skill")).toBeVisible({ timeout: 5_000 });
   });
 
   test("dashboard skill menu can open Refine directly", async ({ page }) => {
@@ -145,6 +148,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
       ...WORKSPACE_OVERRIDES,
       list_skills: [
         {
+          id: 103,
           name: "test-skill",
           purpose: "domain",
           current_step: null,
@@ -163,7 +167,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     await page.getByLabel("More actions").click({ force: true });
     await page.getByRole("menuitem", { name: "Refine" }).click();
 
-    await expect(page).toHaveURL(/\/\?tab=refine/);
+    await expect(page).toHaveURL(/\/workspace\/103/);
     await expect(page.getByRole("tab", { name: "Refine", exact: true })).toHaveAttribute("data-state", "active");
     await expect(page.getByTestId("refine-chat-input")).toBeVisible({ timeout: 10_000 });
   });

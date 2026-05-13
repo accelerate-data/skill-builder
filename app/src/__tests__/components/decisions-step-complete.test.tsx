@@ -82,6 +82,7 @@ const DECISIONS_DTO = {
 function renderDecisionsStep({ nextStepBlocked = true }: { nextStepBlocked?: boolean } = {}) {
   return renderWithQueryClient(
     <DecisionsStepComplete
+      skillId={42}
       skillName={SKILL_NAME}
       stepName="Design Decisions"
       agentRuns={[]}
@@ -127,9 +128,9 @@ describe("DecisionsStepComplete — disabled-steps refresh after decisions save"
       screen.getByTestId("trigger-save").click();
     });
 
-    // After save, getDisabledSteps must be called with the skill name
+    // After save, getDisabledSteps must be called with the numeric skill id
     await waitFor(() => {
-      expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith(SKILL_NAME);
+      expect(vi.mocked(getDisabledSteps)).toHaveBeenCalledWith(42);
     });
 
     // The workflow store's disabledSteps must be cleared

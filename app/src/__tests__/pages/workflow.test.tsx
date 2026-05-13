@@ -228,6 +228,7 @@ beforeEach(() => {
     status: null,
     current_step: null,
   });
+  useRefineStore.getState().setConversationId("conv-1");
 });
 
 describe("WorkflowPage — agent completion lifecycle", () => {
@@ -250,6 +251,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       status: null,
       current_step: null,
     });
+    useRefineStore.getState().setConversationId("conv-1");
     useSettingsStore.getState().reset();
 
     // Hydrate settings so workflow handlers don't bail
@@ -284,6 +286,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
     useRefineStore.getState().selectSkill(null);
+    useRefineStore.getState().setConversationId(null);
     useSettingsStore.getState().reset();
   });
 
@@ -2343,7 +2346,6 @@ describe("step reset behavior regressions", () => {
         "test-skill",
         0,
         "/test/workspace",
-        expect.anything(),
       );
     });
     expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
@@ -2381,7 +2383,6 @@ describe("step reset behavior regressions", () => {
         "test-skill",
         0,
         "/test/workspace",
-        expect.anything(),
       );
     });
     expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
@@ -2796,7 +2797,6 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
         "test-skill",
         0,
         "/test/workspace",
-        expect.anything(),
       );
     });
     expect(useWorkflowStore.getState().isRunning).toBe(true);

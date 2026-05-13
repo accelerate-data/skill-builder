@@ -881,10 +881,10 @@ describe("SkillListPanel", () => {
     });
     expect(restartSkillOpenHandsSession).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: skill.id,
         name: "redo-builder",
         plugin_slug: "skills",
       }),
-      expect.any(String),
     );
     // Navigation is handled by AppLayout via onActivateSkill
     expect(onActivateSkill).toHaveBeenCalledWith(builderKey("redo-builder"), "workflow");

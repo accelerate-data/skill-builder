@@ -31,6 +31,7 @@ import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/ski
 import { type EditableSkill, toEditableSkill } from "@/lib/types";
 import { getSkillSurface } from "@/lib/skill-routing";
 import { enterSkill, leaveCurrentSkill } from "@/lib/active-skill-transition";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 
 import {
   Dialog,
@@ -60,6 +61,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const lockedSkills = useSkillStore((s) => s.lockedSkills);
+  const setWorkspaceSurface = useWorkspaceStore((s) => s.setActiveSurface);
 
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [nodeReady, setNodeReady] = useState(false);
@@ -230,7 +232,8 @@ export function AppLayout() {
         if (surface === "workflow") {
           navigate({ to: "/workflow/$skillId", params: { skillId } });
         } else {
-          navigate({ to: "/workspace/$skillId", params: { skillId }, search: { tab: undefined } });
+          setWorkspaceSurface("overview");
+          navigate({ to: "/workspace/$skillId", params: { skillId } });
         }
         return;
       }
@@ -254,7 +257,8 @@ export function AppLayout() {
       if (surface === "workflow") {
         navigate({ to: "/workflow/$skillId", params: { skillId } });
       } else {
-        navigate({ to: "/workspace/$skillId", params: { skillId }, search: { tab: undefined } });
+        setWorkspaceSurface("overview");
+        navigate({ to: "/workspace/$skillId", params: { skillId } });
       }
     },
     [
@@ -263,12 +267,13 @@ export function AppLayout() {
       workspacePath,
       selectedWorkspaceSkillId,
       setSelectedWorkspaceSkill,
+      setWorkspaceSurface,
       navigate,
     ],
   );
 
   const handleSelectSkill = useCallback(
-    async (skillId: string, tab?: string) => {
+    async (skillId: string, targetSurface: "overview" | "refine" | "evals" = "overview") => {
       if (lockedSkills.has(Number(skillId))) {
         return;
       }
@@ -279,9 +284,12 @@ export function AppLayout() {
 
       if (skillId === selectedWorkspaceSkillId) {
         const surface = getSkillSurface(editableSkill);
+        if (surface === "workspace") {
+          setWorkspaceSurface(targetSurface);
+        }
         const route = surface === "workflow"
           ? { to: "/workflow/$skillId", params: { skillId } }
-          : { to: "/workspace/$skillId", params: { skillId }, search: { tab: tab ?? undefined } };
+          : { to: "/workspace/$skillId", params: { skillId } };
         navigate(route);
         return;
       }
@@ -294,6 +302,7 @@ export function AppLayout() {
       }
 
       try {
+        setWorkspaceSurface(targetSurface);
         await activateSkill(skillId);
       } catch (err) {
         console.error("[app-layout] skill switch cleanup failed", err);
@@ -306,6 +315,7 @@ export function AppLayout() {
       resolveSkillSelection,
       selectedWorkspaceSkillId,
       runningWorkflow,
+      setWorkspaceSurface,
       navigate,
     ],
   );

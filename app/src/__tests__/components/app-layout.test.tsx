@@ -48,7 +48,7 @@ vi.mock("@/components/skill-list-panel", () => ({
     onSelectSkill,
     onActivateSkill,
   }: {
-    onSelectSkill?: (name: string, tab?: string) => void;
+    onSelectSkill?: (name: string, targetSurface?: "overview" | "refine" | "evals") => void;
     onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   }) => (
     <div data-testid="skill-list-panel">
@@ -1460,7 +1460,6 @@ describe("AppLayout", () => {
         expect(mockNavigate).toHaveBeenCalledWith({
           to: "/workspace/$skillId",
           params: { skillId: SALES_SKILL_ID },
-          search: { tab: undefined },
         });
       });
     });

@@ -65,6 +65,124 @@ const modelCatalogFixture = {
   },
 };
 
+const modelCatalogEntries = [
+  {
+    full_id: "anthropic/claude-sonnet-4-5",
+    provider_id: "anthropic",
+    model_id: "anthropic/claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5",
+    family: null,
+    attachment: false,
+    reasoning: true,
+    tool_call: true,
+    structured_output: true,
+    temperature: true,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: 3,
+    output_cost_per_token: 15,
+    context_limit: 200000,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+  {
+    full_id: "anthropic/claude-basic",
+    provider_id: "anthropic",
+    model_id: "anthropic/claude-basic",
+    name: "Claude Basic",
+    family: null,
+    attachment: false,
+    reasoning: false,
+    tool_call: true,
+    structured_output: null,
+    temperature: null,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
+    context_limit: null,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+  {
+    full_id: "anthropic/claude-no-tools",
+    provider_id: "anthropic",
+    model_id: "anthropic/claude-no-tools",
+    name: "Claude No Tools",
+    family: null,
+    attachment: false,
+    reasoning: true,
+    tool_call: false,
+    structured_output: null,
+    temperature: null,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
+    context_limit: null,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+  {
+    full_id: "openrouter/openai/gpt-5",
+    provider_id: "openrouter",
+    model_id: "openrouter/openai/gpt-5",
+    name: "GPT-5",
+    family: null,
+    attachment: false,
+    reasoning: true,
+    tool_call: true,
+    structured_output: true,
+    temperature: true,
+    knowledge: null,
+    release_date: "2026-01-01",
+    last_updated: "2026-01-01",
+    open_weights: false,
+    input_cost_per_token: 1.25,
+    output_cost_per_token: 10,
+    context_limit: 400000,
+    interleaved: null,
+    status: "active",
+    experimental: false,
+    input_modalities: ["text"],
+    output_modalities: ["text"],
+  },
+];
+
+const providerCatalogRows = [
+  {
+    provider_id: "anthropic",
+    name: "Anthropic",
+    npm: "@ai-sdk/anthropic",
+    api_base_url: null,
+    doc_url: "https://docs.anthropic.com",
+    env_vars: ["ANTHROPIC_API_KEY"],
+  },
+  {
+    provider_id: "openrouter",
+    name: "OpenRouter",
+    npm: "@openrouter/ai-sdk-provider",
+    api_base_url: "https://openrouter.ai/api/v1",
+    doc_url: "https://openrouter.ai/docs",
+    env_vars: ["OPENROUTER_API_KEY"],
+  },
+];
+
 // Mock toast wrapper
 vi.mock("@/lib/toast", () => ({
   toast: {
@@ -190,6 +308,8 @@ vi.mock("@/lib/tauri", () => ({
   updateGithubIdentity: vi.fn(() => Promise.resolve(undefined)),
   testModelConnection: vi.fn(() => Promise.resolve(true)),
   setLogLevel: vi.fn(() => Promise.resolve(undefined)),
+  getCachedModelCatalog: vi.fn(() => Promise.resolve(modelCatalogEntries)),
+  getCachedModelProviders: vi.fn(() => Promise.resolve(providerCatalogRows)),
 }));
 
 vi.mock("@/components/github-login-dialog", () => ({
@@ -407,10 +527,24 @@ describe("SettingsPage", () => {
     // Populate store with specific values
     const testSettings: Partial<AppSettings> = {
       model_settings: {
-        provider: "anthropic",
-        model: "claude-opus-4-5",
-        api_key: "sk-ant-test-key",
-        base_url: null,
+        provider_id: "anthropic",
+        model_id: "anthropic/claude-opus-4-5",
+        provider_overrides: {
+          anthropic: {
+            api_key: "sk-ant-test-key",
+            base_url_override: null,
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       },
       log_level: "debug",
     };
@@ -450,7 +584,7 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: "OpenRouter" }),
+        screen.getByRole("option", { name: "openrouter" }),
       ).toBeInTheDocument();
     });
 
@@ -513,9 +647,7 @@ describe("SettingsPage", () => {
       name: /Tool calling/i,
     });
     expect(reasoning).toBeChecked();
-    expect(reasoning).toBeDisabled();
     expect(toolCalling).toBeChecked();
-    expect(toolCalling).toBeDisabled();
     expect(
       modelSection.getByRole("combobox", { name: /^Model$/i }),
     ).toBeInTheDocument();
@@ -577,10 +709,10 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: "Anthropic" }),
+        screen.getByRole("option", { name: "anthropic" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("option", { name: "OpenRouter" }),
+        screen.getByRole("option", { name: "openrouter" }),
       ).toBeInTheDocument();
     });
 
@@ -607,7 +739,7 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: "Anthropic" }),
+        screen.getByRole("option", { name: "anthropic" }),
       ).toBeInTheDocument();
     });
 
@@ -630,7 +762,7 @@ describe("SettingsPage", () => {
 
     await switchToSection(/Models/i);
 
-    expect(await screen.findByText(/ANTHROPIC_API_KEY/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Anthropic API key/i)).toBeInTheDocument();
     expect(
       screen.getByRole("checkbox", { name: /Tool calling supported/i }),
     ).toBeChecked();
@@ -647,11 +779,14 @@ describe("SettingsPage", () => {
       4,
     );
     expect(screen.getByText("200,000 tokens")).toBeInTheDocument();
-    expect(screen.getByText("64,000 tokens")).toBeInTheDocument();
     expect(screen.getByText(/\$3 input/i)).toBeInTheDocument();
     expect(screen.getByText(/\$15 output/i)).toBeInTheDocument();
-    expect(screen.getByText(/Structured output/i)).toBeInTheDocument();
-    expect(screen.getByText(/Temperature/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Structured output supported/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Temperature supported/i }),
+    ).toBeInTheDocument();
   });
 
   it("allows Ollama without an API key and saves base URL", async () => {
@@ -659,10 +794,24 @@ describe("SettingsPage", () => {
     setupDefaultMocks({
       ...populatedSettings,
       model_settings: {
-        provider: "ollama",
-        api_key: null,
-        model: "llama3.1",
-        base_url: "http://localhost:11434",
+        provider_id: "ollama",
+        model_id: "ollama/llama3.1",
+        provider_overrides: {
+          ollama: {
+            api_key: null,
+            base_url_override: "http://localhost:11434",
+            api_version: null,
+            temperature: null,
+            max_output_tokens: null,
+            timeout_seconds: 300,
+            num_retries: 5,
+            reasoning_effort: "auto",
+            extra_headers: null,
+            input_cost_per_token: null,
+            output_cost_per_token: null,
+            usage_id: "workflow",
+          },
+        },
       },
     });
     renderWithQueryClient(<SettingsPage />);
@@ -685,7 +834,7 @@ describe("SettingsPage", () => {
         expect.objectContaining({
           model_settings: expect.objectContaining({
             provider_id: "ollama",
-            model_id: "llama3.1",
+            model_id: "ollama/llama3.1",
           }),
         }),
       );

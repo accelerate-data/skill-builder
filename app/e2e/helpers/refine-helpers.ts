@@ -4,9 +4,8 @@
  * Mirrors workflow-helpers.ts: provides mock overrides and navigation
  * utilities so refine specs share the same foundation.
  *
- * Post-VU-550: Refine lives inside WorkspaceShell as a tab. The old
- * /refine route redirects to /?tab=refine. To show the refine UI we
- * need a skill selected in the sidebar first.
+ * Refine lives inside WorkspaceShell as a tab under /workspace/$skillId.
+ * To show the refine UI we need a skill selected in the sidebar first.
  */
 import type { Page } from "@playwright/test";
 import { waitForAppReady } from "./app-helpers";
@@ -36,6 +35,7 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
   check_workspace_path: true,
   list_skills: [
     {
+      id: 201,
       name: "test-skill",
       purpose: "domain",
       current_step: null,
@@ -47,6 +47,7 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
       intake_json: null,
     },
     {
+      id: 202,
       name: "analytics-skill",
       purpose: "source",
       current_step: null,

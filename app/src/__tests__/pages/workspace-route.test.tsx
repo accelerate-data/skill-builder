@@ -1,21 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import WorkspaceRoutePage, { surfaceFromRoute } from "@/pages/workspace-route";
+import WorkspaceRoutePage from "@/pages/workspace-route";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 
 const mockUseParams = vi.fn(() => ({ skillId: "101" }));
-const mockUseSearch = vi.fn(() => ({}));
-const mockUseRouterState = vi.fn(({ select }) =>
-  select({ location: { pathname: "/workspace/101" } })
-);
-const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
   useParams: (...args: unknown[]) => mockUseParams(...args),
-  useSearch: (...args: unknown[]) => mockUseSearch(...args),
-  useRouterState: (...args: unknown[]) => mockUseRouterState(...args),
-  useNavigate: () => mockNavigate,
 }));
 
 vi.mock("@/stores/settings-store", () => ({
@@ -42,41 +34,6 @@ beforeEach(() => {
   mockBuilderPending = false;
   mockImportedPending = false;
   mockUseParams.mockReturnValue({ skillId: "101" });
-  mockUseSearch.mockReturnValue({});
-  mockUseRouterState.mockImplementation(({ select }) =>
-    select({ location: { pathname: "/workspace/101" } })
-  );
-  mockNavigate.mockClear();
-});
-
-describe("surfaceFromRoute", () => {
-  it("returns refine when pathname ends with /refine", () => {
-    expect(surfaceFromRoute("/workspace/test/refine")).toBe("refine");
-  });
-
-  it("returns evals when pathname ends with /evals", () => {
-    expect(surfaceFromRoute("/workspace/test/evals")).toBe("evals");
-  });
-
-  it("returns refine when tab search param is refine", () => {
-    expect(surfaceFromRoute("/workspace/test", "refine")).toBe("refine");
-  });
-
-  it("returns evals when tab search param is evals", () => {
-    expect(surfaceFromRoute("/workspace/test", "evals")).toBe("evals");
-  });
-
-  it("returns evals when tab search param is description", () => {
-    expect(surfaceFromRoute("/workspace/test", "description")).toBe("evals");
-  });
-
-  it("returns overview for root workspace path", () => {
-    expect(surfaceFromRoute("/workspace/test")).toBe("overview");
-  });
-
-  it("returns overview when tab is undefined", () => {
-    expect(surfaceFromRoute("/workspace/test", undefined)).toBe("overview");
-  });
 });
 
 describe("WorkspaceRoutePage", () => {
@@ -218,7 +175,6 @@ describe("WorkspaceRoutePage", () => {
     expect(vi.mocked(WorkspaceShell)).toHaveBeenCalledWith(
       expect.objectContaining({
         skillType: "marketplace",
-        initialSurface: "overview",
       }),
       undefined,
     );
