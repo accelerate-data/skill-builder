@@ -9,7 +9,11 @@ functional-specs: [custom-plugin-management]
 
 ## Overview
 
-Skill Builder has one cross-layer OpenHands contract. The backend owns runtime setup, storage roots, session lifecycle, event normalization, and typed workflow result handling. Product surfaces choose prompts, tools, and persistent-versus-throwaway behavior, but they all pass through the same runtime boundary.
+Skill Builder now has one cross-layer OpenHands contract. The backend owns
+runtime setup, storage roots, session lifecycle, event normalization, and
+typed workflow result handling. Product surfaces choose prompts, tools, and
+persistent-versus-throwaway behavior, but they all pass through the same
+runtime boundary.
 
 This doc is the canonical source for:
 
@@ -18,9 +22,6 @@ This doc is the canonical source for:
 - storage roots and canonical path ownership
 - normalized event ingress and terminal result handling
 - workflow artifact authority and typed step-output contracts
-
-Implementation mismatches against this target model belong in
-[implementation-gaps.md](implementation-gaps.md).
 
 ## Design Scope
 
@@ -46,14 +47,14 @@ Implementation mismatches against this target model belong in
 |---|---|
 | One backend-owned runtime contract serves all product surfaces. | Workflow, Refine, scope review, and validation flows share the same OpenHands runtime boundary even when their prompts and allowed tools differ. |
 | Persistent runs operate in the canonical skill directory. | The active working directory for selected-skill sessions is the resolved skill dir under the user-configured skills root, not a per-skill workspace mirror. |
-| Throwaway runs declare whether they are skill-related. | Skill-related throwaway runs reuse the canonical skill dir as their working directory; unrelated throwaway runs should stay under `/tmp/skill-builder/throwaway/...`. |
+| Throwaway runs declare whether they are skill-related. | Skill-related throwaway runs may need proximity to the skills tree; unrelated throwaway runs should stay out of user-owned skill directories. |
 | Throwaway runs declare tool-access mode. | The backend must know whether a throwaway run is read-only or write-capable before selecting allowed tools. |
 | App data owns shared OpenHands persistence roots. | Conversations, bash events, logs, DB state, and app-local runtime files belong to app data rather than the user-configured skills tree. |
 | Steps 0-2 are DB-authoritative; step 3 is file-output-authoritative. | Clarifications and decisions are canonical typed records in SQLite; generated skill files remain canonical on disk. |
 | Runtime events are normalized before frontend projection. | Lower layers own wire-shape cleanup so upper layers consume a stable event model regardless of SDK field naming differences. |
 | Step 3 accepts generate, rewrite, and benchmark terminal statuses. | The backend already validates all of these variants; the design doc should describe the real contract surface instead of only the original generate path. |
 
-## Runtime Layers and APIs
+## Runtime Layers
 
 ```text
 commands/                    ← Layer 4: product commands, DB reads, prompt building, runtime choice
@@ -71,83 +72,45 @@ agents/openhands_server/     ← Layer 1: raw Agent Server process, HTTP, WebSoc
 - WebSocket event ingestion
 - normalization of runtime event payloads before they reach higher layers
 
-The OpenHands Agent Server process itself is shut down only during app shutdown. Normal runtime surfaces pause conversations; they do not shut the server down.
+The OpenHands Agent Server process itself is shut down only during app
+shutdown. Normal runtime surfaces pause conversations; they do not shut the
+server down.
 
-Raw primitives are runtime-oriented, not product-oriented. This layer does not decide which product surface is running or how workflow outputs are persisted.
-
-| API | Purpose |
-|---|---|
-| `ensure_openhands_server(config)` | Start or reuse the Agent Server process for the requested runtime root. |
-| `shutdown_openhands_server()` | Shut down the Agent Server process during app-exit lifecycle handling. |
-| `start_openhands_session(app, config, saved_conversation_id)` | Resume or create a persistent conversation and return restored events for hydration. |
-| `pause_openhands_conversation(config, conversation_id)` | Pause active execution without deleting the conversation. |
+Raw primitives are runtime-oriented, not product-oriented. This layer does not
+decide which product surface is running or how workflow outputs are persisted.
 
 ### Layer 2: Shared Skill-Creator Model
 
-`app/src-tauri/src/agents/skill_creator.rs` and `app/src-tauri/src/agents/runtime_config.rs` own the shared contract for building runtime requests used by persistent skill-creator runs.
+`app/src-tauri/src/agents/skill_creator.rs` and
+`app/src-tauri/src/agents/runtime_config.rs` own the shared contract for
+building runtime requests used by persistent skill-creator runs.
 
 Important rules:
 
-- `build_skill_creator_config` is the canonical builder for shared `skill-creator` runs.
-- callers should provide a typed runtime intent, not hand-fill policy fields like `task_kind`, `run_source`, `allowed_tools`, `max_turns`, `step_id`, or `output_format`.
+- `build_skill_creator_config` is the canonical builder for shared
+  `skill-creator` runs.
 - persistent runs resolve `skill_dir` from the canonical skills tree:
   `{skills_root}/{plugin_slug}/skills/{skill_name}`.
-- the builder derives task discriminator, run source, allowed tools, max turns, output contract, and persisted step id from the typed intent.
+- the runtime request carries app data root, skills root, resolved skill dir,
+  task discriminator, allowed tools, step id, run source, and plugin slug.
 
-The canonical shape should be:
+### Skill-Creator Agent
 
-```rust
-pub fn build_skill_creator_config(
-    context: SkillCreatorRuntimeContext,
-) -> OpenHandsRuntimeConfig
+The shared runtime model is built around the `skill-creator` agent.
 
-pub struct SkillCreatorRuntimeContext {
-    pub app_data_root: String,
-    pub skills_root: String,
-    pub skill_name: String,
-    pub plugin_slug: String,
-    pub prompt: String,
-    pub llm: WorkflowLlmConfig,
-    pub intent: SkillCreatorIntent,
-}
+Important rules:
 
-pub enum SkillCreatorIntent {
-    Refine,
-    WorkflowStep { step: WorkflowStepKind },
-    AnswerEvaluator,
-    Eval,
-    ScopeReview,
-    ModelValidation,
-}
+- `agent_name` is `skill-creator` for the shared builder path.
+- the runtime attaches the `skill-creator` system-message suffix from
+  `agent-sources/workspace/agents/skill-creator.md`.
+- the runtime attaches the `skill-creator` user-message suffix from
+  `agent-sources/prompts/skill-creator-user-suffix.txt`.
+- AgentSkills are discovered from the active run directory under `.agents/skills/`
+  and attached through `agent_context.skills`.
+- `InvokeSkillTool` is not explicitly listed in `include_default_tools`; it is
+  attached by OpenHands when the active agent context includes AgentSkills.
 
-pub enum WorkflowStepKind {
-    Research,
-    DetailedResearch,
-    ConfirmDecisions,
-    GenerateSkill,
-}
-```
-
-`step_id` remains part of the final runtime config for persistence and reporting, but it is derived from `SkillCreatorIntent`. It should not be the public abstraction.
-
-| API | Purpose |
-|---|---|
-| `build_skill_creator_config(context)` | Build the canonical `skill-creator` runtime config from app-owned inputs plus typed runtime intent. |
-| `ensure_skill_session(app, config, saved_conversation_id)` | Enforced persistent-session entry point: ensure server, then resume or create the skill conversation. |
-
-### Layer 3: App-Tracked Runtime Wrappers
-
-These wrappers are the first layer that introduces app-owned run identity. They sit in `app/src-tauri/src/agents/tracked_openhands.rs` and compose the raw conversation APIs with local runtime concerns such as event routing, cancel/task registries, and throwaway terminal-state waiting.
-
-| API | Purpose |
-|---|---|
-| `send_tracked_openhands_message(...)` | App-tracked turn wrapper for an existing conversation. Adds local run identity, event routing, and cancel/task tracking on top of the raw runtime. |
-| `pause_tracked_openhands_conversation(...)` | App-tracked pause wrapper that combines remote conversation pause with optional local run cancellation signaling. |
-| `send_tracked_throwaway(...)` | App-tracked throwaway one-shot wrapper. Sends the throwaway prompt, listens for local runtime events, and waits for the terminal state of one tracked run. |
-
-`agent_id` is owned by this layer. It is not part of the raw OpenHands conversation contract. This layer does not own a separate abort or terminate primitive. Tracked runs are stopped by pause, not by local detach semantics.
-
-### Layer 4: Product Commands
+### Layer 3: Product Commands
 
 `app/src-tauri/src/commands/` owns product behavior:
 
@@ -165,8 +128,64 @@ This is the layer that decides whether a surface is:
 - a throwaway validation/evaluation/scope-review run
 - a typed workflow step that must materialize app-owned outputs
 
+## Core Wrapper APIs
+
+The runtime contract is not just conceptual layering; the app uses a small set
+of concrete wrapper APIs at each layer.
+
+### Layer 1: Raw OpenHands Wrappers
+
+These are the core runtime-facing wrappers in
+`app/src-tauri/src/agents/openhands_server/mod.rs`.
+
+| API | Purpose |
+|---|---|
+| `ensure_openhands_server(config)` | Start or reuse the Agent Server process for the requested runtime root. |
+| `shutdown_openhands_server()` | Shut down the Agent Server process during app-exit lifecycle handling. |
+| `start_openhands_session(app, config, saved_conversation_id)` | Resume or create a persistent conversation and return restored events for hydration. |
+| `pause_openhands_conversation(config, conversation_id)` | Pause active execution without deleting the conversation. |
+
+Raw OpenHands wrappers do not take `agent_id`. They operate only on runtime and
+conversation concepts. They expose one conversation-pause primitive. Best-effort
+error policy belongs at the caller, not as a second raw pause API. Process
+shutdown should be exposed through a raw wrapper parallel to
+`ensure_openhands_server(config)` so app-exit flows do not reach into
+`agents/openhands_server/process.rs` directly.
+
+### Layer 2: Shared Skill-Creator Wrappers
+
+These are the shared wrappers in `app/src-tauri/src/agents/skill_creator.rs`.
+
+| API | Purpose |
+|---|---|
+| `build_skill_creator_config(params)` | Build the canonical persistent `skill-creator` runtime config from app-owned inputs. |
+| `ensure_skill_session(app, config, saved_conversation_id)` | Enforced persistent-session entry point: ensure server, then resume or create the skill conversation. |
+
+### Layer 3: App-Tracked Runtime Wrappers
+
+These wrappers are the first layer that introduces app-owned run identity.
+They sit in `app/src-tauri/src/agents/tracked_openhands.rs` and compose the
+raw conversation APIs with local runtime concerns such as event routing,
+cancel/task registries, and timeout cleanup.
+
+| API | Purpose |
+|---|---|
+| `send_tracked_openhands_message(...)` | App-tracked turn wrapper for an existing conversation. Adds local run identity, event routing, and cancel/task tracking on top of the raw runtime. |
+| `pause_tracked_openhands_conversation(...)` | App-tracked pause wrapper that combines remote conversation pause with optional local run cancellation signaling. |
+| `run_tracked_throwaway_openhands_session(...)` | App-tracked throwaway-run wrapper that listens for local runtime events and waits for the terminal state of one tracked run. |
+| `terminate_tracked_openhands_session(...)` | App-tracked stop wrapper for a live local run keyed by app-owned run identity. |
+| `abort_tracked_openhands_run(...)` | Best-effort local abort wrapper for stale or timed-out app-tracked runs. |
+
+`agent_id` is owned by this layer. It is not part of the raw OpenHands
+conversation contract.
+
+### Layer 4: Product-Facing Wrappers
+
+These wrappers are the main command-level surfaces that product flows call.
+
 | API | Location | Purpose |
 |---|---|---|
+| `build_skill_session_config(...)` | `commands/skill_session.rs` | Thin product wrapper over `build_skill_creator_config` for refine/selected-skill sessions. |
 | `ensure_skill_runtime_ready(...)` | `commands/skill_session.rs` | Resolve runtime context, ensure the canonical skill dir exists, and seed `.agents/`. |
 | `select_skill_openhands_session(...)` | `commands/skill_session.rs` | Selected-skill bootstrap wrapper: acquire/verify lease, ensure runtime readiness, restore or create the persistent session, and hydrate frontend session state. |
 | `pause_openhands_session(...)` | `commands/skill_session.rs` | Product wrapper for pausing a selected-skill session and releasing its lock. |
@@ -174,6 +193,68 @@ This is the layer that decides whether a surface is:
 | `run_answer_evaluator(...)` | `commands/workflow/runtime.rs` | Product wrapper for workflow gate evaluation over the shared runtime contract. |
 | `review_skill_scope(...)` | `commands/skill/scope_review.rs` | Throwaway scope-review wrapper. Builds a throwaway config, runs to terminal state, and parses typed scope-review output. |
 | `test_model_connection(...)` | `commands/api_validation.rs` | Throwaway model-connectivity wrapper. Builds a minimal throwaway config and verifies a completed terminal state. |
+
+## Runtime Tool Policy
+
+Tool policy is part of the runtime contract because callers choose intent, but
+the backend compiles that intent into the emitted OpenHands tool set.
+
+### OpenHands Request Fields
+
+The OpenHands request builder emits:
+
+- `agent.tools` for registered workspace tools
+- `include_default_tools` for OpenHands built-in tool classes
+
+Unknown tool names fail conversation creation, so the runtime normalizes and
+filters the tool set before sending the request.
+
+### Default Workspace Tool Set
+
+The default emitted workspace tool set is:
+
+```text
+terminal
+file_editor
+task_tracker
+grep
+glob
+task_tool_set
+```
+
+These cover shell execution, file mutation, task tracking, read-only search,
+path discovery, and sub-agent delegation.
+
+### Built-In Tool Set
+
+The emitted built-in tool class set is:
+
+```text
+FinishTool
+ThinkTool
+```
+
+### Opt-In Tools
+
+The runtime recognizes additional tools that are not part of the default set.
+These should be enabled through backend runtime policy for the relevant intent,
+not by ad hoc caller strings spread across product commands.
+
+Examples:
+
+- `browser_tool_set`
+- `planning_file_editor`
+
+### Override Policy
+
+`allowed_tools` remains the low-level emitted runtime field, but it is a
+backend-owned contract surface. The target model is:
+
+- product surfaces select a typed runtime intent
+- the canonical builder derives the tool policy for that intent
+- the request builder normalizes names against the OpenHands registry
+- if the derived set is empty after normalization, the runtime falls back to
+  the default workspace tool set
 
 ### Wrapper Usage Rules
 
@@ -183,12 +264,20 @@ Higher layers should prefer the highest wrapper that matches their intent:
   and `pause_openhands_session`
 - persistent skill turns should go through `ensure_skill_session` plus
   `send_tracked_openhands_message`
-- throwaway surfaces should go through `send_tracked_throwaway` indirectly via product wrappers like `review_skill_scope` or `test_model_connection`
-- tracked runs stop through pause semantics; the tracked layer should not expose separate abort or terminate APIs for normal runtime flows
-- all non-shutdown surfaces should pause conversations rather than shutting the OpenHands server down
-- server shutdown is app-lifecycle-only and should remain confined to app exit orchestration through the raw `shutdown_openhands_server()` wrapper
-- direct callers of `agents/openhands_server` should be implementing wrapper behavior, not product flows; that module owns only runtime/config/session/conversation concerns
-- any wrapper that needs `agent_id`, local listener wiring, cancel signaling, task-handle tracking, or timeout cleanup should live above the raw `agents/openhands_server` layer
+- throwaway surfaces should go through
+  `run_tracked_throwaway_openhands_session` indirectly via product wrappers like
+  `review_skill_scope` or
+  `test_model_connection`
+- all non-shutdown surfaces should pause conversations rather than shutting the
+  OpenHands server down
+- server shutdown is app-lifecycle-only and should remain confined to app exit
+  orchestration through the raw `shutdown_openhands_server()` wrapper
+- direct callers of `agents/openhands_server` should be implementing wrapper
+  behavior, not product flows; that module owns only runtime/config/session/
+  conversation concerns
+- any wrapper that needs `agent_id`, local listener wiring, cancel signaling,
+  task-handle tracking, or timeout cleanup should live above the raw
+  `agents/openhands_server` layer
 
 Callers should not skip upward wrapper layers unless they are implementing a
 new wrapper at the boundary immediately above.
@@ -202,13 +291,13 @@ The runtime contract uses three primary roots plus one derived throwaway root.
 | App data root | `app_handle.path().app_data_dir()` | Rust | App-local DB, OpenHands persistence roots, documents, runtime support files |
 | Skills root | user-configured `settings.skills_path` | Rust + user filesystem | Canonical plugin/skill tree and durable skill output |
 | Skill dir | `{skills_root}/{plugin_slug}/skills/{skill_name}` | Rust + OpenHands runtime | Working directory for persistent skill-bound runs |
-| Throwaway run dir | skill-related: `{skills_root}/{plugin_slug}/skills/{skill_name}`; unrelated: `/tmp/skill-builder/throwaway/{surface}/{run_id}` | Rust + OpenHands runtime | Working directory for throwaway runs |
+| Throwaway run dir | skill-related: `{skills_root}/.openhands/throwaway/{surface}/{run_id}`; unrelated: `/tmp/skill-builder/throwaway/{surface}/{run_id}` | Rust + OpenHands runtime | Isolated scratch directory for throwaway runs |
 
 ### Canonical Path Templates
 
 The path resolver source of truth is `app/plugin-paths.json`.
 
-Canonical templates:
+Current canonical templates:
 
 ```json
 {
@@ -216,6 +305,8 @@ Canonical templates:
   "eval_dir": "{skills_root}/{plugin_slug}/evals/{skill_name}"
 }
 ```
+
+There is no canonical `workspace_skill_dir` template in the live resolver.
 
 ### App Data Ownership
 
@@ -226,7 +317,9 @@ App data owns:
 - related OpenHands persistence roots such as logs / bash events when present
 - app-local documents and runtime support files
 
-Older workspace-mirror layouts are outside the target model.
+Legacy migration code still flattens older `workspace/.openhands/...` content
+into `openhands/...`, but that older layout is transitional cleanup, not the
+current intended model.
 
 ### Skills Root and Skill Dir Ownership
 
@@ -240,28 +333,31 @@ The user-configured skills root owns the canonical plugin-aware skill tree:
   .git/
 ```
 
-Persistent OpenHands skill runs use this resolved skill dir as the runtime working directory. The runtime does not maintain a second canonical per-skill workspace mirror under app-local data.
+Persistent OpenHands skill runs use this resolved skill dir as the runtime
+working directory. The runtime does not maintain a second canonical per-skill
+workspace mirror under app-local data.
 
 ### Throwaway Runtime Ownership
 
-Throwaway runs choose their working directory from an explicit backend flag:
+Throwaway runs create isolated runtime directories below a base path chosen by
+an explicit backend flag:
 
-- `skill_related = true` → working directory is the canonical skill dir
-- `skill_related = false` → working directory is under `/tmp/skill-builder/throwaway/{surface}/{run_id}`
+- `skill_related = true` → base path is the configured skills root
+- `skill_related = false` → base path is `/tmp/skill-builder`
 
-The resulting working directory is:
+The resulting runtime directory is:
 
 ```text
-skill-related:
-  {skills_root}/{plugin_slug}/skills/{skill_name}
-
-not skill-related:
-  /tmp/skill-builder/throwaway/{surface}/{run_id}
+{base}/.openhands/throwaway/{surface}/{run_id}/
+  .agents/
+  conversations/
+  logs/
 ```
 
-Policy examples:
+Current policy examples:
 
-- scope review is skill-related, so its throwaway working directory is the canonical skill dir
+- scope review is skill-related, so its throwaway dir is rooted under the
+  skills root
 - model-connection validation is not skill-related, so its throwaway dir should
   be rooted under `/tmp/skill-builder`
 
@@ -312,7 +408,9 @@ Important contract properties:
 
 ## Throwaway Runs
 
-Throwaway product surfaces create isolated runs with fresh working directories and no selected-skill session reuse. These are used where the product needs a quick validation or analysis pass rather than ongoing session continuity.
+Throwaway product surfaces create isolated runs with fresh runtime dirs and no
+selected-skill session reuse. These are used where the product needs a quick
+validation or analysis pass rather than ongoing session continuity.
 
 Examples include:
 
@@ -336,7 +434,9 @@ The runtime boundary has two distinct ingress shapes:
 
 ### Normalized Event Ownership
 
-Lower runtime layers normalize Agent Server event payloads before higher layers consume them. This includes discriminator cleanup such as falling back to SDK `kind` fields when `event_class` is absent.
+Lower runtime layers normalize Agent Server event payloads before higher layers
+consume them. This includes discriminator cleanup such as falling back to SDK
+`kind` fields when `event_class` is absent.
 
 This contract guarantees that upper layers can reason about:
 
@@ -349,7 +449,9 @@ Frontend projection is a separate concern and is documented in
 
 ### Terminal Result Ownership
 
-Workflow commands extract terminal `conversation_state.result_text` from a completed run, parse it as JSON when required, and validate it against typed Rust structs plus semantic rules.
+Workflow commands extract terminal `conversation_state.result_text` from a
+completed run, parse it as JSON when required, and validate it against typed
+Rust structs plus semantic rules.
 
 Core flow:
 
@@ -362,8 +464,6 @@ Core flow:
 
 ## Workflow Artifact Authority
 
-This section covers only the runtime-boundary question: after a runtime step completes, which artifact class is authoritative and where does the handoff go. Deeper persistence layout, schema ownership, and storage implementation belong in [Workflow Artifact Storage](../workflow-artifact-storage/README.md) and the [Backend Design](../backend-design/README.md) docs.
-
 ### Steps 0-2
 
 Workflow steps 0-2 are DB-authoritative.
@@ -373,6 +473,13 @@ Workflow steps 0-2 are DB-authoritative.
 | 0 Research | `ResearchStepOutput` | SQLite clarifications tables |
 | 1 Detailed Research | `DetailedResearchOutput` | SQLite clarifications tables |
 | 2 Confirm Decisions | `DecisionsOutput` | SQLite decisions tables |
+
+The canonical artifact types live in:
+
+- `contracts/clarifications.rs`
+- `contracts/decisions.rs`
+- `contracts/workflow_outputs.rs`
+- `contracts/workflow_artifacts.rs`
 
 ### Step 3
 
@@ -391,35 +498,38 @@ original generate path.
 
 ## Typed Output Contracts
 
-This section covers only the runtime-boundary contract: which runtime surfaces require structured terminal output, what high-level result category is expected, and where the parsed handoff goes next. Detailed Rust type structure and persistence internals belong in backend-focused docs.
+### Clarifications
 
-### Workflow Steps 0-2
+Clarifications are represented as `ClarificationsFile` and persisted into
+normalized DB tables. Important contract details include:
 
-These surfaces require typed terminal output that is parsed from `conversation_state.result_text` and handed off to DB-backed persistence:
+- recursive `Question.refinements`
+- integer `Section.id`
+- optional structured `warning` and `error` metadata
+- optional `answer_evaluator_notes`
 
-| Surface | Expected typed result category | Handoff target |
-|---|---|---|
-| Research | clarifications output | SQLite clarifications tables |
-| Detailed Research | detailed clarifications output | SQLite clarifications tables |
-| Confirm Decisions | decisions output | SQLite decisions tables |
+### Decisions
 
-### Workflow Step 3
+Decision confirmation is represented as `DecisionsOutput`. Important contract
+details include:
 
-This surface requires typed terminal validation plus file-output verification:
-
-| Surface | Expected typed result category | Handoff target |
-|---|---|---|
-| Generate / rewrite / benchmark variants | `GenerateSkillOutput`-family terminal result | file-output validation plus status-specific artifact handling |
+- decision statuses are kebab-case strings
+- `contradictory_inputs` is a union of boolean or `"revised"`
+- persisted DB state flattens this into validated enum-like storage strings
 
 ### Answer Evaluation
 
-Answer evaluation is also a typed terminal output surface:
+Answer evaluation is a typed terminal output used by the workflow gate. The
+current semantic contract accepts:
 
-| Surface | Expected typed result category | Handoff target |
-|---|---|---|
-| Answer evaluator | evaluator verdict output | workflow gate logic and DB-adjacent evaluation flow |
-
-At this layer, the important rule is that commands attach the output contract before dispatch, parse terminal `result_text` after completion, and then hand the typed result to the appropriate backend persistence or validation path.
+- verdicts: `sufficient`, `mixed`, `insufficient`
+- gate decisions: `run_research`, `revise`
+- per-question verdicts:
+  - `clear`
+  - `needs_refinement`
+  - `not_answered`
+  - `vague`
+  - `contradictory`
 
 The backend enforces extra semantic checks beyond raw schema shape, such as
 required reasoning and required `reason` fields for selected verdicts.
@@ -429,8 +539,6 @@ required reasoning and required `reason` fields for selected verdicts.
 | Doc | Relationship |
 |---|---|
 | `docs/design/openhands-event-display-projection/README.md` | Frontend/store-layer projection of normalized runtime events into `DisplayItem` |
-| `docs/design/openhands-runtime-model/optimistic-session-activation.md` | Companion UX design for async selected-skill boot flow layered on top of this runtime contract |
-| `docs/design/openhands-runtime-model/tools-included.md` | Companion doc for runtime tool-set policy and request-builder validation rules |
 
 ## Key Source Files
 

@@ -158,7 +158,7 @@
     "tests/evals/": "Root Promptfoo/OpenCode eval harness. Contains eval-map.json for coding-agent navigation, bin/ad-evals.js shared CLI, scripts/framework/ reusable harness modules, suite-owned tier config, OpenCode provider config, package-level eval configs including workbench prompt-contract packages, deterministic harness tests, static assertions for code contracts including shared Tauri command policy analysis, runtime-exported Promptfoo state ignores, one-scenario-per-package smoke, and live model regression commands.",
     "agent-sources/workspace/": "OpenHands runtime workspace sources only: agents/ is copied to .agents/agents and skills/ is copied to .agents/skills during startup/runtime deployment.",
     "agent-sources/prompts/": "App-owned prompt templates compiled/rendered by Rust and sent as explicit task messages; not copied into the OpenHands runtime workspace.",
-    "docs/design/": "Architecture decision records and design specs: agent-specs, backend-design, startup-recon, openhands-runtime-model, clarifications-rendering, skill-tester, skills-marketplace, shared-eval-harness, and more. Primary reference for non-obvious design decisions.",
+    "docs/design/": "Architecture decision records and design specs: openhands-runtime-contract, backend-design, startup-recon, clarifications-rendering, skill-tester, skills-marketplace, shared-eval-harness, and more. Primary reference for non-obvious design decisions.",
     "docs/plans/": "Implementation plans and execution notes. Not published end-user help content.",
     "docs/user-guide/": "VitePress user documentation, deployed via docs.yml to GitHub Pages",
     "docs/references/": "Vendored external reference docs (e.g. Anthropic API snapshots)",
@@ -228,7 +228,7 @@
     "no_monoliths": "A Tauri command file should define commands and delegate to helpers — not own query logic, filesystem ops, and business rules simultaneously. A React component should render — not own a state machine, data fetching, and complex transformations inline. When in doubt, split."
   },
   "key_references": {
-    "artifact_contracts": "docs/design/agent-specs/canonical-format.md — high-level artifact format contracts",
+    "artifact_contracts": "docs/design/openhands-runtime-contract/README.md — high-level runtime and artifact contract design",
     "research_output_schema": "agent-sources/workspace/skills/shared/schemas.md — canonical workflow research and answer-evaluator schema reference copied with the OpenHands workspace skills",
     "startup_recon_design": "docs/design/startup-recon/ — reconciliation scenario matrix (scenarios 1–12), used by reconciliation/",
     "frontend_rules": ".claude/rules/frontend-design.md — AD brand, component constraints, state indicators",

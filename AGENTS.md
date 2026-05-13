@@ -18,7 +18,7 @@ Precedence for agent guidance:
 
 - `repo-map.json` is the codebase map for structure, entrypoints, modules,
   commands, and key references.
-- `docs/design/agent-specs/storage.md` documents the full storage layout.
+- `docs/design/openhands-runtime-contract/README.md` documents the runtime/storage contract.
 
 ## Dev Commands
 
