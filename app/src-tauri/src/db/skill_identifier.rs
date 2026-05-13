@@ -76,9 +76,7 @@ impl SkillIdentifier {
             }
             SkillIdentifier::ByBuilderKey { plugin, name } => {
                 crate::db::get_skill_master_id_in_plugin(conn, name, plugin)?
-                    .ok_or_else(|| {
-                        format!("Skill not found: skill-builder:{}:{}", plugin, name)
-                    })
+                    .ok_or_else(|| format!("Skill not found: skill-builder:{}:{}", plugin, name))
             }
             SkillIdentifier::ByImportedId(id) => {
                 let row = conn
@@ -136,10 +134,7 @@ mod tests {
 
     #[test]
     fn parse_rejects_empty() {
-        assert!(matches!(
-            SkillIdentifier::parse(""),
-            Err(ParseError::Empty)
-        ));
+        assert!(matches!(SkillIdentifier::parse(""), Err(ParseError::Empty)));
         assert!(matches!(
             SkillIdentifier::parse("  "),
             Err(ParseError::Empty)

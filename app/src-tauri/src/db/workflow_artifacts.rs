@@ -183,17 +183,15 @@ fn resolve_skill_db_id_optional(
     skill_identifier: &str,
 ) -> Result<Option<i64>, rusqlite::Error> {
     match crate::db::SkillIdentifier::parse(skill_identifier) {
-        Ok(id) => id.resolve_to_db_id(conn)
-            .map(Some)
-            .or_else(|e| {
-                if e.contains("not found") {
-                    Ok(None)
-                } else {
-                    Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
-                        std::io::Error::new(std::io::ErrorKind::NotFound, e),
-                    )))
-                }
-            }),
+        Ok(id) => id.resolve_to_db_id(conn).map(Some).or_else(|e| {
+            if e.contains("not found") {
+                Ok(None)
+            } else {
+                Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                    std::io::Error::new(std::io::ErrorKind::NotFound, e),
+                )))
+            }
+        }),
         Err(e) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
             std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()),
         ))),
@@ -1352,9 +1350,7 @@ mod tests {
         tx.commit().unwrap();
 
         // Confirm both rows exist.
-        assert!(read_clarifications(&conn, &identifier)
-            .unwrap()
-            .is_some());
+        assert!(read_clarifications(&conn, &identifier).unwrap().is_some());
         assert!(read_decisions(&conn, &identifier).unwrap().is_some());
 
         let parent_skill_id = skill_row_id(&conn, &identifier);
@@ -1374,9 +1370,7 @@ mod tests {
 
         // Both artifact families must be gone.
         assert!(
-            read_clarifications(&conn, &identifier)
-                .unwrap()
-                .is_none(),
+            read_clarifications(&conn, &identifier).unwrap().is_none(),
             "delete_skill must purge clarifications rows"
         );
         assert!(

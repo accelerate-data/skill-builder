@@ -399,7 +399,9 @@ fn is_skill_dir(path: &Path) -> bool {
 // ─── Skill content reading ───────────────────────────────────────────────────
 
 /// Read SKILL.md and all references/ files from a skill directory.
-pub fn read_skill_content(skill_root: &Path) -> Result<Vec<crate::types::SkillFileContent>, String> {
+pub fn read_skill_content(
+    skill_root: &Path,
+) -> Result<Vec<crate::types::SkillFileContent>, String> {
     if !skill_root.exists() {
         return Err(format!(
             "Skill directory not found at {}",

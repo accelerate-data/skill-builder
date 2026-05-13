@@ -259,8 +259,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -644,8 +645,9 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -729,8 +731,9 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -1671,8 +1674,9 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -1883,8 +1887,9 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -1983,8 +1988,9 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2115,8 +2121,9 @@ describe("WorkflowPage — review mode default state", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2189,8 +2196,9 @@ describe("step reset behavior regressions", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2561,8 +2569,9 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -2992,8 +3001,9 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -3078,8 +3088,9 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -3914,8 +3925,9 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
       workspacePath: "/test/workspace",
       skillsPath: "/test/skills",
       modelSettings: {
-        model: "sonnet",
-        api_key: "sk-test",
+        provider_id: "anthropic",
+        model_id: "sonnet",
+        provider_overrides: {},
       },
     });
 
@@ -3982,7 +3994,7 @@ describe("WorkflowPage — loading shimmer", () => {
     useSettingsStore.getState().reset();
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
-      modelSettings: { model: "sonnet", api_key: "sk-test" },
+      modelSettings: { provider_id: "anthropic", model_id: "sonnet", provider_overrides: {} },
     });
     mockNavigate.mockReset();
     mockBlocker.status = "idle";

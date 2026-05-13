@@ -33,20 +33,9 @@ export interface UseAppStartupReturn extends StartupState {
 
 export function settingsToStorePatch(s: AppSettings) {
   const modelSettings: ModelSettings = {
-    provider: s.model_settings?.provider ?? null,
-    model: s.model_settings?.model ?? null,
-    api_key: s.model_settings?.api_key ?? null,
-    base_url: s.model_settings?.base_url ?? null,
-    api_version: s.model_settings?.api_version ?? null,
-    temperature: s.model_settings?.temperature ?? null,
-    max_output_tokens: s.model_settings?.max_output_tokens ?? null,
-    timeout_seconds: s.model_settings?.timeout_seconds ?? 300,
-    num_retries: s.model_settings?.num_retries ?? 5,
-    reasoning_effort: s.model_settings?.reasoning_effort ?? "auto",
-    extra_headers: s.model_settings?.extra_headers ?? null,
-    input_cost_per_token: s.model_settings?.input_cost_per_token ?? null,
-    output_cost_per_token: s.model_settings?.output_cost_per_token ?? null,
-    usage_id: s.model_settings?.usage_id ?? "workflow",
+    provider_id: s.model_settings?.provider_id ?? null,
+    model_id: s.model_settings?.model_id ?? null,
+    provider_overrides: s.model_settings?.provider_overrides ?? {},
   };
 
   return {

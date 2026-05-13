@@ -131,7 +131,7 @@ const mockClearRunsBySource = vi.fn();
 const mockAgentStartRun = vi.fn();
 const mockSettingsState = vi.hoisted(() => ({
   modelSettings: {
-    model: "test-settings-model" as string | null,
+    model_id: "test-settings-model" as string | null,
   },
 }));
 let mockActiveAgentId: string | null = null;
@@ -227,7 +227,7 @@ describe("useWorkflowStateMachine", () => {
       disabledSteps: [],
     };
     mockRestartOpenHandsSession.mockClear();
-    mockSettingsState.modelSettings.model = "test-settings-model";
+    mockSettingsState.modelSettings.model_id = "test-settings-model";
   });
 
   it("handleStartAgentStep calls runWorkflowStep and marks step in_progress", async () => {
@@ -273,7 +273,7 @@ describe("useWorkflowStateMachine", () => {
   });
 
   it("handleStartAgentStep stops before mutating workflow state when model is missing", async () => {
-    mockSettingsState.modelSettings.model = null;
+    mockSettingsState.modelSettings.model_id = null;
     const { toast } = await import("@/lib/toast");
 
     const { result } = renderHook(() =>

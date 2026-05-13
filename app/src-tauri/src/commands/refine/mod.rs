@@ -254,13 +254,14 @@ pub async fn send_refine_message(
         active_conversation_id
     );
 
-    let returned_conversation_id = crate::agents::tracked_openhands::send_tracked_openhands_message(
-        &app,
-        &agent_id,
-        config,
-        active_conversation_id,
-    )
-    .await?;
+    let returned_conversation_id =
+        crate::agents::tracked_openhands::send_tracked_openhands_message(
+            &app,
+            &agent_id,
+            config,
+            active_conversation_id,
+        )
+        .await?;
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;

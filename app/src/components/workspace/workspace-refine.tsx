@@ -34,7 +34,7 @@ interface WorkspaceRefineProps {
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
   const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const selectedModel = useSettingsStore((s) => s.modelSettings.model);
+  const selectedModel = useSettingsStore((s) => s.modelSettings.model_id);
   const availableModels = useSettingsStore((s) => s.availableModels);
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);

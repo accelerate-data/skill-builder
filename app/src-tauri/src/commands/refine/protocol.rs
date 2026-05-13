@@ -18,6 +18,7 @@ pub(super) struct RefinePromptContext<'a> {
     pub decisions_json: &'a str,
 }
 
+#[allow(dead_code)]
 pub(super) struct RefinePromptRequest<'a> {
     pub skill_name: &'a str,
     pub workspace_path: &'a str,

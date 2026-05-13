@@ -1,10 +1,10 @@
 pub mod scenarios;
 pub mod types;
 
-use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::agents::runtime_config::{
     build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
 };
+use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::commands::refine::content::get_skill_content_inner_for_plugin;
 use crate::commands::skill_session::resolve_skills_path;
@@ -303,10 +303,9 @@ where
     EnsureRuntimeDir: FnOnce(&std::path::Path) -> EnsureRuntimeDirFuture,
     EnsureRuntimeDirFuture: std::future::Future<Output = Result<(), String>>,
     RunTurn: FnOnce(OpenHandsThrowawayRunParams) -> RunTurnFuture,
-    RunTurnFuture:
-        std::future::Future<
-            Output = Result<crate::agents::openhands_server::OpenHandsThrowawayRun, String>,
-        >,
+    RunTurnFuture: std::future::Future<
+        Output = Result<crate::agents::openhands_server::OpenHandsThrowawayRun, String>,
+    >,
 {
     let run_id = uuid::Uuid::new_v4().to_string();
     let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(

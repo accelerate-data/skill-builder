@@ -776,9 +776,11 @@ fn test_delete_skill_no_workspace_dir_but_has_skills_output() {
     // Skills output should be deleted
     assert!(!output_dir.exists());
     // DB should be clean
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, orphan_skill_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        crate::db::get_workflow_run_by_skill_id(&conn, orphan_skill_id)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
@@ -795,9 +797,11 @@ fn test_delete_skill_no_workspace_dir_no_output() {
 
     delete_skill_inner(workspace, "ghost", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
 
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, ghost_skill_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        crate::db::get_workflow_run_by_skill_id(&conn, ghost_skill_id)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
@@ -1169,9 +1173,11 @@ fn test_create_skill_recreates_stale_skill_dir_when_db_row_missing() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, stale_skill_id)
-        .unwrap()
-        .is_some());
+    assert!(
+        crate::db::get_workflow_run_by_skill_id(&conn, stale_skill_id)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
@@ -1222,9 +1228,11 @@ fn test_create_skill_recreates_stale_output_dir_when_db_row_missing() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, stale_skill_id)
-        .unwrap()
-        .is_some());
+    assert!(
+        crate::db::get_workflow_run_by_skill_id(&conn, stale_skill_id)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]
@@ -1513,7 +1521,10 @@ fn test_rename_skill_basic() {
         None,
     )
     .unwrap();
-    let old_skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "old-name", DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+    let old_skill_id =
+        crate::db::get_skill_master_id_in_plugin(&conn, "old-name", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
     crate::db::save_workflow_step_by_skill_id(&conn, old_skill_id, 0, "completed").unwrap();
     crate::db::save_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "old-name", "conv-old")
         .unwrap();
@@ -1642,7 +1653,10 @@ fn test_rename_skill_collision() {
     );
 
     // Original skill should be untouched
-    let skill_a_id = crate::db::get_skill_master_id_in_plugin(&conn, "skill-a", DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+    let skill_a_id =
+        crate::db::get_skill_master_id_in_plugin(&conn, "skill-a", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
     let row = crate::db::get_workflow_run_by_skill_id(&conn, skill_a_id).unwrap();
     assert!(row.is_some(), "skill-a workflow row should still exist");
 }
@@ -1708,7 +1722,10 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
     )
     .unwrap();
 
-    let will_rollback_id = crate::db::get_skill_master_id_in_plugin(&conn, "will-rollback", DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+    let will_rollback_id =
+        crate::db::get_skill_master_id_in_plugin(&conn, "will-rollback", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
 
     // To force the DB transaction to fail, we drop the workflow_runs table
     // after creating the skill, so the INSERT in the transaction will fail.
@@ -1813,17 +1830,23 @@ fn test_rename_skill_inner_happy_path_renames_db_and_disk() {
     .unwrap();
 
     // DB row should now use the new name.
-    let renamed_skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "renamed-skill", DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+    let renamed_skill_id =
+        crate::db::get_skill_master_id_in_plugin(&conn, "renamed-skill", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
     let run = crate::db::get_workflow_run_by_skill_id(&conn, renamed_skill_id)
         .unwrap()
         .expect("workflow_run should exist under new name");
     assert_eq!(run.skill_name, "renamed-skill");
 
     // Old DB row must be gone — skill was renamed, so lookup by old name returns None.
-    let old_skill_lookup = crate::db::get_skill_master_id_in_plugin(&conn, "original-skill", DEFAULT_PLUGIN_SLUG);
+    let old_skill_lookup =
+        crate::db::get_skill_master_id_in_plugin(&conn, "original-skill", DEFAULT_PLUGIN_SLUG);
     match old_skill_lookup {
         Ok(Some(id)) => assert!(
-            crate::db::get_workflow_run_by_skill_id(&conn, id).unwrap().is_none(),
+            crate::db::get_workflow_run_by_skill_id(&conn, id)
+                .unwrap()
+                .is_none(),
             "old workflow_run should be gone"
         ),
         _ => {} // Skill no longer exists under old name — expected
@@ -1912,7 +1935,10 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     );
 
     // DB was already committed (new name), but skills dir rename was rolled back.
-    let renamed_skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "rename-success", DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+    let renamed_skill_id =
+        crate::db::get_skill_master_id_in_plugin(&conn, "rename-success", DEFAULT_PLUGIN_SLUG)
+            .unwrap()
+            .unwrap();
     assert!(
         crate::db::get_workflow_run_by_skill_id(&conn, renamed_skill_id)
             .unwrap()

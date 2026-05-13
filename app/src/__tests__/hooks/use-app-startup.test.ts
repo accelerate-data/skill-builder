@@ -31,29 +31,42 @@ describe("settingsToStorePatch", () => {
     const patch = settingsToStorePatch(
       makeSettings({
         model_settings: {
-          provider: "anthropic",
-          model: "claude-sonnet-4-5",
-          api_key: "sk-ant-test",
-          base_url: null,
+          provider_id: "anthropic",
+          model_id: "claude-sonnet-4-5",
+          provider_overrides: {
+            anthropic: {
+              api_key: "sk-ant-test",
+              base_url_override: null,
+              api_version: null,
+              temperature: null,
+              max_output_tokens: null,
+              timeout_seconds: 300,
+              num_retries: 5,
+              reasoning_effort: "auto",
+              extra_headers: null,
+              input_cost_per_token: null,
+              output_cost_per_token: null,
+              usage_id: "workflow",
+            },
+          },
         },
       }),
     );
 
     expect(patch.modelSettings).toEqual(
       expect.objectContaining({
-        provider: "anthropic",
-        model: "claude-sonnet-4-5",
-        api_key: "sk-ant-test",
-        base_url: null,
+        provider_id: "anthropic",
+        model_id: "claude-sonnet-4-5",
       }),
     );
+    expect(patch.modelSettings.provider_overrides.anthropic?.api_key).toBe("sk-ant-test");
   });
 
-  it("returns null provider, api_key, and model when model_settings is not configured", () => {
+  it("returns null provider_id and model_id when model_settings is not configured", () => {
     const patch = settingsToStorePatch(makeSettings({ model_settings: null }));
 
-    expect(patch.modelSettings.provider).toBeNull();
-    expect(patch.modelSettings.api_key).toBeNull();
-    expect(patch.modelSettings.model).toBeNull();
+    expect(patch.modelSettings.provider_id).toBeNull();
+    expect(patch.modelSettings.model_id).toBeNull();
+    expect(patch.modelSettings.provider_overrides).toEqual({});
   });
 });

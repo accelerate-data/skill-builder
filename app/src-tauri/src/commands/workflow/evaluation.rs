@@ -82,7 +82,12 @@ pub(crate) fn clear_artifacts_for_step_reset(
         .map(|m| m.plugin_slug)
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
     let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
-        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+        .ok_or_else(|| {
+            format!(
+                "Skill '{}' not found in plugin '{}'",
+                skill_name, plugin_slug
+            )
+        })?;
     let skill_id_str = s_id.to_string();
 
     match from_step_id {
@@ -160,7 +165,12 @@ fn navigate_back_to_step_impl(
 
     // Reset only steps after the target; target step status is preserved as "completed".
     let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
-        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+        .ok_or_else(|| {
+            format!(
+                "Skill '{}' not found in plugin '{}'",
+                skill_name, plugin_slug
+            )
+        })?;
     crate::db::reset_workflow_steps_from_by_skill_id(conn, s_id, delete_from as i32)?;
 
     // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
@@ -310,7 +320,8 @@ mod tests {
     fn test_all_steps_completed_overrides_in_progress_status() {
         let conn = create_test_db();
 
-        let skill_id = crate::db::upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
         crate::db::save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
 
         let step_statuses = vec![
@@ -341,7 +352,8 @@ mod tests {
 
         crate::db::save_workflow_run(&conn, "test-skill", 3, &effective_status, "domain").unwrap();
         for step in &step_statuses {
-            crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status).unwrap();
+            crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status)
+                .unwrap();
         }
 
         let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -445,8 +457,14 @@ mod tests {
         let skill_name = "reset-me";
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
-        let skill_id = crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
-            .unwrap();
+        let skill_id = crate::db::upsert_skill_in_plugin(
+            &conn,
+            skill_name,
+            "skill-builder",
+            "test",
+            default_slug,
+        )
+        .unwrap();
         crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
             .unwrap();
         crate::db::save_workflow_run(&conn, skill_name, 2, "completed", "domain").unwrap();
@@ -479,7 +497,8 @@ mod tests {
     fn test_all_completed_override_full_db_path() {
         let conn = create_test_db();
 
-        let skill_id = crate::db::upsert_skill(&conn, "tc06-skill", "skill-builder", "domain").unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "tc06-skill", "skill-builder", "domain").unwrap();
         crate::db::save_workflow_run(&conn, "tc06-skill", 3, "in_progress", "domain").unwrap();
 
         let step_statuses = vec![
@@ -506,7 +525,8 @@ mod tests {
 
         crate::db::save_workflow_run(&conn, "tc06-skill", 3, &effective_status, "domain").unwrap();
         for step in &step_statuses {
-            crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status).unwrap();
+            crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status)
+                .unwrap();
         }
 
         let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -724,7 +744,12 @@ pub async fn reset_workflow_step(
     clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
     clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
     let s_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
-        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+        .ok_or_else(|| {
+            format!(
+                "Skill '{}' not found in plugin '{}'",
+                skill_name, plugin_slug
+            )
+        })?;
     crate::db::reset_workflow_steps_from_by_skill_id(&conn, s_id, from_step_id as i32)?;
 
     // Update the workflow run's current step
@@ -1329,7 +1354,13 @@ mod reset_artifact_cleanup_tests {
     fn test_reset_from_step_0_clears_clarifications_and_decisions() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
-        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(
+            &conn,
+            "test-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )
+        .unwrap()
+        .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
@@ -1353,7 +1384,13 @@ mod reset_artifact_cleanup_tests {
     fn test_reset_from_step_1_clears_clarifications_and_decisions() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 1, "pending", "domain").unwrap();
-        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(
+            &conn,
+            "test-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )
+        .unwrap()
+        .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
@@ -1378,7 +1415,13 @@ mod reset_artifact_cleanup_tests {
     fn test_reset_from_step_2_clears_decisions_preserves_clarifications() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 2, "pending", "domain").unwrap();
-        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+        let skill_id = crate::db::get_skill_master_id_in_plugin(
+            &conn,
+            "test-skill",
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )
+        .unwrap()
+        .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
@@ -1402,9 +1445,21 @@ mod reset_artifact_cleanup_tests {
     fn test_reset_from_step_3_or_later_preserves_clarifications_and_decisions() {
         for from_step in [3_u32, 4_u32] {
             let mut conn = create_test_db();
-            crate::db::save_workflow_run(&conn, "test-skill", from_step as i32, "pending", "domain")
-                .unwrap();
-            let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+            crate::db::save_workflow_run(
+                &conn,
+                "test-skill",
+                from_step as i32,
+                "pending",
+                "domain",
+            )
+            .unwrap();
+            let skill_id = crate::db::get_skill_master_id_in_plugin(
+                &conn,
+                "test-skill",
+                crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+            )
+            .unwrap()
+            .unwrap();
 
             seed_clarifications(&mut conn, skill_id);
             seed_decisions(&mut conn, skill_id);

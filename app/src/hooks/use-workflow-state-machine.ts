@@ -693,7 +693,7 @@ export function useWorkflowStateMachine({
       let model: string;
       try {
         model = requireSettingsModel(
-          useSettingsStore.getState().modelSettings.model,
+          useSettingsStore.getState().modelSettings.model_id,
         );
       } catch (err) {
         toast.error(

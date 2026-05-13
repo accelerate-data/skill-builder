@@ -16,9 +16,7 @@ enum UpstreamCatalog {
 }
 
 /// Fetch models.dev, store the exact provider/model key set in SQLite, and read it back.
-pub async fn refresh_model_catalog(
-    db: &crate::db::Db,
-) -> Result<Vec<ModelCatalogEntry>, String> {
+pub async fn refresh_model_catalog(db: &crate::db::Db) -> Result<Vec<ModelCatalogEntry>, String> {
     let body = fetch_models_dev_json().await?;
     let db_clone = db.0.clone();
     tokio::task::spawn_blocking(move || {
@@ -62,10 +60,7 @@ pub async fn fetch_models_dev_json() -> Result<String, String> {
         .map_err(|e| format!("Failed to fetch {MODELS_DEV_API_URL}: {e}"))?;
 
     if !resp.status().is_success() {
-        return Err(format!(
-            "models.dev returned HTTP {}",
-            resp.status()
-        ));
+        return Err(format!("models.dev returned HTTP {}", resp.status()));
     }
 
     resp.text()
@@ -105,10 +100,23 @@ pub fn filter_models(
 
 fn validate_filter(filter: &ModelFilter) -> Result<(), String> {
     match filter.field.as_str() {
-        "provider_id" | "model_id" | "name" | "family" | "reasoning" | "tool_call"
-        | "attachment" | "structured_output" | "temperature" | "open_weights"
-        | "context_limit" | "input_cost_per_token" | "output_cost_per_token"
-        | "status" | "experimental" | "input_modalities" | "output_modalities" => {}
+        "provider_id"
+        | "model_id"
+        | "name"
+        | "family"
+        | "reasoning"
+        | "tool_call"
+        | "attachment"
+        | "structured_output"
+        | "temperature"
+        | "open_weights"
+        | "context_limit"
+        | "input_cost_per_token"
+        | "output_cost_per_token"
+        | "status"
+        | "experimental"
+        | "input_modalities"
+        | "output_modalities" => {}
         _ => return Err(format!("unknown filter field: {}", filter.field)),
     }
 
@@ -129,20 +137,60 @@ fn apply_filter(entry: &ModelCatalogEntry, filter: &ModelFilter) -> Result<bool,
         "provider_id" => serde_json::Value::String(entry.provider_id.clone()),
         "model_id" => serde_json::Value::String(entry.model_id.clone()),
         "name" => serde_json::Value::String(entry.name.clone()),
-        "family" => entry.family.clone().map_or(serde_json::Value::Null, serde_json::Value::String),
+        "family" => entry
+            .family
+            .clone()
+            .map_or(serde_json::Value::Null, serde_json::Value::String),
         "reasoning" => serde_json::Value::Bool(entry.reasoning),
         "tool_call" => serde_json::Value::Bool(entry.tool_call),
         "attachment" => serde_json::Value::Bool(entry.attachment),
-        "structured_output" => entry.structured_output.map_or(serde_json::Value::Null, serde_json::Value::Bool),
-        "temperature" => entry.temperature.map_or(serde_json::Value::Null, serde_json::Value::Bool),
+        "structured_output" => entry
+            .structured_output
+            .map_or(serde_json::Value::Null, serde_json::Value::Bool),
+        "temperature" => entry
+            .temperature
+            .map_or(serde_json::Value::Null, serde_json::Value::Bool),
         "open_weights" => serde_json::Value::Bool(entry.open_weights),
-        "context_limit" => entry.context_limit.map_or(serde_json::Value::Null, |v| serde_json::Value::Number(serde_json::Number::from(v))),
-        "input_cost_per_token" => entry.input_cost_per_token.map_or(serde_json::Value::Null, |v| serde_json::Value::Number(serde_json::Number::from_f64(v).unwrap_or(serde_json::Number::from(0)))),
-        "output_cost_per_token" => entry.output_cost_per_token.map_or(serde_json::Value::Null, |v| serde_json::Value::Number(serde_json::Number::from_f64(v).unwrap_or(serde_json::Number::from(0)))),
-        "status" => entry.status.clone().map_or(serde_json::Value::Null, serde_json::Value::String),
-        "experimental" => entry.experimental.map_or(serde_json::Value::Null, serde_json::Value::Bool),
-        "input_modalities" => serde_json::Value::Array(entry.input_modalities.iter().map(|m| serde_json::Value::String(m.clone())).collect()),
-        "output_modalities" => serde_json::Value::Array(entry.output_modalities.iter().map(|m| serde_json::Value::String(m.clone())).collect()),
+        "context_limit" => entry.context_limit.map_or(serde_json::Value::Null, |v| {
+            serde_json::Value::Number(serde_json::Number::from(v))
+        }),
+        "input_cost_per_token" => entry
+            .input_cost_per_token
+            .map_or(serde_json::Value::Null, |v| {
+                serde_json::Value::Number(
+                    serde_json::Number::from_f64(v).unwrap_or(serde_json::Number::from(0)),
+                )
+            }),
+        "output_cost_per_token" => {
+            entry
+                .output_cost_per_token
+                .map_or(serde_json::Value::Null, |v| {
+                    serde_json::Value::Number(
+                        serde_json::Number::from_f64(v).unwrap_or(serde_json::Number::from(0)),
+                    )
+                })
+        }
+        "status" => entry
+            .status
+            .clone()
+            .map_or(serde_json::Value::Null, serde_json::Value::String),
+        "experimental" => entry
+            .experimental
+            .map_or(serde_json::Value::Null, serde_json::Value::Bool),
+        "input_modalities" => serde_json::Value::Array(
+            entry
+                .input_modalities
+                .iter()
+                .map(|m| serde_json::Value::String(m.clone()))
+                .collect(),
+        ),
+        "output_modalities" => serde_json::Value::Array(
+            entry
+                .output_modalities
+                .iter()
+                .map(|m| serde_json::Value::String(m.clone()))
+                .collect(),
+        ),
         _ => return Err(format!("unknown filter field: {}", field)),
     };
 
@@ -342,7 +390,10 @@ mod tests {
 
         assert!(!entries.is_empty(), "should return cached entries");
 
-        let entry = entries.iter().find(|e| e.model_id == "claude-sonnet-4-6").unwrap();
+        let entry = entries
+            .iter()
+            .find(|e| e.model_id == "claude-sonnet-4-6")
+            .unwrap();
         assert_eq!(entry.provider_id, "anthropic");
         assert_eq!(entry.name, "Claude Sonnet 4.6");
         assert!(entry.attachment);
@@ -467,7 +518,6 @@ mod tests {
         assert!(result.unwrap_err().contains("unknown filter operator"));
     }
 
-
     #[test]
     fn test_filter_models_structured_output_true() {
         let mut conn = create_test_db_with_catalog();
@@ -484,6 +534,4 @@ mod tests {
         assert_eq!(result[0].model_id, "claude-sonnet-4-6");
         assert_eq!(result[0].structured_output, Some(true));
     }
-
-
 }

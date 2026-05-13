@@ -75,7 +75,11 @@ fn test_vu_1190_startup_does_not_recreate_missing_workflow_run() {
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    assert!(result.notifications.is_empty(), "notifications: {:?}", result.notifications);
+    assert!(
+        result.notifications.is_empty(),
+        "notifications: {:?}",
+        result.notifications
+    );
     assert!(
         crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
             .unwrap()
@@ -98,10 +102,16 @@ fn test_vu_1190_startup_does_not_discover_skill_from_disk() {
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    assert!(result.notifications.is_empty(), "notifications: {:?}", result.notifications);
+    assert!(
+        result.notifications.is_empty(),
+        "notifications: {:?}",
+        result.notifications
+    );
     assert!(result.discovered_skills.is_empty());
     assert!(
-        crate::db::get_skill_master(&conn, "found-skill").unwrap().is_none(),
+        crate::db::get_skill_master(&conn, "found-skill")
+            .unwrap()
+            .is_none(),
         "startup should not import skills from disk into the library"
     );
 }
@@ -163,7 +173,8 @@ fn test_db_consistency_reset_no_clarifications() {
     let conn = create_test_db();
 
     // Skill at step 2, status "pending", but NO clarifications row inserted
-    let skill_id = crate::db::upsert_skill(&conn, "stale-skill", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "stale-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "pending", "domain").unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
@@ -198,7 +209,8 @@ fn test_db_consistency_reset_no_decisions() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    let skill_id = crate::db::upsert_skill(&conn, "stale-skill", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "stale-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "stale-skill");
     // Deliberately NO insert_stub_decisions — simulates pre-VU-1157 state.
@@ -288,7 +300,9 @@ fn test_marketplace_skill_preserved_when_skill_md_exists() {
     assert_eq!(master.skill_source, "marketplace");
 
     // No workflow_runs row should exist for marketplace skills
-    let skill_id = crate::db::get_skill_master_id(&conn, "my-skill").unwrap().unwrap();
+    let skill_id = crate::db::get_skill_master_id(&conn, "my-skill")
+        .unwrap()
+        .unwrap();
     assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .is_none());
@@ -303,7 +317,8 @@ fn test_scenario_5_normal_db_and_disk_agree() {
     let conn = create_test_db();
 
     // DB at step 2, disk has step 0 and 2 output
-    let skill_id = crate::db::upsert_skill(&conn, "healthy-skill", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "healthy-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "in_progress", "domain").unwrap();
     insert_stub_clarifications(&conn, "healthy-skill");
     create_skill_dir(tmp.path(), "healthy-skill", "analytics");
@@ -334,7 +349,8 @@ fn test_fresh_skill_step_0_not_falsely_completed() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    let skill_id = crate::db::upsert_skill(&conn, "fresh-skill", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "fresh-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     // Only create the canonical working directory — no output files
     std::fs::create_dir_all(crate::skill_paths::resolve_skill_dir(
@@ -424,7 +440,8 @@ fn test_step_1_not_reset_when_step_0_output_exists() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    let skill_id = crate::db::upsert_skill(&conn, "review-skill", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "review-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "review-skill");
     create_skill_dir(tmp.path(), "review-skill", "sales");
@@ -449,7 +466,8 @@ fn test_step_3_with_all_prior_output_exists() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    let skill_id = crate::db::upsert_skill(&conn, "review-skill", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "review-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "review-skill");
     insert_stub_decisions(&conn, "review-skill");
@@ -481,8 +499,10 @@ fn test_step_completed_advances_to_next_not_reset() {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
-        crate::db::save_workflow_run_by_skill_id(&conn, skill_id, db_step, "pending", "domain").unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+        crate::db::save_workflow_run_by_skill_id(&conn, skill_id, db_step, "pending", "domain")
+            .unwrap();
         insert_stub_clarifications(&conn, "my-skill");
         if db_step >= 3 {
             insert_stub_decisions(&conn, "my-skill");
@@ -582,12 +602,14 @@ fn test_reconcile_skips_skill_with_active_session_from_current_pid() {
     let conn = create_test_db();
 
     create_skill_dir(tmp.path(), "active-skill", "test");
-    let skill_id = crate::db::upsert_skill(&conn, "active-skill", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "active-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "pending", "domain").unwrap();
     create_step_output(skills_tmp.path(), "active-skill", 0);
 
     let current_pid = std::process::id();
-    crate::db::create_workflow_session_by_skill_id(&conn, "sess-active", skill_id, current_pid).unwrap();
+    crate::db::create_workflow_session_by_skill_id(&conn, "sess-active", skill_id, current_pid)
+        .unwrap();
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
@@ -950,8 +972,12 @@ fn test_reconcile_detects_multiple_orphans() {
 
     // All DB records should still exist
     for name in &["skill-a", "skill-b", "skill-c"] {
-        let sid = crate::db::get_skill_master_id(&conn, name).unwrap().unwrap();
-        assert!(crate::db::get_workflow_run_by_skill_id(&conn, sid).unwrap().is_some());
+        let sid = crate::db::get_skill_master_id(&conn, name)
+            .unwrap()
+            .unwrap();
+        assert!(crate::db::get_workflow_run_by_skill_id(&conn, sid)
+            .unwrap()
+            .is_some());
     }
 }
 
@@ -1224,7 +1250,8 @@ fn test_startup_normalization_moves_legacy_skills_and_workspace_dirs_to_default_
     let conn = create_test_db();
 
     crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
-    let skill_id = crate::db::upsert_skill(&conn, "analyzing-bookings", "skill-builder", "domain").unwrap();
+    let skill_id =
+        crate::db::upsert_skill(&conn, "analyzing-bookings", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "completed", "domain").unwrap();
     insert_stub_clarifications(&conn, "analyzing-bookings");
     insert_stub_decisions(&conn, "analyzing-bookings");

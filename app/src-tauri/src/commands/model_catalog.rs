@@ -7,10 +7,12 @@ pub async fn refresh_model_catalog(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
     log::info!("[refresh_model_catalog] refreshing catalog from models.dev");
-    model_catalog::refresh_model_catalog(&db).await.map_err(|err| {
-        log::error!("[refresh_model_catalog] refresh failed: {}", err);
-        err
-    })
+    model_catalog::refresh_model_catalog(&db)
+        .await
+        .map_err(|err| {
+            log::error!("[refresh_model_catalog] refresh failed: {}", err);
+            err
+        })
 }
 
 #[tauri::command]
@@ -19,11 +21,17 @@ pub fn get_cached_model_catalog(
 ) -> Result<Vec<ModelCatalogEntry>, String> {
     log::info!("[get_cached_model_catalog] reading cached catalog");
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_cached_model_catalog] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[get_cached_model_catalog] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
     db::read_cached_model_catalog(&conn).map_err(|e| {
-        log::error!("[get_cached_model_catalog] Failed to read cached catalog: {}", e);
+        log::error!(
+            "[get_cached_model_catalog] Failed to read cached catalog: {}",
+            e
+        );
         e.to_string()
     })
 }
@@ -34,11 +42,17 @@ pub fn get_cached_model_providers(
 ) -> Result<Vec<ProviderCatalogRow>, String> {
     log::info!("[get_cached_model_providers] reading cached providers");
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_cached_model_providers] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[get_cached_model_providers] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
     db::read_cached_providers(&conn).map_err(|e| {
-        log::error!("[get_cached_model_providers] Failed to read cached providers: {}", e);
+        log::error!(
+            "[get_cached_model_providers] Failed to read cached providers: {}",
+            e
+        );
         e.to_string()
     })
 }
@@ -48,7 +62,11 @@ pub fn filter_models(
     models: Vec<ModelCatalogEntry>,
     filters: Vec<ModelFilter>,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
-    log::info!("[filter_models] applying {} filters to {} models", filters.len(), models.len());
+    log::info!(
+        "[filter_models] applying {} filters to {} models",
+        filters.len(),
+        models.len()
+    );
     model_catalog::filter_models(models, &filters)
 }
 

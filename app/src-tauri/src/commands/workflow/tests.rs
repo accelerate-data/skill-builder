@@ -75,7 +75,10 @@ fn db_with_seeded_skill(name: &str) -> (crate::db::Db, String) {
             |row| row.get(0),
         )
         .unwrap();
-    (crate::db::Db(std::sync::Arc::new(std::sync::Mutex::new(conn))), id.to_string())
+    (
+        crate::db::Db(std::sync::Arc::new(std::sync::Mutex::new(conn))),
+        id.to_string(),
+    )
 }
 
 fn test_workflow_llm_config() -> crate::types::WorkflowLlmConfig {
@@ -856,14 +859,12 @@ mod backend_materialization {
 
         let parsed = extract_research_json_from_conversation_state(&state).unwrap();
         let (db, skill_id) = db_with_seeded_skill("rt-step1-materialization");
-        materialize_workflow_step_output_value(&db, &skill_id, 1, &parsed)
-            .unwrap();
+        materialize_workflow_step_output_value(&db, &skill_id, 1, &parsed).unwrap();
 
         let conn = db.0.lock().unwrap();
-        let clarifications =
-            crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
-                .unwrap()
-                .unwrap();
+        let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(clarifications.refinement_count, 1);
     }
 
@@ -893,13 +894,10 @@ mod backend_materialization {
 
         let parsed = extract_research_json_from_conversation_state(&state).unwrap();
         let (db, skill_id) = db_with_seeded_skill("rt-step2-materialization");
-        materialize_workflow_step_output_value(&db, &skill_id, 2, &parsed)
-            .unwrap();
+        materialize_workflow_step_output_value(&db, &skill_id, 2, &parsed).unwrap();
 
         let conn = db.0.lock().unwrap();
-        let decisions =
-            crate::db::workflow_artifacts::read_decisions(&conn, &skill_id)
-                .unwrap();
+        let decisions = crate::db::workflow_artifacts::read_decisions(&conn, &skill_id).unwrap();
         assert!(decisions.is_some());
     }
 
@@ -1839,9 +1837,8 @@ fn test_materialize_step1_rejects_missing_required_fields() {
         "section_count": "one",
         "clarifications_json": valid_clarifications_value()
     });
-    let err =
-        materialize_workflow_step_output_value(&db, &skill_id, 1, &non_integer_section_count)
-            .unwrap_err();
+    let err = materialize_workflow_step_output_value(&db, &skill_id, 1, &non_integer_section_count)
+        .unwrap_err();
     assert!(err.contains("invalid detailed research output"));
 }
 
@@ -3511,8 +3508,7 @@ mod materialization {
         let (db, skill_id) = db_with_seeded_skill("guard-test-skill");
         let conn = db.0.lock().unwrap();
         // No decisions seeded — read_decisions should return None
-        let decisions =
-            crate::db::workflow_artifacts::read_decisions(&conn, &skill_id).unwrap();
+        let decisions = crate::db::workflow_artifacts::read_decisions(&conn, &skill_id).unwrap();
         assert!(
             decisions.is_none(),
             "guard-test-skill has no decisions — step 3 guard should block"

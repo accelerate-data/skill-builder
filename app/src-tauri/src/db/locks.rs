@@ -180,9 +180,13 @@ mod tests {
     /// Insert a skill master row so lock functions can look it up.
     fn insert_skill(conn: &rusqlite::Connection, name: &str) -> i64 {
         super::super::skills::upsert_skill(conn, name, "skill-builder", "test").unwrap();
-        crate::db::get_skill_master_id_in_plugin(conn, name, crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-            .unwrap()
-            .unwrap()
+        crate::db::get_skill_master_id_in_plugin(
+            conn,
+            name,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )
+        .unwrap()
+        .unwrap()
     }
 
     #[test]
@@ -190,7 +194,8 @@ mod tests {
         let conn = create_test_db_for_tests();
         let skill_id = insert_skill(&conn, "my-skill");
 
-        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-1", std::process::id());
+        let result =
+            acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-1", std::process::id());
         assert!(
             result.is_ok(),
             "acquire_skill_lock should succeed for an unlocked skill"
@@ -213,8 +218,10 @@ mod tests {
         let skill_id = insert_skill(&conn, "idem-skill");
 
         // Acquire twice with the same instance_id — should succeed both times.
-        acquire_skill_lock_by_skill_id(&conn, skill_id, "same-instance", std::process::id()).unwrap();
-        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "same-instance", std::process::id());
+        acquire_skill_lock_by_skill_id(&conn, skill_id, "same-instance", std::process::id())
+            .unwrap();
+        let result =
+            acquire_skill_lock_by_skill_id(&conn, skill_id, "same-instance", std::process::id());
         assert!(result.is_ok(), "re-acquiring own lock should succeed");
     }
 
@@ -224,10 +231,12 @@ mod tests {
         let skill_id = insert_skill(&conn, "live-skill");
 
         // Acquire with the current (live) process PID under a different instance_id.
-        acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-owner", std::process::id()).unwrap();
+        acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-owner", std::process::id())
+            .unwrap();
 
         // A second instance_id must not be able to steal the lock from a live process.
-        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-thief", std::process::id());
+        let result =
+            acquire_skill_lock_by_skill_id(&conn, skill_id, "instance-thief", std::process::id());
         assert!(
             result.is_err(),
             "acquire should fail while skill is locked by a live process"
@@ -253,14 +262,17 @@ mod tests {
         .unwrap();
 
         // A new instance should be able to reclaim the lock held by PID 9999999 (dead).
-        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "new-instance", std::process::id());
+        let result =
+            acquire_skill_lock_by_skill_id(&conn, skill_id, "new-instance", std::process::id());
         assert!(
             result.is_ok(),
             "acquire should reclaim a lock held by a dead PID, got: {:?}",
             result
         );
 
-        let lock = get_skill_lock_by_skill_id(&conn, skill_id).unwrap().unwrap();
+        let lock = get_skill_lock_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(
             lock.instance_id, "new-instance",
             "lock should now belong to new-instance"
@@ -282,7 +294,8 @@ mod tests {
         assert!(lock.is_none(), "lock row should be absent after release");
 
         // Another instance should now be able to acquire.
-        let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "new-holder", std::process::id());
+        let result =
+            acquire_skill_lock_by_skill_id(&conn, skill_id, "new-holder", std::process::id());
         assert!(result.is_ok(), "reacquire after release should succeed");
     }
 
@@ -322,11 +335,15 @@ mod tests {
         // The dead lock should be reclaimed; the live lock must remain.
         assert_eq!(reclaimed, 1, "exactly one dead lock should be reclaimed");
         assert!(
-            get_skill_lock_by_skill_id(&conn, live_id).unwrap().is_some(),
+            get_skill_lock_by_skill_id(&conn, live_id)
+                .unwrap()
+                .is_some(),
             "live lock must not be removed"
         );
         assert!(
-            get_skill_lock_by_skill_id(&conn, dead_id).unwrap().is_none(),
+            get_skill_lock_by_skill_id(&conn, dead_id)
+                .unwrap()
+                .is_none(),
             "dead lock should be removed"
         );
     }

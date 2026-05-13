@@ -32,7 +32,13 @@ pub fn start_session(
     }
     let skill_id = match crate::db::get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)? {
         Some(skill_id) => skill_id,
-        None => crate::db::upsert_skill_in_plugin(conn, skill_name, "skill-builder", "domain", plugin_slug)?,
+        None => crate::db::upsert_skill_in_plugin(
+            conn,
+            skill_name,
+            "skill-builder",
+            "domain",
+            plugin_slug,
+        )?,
     };
     start_session_by_skill_id(conn, session_id, skill_id, pid)
 }

@@ -248,10 +248,7 @@ mod tests {
         let raw = serde_json::json!({
             "llm_message": {"message": "LLM says hi"}
         });
-        assert_eq!(
-            extract_message_text(&raw),
-            Some("LLM says hi".to_string())
-        );
+        assert_eq!(extract_message_text(&raw), Some("LLM says hi".to_string()));
     }
 
     #[test]
@@ -270,10 +267,7 @@ mod tests {
         let raw = serde_json::json!({
             "llm_message": {"content": [{"type": "text", "text": "LLM content"}]}
         });
-        assert_eq!(
-            extract_message_text(&raw),
-            Some("LLM content".to_string())
-        );
+        assert_eq!(extract_message_text(&raw), Some("LLM content".to_string()));
     }
 
     #[test]

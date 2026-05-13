@@ -254,8 +254,12 @@ pub fn create_skill(
             user_invocable,
             disable_model_invocation,
         )?;
-        crate::db::get_skill_master_id_in_plugin(&conn, &name, crate::skill_paths::DEFAULT_PLUGIN_SLUG)?
-            .ok_or_else(|| format!("Failed to find created skill '{}'", name))?
+        crate::db::get_skill_master_id_in_plugin(
+            &conn,
+            &name,
+            crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        )?
+        .ok_or_else(|| format!("Failed to find created skill '{}'", name))?
     };
 
     post_create_skill_filesystem_inner(
@@ -785,7 +789,8 @@ pub(crate) fn delete_skill_db_records_inner(
         // These exist for any skill source and must be cleaned up unconditionally.
         crate::db::workflow_artifacts::delete_clarifications(conn, &skill_identifier)
             .map_err(|e| e.to_string())?;
-        crate::db::workflow_artifacts::delete_decisions(conn, &skill_identifier).map_err(|e| e.to_string())?;
+        crate::db::workflow_artifacts::delete_decisions(conn, &skill_identifier)
+            .map_err(|e| e.to_string())?;
 
         // Full DB cleanup: route to the right delete based on what's in the DB.
         // Skill-builder skills have a workflow_run; marketplace/imported skills do not.

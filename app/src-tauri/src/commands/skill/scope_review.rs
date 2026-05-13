@@ -1,7 +1,7 @@
-use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::agents::runtime_config::{
     BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
 };
+use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use tauri::Manager;

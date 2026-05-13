@@ -934,7 +934,8 @@ mod tests {
     #[test]
     fn test_skills_path_change_does_not_affect_db_records() {
         let conn = crate::commands::test_utils::create_test_db();
-        let skill_id = crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
         crate::db::save_workflow_run(&conn, "my-skill", 3, "in_progress", "domain").unwrap();
 
         let dir = tempfile::tempdir().unwrap();

@@ -2,10 +2,10 @@ use std::time::Duration;
 
 use tauri::{Manager, State};
 
-use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::agents::runtime_config::{
     BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
 };
+use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::commands::workflow::deploy::ensure_openhands_runtime_dir;
 use crate::db::Db;
 use crate::types::ModelSettings;

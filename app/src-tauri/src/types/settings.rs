@@ -132,7 +132,7 @@ impl Default for ProviderOverride {
 }
 
 /// Active model selection plus per-provider overrides.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ModelSettings {
     #[serde(default)]
     pub provider_id: Option<String>,
@@ -155,16 +155,6 @@ impl std::fmt::Debug for ModelSettings {
     }
 }
 
-impl Default for ModelSettings {
-    fn default() -> Self {
-        Self {
-            provider_id: None,
-            model_id: None,
-            provider_overrides: BTreeMap::new(),
-        }
-    }
-}
-
 impl ModelSettings {
     pub(crate) fn normalized(mut self) -> Self {
         self.provider_id = trimmed_opt(self.provider_id);
@@ -178,29 +168,31 @@ impl ModelSettings {
                     Some(crate::types::SecretString::new(trimmed))
                 }
             });
-            override_value.base_url_override = trimmed_opt(override_value.base_url_override.clone());
+            override_value.base_url_override =
+                trimmed_opt(override_value.base_url_override.clone());
             override_value.api_version = trimmed_opt(override_value.api_version.clone());
             override_value.reasoning_effort = trimmed_opt(override_value.reasoning_effort.clone());
             override_value.usage_id = trimmed_opt(override_value.usage_id.clone());
-            override_value.extra_headers = override_value.extra_headers.take().and_then(|headers| {
-                let normalized: HashMap<String, String> = headers
-                    .into_iter()
-                    .filter_map(|(key, value)| {
-                        let key = key.trim().to_string();
-                        let value = value.trim().to_string();
-                        if key.is_empty() || value.is_empty() {
-                            None
-                        } else {
-                            Some((key, value))
-                        }
-                    })
-                    .collect();
-                if normalized.is_empty() {
-                    None
-                } else {
-                    Some(normalized)
-                }
-            });
+            override_value.extra_headers =
+                override_value.extra_headers.take().and_then(|headers| {
+                    let normalized: HashMap<String, String> = headers
+                        .into_iter()
+                        .filter_map(|(key, value)| {
+                            let key = key.trim().to_string();
+                            let value = value.trim().to_string();
+                            if key.is_empty() || value.is_empty() {
+                                None
+                            } else {
+                                Some((key, value))
+                            }
+                        })
+                        .collect();
+                    if normalized.is_empty() {
+                        None
+                    } else {
+                        Some(normalized)
+                    }
+                });
         }
         self
     }
@@ -216,7 +208,11 @@ impl ModelSettings {
 
     pub(crate) fn selected_workflow_llm(&self) -> Result<WorkflowLlmConfig, String> {
         let settings = self.clone().normalized();
-        let provider = settings.provider_id.as_deref().unwrap_or("").to_ascii_lowercase();
+        let provider = settings
+            .provider_id
+            .as_deref()
+            .unwrap_or("")
+            .to_ascii_lowercase();
         let model = settings.model_id.clone().ok_or_else(|| {
             "Model not configured. Select a model in Settings before running workflow steps."
                 .to_string()

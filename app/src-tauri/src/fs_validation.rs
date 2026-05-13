@@ -3,6 +3,7 @@ use std::path::Path;
 
 /// Returns `Some(3)` if SKILL.md exists in skills_path for this skill, `None` otherwise.
 /// Steps 0/1/2 artifact completion is DB-authoritative and not detected here.
+#[allow(dead_code)]
 pub fn detect_furthest_step(
     _workspace_path: &str,
     plugin_slug: &str,

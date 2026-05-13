@@ -1,6 +1,6 @@
 use super::migrations::*;
 use super::*;
-use crate::types::{AppSettings, ImportedSkill, SecretString};
+use crate::types::{AppSettings, ImportedSkill};
 
 fn create_test_db() -> Connection {
     create_test_db_for_tests()
@@ -204,6 +204,86 @@ fn test_migration_count_matches_expected() {
         "Expected {expected} migrations in schema_migrations; got {count}. \
          Did you add a migration without registering it in NUMBERED_MIGRATIONS, or remove one?"
     );
+}
+
+#[test]
+fn test_settings_migration_57_backfills_typed_tables_and_removes_legacy_blob() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    conn.pragma_update(None, "foreign_keys", false).unwrap();
+    run_migrations(&conn).unwrap();
+    for &(version, migrate_fn) in super::NUMBERED_MIGRATIONS {
+        if version >= 57 {
+            break;
+        }
+        migrate_fn(&conn).unwrap();
+        super::mark_migration_applied(&conn, version).unwrap();
+    }
+
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('app_settings', ?1)",
+        [r#"{
+            "model_settings":{
+                "provider_id":"anthropic",
+                "model_id":"claude-sonnet-4-5",
+                "provider_overrides":{
+                    "anthropic":{
+                        "api_key":"sk-test",
+                        "base_url_override":"https://api.anthropic.com",
+                        "timeout_seconds":300,
+                        "num_retries":5,
+                        "reasoning_effort":"auto",
+                        "usage_id":"workflow"
+                    }
+                }
+            },
+            "skills_path":"/tmp/skills",
+            "marketplace_registries":[
+                {"name":"Default","source_url":"owner/repo","enabled":true}
+            ],
+            "marketplace_initialized":true,
+            "legacy_tags_migrated":true
+        }"#],
+    )
+    .unwrap();
+
+    run_settings_table_normalization_migration(&conn).unwrap();
+
+    let settings = read_settings(&conn).unwrap();
+    assert_eq!(settings.skills_path.as_deref(), Some("/tmp/skills"));
+    assert_eq!(
+        settings.model_settings.provider_id.as_deref(),
+        Some("anthropic")
+    );
+    assert_eq!(
+        settings.model_settings.model_id.as_deref(),
+        Some("claude-sonnet-4-5")
+    );
+    assert_eq!(settings.marketplace_registries.len(), 1);
+    assert!(settings.marketplace_initialized);
+    assert!(settings.legacy_tags_migrated);
+    assert_eq!(
+        settings.model_settings.provider_overrides["anthropic"]
+            .api_key
+            .as_ref()
+            .unwrap()
+            .expose(),
+        "sk-test"
+    );
+
+    let legacy_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM settings WHERE key = 'app_settings'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(legacy_count, 0);
+
+    let typed_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(typed_count, 1);
 }
 
 #[test]
@@ -615,7 +695,9 @@ fn test_workflow_run_crud() {
     let conn = create_test_db();
     let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 3, "in_progress", "domain").unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.skill_name, "test-skill");
     assert_eq!(run.current_step, 3);
     assert_eq!(run.status, "in_progress");
@@ -629,7 +711,9 @@ fn test_workflow_run_upsert() {
     let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 5, "in_progress", "domain").unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.current_step, 5);
     assert_eq!(run.status, "in_progress");
 }
@@ -648,7 +732,9 @@ fn test_set_skill_author() {
         Some("https://avatars.example.com/u/123"),
     )
     .unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.author_login.as_deref(), Some("testuser"));
     assert_eq!(
         run.author_avatar.as_deref(),
@@ -664,7 +750,9 @@ fn test_set_skill_author_without_avatar() {
 
     // Set author without avatar
     set_skill_author(&conn, "test-skill", "testuser", None).unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.author_login.as_deref(), Some("testuser"));
     assert!(run.author_avatar.is_none());
 }
@@ -674,7 +762,9 @@ fn test_workflow_run_default_no_author() {
     let conn = create_test_db();
     let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert!(run.author_login.is_none());
     assert!(run.author_avatar.is_none());
 }
@@ -733,8 +823,12 @@ fn test_delete_workflow_run() {
     save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
     save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
     delete_workflow_run(&conn, "test-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
-    assert!(get_workflow_run_by_skill_id(&conn, skill_id).unwrap().is_none());
-    assert!(get_workflow_steps_by_skill_id(&conn, skill_id).unwrap().is_empty());
+    assert!(get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
+    assert!(get_workflow_steps_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_empty());
 }
 
 // --- Skills Master CRUD tests ---
@@ -915,7 +1009,9 @@ fn test_delete_workflow_run_hard_deletes_skills_master() {
     delete_workflow_run(&conn, "my-skill", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap();
 
     // Workflow state is removed and the canonical skills row is deleted.
-    assert!(get_workflow_run_by_skill_id(&conn, skill_id).unwrap().is_none());
+    assert!(get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
     let row_exists: bool = conn
         .query_row(
             "SELECT COUNT(*) > 0 FROM skills WHERE name = 'my-skill'",
@@ -1263,7 +1359,9 @@ fn test_skill_type_migration() {
     // Verify purpose column exists by inserting a row with it
     let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "test-skill", 0, "pending", "platform").unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.purpose, "platform");
 }
 
@@ -1336,12 +1434,16 @@ fn test_workflow_run_preserves_skill_type() {
     let conn = create_test_db();
     let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
     save_workflow_run(&conn, "my-skill", 0, "pending", "data-engineering").unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.purpose, "data-engineering");
 
     // Update step/status — skill_type should be preserved
     save_workflow_run(&conn, "my-skill", 3, "in_progress", "data-engineering").unwrap();
-    let run = get_workflow_run_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.purpose, "data-engineering");
     assert_eq!(run.current_step, 3);
 }
@@ -1384,13 +1486,17 @@ fn test_acquire_and_release_lock() {
     run_lock_table_migration(&conn).unwrap();
     let skill_id = insert_skill_for_lock_tests(&conn, "test-skill");
     acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", 12345).unwrap();
-    let lock = get_skill_lock_by_skill_id(&conn, skill_id).unwrap().unwrap();
+    let lock = get_skill_lock_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(lock.skill_name, "test-skill");
     assert_eq!(lock.instance_id, "inst-1");
     assert_eq!(lock.pid, 12345);
 
     release_skill_lock_by_skill_id(&conn, skill_id, "inst-1").unwrap();
-    assert!(get_skill_lock_by_skill_id(&conn, skill_id).unwrap().is_none());
+    assert!(get_skill_lock_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -2856,7 +2962,13 @@ fn test_delete_workflow_run_non_default_plugin() {
     // save_workflow_run always places skills in the default plugin (handles redo
     // workflow case). Use it to create the workflow run + skill.
     save_workflow_run(&conn, "mkt-skill-del", 0, "pending", "domain").unwrap();
-    let skill_id = get_skill_master_id_in_plugin(&conn, "mkt-skill-del", crate::skill_paths::DEFAULT_PLUGIN_SLUG).unwrap().unwrap();
+    let skill_id = get_skill_master_id_in_plugin(
+        &conn,
+        "mkt-skill-del",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap()
+    .unwrap();
     set_skill_tags(
         &conn,
         "mkt-skill-del",
@@ -2874,7 +2986,9 @@ fn test_delete_workflow_run_non_default_plugin() {
     .unwrap();
 
     // Workflow run should be gone
-    assert!(get_workflow_run_by_skill_id(&conn, skill_id).unwrap().is_none());
+    assert!(get_workflow_run_by_skill_id(&conn, skill_id)
+        .unwrap()
+        .is_none());
     // Skill master row should be removed
     let row_exists: bool = conn
         .query_row(
@@ -4431,7 +4545,12 @@ fn test_save_workflow_state_preserves_skills_metadata() {
     );
 
     // 5. Confirm the execution state was updated correctly.
-    let run = get_workflow_run_by_skill_id(&conn, get_skill_master_id(&conn, "meta-skill").unwrap().unwrap()).unwrap().unwrap();
+    let run = get_workflow_run_by_skill_id(
+        &conn,
+        get_skill_master_id(&conn, "meta-skill").unwrap().unwrap(),
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(run.current_step, 3);
     assert_eq!(run.status, "completed");
 }
@@ -4545,7 +4664,9 @@ fn test_acquire_lock_works_for_marketplace_skill() {
     )
     .unwrap();
     upsert_skill_in_plugin(&conn, "mkt-lockable", "marketplace", "domain", "mkt-lock").unwrap();
-    let skill_id = get_skill_master_id_in_plugin(&conn, "mkt-lockable", "mkt-lock").unwrap().unwrap();
+    let skill_id = get_skill_master_id_in_plugin(&conn, "mkt-lockable", "mkt-lock")
+        .unwrap()
+        .unwrap();
 
     let result = acquire_skill_lock_by_skill_id(&conn, skill_id, "inst-1", std::process::id());
     assert!(
@@ -4617,7 +4738,11 @@ fn test_migration_54_drops_litellm_tables() {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(exists, 0, "table {} should be dropped after migration 54", table);
+        assert_eq!(
+            exists, 0,
+            "table {} should be dropped after migration 54",
+            table
+        );
     }
 }
 
@@ -4658,7 +4783,8 @@ fn test_migration_55_fk_cascade_deletes_children() {
     conn.execute(
         "INSERT INTO provider_env (provider_id, env_var) VALUES ('test-provider', 'TEST_API_KEY')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Insert a model
     conn.execute(
@@ -4678,26 +4804,45 @@ fn test_migration_55_fk_cascade_deletes_children() {
     ).unwrap();
 
     // Delete the provider — CASCADE should remove env, model, and modalities
-    conn.execute("DELETE FROM provider_catalog WHERE provider_id = 'test-provider'", [])
-        .unwrap();
+    conn.execute(
+        "DELETE FROM provider_catalog WHERE provider_id = 'test-provider'",
+        [],
+    )
+    .unwrap();
 
     let env_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM provider_env WHERE provider_id = 'test-provider'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM provider_env WHERE provider_id = 'test-provider'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(env_count, 0, "provider_env rows should be cascaded");
 
     let model_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_catalog WHERE provider_id = 'test-provider'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_catalog WHERE provider_id = 'test-provider'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(model_count, 0, "model_catalog rows should be cascaded");
 
     let input_mod_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'test-provider:model-1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'test-provider:model-1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(input_mod_count, 0, "input modalities should be cascaded");
 
     let output_mod_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'test-provider:model-1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'test-provider:model-1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(output_mod_count, 0, "output modalities should be cascaded");
 }
@@ -4710,7 +4855,8 @@ fn test_migration_55_model_cascade_deletes_modalities() {
         "INSERT INTO provider_catalog (provider_id, name, npm, api_base_url, doc_url)
          VALUES ('prov-2', 'Provider 2', '@test/p2', NULL, 'https://docs.p2.com')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     conn.execute(
         "INSERT INTO model_catalog (full_id, provider_id, model_id, name, attachment, reasoning, tool_call, open_weights, release_date, last_updated)
@@ -4721,23 +4867,39 @@ fn test_migration_55_model_cascade_deletes_modalities() {
     conn.execute(
         "INSERT INTO model_input_modalities (full_id, modality) VALUES ('prov-2:m1', 'image')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO model_output_modalities (full_id, modality) VALUES ('prov-2:m1', 'text')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Delete the model — CASCADE should remove modalities
     conn.execute("DELETE FROM model_catalog WHERE full_id = 'prov-2:m1'", [])
         .unwrap();
 
     let in_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'prov-2:m1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_input_modalities WHERE full_id = 'prov-2:m1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert_eq!(in_count, 0, "input modalities should be cascaded on model delete");
+    assert_eq!(
+        in_count, 0,
+        "input modalities should be cascaded on model delete"
+    );
 
     let out_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'prov-2:m1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM model_output_modalities WHERE full_id = 'prov-2:m1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert_eq!(out_count, 0, "output modalities should be cascaded on model delete");
+    assert_eq!(
+        out_count, 0,
+        "output modalities should be cascaded on model delete"
+    );
 }

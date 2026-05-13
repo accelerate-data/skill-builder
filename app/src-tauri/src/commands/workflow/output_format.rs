@@ -718,10 +718,7 @@ fn now_ms() -> i64 {
 /// Resolve a skill identifier (bare name or structured key) to a canonical
 /// `SkillIdentifier` string. Bare names are resolved via the skills master
 /// table to find the owning plugin, then formatted as `skill-builder:{plugin}:{name}`.
-fn resolve_skill_to_canonical_id(
-    conn: &rusqlite::Connection,
-    skill_id: &str,
-) -> String {
+fn resolve_skill_to_canonical_id(conn: &rusqlite::Connection, skill_id: &str) -> String {
     // Already a structured identifier or numeric ID — pass through.
     if crate::db::SkillIdentifier::parse(skill_id).is_ok() {
         return skill_id.to_string();
@@ -753,10 +750,9 @@ pub(crate) fn materialize_workflow_step_output_value(
 
     // Resolve bare skill names to a structured identifier at the boundary.
     let canonical_id = {
-        let conn = db
-            .0
-            .lock()
-            .map_err(|e| format!("Failed to lock DB: {}", e))?;
+        let conn =
+            db.0.lock()
+                .map_err(|e| format!("Failed to lock DB: {}", e))?;
         resolve_skill_to_canonical_id(&conn, skill_id)
     };
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rusqlite::{Connection, Transaction};
+use rusqlite::Connection;
 
 use crate::types::{ModelCatalogEntry, ProviderCatalogRow};
 
@@ -47,9 +47,11 @@ pub fn replace_model_catalog_snapshot(
             let interleaved_json = model
                 .interleaved
                 .as_ref()
-                .map(|v| serde_json::to_string(v))
+                .map(serde_json::to_string)
                 .transpose()
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
+                .map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e)))
+                })?;
 
             let experimental_flag = match &model.experimental {
                 Some(serde_json::Value::Bool(value)) => Some(*value as i32),
@@ -108,7 +110,9 @@ pub fn replace_model_catalog_snapshot(
 }
 
 /// Read the cached model vector back.
-pub fn read_cached_model_catalog(conn: &Connection) -> Result<Vec<ModelCatalogEntry>, rusqlite::Error> {
+pub fn read_cached_model_catalog(
+    conn: &Connection,
+) -> Result<Vec<ModelCatalogEntry>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT
             m.full_id, m.provider_id, m.model_id, m.name, m.family,
@@ -122,8 +126,7 @@ pub fn read_cached_model_catalog(conn: &Connection) -> Result<Vec<ModelCatalogEn
 
     let rows = stmt.query_map([], |row| {
         let interleaved: Option<String> = row.get(17)?;
-        let interleaved_parsed = interleaved
-            .and_then(|s| serde_json::from_str(&s).ok());
+        let interleaved_parsed = interleaved.and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(ModelCatalogEntry {
             full_id: row.get(0)?,
@@ -197,7 +200,9 @@ pub fn read_cached_model_catalog(conn: &Connection) -> Result<Vec<ModelCatalogEn
 }
 
 /// Read the cached provider vector.
-pub fn read_cached_providers(conn: &Connection) -> Result<Vec<ProviderCatalogRow>, rusqlite::Error> {
+pub fn read_cached_providers(
+    conn: &Connection,
+) -> Result<Vec<ProviderCatalogRow>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT provider_id, name, npm, api_base_url, doc_url
          FROM provider_catalog
