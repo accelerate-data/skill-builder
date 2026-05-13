@@ -197,3 +197,50 @@ Relevant files:
 - `app/src-tauri/src/agents/tracked_openhands.rs`
 - `app/src-tauri/src/commands/workflow/runtime.rs`
 - `app/src-tauri/src/commands/workflow/evaluation.rs`
+
+## 11. Raw Conversation Send and Run Are Still Bundled Together
+
+Target model expects separate raw primitives for:
+
+- `send_message_to_openhands_conversation(config, conversation_id, prompt)`
+- `run_openhands_conversation(app, agent_id, config, conversation_id)`
+
+This is required so Skill Builder can support:
+
+- send initial message
+- start the run
+- send more messages while the same conversation is still processing
+
+Latest `main` still bundles those concerns in one path:
+
+- `dispatch_openhands_turn_with_request(...)`
+- `run_conversation_task_inner(...)`
+
+That bundled path opens a socket, registers local task ownership, sends the
+user message, and calls `run_conversation(...)` as one operation.
+
+Relevant files:
+
+- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- `app/src-tauri/src/agents/openhands_server/client.rs`
+
+## 12. The Tracked Layer Does Not Yet Distinguish Idle Send From Running-Conversation Send
+
+Target model expects one tracked local runner per live conversation.
+
+If a persistent conversation is already running:
+
+- the tracked layer should append the new user message to that conversation
+- it should not spawn a second local socket/task owner
+
+Latest `main` still routes every persistent send through
+`send_tracked_openhands_message(...)`, which always delegates to
+`dispatch_openhands_turn_with_request(...)` and therefore always creates a new
+local run task.
+
+Relevant files:
+
+- `app/src-tauri/src/agents/tracked_openhands.rs`
+- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- `app/src-tauri/src/commands/workflow/runtime.rs`
+- `app/src-tauri/src/commands/refine/mod.rs`

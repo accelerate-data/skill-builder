@@ -19,6 +19,7 @@ This doc is the canonical source for:
 
 - runtime layers and responsibilities
 - core wrapper APIs at each layer
+- raw conversation lifecycle primitives
 - persistent versus throwaway session behavior
 - storage roots and canonical path ownership
 - normalized event ingress and terminal result handling
@@ -28,7 +29,7 @@ This doc is the canonical source for:
 
 **Covers**
 
-- the three-layer runtime boundary from Tauri commands to Agent Server calls
+- the four-layer runtime boundary from Tauri commands to Agent Server calls
 - canonical storage roots: app data, skills root, skill dir, throwaway run dirs
 - persistent selected-skill sessions and throwaway product-surface runs
 - normalized OpenHands event and terminal result ownership
@@ -51,6 +52,7 @@ This doc is the canonical source for:
 | Throwaway runs declare whether they are skill-related. | Skill-related throwaway runs may need proximity to the skills tree; unrelated throwaway runs should stay out of user-owned skill directories. |
 | Throwaway runs declare tool-access mode. | The backend must know whether a throwaway run is read-only or write-capable before selecting allowed tools. |
 | Conversations are paused and never deleted by Skill Builder. | Conversation history is durable runtime state. Reset and redo may fork and rebind, but the app does not destroy persisted conversations. |
+| Raw conversation APIs mirror the OpenHands send-then-run model. | Sending a user message and starting agent processing are separate operations. That separation is required for send-while-running behavior. |
 | App data owns shared OpenHands persistence roots. | Conversations, bash events, logs, DB state, and app-local runtime files belong to app data rather than the user-configured skills tree. |
 | Steps 0-2 are DB-authoritative; step 3 is file-output-authoritative. | Clarifications and decisions are canonical typed records in SQLite; generated skill files remain canonical on disk. |
 | Runtime events are normalized before frontend projection. | Lower layers own wire-shape cleanup so upper layers consume a stable event model regardless of SDK field naming differences. |
@@ -70,7 +72,7 @@ agents/openhands_server/     ← Layer 1: raw Agent Server process, HTTP, WebSoc
 `app/src-tauri/src/agents/openhands_server/` owns:
 
 - Agent Server process lifecycle
-- raw conversation create / pause operations
+- raw conversation create / send / run / pause / fork operations
 - WebSocket event ingestion
 - normalization of runtime event payloads before they reach higher layers
 
@@ -92,6 +94,8 @@ Core APIs:
 | `ensure_openhands_server(config)` | Start or reuse the Agent Server process for the requested runtime root. |
 | `shutdown_openhands_server()` | Shut down the Agent Server process during app-exit lifecycle handling. |
 | `start_openhands_session(app, config, saved_conversation_id)` | Resume or create a persistent conversation and return restored events for hydration. |
+| `send_message_to_openhands_conversation(config, conversation_id, prompt)` | Append a user message to an existing conversation without starting a new local run task. |
+| `run_openhands_conversation(app, agent_id, config, conversation_id)` | Start or resume active processing for a conversation and own the live socket/task for that run. |
 | `pause_openhands_conversation(config, conversation_id)` | Pause active execution without deleting the conversation. |
 | `fork_openhands_conversation(app, config, source_conversation_id)` | Fork an existing paused conversation into a new conversation ID and return restored events for the fork. |
 
@@ -101,6 +105,16 @@ They do not take `agent_id`. The raw layer exposes one pause API,
 also a raw-layer API, exposed as `shutdown_openhands_server()`, so app-exit
 flows do not call `process.rs` directly. Conversations are pause-only at this
 boundary; this layer does not expose delete-conversation behavior.
+
+Important rule:
+
+- `send_message_to_openhands_conversation(...)` and
+  `run_openhands_conversation(...)` are separate raw primitives.
+- Sending a message to a conversation that is already running must not start a
+  second local runner for the same conversation.
+- The raw layer may reuse OpenHands server-side "already running" behavior, but
+  Skill Builder still treats live socket/task ownership as a single-runner
+  concern.
 
 ### Layer 2: Shared Skill-Creator Model
 
@@ -181,7 +195,7 @@ This layer owns:
 - local event routing
 - cancel/task registries
 - timeout cleanup
-- tracked send and tracked throwaway send-and-wait wrappers
+- tracked run ownership and tracked throwaway send-and-wait wrappers
 
 Important rules:
 
@@ -190,12 +204,15 @@ Important rules:
 - the next live send/run on the fork creates the new tracked `agent_id`.
 - tracked runs stop through pause semantics; this layer does not own separate
   abort/terminate runtime concepts in the target model.
+- a live conversation has one tracked local runner at a time.
+- sending a message to a running conversation reuses the existing runner; it
+  does not spawn a second socket/task owner for the same conversation.
 
 Core APIs:
 
 | API | Purpose |
 |---|---|
-| `send_tracked_openhands_message(...)` | App-tracked turn wrapper for an existing conversation. Adds local run identity, event routing, and cancel/task tracking on top of the raw runtime. |
+| `send_tracked_openhands_message(...)` | App-tracked send wrapper for persistent conversations. If the conversation is idle it sends the message and starts the run. If the conversation is already running it appends the message only. |
 | `pause_tracked_openhands_conversation(...)` | App-tracked pause wrapper that combines remote conversation pause with optional local run cancellation signaling. |
 | `send_tracked_throwaway(...)` | App-tracked throwaway one-shot wrapper that sends a fresh throwaway conversation and waits for its terminal state. |
 
@@ -307,6 +324,11 @@ Higher layers should prefer the highest wrapper that matches their intent:
   `send_tracked_throwaway` indirectly via product wrappers like
   `review_skill_scope` or
   `test_model_connection`
+- initial persistent sends should follow the raw sequence
+  `send_message_to_openhands_conversation(...)` then
+  `run_openhands_conversation(...)`
+- follow-up sends to an already running conversation should call only
+  `send_message_to_openhands_conversation(...)` through the tracked wrapper
 - workflow reset/redo should pause the active conversation, reset local product
   state, fork the paused conversation, rebind the skill to the fork, and only
   create a new `agent_id` when the next live send/run begins
@@ -469,6 +491,28 @@ supplies:
 
 Throwaway runs create fresh conversations. They do not create or require a
 separate OpenHands server runtime.
+
+### Raw Conversation Lifecycle Model
+
+The raw OpenHands contract follows the same high-level conversation model as
+the standalone SDK examples:
+
+1. send the initial user message
+2. start active processing
+3. send additional user messages while the conversation is still processing
+4. pause when the product needs to stop execution
+
+In Skill Builder terms, that means:
+
+- `send_message_to_openhands_conversation(...)` appends a user event
+- `run_openhands_conversation(...)` creates the live socket/task owner for that
+  conversation
+- later `send_message_to_openhands_conversation(...)` calls may target the same
+  active conversation without creating a second local runner
+
+The current bundled `send + run + own socket` path is an implementation detail
+that the refactor removes. The target model keeps those as distinct raw
+conversation operations.
 
 ## Event and Result Ingress
 
