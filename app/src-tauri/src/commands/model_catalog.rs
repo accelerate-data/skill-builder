@@ -1,6 +1,6 @@
 use crate::db::{self, Db};
 use crate::services::model_catalog;
-use crate::types::{ModelCatalogEntry, ModelFilter};
+use crate::types::{ModelCatalogEntry, ModelFilter, ProviderCatalogRow};
 
 #[tauri::command]
 pub async fn refresh_model_catalog(
@@ -21,6 +21,21 @@ pub fn get_cached_model_catalog(
     })?;
     db::read_cached_model_catalog(&conn).map_err(|e| {
         log::error!("[get_cached_model_catalog] Failed to read cached catalog: {}", e);
+        e.to_string()
+    })
+}
+
+#[tauri::command]
+pub fn get_cached_model_providers(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<ProviderCatalogRow>, String> {
+    log::info!("[get_cached_model_providers] reading cached providers");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_cached_model_providers] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    db::read_cached_providers(&conn).map_err(|e| {
+        log::error!("[get_cached_model_providers] Failed to read cached providers: {}", e);
         e.to_string()
     })
 }

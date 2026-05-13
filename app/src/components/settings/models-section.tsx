@@ -25,12 +25,14 @@ import { testModelConnection } from "@/lib/tauri";
 import { modelSettingsRequireApiKey } from "@/lib/models";
 import {
   fetchCachedModelCatalog,
+  fetchCachedModelProviders,
   getCatalogModelOptions,
   getModelsForProvider,
   getProviderBaseUrlDefault,
   getProviderApiKeyLabel,
   resolveSelectedCatalogModel,
   type ModelCatalogEntry,
+  type ProviderCatalogRow,
 } from "@/lib/model-catalog";
 
 interface ModelsSectionProps {
@@ -141,6 +143,7 @@ export function ModelsSection({
   const [testing, setTesting] = useState(false);
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
+  const [providers, setProviders] = useState<ProviderCatalogRow[]>([]);
   const [catalogFailed, setCatalogFailed] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(true);
 
@@ -162,15 +165,16 @@ export function ModelsSection({
 
   const providerEntry = useMemo(() => {
     if (!providerId || !catalog.length) return null;
+    const providerRow = providers.find((p) => p.provider_id === providerId);
     const first = catalog.find((e) => e.provider_id === providerId);
     if (!first) return null;
     return {
       id: first.provider_id,
-      name: first.provider_id,
-      api_base_url: null,
+      name: providerRow?.name ?? first.provider_id,
+      api_base_url: providerRow?.api_base_url ?? null,
       env: [],
     };
-  }, [catalog, providerId]);
+  }, [catalog, providers, providerId]);
 
   const activeOverride = useMemo((): ProviderOverride => {
     if (providerId && modelSettings.provider_overrides[providerId]) {
@@ -193,16 +197,18 @@ export function ModelsSection({
     let cancelled = false;
 
     setCatalogLoading(true);
-    fetchCachedModelCatalog()
-      .then((entries) => {
+    Promise.all([fetchCachedModelCatalog(), fetchCachedModelProviders()])
+      .then(([entries, providerRows]) => {
         if (cancelled) return;
         setCatalog(entries);
+        setProviders(providerRows);
         setCatalogFailed(false);
       })
       .catch((err) => {
         if (cancelled) return;
         console.warn("settings: model catalog fetch failed", err);
         setCatalog([]);
+        setProviders([]);
         setCatalogFailed(true);
       })
       .finally(() => {
@@ -242,19 +248,24 @@ export function ModelsSection({
   };
 
   const handleProviderChange = (val: string) => {
-    const nextOverride = getDefaultProviderOverride();
+    const existingOverride = modelSettings.provider_overrides[val];
+    const nextOverride = existingOverride ?? getDefaultProviderOverride();
     const providerModels = getModelsForProvider(catalog, val);
     const options = getCatalogModelOptions(providerModels);
     const firstModel = options[0]?.full_id ?? null;
-    const nextBaseUrl = getProviderBaseUrlDefault(val, null);
+    const providerRow = providers.find((p) => p.provider_id === val);
+    const catalogBaseUrl = providerRow?.api_base_url ?? null;
+    const effectiveBaseUrl = nextOverride.base_url_override ?? getProviderBaseUrlDefault(val, catalogBaseUrl);
+
+    const mergedOverride = {
+      ...nextOverride,
+      ...(effectiveBaseUrl && !nextOverride.base_url_override ? { base_url_override: effectiveBaseUrl } : {}),
+    };
 
     const nextOverrides = {
       ...modelSettings.provider_overrides,
-      [val]: nextOverride,
+      [val]: mergedOverride,
     };
-    if (nextBaseUrl) {
-      nextOverrides[val] = { ...nextOverride, base_url_override: nextBaseUrl };
-    }
 
     const patch = {
       provider_id: val,

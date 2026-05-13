@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
-import type { TauriCommandInvocation, TauriCommandResult, ModelCatalogEntry, ModelFilter } from "@/lib/tauri-command-types";
+import type { TauriCommandInvocation, TauriCommandResult, ModelCatalogEntry, ModelFilter, ProviderCatalogRow } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
   ...[command, args]: Invocation
@@ -651,6 +651,9 @@ export const refreshModelCatalog = (): Promise<ModelCatalogEntry[]> =>
 
 export const getCachedModelCatalog = (): Promise<ModelCatalogEntry[]> =>
   invokeCommand("get_cached_model_catalog", {});
+
+export const getCachedModelProviders = (): Promise<ProviderCatalogRow[]> =>
+  invokeCommand("get_cached_model_providers", {});
 
 export const filterModels = (
   models: ModelCatalogEntry[],

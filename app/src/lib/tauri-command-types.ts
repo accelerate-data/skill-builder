@@ -167,6 +167,14 @@ export interface ModelFilter {
   value: unknown;
 }
 
+export interface ProviderCatalogRow {
+  provider_id: string;
+  name: string;
+  npm: string;
+  api_base_url: string | null;
+  doc_url: string;
+}
+
 export interface TauriCommandMap {
   log_frontend: { args: { level: "info" | "warn" | "error" | "debug"; message: string }; result: void };
   get_settings: { args: NoArgs; result: AppSettings };
@@ -499,6 +507,7 @@ export interface TauriCommandMap {
   // Model catalog commands (PR 3)
   refresh_model_catalog: { args: NoArgs; result: ModelCatalogEntry[] };
   get_cached_model_catalog: { args: NoArgs; result: ModelCatalogEntry[] };
+  get_cached_model_providers: { args: NoArgs; result: ProviderCatalogRow[] };
   filter_models: { args: { models: ModelCatalogEntry[]; filters: ModelFilter[] }; result: ModelCatalogEntry[] };
 }
 

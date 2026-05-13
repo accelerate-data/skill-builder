@@ -463,6 +463,7 @@ pub fn run() {
 
             commands::model_catalog::refresh_model_catalog,
             commands::model_catalog::get_cached_model_catalog,
+            commands::model_catalog::get_cached_model_providers,
             commands::model_catalog::filter_models,
         ])
         .on_window_event(|window, event| {

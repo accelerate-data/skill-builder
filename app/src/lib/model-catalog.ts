@@ -1,8 +1,8 @@
-import type { ModelCatalogEntry } from "@/lib/tauri-command-types";
+import type { ModelCatalogEntry, ProviderCatalogRow } from "@/lib/tauri-command-types";
 import type { ModelFilter } from "@/lib/tauri-command-types";
-import { getCachedModelCatalog, filterModels as invokeFilterModels } from "@/lib/tauri";
+import { getCachedModelCatalog, getCachedModelProviders, filterModels as invokeFilterModels } from "@/lib/tauri";
 
-export type { ModelCatalogEntry, ModelFilter };
+export type { ModelCatalogEntry, ProviderCatalogRow };
 
 export type CatalogModelOption = {
   full_id: string;
@@ -83,6 +83,10 @@ export function getProviderApiKeyLabel(
 
 export async function fetchCachedModelCatalog(): Promise<ModelCatalogEntry[]> {
   return getCachedModelCatalog();
+}
+
+export async function fetchCachedModelProviders(): Promise<ProviderCatalogRow[]> {
+  return getCachedModelProviders();
 }
 
 export async function filterModels(
