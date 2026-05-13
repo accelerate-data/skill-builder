@@ -245,16 +245,16 @@ export function useWorkflowStateMachine({
       options: { optimisticOnError?: boolean } = {},
     ): Promise<boolean> => {
       const optimisticOnError = options.optimisticOnError ?? true;
-      if (!workspacePath || !skillName) return true;
+      if (!workspacePath || skillId == null) return true;
       try {
-        const hasOutput = await verifyStepOutput(workspacePath, skillName, step);
+        const hasOutput = await verifyStepOutput(workspacePath, skillId, step);
         if (!hasOutput) return false;
       } catch {
         return optimisticOnError;
       }
       return true;
     },
-    [skillName, workspacePath],
+    [skillId, workspacePath],
   );
 
   const finalizeCompletedStep = useCallback(

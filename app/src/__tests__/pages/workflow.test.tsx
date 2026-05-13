@@ -882,7 +882,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
     expect(vi.mocked(verifyStepOutput)).toHaveBeenCalledWith(
       "/test/workspace",
-      "test-skill",
+      1,
       0,
     );
     expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();

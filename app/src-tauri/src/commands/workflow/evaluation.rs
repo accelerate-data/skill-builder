@@ -560,32 +560,33 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 #[tauri::command]
 pub fn verify_step_output(
     _workspace_path: String,
-    skill_name: String,
+    skill_id: i64,
     step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<bool, String> {
     log::info!(
-        "[verify_step_output] skill={} step={} step_id={}",
-        skill_name,
+        "[verify_step_output] skill_id={} step={} step_id={}",
+        skill_id,
         workflow_step_log_name(step_id as i32),
         step_id
     );
+    let skill_id_str = skill_id.to_string();
     match step_id {
         0 => {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
-            Ok(db_artifacts::read_clarifications(&conn, &skill_name)
+            Ok(db_artifacts::read_clarifications(&conn, &skill_id_str)
                 .map(|opt| opt.is_some())
                 .unwrap_or(false))
         }
         1 => {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
-            Ok(db_artifacts::read_clarifications(&conn, &skill_name)
+            Ok(db_artifacts::read_clarifications(&conn, &skill_id_str)
                 .map(|opt| opt.map(|r| r.refinement_count > 0).unwrap_or(false))
                 .unwrap_or(false))
         }
         2 => {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
-            Ok(db_artifacts::read_decisions(&conn, &skill_name)
+            Ok(db_artifacts::read_decisions(&conn, &skill_id_str)
                 .map(|opt| opt.is_some())
                 .unwrap_or(false))
         }
@@ -593,11 +594,12 @@ pub fn verify_step_output(
             let skills_path =
                 read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
             let conn = db.0.lock().map_err(|e| e.to_string())?;
-            let plugin_slug = lookup_plugin_slug(&conn, &skill_name);
+            let skill = crate::db::get_skill_master_by_id(&conn, skill_id)?
+                .ok_or_else(|| format!("Skill id {} not found", skill_id))?;
             let target_dir = crate::skill_paths::resolve_skill_dir(
                 Path::new(&skills_path),
-                &plugin_slug,
-                &skill_name,
+                &skill.plugin_slug,
+                &skill.name,
             );
             Ok(target_dir.join("SKILL.md").exists())
         }
@@ -632,6 +634,10 @@ mod verify_step_output_tests {
             rusqlite::params!["my-skill", DEFAULT_PLUGIN_SLUG],
         )
         .unwrap();
+        let skill_id =
+            crate::db::get_skill_master_id_in_plugin(&conn, "my-skill", DEFAULT_PLUGIN_SLUG)
+                .unwrap()
+                .unwrap();
         crate::db::write_settings(
             &conn,
             &crate::types::AppSettings {
@@ -642,8 +648,7 @@ mod verify_step_output_tests {
         .unwrap();
         let db = Db(std::sync::Arc::new(std::sync::Mutex::new(conn)));
 
-        let result =
-            verify_step_output(String::new(), "my-skill".to_string(), 3, db_state(&db)).unwrap();
+        let result = verify_step_output(String::new(), skill_id, 3, db_state(&db)).unwrap();
 
         assert!(result);
     }

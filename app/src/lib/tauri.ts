@@ -138,9 +138,9 @@ export const previewStepReset = (
 
 export const verifyStepOutput = (
   workspacePath: string,
-  skillName: string,
+  skillId: number,
   stepId: number,
-) => invokeCommand("verify_step_output", { workspacePath, skillName, stepId });
+) => invokeCommand("verify_step_output", { workspacePath, skillId, stepId });
 
 export const getDisabledSteps = (skillId: number) =>
   invokeCommand("get_disabled_steps", { skillId });

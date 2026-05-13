@@ -1100,7 +1100,7 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
 
     assert!(prompt.contains("workflow.skill_generation"));
     assert!(prompt.contains("We are writing the skill named `pipeline-value`."));
-    assert!(prompt.contains("Workspace directory: `/tmp/workspace/default/skills/pipeline-value`"));
+    assert!(prompt.contains("Skill directory: `/tmp/workspace/default/skills/pipeline-value`"));
     assert!(prompt.contains("Skill output directory: `/tmp/skills/default/skills/pipeline-value`"));
     assert!(!prompt.contains("evals/evals.json"));
     assert!(!prompt.contains("pending-eval.json"));
@@ -2474,9 +2474,8 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     );
 
     assert!(prompt.contains("We are writing the skill my-skill."));
-    assert!(prompt.contains(
-        "Workspace directory: /home/user/.vibedata/skill-builder/default/skills/my-skill"
-    ));
+    assert!(prompt
+        .contains("Skill directory: /home/user/.vibedata/skill-builder/default/skills/my-skill"));
     assert!(prompt.contains("Skill output directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains("User context:\n## User Context"));
     assert!(prompt.contains("Clarifications JSON:\n{\n  \"sections\": []\n}"));

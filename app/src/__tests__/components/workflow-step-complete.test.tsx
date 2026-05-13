@@ -242,6 +242,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
     stepName: "Research",
     stepId: 0,
     outputFiles: ["context/clarifications.json"],
+    skillId: 42,
     skillName: "my-skill",
     workspacePath: "/workspace",
     skillsPath: "/skills",
@@ -251,6 +252,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
     stepName: "Detailed Research",
     stepId: 1,
     outputFiles: ["context/clarifications.json"],
+    skillId: 42,
     skillName: "my-skill",
     workspacePath: "/workspace",
     skillsPath: "/skills",
@@ -281,6 +283,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
 
     // Should be editable
     expect(screen.getByTestId("research-summary-card")).toHaveAttribute("data-editable", "true");
+    expect(mockUseClarifications).toHaveBeenCalledWith("42");
   });
 
   it("renders ResearchSummaryCard as read-only when clarificationsEditable is false", async () => {
@@ -314,6 +317,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
 
     // Continue button should be rendered (since onClarificationsContinue is provided)
     expect(screen.getByTestId("clarifications-continue")).toBeInTheDocument();
+    expect(mockUseClarifications).toHaveBeenCalledWith("42");
   });
 });
 

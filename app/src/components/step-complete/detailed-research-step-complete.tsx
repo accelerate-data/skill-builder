@@ -7,18 +7,18 @@ import { StepActionBar } from "./step-action-bar";
 import type { StepCompleteBaseProps, ClarificationsEditableProps } from "./step-complete-types";
 
 type Props = StepCompleteBaseProps & ClarificationsEditableProps & {
-  skillName?: string;
+  skillId?: string | null;
 };
 
 export function DetailedResearchStepComplete(props: Props) {
   const {
-    skillName, agentRuns, reviewMode,
+    skillId, agentRuns, reviewMode,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval,
     clarificationsEditable, clarificationsData: controlledClarData,
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
   } = props;
 
-  const { data: clarDto, isLoading, isError } = useClarifications(skillName ?? null);
+  const { data: clarDto, isLoading, isError } = useClarifications(skillId ?? null);
 
   if (isLoading) {
     return (

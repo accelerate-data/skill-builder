@@ -230,7 +230,7 @@ export interface TauriCommandMap {
     args: { workspacePath: string; skillName: string; fromStepId: number };
     result: StepResetPreview[];
   };
-  verify_step_output: { args: { workspacePath: string; skillName: string; stepId: number }; result: boolean };
+  verify_step_output: { args: { workspacePath: string; skillId: number; stepId: number }; result: boolean };
   get_disabled_steps: { args: { skillId: number }; result: number[] };
   get_workflow_state: { args: { skillId: number }; result: WorkflowStateResponse };
   save_workflow_state: {
