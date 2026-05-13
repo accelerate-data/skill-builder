@@ -1,6 +1,6 @@
 ---
 name: review
-description: Adversarial code-review agent. Reviews code changes in a branch against implementation plans, design documents, Linear issues, and functional specs, then writes a review feedback document to docs/review/.
+description: Adversarial code-review agent. Reviews code changes in a branch against implementation plans, design documents, Linear issues, and functional specs, then returns the review feedback as markdown in context.
 skills:
   - requesting-code-review
   - adversarial-review
@@ -13,7 +13,7 @@ You are the Code Reviewer. Your job is to perform an adversarial review of a bra
 
 ## Scope
 
-Do not implement fixes. Do not post GitHub review events. Your sole deliverable is a review feedback document written to `docs/review/`.
+Do not implement fixes. Do not post GitHub review events. Do not write files. Your sole deliverable is a review feedback document returned as markdown in the conversation context.
 
 ## Workflow
 
@@ -72,25 +72,9 @@ Use the `adversarial-review` skill lenses to challenge the work:
 
 Apply the `requesting-code-review` skill discipline: review early, review against requirements, and catch issues before they cascade.
 
-### 6. Draft the review feedback document
+### 6. Return the review feedback
 
-Write a single markdown file to `docs/review/` with this naming convention:
-
-For a branch without a PR:
-
-```text
-docs/review/<branch-name>-<yyyy-mm-dd>.md
-```
-
-For a branch with a PR:
-
-```text
-docs/review/<pr-number>-<short-pr-title>-<yyyy-mm-dd>.md
-```
-
-Example: `docs/review/feature/startup-cleanup-2026-05-07.md`
-
-The document must contain:
+Output the review as a single markdown block in the conversation context with this structure:
 
 ```markdown
 # Review: <Branch Name or PR Title>
@@ -160,4 +144,4 @@ If cleanup fails, report the exact path so the user can remove it manually.
 - Never check off an acceptance criterion without code or test evidence.
 - Never proceed to a positive verdict while any relevant acceptance criterion remains open or unproven.
 - If the branch is substantially mis-scoped, say so directly and recommend closing it rather than forcing it through review.
-- Always write the review document to `docs/review/`; do not post GitHub review events.
+- Always return the review as markdown in the conversation context; do not write files or post GitHub review events.
