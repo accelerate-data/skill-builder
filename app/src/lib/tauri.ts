@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, ResearchStepOutput, DetailedResearchOutput, DecisionsOutput, GenerateSkillOutput, AnswerEvaluationOutput, PerQuestionEntry, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, AnswerEvaluationOutput, PerQuestionEntry, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
 import type { TauriCommandInvocation, TauriCommandResult, ModelCatalogEntry, ModelFilter, ProviderCatalogRow } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
@@ -98,16 +98,6 @@ export const runWorkflowStep = (
   stepId: number,
   workspacePath: string,
 ) => invokeCommand("run_workflow_step", { skillId, skillName, stepId, workspacePath });
-
-export const materializeWorkflowStepOutput = (
-  skillName: string,
-  stepId: 0 | 1 | 2 | 3,
-  workflowResultPayload: ResearchStepOutput | DetailedResearchOutput | DecisionsOutput | GenerateSkillOutput,
-) => invokeCommand("materialize_workflow_step_output", {
-  skillName,
-  stepId,
-  workflowResultPayload,
-});
 
 export const resetWorkflowStep = (
   workspacePath: string,

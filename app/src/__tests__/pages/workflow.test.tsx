@@ -50,7 +50,6 @@ vi.mock("@/lib/tauri", () => ({
   createWorkflowSession: vi.fn(() => Promise.resolve()),
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),
-  materializeWorkflowStepOutput: vi.fn(() => Promise.resolve()),
   materializeAnswerEvaluationOutput: vi.fn(() => Promise.resolve()),
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
@@ -134,7 +133,6 @@ import {
   previewStepReset,
   runAnswerEvaluator,
   getDisabledSteps,
-  materializeWorkflowStepOutput,
   materializeAnswerEvaluationOutput,
   getContextFileContent,
   navigateBackToStepDb,
@@ -751,7 +749,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     vi.mocked(writeFile).mockClear();
     vi.mocked(invokeCommand).mockClear();
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
-    vi.mocked(materializeWorkflowStepOutput).mockClear();
     vi.mocked(materializeAnswerEvaluationOutput).mockClear();
   });
 
@@ -885,7 +882,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       1,
       0,
     );
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 waits for backend materialization after terminal state when files are not verified yet", async () => {
@@ -917,7 +913,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
 
     act(() => {
       materializedListener?.({
@@ -933,7 +928,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 waits for backend materialization when output verification errors", async () => {
@@ -980,7 +974,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 completes when backend materialization arrives before terminal state", async () => {
@@ -1025,7 +1018,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
   it("step 0 does not require legacy structured output when backend output verifies", async () => {
@@ -1046,7 +1038,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
     expect(mockToast.error).not.toHaveBeenCalledWith(
       "Step 1 completed but produced no structured output",
       expect.anything(),
@@ -1090,7 +1081,6 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       expect(useWorkflowStore.getState().steps[0].status).toBe("error");
     });
     expect(useWorkflowStore.getState().isRunning).toBe(false);
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
     expect(mockToast.error).toHaveBeenCalledWith(
       "Step 1 backend materialization failed: clarifications.json failed schema validation",
       { duration: Infinity },
@@ -2590,7 +2580,6 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     vi.mocked(getWorkflowState).mockReset().mockResolvedValue({ run: null, steps: [] });
     vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
     vi.mocked(runAnswerEvaluator).mockRejectedValue("not available");
-    vi.mocked(materializeWorkflowStepOutput).mockResolvedValue(undefined);
     vi.mocked(materializeAnswerEvaluationOutput).mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
     vi.mocked(readFile).mockRejectedValue("not found");
@@ -3107,7 +3096,6 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
     vi.mocked(writeFile).mockClear();
     vi.mocked(runAnswerEvaluator).mockClear();
     vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
-    vi.mocked(materializeWorkflowStepOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(materializeAnswerEvaluationOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
     vi.mocked(invokeCommand).mockClear();
@@ -3944,7 +3932,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
     vi.mocked(verifyStepOutput).mockReset().mockResolvedValue(true);
     vi.mocked(getDisabledSteps).mockReset().mockResolvedValue([]);
-    vi.mocked(materializeWorkflowStepOutput).mockReset().mockResolvedValue(undefined);
     vi.mocked(runWorkflowStep).mockReset();
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
@@ -3981,7 +3968,6 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     });
 
     // Should not have attempted materialization
-    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
   });
 
 });

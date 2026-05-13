@@ -13,11 +13,6 @@ pub(crate) fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     crate::db::read_settings(&conn).ok()?.skills_path
 }
 
-pub(crate) fn read_workspace_path(db: &tauri::State<'_, Db>) -> Option<String> {
-    let conn = db.0.lock().ok()?;
-    crate::db::read_settings(&conn).ok()?.workspace_path
-}
-
 pub(crate) fn lookup_plugin_slug(conn: &rusqlite::Connection, skill_name: &str) -> String {
     crate::db::get_skill_master_any_plugin(conn, skill_name)
         .ok()

@@ -4,12 +4,9 @@ import type {
   AppSettings,
   AvailablePlugin,
   AvailableSkill,
-  DetailedResearchOutput,
-  DecisionsOutput,
   DeviceFlowResponse,
   DiscoveryResolutionAction,
   Document,
-  GenerateSkillOutput,
   GitHubAuthResult,
   GitHubRepoInfo,
   GitHubUser,
@@ -18,7 +15,6 @@ import type {
   MarketplaceImportResult,
   MarketplaceUpdateResult,
   ModelSettings,
-  ResearchStepOutput,
   ReconciliationResult,
   RefineFinalizeResult,
   RefineDispatchResult,
@@ -118,11 +114,6 @@ export interface SkillIdName {
 
 type SkillPurpose = string | null;
 type DocumentScope = "all" | "skill";
-type WorkflowStepResultPayload =
-  | ResearchStepOutput
-  | DetailedResearchOutput
-  | DecisionsOutput
-  | GenerateSkillOutput;
 
 type SkillMetadataArgs = {
   skillName: string;
@@ -216,10 +207,6 @@ export interface TauriCommandMap {
   run_workflow_step: {
     args: { skillId: number; skillName: string; stepId: number; workspacePath: string };
     result: string;
-  };
-  materialize_workflow_step_output: {
-    args: { skillName: string; stepId: 0 | 1 | 2 | 3; workflowResultPayload: WorkflowStepResultPayload };
-    result: void;
   };
   reset_workflow_step: { args: { workspacePath: string; skillName: string; fromStepId: number }; result: void };
   navigate_back_to_step: {

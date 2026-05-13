@@ -31,9 +31,6 @@ const mockResetWorkflowStep = vi.fn((..._args: unknown[]) => Promise.resolve());
 const mockSelectSkillOpenHandsSession = vi.fn((..._args: unknown[]) =>
   Promise.resolve(),
 );
-const mockMaterializeWorkflowStepOutput = vi.fn((..._args: unknown[]) =>
-  Promise.resolve(),
-);
 const mockEndWorkflowSession = vi.fn((..._args: unknown[]) =>
   Promise.resolve(),
 );
@@ -63,9 +60,6 @@ vi.mock("@/lib/tauri", () => ({
   verifyStepOutput: vi.fn((...args) => mockVerifyStepOutput(...args)),
   getDisabledSteps: vi.fn((...args) => mockGetDisabledSteps(...args)),
   resetWorkflowStep: vi.fn((...args) => mockResetWorkflowStep(...args)),
-  materializeWorkflowStepOutput: vi.fn((...args) =>
-    mockMaterializeWorkflowStepOutput(...args),
-  ),
   materializeAnswerEvaluationOutput: vi.fn((...args) =>
     mockMaterializeAnswerEvaluationOutput(...args),
   ),

@@ -375,7 +375,6 @@ pub fn run() {
             commands::files::read_file,
             commands::files::write_file,
             commands::workflow::runtime::run_workflow_step,
-            commands::workflow::output_format::materialize_workflow_step_output,
             commands::workflow::evaluation::reset_workflow_step,
             commands::workflow::evaluation::navigate_back_to_step,
             commands::workflow::evaluation::preview_step_reset,

@@ -225,7 +225,6 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   // Workflow extras
   write_file: undefined,
   materialize_answer_evaluation_output: undefined,
-  materialize_workflow_step_output: undefined,
   get_disabled_steps: [],
   end_workflow_session: undefined,
   navigate_back_to_step: undefined,

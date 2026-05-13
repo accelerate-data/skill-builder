@@ -193,14 +193,15 @@ fn build_suggest_scenario_prompt(
 
 fn load_define_eval_scenario_context(
     conn: &rusqlite::Connection,
-    skill_name: &str,
+    skill_id: i64,
 ) -> (String, String) {
-    let clarifications = crate::db::workflow_artifacts::read_clarifications(conn, skill_name)
+    let skill_id_str = skill_id.to_string();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(conn, &skill_id_str)
         .ok()
         .flatten()
         .map(|r| serde_json::to_string(&r).unwrap_or_default())
         .unwrap_or_default();
-    let decisions = crate::db::workflow_artifacts::read_decisions(conn, skill_name)
+    let decisions = crate::db::workflow_artifacts::read_decisions(conn, &skill_id_str)
         .ok()
         .flatten()
         .map(|r| serde_json::to_string(&r).unwrap_or_default())
@@ -450,7 +451,14 @@ pub async fn define_eval_scenario(
         .ok_or_else(|| format!("Scenario '{}' not found", scenario_name))?;
     let (clarifications_json, decisions_json) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        load_define_eval_scenario_context(&conn, &skill_name)
+        let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
+            .ok_or_else(|| {
+                format!(
+                    "Skill '{}' not found in plugin '{}'",
+                    skill_name, plugin_slug
+                )
+            })?;
+        load_define_eval_scenario_context(&conn, skill_id)
     };
     let runtime_ctx = read_initialized_runtime_context(&db)?;
     ensure_workspace_prompts(&app, &runtime_ctx.skills_root).await?;

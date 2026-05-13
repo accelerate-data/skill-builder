@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::path::{Path, PathBuf};
 
 use crate::commands::workflow_artifacts::{
@@ -937,6 +938,7 @@ fn persist_decisions(db: &Db, record: &DecisionsRecord) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn publish_generated_skill_output(
     workspace_skill_root: &Path,
     skills_path: &Path,
@@ -987,6 +989,7 @@ pub(crate) fn publish_generated_skill_output(
     Ok(published_dir)
 }
 
+#[cfg(test)]
 pub(crate) fn publish_commit_and_tag_generated_skill(
     workspace_skill_root: &Path,
     skills_dir: &Path,
@@ -1044,98 +1047,6 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
         skill_name,
         tag_name
     );
-
-    Ok(())
-}
-
-#[tauri::command]
-pub fn materialize_workflow_step_output(
-    skill_name: String,
-    step_id: u32,
-    workflow_result_payload: serde_json::Value,
-    db: tauri::State<'_, crate::db::Db>,
-) -> Result<(), String> {
-    log::info!(
-        "[materialize_workflow_step_output] skill={} step={} step_id={}",
-        skill_name,
-        super::evaluation::workflow_step_log_name(step_id as i32),
-        step_id
-    );
-    materialize_workflow_step_output_value(&db, &skill_name, step_id, &workflow_result_payload)
-        .map_err(|e| {
-            log::error!(
-                "[materialize_workflow_step_output] skill={} step={} step_id={} failed: {}",
-                skill_name,
-                super::evaluation::workflow_step_log_name(step_id as i32),
-                step_id,
-                e
-            );
-            e
-        })?;
-
-    // After successful generate materialization, publish, commit, and tag the skill.
-    // Benchmark output does not trigger a commit (benchmark data is in workspace, not git).
-    // Rewrite/refine commit+tag is handled by finalize_refine_run.
-    if step_id == 3 {
-        let status = workflow_result_payload
-            .get("status")
-            .and_then(|s| s.as_str())
-            .unwrap_or("");
-        let skipped = workflow_result_payload
-            .get("skipped")
-            .and_then(|s| s.as_bool())
-            .unwrap_or(false);
-
-        if status == "generated" && !skipped {
-            let workspace_path = super::evaluation::read_workspace_path(&db).ok_or_else(|| {
-                "Workspace path not configured. Please set it in Settings.".to_string()
-            })?;
-            let plugin_slug = {
-                let conn = db.0.lock().map_err(|e| e.to_string())?;
-                super::evaluation::lookup_plugin_slug(&conn, &skill_name)
-            };
-
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            let settings = crate::db::read_settings(&conn)?;
-            let skills_path = settings
-                .skills_path
-                .unwrap_or_else(|| workspace_path.clone());
-            drop(conn);
-
-            let skills_dir = Path::new(&skills_path);
-            let skill_dir =
-                crate::skill_paths::resolve_skill_dir(skills_dir, &plugin_slug, &skill_name);
-            publish_commit_and_tag_generated_skill(
-                &skill_dir,
-                skills_dir,
-                &plugin_slug,
-                &skill_name,
-            )?;
-
-            match git2::Repository::open(&skill_dir) {
-                Ok(repo) => {
-                    if let Some(sha) = repo
-                        .head()
-                        .ok()
-                        .and_then(|h| h.peel_to_commit().ok())
-                        .map(|c| c.id().to_string())
-                    {
-                        log::info!(
-                            "[materialize_workflow_step_output] generated skill repo head skill={} sha={}",
-                            skill_name, &sha[..8.min(sha.len())]
-                        );
-                    }
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[materialize_workflow_step_output] could not open repo for skill={}: {}",
-                        skill_name,
-                        e
-                    );
-                }
-            }
-        }
-    }
 
     Ok(())
 }

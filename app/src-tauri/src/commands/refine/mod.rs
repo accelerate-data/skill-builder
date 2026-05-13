@@ -61,8 +61,16 @@ fn load_refine_prompt_context(
     .unwrap_or_else(|| "No additional user context available.".to_string());
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, skill_name, plugin_slug)?
+        .ok_or_else(|| {
+            format!(
+                "Skill '{}' not found in plugin '{}'",
+                skill_name, plugin_slug
+            )
+        })?;
+    let skill_id_str = skill_id.to_string();
     let clarifications_json =
-        match crate::db::workflow_artifacts::read_clarifications(&conn, skill_name) {
+        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str) {
             Ok(Some(record)) => {
                 crate::commands::workflow::prompt::clarifications_record_to_json_string(&record)
             }
@@ -76,7 +84,7 @@ fn load_refine_prompt_context(
                 "{}".to_string()
             }
         };
-    let decisions_json = match crate::db::workflow_artifacts::read_decisions(&conn, skill_name) {
+    let decisions_json = match crate::db::workflow_artifacts::read_decisions(&conn, &skill_id_str) {
         Ok(Some(record)) => {
             crate::commands::workflow::prompt::decisions_record_to_json_string(&record)
         }
