@@ -3,50 +3,114 @@
 > **Status:** Draft
 > **Parent:** [Model Catalog](README.md)
 
-## Goals
+## Purpose
 
-The cache schema must satisfy three constraints:
+This child document separates two related but different schemas:
 
-1. fast filtering for the Settings UI
-2. lossless preservation of `models.dev` payloads
-3. referential integrity during refreshes and deletes
+1. the upstream `models.dev` contract
+2. Skill Builder's local SQLite projection of that contract
 
-## Upstream Shape
+The upstream contract is the source of truth. Skill Builder should tolerate
+upstream fields it does not project yet and should not invent narrower types
+than the upstream schema allows.
 
-The live `models.dev` payload currently has:
+## Upstream Source Of Truth
 
-- provider fields: `id`, `env`, `npm`, `api`, `name`, `doc`, `models`
-- model fields: `id`, `name`, `family`, `attachment`, `reasoning`,
-  `tool_call`, `structured_output`, `temperature`, `knowledge`,
-  `release_date`, `last_updated`, `modalities`, `open_weights`, `cost`,
-  `limit`, `interleaved`, `provider`, `status`, `experimental`
+The canonical schema lives in the `models.dev` repository at:
 
-This schema mirrors those fields as closely as possible while keeping the local
-column names:
+- `packages/core/src/schema.ts`
 
-- provider `id` → `provider_id`
-- provider `api` → `api_base_url`
-- model `id` → `model_id`
+That file defines the generated `api.json` payload consumed by Skill Builder at
+startup through `refresh_model_catalog()`.
 
-## Tables
+## Upstream Payload Shape
+
+`https://models.dev/api.json` is a JSON object keyed by provider id, not a
+top-level array.
+
+```json
+{
+  "<provider-id>": {
+    "id": "...",
+    "env": ["..."],
+    "npm": "...",
+    "api": "...",
+    "name": "...",
+    "doc": "...",
+    "models": {
+      "<model-id>": { "...": "..." }
+    }
+  }
+}
+```
+
+### Provider Fields
+
+Each provider object includes:
+
+- `id`
+- `env`
+- `npm`
+- `api` when the provider schema allows it
+- `name`
+- `doc`
+- `models`
+
+### Model Fields
+
+Each model object can include:
+
+- `id`
+- `name`
+- `family`
+- `attachment`
+- `reasoning`
+- `tool_call`
+- `interleaved`
+- `structured_output`
+- `temperature`
+- `knowledge`
+- `release_date`
+- `last_updated`
+- `modalities`
+- `open_weights`
+- `limit`
+- `cost`
+- `status`
+- `experimental`
+- `provider`
+
+Two fields that matter for Skill Builder's parser contract:
+
+- `provider` is an optional object, not a string
+- `experimental` is an optional object, not a boolean
+
+They are wrapper-model metadata and mode-override metadata, not simple scalar
+filter columns.
+
+## SQLite Projection
+
+Skill Builder does not need to persist the entire upstream object graph as
+first-class columns. The local cache should only project the stable fields the
+Settings UI and runtime resolution actually use.
+
+Current projection:
 
 ### `provider_catalog`
 
-Provider-level metadata from `models.dev`.
+Provider metadata used for display and runtime defaults.
 
 | Column | Type | Description |
 |---|---|---|
 | `provider_id` | TEXT PRIMARY KEY | Stable provider identifier |
 | `name` | TEXT NOT NULL | Provider display name |
-| `npm` | TEXT NOT NULL | Upstream `npm` field |
-| `api_base_url` | TEXT | Upstream `api` field when present |
-| `doc` | TEXT NOT NULL | Upstream provider documentation URL |
-| `provider_json` | TEXT NOT NULL | Lossless upstream provider payload |
-| `fetched_at` | INTEGER NOT NULL | Unix timestamp for the snapshot refresh |
+| `npm` | TEXT NOT NULL | Upstream `npm` value |
+| `api_base_url` | TEXT | Upstream `api` value when present |
+| `doc_url` | TEXT NOT NULL | Upstream provider documentation URL |
 
 ### `provider_env`
 
-Child table for repeated provider env-var values.
+Repeated provider env-var values.
 
 | Column | Type | Description |
 |---|---|---|
@@ -60,41 +124,30 @@ Constraints:
 
 ### `model_catalog`
 
-Flat filterable model cache keyed back to the owning provider.
+Flat model rows used by the Settings catalog and runtime selection.
 
 | Column | Type | Description |
 |---|---|---|
-| `full_id` | TEXT PRIMARY KEY | Stable model identity |
+| `full_id` | TEXT PRIMARY KEY | `<provider_id>:<model_id>` identity used locally |
 | `provider_id` | TEXT NOT NULL | FK → `provider_catalog.provider_id` |
 | `model_id` | TEXT NOT NULL | Provider-scoped model id |
 | `name` | TEXT NOT NULL | Model display name |
-| `family` | TEXT | Model family if present |
-| `attachment` | INTEGER | Boolean capability column |
-| `reasoning` | INTEGER | Boolean capability column |
-| `tool_call` | INTEGER | Boolean capability column |
-| `structured_output` | INTEGER | Boolean capability column |
-| `temperature` | INTEGER | Boolean capability column |
-| `open_weights` | INTEGER | Boolean capability column |
-| `knowledge` | TEXT | Knowledge cutoff/date-like upstream field |
-| `release_date` | TEXT | Upstream release date |
-| `last_updated` | TEXT | Upstream update timestamp/date |
-| `provider` | TEXT | Upstream model-level `provider` field when present |
-| `status` | TEXT | Upstream status field when present |
-| `experimental` | INTEGER | Upstream boolean field when present |
-| `interleaved_json` | TEXT | Serialized upstream `interleaved` object when present |
-| `context_limit` | INTEGER | Token/context limit if present |
-| `output_limit` | INTEGER | Max output tokens if present |
-| `input_limit` | INTEGER | Input-token limit if present |
-| `cost_input` | REAL | Input cost if present |
-| `cost_output` | REAL | Output cost if present |
-| `cost_context_over_200k` | REAL | Upstream `cost.context_over_200k` when present |
-| `cost_reasoning` | REAL | Reasoning cost if present |
-| `cost_cache_read` | REAL | Cache read cost if present |
-| `cost_cache_write` | REAL | Cache write cost if present |
-| `cost_input_audio` | REAL | Upstream `cost.input_audio` when present |
-| `cost_output_audio` | REAL | Upstream `cost.output_audio` when present |
-| `payload_json` | TEXT NOT NULL | Lossless upstream model payload |
-| `fetched_at` | INTEGER NOT NULL | Unix timestamp for the snapshot refresh |
+| `family` | TEXT | Upstream family when present |
+| `attachment` | INTEGER NOT NULL | Boolean capability column |
+| `reasoning` | INTEGER NOT NULL | Boolean capability column |
+| `tool_call` | INTEGER NOT NULL | Boolean capability column |
+| `structured_output` | INTEGER | Optional boolean capability column |
+| `temperature` | INTEGER | Optional boolean capability column |
+| `knowledge` | TEXT | Upstream knowledge date string |
+| `release_date` | TEXT NOT NULL | Upstream release date |
+| `last_updated` | TEXT NOT NULL | Upstream update date |
+| `open_weights` | INTEGER NOT NULL | Boolean capability column |
+| `input_cost_per_token` | REAL | Projected `cost.input` when present |
+| `output_cost_per_token` | REAL | Projected `cost.output` when present |
+| `context_limit` | INTEGER | Projected `limit.context` when present |
+| `interleaved` | TEXT | Serialized upstream `interleaved` value when present |
+| `status` | TEXT | Upstream status when present |
+| `experimental` | INTEGER | Legacy optional boolean slot; object-shaped upstream `experimental` metadata is not projected |
 
 Constraints:
 
@@ -110,7 +163,7 @@ Suggested indexes:
 
 ### `model_input_modalities`
 
-Child table for repeated input-modality values.
+Repeated input modalities.
 
 | Column | Type | Description |
 |---|---|---|
@@ -124,7 +177,7 @@ Constraints:
 
 ### `model_output_modalities`
 
-Child table for repeated output-modality values.
+Repeated output modalities.
 
 | Column | Type | Description |
 |---|---|---|
@@ -136,28 +189,58 @@ Constraints:
 - `FOREIGN KEY (full_id) REFERENCES model_catalog(full_id) ON DELETE CASCADE`
 - `UNIQUE(full_id, modality)`
 
+## Projection Rules
+
+The refresh path should follow these rules:
+
+1. Parse against the upstream `models.dev` schema shape, not an older local
+   approximation.
+2. Persist provider-level defaults and the model fields the UI/runtime consume.
+3. Ignore or serialize upstream object fields that are not yet part of the
+   local filter contract.
+4. Never fail refresh just because wrapper metadata or experimental-mode
+   metadata uses nested objects.
+
+That applies especially to:
+
+- model-level `provider`
+- model-level `experimental`
+- richer `cost` subfields such as tiers and context-specific pricing
+
 ## Refresh Semantics
 
 Refresh is transactional:
 
-1. fetch `models.dev`
-2. upsert/replace `provider_catalog`
-3. upsert/replace `model_catalog`
-4. replace child modality rows
+1. fetch `models.dev/api.json`
+2. replace provider rows
+3. replace model rows
+4. replace modality child rows
 5. commit the full snapshot
 
-Because child tables reference parent rows with `ON DELETE CASCADE`, provider or
-model replacement cannot leave orphaned modality rows behind.
+Because child tables use foreign keys with `ON DELETE CASCADE`, snapshot
+replacement should not leave orphaned rows behind.
 
-## Filtering Model
+## Filtering Boundary
 
-The typed columns exist for fast filtering and sorting. `provider_json` and
-`payload_json` exist so the cache remains lossless when upstream adds fields
-that the app does not yet project into dedicated columns.
+The local cache is intentionally narrower than the upstream schema.
 
-The target filter model supports:
+Supported fast-path filters should stay limited to the projected columns:
 
-- equality / inequality on scalar fields
-- boolean capability filtering
-- numeric comparisons on limits and costs
-- modality membership checks through child tables
+- `provider_id`
+- `model_id`
+- `name`
+- `family`
+- `reasoning`
+- `tool_call`
+- `attachment`
+- `structured_output`
+- `temperature`
+- `open_weights`
+- `context_limit`
+- `input_cost_per_token`
+- `output_cost_per_token`
+- `status`
+- modality membership through child tables
+
+Object-shaped upstream metadata should not be advertised as scalar filter fields
+until Skill Builder intentionally adds a local projection for it.

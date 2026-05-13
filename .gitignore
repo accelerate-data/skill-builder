@@ -45,4 +45,7 @@ __pycache__
 app/sidecar/openhands/.pyinstaller-build/
 app/sidecar/openhands/.pyinstaller-spec/
 
+# SQLite DB (symlinked from app data dir)
+skill-builder.db
+
 .mcp.json

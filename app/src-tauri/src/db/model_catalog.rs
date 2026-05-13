@@ -51,6 +51,11 @@ pub fn replace_model_catalog_snapshot(
                 .transpose()
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
 
+            let experimental_flag = match &model.experimental {
+                Some(serde_json::Value::Bool(value)) => Some(*value as i32),
+                _ => None,
+            };
+
             tx.execute(
                 "INSERT INTO model_catalog (
                     full_id, provider_id, model_id, name, family,
@@ -79,7 +84,7 @@ pub fn replace_model_catalog_snapshot(
                     context_limit,
                     interleaved_json,
                     model.status,
-                    model.experimental.map(|v| v as i32),
+                    experimental_flag,
                 ],
             )?;
 

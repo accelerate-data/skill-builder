@@ -81,6 +81,12 @@ Settings UI
 OpenHands runtime config
 ```
 
+## Child Docs
+
+- [schema.md](schema.md)
+  Canonical notes for the upstream `models.dev` schema and the smaller SQLite
+  projection Skill Builder persists locally.
+
 ## UI Contract
 
 The Settings flow is:
@@ -147,7 +153,11 @@ The cache is app-owned and lives in the main app database.
 - `model_output_modalities`
   Child rows for repeated output-modality values
 
-Detailed schema lives in [schema.md](schema.md).
+The schema details are split deliberately:
+
+- this parent doc explains the runtime and UI contract
+- [schema.md](schema.md) is the child doc for upstream field shape and SQLite
+  projection details
 
 ## OpenHands Integration
 

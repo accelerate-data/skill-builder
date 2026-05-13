@@ -1,76 +1,69 @@
-[
-    {
-        "id": "anthropic",
-        "env": ["ANTHROPIC_API_KEY"],
-        "npm": "@anthropic-ai/sdk",
-        "api": "https://api.anthropic.com",
-        "name": "Anthropic",
-        "doc": "https://docs.anthropic.com",
-        "models": {
-            "claude-sonnet-4-6": {
-                "id": "claude-sonnet-4-6",
-                "name": "Claude Sonnet 4.6",
-                "family": "claude",
-                "attachment": true,
-                "reasoning": false,
-                "tool_call": true,
-                "structured_output": true,
-                "temperature": true,
-                "knowledge": null,
-                "release_date": "2025-01-01",
-                "last_updated": "2025-01-01",
-                "modalities": {
-                    "input": ["text", "image"],
-                    "output": ["text"]
-                },
-                "open_weights": false,
-                "cost": {
-                    "input": 0.000003,
-                    "output": 0.000015
-                },
-                "limit": {
-                    "context": 200000
-                },
-                "interleaved": null,
-                "provider": null,
-                "status": null,
-                "experimental": null
-            }
+{
+  "anthropic": {
+    "id": "anthropic",
+    "env": ["ANTHROPIC_API_KEY"],
+    "npm": "@anthropic-ai/sdk",
+    "api": "https://api.anthropic.com",
+    "name": "Anthropic",
+    "doc": "https://docs.anthropic.com",
+    "models": {
+      "claude-sonnet-4-6": {
+        "id": "claude-sonnet-4-6",
+        "name": "Claude Sonnet 4.6",
+        "family": "claude",
+        "attachment": true,
+        "reasoning": false,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2025-02",
+        "release_date": "2025-02-24",
+        "last_updated": "2025-02-24",
+        "modalities": {
+          "input": ["text", "image"],
+          "output": ["text"]
+        },
+        "open_weights": false,
+        "cost": {
+          "input": 0.000003,
+          "output": 0.000015
+        },
+        "limit": {
+          "context": 200000
         }
-    },
-    {
-        "id": "ollama",
-        "env": [],
-        "npm": "ollama",
-        "name": "Ollama",
-        "doc": "https://ollama.com",
-        "models": {
-            "llama3": {
-                "id": "llama3",
-                "name": "Llama 3",
-                "family": "llama",
-                "attachment": false,
-                "reasoning": false,
-                "tool_call": true,
-                "structured_output": null,
-                "temperature": true,
-                "knowledge": null,
-                "release_date": "2024-04-01",
-                "last_updated": "2024-06-01",
-                "modalities": {
-                    "input": ["text"],
-                    "output": ["text"]
-                },
-                "open_weights": true,
-                "cost": null,
-                "limit": {
-                    "context": 8192
-                },
-                "interleaved": {"some": "value"},
-                "provider": null,
-                "status": "active",
-                "experimental": false
-            }
-        }
+      }
     }
-]
+  },
+  "ollama": {
+    "id": "ollama",
+    "env": ["OLLAMA_HOST"],
+    "npm": "ollama-ai-provider",
+    "name": "Ollama",
+    "doc": "https://ollama.com",
+    "models": {
+      "llama3": {
+        "id": "llama3",
+        "name": "Llama 3",
+        "attachment": false,
+        "reasoning": false,
+        "tool_call": false,
+        "knowledge": "2024-04",
+        "release_date": "2024-04-18",
+        "last_updated": "2024-04-18",
+        "modalities": {
+          "input": ["text"],
+          "output": ["text"]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 8192
+        },
+        "interleaved": {
+          "input": true
+        },
+        "status": "active",
+        "experimental": false
+      }
+    }
+  }
+}

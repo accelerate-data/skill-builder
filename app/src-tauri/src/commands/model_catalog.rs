@@ -7,7 +7,10 @@ pub async fn refresh_model_catalog(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<ModelCatalogEntry>, String> {
     log::info!("[refresh_model_catalog] refreshing catalog from models.dev");
-    model_catalog::refresh_model_catalog(&db).await
+    model_catalog::refresh_model_catalog(&db).await.map_err(|err| {
+        log::error!("[refresh_model_catalog] refresh failed: {}", err);
+        err
+    })
 }
 
 #[tauri::command]

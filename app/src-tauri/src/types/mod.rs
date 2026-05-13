@@ -167,15 +167,16 @@ mod tests {
 
     #[test]
     fn test_model_catalog_types_serde_fixture() {
-        use super::model_catalog::{CatalogModel, CatalogProvider};
+        use super::model_catalog::CatalogProvider;
+        use std::collections::BTreeMap;
 
         let fixture = include_str!("../fixtures/model-catalog.json");
 
-        let providers: Vec<CatalogProvider> = serde_json::from_str(fixture).unwrap();
+        let providers: BTreeMap<String, CatalogProvider> = serde_json::from_str(fixture).unwrap();
         assert_eq!(providers.len(), 2);
 
         // Provider with api
-        let anthropic = &providers[0];
+        let anthropic = providers.get("anthropic").unwrap();
         assert_eq!(anthropic.id, "anthropic");
         assert_eq!(anthropic.api, Some("https://api.anthropic.com".to_string()));
         assert_eq!(anthropic.models.len(), 1);
@@ -192,7 +193,7 @@ mod tests {
         assert_eq!(sonnet.limit.context, Some(200000));
 
         // Provider without api
-        let ollama = &providers[1];
+        let ollama = providers.get("ollama").unwrap();
         assert_eq!(ollama.id, "ollama");
         assert!(ollama.api.is_none());
 
@@ -202,6 +203,6 @@ mod tests {
         assert_eq!(llama.structured_output, None);
         assert!(llama.interleaved.is_some());
         assert_eq!(llama.status, Some("active".to_string()));
-        assert_eq!(llama.experimental, Some(false));
+        assert_eq!(llama.experimental, Some(serde_json::Value::Bool(false)));
     }
 }
