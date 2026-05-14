@@ -11,7 +11,6 @@ use std::time::Duration;
 
 #[tauri::command]
 pub fn list_skills(
-    workspace_path: String,
     source_url: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillSummary>, String> {
@@ -20,18 +19,13 @@ pub fn list_skills(
         log::error!("[list_skills] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    list_skills_inner(&workspace_path, source_url.as_deref(), &conn)
+    list_skills_inner(source_url.as_deref(), &conn)
 }
 
 /// Unified skill listing driven by the `skills` master table.
 /// For skill-builder skills, LEFT JOINs to `workflow_runs` for step state.
 /// For marketplace/imported skills, they're always "completed" with no workflow_runs.
-///
-/// The `_workspace_path` parameter is retained for backward compatibility with the
-/// Tauri command signature (the frontend still passes it), but is not used for
-/// skill discovery.
 pub(crate) fn list_skills_inner(
-    _workspace_path: &str,
     source_url: Option<&str>,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
@@ -173,11 +167,10 @@ fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) ->
 /// two phases across a lock boundary; this function combines them for tests.
 #[cfg(test)]
 pub(crate) fn list_refinable_skills_inner(
-    workspace_path: &str,
     skills_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
-    let all = list_skills_inner(workspace_path, None, conn)?;
+    let all = list_skills_inner(None, conn)?;
     let completed: Vec<SkillSummary> = all
         .into_iter()
         .filter(|s| s.status.as_deref() == Some("completed"))
@@ -189,7 +182,6 @@ pub(crate) fn list_refinable_skills_inner(
 #[tauri::command]
 pub fn create_skill(
     app: tauri::AppHandle,
-    workspace_path: String,
     name: String,
     tags: Option<Vec<String>>,
     purpose: Option<String>,
@@ -236,7 +228,6 @@ pub fn create_skill(
         })?;
         let overwrite_orphaned = should_overwrite_orphaned_skill_dirs(Some(&conn), &name)?;
         create_skill_filesystem_inner_with_policy(
-            &workspace_path,
             &name,
             skills_path.as_deref(),
             overwrite_orphaned,
@@ -274,7 +265,6 @@ pub fn create_skill(
 #[allow(clippy::too_many_arguments)]
 #[allow(dead_code)]
 pub(crate) fn create_skill_inner(
-    workspace_path: &str,
     name: &str,
     tags: Option<&[String]>,
     purpose: Option<&str>,
@@ -291,7 +281,6 @@ pub(crate) fn create_skill_inner(
     super::super::imported_skills::validate_skill_name(name)?;
     let overwrite_orphaned = should_overwrite_orphaned_skill_dirs(conn, name)?;
     create_skill_filesystem_inner_with_policy(
-        workspace_path,
         name,
         skills_path,
         overwrite_orphaned,
@@ -317,15 +306,13 @@ pub(crate) fn create_skill_inner(
 
 #[allow(dead_code)]
 pub(crate) fn create_skill_filesystem_inner(
-    workspace_path: &str,
     name: &str,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
-    create_skill_filesystem_inner_with_policy(workspace_path, name, skills_path, false)
+    create_skill_filesystem_inner_with_policy(name, skills_path, false)
 }
 
 fn create_skill_filesystem_inner_with_policy(
-    _workspace_path: &str,
     name: &str,
     skills_path: Option<&str>,
     overwrite_orphaned: bool,
@@ -513,7 +500,6 @@ fn post_create_skill_filesystem_inner(
 
 #[tauri::command]
 pub async fn delete_skill(
-    workspace_path: String,
     name: String,
     db: tauri::State<'_, Db>,
     workflow_runs: tauri::State<'_, WorkflowStepRunManager>,
@@ -612,7 +598,7 @@ pub async fn delete_skill(
         );
     }
 
-    delete_skill_filesystem_inner(&workspace_path, &name, &plugin_slug, skills_path.as_deref())?;
+    delete_skill_filesystem_inner(&name, &plugin_slug, skills_path.as_deref())?;
     post_delete_skill_filesystem_inner(&name, skills_path.as_deref(), &plugin_slug);
     {
         let conn = db.0.lock().map_err(|e| {
@@ -626,13 +612,12 @@ pub async fn delete_skill(
 
 #[allow(dead_code)]
 pub(crate) fn delete_skill_inner(
-    workspace_path: &str,
     name: &str,
     plugin_slug: &str,
     conn: Option<&rusqlite::Connection>,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
-    delete_skill_filesystem_inner(workspace_path, name, plugin_slug, skills_path)?;
+    delete_skill_filesystem_inner(name, plugin_slug, skills_path)?;
     post_delete_skill_filesystem_inner(name, skills_path, plugin_slug);
     if let Some(conn) = conn {
         delete_skill_db_records_inner(conn, name, plugin_slug)?;
@@ -641,40 +626,18 @@ pub(crate) fn delete_skill_inner(
 }
 
 pub(crate) fn delete_skill_filesystem_inner(
-    workspace_path: &str,
     name: &str,
     plugin_slug: &str,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
     log::info!(
-        "[delete_skill] skill={} workspace={} skills_path={:?}",
+        "[delete_skill] skill={} skills_path={:?}",
         name,
-        workspace_path,
         skills_path
     );
     super::super::imported_skills::validate_skill_name(name)
         .map_err(|_| "Invalid skill path: path traversal not allowed".to_string())?;
 
-    let base = resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, name);
-
-    // Delete workspace working directory if it exists
-    if base.exists() {
-        // Verify this is inside the workspace path to prevent directory traversal
-        if !Path::new(workspace_path).exists() {
-            return Err(format!("Workspace not found: {}", workspace_path));
-        }
-        let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;
-        let canonical_target = fs::canonicalize(&base).map_err(|e| e.to_string())?;
-        if !canonical_target.starts_with(&canonical_workspace) {
-            return Err("Invalid skill path".to_string());
-        }
-        fs::remove_dir_all(&base).map_err(|e| e.to_string())?;
-        log::info!("[delete_skill] deleted workspace dir {}", base.display());
-    } else {
-        log::info!("[delete_skill] workspace dir not found: {}", base.display());
-    }
-
-    // Delete skill output directory if skills_path is configured and directory exists
     if let Some(sp) = skills_path {
         let output_dir = resolve_existing_skill_dir(Path::new(sp), plugin_slug, name);
         if output_dir.exists() {
@@ -854,7 +817,6 @@ mod tests {
 
         // Skills dir is created via ensure_nested_skill_dir.
         create_skill_filesystem_inner_with_policy(
-            "/tmp/unused-workspace",
             "my-new-skill",
             Some(skills_str),
             false,

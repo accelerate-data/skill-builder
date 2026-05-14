@@ -241,25 +241,9 @@ export interface StartupDeps {
   checks: DepStatus[]
 }
 
-export interface OrphanSkill {
-  skill_name: string
-  purpose: string
-}
-
-export interface DiscoveredSkill {
-  name: string
-  plugin_slug?: string | null
-  plugin_display_name?: string | null
-  is_default_plugin?: boolean | null
-  detected_step: number
-  scenario: string
-}
-
 export interface ReconciliationResult {
-  orphans: OrphanSkill[]
   notifications: string[]
   auto_cleaned: number
-  discovered_skills: DiscoveredSkill[]
 }
 
 export interface AgentRunRecord {
@@ -557,8 +541,6 @@ export interface StepStatusUpdate {
   step_id: number
   status: string
 }
-
-export type DiscoveryResolutionAction = "add-skill-builder" | "add-imported" | "remove"
 
 // ─── Workflow step structured outputs ────────────────────────────────────────
 

@@ -332,16 +332,6 @@ pub fn run() {
                 }
             }
 
-            // Initialize workspace directory and deploy bundled prompts
-            let db_state = app.state::<db::Db>();
-            let handle = app.handle().clone();
-            let workspace_path = commands::workspace::init_workspace(&handle, &db_state, &data_dir)
-                .expect("failed to initialize workspace");
-
-            // Prune old transcript files before any agents are spawned.
-            // Non-fatal: errors are logged as warnings and startup continues.
-            logging::prune_transcript_files(&workspace_path);
-
             Ok(())
         })
         .manage(CloseGuardState::default())
@@ -392,12 +382,9 @@ pub fn run() {
             commands::workflow::runtime::log_gate_decision,
             commands::runtime_lifecycle::graceful_shutdown,
             commands::runtime_lifecycle::allow_app_exit,
-            commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::reconciliation::reconcile_startup,
             commands::reconciliation::record_reconciliation_cancel,
-            commands::reconciliation::resolve_orphan,
-            commands::reconciliation::resolve_discovery,
             commands::workflow_session::create_workflow_session,
             commands::workflow_session::end_workflow_session,
             commands::imported_skills::listing::list_imported_skills,

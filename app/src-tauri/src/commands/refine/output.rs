@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::Db;
-use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
+use crate::skill_paths::{resolve_skill_dir, validate_skill_content_exists, DEFAULT_PLUGIN_SLUG};
 use crate::types::{RefineDiff, RefineFileDiff, RefineFinalizeResult, SkillFileContent};
 
 use super::content::get_skill_content_inner_for_plugin;
@@ -311,14 +311,12 @@ fn restore_protected_frontmatter(
 pub(crate) fn finalize_refine_run_inner(
     skill_name: &str,
     skills_path: &str,
-    workspace_path: &str,
     _result_payload: Option<&serde_json::Value>,
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     finalize_refine_run_inner_for_plugin(
         skill_name,
         skills_path,
-        workspace_path,
         DEFAULT_PLUGIN_SLUG,
         _result_payload,
         pre_run_sha,
@@ -328,13 +326,11 @@ pub(crate) fn finalize_refine_run_inner(
 pub(crate) fn finalize_refine_run_inner_for_plugin(
     skill_name: &str,
     skills_path: &str,
-    workspace_path: &str,
     plugin_slug: &str,
     _result_payload: Option<&serde_json::Value>,
     pre_run_sha: Option<&str>,
 ) -> Result<RefineFinalizeResult, String> {
     let skill_root = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
-    let workspace_root = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
     if !skill_root.exists() {
         return Err(format!(
             "Skill '{}' not found at {}",
@@ -344,7 +340,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
     }
 
     // Clean up any stale skill snapshot left by a prior rewrite→benchmark cycle
-    cleanup_skill_snapshot(&workspace_root);
+    cleanup_skill_snapshot(&skill_root);
 
     // Read HEAD for the commit SHA. The rewrite agent is instructed to commit,
     // but finalize also commits scoped skill changes if the agent only edited files.
@@ -537,8 +533,7 @@ pub(crate) fn finalize_refine_run_inner_for_plugin(
 pub fn clean_benchmark_snapshot(
     skill_name: String,
     plugin_slug: String,
-    workspace_path: String,
-    _db: tauri::State<'_, Db>,
+    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
         "[clean_benchmark_snapshot] skill={} plugin={}",
@@ -546,8 +541,12 @@ pub fn clean_benchmark_snapshot(
         plugin_slug
     );
     validate_skill_name(&skill_name)?;
-    let workspace_root = resolve_skill_dir(Path::new(&workspace_path), &plugin_slug, &skill_name);
-    cleanup_skill_snapshot(&workspace_root);
+    let skills_path = resolve_skills_path(&db).map_err(|e| {
+        log::error!("[clean_benchmark_snapshot] Failed to resolve skills path: {}", e);
+        e
+    })?;
+    let skill_root = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    cleanup_skill_snapshot(&skill_root);
     Ok(())
 }
 
@@ -555,7 +554,6 @@ pub fn clean_benchmark_snapshot(
 pub fn finalize_refine_run(
     skill_name: String,
     plugin_slug: String,
-    workspace_path: String,
     result_payload: Option<serde_json::Value>,
     db: tauri::State<'_, Db>,
     sessions: tauri::State<'_, super::SkillSessionManager>,
@@ -571,6 +569,9 @@ pub fn finalize_refine_run(
         e
     })?;
 
+    // Validate that the skill has published content before attempting to read it.
+    validate_skill_content_exists(Path::new(&skills_path), &plugin_slug, &skill_name)?;
+
     // Look up the session's pre-run HEAD SHA to detect no-op turns.
     let pre_run_sha = sessions.0.lock().ok().and_then(|map| {
         map.values()
@@ -581,7 +582,6 @@ pub fn finalize_refine_run(
     let result = finalize_refine_run_inner_for_plugin(
         &skill_name,
         &skills_path,
-        &workspace_path,
         &plugin_slug,
         result_payload.as_ref(),
         pre_run_sha.as_deref(),

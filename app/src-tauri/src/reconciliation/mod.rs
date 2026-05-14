@@ -1,7 +1,7 @@
 mod skill_builder;
 
 use crate::skill_paths::{enumerate_skill_locations, DEFAULT_PLUGIN_SLUG};
-use crate::types::{DiscoveredSkill, ReconciliationResult};
+use crate::types::ReconciliationResult;
 use std::path::{Path, PathBuf};
 
 fn normalized_plugin_slug(plugin_slug: &str) -> &str {
@@ -198,18 +198,18 @@ fn normalize_root_layout(
 }
 
 fn workspace_legacy_skill_candidates(
-    workspace_root: &Path,
+    skills_root: &Path,
     plugin_slug: &str,
     skill_name: &str,
 ) -> Vec<PathBuf> {
     let mut candidates = vec![
-        workspace_root.join(plugin_slug).join(skill_name),
-        workspace_root.join(skill_name),
+        skills_root.join(plugin_slug).join(skill_name),
+        skills_root.join(skill_name),
     ];
     if plugin_slug == DEFAULT_PLUGIN_SLUG {
-        candidates.push(workspace_root.join("skills").join(skill_name));
+        candidates.push(skills_root.join("skills").join(skill_name));
         candidates.push(
-            workspace_root
+            skills_root
                 .join("skills")
                 .join("skills")
                 .join(skill_name),
@@ -218,23 +218,23 @@ fn workspace_legacy_skill_candidates(
     candidates
 }
 
-/// Legacy migration: normalizes old workspace skill directory layouts into the
-/// canonical skill directory. Operates on the workspace root only for historical
-/// artifact cleanup — does not touch the canonical skills tree.
-fn normalize_legacy_workspace_skill_layouts(
+/// Legacy migration: normalizes old skill directory layouts into the
+/// canonical skill directory. Operates on the skills root for historical
+/// artifact cleanup.
+fn normalize_legacy_skills_skill_layouts(
     conn: &rusqlite::Connection,
-    workspace_root: &Path,
+    skills_root: &Path,
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {
     let all_skills = crate::db::list_all_skills(conn)?;
     for skill in all_skills {
         let canonical_dir = crate::skill_paths::resolve_skill_dir(
-            workspace_root,
+            skills_root,
             normalized_plugin_slug(&skill.plugin_slug),
             &skill.name,
         );
         for source_dir in workspace_legacy_skill_candidates(
-            workspace_root,
+            skills_root,
             normalized_plugin_slug(&skill.plugin_slug),
             &skill.name,
         ) {
@@ -245,7 +245,7 @@ fn normalize_legacy_workspace_skill_layouts(
             let destination_display = canonical_dir.display().to_string();
             if merge_skill_directory(&source_dir, &canonical_dir)? {
                 notifications.push(format!(
-                    "'{}' workspace path normalized from '{}' to '{}'",
+                    "'{}' path normalized from '{}' to '{}'",
                     skill.name, source_display, destination_display
                 ));
             }
@@ -257,12 +257,12 @@ fn normalize_legacy_workspace_skill_layouts(
             {
                 std::fs::remove_dir(&source_dir).map_err(|e| e.to_string())?;
             }
-            prune_empty_legacy_roots(workspace_root, &source_dir);
+            prune_empty_legacy_roots(skills_root, &source_dir);
         }
     }
 
-    if remove_legacy_default_plugin_root(workspace_root)? {
-        notifications.push("Removed legacy 'skills' plugin wrapper from workspace root".into());
+    if remove_legacy_default_plugin_root(skills_root)? {
+        notifications.push("Removed legacy 'skills' plugin wrapper from skills root".into());
     }
 
     Ok(())
@@ -270,12 +270,11 @@ fn normalize_legacy_workspace_skill_layouts(
 
 fn normalize_legacy_startup_state(
     conn: &rusqlite::Connection,
-    workspace_root: &Path,
     skills_root: &Path,
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {
     crate::db::migrations::repair_plugin_ownership_schema(conn).map_err(|e| e.to_string())?;
-    normalize_legacy_workspace_skill_layouts(conn, workspace_root, notifications)?;
+    normalize_legacy_skills_skill_layouts(conn, skills_root, notifications)?;
     normalize_root_layout(skills_root, notifications, "skills")?;
     Ok(())
 }
@@ -293,16 +292,12 @@ fn normalize_legacy_startup_state(
 /// - For each skill-builder skill where status != completed, repair stale DB-owned state only
 pub fn reconcile_on_startup(
     conn: &rusqlite::Connection,
-    workspace_path: &str,
     skills_path: &str,
 ) -> Result<ReconciliationResult, String> {
     let mut notifications = Vec::new();
-    let workspace_dir = Path::new(workspace_path);
     let skills_dir = Path::new(skills_path);
 
-    // ── Phase 0: Clean up incomplete benchmark iterations ──
-    crate::commands::workflow::evaluation::clean_all_incomplete_iterations(workspace_path);
-    normalize_legacy_startup_state(conn, workspace_dir, skills_dir, &mut notifications)?;
+    normalize_legacy_startup_state(conn, skills_dir, &mut notifications)?;
 
     // ════════════════════════════════════════════════════════════════════════
     // Phase 1: App-owned plugin/layout normalization
@@ -365,9 +360,8 @@ pub fn reconcile_on_startup(
 
     let all_skills = crate::db::list_all_skills(conn)?;
     log::info!(
-        "[reconcile] phase 2: workflow recon for {} skills, workspace={} skills_path={}",
+        "[reconcile] phase 2: workflow recon for {} skills, skills_path={}",
         all_skills.len(),
-        workspace_path,
         skills_path
     );
 
@@ -390,7 +384,6 @@ pub fn reconcile_on_startup(
             conn,
             &skill.name,
             &skill.plugin_slug,
-            workspace_path,
             skills_path,
             &mut notifications,
         )?;
@@ -399,75 +392,9 @@ pub fn reconcile_on_startup(
     log::info!("[reconcile] done: {} notifications", notifications.len());
 
     Ok(ReconciliationResult {
-        orphans: Vec::new(),
         notifications,
         auto_cleaned: 0,
-        discovered_skills: Vec::<DiscoveredSkill>::new(),
     })
-}
-
-/// Resolve an orphan skill. Called from the frontend after the user makes a decision.
-pub fn resolve_orphan(
-    conn: &rusqlite::Connection,
-    skill_name: &str,
-    action: &str,
-    skills_path: &str,
-) -> Result<(), String> {
-    log::debug!(
-        "[resolve_orphan] skill='{}': action={} skills_path={}",
-        skill_name,
-        action,
-        skills_path
-    );
-    match action {
-        "delete" => {
-            crate::commands::imported_skills::validate_skill_name(skill_name)?;
-
-            // Look up plugin slug BEFORE delete so we can pass it through.
-            let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)
-                .ok()
-                .flatten()
-                .map(|m| m.plugin_slug)
-                .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-            crate::db::delete_workflow_run(conn, skill_name, &plugin_slug)?;
-            let output_dir = crate::skill_paths::resolve_existing_skill_dir(
-                Path::new(skills_path),
-                &plugin_slug,
-                skill_name,
-            );
-            if output_dir.exists() {
-                let canonical_base = std::fs::canonicalize(skills_path)
-                    .map_err(|e| format!("Failed to canonicalize skills_path: {}", e))?;
-                let canonical_target = std::fs::canonicalize(&output_dir)
-                    .map_err(|e| format!("Failed to canonicalize output_dir: {}", e))?;
-                if !canonical_target.starts_with(&canonical_base) {
-                    return Err(format!("Path traversal attempt for skill '{}'", skill_name));
-                }
-                std::fs::remove_dir_all(&output_dir).map_err(|e| {
-                    format!("Failed to delete skill output for '{}': {}", skill_name, e)
-                })?;
-            }
-            Ok(())
-        }
-        "keep" => {
-            let s_id = crate::db::get_skill_master_id_in_plugin(
-                conn,
-                skill_name,
-                crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-            )?;
-            if let Some(s_id) = s_id {
-                if let Some(run) = crate::db::get_workflow_run_by_skill_id(conn, s_id)? {
-                    crate::db::save_workflow_run(conn, skill_name, 0, "pending", &run.purpose)?;
-                    crate::db::reset_workflow_steps_from_by_skill_id(conn, s_id, 0)?;
-                }
-            }
-            Ok(())
-        }
-        _ => Err(format!(
-            "Invalid orphan resolution action: '{}'. Expected 'delete' or 'keep'.",
-            action
-        )),
-    }
 }
 
 #[cfg(test)]

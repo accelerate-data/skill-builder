@@ -81,7 +81,7 @@ const mockResponses: Record<string, unknown> = {
   // Lifecycle
   clean_benchmark_snapshot: undefined,
   // Reconciliation
-  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
+  reconcile_startup: { notifications: [], auto_cleaned: 0 },
   record_reconciliation_cancel: undefined,
   // Skill locks
   acquire_lock: undefined,

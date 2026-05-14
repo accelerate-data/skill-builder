@@ -34,14 +34,12 @@ fn load_refine_prompt_context(
     db: &Db,
     skill_name: &str,
     plugin_slug: &str,
-    workspace_path: &str,
 ) -> Result<(String, String, String), String> {
     let settings = crate::commands::workflow::settings::read_workflow_settings(
         db,
         skill_name,
         plugin_slug,
         0,
-        workspace_path,
     )?;
 
     let user_context_block = crate::commands::workflow::prompt::format_user_context(
@@ -214,10 +212,9 @@ pub async fn send_refine_message(
     let prompt = if is_first_turn {
         let skills_path = resolve_skills_path(&db)?;
         let (user_context_block, clarifications_json, decisions_json) =
-            load_refine_prompt_context(&db, &skill_name, &plugin_slug, &runtime_ctx.skills_root)?;
+            load_refine_prompt_context(&db, &skill_name, &plugin_slug)?;
         build_refine_prompt_with_output_dir(RefinePromptRequest {
             skill_name: &skill_name,
-            workspace_path: &runtime_ctx.skills_root,
             plugin_slug: &plugin_slug,
             skill_output_dir: &resolve_skill_output_dir(&plugin_slug, &skill_name, &skills_path)?,
             user_message: &user_message,

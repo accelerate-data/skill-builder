@@ -623,7 +623,224 @@ git commit -m "test: remove discovered_skills from app-layout test mocks"
 
 ---
 
-### Task 6: Add operation-time validation for missing skill content (Gap 10)
+### Task 6: Remove workspace_path — stop creating `<data_dir>/workspace` directory
+
+**Goal:** Eliminate the `workspace_path` concept entirely. OpenHands runs in `{skills_path}/{plugin}/skills/{name}/`, not in a separate workspace directory. Bundled skill seeding, eval cleanup, and workspace directory creation are all removed.
+
+**Files:**
+- Modify: `app/src-tauri/src/lib.rs:335-343`
+- Modify: `app/src-tauri/src/commands/workspace.rs` (simplify `init_workspace`)
+- Modify: `app/src-tauri/src/commands/reconciliation.rs` (remove workspace_path usage)
+- Modify: `app/src-tauri/src/reconciliation/mod.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/reconciliation/skill_builder.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/commands/workflow/prompt.rs` (use skills_path for {{skill_dir}})
+- Modify: `app/src-tauri/src/commands/workflow/runtime.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/commands/workflow/evaluation.rs` (remove eval cleanup)
+- Modify: `app/src-tauri/src/commands/workflow_lifecycle.rs` (remove workspace_path validation)
+- Modify: `app/src-tauri/src/commands/workflow/settings.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/commands/refine/*.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/commands/skill/*.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/commands/imported_skills/bundled.rs` (remove or keep for reference)
+- Modify: `app/src-tauri/src/types/settings.rs` (remove workspace_path field)
+- Modify: `app/src-tauri/src/db/settings.rs` (remove workspace_path from DB operations)
+- Modify: `app/src-tauri/src/fs_validation.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/cleanup.rs` (remove workspace_path parameter)
+- Modify: `app/src-tauri/src/logging.rs` (remove workspace_path from transcript pruning)
+- Modify: `app/src-tauri/src/commands/api_validation.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/commands/files.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/commands/git.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/commands/github_import/commands.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/commands/imported_skills/lifecycle.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/commands/imported_skills/upload.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/agents/event_types.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/agents/run_persist.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/contracts/agent_events.rs` (remove workspace_path)
+- Modify: `app/src-tauri/src/reconciliation/tests.rs` (update tests)
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs` (update tests)
+- Modify: `app/src-tauri/src/commands/refine/tests.rs` (update tests)
+- Modify: `app/src-tauri/src/commands/skill/tests.rs` (update tests)
+- Modify: `app/src-tauri/src/db/tests.rs` (remove workspace_path from settings tests)
+
+- [ ] **Step 1: Remove `init_workspace()` call from lib.rs**
+
+In `app/src-tauri/src/lib.rs`, remove lines 335-343:
+
+```rust
+// REMOVE these lines:
+            // Initialize workspace directory and deploy bundled prompts
+            let db_state = app.state::<db::Db>();
+            let handle = app.handle().clone();
+            let workspace_path = commands::workspace::init_workspace(&handle, &db_state, &data_dir)
+                .expect("failed to initialize workspace");
+
+            // Prune old transcript files before any agents are spawned.
+            // Non-fatal: errors are logged as warnings and startup continues.
+            logging::prune_transcript_files(&workspace_path);
+```
+
+Also remove `get_workspace_path` from the invoke handler list (line 395):
+
+```rust
+// REMOVE this line:
+            commands::workspace::get_workspace_path,
+```
+
+- [ ] **Step 2: Remove `workspace_path` from AppSettings and DB schema**
+
+In `app/src-tauri/src/types/settings.rs`, remove `workspace_path` field from `AppSettings` struct (line 351):
+
+```rust
+// REMOVE this line:
+    pub workspace_path: Option<String>,
+```
+
+And remove it from the Debug impl (line 401):
+
+```rust
+// REMOVE this line:
+            .field("workspace_path", &self.workspace_path)
+```
+
+And from the default impl (line 429):
+
+```rust
+// REMOVE this line:
+            workspace_path: None,
+```
+
+In `app/src-tauri/src/db/settings.rs`, remove `workspace_path` from the SELECT query (line 160), the row parsing (line 189), the INSERT/UPDATE (lines 227, 252, 274), and all test helpers.
+
+- [ ] **Step 3: Remove bundled skill seeding and eval cleanup from reconciliation**
+
+In `app/src-tauri/src/reconciliation/mod.rs`, remove the `clean_all_incomplete_iterations` call (line 304):
+
+```rust
+// REMOVE this line:
+    crate::commands::workflow::evaluation::clean_all_incomplete_iterations(workspace_path);
+```
+
+Remove `workspace_path` parameter from `reconcile_on_startup` function signature and all internal usage.
+
+- [ ] **Step 4: Update prompt templates to use skills_path for {{skill_dir}}**
+
+In `app/src-tauri/src/commands/workflow/prompt.rs`, change all `build_step*_prompt` functions to use `skills_path` instead of `workspace_path` for resolving `{{skill_dir}}`:
+
+```rust
+// Change render_workspace_prompt to take skills_path instead of workspace_path:
+fn render_skills_path_prompt(
+    template: &str,
+    skill_name: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+) -> String {
+    let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
+    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
+    template
+        .trim_end_matches('\n')
+        .replace("{{skill_name}}", skill_name)
+        .replace("{{skill_dir}}", &skill_dir_str)
+}
+```
+
+Update all callers to pass `skills_path` instead of `workspace_path`.
+
+For `build_step3_prompt`, both `{{skill_dir}}` and `{{skill_output_dir}}` should resolve from `skills_path` (they're the same directory now).
+
+For `build_evaluator_prompt`, same change — use `skills_path` for `{{skill_dir}}`.
+
+- [ ] **Step 5: Remove workspace_path from workflow runtime and lifecycle**
+
+In `app/src-tauri/src/commands/workflow/runtime.rs`, remove `workspace_path` parameter from:
+- `run_workflow_step_inner` (line 333)
+- `run_workflow_step` (line 559)
+- `run_answer_evaluator` (line 706)
+
+Update all internal calls to use `skills_path` from settings instead.
+
+In `app/src-tauri/src/commands/workflow_lifecycle.rs`, remove `workspace_path` parameter from `validate_run_request` (line 63) and the existence check (lines 68-78).
+
+- [ ] **Step 6: Remove workspace_path from remaining commands**
+
+Systematically remove `workspace_path` parameter from:
+- `commands/refine/content.rs` — `get_skill_content_for_refine`
+- `commands/refine/mod.rs` — `send_refine_message`
+- `commands/refine/output.rs` — `finalize_refine_run`, `clean_benchmark_snapshot`
+- `commands/refine/protocol.rs` — refine protocol functions
+- `commands/skill/crud.rs` — skill CRUD operations
+- `commands/skill/metadata.rs` — metadata operations
+- `commands/files.rs` — file operations
+- `commands/git.rs` — git operations
+- `commands/api_validation.rs` — model validation
+- `commands/github_import/commands.rs` — GitHub import
+- `commands/imported_skills/lifecycle.rs` — lifecycle operations
+- `commands/imported_skills/upload.rs` — upload operations
+- `commands/workflow/settings.rs` — workflow settings
+- `commands/workflow/output_format.rs` — output format
+- `commands/workflow/evaluation.rs` — evaluation (also remove `clean_all_incomplete_iterations`)
+- `commands/workflow/deploy.rs` — deployment (remove workspace_path references)
+- `agents/event_types.rs` — event types
+- `agents/openhands_server/mod.rs` — OpenHands server
+- `agents/run_persist.rs` — run persistence
+- `contracts/agent_events.rs` — agent events
+- `cleanup.rs` — cleanup functions
+- `fs_validation.rs` — fs validation
+- `logging.rs` — transcript pruning
+
+- [ ] **Step 7: Remove bundled.rs file entirely**
+
+Delete `app/src-tauri/src/commands/imported_skills/bundled.rs` and remove the re-export from `mod.rs`:
+
+```rust
+// REMOVE from mod.rs:
+pub(crate) use bundled::{purge_stale_bundled_skills, seed_bundled_skills};
+```
+
+- [ ] **Step 8: Simplify workspace.rs**
+
+In `app/src-tauri/src/commands/workspace.rs`:
+- Remove `init_workspace()` function entirely
+- Remove `get_workspace_path` command
+- Remove `resolve_workspace_path` function
+- Remove `cleanup_legacy_vibedata` function
+- Remove `migrate_workspace_layout` function (or keep as standalone migration)
+- Remove `migrate_flatten_openhands_dir` function
+- Remove `migrate_delete_workspace_skill_dirs` function
+- Remove `cleanup_stale_snapshots` function
+- Keep `clear_workspace` command (still needed for clearing skills_path)
+- Keep migration functions that are still needed (marketplace layout, per-skill repos)
+
+- [ ] **Step 9: Update all tests**
+
+Update tests in:
+- `reconciliation/tests.rs` — remove workspace_path parameters
+- `commands/workflow/tests.rs` — remove workspace_path parameters
+- `commands/refine/tests.rs` — remove workspace_path parameters
+- `commands/skill/tests.rs` — remove workspace_path parameters
+- `db/tests.rs` — remove workspace_path from settings tests
+- `types/mod.rs` — remove workspace_path from settings tests
+- `db/settings.rs` tests — remove workspace_path tests
+
+- [ ] **Step 10: Verify Rust compiles**
+
+Run: `cd app/src-tauri && cargo check`
+Expected: No compilation errors.
+
+- [ ] **Step 11: Run Rust tests**
+
+Run: `cd app/src-tauri && cargo test`
+Expected: All tests pass.
+
+- [ ] **Step 12: Commit**
+
+```bash
+git add -A
+git commit -m "refactor: remove workspace_path concept and <data_dir>/workspace directory"
+```
+
+---
+
+### Task 7: Add operation-time validation for missing skill content (Gap 10)
 
 **Files:**
 - Modify: `app/src-tauri/src/commands/refine/content.rs:60-85`
@@ -702,7 +919,7 @@ git commit -m "feat: add operation-time validation for missing skill content"
 
 ---
 
-### Task 7: Final verification and cleanup
+### Task 8: Final verification and cleanup
 
 **Files:**
 - All changed files

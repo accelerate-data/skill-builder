@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, refreshModelCatalog } from "@/lib/tauri";
-import type { AppSettings, DiscoveredSkill, ModelSettings, OrphanSkill } from "@/lib/types";
+import type { AppSettings, ModelSettings } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
 import { queryKeys } from "@/lib/queries/query-keys";
 import { fetchGithubUser } from "@/lib/queries/auth";
@@ -12,19 +12,15 @@ import { fetchGithubUser } from "@/lib/queries/auth";
 interface StartupState {
   settingsLoaded: boolean;
   reconciled: boolean;
-  orphans: OrphanSkill[];
   reconNotifications: string[];
-  reconDiscovered: DiscoveredSkill[];
   ackDone: boolean;
   reconRequiresApply: boolean;
   reconApplying: boolean;
 }
 
 export interface UseAppStartupReturn extends StartupState {
-  setOrphans: (orphans: OrphanSkill[]) => void;
   setAckDone: (done: boolean) => void;
   setReconNotifications: (notifications: string[]) => void;
-  setReconDiscovered: (discovered: DiscoveredSkill[]) => void;
   setReconRequiresApply: (requires: boolean) => void;
   setReconApplying: (applying: boolean) => void;
   handleApplyReconciliation: () => Promise<void>;
@@ -65,9 +61,7 @@ export function useAppStartup(): UseAppStartupReturn {
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
-  const [orphans, setOrphans] = useState<OrphanSkill[]>([]);
   const [reconNotifications, setReconNotifications] = useState<string[]>([]);
-  const [reconDiscovered, setReconDiscovered] = useState<DiscoveredSkill[]>([]);
   const [ackDone, setAckDone] = useState(true);
   const [reconRequiresApply, setReconRequiresApply] = useState(false);
   const [reconApplying, setReconApplying] = useState(false);
@@ -119,16 +113,13 @@ export function useAppStartup(): UseAppStartupReturn {
     reconcileStartup()
       .then((result) => {
         if (cancelledRef.current) return;
-        if (result.discovered_skills.length === 0 && result.notifications.length > 0) {
+        if (result.notifications.length > 0) {
           reconcileStartup(true)
-            .then((applied) => {
+            .then(() => {
               if (cancelledRef.current) return;
               queryClient.invalidateQueries({ queryKey: queryKeys.skills.all }).catch((err) =>
                 console.warn("[app-layout] op=refresh_skills_after_auto_recon status=failure err=%s", err),
               );
-              if (applied.orphans.length > 0) {
-                setOrphans(applied.orphans);
-              }
               setReconciled(true);
             })
             .catch((err) => {
@@ -136,39 +127,6 @@ export function useAppStartup(): UseAppStartupReturn {
               setReconciled(true);
             });
           return;
-        }
-        if (result.notifications.length === 0 && result.discovered_skills.length > 0) {
-          reconcileStartup(true)
-            .then((applied) => {
-              if (cancelledRef.current) return;
-              queryClient.invalidateQueries({ queryKey: queryKeys.skills.all }).catch((err) =>
-                console.warn("[app-layout] op=refresh_skills_after_auto_recon status=failure err=%s", err),
-              );
-              if (applied.orphans.length > 0) {
-                setOrphans(applied.orphans);
-              }
-              setReconciled(true);
-            })
-            .catch((err) => {
-              console.warn("[app-layout] auto-apply reconciliation failed:", err);
-              setReconciled(true);
-            });
-          return;
-        }
-        if (result.discovered_skills.length > 0) {
-          console.warn(
-            "[app-layout] Reconciliation preview produced %d notifications, %d discovered skills",
-            result.notifications.length,
-            result.discovered_skills.length,
-          );
-          setReconNotifications(result.notifications);
-          setReconDiscovered(result.discovered_skills);
-          setReconRequiresApply(true);
-          setAckDone(false);
-        }
-
-        if (result.orphans.length > 0) {
-          setOrphans(result.orphans);
         }
 
         setReconciled(true);
@@ -192,7 +150,6 @@ export function useAppStartup(): UseAppStartupReturn {
     if (!reconRequiresApply) {
       setAckDone(true);
       setReconNotifications([]);
-      setReconDiscovered([]);
       return;
     }
     try {
@@ -203,17 +160,11 @@ export function useAppStartup(): UseAppStartupReturn {
           `Cleaned up ${applied.auto_cleaned} incomplete skill${applied.auto_cleaned !== 1 ? "s" : ""}`,
         );
       }
-      if (applied.orphans.length > 0) {
-        setOrphans(applied.orphans);
-      }
-      // Refresh skill list so sidebar status dots and navigation reflect
-      // any workflow resets performed by reconciliation.
       queryClient.invalidateQueries({ queryKey: queryKeys.skills.all }).catch((err) =>
         console.warn("[app-layout] op=refresh_skills_after_recon status=failure err=%s", err),
       );
       setAckDone(true);
       setReconNotifications([]);
-      setReconDiscovered([]);
       setReconRequiresApply(false);
     } catch (err) {
       toast.error(
@@ -226,27 +177,22 @@ export function useAppStartup(): UseAppStartupReturn {
   };
 
   const handleCancelReconciliation = () => {
-    recordReconciliationCancel(reconNotifications.length, reconDiscovered.length)
+    recordReconciliationCancel(reconNotifications.length)
       .catch(() => undefined);
     setAckDone(true);
     setReconNotifications([]);
-    setReconDiscovered([]);
     setReconRequiresApply(false);
   };
 
   return {
     settingsLoaded,
     reconciled,
-    orphans,
     reconNotifications,
-    reconDiscovered,
     ackDone,
     reconRequiresApply,
     reconApplying,
-    setOrphans,
     setAckDone,
     setReconNotifications,
-    setReconDiscovered,
     setReconRequiresApply,
     setReconApplying,
     handleApplyReconciliation,

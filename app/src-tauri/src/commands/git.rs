@@ -3,18 +3,17 @@ use std::path::Path;
 use crate::db::Db;
 use crate::types::{SkillCommit, SkillFileContent};
 
-/// Resolve the skill output root: skills_path if configured, else workspace_path.
-fn resolve_output_root(db: &Db, workspace_path: &str) -> Result<String, String> {
+/// Resolve the skill output root: skills_path if configured, else error.
+fn resolve_output_root(db: &Db) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
-    Ok(settings
+    settings
         .skills_path
-        .unwrap_or_else(|| workspace_path.to_string()))
+        .ok_or_else(|| "Skills path not configured".to_string())
 }
 
 #[tauri::command]
 pub fn get_skill_history(
-    workspace_path: String,
     skill_name: String,
     plugin_slug: String,
     limit: Option<usize>,
@@ -26,7 +25,7 @@ pub fn get_skill_history(
         plugin_slug,
         limit
     );
-    let output_root = resolve_output_root(&db, &workspace_path)?;
+    let output_root = resolve_output_root(&db)?;
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(Path::new(&output_root), &plugin_slug, &skill_name);
     if !skill_dir.join(".git").exists() {
@@ -37,7 +36,6 @@ pub fn get_skill_history(
 
 #[tauri::command]
 pub fn restore_skill_version(
-    workspace_path: String,
     skill_name: String,
     plugin_slug: String,
     sha: String,
@@ -49,7 +47,7 @@ pub fn restore_skill_version(
         plugin_slug,
         sha
     );
-    let output_root = resolve_output_root(&db, &workspace_path)?;
+    let output_root = resolve_output_root(&db)?;
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(Path::new(&output_root), &plugin_slug, &skill_name);
     crate::git::restore_version(&skill_dir, &sha, &skill_name, &plugin_slug)?;
@@ -82,7 +80,6 @@ pub fn restore_skill_version(
 
 #[tauri::command]
 pub fn get_skill_files_at_sha(
-    workspace_path: String,
     skill_name: String,
     plugin_slug: String,
     sha: String,
@@ -94,7 +91,7 @@ pub fn get_skill_files_at_sha(
         plugin_slug,
         sha
     );
-    let output_root = resolve_output_root(&db, &workspace_path)?;
+    let output_root = resolve_output_root(&db)?;
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(Path::new(&output_root), &plugin_slug, &skill_name);
     let pairs = crate::git::get_skill_files_at_sha(&skill_dir, &skill_name, &plugin_slug, &sha)
@@ -148,16 +145,17 @@ mod tests {
     // --- resolve_output_root ---
 
     #[test]
-    fn test_resolve_output_root_falls_back_to_workspace_path() {
+    fn test_resolve_output_root_falls_back_to_error_when_not_configured() {
         let db = make_db(None);
-        let result = resolve_output_root(&db, "/my/workspace");
-        assert_eq!(result.unwrap(), "/my/workspace");
+        let result = resolve_output_root(&db);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Skills path not configured"));
     }
 
     #[test]
     fn test_resolve_output_root_prefers_skills_path_from_settings() {
         let db = make_db(Some("/configured/skills"));
-        let result = resolve_output_root(&db, "/my/workspace");
+        let result = resolve_output_root(&db);
         assert_eq!(result.unwrap(), "/configured/skills");
     }
 

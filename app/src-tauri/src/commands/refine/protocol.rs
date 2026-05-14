@@ -21,7 +21,6 @@ pub(super) struct RefinePromptContext<'a> {
 #[allow(dead_code)]
 pub(super) struct RefinePromptRequest<'a> {
     pub skill_name: &'a str,
-    pub workspace_path: &'a str,
     pub plugin_slug: &'a str,
     pub skill_output_dir: &'a std::path::Path,
     pub user_message: &'a str,
@@ -32,7 +31,6 @@ pub(super) struct RefinePromptRequest<'a> {
 pub(super) fn build_refine_prompt_with_output_dir(request: RefinePromptRequest<'_>) -> String {
     let RefinePromptRequest {
         skill_name,
-        workspace_path: _,
         plugin_slug: _,
         skill_output_dir,
         user_message,
@@ -71,7 +69,6 @@ pub(super) fn build_refine_prompt_with_output_dir(request: RefinePromptRequest<'
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_refine_prompt(
     skill_name: &str,
-    workspace_path: &str,
     skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
@@ -79,7 +76,6 @@ pub(super) fn build_refine_prompt(
 ) -> String {
     build_refine_prompt_for_plugin(
         skill_name,
-        workspace_path,
         skills_path,
         DEFAULT_PLUGIN_SLUG,
         user_message,
@@ -90,7 +86,6 @@ pub(super) fn build_refine_prompt(
 
 pub(super) fn build_refine_prompt_for_plugin(
     skill_name: &str,
-    workspace_path: &str,
     skills_path: &str,
     plugin_slug: &str,
     user_message: &str,
@@ -100,7 +95,6 @@ pub(super) fn build_refine_prompt_for_plugin(
     let skill_output_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     build_refine_prompt_with_output_dir(RefinePromptRequest {
         skill_name,
-        workspace_path,
         plugin_slug,
         skill_output_dir: &skill_output_dir,
         user_message,

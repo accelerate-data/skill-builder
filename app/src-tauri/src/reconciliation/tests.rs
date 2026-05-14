@@ -37,9 +37,9 @@ fn insert_stub_decisions(conn: &rusqlite::Connection, skill_name: &str) {
 }
 
 /// Create a skill working directory on disk with a context/ dir.
-/// Uses plugin-organised layout: workspace/{DEFAULT_PLUGIN_SLUG}/{name}/context/
-fn create_skill_dir(workspace: &Path, name: &str, _domain: &str) {
-    let skill_dir = resolve_skill_dir(workspace, DEFAULT_PLUGIN_SLUG, name);
+/// Uses plugin-organised layout: skills_root/{DEFAULT_PLUGIN_SLUG}/skills/{name}/context/
+fn create_skill_dir(skills_root: &Path, name: &str, _domain: &str) {
+    let skill_dir = resolve_skill_dir(skills_root, DEFAULT_PLUGIN_SLUG, name);
     std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 }
 
@@ -73,7 +73,7 @@ fn test_vu_1190_startup_does_not_recreate_missing_workflow_run() {
         crate::db::upsert_skill(&conn, "orphan-skill", "skill-builder", "domain").unwrap();
     create_step_output(skills_tmp.path(), "orphan-skill", 3);
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     assert!(
         result.notifications.is_empty(),
@@ -100,14 +100,13 @@ fn test_vu_1190_startup_does_not_discover_skill_from_disk() {
     std::fs::create_dir_all(&discovered_dir).unwrap();
     std::fs::write(discovered_dir.join("SKILL.md"), "# Found Skill").unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     assert!(
         result.notifications.is_empty(),
         "notifications: {:?}",
         result.notifications
     );
-    assert!(result.discovered_skills.is_empty());
     assert!(
         crate::db::get_skill_master(&conn, "found-skill")
             .unwrap()
@@ -140,9 +139,8 @@ fn test_vu_1190_startup_does_not_delete_tracked_marketplace_plugin_when_skill_md
     let broken_dir = resolve_skill_dir(skills_tmp.path(), "analytics", "broken-skill");
     std::fs::create_dir_all(&broken_dir).unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.discovered_skills.is_empty());
     assert!(
         crate::db::list_plugins(&conn)
             .unwrap()
@@ -177,7 +175,7 @@ fn test_db_consistency_reset_no_clarifications() {
         crate::db::upsert_skill(&conn, "stale-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "pending", "domain").unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     // Should have been reset to step 0 with a notification
     assert!(
@@ -215,7 +213,7 @@ fn test_db_consistency_reset_no_decisions() {
     insert_stub_clarifications(&conn, "stale-skill");
     // Deliberately NO insert_stub_decisions — simulates pre-VU-1157 state.
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     assert!(
         result
@@ -254,7 +252,7 @@ fn test_reconcile_leaves_pending_when_not_all_steps_done() {
     create_step_output(skills_tmp.path(), "mid-skill", 0);
     create_step_output(skills_tmp.path(), "mid-skill", 2);
 
-    let _result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let _result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
@@ -288,11 +286,10 @@ fn test_marketplace_skill_preserved_when_skill_md_exists() {
     std::fs::create_dir_all(&skill_dir).unwrap();
     std::fs::write(skill_dir.join("SKILL.md"), "# Marketplace skill").unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
-    assert_eq!(result.auto_cleaned, 0);
     assert!(result.notifications.is_empty());
+    assert_eq!(result.auto_cleaned, 0);
 
     // Skills master record must still exist unchanged
     let all_skills = crate::db::list_all_skills(&conn).unwrap();
@@ -326,9 +323,8 @@ fn test_scenario_5_normal_db_and_disk_agree() {
     // Step 2 output: decisions.json
     create_step_output(tmp.path(), "healthy-skill", 2);
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
     assert_eq!(result.auto_cleaned, 0);
     assert!(result.notifications.is_empty());
 
@@ -360,7 +356,7 @@ fn test_fresh_skill_step_0_not_falsely_completed() {
     ))
     .unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     // No workflow-state notifications — fresh skill, no action needed
     assert!(result.notifications.is_empty());
@@ -389,7 +385,7 @@ fn test_db_at_step2_no_skill_md_stays_at_step2() {
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 2, "pending", "domain").unwrap();
     insert_stub_clarifications(&conn, "lost-skill");
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     // No notification — steps 0-2 are DB-authoritative, no SKILL.md expected
     assert!(
@@ -422,7 +418,7 @@ fn test_step_4_not_reset_when_step_3_output_exists() {
         create_step_output(skills_tmp.path(), "done-skill", step);
     }
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     // Should NOT reset — step 4 is beyond last step but step 3 output exists
     assert!(result.notifications.is_empty());
@@ -447,7 +443,7 @@ fn test_step_1_not_reset_when_step_0_output_exists() {
     create_skill_dir(tmp.path(), "review-skill", "sales");
     create_step_output(skills_tmp.path(), "review-skill", 0);
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     assert!(result.notifications.is_empty());
     let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -476,7 +472,7 @@ fn test_step_3_with_all_prior_output_exists() {
     create_step_output(skills_tmp.path(), "review-skill", 2);
     create_step_output(skills_tmp.path(), "review-skill", 3);
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     assert!(result.notifications.is_empty());
     let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -512,7 +508,7 @@ fn test_step_completed_advances_to_next_not_reset() {
             create_step_output(skills_tmp.path(), "my-skill", *step);
         }
 
-        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+        let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
         assert!(
             result.notifications.is_empty(),
@@ -548,7 +544,7 @@ fn test_step_1_on_db_but_step_0_on_disk_ok() {
     create_skill_dir(tmp.path(), "my-skill", "sales");
     create_step_output(skills_tmp.path(), "my-skill", 0);
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     assert!(result.notifications.is_empty());
     let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -565,9 +561,8 @@ fn test_reconcile_empty_workspace() {
     let skills_path = skills_tmp.path().to_str().unwrap();
     let conn = create_test_db();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
     assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 }
@@ -584,9 +579,8 @@ fn test_reconcile_skips_infrastructure_dirs() {
     std::fs::create_dir_all(tmp.path().join(".claude")).unwrap();
     std::fs::create_dir_all(tmp.path().join(".hidden")).unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
     assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 }
@@ -611,7 +605,7 @@ fn test_reconcile_skips_skill_with_active_session_from_current_pid() {
     crate::db::create_workflow_session_by_skill_id(&conn, "sess-active", skill_id, current_pid)
         .unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     assert_eq!(result.notifications.len(), 1);
     assert!(result.notifications[0].contains("skipped"));
@@ -637,7 +631,7 @@ fn test_skill_at_step0_no_skill_md_stays_at_step0() {
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     create_skill_dir(tmp.path(), "my-skill", "sales");
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     // No notification — Scenario 8 just resets step statuses silently
     assert!(
@@ -671,7 +665,7 @@ fn test_completed_step_statuses_preserved_after_reconcile() {
     crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
     insert_stub_clarifications(&conn, "my-skill");
 
-    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    reconcile_on_startup(&conn, skills_path).unwrap();
 
     let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     let step0 = steps
@@ -717,7 +711,7 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
     // Create step 0 output in skills_path (detectable)
     create_step_output(skills_tmp.path(), "my-skill", 0);
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     // No reset should occur — disk confirms last_expected_detectable (step 0)
     assert!(
@@ -750,80 +744,6 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
 
 // --- Gap 5: DB=3 with step 3 missing resets to 2 ---
 
-#[test]
-fn test_resolve_orphan_delete() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 7, "completed", "domain").unwrap();
-    let output_dir = resolve_skill_dir(
-        tmp.path(),
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-        "orphan",
-    );
-    std::fs::create_dir_all(output_dir.join("references")).unwrap();
-    std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
-
-    resolve_orphan(&conn, "orphan", "delete", skills_path).unwrap();
-
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-        .unwrap()
-        .is_none());
-    assert!(!output_dir.exists());
-}
-
-#[test]
-fn test_resolve_orphan_keep() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 7, "completed", "domain").unwrap();
-    let output_dir = tmp.path().join("orphan");
-    std::fs::create_dir_all(&output_dir).unwrap();
-    std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
-
-    resolve_orphan(&conn, "orphan", "keep", skills_path).unwrap();
-
-    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-        .unwrap()
-        .unwrap();
-    assert_eq!(run.current_step, 0);
-    assert_eq!(run.status, "pending");
-    assert!(output_dir.join("SKILL.md").exists());
-}
-
-#[test]
-fn test_resolve_orphan_delete_already_gone() {
-    let conn = create_test_db();
-
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 5, "completed", "domain").unwrap();
-
-    resolve_orphan(&conn, "orphan", "delete", "/nonexistent/path").unwrap();
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-        .unwrap()
-        .is_none());
-}
-
-#[test]
-fn test_resolve_orphan_invalid_action() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 5, "completed", "domain").unwrap();
-
-    let result = resolve_orphan(&conn, "orphan", "invalid", skills_path);
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("Invalid orphan resolution action"));
-}
-
 // --- Scenario 10: skill_source=skill-builder, master row, no workflow_runs ---
 
 #[test]
@@ -842,10 +762,10 @@ fn test_reconcile_full_with_fallback_to_workspace_path() {
     create_step_output(tmp.path(), "my-skill", 0);
     create_step_output(tmp.path(), "my-skill", 2);
 
-    // skills_path = None → fallback to workspace
-    let result = reconcile_on_startup(&conn, workspace, workspace).unwrap();
+    // Reconcile with single path
+    let result = reconcile_on_startup(&conn, workspace).unwrap();
 
-    assert!(result.orphans.is_empty());
+    assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 
     // DB should be reconciled: disk has step 2, DB had step 1.
@@ -871,10 +791,10 @@ fn test_reconcile_when_workspace_and_skills_paths_identical() {
     create_step_output(tmp.path(), "my-skill", 2);
     create_step_output(tmp.path(), "my-skill", 3);
 
-    // workspace = skills_path = same directory
-    let result = reconcile_on_startup(&conn, path, path).unwrap();
+    // Single path (previously workspace == skills_path)
+    let result = reconcile_on_startup(&conn, path).unwrap();
 
-    assert!(result.orphans.is_empty());
+    assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 
     let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -895,7 +815,7 @@ fn test_cleanup_future_steps_with_negative_step() {
     create_step_output(tmp.path(), "my-skill", 4);
     create_step_output(tmp.path(), "my-skill", 5);
 
-    crate::cleanup::cleanup_future_steps(workspace, "my-skill", DEFAULT_PLUGIN_SLUG, -1, workspace);
+    crate::cleanup::cleanup_future_steps("my-skill", DEFAULT_PLUGIN_SLUG, -1, workspace);
 
     // All step output should be deleted
     let skill_dir = resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
@@ -926,11 +846,10 @@ fn test_db_record_with_workspace_dir_reconciles_normally() {
     crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 0, "pending", "domain").unwrap();
     create_skill_dir(&workspace, "old-skill", "test");
 
-    let result = reconcile_on_startup(&conn, workspace_str, skills_str).unwrap();
+    let result = reconcile_on_startup(&conn, skills_str).unwrap();
 
     // DB record should be preserved (not auto-cleaned)
     assert_eq!(result.auto_cleaned, 0);
-    assert!(result.orphans.is_empty());
     assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .is_some());
@@ -964,10 +883,9 @@ fn test_reconcile_detects_multiple_orphans() {
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
     }
 
-    let result = reconcile_on_startup(&conn, workspace_str, skills_str).unwrap();
+    let result = reconcile_on_startup(&conn, skills_str).unwrap();
 
     // All three are in skills_path (the driver) → they're in disk_dirs → normal reconciliation
-    assert!(result.orphans.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 
     // All DB records should still exist
@@ -995,14 +913,13 @@ fn test_folder_without_skill_md_ignored() {
     std::fs::create_dir_all(orphan_dir.join("context")).unwrap();
     std::fs::write(orphan_dir.join("context").join("notes.md"), "# Notes").unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     // Folder should still exist — we don't delete random folders
     assert!(
         skills_tmp.path().join("orphan-folder").exists(),
         "folder should be left alone"
     );
-    assert!(result.discovered_skills.is_empty());
 }
 
 #[test]
@@ -1023,9 +940,8 @@ fn test_pass2_skips_dotfiles() {
     )
     .unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.discovered_skills.is_empty());
     assert!(result.notifications.is_empty());
 }
 
@@ -1048,11 +964,10 @@ fn test_reconcile_no_disk_dirs_adopted_without_master_row() {
     create_step_output(&workspace, "disk-only-skill", 0);
     std::fs::create_dir_all(workspace.join(".git")).unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace_str, skills_str).unwrap();
+    let result = reconcile_on_startup(&conn, skills_str).unwrap();
 
     // No skills in master → no notifications
     assert!(result.notifications.is_empty());
-    assert!(result.discovered_skills.is_empty()); // disk-only-skill is in workspace, not skills_path
     assert!(crate::db::get_skill_master_id(&conn, "disk-only-skill")
         .unwrap()
         .is_none());
@@ -1080,8 +995,7 @@ fn test_pass3_skips_dotfiles_and_trash() {
     std::fs::create_dir_all(skills.join(".git")).unwrap();
     std::fs::create_dir_all(skills.join(".trash")).unwrap();
 
-    let result =
-        reconcile_on_startup(&conn, workspace.to_str().unwrap(), skills.to_str().unwrap()).unwrap();
+    let result = reconcile_on_startup(&conn, skills.to_str().unwrap()).unwrap();
 
     assert!(result.notifications.is_empty());
     // .git and .trash should still exist
@@ -1090,58 +1004,6 @@ fn test_pass3_skips_dotfiles_and_trash() {
         skills.join(".trash").exists(),
         ".trash should not be touched"
     );
-}
-
-// --- Path traversal guard tests ---
-
-#[test]
-fn test_resolve_orphan_delete_rejects_traversal_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-    let skill_id = crate::db::upsert_skill(&conn, "some-skill", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
-
-    // skill_name contains path traversal sequences — must be rejected before any FS op
-    let result = resolve_orphan(&conn, "../escape", "delete", skills_path);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(
-        err.contains("Invalid skill name") || err.contains("traversal"),
-        "unexpected error: {}",
-        err
-    );
-    // DB row must NOT have been deleted (error before db write)
-    assert!(
-        crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-            .unwrap()
-            .is_some(),
-        "unrelated skill should be untouched"
-    );
-}
-
-#[test]
-fn test_resolve_orphan_delete_rejects_slash_in_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let result = resolve_orphan(&conn, "foo/bar", "delete", skills_path);
-    assert!(result.is_err());
-    assert!(
-        result.unwrap_err().contains("Invalid skill name"),
-        "slash in skill_name must be rejected"
-    );
-}
-
-#[test]
-fn test_resolve_orphan_delete_rejects_empty_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let result = resolve_orphan(&conn, "", "delete", skills_path);
-    assert!(result.is_err());
 }
 
 // =============================================================================
@@ -1172,7 +1034,6 @@ fn test_reconcile_skill_builder_resets_stale_in_progress_steps() {
         &conn,
         name,
         DEFAULT_PLUGIN_SLUG,
-        workspace,
         skills_path,
         &mut notifications,
     )
@@ -1214,7 +1075,7 @@ fn test_startup_normalization_merges_legacy_skills_default_into_default_plugin()
     )
     .unwrap();
 
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
     let plugins = crate::db::list_plugins(&conn).unwrap();
     assert_eq!(plugins.iter().filter(|plugin| plugin.is_default).count(), 1);
@@ -1234,210 +1095,6 @@ fn test_startup_normalization_merges_legacy_skills_default_into_default_plugin()
         .collect();
     assert_eq!(matching.len(), 1);
     assert_eq!(matching[0].plugin_slug, DEFAULT_PLUGIN_SLUG);
-    assert!(result.discovered_skills.is_empty());
-}
-
-#[test]
-fn test_startup_normalization_moves_legacy_skills_and_workspace_dirs_to_default_plugin() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_root = tmp.path().join("workspace");
-    let skills_root = tmp.path().join("skills");
-    std::fs::create_dir_all(&workspace_root).unwrap();
-    std::fs::create_dir_all(&skills_root).unwrap();
-
-    let workspace = workspace_root.to_str().unwrap();
-    let skills_path = skills_root.to_str().unwrap();
-    let conn = create_test_db();
-
-    crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
-    let skill_id =
-        crate::db::upsert_skill(&conn, "analyzing-bookings", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 3, "completed", "domain").unwrap();
-    insert_stub_clarifications(&conn, "analyzing-bookings");
-    insert_stub_decisions(&conn, "analyzing-bookings");
-
-    let legacy_workspace = workspace_root
-        .join("skills")
-        .join("skills")
-        .join("analyzing-bookings");
-    let legacy_output = skills_root
-        .join("skills")
-        .join("skills")
-        .join("analyzing-bookings");
-    std::fs::create_dir_all(legacy_workspace.join("context")).unwrap();
-    std::fs::create_dir_all(legacy_output.join("references")).unwrap();
-    std::fs::write(legacy_output.join("SKILL.md"), "# migrated\n").unwrap();
-    std::fs::write(legacy_output.join("references").join("notes.md"), "hello\n").unwrap();
-
-    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-
-    let canonical_workspace = workspace_root
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("skills")
-        .join("analyzing-bookings");
-    let canonical_output = skills_root
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("skills")
-        .join("analyzing-bookings");
-
-    assert!(canonical_workspace.exists());
-    assert!(canonical_output.join("SKILL.md").exists());
-    assert!(canonical_output
-        .join("references")
-        .join("notes.md")
-        .exists());
-    assert!(
-        !legacy_workspace.exists(),
-        "legacy workspace dir should be migrated"
-    );
-    assert!(
-        !legacy_output.exists(),
-        "legacy output dir should be migrated"
-    );
-}
-
-#[test]
-fn test_startup_normalization_prunes_empty_legacy_default_plugin_dirs() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_root = tmp.path().join("workspace");
-    let skills_root = tmp.path().join("skills");
-    std::fs::create_dir_all(&workspace_root).unwrap();
-    std::fs::create_dir_all(&skills_root).unwrap();
-
-    let workspace = workspace_root.to_str().unwrap();
-    let skills_path = skills_root.to_str().unwrap();
-    let conn = create_test_db();
-
-    crate::db::ensure_plugin(&conn, "skills", "skills", "synthetic", None, None, true).unwrap();
-
-    let legacy_plugin_root = skills_root.join("skills");
-    std::fs::create_dir_all(legacy_plugin_root.join("hr-analytics")).unwrap();
-    std::fs::create_dir_all(legacy_plugin_root.join(".claude-plugin")).unwrap();
-    std::fs::write(
-        legacy_plugin_root
-            .join(".claude-plugin")
-            .join("plugin.json"),
-        "{}\n",
-    )
-    .unwrap();
-
-    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-
-    assert!(
-        !legacy_plugin_root.exists(),
-        "legacy default-plugin wrapper should be removed even when it only contains empty stray dirs"
-    );
-}
-
-#[test]
-fn test_startup_normalization_moves_workspace_legacy_dirs_with_agents_only_content() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace_root = tmp.path().join("workspace");
-    let skills_root = tmp.path().join("skills");
-    std::fs::create_dir_all(&workspace_root).unwrap();
-    std::fs::create_dir_all(&skills_root).unwrap();
-
-    let workspace = workspace_root.to_str().unwrap();
-    let skills_path = skills_root.to_str().unwrap();
-    let conn = create_test_db();
-
-    crate::db::ensure_plugin(
-        &conn,
-        "sample-plugin",
-        "Sample Plugin",
-        "local",
-        None,
-        None,
-        false,
-    )
-    .unwrap();
-    crate::db::upsert_skill(&conn, "hr-analytics", "skill-builder", "domain").unwrap();
-    crate::db::upsert_skill_in_plugin(
-        &conn,
-        "pipeline-analysis",
-        "skill-builder",
-        "domain",
-        "sample-plugin",
-    )
-    .unwrap();
-
-    let default_legacy = workspace_root.join("skills").join("hr-analytics");
-    let nested_legacy = workspace_root
-        .join("skills")
-        .join("skills")
-        .join("hr-analytics");
-    let plugin_legacy = workspace_root
-        .join("sample-plugin")
-        .join("pipeline-analysis");
-
-    std::fs::create_dir_all(default_legacy.join(".agents").join("agents")).unwrap();
-    std::fs::write(
-        default_legacy
-            .join(".agents")
-            .join("agents")
-            .join("agent.md"),
-        "default legacy\n",
-    )
-    .unwrap();
-    std::fs::create_dir_all(nested_legacy.join(".agents").join("skills")).unwrap();
-    std::fs::write(
-        nested_legacy
-            .join(".agents")
-            .join("skills")
-            .join("skill.md"),
-        "nested legacy\n",
-    )
-    .unwrap();
-    std::fs::create_dir_all(plugin_legacy.join(".agents").join("agents")).unwrap();
-    std::fs::write(
-        plugin_legacy
-            .join(".agents")
-            .join("agents")
-            .join("agent.md"),
-        "plugin legacy\n",
-    )
-    .unwrap();
-
-    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-
-    let default_canonical = workspace_root
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("skills")
-        .join("hr-analytics");
-    let plugin_canonical = workspace_root
-        .join("sample-plugin")
-        .join("skills")
-        .join("pipeline-analysis");
-
-    assert!(
-        default_canonical
-            .join(".agents")
-            .join("agents")
-            .join("agent.md")
-            .exists(),
-        "default legacy workspace dir should move into canonical location"
-    );
-    assert!(
-        default_canonical
-            .join(".agents")
-            .join("skills")
-            .join("skill.md")
-            .exists(),
-        "nested legacy workspace dir should merge into canonical location"
-    );
-    assert!(
-        plugin_canonical
-            .join(".agents")
-            .join("agents")
-            .join("agent.md")
-            .exists(),
-        "plugin legacy workspace dir should move into canonical location"
-    );
-    assert!(!workspace_root.join("skills").exists());
-    assert!(!workspace_root
-        .join("sample-plugin")
-        .join("pipeline-analysis")
-        .exists());
 }
 
 // ── Phase 1f: Dedup tests ───────────────────────────────────────────────────
@@ -1486,13 +1143,8 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
     std::fs::create_dir_all(skill_md.parent().unwrap()).unwrap();
     std::fs::write(&skill_md, "---\ntitle: cross-plugin-skill\n---\n").unwrap();
 
-    // First startup: should NOT add to discovered_skills or create a duplicate DB row
-    let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-    assert!(
-        result.discovered_skills.is_empty(),
-        "cross-plugin skill must not appear in discovered_skills: {:?}",
-        result.discovered_skills
-    );
+    // First startup: should not create a duplicate DB row
+    let result = reconcile_on_startup(&conn, skills_path).unwrap();
     assert!(
         !result
             .notifications
@@ -1516,12 +1168,7 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
     );
 
     // Second startup: same result — dialog must not reappear
-    let result2 = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-    assert!(
-        result2.discovered_skills.is_empty(),
-        "cross-plugin skill must not reappear on second startup: {:?}",
-        result2.discovered_skills
-    );
+    let result2 = reconcile_on_startup(&conn, skills_path).unwrap();
 }
 
 /// VU-984: Phase 1e Pass B must not soft-delete marketplace skills stored
@@ -1565,7 +1212,7 @@ fn test_phase1e_does_not_soft_delete_marketplace_nested_layout() {
     .unwrap();
 
     // Run reconciliation
-    reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+    reconcile_on_startup(&conn, skills_path).unwrap();
 
     // Skill must remain active (not soft-deleted)
     let deleted_at: Option<String> = conn

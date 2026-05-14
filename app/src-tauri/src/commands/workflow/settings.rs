@@ -59,7 +59,6 @@ pub(crate) fn read_workflow_settings_by_skill_id(
     skill_id: i64,
     skill_name: &str,
     step_id: u32,
-    _workspace_path: &str,
 ) -> Result<WorkflowSettings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
@@ -166,7 +165,6 @@ pub(crate) fn read_workflow_settings(
     skill_name: &str,
     plugin_slug: &str,
     step_id: u32,
-    workspace_path: &str,
 ) -> Result<WorkflowSettings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let skill_id = crate::db::get_skill_master_id_in_plugin(&conn, skill_name, plugin_slug)?
@@ -177,7 +175,7 @@ pub(crate) fn read_workflow_settings(
             )
         })?;
     drop(conn);
-    read_workflow_settings_by_skill_id(db, skill_id, skill_name, step_id, workspace_path)
+    read_workflow_settings_by_skill_id(db, skill_id, skill_name, step_id)
 }
 
 #[cfg(test)]
@@ -197,7 +195,6 @@ mod tests {
             "test-skill",
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             0,
-            "/tmp/workspace",
         )
     }
 
@@ -230,16 +227,16 @@ mod tests {
     #[test]
     fn read_initialized_runtime_context_returns_skills_root_and_llm() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace_path = initialized_skills_root(tmp.path());
+        let skills_root = initialized_skills_root(tmp.path());
         let conn = create_test_db_for_tests();
         let mut settings = configured_settings("anthropic/claude-sonnet-4-5", Some("sk-test"));
-        settings.skills_path = Some(workspace_path.clone());
+        settings.skills_path = Some(skills_root.clone());
         write_settings(&conn, &settings).unwrap();
         let db = Db(std::sync::Arc::new(Mutex::new(conn)));
 
         let context = read_initialized_runtime_context(&db).unwrap();
 
-        assert_eq!(context.skills_root, workspace_path);
+        assert_eq!(context.skills_root, skills_root);
         assert_eq!(context.llm.model, "anthropic/claude-sonnet-4-5");
         assert_eq!(context.llm.api_key.as_ref().unwrap().expose(), "sk-test");
     }
@@ -304,7 +301,7 @@ mod tests {
     #[test]
     fn read_initialized_runtime_context_resolves_catalog_base_url_fallback() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace_path = initialized_skills_root(tmp.path());
+        let skills_root = initialized_skills_root(tmp.path());
         let conn = create_test_db_for_tests();
 
         conn.execute(
@@ -322,7 +319,7 @@ mod tests {
             },
         );
         let settings = AppSettings {
-            skills_path: Some(workspace_path.clone()),
+            skills_path: Some(skills_root.clone()),
             model_settings: ModelSettings {
                 provider_id: Some("anthropic".to_string()),
                 model_id: Some("claude-sonnet-4-5".to_string()),
@@ -346,7 +343,7 @@ mod tests {
     #[test]
     fn read_initialized_runtime_context_override_wins_over_catalog() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace_path = initialized_skills_root(tmp.path());
+        let skills_root = initialized_skills_root(tmp.path());
         let conn = create_test_db_for_tests();
 
         conn.execute(
@@ -365,7 +362,7 @@ mod tests {
             },
         );
         let settings = AppSettings {
-            skills_path: Some(workspace_path.clone()),
+            skills_path: Some(skills_root.clone()),
             model_settings: ModelSettings {
                 provider_id: Some("anthropic".to_string()),
                 model_id: Some("claude-sonnet-4-5".to_string()),

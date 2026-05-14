@@ -7,7 +7,6 @@ import { SkillListPanel } from "@/components/skill-list-panel";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import { SetupScreen } from "@/components/setup-screen";
-import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "@/lib/toast";
@@ -75,13 +74,10 @@ export function AppLayout() {
   const {
     settingsLoaded,
     reconciled,
-    orphans,
     reconNotifications,
-    reconDiscovered,
     ackDone,
     reconRequiresApply,
     reconApplying,
-    setOrphans,
     handleApplyReconciliation,
     handleCancelReconciliation,
   } = useAppStartup();
@@ -428,17 +424,9 @@ export function AppLayout() {
         />
       )}
       {splashDismissed && !isConfigured && <SetupScreen />}
-      {orphans.length > 0 && (
-        <OrphanResolutionDialog
-          orphans={orphans}
-          open
-          onResolved={() => setOrphans([])}
-        />
-      )}
       {!ackDone && (
         <ReconciliationAckDialog
           notifications={reconNotifications}
-          discoveredSkills={reconDiscovered}
           requireApply={reconRequiresApply}
           applying={reconApplying}
           open

@@ -25,7 +25,6 @@ test.describe("Reconciliation Notification", { tag: "@dashboard" }, () => {
           "Cleaned up 2 orphaned workflow sessions",
         ],
         auto_cleaned: 2,
-        discovered_skills: [],
       },
     });
 
@@ -49,7 +48,6 @@ test.describe("Reconciliation Notification", { tag: "@dashboard" }, () => {
         orphans: [],
         notifications: ["Removed stale lock for skill: old-skill"],
         auto_cleaned: 1,
-        discovered_skills: [],
       },
       record_reconciliation_cancel: undefined,
     });

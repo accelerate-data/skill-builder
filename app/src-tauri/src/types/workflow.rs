@@ -99,28 +99,7 @@ pub struct StepResetPreview {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrphanSkill {
-    pub skill_name: String,
-    pub purpose: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscoveredSkill {
-    pub name: String,
-    #[serde(default)]
-    pub plugin_slug: Option<String>,
-    #[serde(default)]
-    pub plugin_display_name: Option<String>,
-    #[serde(default)]
-    pub is_default_plugin: Option<bool>,
-    pub detected_step: i32,
-    pub scenario: String, // "9a", "9b", "9c"
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReconciliationResult {
-    pub orphans: Vec<OrphanSkill>,
     pub notifications: Vec<String>,
     pub auto_cleaned: u32,
-    pub discovered_skills: Vec<DiscoveredSkill>,
 }

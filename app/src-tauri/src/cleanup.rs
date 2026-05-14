@@ -25,24 +25,21 @@ fn remove_dir_logged(label: &str, path: &Path) {
 /// List existing output files for a single step (display names, not full paths).
 ///
 /// For step 0, also lists workflow-level files such as gate-result.json.
-/// For step 3, checks skills_path for skill artifacts and tolerates legacy
-/// workspace eval directories when present.
-/// For other steps, checks context files in workspace_path/skill_name/.
+/// For step 3, checks skills_path for skill artifacts.
+/// For other steps, checks context files in skills_path/skill_name/.
 pub fn list_step_output_files(
-    workspace_path: &str,
     skill_name: &str,
     plugin_slug: &str,
     step_id: u32,
     skills_path: &str,
 ) -> Vec<String> {
     log::debug!(
-        "[list_step_output_files] skill='{}': step={} workspace={} skills_path={}",
+        "[list_step_output_files] skill='{}': step={} skills_path={}",
         skill_name,
         step_id,
-        workspace_path,
         skills_path
     );
-    let skill_dir = resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir = resolve_existing_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let mut files = Vec::new();
 
     match step_id {
@@ -101,7 +98,6 @@ pub fn list_step_output_files(
 
 /// Delete output files for a single step.
 pub fn clean_step_output(
-    workspace_path: &str,
     skill_name: &str,
     plugin_slug: &str,
     step_id: u32,
@@ -109,15 +105,14 @@ pub fn clean_step_output(
 ) {
     const LABEL: &str = "clean_step_output";
     log::debug!(
-        "[{}] skill='{}': step={} workspace={} skills_path={}",
+        "[{}] skill='{}': step={} skills_path={}",
         LABEL,
         skill_name,
         step_id,
-        workspace_path,
         skills_path
     );
 
-    let skill_dir = resolve_existing_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+    let skill_dir = resolve_existing_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
 
     match step_id {
         0 => {
@@ -141,9 +136,6 @@ pub fn clean_step_output(
                     &skill_output_dir.join(format!("{}.skill", skill_name)),
                 );
             }
-            // Remove legacy workspace eval folders without treating any file name there
-            // as part of the current step 3 contract.
-            remove_dir_logged(LABEL, &skill_dir.join("evals"));
             // Remove git version tags so re-running step 3 can create 1.0.0 again.
             if let Err(e) =
                 crate::git::delete_skill_version_tags(&skill_output_dir, plugin_slug, skill_name)
@@ -157,7 +149,7 @@ pub fn clean_step_output(
             }
         }
         _ => {
-            // Steps 1, 2: context files in workspace
+            // Steps 1, 2: context files in skills_path
             for file in get_step_output_files(step_id) {
                 remove_file_logged(LABEL, &skill_dir.join(file));
             }
@@ -170,17 +162,15 @@ pub fn clean_step_output(
 /// stale files from causing incorrect reconciliation on next startup.
 #[allow(dead_code)]
 pub fn cleanup_future_steps(
-    workspace_path: &str,
     skill_name: &str,
     plugin_slug: &str,
     after_step: i32,
     skills_path: &str,
 ) {
     log::debug!(
-        "[cleanup_future_steps] skill='{}': after_step={} workspace={} skills_path={}",
+        "[cleanup_future_steps] skill='{}': after_step={} skills_path={}",
         skill_name,
         after_step,
-        workspace_path,
         skills_path
     );
     for step_id in [0u32, 1, 2, 3] {
@@ -188,7 +178,6 @@ pub fn cleanup_future_steps(
             continue;
         }
         clean_step_output(
-            workspace_path,
             skill_name,
             plugin_slug,
             step_id,
@@ -199,22 +188,19 @@ pub fn cleanup_future_steps(
 
 /// Delete output files for the given step and all subsequent steps.
 pub fn delete_step_output_files(
-    workspace_path: &str,
     skill_name: &str,
     plugin_slug: &str,
     from_step_id: u32,
     skills_path: &str,
 ) {
     log::debug!(
-        "[delete_step_output_files] skill='{}': from_step={} workspace={} skills_path={}",
+        "[delete_step_output_files] skill='{}': from_step={} skills_path={}",
         skill_name,
         from_step_id,
-        workspace_path,
         skills_path
     );
     for step_id in from_step_id..=3 {
         clean_step_output(
-            workspace_path,
             skill_name,
             plugin_slug,
             step_id,
@@ -271,7 +257,7 @@ mod tests {
         create_step_output(skills_tmp.path(), "my-skill", 3);
 
         // Clean up everything after step 1
-        cleanup_future_steps(workspace, "my-skill", SLUG, 1, skills_path);
+        cleanup_future_steps("my-skill", SLUG, 1, skills_path);
 
         // Step 3 SKILL.md should be gone
         let output_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
@@ -292,7 +278,7 @@ mod tests {
         create_step_output(skills_tmp.path(), "my-skill", 3);
 
         // Delete from step 1 onwards
-        delete_step_output_files(workspace, "my-skill", SLUG, 1, skills_path);
+        delete_step_output_files("my-skill", SLUG, 1, skills_path);
 
         // Step 3 SKILL.md must be gone
         let output_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
@@ -301,33 +287,27 @@ mod tests {
 
     #[test]
     fn test_delete_step0_deletes_all_artifacts() {
-        // Deleting from step 0 must remove all files: gate, skill, evals.
+        // Deleting from step 0 must remove all files: gate, skill, references.
         // Steps 0-2 are DB-authoritative — clarifications/decisions have no filesystem form.
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
-        create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Step 0 workflow-level files
-        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
+        // Step 0 workflow-level files in skills_path
+        let skill_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
         // Step 3 artifacts in canonical plugin layout
-        let output_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
-        std::fs::create_dir_all(output_dir.join("references")).unwrap();
-        std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
-        std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
-        std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
 
         // Delete from step 0 onwards
-        delete_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
+        delete_step_output_files("my-skill", SLUG, 0, skills_path);
 
         // Everything must be gone
         assert!(!skill_dir.join("gate-result.json").exists());
-        assert!(!output_dir.join("SKILL.md").exists());
-        assert!(!output_dir.join("references").exists());
-        assert!(!skill_dir.join("evals").exists());
+        assert!(!skill_dir.join("SKILL.md").exists());
+        assert!(!skill_dir.join("references").exists());
     }
 
     #[test]
@@ -345,32 +325,24 @@ mod tests {
         create_step_output(skills_tmp.path(), "my-skill", 3);
 
         // Cleaning step 1 should not remove SKILL.md
-        clean_step_output(workspace, "my-skill", SLUG, 1, skills_path);
+        clean_step_output("my-skill", SLUG, 1, skills_path);
 
         let output_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
         assert!(output_dir.join("SKILL.md").exists());
     }
 
     #[test]
-    fn test_clean_step3_deletes_evals_and_skill() {
-        let tmp = tempfile::tempdir().unwrap();
+    fn test_clean_step3_deletes_skill_and_references() {
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
-
-        // Create a legacy workspace eval folder.
-        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
-        std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
-        std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
 
         // Create skill output dir with SKILL.md in canonical plugin layout
         let output_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-        clean_step_output(workspace, "my-skill", SLUG, 3, skills_path);
+        clean_step_output("my-skill", SLUG, 3, skills_path);
 
-        assert!(!skill_dir.join("evals").exists());
         assert!(!output_dir.join("SKILL.md").exists());
         assert!(!output_dir.join("references").exists());
     }
@@ -379,16 +351,14 @@ mod tests {
     fn test_clean_step0_deletes_gate_files() {
         // Step 0 cleanup removes workflow-level gate files.
         // Clarifications are DB-authoritative and have no filesystem representation.
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
-        clean_step_output(workspace, "my-skill", SLUG, 0, skills_path);
+        clean_step_output("my-skill", SLUG, 0, skills_path);
 
         assert!(!skill_dir.join("gate-result.json").exists());
     }
@@ -406,7 +376,7 @@ mod tests {
 
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        let files = list_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
+        let files = list_step_output_files("my-skill", SLUG, 0, skills_path);
         assert!(
             files.is_empty(),
             "step 0 should list no files without gate artifacts"
@@ -417,16 +387,14 @@ mod tests {
     fn test_list_step0_includes_gate_result() {
         // Step 0 lists gate-result.json when present.
         // Clarifications are DB-authoritative and not listed as filesystem outputs.
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
-        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
-        let files = list_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
+        let files = list_step_output_files("my-skill", SLUG, 0, skills_path);
         assert!(!files.contains(&"context/clarifications.json".to_string()));
         assert!(files.contains(&"gate-result.json".to_string()));
     }
@@ -440,7 +408,7 @@ mod tests {
 
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        let files = list_step_output_files(workspace, "my-skill", SLUG, 1, skills_path);
+        let files = list_step_output_files("my-skill", SLUG, 1, skills_path);
         assert!(files.is_empty());
     }
 
@@ -454,15 +422,13 @@ mod tests {
 
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        let files = list_step_output_files(workspace, "my-skill", SLUG, 2, skills_path);
+        let files = list_step_output_files("my-skill", SLUG, 2, skills_path);
         assert!(files.is_empty(), "step 2 should list no filesystem outputs");
     }
 
     #[test]
     fn test_list_step3_includes_all_artifacts() {
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Skill output in canonical plugin layout
@@ -472,13 +438,10 @@ mod tests {
         std::fs::write(output_dir.join("references/foo.md"), "ref").unwrap();
         std::fs::write(output_dir.join("references/bar.md"), "ref").unwrap();
         std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
+        std::fs::create_dir_all(output_dir.join("evals")).unwrap();
+        std::fs::write(output_dir.join("evals/legacy-case.json"), "{}").unwrap();
 
-        // Legacy eval folder in plugin-organised workspace.
-        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
-        std::fs::create_dir_all(skill_dir.join("evals")).unwrap();
-        std::fs::write(skill_dir.join("evals/legacy-case.json"), "{}").unwrap();
-
-        let files = list_step_output_files(workspace, "my-skill", SLUG, 3, skills_path);
+        let files = list_step_output_files("my-skill", SLUG, 3, skills_path);
 
         assert!(files.contains(&"SKILL.md".to_string()));
         assert!(files.contains(&"references/foo.md".to_string()));
@@ -502,7 +465,7 @@ mod tests {
         // Empty plugin-organised workspace dir
         std::fs::create_dir_all(resolve_skill_dir(tmp.path(), SLUG, "my-skill")).unwrap();
 
-        let files = list_step_output_files(workspace, "my-skill", SLUG, 3, skills_path);
+        let files = list_step_output_files("my-skill", SLUG, 3, skills_path);
 
         assert_eq!(files, vec!["SKILL.md"]);
         assert!(!files.contains(&"evals/".to_string()));
@@ -516,18 +479,16 @@ mod tests {
     fn test_prerun_step0_deletes_own_output() {
         // Re-running step 0 deletes gate-result.json.
         // Clarifications are DB-authoritative and have no filesystem representation.
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Step 0 workflow-level files
-        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
+        let skill_dir = resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
         // Re-running step 0 should delete it
-        clean_step_output(workspace, "my-skill", SLUG, 0, skills_path);
+        clean_step_output("my-skill", SLUG, 0, skills_path);
         assert!(!skill_dir.join("gate-result.json").exists());
     }
 
@@ -546,7 +507,7 @@ mod tests {
         assert!(output_dir.join("SKILL.md").exists());
 
         // Re-running step 1 should not touch any files
-        clean_step_output(workspace, "my-skill", SLUG, 1, skills_path);
+        clean_step_output("my-skill", SLUG, 1, skills_path);
 
         assert!(output_dir.join("SKILL.md").exists());
     }
@@ -566,18 +527,16 @@ mod tests {
         assert!(output_dir.join("SKILL.md").exists());
 
         // Re-running step 2 should not delete SKILL.md
-        clean_step_output(workspace, "my-skill", SLUG, 2, skills_path);
+        clean_step_output("my-skill", SLUG, 2, skills_path);
 
         assert!(output_dir.join("SKILL.md").exists());
     }
 
     #[test]
-    fn test_prerun_step3_deletes_skill_and_evals() {
-        // Re-running step 3 deletes SKILL.md, references/, skill zip, and evals/.
+    fn test_prerun_step3_deletes_skill_and_references() {
+        // Re-running step 3 deletes SKILL.md, references/, and skill zip.
         // Steps 0-2 are DB-authoritative with no filesystem context to preserve.
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Step 3 artifacts in canonical plugin layout
@@ -587,20 +546,13 @@ mod tests {
         std::fs::write(output_dir.join("references/data-model.md"), "ref").unwrap();
         std::fs::write(output_dir.join("my-skill.skill"), "zip").unwrap();
 
-        // Legacy eval folder content.
-        let skill_dir = resolve_skill_dir(tmp.path(), SLUG, "my-skill");
-        std::fs::create_dir_all(skill_dir.join("evals/workspace")).unwrap();
-        std::fs::write(skill_dir.join("evals/workspace/results.json"), "{}").unwrap();
-        std::fs::write(skill_dir.join("evals/eval-review.html"), "<html>").unwrap();
-
         // Re-running step 3 should delete all step 3 artifacts
-        clean_step_output(workspace, "my-skill", SLUG, 3, skills_path);
+        clean_step_output("my-skill", SLUG, 3, skills_path);
 
-        // Step 3 artifacts gone (evals/ dir removal covers eval-review.html inside it)
+        // Step 3 artifacts gone
         assert!(!output_dir.join("SKILL.md").exists());
         assert!(!output_dir.join("references").exists());
         assert!(!output_dir.join("my-skill.skill").exists());
-        assert!(!skill_dir.join("evals").exists());
     }
 
     #[test]
@@ -623,7 +575,7 @@ mod tests {
             crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap()
         );
 
-        clean_step_output(workspace, "my-skill", SLUG, 3, skills_path);
+        clean_step_output("my-skill", SLUG, 3, skills_path);
 
         assert!(
             !crate::git::skill_version_tag_exists(&skill_dir, SLUG, "my-skill", "1.0.0").unwrap()
@@ -640,7 +592,7 @@ mod tests {
         // Create workspace dir but no output files
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        let files = list_step_output_files(workspace, "my-skill", SLUG, 0, skills_path);
+        let files = list_step_output_files("my-skill", SLUG, 0, skills_path);
         assert!(files.is_empty());
     }
 }

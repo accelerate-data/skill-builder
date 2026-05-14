@@ -7,7 +7,6 @@ pub(crate) fn reconcile_skill_builder(
     conn: &rusqlite::Connection,
     name: &str,
     plugin_slug: &str,
-    _workspace_path: &str,
     skills_path: &str,
     notifications: &mut Vec<String>,
 ) -> Result<(), String> {

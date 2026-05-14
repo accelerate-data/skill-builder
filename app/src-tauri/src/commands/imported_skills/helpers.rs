@@ -34,11 +34,6 @@ pub(crate) fn generate_skill_id(skill_name: &str) -> String {
     format!("imp-{}-{}", skill_name, timestamp)
 }
 
-/// Recursively copy a directory's contents from src to dst (delegates to shared fs_utils).
-pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    crate::fs_utils::copy_dir_recursive(src, dst)
-}
-
 /// Find SKILL.md in the zip archive, either at the root or one level deep.
 /// Returns the path within the archive and the content.
 pub(crate) fn find_skill_md(

@@ -30,11 +30,11 @@ pub async fn test_model_connection(
         };
         crate::db::selected_workflow_llm(&conn, &app_settings)?
     };
-    let workspace_path = read_initialized_workspace_path(&db)?;
+    let skills_path = read_initialized_skills_path(&db)?;
 
     let run_id = uuid::Uuid::new_v4().to_string();
     let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        std::path::Path::new(&workspace_path),
+        std::path::Path::new(&skills_path),
         MODEL_CONNECTION_TEST_SURFACE,
         &run_id,
     );
@@ -61,7 +61,7 @@ pub async fn test_model_connection(
         .to_string_lossy()
         .replace('\\', "/");
     let config =
-        build_model_connection_test_config(&app_data_root, &workspace_path, &runtime_run_dir, llm);
+        build_model_connection_test_config(&app_data_root, &skills_path, &runtime_run_dir, llm);
     let run = tracked_openhands::run_tracked_throwaway_openhands_session(
         &app,
         OpenHandsThrowawayRunParams {
@@ -76,21 +76,21 @@ pub async fn test_model_connection(
     Ok(true)
 }
 
-fn read_initialized_workspace_path(db: &Db) -> Result<String, String> {
+fn read_initialized_skills_path(db: &Db) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = crate::db::read_settings(&conn)?;
-    let workspace_path = settings
+    let skills_path = settings
         .skills_path
         .clone()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "Skills path not configured".to_string())?;
-    if !std::path::Path::new(&workspace_path).is_dir() {
+    if !std::path::Path::new(&skills_path).is_dir() {
         return Err(format!(
             "Skills path is not initialized: {}. Update Settings -> Skills Path to a valid directory.",
-            workspace_path
+            skills_path
         ));
     }
-    Ok(workspace_path)
+    Ok(skills_path)
 }
 
 fn build_model_connection_test_config(

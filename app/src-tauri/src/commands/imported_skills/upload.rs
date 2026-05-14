@@ -59,7 +59,6 @@ pub fn import_skill_from_file(
     let skills_path = settings
         .skills_path
         .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
-    let workspace_path = settings.workspace_path.unwrap_or_default();
     let preferred_author = settings
         .github_user_email
         .clone()
@@ -77,7 +76,6 @@ pub fn import_skill_from_file(
         user_invocable,
         disable_model_invocation,
         &skills_path,
-        &workspace_path,
         preferred_author.as_deref(),
     )?;
     Ok(skill_id)
@@ -93,7 +91,6 @@ fn import_skill_from_file_inner(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
     skills_path: &str,
-    _workspace_path: &str,
     preferred_author: Option<&str>,
 ) -> Result<String, String> {
     validate_skill_name(name)?;
@@ -269,7 +266,6 @@ mod tests {
             None,
             None,
             skills_path.to_str().unwrap(),
-            "",
             Some("hb@acceleratedata.ai"),
         );
 
@@ -349,7 +345,6 @@ mod tests {
             None,
             None,
             skills_path.to_str().unwrap(),
-            "",
             Some("hb@acceleratedata.ai"),
         )
         .unwrap_err();
@@ -387,7 +382,6 @@ mod tests {
             None,
             None,
             skills_path.to_str().unwrap(),
-            "",
             None,
         );
         assert!(result.is_ok(), "{:?}", result);
@@ -434,7 +428,6 @@ mod tests {
             None,
             None,
             skills_path.to_str().unwrap(),
-            "",
             None,
         )
         .unwrap_err();

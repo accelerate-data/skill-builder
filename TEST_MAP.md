@@ -90,6 +90,10 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/github_auth.rs` | `commands::github_auth` | `@settings` |
 | `app/src-tauri/src/commands/imported_skills/mod.rs` | `commands::imported_skills` | `@skills` |
 | `app/src-tauri/src/commands/imported_skills/frontmatter.rs` | `commands::imported_skills::frontmatter` | `@skills` |
+| `app/src-tauri/src/commands/imported_skills/helpers.rs` | `commands::imported_skills::helpers` | `@skills` |
+| `app/src-tauri/src/commands/imported_skills/lifecycle.rs` | `commands::imported_skills::lifecycle` | `@skills` |
+| `app/src-tauri/src/commands/imported_skills/listing.rs` | `commands::imported_skills::listing` | `@skills` |
+| `app/src-tauri/src/commands/imported_skills/upload.rs` | `commands::imported_skills::upload` | `@skills` |
 | `app/src-tauri/src/commands/github_import/mod.rs` | `commands::github_import` | `@skills` |
 | `app/src-tauri/src/commands/github_import/updates.rs` | `commands::github_import` | `@skills` |
 | `app/src-tauri/src/commands/documents/mod.rs` | `commands::documents` | `@settings` |

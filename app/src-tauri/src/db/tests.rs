@@ -10,7 +10,6 @@ fn create_test_db() -> Connection {
 fn test_read_default_settings() {
     let conn = create_test_db();
     let settings = read_settings(&conn).unwrap();
-    assert!(settings.workspace_path.is_none());
     assert!(settings.skills_path.is_none());
 }
 
@@ -18,20 +17,19 @@ fn test_read_default_settings() {
 fn test_write_and_read_settings() {
     let conn = create_test_db();
     let settings = AppSettings {
-        workspace_path: Some("/home/user/skills".to_string()),
+        skills_path: Some("/home/user/skills".to_string()),
         ..AppSettings::default()
     };
     write_settings(&conn, &settings).unwrap();
 
     let loaded = read_settings(&conn).unwrap();
-    assert_eq!(loaded.workspace_path.as_deref(), Some("/home/user/skills"));
+    assert_eq!(loaded.skills_path.as_deref(), Some("/home/user/skills"));
 }
 
 #[test]
 fn test_write_and_read_settings_with_skills_path() {
     let conn = create_test_db();
     let settings = AppSettings {
-        workspace_path: Some("/workspace".to_string()),
         skills_path: Some("/home/user/my-skills".to_string()),
         ..AppSettings::default()
     };
@@ -44,21 +42,18 @@ fn test_write_and_read_settings_with_skills_path() {
 #[test]
 fn test_overwrite_settings() {
     let conn = create_test_db();
-    let v1 = AppSettings {
-        workspace_path: None,
-        ..AppSettings::default()
-    };
+    let v1 = AppSettings::default();
     write_settings(&conn, &v1).unwrap();
 
     let v2 = AppSettings {
-        workspace_path: Some("/new/path".to_string()),
+        skills_path: Some("/new/path".to_string()),
         industry: Some("tech".to_string()),
         ..AppSettings::default()
     };
     write_settings(&conn, &v2).unwrap();
 
     let loaded = read_settings(&conn).unwrap();
-    assert_eq!(loaded.workspace_path.as_deref(), Some("/new/path"));
+    assert_eq!(loaded.skills_path.as_deref(), Some("/new/path"));
     assert_eq!(loaded.industry.as_deref(), Some("tech"));
 }
 
@@ -69,7 +64,7 @@ fn test_migration_is_idempotent() {
     run_migrations(&conn).unwrap();
 
     let settings = read_settings(&conn).unwrap();
-    assert!(settings.workspace_path.is_none());
+    assert!(settings.skills_path.is_none());
 }
 
 #[test]

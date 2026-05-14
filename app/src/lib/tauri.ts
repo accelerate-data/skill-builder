@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, AnswerEvaluationOutput, DiscoveryResolutionAction, ModelSettings } from "@/lib/types";
+import type { AppSettings, SkillSummary, MarketplaceUpdateResult, SkillMetadataOverride, SkillFileMeta, AnswerEvaluationOutput, ModelSettings } from "@/lib/types";
 import type { TauriCommandInvocation, TauriCommandResult, ModelCatalogEntry, ModelFilter, ProviderCatalogRow } from "@/lib/tauri-command-types";
 
 export const invokeCommand = <Invocation extends TauriCommandInvocation>(
@@ -224,18 +224,10 @@ export const reconcileStartup = (apply = false) =>
 
 export const recordReconciliationCancel = (
   notificationCount: number,
-  discoveredCount: number,
 ) =>
   invokeCommand("record_reconciliation_cancel", {
     notificationCount,
-    discoveredCount,
   });
-
-export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
-  invokeCommand("resolve_orphan", { skillName, action });
-
-export const resolveDiscovery = (skillName: string, action: DiscoveryResolutionAction, pluginSlug?: string | null) =>
-  invokeCommand("resolve_discovery", { skillName, action, pluginSlug: pluginSlug ?? null });
 
 // --- Feedback ---
 

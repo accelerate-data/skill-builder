@@ -44,7 +44,7 @@ const BASE_OVERRIDES = {
   list_skills: [],
   check_marketplace_updates: { library: [], workspace: [], registry_names: [] },
   check_skill_customized: false,
-  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
+  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0 },
 };
 
 test.describe("Skills Library", { tag: "@skills" }, () => {

@@ -117,7 +117,6 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             id INTEGER PRIMARY KEY CHECK (id = 1),
             selected_provider_id TEXT,
             selected_model_id TEXT,
-            workspace_path TEXT,
             skills_path TEXT,
             debug_mode INTEGER NOT NULL DEFAULT 0,
             log_level TEXT NOT NULL DEFAULT 'info',

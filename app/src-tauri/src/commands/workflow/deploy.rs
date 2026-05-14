@@ -60,6 +60,7 @@ fn compute_dir_sha(roots: &[&Path]) -> Result<String, String> {
 /// Resolve the path to a bundled agent-sources subdirectory.
 /// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/{subdir}/`.
 /// In production: Tauri resource directory `agent-sources/{subdir}/`.
+#[allow(dead_code)]
 fn resolve_bundled_agent_sources_subdir(app_handle: &tauri::AppHandle, subdir: &str) -> PathBuf {
     use tauri::Manager;
 
@@ -82,6 +83,7 @@ fn resolve_bundled_agent_sources_subdir(app_handle: &tauri::AppHandle, subdir: &
     }
 }
 
+#[allow(dead_code)]
 pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     resolve_bundled_agent_sources_subdir(app_handle, "skills")
 }
@@ -149,9 +151,9 @@ fn resolve_workspace_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
 /// Remove a workspace from the session cache so the next
 /// `ensure_workspace_prompts*` call will re-deploy OpenHands agent sources.
 /// Used by `clear_workspace` after removing legacy artifacts or `.agents/`.
-pub fn invalidate_workspace_cache(workspace_path: &str) {
+pub fn invalidate_workspace_cache(workspace_key: &str) {
     let mut cache = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
-    cache.remove(workspace_path);
+    cache.remove(workspace_key);
 }
 
 /// Copy bundled workflow agent artifacts into workspace skill directories.
@@ -168,7 +170,7 @@ pub fn invalidate_workspace_cache(workspace_path: &str) {
 /// 2. Production: Tauri resource directory (bundled in the app)
 pub async fn ensure_workspace_prompts(
     app_handle: &tauri::AppHandle,
-    workspace_path: &str,
+    skills_path: &str,
 ) -> Result<(), String> {
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
@@ -179,12 +181,12 @@ pub async fn ensure_workspace_prompts(
         return Ok(()); // No sources found anywhere — skip silently
     }
 
-    let workspace = workspace_path.to_string();
+    let skills = skills_path.to_string();
     let agents = agents_dir.clone();
-    let skills = skills_dir.clone();
+    let skills_src = skills_dir.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        ensure_workspace_prompts_inner(&agents, &skills, &workspace)
+        ensure_workspace_prompts_inner(&agents, &skills_src, &skills)
     })
     .await
     .map_err(|e| format!("Prompt copy task failed: {}", e))?;
@@ -194,7 +196,7 @@ pub async fn ensure_workspace_prompts(
             "[ensure_workspace_prompts] deploy failed, clearing cache: {}",
             e
         );
-        invalidate_workspace_cache(workspace_path);
+        invalidate_workspace_cache(skills_path);
     }
 
     result
@@ -230,11 +232,11 @@ pub async fn ensure_openhands_runtime_dir(
 pub(crate) fn ensure_workspace_prompts_inner(
     agents_src: &Path,
     skills_src: &Path,
-    workspace_path: &str,
+    skills_path: &str,
 ) -> Result<(), String> {
     let current_source_sha = compute_dir_sha(&[agents_src, skills_src])?;
-    let workspace_key = workspace_path.to_string();
-    let workspace_root = Path::new(workspace_path);
+    let workspace_key = skills_path.to_string();
+    let workspace_root = Path::new(skills_path);
 
     let tier_1_changed = {
         let mut cache_lock = deploy_cache().lock().unwrap_or_else(|e| e.into_inner());
@@ -260,9 +262,10 @@ pub(crate) fn ensure_workspace_prompts_inner(
 /// (e.g. `init_workspace` called from Tauri's synchronous `setup` hook).
 /// Uses the same SHA-gated cache to skip redundant copies and to pick up
 /// source edits during development without an app restart.
+#[allow(dead_code)]
 pub fn ensure_workspace_prompts_sync(
     app_handle: &tauri::AppHandle,
-    workspace_path: &str,
+    skills_path: &str,
 ) -> Result<(), String> {
     let agents_dir = resolve_prompt_source_dirs(app_handle);
     let skills_dir = resolve_workspace_skills_dir(app_handle);
@@ -271,16 +274,16 @@ pub fn ensure_workspace_prompts_sync(
         return Ok(());
     }
 
-    ensure_workspace_prompts_inner(&agents_dir, &skills_dir, workspace_path)
+    ensure_workspace_prompts_inner(&agents_dir, &skills_dir, skills_path)
 }
 
 /// Re-deploy only the bundled workflow agents/skills under `.agents/`,
 /// preserving other workspace contents.
-pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
+pub fn redeploy_agents(app_handle: &tauri::AppHandle, skills_path: &str) -> Result<(), String> {
     let agents_dir = resolve_prompt_source_dirs(app_handle);
     let skills_dir = resolve_workspace_skills_dir(app_handle);
     if agents_dir.is_dir() || skills_dir.is_dir() {
-        copy_agent_sources_to_full_layout(&agents_dir, &skills_dir, Path::new(workspace_path))?;
+        copy_agent_sources_to_full_layout(&agents_dir, &skills_dir, Path::new(skills_path))?;
     }
     Ok(())
 }

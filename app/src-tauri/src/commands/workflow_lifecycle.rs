@@ -1,5 +1,4 @@
 use rusqlite::Connection;
-use std::path::Path;
 
 const MAX_WORKFLOW_STEP_ID: u32 = 3;
 
@@ -57,25 +56,15 @@ pub fn shutdown_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Str
     crate::db::end_all_sessions_for_pid(conn, pid)
 }
 
-pub fn validate_run_request(
-    skill_name: &str,
-    step_id: u32,
-    workspace_path: &str,
-) -> Result<(), String> {
+pub fn validate_run_request(skill_name: &str, step_id: u32) -> Result<(), String> {
     if skill_name.trim().is_empty() {
         return Err("Skill name is required".to_string());
-    }
-    if workspace_path.trim().is_empty() {
-        return Err("Workspace path is required".to_string());
     }
     if step_id > MAX_WORKFLOW_STEP_ID {
         return Err(format!(
             "Unknown step_id {}. Valid steps are 0-{}.",
             step_id, MAX_WORKFLOW_STEP_ID
         ));
-    }
-    if !Path::new(workspace_path).exists() {
-        return Err(format!("Workspace path does not exist: {}", workspace_path));
     }
     Ok(())
 }
@@ -114,15 +103,13 @@ mod tests {
 
     #[test]
     fn test_run_request_happy_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        let result = validate_run_request("my-skill", 2, &tmp.path().to_string_lossy());
+        let result = validate_run_request("my-skill", 2);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_run_request_failure_path_rejects_unknown_step() {
-        let tmp = tempfile::tempdir().unwrap();
-        let err = validate_run_request("my-skill", 99, &tmp.path().to_string_lossy()).unwrap_err();
+        let err = validate_run_request("my-skill", 99).unwrap_err();
         assert!(err.contains("Unknown step_id"));
     }
 
