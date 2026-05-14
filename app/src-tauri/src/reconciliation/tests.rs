@@ -107,7 +107,6 @@ fn test_vu_1190_startup_does_not_discover_skill_from_disk() {
         "notifications: {:?}",
         result.notifications
     );
-    assert!(result.discovered_skills.is_empty());
     assert!(
         crate::db::get_skill_master(&conn, "found-skill")
             .unwrap()
@@ -142,7 +141,6 @@ fn test_vu_1190_startup_does_not_delete_tracked_marketplace_plugin_when_skill_md
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    assert!(result.discovered_skills.is_empty());
     assert!(
         crate::db::list_plugins(&conn)
             .unwrap()
@@ -1002,7 +1000,6 @@ fn test_folder_without_skill_md_ignored() {
         skills_tmp.path().join("orphan-folder").exists(),
         "folder should be left alone"
     );
-    assert!(result.discovered_skills.is_empty());
 }
 
 #[test]
@@ -1025,7 +1022,6 @@ fn test_pass2_skips_dotfiles() {
 
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-    assert!(result.discovered_skills.is_empty());
     assert!(result.notifications.is_empty());
 }
 
@@ -1052,7 +1048,6 @@ fn test_reconcile_no_disk_dirs_adopted_without_master_row() {
 
     // No skills in master → no notifications
     assert!(result.notifications.is_empty());
-    assert!(result.discovered_skills.is_empty()); // disk-only-skill is in workspace, not skills_path
     assert!(crate::db::get_skill_master_id(&conn, "disk-only-skill")
         .unwrap()
         .is_none());
@@ -1234,7 +1229,6 @@ fn test_startup_normalization_merges_legacy_skills_default_into_default_plugin()
         .collect();
     assert_eq!(matching.len(), 1);
     assert_eq!(matching[0].plugin_slug, DEFAULT_PLUGIN_SLUG);
-    assert!(result.discovered_skills.is_empty());
 }
 
 #[test]
@@ -1486,13 +1480,8 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
     std::fs::create_dir_all(skill_md.parent().unwrap()).unwrap();
     std::fs::write(&skill_md, "---\ntitle: cross-plugin-skill\n---\n").unwrap();
 
-    // First startup: should NOT add to discovered_skills or create a duplicate DB row
+    // First startup: should not create a duplicate DB row
     let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-    assert!(
-        result.discovered_skills.is_empty(),
-        "cross-plugin skill must not appear in discovered_skills: {:?}",
-        result.discovered_skills
-    );
     assert!(
         !result
             .notifications
@@ -1517,11 +1506,6 @@ fn test_cross_plugin_skill_not_rediscovered_every_startup() {
 
     // Second startup: same result — dialog must not reappear
     let result2 = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
-    assert!(
-        result2.discovered_skills.is_empty(),
-        "cross-plugin skill must not reappear on second startup: {:?}",
-        result2.discovered_skills
-    );
 }
 
 /// VU-984: Phase 1e Pass B must not soft-delete marketplace skills stored

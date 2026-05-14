@@ -72,6 +72,7 @@ pub fn get_log_file_path(app: &tauri::AppHandle) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_log_file_stem_uses_pid() {

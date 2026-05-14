@@ -168,7 +168,6 @@ const emptyReconciliation: ReconciliationResult = {
   orphans: [],
   notifications: [],
   auto_cleaned: 0,
-  discovered_skills: [],
 };
 
 describe("AppLayout", () => {
@@ -250,7 +249,6 @@ describe("AppLayout", () => {
           orphans: [],
           notifications: ["'my-skill' was reset from step 3 to step 0"],
           auto_cleaned: 3,
-          discovered_skills: [],
         });
       }
       if (cmd === "reconcile_startup") {
@@ -258,7 +256,6 @@ describe("AppLayout", () => {
           orphans: [],
           notifications: ["'my-skill' was reset from step 3 to step 0"],
           auto_cleaned: 0,
-          discovered_skills: [],
         });
       }
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -280,7 +277,6 @@ describe("AppLayout", () => {
           orphans: [],
           notifications: ["'my-skill' was reset from step 3 to step 0"],
           auto_cleaned: 1,
-          discovered_skills: [],
         });
       }
       if (cmd === "reconcile_startup") {
@@ -288,7 +284,6 @@ describe("AppLayout", () => {
           orphans: [],
           notifications: ["'my-skill' was reset from step 3 to step 0"],
           auto_cleaned: 0,
-          discovered_skills: [],
         });
       }
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -312,7 +307,6 @@ describe("AppLayout", () => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
       if (cmd === "reconcile_startup") {
-        return Promise.resolve({ orphans: [], notifications, auto_cleaned: 0, discovered_skills: [] });
       }
       if (cmd === "list_skills") return Promise.resolve([]);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -761,7 +755,6 @@ describe("AppLayout", () => {
           orphans: [],
           notifications: ["'my-skill' was reset from step 3 to step 0"],
           auto_cleaned: 0,
-          discovered_skills: [],
         });
       }
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -1230,14 +1223,13 @@ describe("AppLayout", () => {
     });
   });
 
-  it("shows reconciliation dialog when discovered skills require user resolution", async () => {
+  it("shows reconciliation dialog when startup returns notifications", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
       reconcile_startup: {
         orphans: [],
         notifications: ["'my-skill' workflow record recreated at step 3"],
         auto_cleaned: 0,
-        discovered_skills: [{ name: "partial-skill", detected_step: 2, scenario: "7a" }],
       },
     });
 
@@ -1248,7 +1240,6 @@ describe("AppLayout", () => {
     });
 
     expect(screen.getByText("'my-skill' workflow record recreated at step 3")).toBeInTheDocument();
-    expect(screen.getByText("partial-skill")).toBeInTheDocument();
     expect(screen.queryByTestId("outlet")).not.toBeInTheDocument();
   });
 
@@ -1263,7 +1254,6 @@ describe("AppLayout", () => {
           orphans: [],
           notifications: ["'my-skill' was reset from step 3 to step 0"],
           auto_cleaned: 0,
-          discovered_skills: [],
         });
       }
       if (cmd === "list_skills") return Promise.resolve([]);
@@ -1290,7 +1280,6 @@ describe("AppLayout", () => {
           orphans: [],
           notifications: ["'my-skill' was reset from step 3 to step 0"],
           auto_cleaned: 0,
-          discovered_skills: [],
         });
       }
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -1319,7 +1308,6 @@ describe("AppLayout", () => {
         ],
         notifications: [],
         auto_cleaned: 0,
-        discovered_skills: [],
       },
     });
 
