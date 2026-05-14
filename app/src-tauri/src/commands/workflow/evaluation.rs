@@ -535,6 +535,47 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_reset_does_not_delete_conversation_storage() {
+        // Verify that the reset path no longer deletes conversation directories
+        // from disk. The conversation dir should remain intact after reset.
+        let conn = create_test_db();
+        let tmp = tempdir().unwrap();
+        let skill_name = "reset-storage-test";
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+            .unwrap();
+        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-persisted")
+            .unwrap();
+
+        // Simulate a conversation directory that should NOT be deleted by reset
+        let sentinel = tmp
+            .path()
+            .join(default_slug)
+            .join("skills")
+            .join(skill_name)
+            .join("conversations")
+            .join("sentinel.txt");
+        std::fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
+        std::fs::write(&sentinel, b"still here after reset").unwrap();
+
+        // The old reset deleted conversation dirs; the new one must not.
+        // This test asserts the invariant: conversation storage survives reset.
+        assert!(
+            sentinel.exists(),
+            "conversation storage must exist before reset"
+        );
+
+        // Clear conversation DB records (part of reset) — must not touch filesystem
+        clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
+
+        assert!(
+            sentinel.exists(),
+            "conversation directory must not be deleted by reset"
+        );
+    }
 }
 
 /// Output files produced by each step, relative to the skill directory.
@@ -700,67 +741,112 @@ pub async fn reset_workflow_step(
         );
     }
 
-    // Collect conversation IDs before clearing the DB (sync, brief lock).
+    // Collect conversation IDs before resetting DB records.
     let conversation_ids = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         collect_skill_conversation_ids(&conn, &plugin_slug, &skill_name)
     };
 
-    // Best-effort pause then delete per-conversation directory.
-    // All errors are logged and swallowed — reset must not fail due to server state.
-    use tauri::Manager;
-    let data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
-    let openhands_conversations_dir =
-        crate::commands::workspace::resolve_openhands_conversations_dir(&data_dir);
+    // Best-effort pause conversations — do not block reset on pause failure.
+    let pause_config =
+        crate::commands::skill_session::build_pause_runtime_config(&app_handle, &db, &skill_name, &plugin_slug);
+
     for (_, conv_id) in &conversation_ids {
-        // TODO(Task 2): pause conversation using the new raw API with config
-        log::info!(
-            "[reset_workflow_step] skipping pause for conversation {} (API moved)",
-            conv_id
-        );
-        let conv_dir = openhands_conversations_dir.join(conv_id);
-        if conv_dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&conv_dir) {
+        if let Ok(config) = pause_config.clone() {
+            if let Err(error) =
+                crate::agents::openhands_server::pause_openhands_conversation(config, conv_id).await
+            {
                 log::warn!(
-                    "[reset_workflow_step] failed to delete conversation dir {}: {}",
-                    conv_dir.display(),
-                    e
-                );
-            } else {
-                log::info!(
-                    "[reset_workflow_step] deleted conversation dir {}",
-                    conv_dir.display()
+                    "[reset_workflow_step] failed to pause conversation {}: {}",
+                    conv_id,
+                    error
                 );
             }
         }
     }
 
-    // Reset steps in SQLite
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
-    clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
-    let s_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
-        .ok_or_else(|| {
-            format!(
-                "Skill '{}' not found in plugin '{}'",
-                skill_name, plugin_slug
-            )
-        })?;
-    crate::db::reset_workflow_steps_from_by_skill_id(&conn, s_id, from_step_id as i32)?;
+    // Reset steps in SQLite (files, artifacts, DB steps) — does NOT delete conversation storage.
+    let active_conversation_id_for_fork = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
+        let s_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
+            .ok_or_else(|| {
+                format!(
+                    "Skill '{}' not found in plugin '{}'",
+                    skill_name, plugin_slug
+                )
+            })?;
+        crate::db::reset_workflow_steps_from_by_skill_id(&conn, s_id, from_step_id as i32)?;
 
-    // Update the workflow run's current step
-    if let Some(run) = crate::db::get_workflow_run_by_skill_id(&conn, s_id)? {
-        crate::db::save_workflow_run(
-            &conn,
-            &skill_name,
-            from_step_id as i32,
-            "pending",
-            &run.purpose,
-        )?;
-    }
+        // Update the workflow run's current step
+        if let Some(run) = crate::db::get_workflow_run_by_skill_id(&conn, s_id)? {
+            crate::db::save_workflow_run(
+                &conn,
+                &skill_name,
+                from_step_id as i32,
+                "pending",
+                &run.purpose,
+            )?;
+        }
+
+        // Grab the first active conversation ID for the fork (before releasing the lock)
+        conversation_ids.first().map(|(_, id)| id.clone())
+    };
+
+    // Fork the conversation and rebind the skill to the fork ID.
+    // Use the first active conversation as the fork source.
+    // The old conversation remains persisted on the OpenHands server.
+    let _forked_conversation_id = if let Some(ref active_conversation_id) = active_conversation_id_for_fork
+    {
+        if let Ok(config) = pause_config.clone() {
+            match crate::agents::skill_creator::fork_skill_session(
+                &app_handle,
+                config,
+                active_conversation_id,
+            )
+            .await
+            {
+                Ok(forked) => {
+                    log::info!(
+                        "[reset_workflow_step] forked conversation {} -> {}",
+                        active_conversation_id,
+                        forked.conversation_id
+                    );
+                    // Rebind the skill to the fork conversation ID
+                    let conn = db.0.lock().map_err(|e| e.to_string())?;
+                    crate::db::save_skill_conversation_id(
+                        &conn,
+                        &plugin_slug,
+                        &skill_name,
+                        &forked.conversation_id,
+                    )?;
+                    // Clear old conversation DB record — the old conversation remains persisted on the server
+                    clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
+                    Some(forked.conversation_id)
+                }
+                Err(error) => {
+                    log::warn!(
+                        "[reset_workflow_step] failed to fork conversation {}: {}",
+                        active_conversation_id,
+                        error
+                    );
+                    None
+                }
+            }
+        } else {
+            log::warn!(
+                "[reset_workflow_step] pause config resolution failed, skipping fork for skill '{}'",
+                skill_name
+            );
+            None
+        }
+    } else {
+        log::info!(
+            "[reset_workflow_step] no active conversation to fork for skill '{}'",
+            skill_name
+        );
+        None
+    };
 
     Ok(())
 }

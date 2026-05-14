@@ -59,6 +59,17 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    pub fn build_fork_request(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Request, reqwest::Error> {
+        self.request(
+            Method::POST,
+            &format!("api/conversations/{conversation_id}/fork"),
+        )
+        .build()
+    }
+
     pub fn build_pause_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
         self.request(
             Method::POST,
@@ -151,6 +162,16 @@ impl OpenHandsServerClient {
             return Ok(None);
         }
         Ok(Some(Self::json_success(response).await?))
+    }
+
+    pub async fn fork_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<serde_json::Value, String> {
+        let request = self
+            .build_fork_request(conversation_id)
+            .map_err(Self::request_error)?;
+        self.execute_json(request).await
     }
 
     pub async fn pause_conversation(&self, conversation_id: &str) -> Result<(), String> {
@@ -519,6 +540,10 @@ mod tests {
         assert_eq!(
             client.build_pause_request("abc").unwrap().url().path(),
             "/api/conversations/abc/pause"
+        );
+        assert_eq!(
+            client.build_fork_request("abc").unwrap().url().path(),
+            "/api/conversations/abc/fork"
         );
         assert_eq!(
             client

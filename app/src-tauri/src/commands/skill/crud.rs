@@ -499,12 +499,14 @@ fn post_create_skill_filesystem_inner(
 
 #[tauri::command]
 pub async fn delete_skill(
+    app: tauri::AppHandle,
+    workspace_path: String,
     name: String,
     db: tauri::State<'_, Db>,
     workflow_runs: tauri::State<'_, WorkflowStepRunManager>,
     refine_sessions: tauri::State<'_, SkillSessionManager>,
 ) -> Result<(), String> {
-    log::info!("[delete_skill] name={}", name);
+    log::info!("[delete_skill] name={} workspace_path={}", name, workspace_path);
     let (skills_path, plugin_slug) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
@@ -545,8 +547,7 @@ pub async fn delete_skill(
         )?
     };
 
-    // Best-effort local-run cleanup for tracked agents. HTTP-level conversation
-    // pause requires app handle for config resolution (added in Task 4).
+    // Collect conversation IDs before any cleanup
     let conversation_ids: Vec<String> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let mut ids = Vec::new();
@@ -565,6 +566,22 @@ pub async fn delete_skill(
         }
         ids
     };
+
+    // Best-effort pause conversations before deletion
+    let pause_config =
+        crate::commands::skill_session::build_pause_runtime_config(&app, &db, &name, &plugin_slug);
+
+    for conv_id in &conversation_ids {
+        if let Ok(config) = pause_config.clone() {
+            if let Err(error) =
+                crate::agents::openhands_server::pause_openhands_conversation(config, conv_id).await
+            {
+                log::warn!("[delete_skill] failed to pause conversation {}: {}", conv_id, error);
+            }
+        }
+    }
+
+    // Best-effort local-run cleanup for tracked agents
     for conv_id in &conversation_ids {
         crate::agents::openhands_server::close_local_openhands_run(conv_id);
         log::info!(
