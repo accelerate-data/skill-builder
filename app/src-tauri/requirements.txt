@@ -4,4 +4,4 @@
 #   OPENHANDS_TOOLS_PACKAGE
 # This file exists solely for Dependabot pip tracking.
 openhands-agent-server==1.21.0
-openhands-tools==1.21.0
+openhands-tools==1.22.0
