@@ -56,7 +56,7 @@ impl CloseGuardState {
 }
 
 async fn shutdown_openhands_agent_server_for_exit() {
-    if let Err(e) = crate::agents::openhands_server::process::shutdown_agent_server().await {
+    if let Err(e) = crate::agents::openhands_server::shutdown_openhands_server().await {
         log::warn!("[exit] OpenHands Agent Server shutdown failed: {e}");
     }
 }

@@ -828,6 +828,10 @@ pub async fn ensure_openhands_server(config: &OpenHandsRuntimeConfig) -> Result<
         .map(|_| ())
 }
 
+pub async fn shutdown_openhands_server() -> Result<(), String> {
+    crate::agents::openhands_server::process::shutdown_agent_server().await
+}
+
 pub async fn start_openhands_session(
     app: &tauri::AppHandle,
     config: OpenHandsRuntimeConfig,
