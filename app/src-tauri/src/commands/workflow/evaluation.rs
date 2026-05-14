@@ -716,7 +716,11 @@ pub async fn reset_workflow_step(
     let openhands_conversations_dir =
         crate::commands::workspace::resolve_openhands_conversations_dir(&data_dir);
     for (_, conv_id) in &conversation_ids {
-        crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
+        // TODO(Task 2): pause conversation using the new raw API with config
+        log::info!(
+            "[reset_workflow_step] skipping pause for conversation {} (API moved)",
+            conv_id
+        );
         let conv_dir = openhands_conversations_dir.join(conv_id);
         if conv_dir.exists() {
             if let Err(e) = std::fs::remove_dir_all(&conv_dir) {

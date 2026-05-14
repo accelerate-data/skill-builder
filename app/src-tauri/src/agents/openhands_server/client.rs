@@ -67,6 +67,19 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    pub fn build_ask_agent_request(
+        &self,
+        conversation_id: &str,
+        question: &str,
+    ) -> Result<Request, reqwest::Error> {
+        self.request(
+            Method::POST,
+            &format!("api/conversations/{conversation_id}/ask_agent"),
+        )
+        .json(&serde_json::json!({ "question": question }))
+        .build()
+    }
+
     pub fn build_agent_final_response_request(
         &self,
         conversation_id: &str,
@@ -170,6 +183,22 @@ impl OpenHandsServerClient {
             .build_agent_final_response_request(conversation_id)
             .map_err(Self::request_error)?;
         self.execute_json(request).await
+    }
+
+    pub async fn ask_agent(
+        &self,
+        conversation_id: &str,
+        question: &str,
+    ) -> Result<String, String> {
+        let request = self
+            .build_ask_agent_request(conversation_id, question)
+            .map_err(Self::request_error)?;
+        let response = self.execute_json(request).await?;
+        response
+            .get("response")
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| "OpenHands ask_agent returned no response field".to_string())
     }
 
     /// Fetch every persisted event for the conversation in chronological order.

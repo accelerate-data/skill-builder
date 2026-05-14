@@ -948,43 +948,111 @@ pub async fn pause_openhands_conversation(
     Ok(())
 }
 
-/// Best-effort pause of a conversation using the cached server handle.
-/// Does NOT start a new server. If no server is cached, or the pause call
-/// fails, logs and returns — the caller proceeds with cleanup regardless.
-pub async fn pause_conversation_if_server_running(conversation_id: &str) {
-    let Some(handle) =
-        crate::agents::openhands_server::process::try_get_cached_server_handle().await
-    else {
-        log::debug!(
-            "[openhands-agent-server] no cached server; skipping pause for conversation {}",
-            conversation_id
-        );
-        return;
-    };
-    let url = match handle.base_url().parse::<reqwest::Url>() {
-        Ok(u) => u,
-        Err(e) => {
-            log::warn!(
-                "[openhands-agent-server] invalid server URL for pause of {}: {}",
-                conversation_id,
-                e
+pub async fn send_message_to_openhands_conversation(
+    config: OpenHandsRuntimeConfig,
+    conversation_id: &str,
+    prompt: &str,
+) -> Result<(), String> {
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
+    let client = OpenHandsServerClient::new(
+        server.base_url().parse::<reqwest::Url>().map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "parse OpenHands Agent Server base URL",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?,
+        Some(server.session_api_key),
+    );
+
+    send_user_message(&client, conversation_id, prompt).await
+}
+
+pub async fn run_openhands_conversation(
+    app: &tauri::AppHandle,
+    agent_id: &str,
+    config: OpenHandsRuntimeConfig,
+    conversation_id: String,
+) -> Result<String, String> {
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
+    let client = OpenHandsServerClient::new(
+        server
+            .base_url()
+            .parse::<reqwest::Url>()
+            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
+        Some(server.session_api_key.clone()),
+    );
+
+    let config_event = redact_openhands_config_for_log(&config, server.port);
+    super::events::handle_runtime_message(app, agent_id, &config_event.to_string());
+
+    let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
+    let websocket_url = server.websocket_url(&conversation_id);
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    register_cancel(agent_id, cancel_tx)?;
+
+    let app_for_task = app.clone();
+    let agent_for_task = agent_id.to_string();
+    let conversation_id_clone = conversation_id.clone();
+    let session_api_key = server.session_api_key.clone();
+    let task_handle = tokio::spawn(async move {
+        let task = OpenHandsConversationTask {
+            app: app_for_task.clone(),
+            agent_id: agent_for_task.clone(),
+            client,
+            conversation_id: conversation_id_clone,
+            prompt: request.prompt.clone(),
+            prompt_delivery: PromptDelivery::ViaSendEvent,
+            websocket_url,
+            session_api_key,
+            summary_context,
+            stderr_tail: server.stderr_tail.clone(),
+        };
+        let result = run_conversation_task(task, cancel_rx).await;
+        unregister_cancel(&agent_for_task);
+        unregister_task_handle(&agent_for_task);
+        if let Err(error) = result {
+            super::events::handle_runtime_exit_with_detail(
+                &app_for_task,
+                &agent_for_task,
+                false,
+                Some(error),
             );
-            return;
         }
-    };
-    let client = OpenHandsServerClient::new(url, Some(handle.session_api_key));
-    if let Err(e) = client.pause_conversation(conversation_id).await {
-        log::warn!(
-            "[openhands-agent-server] best-effort pause of conversation {} failed (non-fatal): {}",
-            conversation_id,
-            e
-        );
-    } else {
-        log::info!(
-            "[openhands-agent-server] paused conversation {} before reset",
-            conversation_id
-        );
-    }
+    });
+    register_task_handle(agent_id, &task_handle);
+
+    Ok(conversation_id)
+}
+
+pub async fn ask_openhands_agent(
+    config: OpenHandsRuntimeConfig,
+    conversation_id: &str,
+    question: &str,
+) -> Result<String, String> {
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
+    let client = OpenHandsServerClient::new(
+        server.base_url().parse::<reqwest::Url>().map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "parse OpenHands Agent Server base URL",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?,
+        Some(server.session_api_key),
+    );
+
+    client.ask_agent(conversation_id, question).await
 }
 
 pub(crate) fn has_registered_local_run(agent_id: &str) -> bool {

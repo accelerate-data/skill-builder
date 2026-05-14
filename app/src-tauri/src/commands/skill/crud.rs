@@ -567,9 +567,9 @@ pub async fn delete_skill(
         ids
     };
     for conv_id in &conversation_ids {
-        crate::agents::openhands_server::pause_conversation_if_server_running(conv_id).await;
+        // TODO(Task 2): pause conversation using the new raw API with config
         log::info!(
-            "[delete_skill] paused conversation {} for skill={}",
+            "[delete_skill] skipping pause for conversation {} (API moved) for skill={}",
             conv_id,
             name
         );
