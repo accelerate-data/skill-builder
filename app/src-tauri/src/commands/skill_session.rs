@@ -1,13 +1,14 @@
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Mutex;
-
-use serde::Deserialize;
-use tauri::Manager;
-
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
+};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::types::SkillSessionInfo;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Mutex;
+use tauri::Manager;
 
 pub fn build_skill_session_config(
     skill_name: &str,
@@ -17,22 +18,16 @@ pub fn build_skill_session_config(
     skills_root: &str,
     llm: crate::types::WorkflowLlmConfig,
 ) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
-    crate::agents::skill_creator::build_skill_creator_config(
-        crate::agents::skill_creator::SkillCreatorConfigParams {
-            app_data_root,
-            skill_name,
-            prompt,
-            skills_root,
-            plugin_slug,
-            llm,
-            task_kind: "refine",
-            run_source: "refine",
-            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-            max_turns: 500,
-            step_id: -10,
-            output_format: None,
-        },
-    )
+    build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.to_string(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: prompt.to_string(),
+        llm,
+        intent: SkillCreatorIntent::Refine,
+        skill_dir_override: None,
+    })
 }
 
 pub(crate) fn build_pause_runtime_config(

@@ -4,8 +4,10 @@ use std::path::Path;
 
 use crate::agents::runtime_config::{
     build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig,
+    OpenHandsRuntimeMode,
 };
-use crate::skill_paths::resolve_skill_dir;
+use crate::generated::schemas;
+use crate::skill_paths::{resolve_skill_dir, throwaway_runtime_dir};
 use crate::types::WorkflowLlmConfig;
 
 pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -13,49 +15,309 @@ pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
     "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
 ));
 
-pub struct SkillCreatorConfigParams<'a> {
-    pub app_data_root: &'a str,
-    pub skill_name: &'a str,
-    pub prompt: &'a str,
-    pub skills_root: &'a str,
-    pub plugin_slug: &'a str,
-    pub llm: WorkflowLlmConfig,
-    pub task_kind: &'a str,
-    pub run_source: &'a str,
-    pub allowed_tools: Vec<String>,
-    pub max_turns: u32,
-    pub step_id: i32,
-    pub output_format: Option<serde_json::Value>,
+// ─── WorkflowStepKind ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy)]
+pub enum WorkflowStepKind {
+    Research,
+    DetailedResearch,
+    ConfirmDecisions,
+    GenerateSkill,
 }
 
-pub fn build_skill_creator_config(params: SkillCreatorConfigParams<'_>) -> OpenHandsRuntimeConfig {
-    let skill_dir = resolve_skill_dir(
-        Path::new(params.skills_root),
-        params.plugin_slug,
-        params.skill_name,
-    )
-    .to_string_lossy()
-    .replace('\\', "/");
+// ─── SkillCreatorIntent ──────────────────────────────────────────────────────
 
-    build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
-        prompt: params.prompt.to_string(),
-        llm: params.llm,
-        app_data_root: params.app_data_root.to_string(),
-        skills_root: params.skills_root.replace('\\', "/"),
-        skill_dir,
-        mode: None,
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some(params.task_kind.to_string()),
-        user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-        allowed_tools: params.allowed_tools,
-        max_turns: params.max_turns,
-        output_format: params.output_format,
-        skill_name: Some(params.skill_name.to_string()),
-        step_id: Some(params.step_id),
-        run_source: Some(params.run_source.to_string()),
-        plugin_slug: params.plugin_slug.to_string(),
+#[derive(Debug, Clone)]
+pub enum SkillCreatorIntent {
+    Refine,
+    WorkflowStep { step: WorkflowStepKind },
+    AnswerEvaluator,
+    Eval,
+    ScopeReview,
+    ModelValidation,
+}
+
+// ─── SkillCreatorRuntimeContext ──────────────────────────────────────────────
+
+pub struct SkillCreatorRuntimeContext {
+    pub app_data_root: String,
+    pub skills_root: String,
+    pub skill_name: String,
+    pub plugin_slug: String,
+    pub prompt: String,
+    pub llm: WorkflowLlmConfig,
+    pub intent: SkillCreatorIntent,
+    /// Override the resolved skill_dir. Used by throwaway surfaces (scope review,
+    /// model validation, eval workbench) that need a custom runtime directory.
+    pub skill_dir_override: Option<String>,
+}
+
+// ─── Intent-derived policy helpers ───────────────────────────────────────────
+
+fn intent_task_kind(intent: &SkillCreatorIntent) -> &'static str {
+    match intent {
+        SkillCreatorIntent::Refine => "refine",
+        SkillCreatorIntent::WorkflowStep { step } => match step {
+            WorkflowStepKind::Research => "workflow.research",
+            WorkflowStepKind::DetailedResearch => "workflow.detailed_research",
+            WorkflowStepKind::ConfirmDecisions => "workflow.confirm_decisions",
+            WorkflowStepKind::GenerateSkill => "workflow.skill_generation",
+        },
+        SkillCreatorIntent::AnswerEvaluator => "workflow.answer_evaluator",
+        SkillCreatorIntent::Eval => "scenario-suggest",
+        SkillCreatorIntent::ScopeReview => "scope_review",
+        SkillCreatorIntent::ModelValidation => "settings.model_connection_test",
+    }
+}
+
+fn intent_run_source(intent: &SkillCreatorIntent) -> Option<&'static str> {
+    match intent {
+        SkillCreatorIntent::Refine => Some("refine"),
+        SkillCreatorIntent::WorkflowStep { .. } => Some("workflow"),
+        SkillCreatorIntent::AnswerEvaluator => Some("gate-eval"),
+        SkillCreatorIntent::Eval => Some("scenario-suggest"),
+        SkillCreatorIntent::ScopeReview => None,
+        SkillCreatorIntent::ModelValidation => Some("test"),
+    }
+}
+
+fn intent_allowed_tools(intent: &SkillCreatorIntent) -> Vec<String> {
+    match intent {
+        SkillCreatorIntent::Refine => {
+            vec!["file_editor".to_string(), "terminal".to_string()]
+        }
+        SkillCreatorIntent::WorkflowStep { step } => match step {
+            WorkflowStepKind::Research | WorkflowStepKind::DetailedResearch => {
+                ["file_editor", "terminal", "browser_tool_set"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            }
+            WorkflowStepKind::ConfirmDecisions => {
+                vec!["file_editor".to_string()]
+            }
+            WorkflowStepKind::GenerateSkill => {
+                vec!["file_editor".to_string(), "terminal".to_string()]
+            }
+        },
+        SkillCreatorIntent::AnswerEvaluator => {
+            vec!["file_editor".to_string()]
+        }
+        SkillCreatorIntent::Eval => {
+            vec!["file_editor".to_string(), "terminal".to_string()]
+        }
+        SkillCreatorIntent::ScopeReview => {
+            vec!["file_editor".to_string()]
+        }
+        SkillCreatorIntent::ModelValidation => {
+            vec![]
+        }
+    }
+}
+
+fn intent_max_turns(intent: &SkillCreatorIntent) -> u32 {
+    match intent {
+        SkillCreatorIntent::Refine => 500,
+        SkillCreatorIntent::WorkflowStep { step } => match step {
+            WorkflowStepKind::Research => 50,
+            WorkflowStepKind::DetailedResearch => 50,
+            WorkflowStepKind::ConfirmDecisions => 100,
+            WorkflowStepKind::GenerateSkill => 500,
+        },
+        SkillCreatorIntent::AnswerEvaluator => 20,
+        SkillCreatorIntent::Eval => 10,
+        SkillCreatorIntent::ScopeReview => 4,
+        SkillCreatorIntent::ModelValidation => 1,
+    }
+}
+
+fn intent_step_id(intent: &SkillCreatorIntent) -> i32 {
+    match intent {
+        SkillCreatorIntent::Refine => -10,
+        SkillCreatorIntent::WorkflowStep { step } => match step {
+            WorkflowStepKind::Research => 0,
+            WorkflowStepKind::DetailedResearch => 1,
+            WorkflowStepKind::ConfirmDecisions => 2,
+            WorkflowStepKind::GenerateSkill => 3,
+        },
+        SkillCreatorIntent::AnswerEvaluator => -1,
+        SkillCreatorIntent::Eval => -11,
+        SkillCreatorIntent::ScopeReview => -30,
+        SkillCreatorIntent::ModelValidation => -40,
+    }
+}
+
+fn intent_output_format(intent: &SkillCreatorIntent) -> Option<serde_json::Value> {
+    match intent {
+        SkillCreatorIntent::Refine => None,
+        SkillCreatorIntent::WorkflowStep { step } => match step {
+            WorkflowStepKind::Research => Some(wrap_schema(schemas::RESEARCH_STEP_INLINE_SCHEMA)),
+            WorkflowStepKind::DetailedResearch => {
+                Some(wrap_schema(schemas::DETAILED_RESEARCH_INLINE_SCHEMA))
+            }
+            WorkflowStepKind::ConfirmDecisions => {
+                Some(wrap_schema(schemas::DECISIONS_INLINE_SCHEMA))
+            }
+            WorkflowStepKind::GenerateSkill => Some(wrap_schema(schemas::GENERATE_SKILL_SCHEMA)),
+        },
+        SkillCreatorIntent::AnswerEvaluator => Some(answer_evaluator_output_format()),
+        SkillCreatorIntent::Eval => Some(suggested_scenario_output_format()),
+        SkillCreatorIntent::ScopeReview => Some(scope_review_output_format()),
+        SkillCreatorIntent::ModelValidation => None,
+    }
+}
+
+fn intent_mode(intent: &SkillCreatorIntent) -> Option<OpenHandsRuntimeMode> {
+    match intent {
+        SkillCreatorIntent::Refine => None,
+        SkillCreatorIntent::WorkflowStep { .. } => None,
+        SkillCreatorIntent::AnswerEvaluator => None,
+        SkillCreatorIntent::Eval => Some(OpenHandsRuntimeMode::Throwaway),
+        SkillCreatorIntent::ScopeReview => Some(OpenHandsRuntimeMode::Throwaway),
+        SkillCreatorIntent::ModelValidation => Some(OpenHandsRuntimeMode::Throwaway),
+    }
+}
+
+fn intent_user_message_suffix(intent: &SkillCreatorIntent) -> Option<String> {
+    match intent {
+        SkillCreatorIntent::Refine
+        | SkillCreatorIntent::WorkflowStep { .. }
+        | SkillCreatorIntent::AnswerEvaluator => {
+            Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string())
+        }
+        SkillCreatorIntent::ScopeReview => Some(
+            "Follow the current user message exactly. Do not infer a different task than the one stated in the message.".to_string(),
+        ),
+        _ => None,
+    }
+}
+
+fn wrap_schema(schema_str: &str) -> serde_json::Value {
+    let schema: serde_json::Value =
+        serde_json::from_str(schema_str).expect("generated schema must be valid JSON");
+    serde_json::json!({
+        "type": "json_schema",
+        "schema": schema
     })
 }
+
+fn answer_evaluator_output_format() -> serde_json::Value {
+    let schema: serde_json::Value =
+        serde_json::from_str(crate::generated::schemas::ANSWER_EVALUATION_SCHEMA)
+            .expect("generated ANSWER_EVALUATION_SCHEMA must be valid JSON");
+    serde_json::json!({
+        "type": "json_schema",
+        "schema": schema
+    })
+}
+
+fn suggested_scenario_output_format() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "name": { "type": "string" },
+            "prompt": { "type": "string" },
+            "expectations": {
+                "type": "array",
+                "items": { "type": "string" }
+            }
+        },
+        "required": ["name", "prompt", "expectations"]
+    })
+}
+
+fn scope_review_output_format() -> serde_json::Value {
+    serde_json::json!({
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "required": ["status", "reason", "suggested_skills"],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "focused",
+                        "too-broad",
+                        "name-needs-improvement",
+                        "description-needs-improvement",
+                        "both-need-improvement"
+                    ]
+                },
+                "reason": { "type": "string" },
+                "suggested_skills": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "description"],
+                        "properties": {
+                            "name": { "type": "string" },
+                            "description": { "type": "string" }
+                        },
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    })
+}
+
+// ─── Canonical builder ───────────────────────────────────────────────────────
+
+pub fn build_skill_creator_config(
+    context: SkillCreatorRuntimeContext,
+) -> OpenHandsRuntimeConfig {
+    let skill_dir = context.skill_dir_override.unwrap_or_else(|| {
+        resolve_skill_dir(
+            Path::new(&context.skills_root),
+            &context.plugin_slug,
+            &context.skill_name,
+        )
+        .to_string_lossy()
+        .replace('\\', "/")
+    });
+
+    build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+        prompt: context.prompt,
+        llm: context.llm,
+        app_data_root: context.app_data_root,
+        skills_root: context.skills_root.replace('\\', "/"),
+        skill_dir,
+        mode: intent_mode(&context.intent),
+        agent_name: "skill-creator".to_string(),
+        task_kind: Some(intent_task_kind(&context.intent).to_string()),
+        user_message_suffix: intent_user_message_suffix(&context.intent),
+        allowed_tools: intent_allowed_tools(&context.intent),
+        max_turns: intent_max_turns(&context.intent),
+        output_format: intent_output_format(&context.intent),
+        skill_name: Some(context.skill_name),
+        step_id: Some(intent_step_id(&context.intent)),
+        run_source: intent_run_source(&context.intent).map(|s| s.to_string()),
+        plugin_slug: context.plugin_slug,
+    })
+}
+
+// ─── Throwaway directory helpers ─────────────────────────────────────────────
+
+/// Build a throwaway runtime directory for skill-related surfaces (eval workbench).
+/// Resolves under `{skills_root}/.openhands/throwaway/{surface}/{run_id}`.
+pub fn throwaway_skill_dir(skills_root: &str, surface: &str, run_id: &str) -> String {
+    throwaway_runtime_dir(Path::new(skills_root), surface, run_id)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+/// Build a throwaway runtime directory for non-skill-related surfaces (model validation).
+/// Resolves under `/tmp/skill-builder/throwaway/{surface}/{run_id}`.
+pub fn throwaway_non_skill_dir(surface: &str, run_id: &str) -> String {
+    Path::new("/tmp/skill-builder/throwaway")
+        .join(surface)
+        .join(run_id)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+// ─── Session helper ──────────────────────────────────────────────────────────
 
 pub async fn ensure_skill_session(
     app: &tauri::AppHandle,
@@ -67,9 +329,12 @@ pub async fn ensure_skill_session(
         .await
 }
 
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     fn test_llm_config() -> WorkflowLlmConfig {
         WorkflowLlmConfig {
@@ -90,20 +355,16 @@ mod tests {
     }
 
     #[test]
-    fn test_build_skill_creator_config_sets_correct_fields() {
-        let config = build_skill_creator_config(SkillCreatorConfigParams {
-            app_data_root: "/tmp/app-data",
-            skill_name: "test-skill",
-            prompt: "do something",
-            skills_root: "/tmp/skills",
-            plugin_slug: "default",
+    fn test_build_skill_creator_config_refine_intent() {
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "test-skill".to_string(),
+            plugin_slug: "default".to_string(),
+            prompt: "do something".to_string(),
             llm: test_llm_config(),
-            task_kind: "refine",
-            run_source: "refine",
-            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-            max_turns: 500,
-            step_id: -10,
-            output_format: None,
+            intent: SkillCreatorIntent::Refine,
+            skill_dir_override: None,
         });
 
         assert_eq!(config.agent_name, Some("skill-creator".to_string()));
@@ -124,42 +385,64 @@ mod tests {
     }
 
     #[test]
-    fn test_build_skill_creator_config_workflow_step() {
-        let config = build_skill_creator_config(SkillCreatorConfigParams {
-            app_data_root: "/tmp/app-data",
-            skill_name: "my-skill",
-            prompt: "research",
-            skills_root: "/tmp/skills",
-            plugin_slug: "plugins",
+    fn test_build_skill_creator_config_workflow_step_research() {
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: "plugins".to_string(),
+            prompt: "research".to_string(),
             llm: test_llm_config(),
-            task_kind: "workflow.research",
-            run_source: "workflow",
-            allowed_tools: vec!["terminal".to_string()],
-            max_turns: 50,
-            step_id: 0,
-            output_format: None,
+            intent: SkillCreatorIntent::WorkflowStep {
+                step: WorkflowStepKind::Research,
+            },
+            skill_dir_override: None,
         });
 
         assert_eq!(config.task_kind, Some("workflow.research".to_string()));
         assert_eq!(config.step_id, Some(0));
         assert_eq!(config.run_source, Some("workflow".to_string()));
+        assert_eq!(config.max_turns, Some(50));
+    }
+
+    #[test]
+    fn test_build_skill_creator_config_workflow_step_generate_skill() {
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: "plugins".to_string(),
+            prompt: "generate".to_string(),
+            llm: test_llm_config(),
+            intent: SkillCreatorIntent::WorkflowStep {
+                step: WorkflowStepKind::GenerateSkill,
+            },
+            skill_dir_override: None,
+        });
+
+        assert_eq!(
+            config.task_kind,
+            Some("workflow.skill_generation".to_string())
+        );
+        assert_eq!(config.step_id, Some(3));
+        assert_eq!(config.max_turns, Some(500));
+        assert_eq!(
+            config.allowed_tools,
+            Some(vec!["file_editor".to_string(), "terminal".to_string()])
+        );
     }
 
     #[test]
     fn test_build_skill_creator_config_answer_evaluator() {
-        let config = build_skill_creator_config(SkillCreatorConfigParams {
-            app_data_root: "/tmp/app-data",
-            skill_name: "my-skill",
-            prompt: "evaluate",
-            skills_root: "/tmp/skills",
-            plugin_slug: "default",
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: "default".to_string(),
+            prompt: "evaluate".to_string(),
             llm: test_llm_config(),
-            task_kind: "workflow.answer_evaluator",
-            run_source: "gate-eval",
-            allowed_tools: vec!["file_editor".to_string()],
-            max_turns: 20,
-            step_id: -1,
-            output_format: Some(serde_json::json!({})),
+            intent: SkillCreatorIntent::AnswerEvaluator,
+            skill_dir_override: None,
         });
 
         assert_eq!(
@@ -169,10 +452,99 @@ mod tests {
         assert_eq!(config.step_id, Some(-1));
         assert_eq!(config.run_source, Some("gate-eval".to_string()));
         assert!(config.output_format.is_some());
+        assert_eq!(config.max_turns, Some(20));
+    }
+
+    #[test]
+    fn test_build_skill_creator_config_scope_review() {
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+            prompt: "review scope".to_string(),
+            llm: test_llm_config(),
+            intent: SkillCreatorIntent::ScopeReview,
+            skill_dir_override: Some(
+                "/tmp/skills/.openhands/throwaway/scope-review/run-1".to_string(),
+            ),
+        });
+
+        assert_eq!(config.task_kind, Some("scope_review".to_string()));
+        assert_eq!(config.step_id, Some(-30));
+        assert_eq!(config.run_source, None);
+        assert_eq!(config.mode.as_deref(), Some("throwaway"));
+        assert_eq!(config.max_turns, Some(4));
+        assert_eq!(
+            config.allowed_tools,
+            Some(vec!["file_editor".to_string()])
+        );
+        assert!(config.output_format.is_some());
+        assert!(config.user_message_suffix.is_some());
+    }
+
+    #[test]
+    fn test_build_skill_creator_config_model_validation() {
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: String::new(),
+            plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+            prompt: "Reply with exactly OK and nothing else.".to_string(),
+            llm: test_llm_config(),
+            intent: SkillCreatorIntent::ModelValidation,
+            skill_dir_override: Some("/tmp/skill-builder/throwaway/model-connection-test/run-1".to_string()),
+        });
+
+        assert_eq!(
+            config.task_kind,
+            Some("settings.model_connection_test".to_string())
+        );
+        assert_eq!(config.step_id, Some(-40));
+        assert_eq!(config.run_source, Some("test".to_string()));
+        assert_eq!(config.mode.as_deref(), Some("throwaway"));
+        assert_eq!(config.max_turns, Some(1));
+        assert_eq!(config.allowed_tools, Some(vec![]));
+        assert!(config.output_format.is_none());
+    }
+
+    #[test]
+    fn test_build_skill_creator_config_eval_intent() {
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: "default".to_string(),
+            prompt: "suggest scenario".to_string(),
+            llm: test_llm_config(),
+            intent: SkillCreatorIntent::Eval,
+            skill_dir_override: Some(
+                "/tmp/skills/.openhands/throwaway/eval-workbench/run-1".to_string(),
+            ),
+        });
+
+        assert_eq!(config.task_kind, Some("scenario-suggest".to_string()));
+        assert_eq!(config.step_id, Some(-11));
+        assert_eq!(config.run_source, Some("scenario-suggest".to_string()));
+        assert_eq!(config.mode.as_deref(), Some("throwaway"));
+        assert_eq!(config.max_turns, Some(10));
+        assert!(config.output_format.is_some());
     }
 
     #[test]
     fn test_skill_creator_user_suffix_is_non_empty() {
         assert!(!SKILL_CREATOR_USER_SUFFIX.trim().is_empty());
+    }
+
+    #[test]
+    fn test_throwaway_skill_dir_resolves_under_skills_root() {
+        let dir = throwaway_skill_dir("/tmp/skills", "eval-workbench", "run-abc");
+        assert!(dir.contains("/.openhands/throwaway/eval-workbench/run-abc"));
+    }
+
+    #[test]
+    fn test_throwaway_non_skill_dir_resolves_under_tmp() {
+        let dir = throwaway_non_skill_dir("model-connection-test", "run-xyz");
+        assert!(dir.starts_with("/tmp/skill-builder/throwaway/model-connection-test/run-xyz"));
     }
 }

@@ -7,8 +7,12 @@ use tauri::{Emitter, Listener, Manager};
 
 use crate::agents::openhands_server;
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext, WorkflowStepKind,
+};
 use crate::db::Db;
 use crate::skill_paths::validate_skill_content_exists;
+use crate::types::WorkflowLlmConfig;
 
 use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
@@ -17,7 +21,7 @@ use super::guards::{
     workflow_step_runtime_label,
 };
 use super::output_format::{
-    answer_evaluator_output_format, extract_workflow_json_from_conversation_state,
+    extract_workflow_json_from_conversation_state,
     materialize_workflow_step_output_value,
 };
 use super::prompt::{
@@ -25,10 +29,7 @@ use super::prompt::{
     build_step3_prompt, format_user_context,
 };
 use super::settings::{read_workflow_settings_by_skill_id, WorkflowSettings};
-use super::step_config::{
-    confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
-    skill_generation_workflow_tools, workflow_output_format_for_step,
-};
+use super::step_config::{get_step_config, workflow_output_format_for_step};
 
 // ─── Session management ──────────────────────────────────────────────────────
 
@@ -58,125 +59,46 @@ struct WorkflowStepMaterializedPayload {
     error_detail: Option<String>,
 }
 
-use crate::agents::skill_creator::{build_skill_creator_config, SkillCreatorConfigParams};
-
-pub(crate) fn build_workflow_research_runtime_config(
+/// Build runtime config for a workflow step (steps 0-3).
+pub(crate) fn build_workflow_step_runtime_config(
     app_data_root: &str,
     skill_name: &str,
     prompt: &str,
     skills_root: &str,
     plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
+    llm: WorkflowLlmConfig,
+    step: WorkflowStepKind,
 ) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
+    build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.to_string(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: prompt.to_string(),
         llm,
-        task_kind: "workflow.research",
-        run_source: "workflow",
-        allowed_tools: research_workflow_tools(),
-        max_turns: 50,
-        step_id: 0,
-        output_format: workflow_output_format_for_step(0),
+        intent: SkillCreatorIntent::WorkflowStep { step },
+        skill_dir_override: None,
     })
 }
 
-pub(crate) fn build_workflow_detailed_research_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.detailed_research",
-        run_source: "workflow",
-        allowed_tools: research_workflow_tools(),
-        max_turns: 50,
-        step_id: 1,
-        output_format: workflow_output_format_for_step(1),
-    })
-}
-
-pub(crate) fn build_workflow_confirm_decisions_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.confirm_decisions",
-        run_source: "workflow",
-        allowed_tools: confirm_decisions_workflow_tools(),
-        max_turns: 100,
-        step_id: 2,
-        output_format: workflow_output_format_for_step(2),
-    })
-}
-
-pub(crate) fn build_workflow_generate_skill_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.skill_generation",
-        run_source: "workflow",
-        allowed_tools: skill_generation_workflow_tools(),
-        max_turns: 500,
-        step_id: 3,
-        output_format: workflow_output_format_for_step(3),
-    })
-}
-
+/// Build runtime config for the answer-evaluator agent.
 pub(crate) fn build_answer_evaluator_runtime_config(
     app_data_root: &str,
     skill_name: &str,
     prompt: &str,
     skills_root: &str,
     plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
+    llm: WorkflowLlmConfig,
 ) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
+    build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.to_string(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: prompt.to_string(),
         llm,
-        task_kind: "workflow.answer_evaluator",
-        run_source: "gate-eval",
-        allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
-        max_turns: 20,
-        step_id: -1,
-        output_format: Some(answer_evaluator_output_format()),
+        intent: SkillCreatorIntent::AnswerEvaluator,
+        skill_dir_override: None,
     })
 }
 
@@ -467,37 +389,41 @@ async fn run_workflow_step_inner(
         .replace('\\', "/");
 
     let config = match step_id {
-        0 => build_workflow_research_runtime_config(
+        0 => build_workflow_step_runtime_config(
             &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
+            WorkflowStepKind::Research,
         ),
-        1 => build_workflow_detailed_research_runtime_config(
+        1 => build_workflow_step_runtime_config(
             &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
+            WorkflowStepKind::DetailedResearch,
         ),
-        2 => build_workflow_confirm_decisions_runtime_config(
+        2 => build_workflow_step_runtime_config(
             &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
+            WorkflowStepKind::ConfirmDecisions,
         ),
-        3 => build_workflow_generate_skill_runtime_config(
+        3 => build_workflow_step_runtime_config(
             &app_data_root,
             skill_name,
             &prompt,
             &settings.skills_path,
             &settings.plugin_slug,
             settings.llm.clone(),
+            WorkflowStepKind::GenerateSkill,
         ),
         _ => {
             return Err(format!(

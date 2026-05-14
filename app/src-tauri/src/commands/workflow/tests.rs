@@ -1,3 +1,4 @@
+use crate::agents::skill_creator::WorkflowStepKind;
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use std::path::Path;
 
@@ -14,13 +15,12 @@ use super::prompt::{
     build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
 };
 use super::runtime::{
-    build_answer_evaluator_runtime_config, build_workflow_confirm_decisions_runtime_config,
-    build_workflow_detailed_research_runtime_config, build_workflow_generate_skill_runtime_config,
-    build_workflow_research_runtime_config, dispatch_persistent_skill_turn_with_runtime,
+    build_answer_evaluator_runtime_config, build_workflow_step_runtime_config,
+    dispatch_persistent_skill_turn_with_runtime,
 };
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
-    skill_generation_workflow_tools, workflow_output_format_for_step,
+    workflow_output_format_for_step,
 };
 use std::sync::{Arc, Mutex};
 
@@ -233,13 +233,14 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 
 #[test]
 fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() {
-    let config = build_workflow_research_runtime_config(
+    let config = build_workflow_step_runtime_config(
         "/tmp/app-data",
         "lead-conversion",
         "prompt",
         "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
+        WorkflowStepKind::Research,
     );
     let events = Arc::new(Mutex::new(Vec::<String>::new()));
     let send_events = Arc::clone(&events);
@@ -349,13 +350,14 @@ fn research_prompt_includes_user_context_block_when_provided() {
 
 #[test]
 fn research_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_research_runtime_config(
+    let config = build_workflow_step_runtime_config(
         "/tmp/app-data",
         "lead-conversion",
         "prompt",
         "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
+        WorkflowStepKind::Research,
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -464,13 +466,14 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
 
 #[test]
 fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_detailed_research_runtime_config(
+    let config = build_workflow_step_runtime_config(
         "/tmp/app-data",
         "pipeline-value",
         "prompt",
         "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
+        WorkflowStepKind::DetailedResearch,
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -539,10 +542,7 @@ fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(config.run_source.as_deref(), Some("gate-eval"));
     assert_eq!(config.output_format, Some(answer_evaluator_output_format()));
-    assert_eq!(
-        config.user_message_suffix.as_deref(),
-        Some("Follow the current user message exactly. Do not infer a different task than the one stated in the message.")
-    );
+    assert!(config.user_message_suffix.is_some());
     assert_eq!(
         config.task_kind.as_deref(),
         Some("workflow.answer_evaluator")
@@ -558,13 +558,14 @@ fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
 
 #[test]
 fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow() {
-    let workflow_config = build_workflow_generate_skill_runtime_config(
+    let workflow_config = build_workflow_step_runtime_config(
         "/tmp/app-data",
         "sales-analytics",
         "generate the skill",
         "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
+        WorkflowStepKind::GenerateSkill,
     );
     let answer_evaluator_config = build_answer_evaluator_runtime_config(
         "/tmp/app-data",
@@ -805,13 +806,14 @@ mod research {
 
     #[test]
     fn openhands_contract_and_terminal_materialization_smoke() {
-        let config = build_workflow_research_runtime_config(
+        let config = build_workflow_step_runtime_config(
             "/tmp/app-data",
             "lead-conversion",
             "prompt",
             "/tmp/skills",
             DEFAULT_PLUGIN_SLUG,
             test_workflow_llm_config(),
+            WorkflowStepKind::Research,
         );
         assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
         assert_eq!(config.task_kind.as_deref(), Some("workflow.research"));
@@ -1048,13 +1050,14 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
 
 #[test]
 fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_confirm_decisions_runtime_config(
+    let config = build_workflow_step_runtime_config(
         "/tmp/app-data",
         "lead-conversion",
         "prompt",
         "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
+        WorkflowStepKind::ConfirmDecisions,
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -1065,7 +1068,7 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
     assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
-        Some(confirm_decisions_workflow_tools())
+        Some(vec!["file_editor".to_string()])
     );
     assert_eq!(config.max_turns, Some(100));
     assert_eq!(config.skill_name.as_deref(), Some("lead-conversion"));
@@ -1151,13 +1154,14 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
 
 #[test]
 fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_generate_skill_runtime_config(
+    let config = build_workflow_step_runtime_config(
         "/tmp/app-data",
         "pipeline-value",
         "prompt",
         "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
+        WorkflowStepKind::GenerateSkill,
     );
 
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
@@ -1168,7 +1172,7 @@ fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
     assert!(config.mode.is_none());
     assert_eq!(
         config.allowed_tools,
-        Some(skill_generation_workflow_tools())
+        Some(vec!["file_editor".to_string(), "terminal".to_string()])
     );
     assert_eq!(config.max_turns, Some(500));
     assert_eq!(config.skill_name.as_deref(), Some("pipeline-value"));

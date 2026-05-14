@@ -1,19 +1,15 @@
-use crate::agents::runtime_config::{
-    BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeConfig, OpenHandsRuntimeMode,
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
 };
 use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::db::Db;
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 const SCOPE_REVIEW_PROMPT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../agent-sources/prompts/scope-review.txt"
-));
-
-const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../agent-sources/prompts/skill-creator-user-suffix.txt"
 ));
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -36,40 +32,6 @@ pub(crate) struct ScopeReviewPromptParams<'a> {
     pub context_questions: Option<&'a str>,
     pub industry: Option<&'a str>,
     pub reference_documents: &'a [(String, String)],
-}
-
-pub(crate) struct ScopeReviewRuntimeConfigParams<'a> {
-    pub app_data_root: &'a str,
-    pub skill_name: &'a str,
-    pub prompt: &'a str,
-    pub skills_root: &'a str,
-    pub skill_dir: &'a str,
-    pub llm: crate::types::WorkflowLlmConfig,
-}
-
-pub(crate) fn build_scope_review_runtime_config(
-    params: ScopeReviewRuntimeConfigParams<'_>,
-) -> OpenHandsRuntimeConfig {
-    crate::agents::runtime_config::build_openhands_runtime_config(
-        BuildOpenHandsRuntimeConfigParams {
-            prompt: params.prompt.to_string(),
-            llm: params.llm,
-            app_data_root: params.app_data_root.to_string(),
-            skills_root: params.skills_root.replace('\\', "/"),
-            skill_dir: params.skill_dir.replace('\\', "/"),
-            mode: Some(OpenHandsRuntimeMode::Throwaway),
-            agent_name: "skill-creator".to_string(),
-            task_kind: Some("scope_review".to_string()),
-            user_message_suffix: Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string()),
-            allowed_tools: vec!["file_editor".to_string()],
-            max_turns: 4,
-            output_format: Some(scope_review_output_format()),
-            skill_name: Some(params.skill_name.to_string()),
-            step_id: Some(-30),
-            run_source: None,
-            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
-        },
-    )
 }
 
 pub(crate) fn render_scope_review_prompt(params: ScopeReviewPromptParams<'_>) -> String {
@@ -112,42 +74,6 @@ fn render_reference_documents(documents: &[(String, String)]) -> String {
         "\n\n## Reference Documents\n\n{}",
         parts.join("\n\n---\n\n")
     )
-}
-
-fn scope_review_output_format() -> serde_json::Value {
-    serde_json::json!({
-        "type": "json_schema",
-        "schema": {
-            "type": "object",
-            "required": ["status", "reason", "suggested_skills"],
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "focused",
-                        "too-broad",
-                        "name-needs-improvement",
-                        "description-needs-improvement",
-                        "both-need-improvement"
-                    ]
-                },
-                "reason": { "type": "string" },
-                "suggested_skills": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["name", "description"],
-                        "properties": {
-                            "name": { "type": "string" },
-                            "description": { "type": "string" }
-                        },
-                        "additionalProperties": false
-                    }
-                }
-            },
-            "additionalProperties": false
-        }
-    })
 }
 
 #[tauri::command]
@@ -227,13 +153,15 @@ pub async fn review_skill_scope(
         log::error!("[review_skill_scope] Failed to resolve skills path: {}", e)
     })?;
 
-    let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
-        app_data_root: &app_data_root,
-        skill_name: &skill_name,
-        prompt: &prompt,
-        skills_root: &skills_path,
-        skill_dir: &runtime_run_dir.to_string_lossy(),
+    let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root,
+        skills_root: skills_path,
+        skill_name: skill_name.clone(),
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        prompt,
         llm: runtime_context.llm,
+        intent: SkillCreatorIntent::ScopeReview,
+        skill_dir_override: Some(runtime_run_dir.to_string_lossy().replace('\\', "/")),
     });
 
     let run = tracked_openhands::send_tracked_throwaway(
@@ -448,12 +376,12 @@ mod tests {
 
     #[test]
     fn scope_review_openhands_config_uses_clean_break_runner_contract() {
-        let config = build_scope_review_runtime_config(ScopeReviewRuntimeConfigParams {
-            app_data_root: "/tmp/app-data",
-            skill_name: "forecasting-churned-customers",
-            prompt: "rendered prompt",
-            skills_root: "/tmp/skills",
-            skill_dir: "/tmp/skills/.openhands/throwaway/scope-review/run-1",
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "forecasting-churned-customers".to_string(),
+            plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+            prompt: "rendered prompt".to_string(),
             llm: crate::types::WorkflowLlmConfig {
                 model: "anthropic/claude-sonnet-4-5".to_string(),
                 api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
@@ -469,6 +397,10 @@ mod tests {
                 output_cost_per_token: None,
                 usage_id: Some("workflow".to_string()),
             },
+            intent: SkillCreatorIntent::ScopeReview,
+            skill_dir_override: Some(
+                "/tmp/skills/.openhands/throwaway/scope-review/run-1".to_string(),
+            ),
         });
 
         let json = serde_json::to_value(&config).unwrap();

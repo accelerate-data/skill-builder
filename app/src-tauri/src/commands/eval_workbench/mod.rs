@@ -1,8 +1,8 @@
 pub mod scenarios;
 pub mod types;
 
-use crate::agents::runtime_config::{
-    build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
 };
 use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::commands::imported_skills::validate_skill_name;
@@ -11,7 +11,6 @@ use crate::commands::skill_session::resolve_skills_path;
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::Db;
 use crate::skill_paths::validate_skill_content_exists;
-use serde_json::Value;
 use std::path::Path;
 use tauri::Manager;
 pub use types::{ScenarioDto, ScenarioSummaryDto};
@@ -152,21 +151,6 @@ fn next_default_scenario_name(eval_dir: &std::path::Path) -> Result<String, Stri
     }
 }
 
-fn suggested_scenario_output_format() -> Value {
-    serde_json::json!({
-        "type": "object",
-        "properties": {
-            "name": { "type": "string" },
-            "prompt": { "type": "string" },
-            "expectations": {
-                "type": "array",
-                "items": { "type": "string" }
-            }
-        },
-        "required": ["name", "prompt", "expectations"]
-    })
-}
-
 fn build_suggest_scenario_prompt(
     skill_name: &str,
     existing_scenario: &scenarios::Scenario,
@@ -264,26 +248,17 @@ fn build_generation_runtime_config(
     prompt: &str,
     skills_root: &str,
     skill_dir: &str,
-    output_format: Value,
     runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
 ) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
-    build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
+    build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.to_string(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
         prompt: prompt.to_string(),
         llm: runtime_ctx.llm.clone(),
-        app_data_root: app_data_root.to_string(),
-        skills_root: skills_root.replace('\\', "/"),
-        skill_dir: skill_dir.replace('\\', "/"),
-        mode: Some(OpenHandsRuntimeMode::Throwaway),
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("scenario-suggest".to_string()),
-        user_message_suffix: None,
-        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-        max_turns: 10,
-        output_format: Some(output_format),
-        skill_name: Some(skill_name.to_string()),
-        step_id: Some(-11),
-        run_source: Some("scenario-suggest".to_string()),
-        plugin_slug: plugin_slug.to_string(),
+        intent: SkillCreatorIntent::Eval,
+        skill_dir_override: Some(skill_dir.replace('\\', "/")),
     })
 }
 
@@ -329,7 +304,6 @@ where
         prompt,
         &runtime_ctx.skills_root,
         &runtime_run_dir.to_string_lossy(),
-        suggested_scenario_output_format(),
         runtime_ctx,
     );
     run_turn(OpenHandsThrowawayRunParams {

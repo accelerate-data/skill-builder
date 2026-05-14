@@ -2200,7 +2200,7 @@ mod tests {
     #[test]
     fn answer_evaluator_requests_match_existing_skill_creator_conversations() {
         let workflow_config =
-            crate::commands::workflow::runtime::build_workflow_generate_skill_runtime_config(
+            crate::commands::workflow::runtime::build_workflow_step_runtime_config(
                 "/tmp/app-data",
                 "my-skill",
                 "Generate the skill",
@@ -2221,6 +2221,7 @@ mod tests {
                     output_cost_per_token: None,
                     usage_id: None,
                 },
+                crate::agents::skill_creator::WorkflowStepKind::GenerateSkill,
             );
         let answer_evaluator_config =
             crate::commands::workflow::runtime::build_answer_evaluator_runtime_config(
