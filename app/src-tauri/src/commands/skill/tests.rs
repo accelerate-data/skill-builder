@@ -373,12 +373,14 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
             "workflow-agent".to_string(),
             WorkflowStepRun {
                 skill_name: "active-skill".to_string(),
+                conversation_id: None,
             },
         );
         map.insert(
             "other-agent".to_string(),
             WorkflowStepRun {
                 skill_name: "other-skill".to_string(),
+                conversation_id: None,
             },
         );
     }

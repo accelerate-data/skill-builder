@@ -2251,53 +2251,61 @@ mod tests {
 
     #[test]
     fn answer_evaluator_requests_match_existing_skill_creator_conversations() {
-        let workflow_config =
-            crate::commands::workflow::runtime::build_workflow_step_runtime_config(
-                "/tmp/app-data",
-                "my-skill",
-                "Generate the skill",
-                "/tmp/skills",
-                "default",
-                crate::types::WorkflowLlmConfig {
-                    model: "anthropic/claude-sonnet-4-5".to_string(),
-                    api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
-                    base_url: None,
-                    api_version: None,
-                    temperature: None,
-                    max_output_tokens: None,
-                    timeout_seconds: None,
-                    num_retries: None,
-                    reasoning_effort: None,
-                    extra_headers: None,
-                    input_cost_per_token: None,
-                    output_cost_per_token: None,
-                    usage_id: None,
-                },
-                crate::agents::skill_creator::WorkflowStepKind::GenerateSkill,
-            );
-        let answer_evaluator_config =
-            crate::commands::workflow::runtime::build_answer_evaluator_runtime_config(
-                "/tmp/app-data",
-                "my-skill",
-                "Evaluate answers",
-                "/tmp/skills",
-                "default",
-                crate::types::WorkflowLlmConfig {
-                    model: "anthropic/claude-sonnet-4-5".to_string(),
-                    api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
-                    base_url: None,
-                    api_version: None,
-                    temperature: None,
-                    max_output_tokens: None,
-                    timeout_seconds: None,
-                    num_retries: None,
-                    reasoning_effort: None,
-                    extra_headers: None,
-                    input_cost_per_token: None,
-                    output_cost_per_token: None,
-                    usage_id: None,
-                },
-            );
+        use crate::agents::skill_creator::{
+            build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
+            WorkflowStepKind,
+        };
+
+        let workflow_config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: "default".to_string(),
+            prompt: "Generate the skill".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: None,
+            },
+            intent: SkillCreatorIntent::WorkflowStep {
+                step: WorkflowStepKind::GenerateSkill,
+            },
+            skill_dir_override: None,
+        });
+        let answer_evaluator_config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: "default".to_string(),
+            prompt: "Evaluate answers".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: None,
+            },
+            intent: SkillCreatorIntent::AnswerEvaluator,
+            skill_dir_override: None,
+        });
 
         let workflow_request =
             OpenHandsRuntimeRequest::try_from_runtime_config(&workflow_config).unwrap();

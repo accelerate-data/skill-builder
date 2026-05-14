@@ -20,17 +20,32 @@ pub async fn send_tracked_openhands_message(
     config: OpenHandsRuntimeConfig,
     conversation_id: String,
 ) -> Result<String, String> {
-    let request = openhands_server::OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    openhands_server::dispatch_openhands_turn_with_request(
+    // If a live local runner already owns this conversation, only send the message.
+    if openhands_server::has_live_runner_for_conversation(&conversation_id) {
+        openhands_server::send_message_to_openhands_conversation(
+            config,
+            &conversation_id,
+            "",
+        )
+        .await?;
+        return Ok(conversation_id);
+    }
+
+    // Conversation is idle: send the message and start a new run.
+    openhands_server::send_message_to_openhands_conversation(
+        config.clone(),
+        &conversation_id,
+        "",
+    )
+    .await?;
+    openhands_server::run_openhands_conversation(
         app,
         agent_id,
         config,
-        request,
-        Some(conversation_id),
-        OpenHandsConversationSelection::SendExistingOnly,
-        PromptDelivery::ViaSendEvent,
+        conversation_id.clone(),
     )
-    .await
+    .await?;
+    Ok(conversation_id)
 }
 
 pub async fn pause_tracked_openhands_conversation(

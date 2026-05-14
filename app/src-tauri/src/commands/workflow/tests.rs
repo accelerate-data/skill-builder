@@ -1,4 +1,6 @@
-use crate::agents::skill_creator::WorkflowStepKind;
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext, WorkflowStepKind,
+};
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use std::path::Path;
 
@@ -15,7 +17,6 @@ use super::prompt::{
     build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
 };
 use super::runtime::{
-    build_answer_evaluator_runtime_config, build_workflow_step_runtime_config,
     dispatch_persistent_skill_turn_with_runtime,
 };
 use super::step_config::{
@@ -23,6 +24,47 @@ use super::step_config::{
     workflow_output_format_for_step,
 };
 use std::sync::{Arc, Mutex};
+
+fn test_workflow_step_config(
+    app_data_root: &str,
+    skill_name: &str,
+    prompt: &str,
+    skills_root: &str,
+    plugin_slug: &str,
+    llm: crate::types::WorkflowLlmConfig,
+    step: WorkflowStepKind,
+) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
+    build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.to_string(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: prompt.to_string(),
+        llm,
+        intent: SkillCreatorIntent::WorkflowStep { step },
+        skill_dir_override: None,
+    })
+}
+
+fn test_answer_evaluator_config(
+    app_data_root: &str,
+    skill_name: &str,
+    prompt: &str,
+    skills_root: &str,
+    plugin_slug: &str,
+    llm: crate::types::WorkflowLlmConfig,
+) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
+    build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: skills_root.to_string(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: prompt.to_string(),
+        llm,
+        intent: SkillCreatorIntent::AnswerEvaluator,
+        skill_dir_override: None,
+    })
+}
 
 fn valid_clarifications_value() -> serde_json::Value {
     serde_json::json!({
@@ -233,7 +275,7 @@ fn skill_creator_agent_carries_full_skill_building_overview() {
 
 #[test]
 fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() {
-    let config = build_workflow_step_runtime_config(
+    let config = test_workflow_step_config(
         "/tmp/app-data",
         "lead-conversion",
         "prompt",
@@ -350,7 +392,7 @@ fn research_prompt_includes_user_context_block_when_provided() {
 
 #[test]
 fn research_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_step_runtime_config(
+    let config = test_workflow_step_config(
         "/tmp/app-data",
         "lead-conversion",
         "prompt",
@@ -466,7 +508,7 @@ fn detailed_research_prompt_renders_clean_break_task_context() {
 
 #[test]
 fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_step_runtime_config(
+    let config = test_workflow_step_config(
         "/tmp/app-data",
         "pipeline-value",
         "prompt",
@@ -530,7 +572,7 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
 
 #[test]
 fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_answer_evaluator_runtime_config(
+    let config = test_answer_evaluator_config(
         "/tmp/app-data",
         "sales-analytics",
         "prompt",
@@ -558,7 +600,7 @@ fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
 
 #[test]
 fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow() {
-    let workflow_config = build_workflow_step_runtime_config(
+    let workflow_config = test_workflow_step_config(
         "/tmp/app-data",
         "sales-analytics",
         "generate the skill",
@@ -567,7 +609,7 @@ fn answer_evaluator_shares_the_persistent_skill_session_key_with_step3_workflow(
         test_workflow_llm_config(),
         WorkflowStepKind::GenerateSkill,
     );
-    let answer_evaluator_config = build_answer_evaluator_runtime_config(
+    let answer_evaluator_config = test_answer_evaluator_config(
         "/tmp/app-data",
         "sales-analytics",
         "evaluate the answers",
@@ -806,7 +848,7 @@ mod research {
 
     #[test]
     fn openhands_contract_and_terminal_materialization_smoke() {
-        let config = build_workflow_step_runtime_config(
+        let config = test_workflow_step_config(
             "/tmp/app-data",
             "lead-conversion",
             "prompt",
@@ -1050,7 +1092,7 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
 
 #[test]
 fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_step_runtime_config(
+    let config = test_workflow_step_config(
         "/tmp/app-data",
         "lead-conversion",
         "prompt",
@@ -1154,7 +1196,7 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
 
 #[test]
 fn skill_generation_runtime_config_uses_skill_creator_openhands_contract() {
-    let config = build_workflow_step_runtime_config(
+    let config = test_workflow_step_config(
         "/tmp/app-data",
         "pipeline-value",
         "prompt",
