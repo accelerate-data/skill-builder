@@ -1,4 +1,4 @@
-import { AlertCircle, ExternalLink, Terminal, XCircle } from "lucide-react";
+import { AlertCircle, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,10 +26,6 @@ function getErrorTitle(errorType: string): string {
   switch (errorType) {
     case "runtime_missing":
       return "Agent Runtime Not Found";
-    case "node_missing":
-      return "Node.js Not Installed";
-    case "node_incompatible":
-      return "Incompatible Node.js Version";
     case "spawn_failed":
       return "Failed to Start Agent Runtime";
     case "ready_timeout":
@@ -47,30 +43,15 @@ function getErrorIcon(errorType: string) {
     case "runtime_missing":
     case "spawn_failed":
       return <Terminal className="size-5 text-destructive" />;
-    case "node_missing":
-    case "node_incompatible":
-      return <XCircle className="size-5 text-destructive" />;
     default:
       return <AlertCircle className="size-5 text-destructive" />;
   }
-}
-
-/** Whether to show a link to nodejs.org for this error type. */
-function showNodeLink(errorType: string): boolean {
-  return errorType === "node_missing" || errorType === "node_incompatible";
 }
 
 function getFailureClass(errorType: string): {
   label: string;
   description: string;
 } {
-  if (errorType === "node_missing" || errorType === "node_incompatible") {
-    return {
-      label: "Compatibility issue",
-      description: "This is an environment compatibility problem and usually requires installing or updating Node.js.",
-    };
-  }
-
   if (errorType === "AuthenticationFailed") {
     return {
       label: "API key error",
@@ -111,17 +92,6 @@ export function RuntimeErrorDialog({ error, onDismiss }: RuntimeErrorDialogProps
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          {showNodeLink(error.error_type) && (
-            <Button
-              variant="outline"
-              asChild
-            >
-              <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="size-3.5" />
-                nodejs.org
-              </a>
-            </Button>
-          )}
           <Button onClick={onDismiss}>
             Dismiss
           </Button>

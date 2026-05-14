@@ -6,16 +6,14 @@ import { fileURLToPath } from "node:url";
 const REQUIRED_BY_PLATFORM = {
   windows: [
     "skill-builder.exe",
-    "agent-sources/plugins/skill-creator/LICENSE.txt",
-    "agent-sources/skills/skill-test/SKILL.md",
-    "workspace/CLAUDE.md",
+    "runtime/uv.exe",
+    "runtime/workspace/CLAUDE.md",
   ],
   macos: [
     "Skill Builder.app",
     "run.sh",
-    "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
-    "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
-    "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",
+    "Skill Builder.app/Contents/Resources/runtime/uv",
+    "Skill Builder.app/Contents/Resources/runtime/workspace/CLAUDE.md",
   ],
 };
 

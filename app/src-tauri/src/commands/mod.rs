@@ -9,7 +9,7 @@ pub mod github_import;
 pub mod imported_skills;
 pub mod lifecycle;
 pub mod model_catalog;
-pub mod node;
+pub mod startup;
 pub mod reconciliation;
 pub mod refine;
 pub mod runtime_lifecycle;

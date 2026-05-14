@@ -349,7 +349,7 @@ pub fn run() {
         .manage(commands::workflow::runtime::WorkflowStepRunManager::new())
 
         .invoke_handler(tauri::generate_handler![
-            commands::node::check_startup_deps,
+            commands::startup::check_startup_deps,
             commands::settings::get_data_dir,
             commands::settings::get_settings,
             commands::settings::save_settings,

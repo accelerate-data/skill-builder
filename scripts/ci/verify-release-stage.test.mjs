@@ -14,17 +14,15 @@ import { verifyReleaseStage } from "./verify-release-stage.mjs";
 
 const WINDOWS_REQUIRED_PATHS = [
   "skill-builder.exe",
-  "agent-sources/plugins/skill-creator/LICENSE.txt",
-  "agent-sources/skills/skill-test/SKILL.md",
-  "workspace/CLAUDE.md",
+  "runtime/uv.exe",
+  "runtime/workspace/CLAUDE.md",
 ];
 
 const MACOS_REQUIRED_PATHS = [
   "Skill Builder.app",
   "run.sh",
-  "Skill Builder.app/Contents/Resources/agent-sources/plugins/skill-creator/LICENSE.txt",
-  "Skill Builder.app/Contents/Resources/agent-sources/skills/skill-test/SKILL.md",
-  "Skill Builder.app/Contents/Resources/workspace/CLAUDE.md",
+  "Skill Builder.app/Contents/Resources/runtime/uv",
+  "Skill Builder.app/Contents/Resources/runtime/workspace/CLAUDE.md",
 ];
 
 const scriptPath = fileURLToPath(new URL("./verify-release-stage.mjs", import.meta.url));
@@ -91,10 +89,10 @@ test("CLI prints missing paths and exits 1 when the stage is incomplete", () => 
     });
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Release stage is missing 5 required path\(s\):/);
+    assert.match(result.stderr, /Release stage is missing 4 required path\(s\):/);
     assert.match(result.stderr, /- Skill Builder\.app/);
     assert.match(result.stderr, /- run\.sh/);
-    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/workspace\/CLAUDE\.md/);
+    assert.match(result.stderr, /- Skill Builder\.app\/Contents\/Resources\/runtime\/workspace\/CLAUDE\.md/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

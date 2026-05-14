@@ -33,7 +33,7 @@
       }
     },
     "resources": {
-      "../../agent-sources/workspace/": "workspace"
+      "../../agent-sources/workspace/": "runtime/workspace"
     },
     "icon": [
       "icons/32x32.png",

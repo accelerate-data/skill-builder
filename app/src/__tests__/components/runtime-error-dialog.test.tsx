@@ -4,24 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 
 describe("RuntimeErrorDialog", () => {
-  it("classifies node errors as compatibility issues", () => {
-    render(
-      <RuntimeErrorDialog
-        error={{
-          error_type: "node_incompatible",
-          message: "Node.js v16.0.0 is not compatible.",
-          fix_hint: "Install Node.js 18+ from https://nodejs.org",
-        }}
-        onDismiss={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText("Compatibility issue")).toBeInTheDocument();
-    expect(
-      screen.getByText(/requires installing or updating Node\.js/i)
-    ).toBeInTheDocument();
-  });
-
   it("classifies spawn failures as transient startup issues", () => {
     render(
       <RuntimeErrorDialog
@@ -36,22 +18,6 @@ describe("RuntimeErrorDialog", () => {
 
     expect(screen.getByText("Transient startup issue")).toBeInTheDocument();
     expect(screen.getByText(/usually temporary/i)).toBeInTheDocument();
-  });
-
-  it("shows nodejs.org link for node compatibility errors", () => {
-    render(
-      <RuntimeErrorDialog
-        error={{
-          error_type: "node_missing",
-          message: "Node.js is not installed or not in PATH.",
-          fix_hint: "Install Node.js 18+ from https://nodejs.org",
-        }}
-        onDismiss={vi.fn()}
-      />
-    );
-
-    const nodeLink = screen.getByRole("link", { name: /nodejs\.org/i });
-    expect(nodeLink).toHaveAttribute("href", "https://nodejs.org");
   });
 
   it("calls onDismiss when Dismiss is clicked", async () => {
@@ -77,5 +43,21 @@ describe("RuntimeErrorDialog", () => {
       <RuntimeErrorDialog error={null} onDismiss={vi.fn()} />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows API key error for AuthenticationFailed", () => {
+    render(
+      <RuntimeErrorDialog
+        error={{
+          error_type: "AuthenticationFailed",
+          message: "Invalid API key",
+          fix_hint: "Update your API key in Settings.",
+        }}
+        onDismiss={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("API key error")).toBeInTheDocument();
+    expect(screen.getByText(/invalid or expired/i)).toBeInTheDocument();
   });
 });

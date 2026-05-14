@@ -14,6 +14,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 pub const OPENHANDS_AGENT_SERVER_PACKAGE: &str = "openhands-agent-server==1.21.0";
 pub const OPENHANDS_TOOLS_PACKAGE: &str = "openhands-tools==1.21.0";
+#[allow(dead_code)]
 pub const OPENHANDS_AGENT_SERVER_MISSING_TRANSITIVE_PACKAGES: &[&str] = &["libtmux"];
 const CACHED_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(500);
 const SHUTDOWN_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -33,24 +34,35 @@ enum ShutdownOutcome {
 static BUNDLED_UV_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 /// Call once at app startup from the Tauri setup hook.
-/// Checks for a `uv` (or `uv.exe` on Windows) binary in `resource_dir` and
+/// Checks for a `uv` (or `uv.exe` on Windows) binary under `resource_dir/runtime/` and
 /// stores the path so `python_module_command_parts` can use it instead of
 /// requiring a system-installed `uvx`.
 pub fn init_bundled_uv_path(resource_dir: &Path) {
     let uv_name = if cfg!(windows) { "uv.exe" } else { "uv" };
-    let candidate = resource_dir.join(uv_name);
+    // Check runtime/ subtree first
+    let candidate = resource_dir.join("runtime").join(uv_name);
     if candidate.is_file() {
         log::debug!(
             "[openhands-agent-server] using bundled uv at {}",
             candidate.display()
         );
         let _ = BUNDLED_UV_PATH.set(Some(candidate));
-    } else {
-        log::debug!(
-            "[openhands-agent-server] no bundled uv found in resource dir; falling back to system uvx"
-        );
-        let _ = BUNDLED_UV_PATH.set(None);
+        return;
     }
+    // Dev fallback: check resource_dir directly for local builds
+    let dev_candidate = resource_dir.join(uv_name);
+    if dev_candidate.is_file() {
+        log::debug!(
+            "[openhands-agent-server] using bundled uv (dev fallback) at {}",
+            dev_candidate.display()
+        );
+        let _ = BUNDLED_UV_PATH.set(Some(dev_candidate));
+        return;
+    }
+    log::debug!(
+        "[openhands-agent-server] no bundled uv found; falling back to system uvx"
+    );
+    let _ = BUNDLED_UV_PATH.set(None);
 }
 
 /// Absolute path where the OpenHands SDK should persist conversation state
@@ -214,6 +226,13 @@ fn python_module_command_parts() -> (String, Vec<String>) {
     }
 
     ("uvx".to_string(), package_args)
+}
+
+/// Return the program + args that would be used to run a Python module
+/// via the bundled uv (or system uvx fallback). Used by both runtime
+/// launch and startup probing.
+pub fn bundled_uv_tool_run_args() -> (String, Vec<String>) {
+    python_module_command_parts()
 }
 
 #[derive(Debug)]
