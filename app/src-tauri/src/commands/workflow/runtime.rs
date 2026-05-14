@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{Emitter, Listener, Manager};
 
+use crate::agents::openhands_server;
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::db::Db;
 use crate::skill_paths::validate_skill_content_exists;
@@ -578,7 +579,7 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        crate::agents::tracked_openhands::abort_tracked_openhands_run(stale_agent_id);
+        openhands_server::close_local_openhands_run(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;

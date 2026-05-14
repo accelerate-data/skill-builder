@@ -7,7 +7,6 @@ use crate::skill_paths::{
 use crate::types::SkillSummary;
 use std::fs;
 use std::path::Path;
-use std::time::Duration;
 
 #[tauri::command]
 pub fn list_skills(
@@ -546,8 +545,8 @@ pub async fn delete_skill(
         )?
     };
 
-    // Best-effort HTTP pause — swallows all errors so delete cannot be blocked
-    // by server state. Collect IDs while holding the lock, then pause outside it.
+    // Best-effort local-run cleanup for tracked agents. HTTP-level conversation
+    // pause requires app handle for config resolution (added in Task 4).
     let conversation_ids: Vec<String> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let mut ids = Vec::new();
@@ -567,20 +566,16 @@ pub async fn delete_skill(
         ids
     };
     for conv_id in &conversation_ids {
-        // TODO(Task 2): pause conversation using the new raw API with config
+        crate::agents::openhands_server::close_local_openhands_run(conv_id);
         log::info!(
-            "[delete_skill] skipping pause for conversation {} (API moved) for skill={}",
+            "[delete_skill] closed local run for conversation {} of skill={}",
             conv_id,
             name
         );
     }
 
     for agent_id in &shutdown_plan.agent_ids {
-        let stopped = crate::agents::tracked_openhands::terminate_tracked_openhands_session(
-            agent_id,
-            Duration::from_secs(2),
-        )
-        .await;
+        let stopped = crate::agents::openhands_server::close_local_openhands_run(agent_id);
         log::info!(
             "[delete_skill] quiesce runtime skill={} agent={} stopped={} ended_workflow_sessions={}",
             name,

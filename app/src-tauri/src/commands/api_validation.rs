@@ -62,7 +62,7 @@ pub async fn test_model_connection(
         .replace('\\', "/");
     let config =
         build_model_connection_test_config(&app_data_root, &skills_path, &runtime_run_dir, llm);
-    let run = tracked_openhands::run_tracked_throwaway_openhands_session(
+    let run = tracked_openhands::send_tracked_throwaway(
         &app,
         OpenHandsThrowawayRunParams {
             agent_id: format!("model-connection-test-{}", uuid::Uuid::new_v4()),

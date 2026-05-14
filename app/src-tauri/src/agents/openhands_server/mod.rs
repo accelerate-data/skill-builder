@@ -1003,11 +1003,12 @@ pub async fn run_openhands_conversation(
     let conversation_id_clone = conversation_id.clone();
     let session_api_key = server.session_api_key.clone();
     let task_handle = tokio::spawn(async move {
+        register_conversation_owner(&conversation_id_clone, &agent_for_task);
         let task = OpenHandsConversationTask {
             app: app_for_task.clone(),
             agent_id: agent_for_task.clone(),
             client,
-            conversation_id: conversation_id_clone,
+            conversation_id: conversation_id_clone.clone(),
             prompt: request.prompt.clone(),
             prompt_delivery: PromptDelivery::ViaSendEvent,
             websocket_url,
@@ -1016,6 +1017,7 @@ pub async fn run_openhands_conversation(
             stderr_tail: server.stderr_tail.clone(),
         };
         let result = run_conversation_task(task, cancel_rx).await;
+        unregister_conversation_owner(&conversation_id_clone);
         unregister_cancel(&agent_for_task);
         unregister_task_handle(&agent_for_task);
         if let Err(error) = result {
@@ -1114,11 +1116,12 @@ pub(crate) async fn dispatch_openhands_turn_with_request(
     let conversation_id_clone = conversation_id.clone();
     let session_api_key = server.session_api_key.clone();
     let task_handle = tokio::spawn(async move {
+        register_conversation_owner(&conversation_id_clone, &agent_for_task);
         let task = OpenHandsConversationTask {
             app: app_for_task.clone(),
             agent_id: agent_for_task.clone(),
             client,
-            conversation_id: conversation_id_clone,
+            conversation_id: conversation_id_clone.clone(),
             prompt: request.prompt.clone(),
             prompt_delivery,
             websocket_url,
@@ -1127,6 +1130,7 @@ pub(crate) async fn dispatch_openhands_turn_with_request(
             stderr_tail: server.stderr_tail.clone(),
         };
         let result = run_conversation_task(task, cancel_rx).await;
+        unregister_conversation_owner(&conversation_id_clone);
         unregister_cancel(&agent_for_task);
         unregister_task_handle(&agent_for_task);
         if let Err(error) = result {
@@ -1741,6 +1745,7 @@ struct OpenHandsCancelHandle {
 
 type OpenHandsCancelRegistry = DashMap<String, OpenHandsCancelHandle>;
 type OpenHandsTaskRegistry = DashMap<String, tokio::task::AbortHandle>;
+type OpenHandsConversationOwnerRegistry = DashMap<String, String>;
 
 fn cancel_registry() -> &'static OpenHandsCancelRegistry {
     static REGISTRY: std::sync::OnceLock<OpenHandsCancelRegistry> = std::sync::OnceLock::new();
@@ -1750,6 +1755,12 @@ fn cancel_registry() -> &'static OpenHandsCancelRegistry {
 fn task_registry() -> &'static OpenHandsTaskRegistry {
     static REGISTRY: std::sync::OnceLock<OpenHandsTaskRegistry> = std::sync::OnceLock::new();
     REGISTRY.get_or_init(OpenHandsTaskRegistry::new)
+}
+
+fn conversation_owner_registry() -> &'static OpenHandsConversationOwnerRegistry {
+    static REGISTRY: std::sync::OnceLock<OpenHandsConversationOwnerRegistry> =
+        std::sync::OnceLock::new();
+    REGISTRY.get_or_init(OpenHandsConversationOwnerRegistry::new)
 }
 
 fn register_cancel(agent_id: &str, cancel: tokio::sync::oneshot::Sender<()>) -> Result<(), String> {
@@ -1781,6 +1792,27 @@ fn register_task_handle(agent_id: &str, handle: &tokio::task::JoinHandle<()>) {
 
 fn unregister_task_handle(agent_id: &str) {
     task_registry().remove(agent_id);
+}
+
+fn register_conversation_owner(conversation_id: &str, agent_id: &str) {
+    conversation_owner_registry()
+        .insert(conversation_id.to_string(), agent_id.to_string());
+}
+
+fn unregister_conversation_owner(conversation_id: &str) {
+    conversation_owner_registry().remove(conversation_id);
+}
+
+pub(crate) fn find_agent_for_conversation(conversation_id: &str) -> Option<String> {
+    conversation_owner_registry()
+        .get(conversation_id)
+        .map(|entry| entry.value().clone())
+}
+
+pub(crate) fn has_live_runner_for_conversation(conversation_id: &str) -> bool {
+    find_agent_for_conversation(conversation_id).is_some_and(|agent_id| {
+        has_registered_local_run(&agent_id)
+    })
 }
 
 #[cfg(test)]
@@ -2670,7 +2702,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn terminate_openhands_session_forces_registry_cleanup_after_timeout() {
+    async fn close_local_run_forces_registry_cleanup() {
         let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
         let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
         register_cancel(&agent_id, cancel_tx).unwrap();
@@ -2681,12 +2713,8 @@ mod tests {
         register_task_handle(&agent_id, &handle);
 
         assert!(
-            crate::agents::tracked_openhands::terminate_tracked_openhands_session(
-                &agent_id,
-                Duration::from_millis(10),
-            )
-            .await,
-            "terminate should report that a live session was present"
+            close_local_openhands_run(&agent_id),
+            "close should report that a live run was present"
         );
         assert!(cancel_rx.try_recv().is_ok(), "cancel signal should be sent");
         assert!(

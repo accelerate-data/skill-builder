@@ -236,7 +236,7 @@ pub async fn review_skill_scope(
         llm: runtime_context.llm,
     });
 
-    let run = tracked_openhands::run_tracked_throwaway_openhands_session(
+    let run = tracked_openhands::send_tracked_throwaway(
         &app,
         OpenHandsThrowawayRunParams {
             agent_id: format!("{}-scope-review-{}", skill_name, uuid::Uuid::new_v4()),

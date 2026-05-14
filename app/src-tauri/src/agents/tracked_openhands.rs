@@ -33,10 +33,6 @@ pub async fn send_tracked_openhands_message(
     .await
 }
 
-pub fn abort_tracked_openhands_run(agent_id: &str) -> bool {
-    openhands_server::close_local_openhands_run(agent_id)
-}
-
 pub async fn pause_tracked_openhands_conversation(
     config: OpenHandsRuntimeConfig,
     conversation_id: &str,
@@ -48,29 +44,7 @@ pub async fn pause_tracked_openhands_conversation(
         .unwrap_or(false))
 }
 
-pub async fn terminate_tracked_openhands_session(agent_id: &str, timeout: Duration) -> bool {
-    let mut found = openhands_server::send_cancel_signal(agent_id);
-
-    if openhands_server::has_registered_local_run(agent_id) {
-        found = true;
-    }
-
-    let deadline = Instant::now() + timeout;
-    loop {
-        if !openhands_server::has_registered_local_run(agent_id) {
-            return found;
-        }
-
-        if Instant::now() >= deadline {
-            let stopped = openhands_server::close_local_openhands_run(agent_id);
-            return found || stopped;
-        }
-
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-}
-
-pub async fn run_tracked_throwaway_openhands_session(
+pub async fn send_tracked_throwaway(
     app: &tauri::AppHandle,
     params: OpenHandsThrowawayRunParams,
 ) -> Result<OpenHandsThrowawayRun, String> {

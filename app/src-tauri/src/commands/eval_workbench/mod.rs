@@ -500,7 +500,7 @@ pub async fn define_eval_scenario(
         |params| {
             let app = app.clone();
             async move {
-                crate::agents::tracked_openhands::run_tracked_throwaway_openhands_session(
+                crate::agents::tracked_openhands::send_tracked_throwaway(
                     &app, params,
                 )
                 .await
