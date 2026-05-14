@@ -96,8 +96,6 @@ pub struct RuntimeRunSummary {
     pub status: String,
     #[serde(rename = "resultText")]
     pub result_text: Option<String>,
-    #[serde(rename = "workspacePath")]
-    pub workspace_path: Option<String>,
     #[serde(rename = "pluginSlug")]
     pub plugin_slug: String,
 }

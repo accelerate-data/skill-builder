@@ -168,6 +168,23 @@ pub fn resolve_existing_skill_dir(
         .unwrap_or_else(|| resolve_skill_dir(skills_root, plugin_slug, skill_name))
 }
 
+/// Check that a skill has published content (SKILL.md or references/ directory).
+/// Returns `Ok(())` if content exists, or a clear error message if missing.
+pub fn validate_skill_content_exists(
+    skills_root: &Path,
+    plugin_slug: &str,
+    skill_name: &str,
+) -> Result<(), String> {
+    let skill_dir = resolve_existing_skill_dir(skills_root, plugin_slug, skill_name);
+    if !skill_dir.join("SKILL.md").exists() && !skill_dir.join("references").is_dir() {
+        return Err(format!(
+            "Skill '{}' has no published content. The skill may have been moved or deleted. Run the skill workflow to regenerate it.",
+            skill_name
+        ));
+    }
+    Ok(())
+}
+
 /// Returns the canonical skill directory path, creating parent directories
 /// (`{skills_root}/{plugin_slug}/skills/`) if they don't exist.
 ///
@@ -309,6 +326,7 @@ pub fn enumerate_skill_locations(skills_root: &Path) -> Result<Vec<SkillLocation
 
 /// Enumerate skills using the flat and nested layouts (for migration).
 /// Scans `skills_root/{name}/` (legacy flat) and `skills_root/{slug}/{name}/` (nested).
+#[allow(dead_code)]
 pub fn enumerate_skill_locations_legacy(skills_root: &Path) -> Result<Vec<SkillLocation>, String> {
     if !skills_root.exists() {
         return Ok(vec![]);

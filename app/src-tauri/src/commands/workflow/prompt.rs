@@ -26,13 +26,8 @@ const SKILL_GENERATION_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/skill-generation.txt"
 ));
 
-fn render_workspace_prompt(
-    template: &str,
-    skill_name: &str,
-    workspace_path: &str,
-    plugin_slug: &str,
-) -> String {
-    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
+fn render_skill_prompt(template: &str, skill_name: &str, skills_path: &str, plugin_slug: &str) -> String {
+    let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     template
         .trim_end_matches('\n')
@@ -43,75 +38,57 @@ fn render_workspace_prompt(
 /// Build the prompt for step 0 (research).
 pub(crate) fn build_step0_prompt(
     skill_name: &str,
-    workspace_path: &str,
+    skills_path: &str,
     plugin_slug: &str,
     max_dimensions: u32,
     user_context_block: &str,
 ) -> String {
-    render_workspace_prompt(
-        RESEARCH_PROMPT_TEMPLATE,
-        skill_name,
-        workspace_path,
-        plugin_slug,
-    )
-    .replace("{{max_dimensions}}", &max_dimensions.to_string())
-    .replace("{{user_context_block}}", user_context_block)
+    render_skill_prompt(RESEARCH_PROMPT_TEMPLATE, skill_name, skills_path, plugin_slug)
+        .replace("{{max_dimensions}}", &max_dimensions.to_string())
+        .replace("{{user_context_block}}", user_context_block)
 }
 
 /// Build the prompt for step 1 (detailed research).
 pub(crate) fn build_step1_prompt(
     skill_name: &str,
-    workspace_path: &str,
+    skills_path: &str,
     plugin_slug: &str,
     user_context_block: &str,
     clarifications_json: &str,
     answer_verdicts_block: &str,
 ) -> String {
-    render_workspace_prompt(
-        DETAILED_RESEARCH_TEMPLATE,
-        skill_name,
-        workspace_path,
-        plugin_slug,
-    )
-    .replace("{{user_context_block}}", user_context_block)
-    .replace("{{clarifications_json}}", clarifications_json)
-    .replace("{{answer_verdicts_block}}", answer_verdicts_block)
+    render_skill_prompt(DETAILED_RESEARCH_TEMPLATE, skill_name, skills_path, plugin_slug)
+        .replace("{{user_context_block}}", user_context_block)
+        .replace("{{clarifications_json}}", clarifications_json)
+        .replace("{{answer_verdicts_block}}", answer_verdicts_block)
 }
 
 /// Build the prompt for step 2 (confirm decisions).
 pub(crate) fn build_step2_prompt(
     skill_name: &str,
-    workspace_path: &str,
+    skills_path: &str,
     plugin_slug: &str,
     user_context_block: &str,
     clarifications_json: &str,
 ) -> String {
-    render_workspace_prompt(
-        CONFIRM_DECISIONS_TEMPLATE,
-        skill_name,
-        workspace_path,
-        plugin_slug,
-    )
-    .replace("{{user_context_block}}", user_context_block)
-    .replace("{{clarifications_json}}", clarifications_json)
+    render_skill_prompt(CONFIRM_DECISIONS_TEMPLATE, skill_name, skills_path, plugin_slug)
+        .replace("{{user_context_block}}", user_context_block)
+        .replace("{{clarifications_json}}", clarifications_json)
 }
 
 /// Build the prompt for step 3 (generate skill).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_step3_prompt(
     skill_name: &str,
-    workspace_path: &str,
-    plugin_slug: &str,
     skills_path: &str,
+    plugin_slug: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     user_context_block: &str,
     clarifications_json: &str,
     decisions_json: &str,
 ) -> String {
-    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
+    let skill_dir_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .to_string_lossy()
         .replace('\\', "/");
 
@@ -135,7 +112,7 @@ pub(crate) fn build_step3_prompt(
         .trim_end_matches('\n')
         .replace("{{skill_name}}", skill_name)
         .replace("{{skill_dir}}", &skill_dir_str)
-        .replace("{{skill_output_dir}}", &skill_output_str)
+        .replace("{{skill_output_dir}}", &skill_dir_str)
         .replace("{{author_context}}", &author_context)
         .replace("{{user_context_block}}", user_context_block)
         .replace("{{clarifications_json}}", clarifications_json)
@@ -444,15 +421,12 @@ pub fn format_user_context(
 /// Build the lighter prompt used by the answer-evaluator agent.
 pub(crate) fn build_evaluator_prompt(
     skill_name: &str,
-    workspace_path: &str,
-    plugin_slug: &str,
     skills_path: &str,
+    plugin_slug: &str,
     user_context_block: &str,
     clarifications_json: &str,
 ) -> String {
-    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
+    let skill_dir_str = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .to_string_lossy()
         .replace('\\', "/");
 
@@ -460,7 +434,7 @@ pub(crate) fn build_evaluator_prompt(
         .trim_end_matches('\n')
         .replace("{{skill_name}}", skill_name)
         .replace("{{skill_dir}}", &skill_dir_str)
-        .replace("{{skill_output_dir}}", &skill_output_str)
+        .replace("{{skill_output_dir}}", &skill_dir_str)
         .replace("{{user_context_block}}", user_context_block)
         .replace("{{clarifications_json}}", clarifications_json)
 }

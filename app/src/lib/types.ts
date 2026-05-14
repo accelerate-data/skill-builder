@@ -548,8 +548,6 @@ export interface StepStatusUpdate {
   status: string
 }
 
-export type DiscoveryResolutionAction = "add-skill-builder" | "add-imported" | "remove"
-
 // ─── Workflow step structured outputs ────────────────────────────────────────
 
 /** Structured output for the OpenHands research workflow step. */

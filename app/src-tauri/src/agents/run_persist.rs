@@ -166,7 +166,6 @@ mod tests {
             compaction_count: 1,
             status: "completed".to_string(),
             result_text: None,
-            workspace_path: None,
             plugin_slug: "skills".to_string(),
         };
 
@@ -233,7 +232,6 @@ mod tests {
             compaction_count: 0,
             status: "completed".to_string(),
             result_text: None,
-            workspace_path: None,
             plugin_slug: "skills".to_string(),
         };
 

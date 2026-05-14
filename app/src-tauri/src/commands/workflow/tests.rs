@@ -237,7 +237,7 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
         "/tmp/app-data",
         "lead-conversion",
         "prompt",
-        "/tmp/workspace",
+        "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         test_workflow_llm_config(),
     );
@@ -280,7 +280,7 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
 fn research_prompt_renders_app_owned_openhands_task_context() {
     let prompt = build_step0_prompt(
         "lead-conversion",
-        "/tmp/workspace",
+        "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         4,
         "",
@@ -335,7 +335,7 @@ fn research_prompt_includes_user_context_block_when_provided() {
     let user_ctx = "## User Context\n\n### Skill\n**Name**: lead-conversion\n**Author**: octocat";
     let prompt = build_step0_prompt(
         "lead-conversion",
-        "/tmp/workspace",
+        "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         4,
         user_ctx,
@@ -394,7 +394,7 @@ fn research_runtime_config_uses_skill_creator_openhands_contract() {
 fn detailed_research_prompt_renders_clean_break_task_context() {
     let prompt = build_step1_prompt(
         "pipeline-value",
-        "/tmp/workspace",
+        "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         "",
         "{}",
@@ -506,9 +506,8 @@ fn detailed_research_runtime_config_uses_skill_creator_openhands_contract() {
 fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
     let prompt = super::prompt::build_evaluator_prompt(
         "sales-analytics",
-        "/tmp/workspace",
-        DEFAULT_PLUGIN_SLUG,
         "/tmp/skills",
+        DEFAULT_PLUGIN_SLUG,
         "## User Context\n### Skill\n**Name**: sales-analytics",
         "{\n  \"sections\": []\n}",
     );
@@ -517,7 +516,7 @@ fn answer_evaluator_prompt_renders_clean_break_skill_routing() {
     assert!(prompt.contains("Do not invoke"));
     assert!(prompt.contains("answer-evaluator skill"));
     assert!(prompt.contains("We are writing the skill sales-analytics."));
-    assert!(prompt.contains("/tmp/workspace"));
+    assert!(prompt.contains("/tmp/skills"));
     assert!(prompt.contains("User context:"));
     assert!(prompt.contains("Clarifications JSON:"));
     assert!(prompt
@@ -1003,7 +1002,7 @@ fn test_workflow_output_format_is_set_for_json_contract_workflow_steps() {
 fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
     let prompt = build_step2_prompt(
         "lead-conversion",
-        "/tmp/workspace",
+        "/tmp/skills",
         DEFAULT_PLUGIN_SLUG,
         "",
         "{}",
@@ -1088,9 +1087,8 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
 fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     let prompt = build_step3_prompt(
         "pipeline-value",
-        "/tmp/workspace",
-        DEFAULT_PLUGIN_SLUG,
         "/tmp/skills",
+        DEFAULT_PLUGIN_SLUG,
         Some("octocat"),
         Some("2026-05-01T12:00:00Z"),
         "",
@@ -1100,7 +1098,7 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
 
     assert!(prompt.contains("workflow.skill_generation"));
     assert!(prompt.contains("We are writing the skill named `pipeline-value`."));
-    assert!(prompt.contains("Skill directory: `/tmp/workspace/default/skills/pipeline-value`"));
+    assert!(prompt.contains("Skill directory: `/tmp/skills/default/skills/pipeline-value`"));
     assert!(prompt.contains("Skill output directory: `/tmp/skills/default/skills/pipeline-value`"));
     assert!(!prompt.contains("evals/evals.json"));
     assert!(!prompt.contains("pending-eval.json"));
@@ -2382,9 +2380,8 @@ fn test_materialize_step3_rejects_wrong_status() {
 fn test_evaluator_prompt_does_not_contain_stale_routing_tokens() {
     let prompt = super::prompt::build_evaluator_prompt(
         "s",
-        "/ws",
-        DEFAULT_PLUGIN_SLUG,
         "/sk",
+        DEFAULT_PLUGIN_SLUG,
         "context",
         "{}",
     );
@@ -2460,22 +2457,20 @@ fn test_output_format_contains_correct_inline_schema_per_workflow_step() {
 
 #[test]
 fn test_answer_evaluator_prompt_uses_standard_paths() {
-    let workspace_path = "/home/user/.vibedata/skill-builder";
     let skill_name = "my-skill";
     let skills_path = "/home/user/my-skills";
 
     let prompt = super::prompt::build_evaluator_prompt(
         skill_name,
-        workspace_path,
-        DEFAULT_PLUGIN_SLUG,
         skills_path,
+        DEFAULT_PLUGIN_SLUG,
         "## User Context\n### Skill\n**Name**: my-skill",
         "{\n  \"sections\": []\n}",
     );
 
     assert!(prompt.contains("We are writing the skill my-skill."));
     assert!(prompt
-        .contains("Skill directory: /home/user/.vibedata/skill-builder/default/skills/my-skill"));
+        .contains("Skill directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains("Skill output directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains("User context:\n## User Context"));
     assert!(prompt.contains("Clarifications JSON:\n{\n  \"sections\": []\n}"));
@@ -2516,7 +2511,6 @@ fn test_delete_step_output_files_from_step_onwards() {
 
     // Reset from step 2 onwards
     crate::cleanup::delete_step_output_files(
-        workspace,
         "my-skill",
         DEFAULT_PLUGIN_SLUG,
         2,
@@ -2535,7 +2529,6 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     let skills_path = tmp.path().to_str().unwrap();
     let nonexistent = std::env::temp_dir().join("nonexistent");
     crate::cleanup::delete_step_output_files(
-        nonexistent.to_str().unwrap(),
         "no-skill",
         DEFAULT_PLUGIN_SLUG,
         0,
@@ -2547,9 +2540,7 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
 fn test_delete_step_output_files_cleans_last_steps() {
     // Steps 0-2 are DB-authoritative with no filesystem outputs.
     // Deleting from step 2 onwards should clean step 3 (SKILL.md) in skills_path.
-    let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -2559,7 +2550,6 @@ fn test_delete_step_output_files_cleans_last_steps() {
 
     // Reset from step 2 onwards should clean up SKILL.md
     crate::cleanup::delete_step_output_files(
-        workspace,
         "my-skill",
         DEFAULT_PLUGIN_SLUG,
         2,
@@ -2573,13 +2563,9 @@ fn test_delete_step_output_files_cleans_last_steps() {
 #[test]
 fn test_delete_step_output_files_last_step() {
     // Verify delete_step_output_files(from=3) doesn't panic
-    let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
     crate::cleanup::delete_step_output_files(
-        workspace,
         "my-skill",
         DEFAULT_PLUGIN_SLUG,
         3,
@@ -2774,20 +2760,9 @@ fn test_step_max_turns() {
 
 #[test]
 fn test_reset_cleans_workspace_context_files() {
-    // Steps 0-2 are DB-authoritative. Resetting from step 0 removes gate files
-    // (step 0 filesystem outputs) and SKILL.md (step 3).
-    let workspace_tmp = tempfile::tempdir().unwrap();
+    // Steps 0-2 are DB-authoritative. Resetting from step 0 removes SKILL.md (step 3).
     let skills_path_tmp = tempfile::tempdir().unwrap();
-    let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_path_tmp.path().to_str().unwrap();
-
-    // Step 0 workflow-level files
-    let skill_dir = workspace_tmp
-        .path()
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("my-skill");
-    std::fs::create_dir_all(&skill_dir).unwrap();
-    std::fs::write(skill_dir.join("gate-result.json"), "{}").unwrap();
 
     // Step 3 output
     let output_dir = skills_path_tmp
@@ -2799,15 +2774,13 @@ fn test_reset_cleans_workspace_context_files() {
 
     // Call delete_step_output_files from step 0
     crate::cleanup::delete_step_output_files(
-        workspace,
         "my-skill",
         DEFAULT_PLUGIN_SLUG,
         0,
         skills_path,
     );
 
-    // Gate file and SKILL.md should be gone
-    assert!(!skill_dir.join("gate-result.json").exists());
+    // SKILL.md should be gone
     assert!(!output_dir.join("SKILL.md").exists());
 }
 

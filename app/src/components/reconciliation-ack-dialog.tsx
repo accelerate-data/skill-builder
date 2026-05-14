@@ -1,6 +1,7 @@
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -60,9 +61,9 @@ export default function ReconciliationAckDialog({
         <AlertDialogFooter>
           {requireApply ? (
             <>
-              <AlertDialogAction onClick={onCancel}>
+              <AlertDialogCancel onClick={onCancel}>
                 Continue Without Applying
-              </AlertDialogAction>
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={onApply}
                 disabled={applying}

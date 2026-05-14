@@ -1044,16 +1044,12 @@ pub fn check_skill_customized(
                 .unwrap_or(false)
         };
 
-        let workspace_root_ok = settings
-            .workspace_path
-            .as_ref()
-            .is_some_and(|wp| is_under_root(Path::new(wp)));
         let skills_path_ok = settings
             .skills_path
             .as_ref()
             .is_some_and(|sp| is_under_root(Path::new(sp)));
 
-        if !workspace_root_ok && !skills_path_ok {
+        if !skills_path_ok {
             log::warn!(
                 "[check_skill_customized] disk_path '{}' for '{}' is outside expected roots — treating as unmodified",
                 disk_path, skill_name

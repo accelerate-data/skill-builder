@@ -7,6 +7,7 @@ use tauri::{Emitter, Listener, Manager};
 
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::db::Db;
+use crate::skill_paths::validate_skill_content_exists;
 
 use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
@@ -330,7 +331,6 @@ async fn run_workflow_step_inner(
     skill_id: i64,
     skill_name: &str,
     step_id: u32,
-    workspace_path: &str,
     settings: &WorkflowSettings,
     db: &Db,
 ) -> Result<String, String> {
@@ -357,7 +357,7 @@ async fn run_workflow_step_inner(
     let prompt = match step_id {
         0 => build_step0_prompt(
             skill_name,
-            workspace_path,
+            &settings.skills_path,
             &settings.plugin_slug,
             settings.max_dimensions,
             &user_context_block,
@@ -380,7 +380,7 @@ async fn run_workflow_step_inner(
             };
             build_step1_prompt(
                 skill_name,
-                workspace_path,
+                &settings.skills_path,
                 &settings.plugin_slug,
                 &user_context_block,
                 &clarifications_json,
@@ -397,7 +397,7 @@ async fn run_workflow_step_inner(
             };
             build_step2_prompt(
                 skill_name,
-                workspace_path,
+                &settings.skills_path,
                 &settings.plugin_slug,
                 &user_context_block,
                 &clarifications_json,
@@ -422,9 +422,8 @@ async fn run_workflow_step_inner(
             };
             build_step3_prompt(
                 skill_name,
-                workspace_path,
-                &settings.plugin_slug,
                 &settings.skills_path,
+                &settings.plugin_slug,
                 settings.author_login.as_deref(),
                 settings.created_at.as_deref(),
                 &user_context_block,
@@ -556,7 +555,6 @@ pub async fn run_workflow_step(
     skill_id: i64,
     skill_name: String,
     step_id: u32,
-    workspace_path: String,
 ) -> Result<String, String> {
     log::info!(
         "[run_workflow_step] skill={} step={} step_id={}",
@@ -564,11 +562,7 @@ pub async fn run_workflow_step(
         workflow_step_log_name(step_id as i32),
         step_id,
     );
-    crate::commands::workflow_lifecycle::validate_run_request(
-        &skill_name,
-        step_id,
-        &workspace_path,
-    )?;
+    crate::commands::workflow_lifecycle::validate_run_request(&skill_name, step_id)?;
 
     // Cancel any stale workflow requests for this skill before starting a new step.
     let stale_runs: Vec<String> = {
@@ -594,7 +588,7 @@ pub async fn run_workflow_step(
     }
 
     let settings =
-        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, step_id, &workspace_path)?;
+        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, step_id)?;
     log::info!(
         "[run_workflow_step] settings: skills_path={} purpose={} intake={} industry={:?} function={:?}",
         settings.skills_path,
@@ -647,7 +641,6 @@ pub async fn run_workflow_step(
             skill_name
         );
         crate::cleanup::delete_step_output_files(
-            &workspace_path,
             &skill_name,
             &settings.plugin_slug,
             0,
@@ -660,7 +653,6 @@ pub async fn run_workflow_step(
             skill_name
         );
         crate::cleanup::clean_step_output(
-            &workspace_path,
             &skill_name,
             &settings.plugin_slug,
             step_id,
@@ -674,7 +666,6 @@ pub async fn run_workflow_step(
         skill_id,
         &skill_name,
         step_id,
-        &workspace_path,
         &settings,
         db.inner(),
     )
@@ -703,15 +694,18 @@ pub async fn run_answer_evaluator(
     runs: tauri::State<'_, WorkflowStepRunManager>,
     skill_id: i64,
     skill_name: String,
-    workspace_path: String,
 ) -> Result<String, String> {
     log::info!("run_answer_evaluator: skill={}", skill_name);
 
-    // Ensure agent files are deployed to workspace
-    ensure_workspace_prompts(&app, &workspace_path).await?;
-
     let settings =
-        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, 0, &workspace_path)?;
+        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, 0)?;
+
+    // Validate that the skill has published content before running the evaluator.
+    validate_skill_content_exists(
+        Path::new(&settings.skills_path),
+        &settings.plugin_slug,
+        &skill_name,
+    )?;
 
     let user_context_block = format_user_context(
         Some(&skill_name),
@@ -739,9 +733,8 @@ pub async fn run_answer_evaluator(
 
     let prompt = build_evaluator_prompt(
         &skill_name,
-        &workspace_path,
-        &settings.plugin_slug,
         &settings.skills_path,
+        &settings.plugin_slug,
         &user_context_block,
         &clarifications_json,
     );

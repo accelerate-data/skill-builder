@@ -468,7 +468,6 @@ fn test_prepared_skill_session_starts_without_dispatch_history() {
 #[test]
 fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -485,7 +484,6 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
     let result = finalize_refine_run_inner(
         "my-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         None,
     )
@@ -502,7 +500,6 @@ fn test_finalize_refine_run_reads_agent_commit_and_returns_diff() {
 #[test]
 fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -513,7 +510,6 @@ fn test_finalize_refine_run_returns_head_sha_even_when_no_new_changes() {
     let result = finalize_refine_run_inner(
         "my-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         None,
     )
@@ -546,7 +542,6 @@ fn test_get_skill_content_excludes_context_artifacts() {
 #[test]
 fn test_finalize_refine_run_ignores_result_payload() {
     let skills_dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(skills_dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -562,7 +557,6 @@ fn test_finalize_refine_run_ignores_result_payload() {
     let result = finalize_refine_run_inner(
         "my-skill",
         skills_dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         Some(&payload),
         None,
     )
@@ -571,11 +565,6 @@ fn test_finalize_refine_run_ignores_result_payload() {
     assert!(result.commit_sha.is_some());
     assert_eq!(result.files.len(), 1);
     assert_eq!(result.files[0].path, "SKILL.md");
-    // No materialization — context files should not exist
-    assert!(!workspace_dir
-        .path()
-        .join("my-skill/context/agent-validation-log.md")
-        .exists());
 }
 
 #[test]
@@ -584,7 +573,6 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
     unsafe { std::env::set_var("MOCK_AGENTS", "true") };
 
     let skills_dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(skills_dir.path(), "my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
@@ -606,7 +594,6 @@ fn test_finalize_refine_run_generates_mock_diff_when_mock_agents_enabled() {
     let result = finalize_refine_run_inner(
         "my-skill",
         skills_dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         None,
     )
@@ -637,60 +624,39 @@ fn default_refine_prompt_context() -> RefinePromptContext<'static> {
 
 #[test]
 fn test_refine_prompt_includes_skill_and_workspace_paths_with_permissions() {
-    let ws = std::env::temp_dir()
-        .join("vibedata")
-        .join("skill-builder")
-        .to_string_lossy()
-        .to_string();
     let skills = std::env::temp_dir()
         .join("skills")
         .to_string_lossy()
         .to_string();
     let system_prompt = build_refine_prompt(
         "my-skill",
-        &ws,
         &skills,
         "Add metrics section",
         None,
         default_refine_prompt_context(),
     );
     // build_refine_prompt normalises backslashes to forward slashes
-    let ws_fwd = ws.replace('\\', "/");
     let skills_fwd = skills.replace('\\', "/");
-    assert!(system_prompt.contains(&format!(
-        "The workspace directory is: {}/{}/skills/my-skill",
-        ws_fwd,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG
-    )));
     assert!(system_prompt.contains(&format!(
         "The skill directory is: {}/{}/skills/my-skill",
         skills_fwd,
         crate::skill_paths::DEFAULT_PLUGIN_SLUG
     )));
     assert!(system_prompt.contains("YOU CAN ONLY CHANGE FILES IN THIS DIRECTORY."));
-    assert!(system_prompt.contains(
-        "You may read files from this directory for context, but do not edit files in this directory."
-    ));
-    assert!(!system_prompt.contains("The context directory is:"));
 }
 
 #[test]
 fn test_refine_prompt_includes_metadata() {
     let system_prompt = build_refine_prompt(
         "my-skill",
-        "/ws",
         "/skills",
         "Fix overview",
         None,
         default_refine_prompt_context(),
     );
     assert!(system_prompt.contains("We are refining the skill my-skill"));
-    assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
     assert!(system_prompt.contains("YOU CAN ONLY CHANGE FILES IN THIS DIRECTORY."));
-    assert!(system_prompt.contains(
-        "You may read files from this directory for context, but do not edit files in this directory."
-    ));
 }
 
 #[test]
@@ -698,7 +664,6 @@ fn test_refine_prompt_file_targeting() {
     let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
     let system_prompt = build_refine_prompt(
         "my-skill",
-        "/ws",
         "/skills",
         "update these",
         Some(&files),
@@ -713,7 +678,6 @@ fn test_refine_prompt_file_targeting() {
 fn test_refine_prompt_no_file_constraint_when_empty() {
     let system_prompt = build_refine_prompt(
         "s",
-        "/ws",
         "/sk",
         "edit freely",
         None,
@@ -726,7 +690,6 @@ fn test_refine_prompt_no_file_constraint_when_empty() {
 fn test_refine_prompt_includes_user_message() {
     let prompt = build_refine_prompt(
         "s",
-        "/ws",
         "/sk",
         "Add SLA metrics to the overview",
         None,
@@ -739,13 +702,11 @@ fn test_refine_prompt_includes_user_message() {
 fn test_refine_prompt_includes_derived_paths() {
     let system_prompt = build_refine_prompt(
         "s",
-        "/ws",
         "/sk",
         "edit",
         None,
         default_refine_prompt_context(),
     );
-    assert!(system_prompt.contains("The workspace directory is:"));
     assert!(system_prompt.contains("The skill directory is:"));
     assert!(!system_prompt.contains("The context directory is:"));
 }
@@ -754,7 +715,6 @@ fn test_refine_prompt_includes_derived_paths() {
 fn test_refine_prompt_includes_inline_user_context_clarifications_and_decisions() {
     let system_prompt = build_refine_prompt(
         "s",
-        "/ws",
         "/sk",
         "edit",
         None,
@@ -775,7 +735,6 @@ fn test_refine_prompt_includes_inline_user_context_clarifications_and_decisions(
 fn test_refine_prompt_no_longer_points_to_user_context_file() {
     let system_prompt = build_refine_prompt(
         "s",
-        "/ws",
         "/sk",
         "edit",
         None,
@@ -789,7 +748,6 @@ fn test_refine_prompt_file_targeting_uses_absolute_paths() {
     let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
     let prompt = build_refine_prompt(
         "my-skill",
-        "/ws",
         "/skills",
         "update these",
         Some(&files),
@@ -951,7 +909,6 @@ fn test_prepared_skill_session_uses_contextual_prompt_only_for_initial_load() {
 
     let first_prompt = build_refine_prompt_with_output_dir(RefinePromptRequest {
         skill_name: &session.skill_name,
-        workspace_path: "/workspace",
         plugin_slug: &session.plugin_slug,
         skill_output_dir: &skill_output_dir,
         user_message: "Add SLA metrics",
@@ -997,7 +954,6 @@ fn test_prepared_skill_session_switches_away_from_contextual_prompt_after_dispat
 
     let before_dispatch = build_refine_prompt_with_output_dir(RefinePromptRequest {
         skill_name: &session.skill_name,
-        workspace_path: "/workspace",
         plugin_slug: &session.plugin_slug,
         skill_output_dir: &skill_output_dir,
         user_message: "Tighten the overview",
@@ -1189,31 +1145,30 @@ fn test_user_context_inline_block_empty_when_fields_empty() {
 
 #[test]
 fn test_cleanup_skill_snapshot_removes_existing_snapshot_dir() {
-    let workspace_skill_root = tempdir().unwrap();
-    let snapshot_dir = workspace_skill_root.path().join("skill-snapshot");
+    let skill_root = tempdir().unwrap();
+    let snapshot_dir = skill_root.path().join("skill-snapshot");
     std::fs::create_dir_all(snapshot_dir.join("some-skill")).unwrap();
     std::fs::write(snapshot_dir.join("some-skill/SKILL.md"), "# Old\n").unwrap();
 
     assert!(snapshot_dir.exists());
-    cleanup_skill_snapshot(workspace_skill_root.path());
+    cleanup_skill_snapshot(skill_root.path());
     assert!(!snapshot_dir.exists());
 }
 
 #[test]
 fn test_cleanup_skill_snapshot_noop_when_no_snapshot() {
-    let workspace_skill_root = tempdir().unwrap();
-    let snapshot_dir = workspace_skill_root.path().join("skill-snapshot");
+    let skill_root = tempdir().unwrap();
+    let snapshot_dir = skill_root.path().join("skill-snapshot");
     assert!(!snapshot_dir.exists());
 
     // Should not panic or error
-    cleanup_skill_snapshot(workspace_skill_root.path());
+    cleanup_skill_snapshot(skill_root.path());
     assert!(!snapshot_dir.exists());
 }
 
 #[test]
 fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -1221,8 +1176,8 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill\n").unwrap();
     crate::git::commit_all(&skill_dir, "initial").unwrap();
 
-    // Create a stale snapshot in the workspace (under default plugin slug)
-    let snapshot_dir = resolve_skill_dir(workspace_dir.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+    // Create a stale snapshot in the skill dir (under default plugin slug)
+    let snapshot_dir = resolve_skill_dir(dir.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
         .join("skill-snapshot");
     std::fs::create_dir_all(&snapshot_dir).unwrap();
     std::fs::write(snapshot_dir.join("SKILL.md"), "# Old version\n").unwrap();
@@ -1231,7 +1186,6 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
     let _result = finalize_refine_run_inner(
         "my-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         None,
     )
@@ -1248,7 +1202,6 @@ fn test_finalize_refine_run_cleans_up_snapshot_dir() {
 #[test]
 fn test_finalize_refine_tags_new_version_after_commit() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     // Create skill at plugin-aware path and tag v1.0.0
@@ -1268,7 +1221,6 @@ fn test_finalize_refine_tags_new_version_after_commit() {
     let result = finalize_refine_run_inner_for_plugin(
         "tag-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         plugin,
         None,
         Some(&initial_sha),
@@ -1283,7 +1235,6 @@ fn test_finalize_refine_tags_new_version_after_commit() {
 #[test]
 fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     // Create skill without any tags
@@ -1302,7 +1253,6 @@ fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
     let result = finalize_refine_run_inner_for_plugin(
         "notag-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         plugin,
         None,
         Some(&initial_sha),
@@ -1320,7 +1270,6 @@ fn test_finalize_refine_tags_v0_0_1_when_no_prior_tags() {
 #[test]
 fn test_finalize_refine_no_tag_when_head_unchanged() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     // Create skill and tag v1.0.0
@@ -1337,7 +1286,6 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
     let result = finalize_refine_run_inner_for_plugin(
         "noop-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         plugin,
         None,
         Some(&sha),
@@ -1352,7 +1300,6 @@ fn test_finalize_refine_no_tag_when_head_unchanged() {
 #[test]
 fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     let skill_dir = resolve_skill_dir(dir.path(), plugin, "dirty-skill");
@@ -1370,7 +1317,6 @@ fn test_finalize_refine_commits_dirty_skill_path_and_tags() {
     let result = finalize_refine_run_inner_for_plugin(
         "dirty-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         plugin,
         None,
         Some(&initial_sha),
@@ -1421,7 +1367,6 @@ fn test_update_skill_name_inserts_when_missing() {
 #[test]
 fn test_finalize_restores_name_changed_by_agent() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "guard-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -1457,7 +1402,6 @@ fn test_finalize_restores_name_changed_by_agent() {
     let result = finalize_refine_run_inner(
         "guard-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         Some(&pre_sha),
     )
@@ -1477,7 +1421,6 @@ fn test_finalize_restores_name_changed_by_agent() {
 #[test]
 fn test_finalize_restores_description_changed_by_agent() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "desc-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -1512,7 +1455,6 @@ fn test_finalize_restores_description_changed_by_agent() {
     let result = finalize_refine_run_inner(
         "desc-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         Some(&pre_sha),
     )
@@ -1531,7 +1473,6 @@ fn test_finalize_restores_description_changed_by_agent() {
 #[test]
 fn test_finalize_restores_both_name_and_description_changed_by_agent() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "both-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -1566,7 +1507,6 @@ fn test_finalize_restores_both_name_and_description_changed_by_agent() {
     let result = finalize_refine_run_inner(
         "both-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         Some(&pre_sha),
     )
@@ -1589,7 +1529,6 @@ fn test_finalize_restores_both_name_and_description_changed_by_agent() {
 #[test]
 fn test_finalize_no_fixup_when_frontmatter_unchanged() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "no-fix-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -1636,7 +1575,6 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
     let result = finalize_refine_run_inner(
         "no-fix-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         Some(&pre_sha),
     )
@@ -1668,7 +1606,6 @@ fn test_finalize_no_fixup_when_frontmatter_unchanged() {
 #[test]
 fn test_finalize_diff_shows_full_changes_when_fixup_created() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
 
     let skill_dir = default_skill_dir(dir.path(), "diff-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -1703,7 +1640,6 @@ fn test_finalize_diff_shows_full_changes_when_fixup_created() {
     let result = finalize_refine_run_inner(
         "diff-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         None,
         Some(&pre_sha),
     )
@@ -1737,7 +1673,6 @@ fn test_finalize_diff_shows_full_changes_when_fixup_created() {
 #[test]
 fn test_finalize_creates_exactly_one_tag_after_fixup() {
     let dir = tempdir().unwrap();
-    let workspace_dir = tempdir().unwrap();
     let plugin = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 
     let skill_dir = resolve_skill_dir(dir.path(), plugin, "tag-fix-skill");
@@ -1774,7 +1709,6 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
     let _result = finalize_refine_run_inner_for_plugin(
         "tag-fix-skill",
         dir.path().to_str().unwrap(),
-        workspace_dir.path().to_str().unwrap(),
         plugin,
         None,
         Some(&pre_sha),
@@ -1851,7 +1785,6 @@ fn test_skill_session_holds_conversation_and_agent_ids() {
 fn test_refine_initial_prompt_has_no_claude_code_routing() {
     let prompt = build_refine_prompt(
         "my-skill",
-        "/ws",
         "/sk",
         "edit",
         None,
@@ -1878,7 +1811,6 @@ fn test_refine_initial_prompt_has_no_claude_code_routing() {
 fn test_refine_initial_prompt_includes_eval_feedback_guidance() {
     let prompt = build_refine_prompt(
         "my-skill",
-        "/ws",
         "/sk",
         "edit",
         None,

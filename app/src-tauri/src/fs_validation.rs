@@ -5,7 +5,6 @@ use std::path::Path;
 /// Steps 0/1/2 artifact completion is DB-authoritative and not detected here.
 #[allow(dead_code)]
 pub fn detect_furthest_step(
-    _workspace_path: &str,
     plugin_slug: &str,
     skill_name: &str,
     skills_path: &str,
@@ -36,12 +35,11 @@ mod tests {
     fn test_detect_furthest_step_no_skill_md() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         // Create workspace dir but no SKILL.md
         std::fs::create_dir_all(tmp.path().join(SLUG).join("my-skill")).unwrap();
 
-        let step = detect_furthest_step(workspace, SLUG, "my-skill", skills_path);
+        let step = detect_furthest_step(SLUG, "my-skill", skills_path);
         assert_eq!(step, None);
     }
 
@@ -49,7 +47,6 @@ mod tests {
     fn test_detect_furthest_step_with_skill_md() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Create SKILL.md in skills_path
@@ -57,7 +54,7 @@ mod tests {
         std::fs::create_dir_all(&skill_output).unwrap();
         std::fs::write(skill_output.join("SKILL.md"), "# Skill").unwrap();
 
-        let step = detect_furthest_step(workspace, SLUG, "my-skill", skills_path);
+        let step = detect_furthest_step(SLUG, "my-skill", skills_path);
         assert_eq!(step, Some(3));
     }
 
@@ -65,7 +62,7 @@ mod tests {
     fn test_detect_furthest_step_nonexistent_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let step = detect_furthest_step("/nonexistent/path", SLUG, "no-skill", skills_path);
+        let step = detect_furthest_step(SLUG, "no-skill", skills_path);
         assert_eq!(step, None);
     }
 

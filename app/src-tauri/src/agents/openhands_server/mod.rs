@@ -170,7 +170,7 @@ struct OpenHandsRunSummaryContext {
     session_id: String,
     model: String,
     plugin_slug: String,
-    workspace_path: String,
+    skills_root: String,
     started_at: Instant,
 }
 
@@ -187,7 +187,7 @@ impl OpenHandsRunSummaryContext {
             session_id: conversation_id.to_string(),
             model: request.llm.model.clone(),
             plugin_slug: request.plugin_slug.clone(),
-            workspace_path: request.skill_dir.clone(),
+            skills_root: request.skills_root.clone(),
             started_at: Instant::now(),
         }
     }
@@ -281,9 +281,12 @@ fn maybe_record_subagent_launch(
     }
 }
 
-fn persisted_subagents_root(workspace_path: &str, conversation_id: &str) -> PathBuf {
+fn persisted_subagents_root(skills_root: &str, plugin_slug: &str, skill_name: &str, conversation_id: &str) -> PathBuf {
     let storage_dir = conversation_id.replace('-', "");
-    Path::new(workspace_path)
+    Path::new(skills_root)
+        .join(plugin_slug)
+        .join("skills")
+        .join(skill_name)
         .join("conversations")
         .join(storage_dir)
         .join("subagents")
@@ -515,7 +518,9 @@ fn collect_live_child_subagent_events(
 
 #[allow(dead_code)]
 pub(crate) fn load_linked_persisted_subagent_conversation_events(
-    workspace_path: &str,
+    skills_root: &str,
+    plugin_slug: &str,
+    skill_name: &str,
     conversation_id: &str,
     parent_events: &[serde_json::Value],
 ) -> Result<Vec<serde_json::Value>, String> {
@@ -524,7 +529,7 @@ pub(crate) fn load_linked_persisted_subagent_conversation_events(
         maybe_record_subagent_launch(raw, &mut launches);
     }
 
-    let root = persisted_subagents_root(workspace_path, conversation_id);
+    let root = persisted_subagents_root(skills_root, plugin_slug, skill_name, conversation_id);
     let mut state = LiveSubagentStreamState::default();
     collect_live_child_subagent_events(&root, "restore", &launches, &mut state)
 }
@@ -534,8 +539,12 @@ async fn stream_live_child_subagent_events(
     launches: Arc<Mutex<HashMap<String, PendingSubagentLaunch>>>,
     stop: Arc<AtomicBool>,
 ) {
-    let root =
-        persisted_subagents_root(&task.summary_context.workspace_path, &task.conversation_id);
+    let root = persisted_subagents_root(
+        &task.summary_context.skills_root,
+        &task.summary_context.plugin_slug,
+        &task.summary_context.skill_name,
+        &task.conversation_id,
+    );
     let mut state = LiveSubagentStreamState::default();
 
     loop {
@@ -1477,7 +1486,6 @@ fn build_openhands_run_result_event(
             "compactionCount": 0,
             "status": status,
             "resultText": result_text,
-            "workspacePath": context.workspace_path,
             "pluginSlug": context.plugin_slug,
         }
     })
@@ -1877,7 +1885,7 @@ mod tests {
             session_id: "conversation-1".to_string(),
             model: "anthropic/claude-sonnet-4-6".to_string(),
             plugin_slug: "skill-creator".to_string(),
-            workspace_path: "/tmp/workspace/my-skill".to_string(),
+            skills_root: "/tmp/skills".to_string(),
             started_at: Instant::now(),
         };
         let terminal_state = serde_json::json!({
@@ -1921,10 +1929,6 @@ mod tests {
         assert_eq!(
             run_result.get("resultText").and_then(|v| v.as_str()),
             Some("{\"status\":\"ok\"}")
-        );
-        assert_eq!(
-            run_result.get("workspacePath").and_then(|v| v.as_str()),
-            Some("/tmp/workspace/my-skill")
         );
         assert_eq!(
             run_result.get("pluginSlug").and_then(|v| v.as_str()),
@@ -2208,7 +2212,9 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
         let root = persisted_subagents_root(
-            dir.path().to_str().expect("workspace root path"),
+            dir.path().to_str().expect("skills root path"),
+            "default",
+            "my-skill",
             conversation_id,
         );
         let child_events_dir = root.join("child-1").join("events");
@@ -2273,7 +2279,9 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
         let root = persisted_subagents_root(
-            dir.path().to_str().expect("workspace root path"),
+            dir.path().to_str().expect("skills root path"),
+            "default",
+            "my-skill",
             conversation_id,
         );
         let child_events_dir = root.join("child-1").join("events");
@@ -2339,7 +2347,9 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
         let root = persisted_subagents_root(
-            dir.path().to_str().expect("workspace root path"),
+            dir.path().to_str().expect("skills root path"),
+            "default",
+            "my-skill",
             conversation_id,
         );
 
@@ -2409,7 +2419,9 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
         let root = persisted_subagents_root(
-            dir.path().to_str().expect("workspace root path"),
+            dir.path().to_str().expect("skills root path"),
+            "default",
+            "my-skill",
             conversation_id,
         );
         let child_events_dir = root.join("child-1").join("events");
@@ -2483,9 +2495,9 @@ mod tests {
     #[test]
     fn restore_subagent_scan_returns_linked_child_events() {
         let dir = tempdir().expect("tempdir");
-        let workspace_path = dir.path().to_str().expect("workspace root path");
+        let skills_root = dir.path().to_str().expect("skills root path");
         let conversation_id = "3f43be4d-c1c6-4866-a42a-c4d2a1f43040";
-        let root = persisted_subagents_root(workspace_path, conversation_id);
+        let root = persisted_subagents_root(skills_root, "default", "my-skill", conversation_id);
         let child_events_dir = root.join("child-1").join("events");
         fs::create_dir_all(&child_events_dir).expect("child events dir");
 
@@ -2534,7 +2546,9 @@ mod tests {
         })];
 
         let restored = load_linked_persisted_subagent_conversation_events(
-            workspace_path,
+            skills_root,
+            "default",
+            "my-skill",
             conversation_id,
             &parent_events,
         )
@@ -2554,13 +2568,18 @@ mod tests {
     #[test]
     fn persisted_subagents_root_uses_compact_conversation_directory_name() {
         let root = persisted_subagents_root(
-            "/tmp/workspace/default/skills/my-skill",
+            "/tmp/skills",
+            "default",
+            "my-skill",
             "3f43be4d-c1c6-4866-a42a-c4d2a1f43040",
         );
 
         assert_eq!(
             root,
-            Path::new("/tmp/workspace/default/skills/my-skill")
+            Path::new("/tmp/skills")
+                .join("default")
+                .join("skills")
+                .join("my-skill")
                 .join("conversations")
                 .join("3f43be4dc1c64866a42ac4d2a1f43040")
                 .join("subagents")

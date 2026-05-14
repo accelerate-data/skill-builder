@@ -169,8 +169,6 @@ pub struct RunResultEvent {
     pub status: RunResultStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result_text: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_path: Option<String>,
     pub plugin_slug: String,
 }
 
@@ -487,7 +485,6 @@ mod tests {
             "compactionCount": 1,
             "status": "error",
             "resultText": "Partial output",
-            "workspacePath": "/tmp/workspace",
             "pluginSlug": "my-plugin"
         });
 

@@ -2,8 +2,6 @@ use crate::db::Db;
 use std::fs;
 use std::path::Path;
 
-const WORKSPACE_PARENT: &str = ".vibedata";
-const WORKSPACE_SUBDIR: &str = "workspace";
 const OPENHANDS_SUBDIR: &str = "openhands";
 
 /// Resolve the app-local OpenHands conversations directory.
@@ -12,96 +10,9 @@ pub fn resolve_openhands_conversations_dir(app_data_root: &Path) -> std::path::P
     app_data_root.join(OPENHANDS_SUBDIR).join("conversations")
 }
 
-/// One-time: move logs/conversations/bash_events from workspace/.openhands/ to openhands/,
-/// then remove the legacy workspace/ wrapper.
-/// Preserves in-flight conversation directories so DB conversation IDs remain valid.
-fn migrate_flatten_openhands_dir(app_data_root: &Path) {
-    let old_openhands = app_data_root.join(WORKSPACE_SUBDIR).join(".openhands");
-    let new_openhands = app_data_root.join(OPENHANDS_SUBDIR);
-
-    if !old_openhands.exists() {
-        return;
-    }
-
-    if let Err(e) = fs::create_dir_all(&new_openhands) {
-        log::warn!(
-            "[migrate] failed to create destination dir {}: {} — aborting migration",
-            new_openhands.display(),
-            e
-        );
-        return;
-    }
-
-    // Move each known subdirectory: logs/, conversations/, bash_events/
-    for subdir in &["logs", "conversations", "bash_events"] {
-        let src = old_openhands.join(subdir);
-        if src.exists() {
-            let dst = new_openhands.join(subdir);
-            if !dst.exists() {
-                if let Err(e) = fs::rename(&src, &dst) {
-                    log::warn!(
-                        "[migrate] failed to move {} → {}: {}",
-                        src.display(),
-                        dst.display(),
-                        e
-                    );
-                } else {
-                    log::info!("[migrate] moved {} → {}", src.display(), dst.display());
-                }
-            }
-        }
-    }
-
-    // Remove the old workspace/ wrapper after moving
-    let old_workspace = app_data_root.join(WORKSPACE_SUBDIR);
-    if let Err(e) = fs::remove_dir_all(&old_workspace) {
-        log::warn!(
-            "[migrate] failed to remove legacy workspace dir {}: {}",
-            old_workspace.display(),
-            e
-        );
-    } else {
-        log::info!(
-            "[migrate] removed legacy workspace dir {}",
-            old_workspace.display()
-        );
-    }
-}
-
-/// Delete orphaned workspace skill directories from the old two-tier model.
-/// These were at `{workspace}/{plugin_slug}/skills/{skill_name}/` and are no longer used.
-/// The canonical skill directories at `{skills_root}/{plugin_slug}/skills/{skill_name}/` are the only source of truth.
-fn migrate_delete_workspace_skill_dirs(workspace_path: &Path, db: &tauri::State<'_, Db>) {
-    let Ok(conn) = db.0.lock() else {
-        return;
-    };
-    let Ok(skills) = crate::db::list_all_skills(&conn) else {
-        return;
-    };
-    for skill in skills {
-        let old_workspace_dir = workspace_path
-            .join(&skill.plugin_slug)
-            .join("skills")
-            .join(&skill.name);
-        if old_workspace_dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&old_workspace_dir) {
-                log::warn!(
-                    "[migration] failed to delete orphaned workspace dir {}: {}",
-                    old_workspace_dir.display(),
-                    e
-                );
-            } else {
-                log::info!(
-                    "[migration] deleted orphaned workspace dir {}",
-                    old_workspace_dir.display()
-                );
-            }
-        }
-    }
-}
-
 /// Iterate over immediate subdirectories of `dir`, skipping hidden (dotfile)
 /// entries. Returns an empty iterator if `dir` cannot be read.
+#[allow(dead_code)]
 fn non_hidden_subdirs(dir: &Path) -> impl Iterator<Item = std::path::PathBuf> {
     fs::read_dir(dir)
         .ok()
@@ -116,35 +27,6 @@ fn non_hidden_subdirs(dir: &Path) -> impl Iterator<Item = std::path::PathBuf> {
                     .and_then(|n| n.to_str())
                     .is_some_and(|s| !s.starts_with('.'))
         })
-}
-
-/// Resolve the workspace path from the shared app-local data directory.
-fn resolve_workspace_path(data_dir: &Path) -> Result<String, String> {
-    let workspace = data_dir.join(WORKSPACE_SUBDIR);
-    workspace
-        .to_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Data directory path contains invalid UTF-8".to_string())
-}
-
-/// Best-effort cleanup for legacy `~/.vibedata` folder from pre-DataDir builds.
-/// Non-fatal by design: startup must continue even if cleanup fails.
-fn cleanup_legacy_vibedata(home: &Path) {
-    let legacy_root = home.join(WORKSPACE_PARENT);
-    if !legacy_root.exists() {
-        return;
-    }
-    match fs::remove_dir_all(&legacy_root) {
-        Ok(()) => log::info!(
-            "[init_workspace] removed legacy path {}",
-            legacy_root.display()
-        ),
-        Err(e) => log::warn!(
-            "[init_workspace] failed to remove legacy path {}: {}",
-            legacy_root.display(),
-            e
-        ),
-    }
 }
 
 /// Migrate stale workspace layout artifacts after reorganization.
@@ -236,96 +118,12 @@ fn migrate_workspace_layout(workspace_path: &str) {
 // Context files (clarifications, decisions, user-context) now live in SQLite.
 // The workspace is runtime scratch only: .agents/, logs/, tmp/.
 
-/// Remove stale `skill-snapshot` directories left by prior benchmark runs
-/// that were interrupted by crash, cancellation, or error.
-/// Non-fatal by design: startup must continue even if cleanup fails.
-///
-/// Scans two levels deep to cover both the legacy flat workspace layout
-/// (`{workspace}/{skill}/skill-snapshot/`) and the current plugin layout
-/// (`{workspace}/{plugin}/{skill}/skill-snapshot/`).
-fn cleanup_stale_snapshots(workspace_path: &str) {
-    let base = Path::new(workspace_path);
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        // Legacy flat layout: {workspace}/{skill}/skill-snapshot/
-        let snapshot_dir = path.join("skill-snapshot");
-        if snapshot_dir.is_dir() {
-            match fs::remove_dir_all(&snapshot_dir) {
-                Ok(()) => log::info!(
-                    "[init_workspace] cleaned up stale snapshot at {}",
-                    snapshot_dir.display()
-                ),
-                Err(e) => log::warn!(
-                    "[init_workspace] failed to clean up stale snapshot at {}: {}",
-                    snapshot_dir.display(),
-                    e
-                ),
-            }
-        }
-        // Plugin layout: {workspace}/{plugin}/{skill}/skill-snapshot/
-        // Canonical layout: {workspace}/{plugin}/skills/{skill}/skill-snapshot/
-        let Ok(children) = fs::read_dir(&path) else {
-            continue;
-        };
-        for child in children.flatten() {
-            let child_path = child.path();
-            if !child_path.is_dir() {
-                continue;
-            }
-            if child_path.file_name().and_then(|n| n.to_str()) == Some("skills") {
-                if let Ok(skill_entries) = fs::read_dir(&child_path) {
-                    for skill_entry in skill_entries.flatten() {
-                        let skill_path = skill_entry.path();
-                        if !skill_path.is_dir() {
-                            continue;
-                        }
-                        let snapshot_dir = skill_path.join("skill-snapshot");
-                        if snapshot_dir.is_dir() {
-                            match fs::remove_dir_all(&snapshot_dir) {
-                                Ok(()) => log::info!(
-                                    "[init_workspace] cleaned up stale snapshot at {}",
-                                    snapshot_dir.display()
-                                ),
-                                Err(e) => log::warn!(
-                                    "[init_workspace] failed to clean up stale snapshot at {}: {}",
-                                    snapshot_dir.display(),
-                                    e
-                                ),
-                            }
-                        }
-                    }
-                }
-                continue;
-            }
-            let snapshot_dir = child_path.join("skill-snapshot");
-            if snapshot_dir.is_dir() {
-                match fs::remove_dir_all(&snapshot_dir) {
-                    Ok(()) => log::info!(
-                        "[init_workspace] cleaned up stale snapshot at {}",
-                        snapshot_dir.display()
-                    ),
-                    Err(e) => log::warn!(
-                        "[init_workspace] failed to clean up stale snapshot at {}: {}",
-                        snapshot_dir.display(),
-                        e
-                    ),
-                }
-            }
-        }
-    }
-}
-
 /// Migrate skills from legacy flat layout (`{name}/`) to
 /// the plugin layout (`{slug}/{name}/`).
 ///
 /// Idempotent: if skills are already in `{slug}/{name}/` layout, the move is a no-op.
 /// Non-fatal: logs warnings on failure, never crashes.
+#[allow(dead_code)]
 fn migrate_to_marketplace_layout(skills_path: &str) {
     let root = Path::new(skills_path);
     if !root.exists() {
@@ -451,6 +249,7 @@ fn migrate_to_marketplace_layout(skills_path: &str) {
 /// 4. Removes `{skills_path}/.git/`.
 ///
 /// Non-fatal: logs warnings on failure, never crashes.
+#[allow(dead_code)]
 pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
     if !skills_path.join(".git").exists() {
         return;
@@ -510,131 +309,6 @@ pub(super) fn migrate_to_per_skill_repos(skills_path: &Path) {
     }
 }
 
-/// Initialize the workspace directory on app startup.
-/// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
-/// removes legacy Claude-era workspace artifacts, and deploys bundled agents
-/// to `.agents/`.
-pub fn init_workspace(
-    app: &tauri::AppHandle,
-    db: &tauri::State<'_, Db>,
-    data_dir: &Path,
-) -> Result<String, String> {
-    // Best-effort cleanup of pre-DataDir legacy folder.
-    if let Some(home) = dirs::home_dir() {
-        cleanup_legacy_vibedata(&home);
-    }
-
-    let workspace_path = resolve_workspace_path(data_dir)?;
-
-    // Create directory if it doesn't exist
-    fs::create_dir_all(&workspace_path)
-        .map_err(|e| format!("Failed to create workspace directory: {}", e))?;
-
-    // Update settings with the workspace path
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let mut settings = crate::db::read_settings(&conn)?;
-    if settings.workspace_path.as_deref() != Some(&workspace_path) {
-        settings.workspace_path = Some(workspace_path.clone());
-        crate::db::write_settings(&conn, &settings)?;
-    }
-    drop(conn);
-
-    // One-time cleanup for legacy workspace layout before seeding current runtime files.
-    migrate_workspace_layout(&workspace_path);
-
-    // One-time: flatten app-local storage from workspace/.openhands/ to openhands/
-    migrate_flatten_openhands_dir(data_dir);
-
-    // One-time: delete orphaned workspace skill directories from the old two-tier model.
-    migrate_delete_workspace_skill_dirs(Path::new(&workspace_path), db);
-
-    // Purge stale bundled workspace mirrors then seed current ones (filesystem-only, no DB).
-    {
-        let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(app);
-        let protected_workspace_skill_names = {
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            crate::db::list_all_skills(&conn)?
-                .into_iter()
-                .filter(|skill| skill.plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG)
-                .map(|skill| skill.name)
-                .collect::<std::collections::HashSet<_>>()
-        };
-        if let Err(e) = super::imported_skills::purge_stale_bundled_skills(
-            &workspace_path,
-            &bundled_skills_dir,
-            &protected_workspace_skill_names,
-        ) {
-            log::warn!("purge_stale_bundled_skills: failed: {}", e);
-        }
-        if let Err(e) =
-            super::imported_skills::seed_bundled_skills(&workspace_path, &bundled_skills_dir)
-        {
-            log::warn!("seed_bundled_skills: failed: {}", e);
-        }
-    }
-
-    // Deploy bundled workflow agents/skills to the OpenHands .agents layout.
-    super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
-
-    // Seed .agents/ into every existing skill's canonical directory.
-    if let Ok(conn) = db.0.lock() {
-        if let Ok(settings) = crate::db::read_settings(&conn) {
-            if let Some(ref skills_path) = settings.skills_path {
-                if let Ok(all_skills) = crate::db::list_all_skills(&conn) {
-                    for skill in all_skills {
-                        let skill_dir = crate::skill_paths::resolve_skill_dir(
-                            std::path::Path::new(skills_path),
-                            &skill.plugin_slug,
-                            &skill.name,
-                        );
-                        if let Err(e) = crate::commands::workflow::deploy::seed_skill_agents_dir(
-                            app, &skill_dir,
-                        ) {
-                            log::warn!(
-                                "[init_workspace] failed to seed .agents/ for skill {}/{}: {}",
-                                skill.plugin_slug,
-                                skill.name,
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Remove stale benchmark snapshots left by interrupted runs
-    cleanup_stale_snapshots(&workspace_path);
-
-    // One-time migrations for the skills path
-    {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        if let Ok(settings) = crate::db::read_settings(&conn) {
-            if let Some(ref sp) = settings.skills_path {
-                // Marketplace layout migration must run before per-skill repo migration.
-                migrate_to_marketplace_layout(sp);
-                // Per-skill repo migration: if shared root .git exists, move to per-skill repos.
-                migrate_to_per_skill_repos(Path::new(sp));
-            }
-        }
-    }
-
-    Ok(workspace_path)
-}
-
-#[tauri::command]
-pub fn get_workspace_path(db: tauri::State<'_, Db>) -> Result<String, String> {
-    log::info!("[get_workspace_path]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_workspace_path] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let settings = crate::db::read_settings(&conn)?;
-    settings
-        .workspace_path
-        .ok_or_else(|| "Workspace path not initialized".to_string())
-}
-
 #[tauri::command]
 pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("[clear_workspace]");
@@ -643,19 +317,19 @@ pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Resul
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
-    let workspace_path = settings
-        .workspace_path
-        .ok_or_else(|| "Workspace path not initialized".to_string())?;
+    let skills_path = settings
+        .skills_path
+        .ok_or_else(|| "Skills path not initialized".to_string())?;
     drop(conn);
 
     // Remove legacy workspace artifacts if they still exist.
-    migrate_workspace_layout(&workspace_path);
+    migrate_workspace_layout(&skills_path);
 
     // Invalidate the session cache so next workflow start re-checks
-    super::workflow::invalidate_workspace_cache(&workspace_path);
+    super::workflow::invalidate_workspace_cache(&skills_path);
 
     // Re-deploy only bundled OpenHands agents/skills under `.agents/`.
-    super::workflow::redeploy_agents(&app, &workspace_path)?;
+    super::workflow::redeploy_agents(&app, &skills_path)?;
 
     Ok(())
 }
@@ -663,84 +337,6 @@ pub fn clear_workspace(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_resolve_workspace_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = resolve_workspace_path(tmp.path()).unwrap();
-        assert!(
-            std::path::Path::new(&path).ends_with("workspace"),
-            "expected path ending in workspace, got {}",
-            path
-        );
-    }
-
-    // --- cleanup_legacy_vibedata tests ---
-
-    #[test]
-    fn test_cleanup_legacy_vibedata_happy_path() {
-        let home = tempfile::tempdir().unwrap();
-        let old_root = home.path().join(".vibedata");
-        fs::create_dir_all(&old_root).unwrap();
-        fs::write(old_root.join("agents.md"), "content").unwrap();
-
-        cleanup_legacy_vibedata(home.path());
-        assert!(!old_root.exists(), "legacy root should be removed");
-    }
-
-    #[test]
-    fn test_cleanup_legacy_vibedata_skips_if_absent() {
-        let home = tempfile::tempdir().unwrap();
-
-        cleanup_legacy_vibedata(home.path());
-        assert!(
-            !home.path().join(".vibedata").exists(),
-            "absent legacy path should remain absent"
-        );
-    }
-
-    // --- cleanup_stale_snapshots tests ---
-
-    #[test]
-    fn test_cleanup_stale_snapshots_removes_skill_snapshot_dirs() {
-        let workspace = tempfile::tempdir().unwrap();
-        let skill_a = workspace.path().join("skill-a");
-        let skill_b = workspace.path().join("skill-b");
-
-        // skill-a has a stale snapshot
-        let snapshot_a = skill_a.join("skill-snapshot");
-        fs::create_dir_all(snapshot_a.join("sub")).unwrap();
-        fs::write(snapshot_a.join("sub/SKILL.md"), "old").unwrap();
-
-        // skill-b has no snapshot
-        fs::create_dir_all(&skill_b).unwrap();
-
-        cleanup_stale_snapshots(workspace.path().to_str().unwrap());
-
-        assert!(!snapshot_a.exists(), "stale snapshot should be removed");
-        assert!(skill_a.exists(), "skill dir itself should remain");
-        assert!(skill_b.exists(), "unrelated skill dir should remain");
-    }
-
-    #[test]
-    fn test_cleanup_stale_snapshots_noop_when_no_snapshots() {
-        let workspace = tempfile::tempdir().unwrap();
-        let skill_dir = workspace
-            .path()
-            .join("default")
-            .join("skills")
-            .join("my-skill");
-        fs::create_dir_all(skill_dir.join("references")).unwrap();
-
-        cleanup_stale_snapshots(workspace.path().to_str().unwrap());
-
-        assert!(
-            skill_dir.join("references").exists(),
-            "non-snapshot dirs should remain"
-        );
-    }
-
-    // --- migrate_to_marketplace_layout tests ---
 
     #[test]
     fn test_migrate_marketplace_nested_skills_stay_in_place() {

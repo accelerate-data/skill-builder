@@ -10,6 +10,7 @@ use crate::commands::refine::content::get_skill_content_inner_for_plugin;
 use crate::commands::skill_session::resolve_skills_path;
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::Db;
+use crate::skill_paths::validate_skill_content_exists;
 use serde_json::Value;
 use std::path::Path;
 use tauri::Manager;
@@ -444,6 +445,10 @@ pub async fn define_eval_scenario(
     scenarios::validate_scenario_name(&scenario_name)?;
 
     let skills_path = resolve_skills_path(&db)?;
+
+    // Validate that the skill has published content before reading it.
+    validate_skill_content_exists(Path::new(&skills_path), &plugin_slug, &skill_name)?;
+
     let skill_files = get_skill_content_inner_for_plugin(&skill_name, &skills_path, &plugin_slug)?;
     let eval_dir =
         crate::skill_paths::resolve_eval_dir(Path::new(&skills_path), &plugin_slug, &skill_name);

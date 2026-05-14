@@ -185,7 +185,6 @@ pub(crate) fn is_valid_kebab(name: &str) -> bool {
 pub fn rename_skill(
     old_name: String,
     new_name: String,
-    workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[rename_skill] old={} new={}", old_name, new_name);
@@ -197,7 +196,7 @@ pub fn rename_skill(
     }
 
     // No-op if same name
-    let _ = (new_name, workspace_path, db);
+    let _ = (new_name, db);
     Ok(())
 }
 
@@ -206,7 +205,6 @@ pub fn rename_skill(
 pub(crate) fn rename_skill_inner(
     old_name: &str,
     new_name: &str,
-    workspace_path: &str,
     conn: &mut rusqlite::Connection,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
@@ -306,25 +304,6 @@ pub(crate) fn rename_skill_inner(
         .unwrap_or_else(|_| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
 
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
-    // Workspace is plugin-organised: workspace_path/{plugin_slug}/{skill_name}/
-    let workspace_root = Path::new(workspace_path);
-    let workspace_old =
-        crate::skill_paths::resolve_existing_skill_dir(workspace_root, &plugin_slug, old_name);
-    let workspace_new =
-        crate::skill_paths::resolve_skill_dir(workspace_root, &plugin_slug, new_name);
-    if workspace_old.exists() {
-        // Guard against directory traversal
-        let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;
-        let canonical_old = fs::canonicalize(&workspace_old).map_err(|e| e.to_string())?;
-        if !canonical_old.starts_with(&canonical_workspace) {
-            return Err("Invalid skill path".to_string());
-        }
-        fs::rename(&workspace_old, &workspace_new).map_err(|e| {
-            log::error!("[rename_skill] Failed to rename workspace dir: {}", e);
-            format!("Failed to rename workspace directory: {}", e)
-        })?;
-    }
-
     if let Some(sp) = skills_path {
         let skills_root = Path::new(sp);
         let skills_old =
@@ -342,10 +321,6 @@ pub(crate) fn rename_skill_inner(
             }
             fs::rename(&skills_old, &skills_new).map_err(|e| {
                 log::error!("[rename_skill] Failed to rename skills dir: {}", e);
-                // Rollback workspace rename to keep disk consistent
-                if workspace_new.exists() {
-                    let _ = fs::rename(&workspace_new, &workspace_old);
-                }
                 format!("Failed to rename skills directory: {}", e)
             })?;
         }

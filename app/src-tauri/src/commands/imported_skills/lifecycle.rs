@@ -74,7 +74,6 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
 pub(crate) fn delete_imported_skill_inner(
     conn: &rusqlite::Connection,
     skill_id: i64,
-    workspace_path: &str,
 ) -> Result<(), String> {
     // Look up skill
     let skill = crate::db::get_imported_skill_by_id(conn, skill_id)?.ok_or_else(|| {
@@ -94,23 +93,6 @@ pub(crate) fn delete_imported_skill_inner(
                 skill.disk_path,
                 e
             );
-        }
-    }
-    // Also check the inactive path in workspace
-    if !workspace_path.is_empty() {
-        let skill_dir = resolve_existing_skill_dir(
-            Path::new(workspace_path),
-            skill.plugin_slug.as_deref().unwrap_or(DEFAULT_PLUGIN_SLUG),
-            &skill_name,
-        );
-        if skill_dir.exists() {
-            if let Err(e) = fs::remove_dir_all(&skill_dir) {
-                log::warn!(
-                    "[delete_imported_skill] failed to remove '{}': {}",
-                    skill_dir.display(),
-                    e
-                );
-            }
         }
     }
 
@@ -187,30 +169,12 @@ fn resolve_skill_target(
 }
 
 fn move_skill_directories(
-    workspace_path: Option<&str>,
     skills_path: Option<&str>,
     skill_name: &str,
     from_plugin_slug: &str,
     to_plugin_slug: &str,
-) -> Result<(Option<String>, Option<String>), String> {
-    let mut workspace_target = None;
+) -> Result<Option<String>, String> {
     let mut skills_target = None;
-
-    if let Some(workspace_path) = workspace_path {
-        let source =
-            resolve_existing_skill_dir(Path::new(workspace_path), from_plugin_slug, skill_name);
-        if source.exists() {
-            let target =
-                ensure_nested_skill_dir(Path::new(workspace_path), to_plugin_slug, skill_name)?;
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
-            }
-            move_dir_fallback(&source, &target)
-                .map_err(|e| format!("Failed to move workspace dir: {}", e))?;
-            workspace_target = Some(target.to_string_lossy().to_string());
-        }
-    }
 
     if let Some(skills_path) = skills_path {
         let source = resolve_skill_dir(Path::new(skills_path), from_plugin_slug, skill_name);
@@ -227,7 +191,7 @@ fn move_skill_directories(
         }
     }
 
-    Ok((workspace_target, skills_target))
+    Ok(skills_target)
 }
 
 #[tauri::command]
@@ -336,19 +300,6 @@ pub fn delete_plugin(plugin_slug: String, db: tauri::State<'_, Db>) -> Result<()
     conn.execute_batch("COMMIT")
         .map_err(|e| format!("Failed to commit: {}", e))?;
 
-    // Remove workspace plugin directory (non-fatal).
-    if let Some(ref wp) = settings.workspace_path {
-        let workspace_plugin_dir = std::path::Path::new(wp).join(&plugin_slug);
-        if workspace_plugin_dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&workspace_plugin_dir) {
-                log::warn!(
-                    "[delete_plugin] workspace dir removal failed (non-fatal): {}",
-                    e
-                );
-            }
-        }
-    }
-
     // Remove skills-path plugin directory, update manifest, git commit (non-fatal).
     if let Some(ref sp) = settings.skills_path {
         let plugin_dir = std::path::Path::new(sp).join(&plugin_slug);
@@ -419,8 +370,7 @@ pub fn create_plugin_from_skills(
     for skill_key in skill_keys {
         let (skill_name, current_plugin_slug, imported_skill_id) =
             resolve_skill_target(&conn, &skill_key)?;
-        let (_, skills_target) = move_skill_directories(
-            settings.workspace_path.as_deref(),
+        let skills_target = move_skill_directories(
             settings.skills_path.as_deref(),
             &skill_name,
             &current_plugin_slug,
@@ -449,11 +399,7 @@ pub fn move_skill_to_plugin(
     let settings = crate::db::read_settings(&conn)?;
     let (skill_name, current_plugin_slug, imported_skill_id) =
         resolve_skill_target(&conn, &skill_key)?;
-    // DB first — if this fails, disk is unchanged and the user can retry
-    crate::db::move_skill_to_plugin(&conn, &skill_name, &current_plugin_slug, &plugin_slug)?;
-    // Disk second — if this fails, reconciliation can recover from DB as authority
-    let (_, skills_target) = move_skill_directories(
-        settings.workspace_path.as_deref(),
+    let skills_target = move_skill_directories(
         settings.skills_path.as_deref(),
         &skill_name,
         &current_plugin_slug,
@@ -489,8 +435,7 @@ pub fn remove_skill_from_plugin(skill_key: String, db: tauri::State<'_, Db>) -> 
         DEFAULT_PLUGIN_SLUG,
     )?;
     // Disk second — if this fails, reconciliation can recover from DB as authority
-    let (_, skills_target) = move_skill_directories(
-        settings.workspace_path.as_deref(),
+    let skills_target = move_skill_directories(
         settings.skills_path.as_deref(),
         &skill_name,
         &current_plugin_slug,
@@ -540,10 +485,7 @@ pub fn delete_imported_skill(skill_id: String, db: tauri::State<'_, Db>) -> Resu
         log::error!("delete_imported_skill: failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let workspace_path = crate::db::read_settings(&conn)?
-        .workspace_path
-        .unwrap_or_default();
-    delete_imported_skill_inner(&conn, skill_id, &workspace_path)?;
+    delete_imported_skill_inner(&conn, skill_id)?;
     Ok(())
 }
 
@@ -588,8 +530,7 @@ mod tests {
             crate::db::get_skill_master_id_in_plugin(&conn, "del-happy", DEFAULT_PLUGIN_SLUG)
                 .unwrap()
                 .unwrap();
-        // disk_path points to a non-existent temp dir — absence is handled gracefully
-        let result = delete_imported_skill_inner(&conn, skill_id, "");
+        let result = delete_imported_skill_inner(&conn, skill_id);
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let after = crate::db::get_imported_skill_by_id(&conn, skill_id).unwrap();
         assert!(
@@ -599,14 +540,9 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_imported_skill_inner_removes_canonical_workspace_copy() {
+    fn test_delete_imported_skill_inner_removes_disk_path() {
         let conn = create_test_db_for_tests();
         crate::db::upsert_skill(&conn, "del-workspace", "imported", "domain").unwrap();
-        let workspace = tempfile::tempdir().unwrap();
-        let skill_dir =
-            resolve_existing_skill_dir(workspace.path(), DEFAULT_PLUGIN_SLUG, "del-workspace");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "# skill").unwrap();
 
         let skills_disk = tempfile::tempdir().unwrap();
         let disk_path = skills_disk.path().join("del-workspace");
@@ -621,11 +557,11 @@ mod tests {
                 .unwrap()
                 .unwrap();
 
-        delete_imported_skill_inner(&conn, skill_id, workspace.path().to_str().unwrap()).unwrap();
+        delete_imported_skill_inner(&conn, skill_id).unwrap();
 
         assert!(
-            !skill_dir.exists(),
-            "workspace canonical skill mirror should be removed"
+            !disk_path.exists(),
+            "disk_path should be removed after delete"
         );
     }
 
@@ -752,7 +688,7 @@ mod tests {
     #[test]
     fn test_delete_imported_skill_inner_not_found() {
         let conn = create_test_db_for_tests();
-        let result = delete_imported_skill_inner(&conn, 99999, "");
+        let result = delete_imported_skill_inner(&conn, 99999);
         assert!(result.is_err());
         let msg = result.unwrap_err();
         assert!(

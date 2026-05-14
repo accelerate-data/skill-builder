@@ -10,12 +10,10 @@ const ATTACHMENTS_DIR_NAME: &str = "skill-builder-attachments";
 
 #[cfg_attr(not(test), allow(dead_code))]
 fn list_skill_files_with_roots(
-    workspace_path: &str,
     skill_name: &str,
     allowed_roots: &[PathBuf],
 ) -> Result<Vec<SkillFileEntry>, String> {
     list_skill_files_with_plugin_roots(
-        workspace_path,
         skill_name,
         DEFAULT_PLUGIN_SLUG,
         allowed_roots,
@@ -23,32 +21,14 @@ fn list_skill_files_with_roots(
 }
 
 fn list_skill_files_with_plugin_roots(
-    workspace_path: &str,
     skill_name: &str,
     plugin_slug: &str,
     allowed_roots: &[PathBuf],
 ) -> Result<Vec<SkillFileEntry>, String> {
     super::imported_skills::validate_skill_name(skill_name)?;
 
-    let workspace_root = Path::new(workspace_path);
-    if workspace_root.exists() {
-        let canonical_workspace = fs::canonicalize(workspace_root).map_err(|e| {
-            format!(
-                "Failed to canonicalize workspace '{}': {}",
-                workspace_root.display(),
-                e
-            )
-        })?;
-        if !is_within_allowed_roots(&canonical_workspace, allowed_roots) {
-            return Err(format!(
-                "List rejected: '{}' is outside allowed roots",
-                canonical_workspace.display()
-            ));
-        }
-    }
-
-    let skill_dir = resolve_skill_dir(Path::new(workspace_path), plugin_slug, skill_name);
-    // Validate workspace_path is within allowed roots
+    let skill_dir = resolve_skill_dir(Path::new(&allowed_roots[0]), plugin_slug, skill_name);
+    // Validate skill_dir is within allowed roots
     if skill_dir.exists() {
         let canonical = fs::canonicalize(&skill_dir)
             .map_err(|e| format!("Failed to canonicalize '{}': {}", skill_dir.display(), e))?;
@@ -72,7 +52,6 @@ fn list_skill_files_with_plugin_roots(
 
 #[tauri::command]
 pub fn list_skill_files(
-    workspace_path: String,
     skill_name: String,
     plugin_slug: Option<String>,
     db: tauri::State<'_, Db>,
@@ -87,7 +66,7 @@ pub fn list_skill_files(
             .map(|skill| skill.plugin_slug)
             .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string())
     };
-    list_skill_files_with_plugin_roots(&workspace_path, &skill_name, &plugin_slug, &allowed_roots)
+    list_skill_files_with_plugin_roots(&skill_name, &plugin_slug, &allowed_roots)
 }
 
 fn collect_entries(
@@ -160,9 +139,6 @@ fn get_allowed_roots(db: &tauri::State<'_, Db>) -> Result<Vec<PathBuf>, String> 
     drop(conn);
 
     let mut roots = Vec::new();
-    if let Some(workspace_path) = settings.workspace_path {
-        roots.push(PathBuf::from(workspace_path));
-    }
     if let Some(skills_path) = settings.skills_path {
         roots.push(PathBuf::from(skills_path));
     }
@@ -252,8 +228,8 @@ fn is_within_allowed_roots(path: &Path, allowed_roots: &[PathBuf]) -> bool {
 fn get_workspace_root(db: &tauri::State<'_, Db>) -> Option<PathBuf> {
     let conn = db.0.lock().ok()?;
     let settings = crate::db::read_settings(&conn).ok()?;
-    let workspace = settings.workspace_path?;
-    fs::canonicalize(workspace).ok()
+    let skills_path = settings.skills_path?;
+    fs::canonicalize(skills_path).ok()
 }
 
 fn is_workspace_context_path(path: &Path, workspace_root: &Path) -> bool {
@@ -453,7 +429,7 @@ mod tests {
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
         let entries =
-            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
+            list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         // Should have: context/, context/clarifications.json,
         //              skill/, skill/SKILL.md, skill/references/, skill/references/ref1.md
@@ -475,7 +451,7 @@ mod tests {
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
         let entries =
-            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
+            list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         let paths: Vec<&str> = entries.iter().map(|e| e.relative_path.as_str()).collect();
         let mut sorted = paths.clone();
@@ -490,7 +466,7 @@ mod tests {
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
         let entries =
-            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
+            list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         for entry in &entries {
             assert!(
@@ -508,7 +484,7 @@ mod tests {
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
         let entries =
-            list_skill_files_with_roots(dir.path().to_str().unwrap(), "my-skill", &roots).unwrap();
+            list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         let context_entry = entries
             .iter()
@@ -530,7 +506,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
         let entries =
-            list_skill_files_with_roots(dir.path().to_str().unwrap(), "nonexistent", &roots)
+            list_skill_files_with_roots("nonexistent", &roots)
                 .unwrap();
         assert!(entries.is_empty());
     }
@@ -541,11 +517,14 @@ mod tests {
         let outside = tempdir().unwrap();
         setup_skill_dir(outside.path());
 
+        // Skill exists outside the allowed root, so it should not be accessible.
+        // Since the resolved path within the allowed root doesn't exist,
+        // the function returns empty (not an error).
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
         let result =
-            list_skill_files_with_roots(outside.path().to_str().unwrap(), "my-skill", &roots);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("outside allowed roots"));
+            list_skill_files_with_roots("my-skill", &roots);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 
     #[test]

@@ -30,7 +30,6 @@ pub fn get_skill_content_at_path(path: String) -> Result<Vec<SkillFileContent>, 
 pub fn get_skill_content_for_refine(
     skill_name: String,
     plugin_slug: String,
-    _workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
     log::info!(

@@ -157,7 +157,6 @@ pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
         .query_row(
             "SELECT selected_provider_id,
                     selected_model_id,
-                    workspace_path,
                     skills_path,
                     debug_mode,
                     log_level,
@@ -186,26 +185,25 @@ pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
                         model_id: row.get(1)?,
                         provider_overrides: std::collections::BTreeMap::new(),
                     },
-                    workspace_path: row.get(2)?,
-                    skills_path: row.get(3)?,
-                    debug_mode: row.get::<_, i64>(4)? != 0,
-                    log_level: row.get(5)?,
-                    extended_context: row.get::<_, i64>(6)? != 0,
-                    refine_prompt_suggestions: row.get::<_, i64>(7)? != 0,
-                    splash_shown: row.get::<_, i64>(8)? != 0,
-                    github_oauth_token: row.get(9)?,
-                    github_user_login: row.get(10)?,
-                    github_user_avatar: row.get(11)?,
-                    github_user_email: row.get(12)?,
-                    marketplace_url: row.get(13)?,
+                    skills_path: row.get(2)?,
+                    debug_mode: row.get::<_, i64>(3)? != 0,
+                    log_level: row.get(4)?,
+                    extended_context: row.get::<_, i64>(5)? != 0,
+                    refine_prompt_suggestions: row.get::<_, i64>(6)? != 0,
+                    splash_shown: row.get::<_, i64>(7)? != 0,
+                    github_oauth_token: row.get(8)?,
+                    github_user_login: row.get(9)?,
+                    github_user_avatar: row.get(10)?,
+                    github_user_email: row.get(11)?,
+                    marketplace_url: row.get(12)?,
                     marketplace_registries: vec![],
-                    marketplace_initialized: row.get::<_, i64>(14)? != 0,
-                    legacy_tags_migrated: row.get::<_, i64>(15)? != 0,
-                    max_dimensions: row.get(16)?,
-                    industry: row.get(17)?,
-                    function_role: row.get(18)?,
-                    dashboard_view_mode: row.get(19)?,
-                    auto_update: row.get::<_, i64>(20)? != 0,
+                    marketplace_initialized: row.get::<_, i64>(13)? != 0,
+                    legacy_tags_migrated: row.get::<_, i64>(14)? != 0,
+                    max_dimensions: row.get(15)?,
+                    industry: row.get(16)?,
+                    function_role: row.get(17)?,
+                    dashboard_view_mode: row.get(18)?,
+                    auto_update: row.get::<_, i64>(19)? != 0,
                 })
             },
         )
@@ -224,7 +222,6 @@ fn upsert_app_settings(conn: &Connection, settings: &AppSettings) -> Result<(), 
             id,
             selected_provider_id,
             selected_model_id,
-            workspace_path,
             skills_path,
             debug_mode,
             log_level,
@@ -244,12 +241,11 @@ fn upsert_app_settings(conn: &Connection, settings: &AppSettings) -> Result<(), 
             dashboard_view_mode,
             auto_update
         ) VALUES (
-            1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+            1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
         )
         ON CONFLICT(id) DO UPDATE SET
             selected_provider_id = excluded.selected_provider_id,
             selected_model_id = excluded.selected_model_id,
-            workspace_path = excluded.workspace_path,
             skills_path = excluded.skills_path,
             debug_mode = excluded.debug_mode,
             log_level = excluded.log_level,
@@ -271,7 +267,6 @@ fn upsert_app_settings(conn: &Connection, settings: &AppSettings) -> Result<(), 
         rusqlite::params![
             settings.model_settings.provider_id,
             settings.model_settings.model_id,
-            settings.workspace_path,
             settings.skills_path,
             settings.debug_mode as i64,
             settings.log_level,
@@ -418,9 +413,8 @@ mod tests {
         .unwrap();
     }
 
-    fn make_settings(workspace_path: Option<&str>, skills_path: Option<&str>) -> AppSettings {
+    fn make_settings(skills_path: Option<&str>) -> AppSettings {
         AppSettings {
-            workspace_path: workspace_path.map(String::from),
             skills_path: skills_path.map(String::from),
             ..AppSettings::default()
         }
@@ -440,7 +434,7 @@ mod tests {
             "read_settings should return Ok for an empty DB"
         );
         let settings = result.unwrap();
-        assert!(settings.workspace_path.is_none());
+        assert!(settings.skills_path.is_none());
         assert!(settings.model_settings.model_id.is_none());
     }
 
@@ -448,14 +442,10 @@ mod tests {
     fn test_write_then_read_settings_round_trip() {
         let conn = create_test_db_for_tests();
 
-        let original = make_settings(Some("/home/user/workspace"), Some("/home/user/skills"));
+        let original = make_settings(Some("/home/user/skills"));
         write_settings(&conn, &original).unwrap();
 
         let read_back = read_settings(&conn).unwrap();
-        assert_eq!(
-            read_back.workspace_path.as_deref(),
-            Some("/home/user/workspace")
-        );
         assert_eq!(read_back.skills_path.as_deref(), Some("/home/user/skills"));
     }
 
@@ -463,17 +453,13 @@ mod tests {
     fn test_write_settings_update_does_not_corrupt_data() {
         let conn = create_test_db_for_tests();
 
-        let first = make_settings(Some("/first/workspace"), Some("/first/skills"));
+        let first = make_settings(Some("/first/skills"));
         write_settings(&conn, &first).unwrap();
 
-        let second = make_settings(Some("/second/workspace"), Some("/second/skills"));
+        let second = make_settings(Some("/second/skills"));
         write_settings(&conn, &second).unwrap();
 
         let read_back = read_settings(&conn).unwrap();
-        assert_eq!(
-            read_back.workspace_path.as_deref(),
-            Some("/second/workspace")
-        );
         assert_eq!(read_back.skills_path.as_deref(), Some("/second/skills"));
         assert_eq!(app_settings_row_count(&conn), 1);
     }
@@ -482,10 +468,10 @@ mod tests {
     fn test_write_settings_partial_update_preserves_other_fields() {
         let conn = create_test_db_for_tests();
 
-        let initial = make_settings(Some("/ws"), None);
+        let initial = make_settings(None);
         write_settings(&conn, &initial).unwrap();
 
-        let update = make_settings(Some("/ws"), Some("/skills"));
+        let update = make_settings(Some("/skills"));
         write_settings(&conn, &update).unwrap();
 
         let read_back = read_settings(&conn).unwrap();

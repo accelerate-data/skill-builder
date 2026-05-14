@@ -1146,11 +1146,10 @@ pub(crate) fn materialize_answer_evaluation_output_value(
 #[tauri::command]
 pub fn materialize_answer_evaluation_output(
     skill_name: String,
-    workspace_path: String,
     evaluation_payload: serde_json::Value,
     db: tauri::State<'_, crate::db::Db>,
 ) -> Result<(), String> {
-    let _ = (workspace_path, db);
+    let _ = db;
     log::info!(
         "[materialize_answer_evaluation_output] skill={} (validate-only, file write removed in VU-1157)",
         skill_name

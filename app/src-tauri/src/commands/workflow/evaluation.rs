@@ -111,7 +111,6 @@ pub(crate) fn clear_artifacts_for_step_reset(
 
 fn navigate_back_to_step_impl(
     conn: &rusqlite::Connection,
-    workspace_path: &str,
     skills_path: &str,
     skill_name: &str,
     target_step_id: u32,
@@ -147,7 +146,6 @@ fn navigate_back_to_step_impl(
         );
     }
     crate::cleanup::delete_step_output_files(
-        workspace_path,
         skill_name,
         &plugin_slug,
         delete_from,
@@ -445,7 +443,6 @@ mod tests {
     fn test_navigate_back_to_step_zero_clears_saved_conversation_state() {
         let conn = create_test_db();
         let tmp = tempdir().unwrap();
-        let workspace_path = tmp.path().to_str().unwrap();
         let skills_path = tmp.path().join("skills");
         std::fs::create_dir_all(&skills_path).unwrap();
 
@@ -466,7 +463,6 @@ mod tests {
 
         super::navigate_back_to_step_impl(
             &conn,
-            workspace_path,
             skills_path.to_str().unwrap(),
             skill_name,
             0,
@@ -554,7 +550,6 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 /// Steps 0/1/2 are DB-authoritative; step 3 checks for SKILL.md on disk.
 #[tauri::command]
 pub fn verify_step_output(
-    _workspace_path: String,
     skill_id: i64,
     step_id: u32,
     db: tauri::State<'_, Db>,
@@ -643,7 +638,7 @@ mod verify_step_output_tests {
         .unwrap();
         let db = Db(std::sync::Arc::new(std::sync::Mutex::new(conn)));
 
-        let result = verify_step_output(String::new(), skill_id, 3, db_state(&db)).unwrap();
+        let result = verify_step_output(skill_id, 3, db_state(&db)).unwrap();
 
         assert!(result);
     }
@@ -771,29 +766,21 @@ pub async fn reset_workflow_step(
 /// This makes the DB the canonical source of truth for navigate-back transitions.
 #[tauri::command]
 pub fn navigate_back_to_step(
-    workspace_path: String,
     skill_name: String,
     target_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!(
-        "[navigate_back_to_step] CALLED skill={} target_step={} target_step_id={} workspace={}",
+        "[navigate_back_to_step] CALLED skill={} target_step={} target_step_id={}",
         skill_name,
         workflow_step_log_name(target_step_id as i32),
-        target_step_id,
-        workspace_path
+        target_step_id
     );
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     log::debug!("[navigate_back_to_step] skills_path={}", skills_path);
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    navigate_back_to_step_impl(
-        &conn,
-        &workspace_path,
-        &skills_path,
-        &skill_name,
-        target_step_id,
-    )?;
+    navigate_back_to_step_impl(&conn, &skills_path, &skill_name, target_step_id)?;
 
     log::info!(
         "[navigate_back_to_step] done skill={} current_step={} current_step_id={}",
@@ -806,7 +793,6 @@ pub fn navigate_back_to_step(
 
 #[tauri::command]
 pub fn preview_step_reset(
-    workspace_path: String,
     skill_name: String,
     from_step_id: u32,
     db: tauri::State<'_, Db>,
@@ -837,7 +823,6 @@ pub fn preview_step_reset(
     let mut result = Vec::new();
     for step_id in from_step_id..=3 {
         let existing_files = crate::cleanup::list_step_output_files(
-            &workspace_path,
             &skill_name,
             &plugin_slug,
             step_id,
@@ -861,13 +846,13 @@ pub fn preview_step_reset(
 }
 
 /// Remove incomplete iteration directories (those missing `benchmark.json`)
-/// under `{workspace_path}/{skill_name}/evals/iterations/`.
+/// under `{skills_path}/{plugin}/skills/{name}/evals/iterations/`.
 ///
 /// Returns the number of directories removed. Errors during removal are logged
 /// as warnings and do not propagate — callers should never be blocked by cleanup.
-pub fn clean_incomplete_iterations(workspace_path: &str, skill_name: &str) -> u32 {
-    let evals_dir = Path::new(workspace_path)
-        .join(skill_name)
+#[allow(dead_code)]
+pub fn clean_incomplete_iterations(skills_path: &str, plugin_slug: &str, skill_name: &str) -> u32 {
+    let evals_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
         .join("evals")
         .join("workspace");
 
@@ -916,42 +901,6 @@ pub fn clean_incomplete_iterations(workspace_path: &str, skill_name: &str) -> u3
     removed
 }
 
-/// Scan all skill directories under `workspace_path` and clean incomplete
-/// iterations for each. Called during app startup reconciliation.
-pub fn clean_all_incomplete_iterations(workspace_path: &str) -> u32 {
-    let workspace = Path::new(workspace_path);
-    if !workspace.is_dir() {
-        return 0;
-    }
-
-    let entries = match std::fs::read_dir(workspace) {
-        Ok(e) => e,
-        Err(e) => {
-            log::warn!(
-                "event=clean_all_incomplete_iterations operation=read_workspace error={}",
-                e
-            );
-            return 0;
-        }
-    };
-
-    let mut total_removed = 0u32;
-    for entry in entries.flatten() {
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let skill_name = entry.file_name().to_string_lossy().to_string();
-        total_removed += clean_incomplete_iterations(workspace_path, &skill_name);
-    }
-    if total_removed > 0 {
-        log::info!(
-            "event=clean_all_incomplete_iterations operation=summary removed={}",
-            total_removed
-        );
-    }
-    total_removed
-}
-
 #[derive(serde::Serialize)]
 pub struct LatestBenchmarkResult {
     pub iteration: u32,
@@ -960,19 +909,22 @@ pub struct LatestBenchmarkResult {
 
 /// Read benchmark.json from the latest iteration directory for a skill.
 ///
-/// Scans `{workspace}/{skill}/evals/iterations/` for `iteration-{N}` dirs,
+/// Scans `{skills_path}/{plugin}/skills/{name}/evals/iterations/` for `iteration-{N}` dirs,
 /// picks the highest N, and reads its `benchmark.json`. Returns `None` when
 /// no benchmark data exists (no evals dir, no iterations, or no JSON file).
-#[tauri::command]
-pub fn read_latest_benchmark(
-    skill_name: String,
-    workspace_path: String,
+pub fn read_latest_benchmark_inner(
+    skill_name: &str,
+    skills_path: &str,
+    conn: &rusqlite::Connection,
 ) -> Result<Option<LatestBenchmarkResult>, String> {
     log::info!("[read_latest_benchmark] skill={}", skill_name);
-    validate_skill_name(&skill_name)?;
+    validate_skill_name(skill_name)?;
 
-    let evals_dir = Path::new(&workspace_path)
-        .join(&skill_name)
+    let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)?
+        .map(|m| m.plugin_slug)
+        .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
+
+    let evals_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), &plugin_slug, skill_name)
         .join("evals")
         .join("workspace");
 
@@ -1047,16 +999,33 @@ pub fn read_latest_benchmark(
     }))
 }
 
+#[tauri::command]
+pub fn read_latest_benchmark(
+    skill_name: String,
+    skills_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Option<LatestBenchmarkResult>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    read_latest_benchmark_inner(&skill_name, &skills_path, &conn)
+}
+
 #[cfg(test)]
 mod clean_iterations_tests {
     use super::*;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
     use std::fs;
 
     #[test]
     fn removes_incomplete_iteration() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
+        let skills_path = tmp.path().to_str().unwrap();
+        let evals_dir = crate::skill_paths::resolve_skill_dir(
+            tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+        )
+        .join("evals")
+        .join("workspace");
 
         // Create complete iteration
         let iter1 = evals_dir.join("iteration-1");
@@ -1068,7 +1037,7 @@ mod clean_iterations_tests {
         fs::create_dir_all(&iter2).unwrap();
         fs::write(iter2.join("some-partial-output.txt"), "partial").unwrap();
 
-        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        let removed = clean_incomplete_iterations(skills_path, DEFAULT_PLUGIN_SLUG, "my-skill");
         assert_eq!(removed, 1);
         assert!(iter1.exists(), "complete iteration should be preserved");
         assert!(!iter2.exists(), "incomplete iteration should be removed");
@@ -1077,8 +1046,14 @@ mod clean_iterations_tests {
     #[test]
     fn preserves_all_complete_iterations() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
+        let skills_path = tmp.path().to_str().unwrap();
+        let evals_dir = crate::skill_paths::resolve_skill_dir(
+            tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+        )
+        .join("evals")
+        .join("workspace");
 
         for i in 1..=3 {
             let iter = evals_dir.join(format!("iteration-{}", i));
@@ -1086,7 +1061,7 @@ mod clean_iterations_tests {
             fs::write(iter.join("benchmark.json"), "{}").unwrap();
         }
 
-        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        let removed = clean_incomplete_iterations(skills_path, DEFAULT_PLUGIN_SLUG, "my-skill");
         assert_eq!(removed, 0);
         for i in 1..=3 {
             assert!(evals_dir.join(format!("iteration-{}", i)).exists());
@@ -1096,8 +1071,14 @@ mod clean_iterations_tests {
     #[test]
     fn handles_mixed_complete_and_incomplete() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
+        let skills_path = tmp.path().to_str().unwrap();
+        let evals_dir = crate::skill_paths::resolve_skill_dir(
+            tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+        )
+        .join("evals")
+        .join("workspace");
 
         // iteration-1: complete
         let iter1 = evals_dir.join("iteration-1");
@@ -1117,7 +1098,7 @@ mod clean_iterations_tests {
         let iter4 = evals_dir.join("iteration-4");
         fs::create_dir_all(&iter4).unwrap();
 
-        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        let removed = clean_incomplete_iterations(skills_path, DEFAULT_PLUGIN_SLUG, "my-skill");
         assert_eq!(removed, 2);
         assert!(iter1.exists());
         assert!(!iter2.exists());
@@ -1128,69 +1109,62 @@ mod clean_iterations_tests {
     #[test]
     fn returns_zero_when_no_evals_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        let skill_dir = crate::skill_paths::resolve_skill_dir(
+            tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+        );
+        std::fs::create_dir_all(&skill_dir).unwrap();
 
-        let removed = clean_incomplete_iterations(workspace, "my-skill");
+        let removed = clean_incomplete_iterations(skills_path, DEFAULT_PLUGIN_SLUG, "my-skill");
         assert_eq!(removed, 0);
-    }
-
-    #[test]
-    fn clean_all_scans_multiple_skills() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-
-        // skill-a: one incomplete
-        let evals_a = tmp.path().join("skill-a").join("evals").join("workspace");
-        let iter_a = evals_a.join("iteration-1");
-        fs::create_dir_all(&iter_a).unwrap();
-
-        // skill-b: one complete, one incomplete
-        let evals_b = tmp.path().join("skill-b").join("evals").join("workspace");
-        let iter_b1 = evals_b.join("iteration-1");
-        fs::create_dir_all(&iter_b1).unwrap();
-        fs::write(iter_b1.join("benchmark.json"), "{}").unwrap();
-        let iter_b2 = evals_b.join("iteration-2");
-        fs::create_dir_all(&iter_b2).unwrap();
-
-        let removed = clean_all_incomplete_iterations(workspace);
-        assert_eq!(removed, 2);
-        assert!(!iter_a.exists());
-        assert!(iter_b1.exists());
-        assert!(!iter_b2.exists());
     }
 }
 
 #[cfg(test)]
 mod benchmark_tests {
     use super::*;
+    use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
     use std::fs;
+
+    fn test_conn() -> rusqlite::Connection {
+        crate::db::create_test_db_for_tests()
+    }
 
     #[test]
     fn returns_none_when_no_evals_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap().to_string();
+        let workspace = tmp.path().to_str().unwrap();
         fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+        let conn = test_conn();
 
-        let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
+        let result = read_latest_benchmark_inner("my-skill", workspace, &conn).unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn returns_none_when_no_iterations() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap().to_string();
+        let workspace = tmp.path().to_str().unwrap();
         fs::create_dir_all(tmp.path().join("my-skill").join("evals").join("workspace")).unwrap();
+        let conn = test_conn();
 
-        let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
+        let result = read_latest_benchmark_inner("my-skill", workspace, &conn).unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn returns_latest_iteration() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap().to_string();
-        let evals_dir = tmp.path().join("my-skill").join("evals").join("workspace");
+        let skills_path = tmp.path().to_str().unwrap();
+        let evals_dir = crate::skill_paths::resolve_skill_dir(
+            tmp.path(),
+            DEFAULT_PLUGIN_SLUG,
+            "my-skill",
+        )
+        .join("evals")
+        .join("workspace");
 
         // Create iteration-1 with lower pass rate
         let iter1 = evals_dir.join("iteration-1");
@@ -1219,7 +1193,8 @@ mod benchmark_tests {
         )
         .unwrap();
 
-        let result = read_latest_benchmark("my-skill".into(), workspace)
+        let conn = test_conn();
+        let result = read_latest_benchmark_inner("my-skill", skills_path, &conn)
             .unwrap()
             .unwrap();
         // Should pick iteration-3
@@ -1235,7 +1210,7 @@ mod benchmark_tests {
     #[test]
     fn returns_none_when_benchmark_json_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap().to_string();
+        let workspace = tmp.path().to_str().unwrap();
         let iter1 = tmp
             .path()
             .join("my-skill")
@@ -1244,8 +1219,9 @@ mod benchmark_tests {
             .join("iteration-1");
         fs::create_dir_all(&iter1).unwrap();
         // No benchmark.json written
+        let conn = test_conn();
 
-        let result = read_latest_benchmark("my-skill".into(), workspace).unwrap();
+        let result = read_latest_benchmark_inner("my-skill", workspace, &conn).unwrap();
         assert!(result.is_none());
     }
 }

@@ -348,8 +348,6 @@ fn validate_model_numbers(settings: &ProviderOverride) -> Result<(), String> {
 pub struct AppSettings {
     #[serde(default)]
     pub model_settings: ModelSettings,
-    pub workspace_path: Option<String>,
-    #[serde(default)]
     pub skills_path: Option<String>,
     #[serde(default)]
     pub debug_mode: bool,
@@ -398,7 +396,6 @@ impl std::fmt::Debug for AppSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppSettings")
             .field("model_settings", &self.model_settings)
-            .field("workspace_path", &self.workspace_path)
             .field("skills_path", &self.skills_path)
             .field("debug_mode", &self.debug_mode)
             .field("log_level", &self.log_level)
@@ -426,7 +423,6 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             model_settings: ModelSettings::default(),
-            workspace_path: None,
             skills_path: None,
             debug_mode: false,
             log_level: "info".to_string(),

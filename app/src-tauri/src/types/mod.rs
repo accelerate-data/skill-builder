@@ -28,7 +28,6 @@ mod tests {
     #[test]
     fn test_app_settings_default() {
         let settings = AppSettings::default();
-        assert!(settings.workspace_path.is_none());
         assert!(settings.skills_path.is_none());
         assert_eq!(settings.log_level, "info");
         assert!(!settings.extended_context);
@@ -48,7 +47,6 @@ mod tests {
     #[test]
     fn test_app_settings_serde_roundtrip() {
         let settings = AppSettings {
-            workspace_path: Some("/home/user/skills".to_string()),
             skills_path: Some("/home/user/output".to_string()),
             github_oauth_token: Some("test-github-token".to_string()),
             github_user_login: Some("testuser".to_string()),
@@ -67,10 +65,6 @@ mod tests {
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            deserialized.workspace_path.as_deref(),
-            Some("/home/user/skills")
-        );
         assert_eq!(
             deserialized.skills_path.as_deref(),
             Some("/home/user/output")
@@ -99,7 +93,7 @@ mod tests {
         // Simulates loading settings saved before new fields existed.
         // Legacy fields (anthropic_api_key, preferred_model, extended_thinking, etc.)
         // in old JSON blobs are silently dropped by serde on read.
-        let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
+        let json = r#"{"anthropic_api_key":"sk-test","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
         assert_eq!(settings.log_level, "info");
@@ -112,7 +106,7 @@ mod tests {
         assert!(!settings.marketplace_initialized);
 
         // Simulates loading settings that still have the old verbose_logging boolean field
-        let json_old = r#"{"workspace_path":"/w","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
+        let json_old = r#"{"verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
         let settings_old: AppSettings = serde_json::from_str(json_old).unwrap();
         // Old verbose_logging is ignored; log_level defaults to "info"
         assert_eq!(settings_old.log_level, "info");

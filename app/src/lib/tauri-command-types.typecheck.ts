@@ -55,31 +55,11 @@ void invokeCommand("run_workflow_step", {
 
 void invokeCommand("get_workspace_path", {});
 
-void invokeCommand("resolve_discovery", {
-  skillName: "demo",
-  action: "add-skill-builder",
-  pluginSlug: null,
-});
-
 // @ts-expect-error get_workspace_path uses the typed no-args convention
 void invokeCommand("get_workspace_path", { apply: true });
 
 // @ts-expect-error get_decisions requires a skillId string
 void invokeCommand("get_decisions", {});
-
-// @ts-expect-error resolve_discovery action and pluginSlug must match the contract
-void invokeCommand("resolve_discovery", {
-  skillName: "demo",
-  action: 42,
-  pluginSlug: false,
-});
-
-// @ts-expect-error resolve_discovery only accepts known discovery actions
-void invokeCommand("resolve_discovery", {
-  skillName: "demo",
-  action: "keep",
-  pluginSlug: null,
-});
 
 // @ts-expect-error selected-skill bootstrap requires skillName, pluginSlug, and workspacePath
 void invokeCommand("select_skill_openhands_session", { session_id: "session-1" });
