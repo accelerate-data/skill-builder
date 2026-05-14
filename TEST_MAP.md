@@ -104,7 +104,7 @@ UI-facing, also run the mapped E2E tag.
 | `app/src-tauri/src/commands/git.rs` | -- | `@dashboard` |
 | `app/src-tauri/src/commands/lifecycle.rs` | -- | -- |
 | `app/src-tauri/src/commands/feedback.rs` | -- | -- |
-| `app/src-tauri/src/commands/node.rs` | `commands::node` | -- |
+ | `app/src-tauri/src/commands/startup.rs` | `commands::startup` | -- |
 | `app/src-tauri/src/agents/openhands_server/` | `agents::openhands_server` | `@workflow` |
 | `app/src-tauri/src/agents/runtime_config.rs` | `agents::runtime_config` | `@workflow` |
 | `app/src-tauri/src/db/mod.rs` | `db` | -- |
