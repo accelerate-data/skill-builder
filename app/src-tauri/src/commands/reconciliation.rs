@@ -106,6 +106,19 @@ pub fn reconcile_startup(
     Ok(result)
 }
 
+#[tauri::command]
+pub fn record_reconciliation_cancel(
+    db: tauri::State<'_, Db>,
+    notification_count: Option<usize>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let details = serde_json::to_string(&serde_json::json!({
+        "notifications": notification_count.unwrap_or(0),
+    }))
+    .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
+    crate::db::record_reconciliation_event(&conn, "cancelled", &details)
+}
+
 fn cleanup_app_local_startup_state(data_dir: &Path) -> Result<u32, String> {
     let mut cleaned = 0u32;
     let conversations_root = data_dir.join("workspace").join("conversations");
@@ -134,38 +147,6 @@ fn cleanup_app_local_startup_state(data_dir: &Path) -> Result<u32, String> {
     }
 
     Ok(cleaned)
-}
-
-#[tauri::command]
-pub fn record_reconciliation_cancel(
-    db: tauri::State<'_, Db>,
-    notification_count: Option<usize>,
-) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let details = serde_json::to_string(&serde_json::json!({
-        "notifications": notification_count.unwrap_or(0),
-    }))
-    .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
-    crate::db::record_reconciliation_event(&conn, "cancelled", &details)
-}
-
-#[tauri::command]
-pub fn resolve_orphan(
-    skill_name: String,
-    action: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    log::info!("[resolve_orphan] skill={} action={}", skill_name, action);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[resolve_orphan] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let settings = crate::db::read_settings(&conn)?;
-    let skills_path = settings
-        .skills_path
-        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
-
-    crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
 }
 
 /// Migrate flat skill dirs to the plugin-organised layout.

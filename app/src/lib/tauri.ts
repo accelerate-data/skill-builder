@@ -229,9 +229,6 @@ export const recordReconciliationCancel = (
     notificationCount,
   });
 
-export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
-  invokeCommand("resolve_orphan", { skillName, action });
-
 // --- Feedback ---
 
 interface CreateGithubIssueRequest {

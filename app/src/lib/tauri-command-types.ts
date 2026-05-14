@@ -239,7 +239,6 @@ export interface TauriCommandMap {
   allow_app_exit: { args: NoArgs; result: void };
   create_workflow_session: { args: { sessionId: string; skillId: number }; result: void };
   end_workflow_session: { args: { sessionId: string }; result: void };
-  resolve_orphan: { args: { skillName: string; action: "delete" | "keep" }; result: void };
   create_github_issue: { args: { request: CreateGithubIssueRequest }; result: CreateGithubIssueResponse };
   github_start_device_flow: { args: NoArgs; result: DeviceFlowResponse };
   github_poll_for_token: { args: { deviceCode: string }; result: GitHubAuthResult };

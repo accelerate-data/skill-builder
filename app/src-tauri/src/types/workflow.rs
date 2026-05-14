@@ -99,14 +99,7 @@ pub struct StepResetPreview {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrphanSkill {
-    pub skill_name: String,
-    pub purpose: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReconciliationResult {
-    pub orphans: Vec<OrphanSkill>,
     pub notifications: Vec<String>,
     pub auto_cleaned: u32,
 }

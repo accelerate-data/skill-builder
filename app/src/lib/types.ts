@@ -241,13 +241,7 @@ export interface StartupDeps {
   checks: DepStatus[]
 }
 
-export interface OrphanSkill {
-  skill_name: string
-  purpose: string
-}
-
 export interface ReconciliationResult {
-  orphans: OrphanSkill[]
   notifications: string[]
   auto_cleaned: number
 }

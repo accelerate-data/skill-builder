@@ -385,7 +385,6 @@ pub fn run() {
             commands::workspace::clear_workspace,
             commands::reconciliation::reconcile_startup,
             commands::reconciliation::record_reconciliation_cancel,
-            commands::reconciliation::resolve_orphan,
             commands::workflow_session::create_workflow_session,
             commands::workflow_session::end_workflow_session,
             commands::imported_skills::listing::list_imported_skills,

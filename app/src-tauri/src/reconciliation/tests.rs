@@ -288,9 +288,8 @@ fn test_marketplace_skill_preserved_when_skill_md_exists() {
 
     let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
-    assert_eq!(result.auto_cleaned, 0);
     assert!(result.notifications.is_empty());
+    assert_eq!(result.auto_cleaned, 0);
 
     // Skills master record must still exist unchanged
     let all_skills = crate::db::list_all_skills(&conn).unwrap();
@@ -326,7 +325,6 @@ fn test_scenario_5_normal_db_and_disk_agree() {
 
     let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
     assert_eq!(result.auto_cleaned, 0);
     assert!(result.notifications.is_empty());
 
@@ -565,7 +563,6 @@ fn test_reconcile_empty_workspace() {
 
     let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
     assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 }
@@ -584,7 +581,6 @@ fn test_reconcile_skips_infrastructure_dirs() {
 
     let result = reconcile_on_startup(&conn, skills_path).unwrap();
 
-    assert!(result.orphans.is_empty());
     assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 }
@@ -748,80 +744,6 @@ fn test_missing_workspace_dir_recreated_for_in_progress_skill() {
 
 // --- Gap 5: DB=3 with step 3 missing resets to 2 ---
 
-#[test]
-fn test_resolve_orphan_delete() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 7, "completed", "domain").unwrap();
-    let output_dir = resolve_skill_dir(
-        tmp.path(),
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-        "orphan",
-    );
-    std::fs::create_dir_all(output_dir.join("references")).unwrap();
-    std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
-
-    resolve_orphan(&conn, "orphan", "delete", skills_path).unwrap();
-
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-        .unwrap()
-        .is_none());
-    assert!(!output_dir.exists());
-}
-
-#[test]
-fn test_resolve_orphan_keep() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 7, "completed", "domain").unwrap();
-    let output_dir = tmp.path().join("orphan");
-    std::fs::create_dir_all(&output_dir).unwrap();
-    std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
-
-    resolve_orphan(&conn, "orphan", "keep", skills_path).unwrap();
-
-    let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-        .unwrap()
-        .unwrap();
-    assert_eq!(run.current_step, 0);
-    assert_eq!(run.status, "pending");
-    assert!(output_dir.join("SKILL.md").exists());
-}
-
-#[test]
-fn test_resolve_orphan_delete_already_gone() {
-    let conn = create_test_db();
-
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 5, "completed", "domain").unwrap();
-
-    resolve_orphan(&conn, "orphan", "delete", "/nonexistent/path").unwrap();
-    assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-        .unwrap()
-        .is_none());
-}
-
-#[test]
-fn test_resolve_orphan_invalid_action() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-    let skill_id = crate::db::upsert_skill(&conn, "orphan", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 5, "completed", "domain").unwrap();
-
-    let result = resolve_orphan(&conn, "orphan", "invalid", skills_path);
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("Invalid orphan resolution action"));
-}
-
 // --- Scenario 10: skill_source=skill-builder, master row, no workflow_runs ---
 
 #[test]
@@ -843,7 +765,7 @@ fn test_reconcile_full_with_fallback_to_workspace_path() {
     // Reconcile with single path
     let result = reconcile_on_startup(&conn, workspace).unwrap();
 
-    assert!(result.orphans.is_empty());
+    assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 
     // DB should be reconciled: disk has step 2, DB had step 1.
@@ -872,7 +794,7 @@ fn test_reconcile_when_workspace_and_skills_paths_identical() {
     // Single path (previously workspace == skills_path)
     let result = reconcile_on_startup(&conn, path).unwrap();
 
-    assert!(result.orphans.is_empty());
+    assert!(result.notifications.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 
     let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -928,7 +850,6 @@ fn test_db_record_with_workspace_dir_reconciles_normally() {
 
     // DB record should be preserved (not auto-cleaned)
     assert_eq!(result.auto_cleaned, 0);
-    assert!(result.orphans.is_empty());
     assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
         .unwrap()
         .is_some());
@@ -965,7 +886,6 @@ fn test_reconcile_detects_multiple_orphans() {
     let result = reconcile_on_startup(&conn, skills_str).unwrap();
 
     // All three are in skills_path (the driver) → they're in disk_dirs → normal reconciliation
-    assert!(result.orphans.is_empty());
     assert_eq!(result.auto_cleaned, 0);
 
     // All DB records should still exist
@@ -1084,58 +1004,6 @@ fn test_pass3_skips_dotfiles_and_trash() {
         skills.join(".trash").exists(),
         ".trash should not be touched"
     );
-}
-
-// --- Path traversal guard tests ---
-
-#[test]
-fn test_resolve_orphan_delete_rejects_traversal_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-    let skill_id = crate::db::upsert_skill(&conn, "some-skill", "skill-builder", "domain").unwrap();
-    crate::db::save_workflow_run_by_skill_id(&conn, skill_id, 1, "pending", "domain").unwrap();
-
-    // skill_name contains path traversal sequences — must be rejected before any FS op
-    let result = resolve_orphan(&conn, "../escape", "delete", skills_path);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(
-        err.contains("Invalid skill name") || err.contains("traversal"),
-        "unexpected error: {}",
-        err
-    );
-    // DB row must NOT have been deleted (error before db write)
-    assert!(
-        crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
-            .unwrap()
-            .is_some(),
-        "unrelated skill should be untouched"
-    );
-}
-
-#[test]
-fn test_resolve_orphan_delete_rejects_slash_in_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let result = resolve_orphan(&conn, "foo/bar", "delete", skills_path);
-    assert!(result.is_err());
-    assert!(
-        result.unwrap_err().contains("Invalid skill name"),
-        "slash in skill_name must be rejected"
-    );
-}
-
-#[test]
-fn test_resolve_orphan_delete_rejects_empty_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let skills_path = tmp.path().to_str().unwrap();
-    let conn = create_test_db();
-
-    let result = resolve_orphan(&conn, "", "delete", skills_path);
-    assert!(result.is_err());
 }
 
 // =============================================================================

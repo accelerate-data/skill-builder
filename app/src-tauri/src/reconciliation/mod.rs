@@ -392,74 +392,9 @@ pub fn reconcile_on_startup(
     log::info!("[reconcile] done: {} notifications", notifications.len());
 
     Ok(ReconciliationResult {
-        orphans: Vec::new(),
         notifications,
         auto_cleaned: 0,
     })
-}
-
-/// Resolve an orphan skill. Called from the frontend after the user makes a decision.
-pub fn resolve_orphan(
-    conn: &rusqlite::Connection,
-    skill_name: &str,
-    action: &str,
-    skills_path: &str,
-) -> Result<(), String> {
-    log::debug!(
-        "[resolve_orphan] skill='{}': action={} skills_path={}",
-        skill_name,
-        action,
-        skills_path
-    );
-    match action {
-        "delete" => {
-            crate::commands::imported_skills::validate_skill_name(skill_name)?;
-
-            // Look up plugin slug BEFORE delete so we can pass it through.
-            let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)
-                .ok()
-                .flatten()
-                .map(|m| m.plugin_slug)
-                .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
-            crate::db::delete_workflow_run(conn, skill_name, &plugin_slug)?;
-            let output_dir = crate::skill_paths::resolve_existing_skill_dir(
-                Path::new(skills_path),
-                &plugin_slug,
-                skill_name,
-            );
-            if output_dir.exists() {
-                let canonical_base = std::fs::canonicalize(skills_path)
-                    .map_err(|e| format!("Failed to canonicalize skills_path: {}", e))?;
-                let canonical_target = std::fs::canonicalize(&output_dir)
-                    .map_err(|e| format!("Failed to canonicalize output_dir: {}", e))?;
-                if !canonical_target.starts_with(&canonical_base) {
-                    return Err(format!("Path traversal attempt for skill '{}'", skill_name));
-                }
-                std::fs::remove_dir_all(&output_dir).map_err(|e| {
-                    format!("Failed to delete skill output for '{}': {}", skill_name, e)
-                })?;
-            }
-            Ok(())
-        }
-        "keep" => {
-            let s_id = crate::db::get_skill_master_id_in_plugin(
-                conn,
-                skill_name,
-                crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-            )?;
-            if let Some(s_id) = s_id {
-                if let Some(run) = crate::db::get_workflow_run_by_skill_id(conn, s_id)? {
-                    crate::db::save_workflow_run(conn, skill_name, 0, "pending", &run.purpose)?;
-                    crate::db::reset_workflow_steps_from_by_skill_id(conn, s_id, 0)?;
-                }
-            }
-            Ok(())
-        }
-        _ => Err(format!(
-            "Invalid orphan resolution action: '{}'. Expected 'delete' or 'keep'.",
-            action
-        )),
-    }
 }
 
 #[cfg(test)]
