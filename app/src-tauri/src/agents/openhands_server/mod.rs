@@ -832,6 +832,20 @@ pub async fn shutdown_openhands_server() -> Result<(), String> {
     crate::agents::openhands_server::process::shutdown_agent_server().await
 }
 
+pub async fn create_openhands_conversation(
+    app: &tauri::AppHandle,
+    config: &OpenHandsRuntimeConfig,
+) -> Result<String, String> {
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(config)?;
+    resolve_openhands_conversation_id(
+        app,
+        &request,
+        None,
+        OpenHandsConversationSelection::CreateFresh,
+    )
+    .await
+}
+
 pub async fn start_openhands_session(
     app: &tauri::AppHandle,
     config: OpenHandsRuntimeConfig,
@@ -1086,6 +1100,7 @@ pub async fn run_openhands_conversation(
     Ok(conversation_id)
 }
 
+#[allow(dead_code)]
 pub async fn ask_openhands_agent(
     config: OpenHandsRuntimeConfig,
     conversation_id: &str,
@@ -1132,72 +1147,6 @@ async fn run_conversation_task(
     result
 }
 
-pub(crate) async fn dispatch_openhands_turn_with_request(
-    app: &tauri::AppHandle,
-    agent_id: &str,
-    config: OpenHandsRuntimeConfig,
-    request: OpenHandsRuntimeRequest,
-    conversation_id: Option<String>,
-    selection: OpenHandsConversationSelection,
-    prompt_delivery: PromptDelivery,
-) -> Result<String, String> {
-    let conversation_id =
-        resolve_openhands_conversation_id(app, &request, conversation_id, selection).await?;
-    let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
-            .await?;
-    let client = OpenHandsServerClient::new(
-        server
-            .base_url()
-            .parse::<reqwest::Url>()
-            .map_err(|e| format!("Invalid OpenHands Agent Server base URL: {e}"))?,
-        Some(server.session_api_key.clone()),
-    );
-
-    let config_event = redact_openhands_config_for_log(&config, server.port);
-    super::events::handle_runtime_message(app, agent_id, &config_event.to_string());
-
-    let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
-    let websocket_url = server.websocket_url(&conversation_id);
-
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    register_cancel(agent_id, cancel_tx)?;
-
-    let app_for_task = app.clone();
-    let agent_for_task = agent_id.to_string();
-    let conversation_id_clone = conversation_id.clone();
-    let session_api_key = server.session_api_key.clone();
-    let task_handle = tokio::spawn(async move {
-        register_conversation_owner(&conversation_id_clone, &agent_for_task);
-        let task = OpenHandsConversationTask {
-            app: app_for_task.clone(),
-            agent_id: agent_for_task.clone(),
-            client,
-            conversation_id: conversation_id_clone.clone(),
-            prompt: request.prompt.clone(),
-            prompt_delivery,
-            websocket_url,
-            session_api_key,
-            summary_context,
-            stderr_tail: server.stderr_tail.clone(),
-        };
-        let result = run_conversation_task(task, cancel_rx).await;
-        unregister_conversation_owner(&conversation_id_clone);
-        unregister_cancel(&agent_for_task);
-        unregister_task_handle(&agent_for_task);
-        if let Err(error) = result {
-            super::events::handle_runtime_exit_with_detail(
-                &app_for_task,
-                &agent_for_task,
-                false,
-                Some(error),
-            );
-        }
-    });
-    register_task_handle(agent_id, &task_handle);
-
-    Ok(conversation_id)
-}
 async fn run_conversation_task_inner(
     task: &OpenHandsConversationTask,
     cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,

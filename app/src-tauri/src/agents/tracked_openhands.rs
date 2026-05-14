@@ -3,8 +3,7 @@ use std::time::{Duration, Instant};
 use tauri::Listener;
 
 use crate::agents::openhands_server::{
-    self, OpenHandsConversationSelection, OpenHandsRuntimeEvent, OpenHandsThrowawayRun,
-    PromptDelivery,
+    self, OpenHandsRuntimeEvent, OpenHandsThrowawayRun,
 };
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 
@@ -22,20 +21,22 @@ pub async fn send_tracked_openhands_message(
 ) -> Result<String, String> {
     // If a live local runner already owns this conversation, only send the message.
     if openhands_server::has_live_runner_for_conversation(&conversation_id) {
+        let prompt = config.prompt.clone();
         openhands_server::send_message_to_openhands_conversation(
             config,
             &conversation_id,
-            "",
+            &prompt,
         )
         .await?;
         return Ok(conversation_id);
     }
 
     // Conversation is idle: send the message and start a new run.
+    let prompt = config.prompt.clone();
     openhands_server::send_message_to_openhands_conversation(
         config.clone(),
         &conversation_id,
-        "",
+        &prompt,
     )
     .await?;
     openhands_server::run_openhands_conversation(
@@ -66,6 +67,8 @@ pub async fn send_tracked_throwaway(
     let config = params.config;
     let agent_id = params.agent_id.clone();
     let started_at = Instant::now();
+
+    let conversation_id = openhands_server::create_openhands_conversation(app, &config).await?;
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsRuntimeEvent>();
     let target_agent_id = agent_id.clone();
@@ -99,15 +102,11 @@ pub async fn send_tracked_throwaway(
         }
     });
 
-    let request = openhands_server::OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    openhands_server::dispatch_openhands_turn_with_request(
+    openhands_server::run_openhands_conversation(
         app,
         &agent_id,
-        config,
-        request,
-        None,
-        OpenHandsConversationSelection::CreateFresh,
-        PromptDelivery::ViaSendEvent,
+        config.clone(),
+        conversation_id,
     )
     .await
     .inspect_err(|_| {

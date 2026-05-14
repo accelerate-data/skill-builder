@@ -493,24 +493,25 @@ pub async fn run_workflow_step(
             stale_agent_id,
             step_id,
         );
-        // Best-effort pause: signal the local task and close the runner
-        openhands_server::send_cancel_signal(stale_agent_id);
-        openhands_server::close_local_openhands_run(stale_agent_id);
-        // If we have a conversation_id, also pause the remote conversation
+        // Best-effort pause using the tracked wrapper (remote pause first, then local cancel signal),
+        // then close the runner from the registry.
         if let Some(conv_id) = stale_conversation_id {
             let pause_result = crate::commands::skill_session::build_pause_runtime_config(
                 &app, &db, &skill_name,
                 &settings.plugin_slug,
             );
             if let Ok(config) = pause_result {
-                if let Err(error) = openhands_server::pause_openhands_conversation(config, conv_id).await {
-                    log::warn!(
-                        "[run_workflow_step] failed to pause stale conversation {}: {}",
-                        conv_id, error,
-                    );
-                }
+                let _ = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
+                    config,
+                    conv_id,
+                    Some(stale_agent_id),
+                )
+                .await;
             }
+        } else {
+            openhands_server::send_cancel_signal(stale_agent_id);
         }
+        openhands_server::close_local_openhands_run(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;

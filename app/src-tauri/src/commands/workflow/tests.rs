@@ -584,7 +584,10 @@ fn answer_evaluator_runtime_config_uses_skill_creator_openhands_contract() {
     assert_eq!(config.agent_name.as_deref(), Some("skill-creator"));
     assert_eq!(config.run_source.as_deref(), Some("gate-eval"));
     assert_eq!(config.output_format, Some(answer_evaluator_output_format()));
-    assert!(config.user_message_suffix.is_some());
+    assert_eq!(
+        config.user_message_suffix.as_deref(),
+        Some(crate::agents::skill_creator::SKILL_CREATOR_USER_SUFFIX.trim())
+    );
     assert_eq!(
         config.task_kind.as_deref(),
         Some("workflow.answer_evaluator")

@@ -576,6 +576,43 @@ mod tests {
             "conversation directory must not be deleted by reset"
         );
     }
+
+    #[test]
+    fn test_reset_fork_and_rebind_updates_conversation_id() {
+        // Verify the DB path of the fork-and-rebind sequence:
+        // 1. save_skill_conversation_id rebinds the skill to the fork ID
+        // 2. clear_skill_conversation_db_records clears the old record
+        // The old conversation remains persisted on the server (not deleted).
+        let conn = create_test_db();
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        let skill_name = "fork-rebind-test";
+
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+            .unwrap();
+        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-original")
+            .unwrap();
+
+        // Simulate fork: rebind skill to new conversation ID
+        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-forked")
+            .unwrap();
+
+        // After rebind, the skill should point to the fork ID
+        assert_eq!(
+            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
+            Some("conv-forked".to_string()),
+            "skill should be rebound to fork conversation ID"
+        );
+
+        // Simulate clearing old conversation DB records (part of reset)
+        clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
+
+        // After clearing, the skill should have no conversation ID
+        assert_eq!(
+            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
+            None,
+            "old conversation DB record should be cleared after fork rebind"
+        );
+    }
 }
 
 /// Output files produced by each step, relative to the skill directory.
