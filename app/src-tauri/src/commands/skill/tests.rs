@@ -412,6 +412,7 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
             "workflow-agent".to_string(),
             WorkflowStepRun {
                 skill_name: "active-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 conversation_id: None,
             },
         );
@@ -419,6 +420,7 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
             "other-agent".to_string(),
             WorkflowStepRun {
                 skill_name: "other-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 conversation_id: None,
             },
         );
@@ -509,6 +511,7 @@ fn test_prepare_skill_runtime_shutdown_tracks_agent_ids_not_conversation_ids() {
             "workflow-agent".to_string(),
             WorkflowStepRun {
                 skill_name: "active-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 conversation_id: Some("workflow-conversation".to_string()),
             },
         );

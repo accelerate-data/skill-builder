@@ -4,7 +4,6 @@ use tauri::{Manager, State};
 
 use crate::agents::skill_creator::{
     build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
-    throwaway_non_skill_dir,
 };
 use crate::agents::tracked_openhands::{self, OpenHandsThrowawayRunParams};
 use crate::commands::workflow::deploy::ensure_openhands_runtime_dir;
@@ -35,7 +34,10 @@ pub async fn test_model_connection(
     let skills_path = read_initialized_skills_path(&db)?;
 
     let run_id = uuid::Uuid::new_v4().to_string();
-    let runtime_run_dir = throwaway_non_skill_dir(MODEL_CONNECTION_TEST_SURFACE, &run_id);
+    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
+        MODEL_CONNECTION_TEST_SURFACE,
+        &run_id,
+    );
 
     std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
         std::path::Path::new(&runtime_run_dir),
@@ -68,10 +70,7 @@ pub async fn test_model_connection(
         prompt: MODEL_CONNECTION_TEST_PROMPT.to_string(),
         llm,
         intent: SkillCreatorIntent::ModelValidation,
-        skill_dir_override: Some(throwaway_non_skill_dir(
-            MODEL_CONNECTION_TEST_SURFACE,
-            &run_id,
-        )),
+        skill_dir_override: Some(runtime_run_dir.to_string_lossy().replace('\\', "/")),
     });
     let run = tracked_openhands::send_tracked_throwaway(
         &app,

@@ -371,7 +371,7 @@ The runtime contract uses three primary roots plus one derived throwaway root.
 | App data root | `app_handle.path().app_data_dir()` | Rust | App-local DB, OpenHands persistence roots, documents, runtime support files |
 | Skills root | user-configured `settings.skills_path` | Rust + user filesystem | Canonical plugin/skill tree and durable skill output |
 | Skill dir | `{skills_root}/{plugin_slug}/skills/{skill_name}` | Rust + OpenHands runtime | Working directory for persistent skill-bound runs |
-| Throwaway run dir | skill-related: `{skill_dir}`; unrelated: `/tmp/skill-builder/throwaway/{surface}/{run_id}` | Rust + OpenHands runtime | Active working directory for throwaway runs |
+| Throwaway run dir | `{system_tmp}/skill-builder/throwaway/{surface}/{run_id}` | Rust + OpenHands runtime | Active working directory for throwaway runs |
 
 ### Canonical Path Templates
 
@@ -419,26 +419,27 @@ workspace mirror under app-local data.
 
 ### Throwaway Runtime Ownership
 
-Throwaway runs choose their active working directory from an explicit backend
-flag:
+All throwaway runs use one shared temp-root contract:
 
-- `skill_related = true` → active working directory is the canonical skill dir
-- `skill_related = false` → active working directory is `/tmp/skill-builder/throwaway/{surface}/{run_id}`
+- resolve the system temp base from `TMPDIR`, `TMP`, `TEMP`, then `std::env::temp_dir()`
+- place the active working directory at `{system_tmp}/skill-builder/throwaway/{surface}/{run_id}`
 
 Examples:
 
 ```text
-skill_related = true
-  {skills_root}/{plugin_slug}/skills/{skill_name}
+scope review
+  {system_tmp}/skill-builder/throwaway/scope-review/{run_id}
 
-skill_related = false
-  /tmp/skill-builder/throwaway/{surface}/{run_id}
+eval workbench
+  {system_tmp}/skill-builder/throwaway/eval-workbench/{run_id}
+
+model validation
+  {system_tmp}/skill-builder/throwaway/model-connection-test/{run_id}
 ```
 
-Skill-related throwaways reuse the skill directory intentionally. Non-skill
-throwaways use isolated scratch directories under `/tmp`. Conversation
-history still remains app-data-owned; this section only describes the active
-working directory passed to the runtime.
+Persistent selected-skill and workflow sessions still use the canonical skill
+dir. Conversation history remains app-data-owned; this section only describes
+the active working directory passed to the runtime.
 
 ### Throwaway Tool Access Mode
 
@@ -452,11 +453,9 @@ This flag is independent of `skill_related`.
 
 Examples:
 
-- scope review may be `skill_related = true` and `read_only`
-- a future throwaway repair/migration helper may be
-  `skill_related = true` and `write_enabled`
-- model-connection validation should be
-  `skill_related = false` and `read_only`
+- scope review may be `read_only`
+- a future throwaway repair/migration helper may be `write_enabled`
+- model-connection validation should be `read_only`
 
 ### Legacy Workspace Skill Dirs
 

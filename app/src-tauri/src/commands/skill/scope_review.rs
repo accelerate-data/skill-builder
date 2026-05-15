@@ -129,11 +129,7 @@ pub async fn review_skill_scope(
     log::debug!("[review_skill_scope] prompt length={}", prompt.len());
 
     let run_id = uuid::Uuid::new_v4().to_string();
-    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        std::path::Path::new(&runtime_context.skills_root),
-        "scope-review",
-        &run_id,
-    );
+    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir("scope-review", &run_id);
     std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
         &runtime_run_dir,
     ))
@@ -399,7 +395,7 @@ mod tests {
             },
             intent: SkillCreatorIntent::ScopeReview,
             skill_dir_override: Some(
-                "/tmp/skills/.openhands/throwaway/scope-review/run-1".to_string(),
+                "/tmp/skill-builder/throwaway/scope-review/run-1".to_string(),
             ),
         });
 
@@ -423,7 +419,7 @@ mod tests {
         assert!(json["skillDir"]
             .as_str()
             .unwrap()
-            .ends_with("/.openhands/throwaway/scope-review/run-1"));
+            .ends_with("/skill-builder/throwaway/scope-review/run-1"));
         assert_eq!(json["allowedTools"], serde_json::json!(["file_editor"]));
         assert_eq!(json["maxTurns"], 4);
         assert!(json["outputFormat"]["schema"]["required"]

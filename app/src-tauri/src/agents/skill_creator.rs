@@ -7,7 +7,7 @@ use crate::agents::runtime_config::{
     OpenHandsRuntimeMode,
 };
 use crate::generated::schemas;
-use crate::skill_paths::{resolve_skill_dir, throwaway_runtime_dir};
+use crate::skill_paths::resolve_skill_dir;
 use crate::types::WorkflowLlmConfig;
 
 pub const SKILL_CREATOR_USER_SUFFIX: &str = include_str!(concat!(
@@ -297,26 +297,6 @@ pub fn build_skill_creator_config(
     })
 }
 
-// ─── Throwaway directory helpers ─────────────────────────────────────────────
-
-/// Build a throwaway runtime directory for skill-related surfaces (eval workbench).
-/// Resolves under `{skills_root}/.openhands/throwaway/{surface}/{run_id}`.
-pub fn throwaway_skill_dir(skills_root: &str, surface: &str, run_id: &str) -> String {
-    throwaway_runtime_dir(Path::new(skills_root), surface, run_id)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
-/// Build a throwaway runtime directory for non-skill-related surfaces (model validation).
-/// Resolves under `/tmp/skill-builder/throwaway/{surface}/{run_id}`.
-pub fn throwaway_non_skill_dir(surface: &str, run_id: &str) -> String {
-    Path::new("/tmp/skill-builder/throwaway")
-        .join(surface)
-        .join(run_id)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
 // ─── Session helper ──────────────────────────────────────────────────────────
 
 pub async fn ensure_skill_session(
@@ -465,9 +445,7 @@ mod tests {
             prompt: "review scope".to_string(),
             llm: test_llm_config(),
             intent: SkillCreatorIntent::ScopeReview,
-            skill_dir_override: Some(
-                "/tmp/skills/.openhands/throwaway/scope-review/run-1".to_string(),
-            ),
+            skill_dir_override: Some("/tmp/skill-builder/throwaway/scope-review/run-1".to_string()),
         });
 
         assert_eq!(config.task_kind, Some("scope_review".to_string()));
@@ -519,7 +497,7 @@ mod tests {
             llm: test_llm_config(),
             intent: SkillCreatorIntent::Eval,
             skill_dir_override: Some(
-                "/tmp/skills/.openhands/throwaway/eval-workbench/run-1".to_string(),
+                "/tmp/skill-builder/throwaway/eval-workbench/run-1".to_string(),
             ),
         });
 
@@ -537,14 +515,11 @@ mod tests {
     }
 
     #[test]
-    fn test_throwaway_skill_dir_resolves_under_skills_root() {
-        let dir = throwaway_skill_dir("/tmp/skills", "eval-workbench", "run-abc");
-        assert!(dir.contains("/.openhands/throwaway/eval-workbench/run-abc"));
-    }
-
-    #[test]
-    fn test_throwaway_non_skill_dir_resolves_under_tmp() {
-        let dir = throwaway_non_skill_dir("model-connection-test", "run-xyz");
-        assert!(dir.starts_with("/tmp/skill-builder/throwaway/model-connection-test/run-xyz"));
+    fn test_throwaway_runtime_dir_override_uses_system_temp_shape() {
+        let dir = crate::skill_paths::throwaway_runtime_dir("model-connection-test", "run-xyz");
+        assert!(
+            dir.to_string_lossy()
+                .contains("skill-builder/throwaway/model-connection-test/run-xyz")
+        );
     }
 }

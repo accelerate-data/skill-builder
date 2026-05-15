@@ -36,6 +36,7 @@ use super::step_config::{get_step_config, workflow_output_format_for_step};
 /// Keyed by agent_id in WorkflowStepRunManager.
 pub struct WorkflowStepRun {
     pub skill_name: String,
+    pub plugin_slug: String,
     pub conversation_id: Option<String>,
 }
 
@@ -62,6 +63,7 @@ struct WorkflowStepMaterializedPayload {
 async fn dispatch_persistent_skill_turn(
     app: &tauri::AppHandle,
     agent_id: &str,
+    plugin_slug: &str,
     config: OpenHandsRuntimeConfig,
     runs: &WorkflowStepRunManager,
 ) -> Result<String, String> {
@@ -72,6 +74,7 @@ async fn dispatch_persistent_skill_turn(
     // Update the run entry with the conversation_id for pause-based cleanup
     if let Ok(mut map) = runs.0.lock() {
         if let Some(run) = map.get_mut(agent_id) {
+            run.plugin_slug = plugin_slug.to_string();
             run.conversation_id = Some(conversation_id.clone());
         }
     }
@@ -426,12 +429,14 @@ async fn run_workflow_step_inner(
             agent_id.clone(),
             WorkflowStepRun {
                 skill_name: skill_name.to_string(),
+                plugin_slug: settings.plugin_slug.clone(),
                 conversation_id: None,
             },
         );
     }
 
-    let start_result = dispatch_persistent_skill_turn(app, &agent_id, config, runs).await;
+    let start_result =
+        dispatch_persistent_skill_turn(app, &agent_id, &settings.plugin_slug, config, runs).await;
 
     start_result.map_err(|e| {
         log::error!(
@@ -480,25 +485,31 @@ pub async fn run_workflow_step(
     );
 
     // Pause any stale workflow runs for this skill before starting a new step.
-    let stale_runs: Vec<(String, Option<String>)> = {
+    let stale_runs: Vec<(String, String, Option<String>)> = {
         let map = runs.0.lock().map_err(|e| e.to_string())?;
         map.iter()
-            .filter(|(_, s)| s.skill_name == skill_name)
-            .map(|(agent_id, s)| (agent_id.clone(), s.conversation_id.clone()))
+            .filter(|(_, s)| s.skill_name == skill_name && s.plugin_slug == settings.plugin_slug)
+            .map(|(agent_id, s)| {
+                (
+                    agent_id.clone(),
+                    s.plugin_slug.clone(),
+                    s.conversation_id.clone(),
+                )
+            })
             .collect()
     };
-    for (stale_agent_id, stale_conversation_id) in &stale_runs {
+    for (stale_agent_id, stale_plugin_slug, stale_conversation_id) in &stale_runs {
         log::info!(
             "[run_workflow_step] pausing stale workflow run agent={} before starting step_id={}",
             stale_agent_id,
             step_id,
         );
-        // Best-effort pause using the tracked wrapper (remote pause first, then local cancel signal),
-        // then close the runner from the registry.
         if let Some(conv_id) = stale_conversation_id {
             let pause_result = crate::commands::skill_session::build_pause_runtime_config(
-                &app, &db, &skill_name,
-                &settings.plugin_slug,
+                &app,
+                &db,
+                &skill_name,
+                stale_plugin_slug,
             );
             if let Ok(config) = pause_result {
                 let _ = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
@@ -509,13 +520,16 @@ pub async fn run_workflow_step(
                 .await;
             }
         } else {
-            openhands_server::send_cancel_signal(stale_agent_id);
+            log::warn!(
+                "[run_workflow_step] stale workflow run agent={} had no conversation_id; removing local bookkeeping without pause",
+                stale_agent_id
+            );
         }
         openhands_server::close_local_openhands_run(stale_agent_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
-        for (stale_agent_id, _) in &stale_runs {
+        for (stale_agent_id, _, _) in &stale_runs {
             map.remove(stale_agent_id);
         }
     }
@@ -701,12 +715,19 @@ pub async fn run_answer_evaluator(
             agent_id.clone(),
             WorkflowStepRun {
                 skill_name: skill_name.clone(),
+                plugin_slug: settings.plugin_slug.clone(),
                 conversation_id: None,
             },
         );
     }
 
-    dispatch_persistent_skill_turn(&app, &agent_id, config, runs.inner())
+    dispatch_persistent_skill_turn(
+        &app,
+        &agent_id,
+        &settings.plugin_slug,
+        config,
+        runs.inner(),
+    )
         .await
         .map_err(|e| {
             log::error!(

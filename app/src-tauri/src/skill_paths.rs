@@ -99,13 +99,29 @@ fn dedupe_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     deduped
 }
 
+/// Resolve the system temp directory used for throwaway runtime work.
+///
+/// Resolution order:
+/// - `TMPDIR`
+/// - `TMP`
+/// - `TEMP`
+/// - `std::env::temp_dir()`
+pub fn system_temp_root() -> PathBuf {
+    for key in ["TMPDIR", "TMP", "TEMP"] {
+        if let Some(value) = std::env::var_os(key).filter(|value| !value.is_empty()) {
+            return PathBuf::from(value);
+        }
+    }
+    std::env::temp_dir()
+}
+
 /// Canonical throwaway runtime root for a product surface run.
 ///
 /// Shape:
-/// `{workspace}/.openhands/throwaway/{surface}/{run_id}/`
-pub fn throwaway_runtime_dir(workspace: &Path, surface: &str, run_id: &str) -> PathBuf {
-    workspace
-        .join(".openhands")
+/// `{system_tmp}/skill-builder/throwaway/{surface}/{run_id}/`
+pub fn throwaway_runtime_dir(surface: &str, run_id: &str) -> PathBuf {
+    system_temp_root()
+        .join("skill-builder")
         .join("throwaway")
         .join(surface)
         .join(run_id)
@@ -553,14 +569,13 @@ mod tests {
     }
 
     #[test]
-    fn throwaway_runtime_dirs_are_isolated_from_the_skill_tree() {
-        let tmp = tempfile::tempdir().unwrap();
-        let runtime_dir = throwaway_runtime_dir(tmp.path(), "scope_review", "run-123");
+    fn throwaway_runtime_dirs_resolve_under_system_temp_root() {
+        let runtime_dir = throwaway_runtime_dir("scope_review", "run-123");
 
         assert_eq!(
             runtime_dir,
-            tmp.path()
-                .join(".openhands")
+            system_temp_root()
+                .join("skill-builder")
                 .join("throwaway")
                 .join("scope_review")
                 .join("run-123")

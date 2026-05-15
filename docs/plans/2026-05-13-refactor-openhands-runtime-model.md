@@ -254,7 +254,7 @@ let local_closed = crate::agents::tracked_openhands::pause_tracked_openhands_con
 .await?;
 ```
 
-- [ ] **Step 5: Rewrite stale-run cleanup to use pause semantics**
+- [x] **Step 5: Rewrite stale-run cleanup to use pause semantics**
 
 Replace stale workflow cleanup in `app/src-tauri/src/commands/workflow/runtime.rs`.
 Today it calls `abort_tracked_openhands_run(...)`; instead it should pause the
@@ -401,7 +401,7 @@ Keep `build_pause_runtime_config(...)` only if it remains a pause-config helper
 with real caller value. It should not keep `build_skill_session_config(...)`
 alive as a compatibility layer.
 
-- [ ] **Step 4: Update all runtime-config callers**
+- [x] **Step 4: Update all runtime-config callers**
 
 Move these surfaces onto the canonical builder:
 
@@ -435,7 +435,7 @@ Update `docs/design/openhands-runtime-contract/README.md` in the same task so
 the Layer 4 API list no longer claims `build_skill_session_config(...)` is a
 first-class wrapper if that helper is removed.
 
-- [ ] **Step 5: Run focused builder and caller tests**
+- [x] **Step 5: Run focused builder and caller tests**
 
 Run:
 

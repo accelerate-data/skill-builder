@@ -263,11 +263,7 @@ where
     >,
 {
     let run_id = uuid::Uuid::new_v4().to_string();
-    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        std::path::Path::new(&runtime_ctx.skills_root),
-        "eval-workbench",
-        &run_id,
-    );
+    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir("eval-workbench", &run_id);
     std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
         &runtime_run_dir,
     ))
@@ -519,7 +515,7 @@ mod tests {
                     assert!(params
                         .config
                         .skill_dir
-                        .contains("/.openhands/throwaway/eval-workbench/"));
+                        .contains("/skill-builder/throwaway/eval-workbench/"));
                     Ok(OpenHandsThrowawayRun {
                         conversation_state: serde_json::json!({
                             "result_text": "{\"name\":\"Performance 1\",\"prompt\":\"Prompt\",\"expectations\":[\"assertion\"]}"
