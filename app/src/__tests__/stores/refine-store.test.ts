@@ -14,6 +14,7 @@ const initialState = {
   gitDiff: null,
   previewRevision: 0,
   messages: [],
+  turns: [],
   pendingFollowupMessage: null,
   activeAgentId: null,
   isRunning: false,
@@ -40,6 +41,7 @@ describe("useRefineStore", () => {
     expect(state.gitDiff).toBeNull();
     expect(state.previewRevision).toBe(0);
     expect(state.messages).toEqual([]);
+    expect(state.turns).toEqual([]);
     expect(state.pendingFollowupMessage).toBeNull();
     expect(state.activeAgentId).toBeNull();
     expect(state.isRunning).toBe(false);
@@ -81,6 +83,7 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.selectedSkill).toEqual(skill);
     expect(state.messages).toEqual([]);
+    expect(state.turns).toEqual([]);
     expect(state.conversationId).toBeNull();
     expect(state.diffMode).toBe(false);
     expect(state.skillFiles).toEqual([]);
@@ -102,6 +105,7 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.selectedSkill).toBeNull();
     expect(state.messages).toEqual([]);
+    expect(state.turns).toEqual([]);
     expect(state.skillFiles).toEqual([]);
     expect(state.activeFileTab).toBe("SKILL.md");
   });
@@ -118,6 +122,24 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]).toEqual(msg);
+  });
+
+  it("addUserMessage opens a local turn when a conversation is active", () => {
+    useRefineStore.setState({ conversationId: "conv-1" });
+
+    const msg = useRefineStore.getState().addUserMessage("Hello world");
+    const state = useRefineStore.getState();
+
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0]).toMatchObject({
+      conversationId: "conv-1",
+      userMessageId: msg.id,
+      status: "local",
+      agentId: null,
+      displayItemStartIndex: null,
+      displayItemEndIndex: null,
+      acceptedAt: null,
+    });
   });
 
   it("addUserMessage with targetFiles includes targetFiles in the message", () => {
@@ -159,6 +181,46 @@ describe("useRefineStore", () => {
     const state = useRefineStore.getState();
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]).toEqual(msg);
+  });
+
+  it("marks the latest turn as sending and accepted", () => {
+    useRefineStore.setState({ conversationId: "conv-1" });
+    useRefineStore.getState().addUserMessage("Hello world");
+
+    useRefineStore.getState().markLatestTurnSending("agent-abc", 3);
+    useRefineStore.getState().markLatestTurnAccepted("agent-abc", true);
+
+    const turn = useRefineStore.getState().turns[0];
+    expect(turn).toMatchObject({
+      agentId: "agent-abc",
+      displayItemStartIndex: 3,
+      status: "running",
+    });
+    expect(turn.acceptedAt).toBeGreaterThan(0);
+  });
+
+  it("advances queued turns for the same agent in FIFO order", () => {
+    useRefineStore.setState({ conversationId: "conv-1" });
+    useRefineStore.getState().addUserMessage("First");
+    useRefineStore.getState().markLatestTurnSending("agent-abc", 0);
+    useRefineStore.getState().markLatestTurnAccepted("agent-abc", true);
+
+    useRefineStore.getState().addUserMessage("Second");
+    useRefineStore.getState().markLatestTurnSending("agent-abc", 4);
+    useRefineStore.getState().markLatestTurnAccepted("agent-abc", false);
+
+    const result = useRefineStore.getState().advanceAgentTurnQueue("agent-abc", 4);
+    const turns = useRefineStore.getState().turns;
+
+    expect(result.hasRunningTurn).toBe(true);
+    expect(turns[0]).toMatchObject({
+      status: "completed",
+      displayItemEndIndex: 4,
+    });
+    expect(turns[1]).toMatchObject({
+      status: "running",
+      displayItemStartIndex: 4,
+    });
   });
 
   it("adds and answers a refine question inline without duplicating tool_use ids", () => {

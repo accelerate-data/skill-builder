@@ -27,12 +27,31 @@ export interface RefineQuestionResponse {
 }
 
 export type RefineMessageRole = "user" | "agent" | "question";
+export type RefineTurnStatus =
+  | "local"
+  | "sending"
+  | "accepted"
+  | "running"
+  | "completed"
+  | "failed";
+
+export interface RefineTurn {
+  turnId: string;
+  conversationId: string;
+  agentId: string | null;
+  userMessageId: string;
+  displayItemStartIndex: number | null;
+  displayItemEndIndex: number | null;
+  status: RefineTurnStatus;
+  acceptedAt: number | null;
+}
 
 export interface RefineMessage {
   id: string;
   role: RefineMessageRole;
   agentId?: string; // set for "agent" role — links to agent-store run
   agentText?: string; // restored agent text when rehydrating persisted history
+  displayItemStartIndex?: number; // start display item index for a logical agent turn within one run
   hideTaskSent?: boolean;
   userText?: string; // set for "user" role
   targetFiles?: string[]; // files targeted with @mentions
@@ -64,6 +83,7 @@ interface RefineState {
 
   // Chat messages
   messages: RefineMessage[];
+  turns: RefineTurn[];
   pendingFollowupMessage: string | null;
 
   // Agent state
@@ -90,7 +110,21 @@ interface RefineState {
   setSelectedModifiedFile: (filename: string | null) => void;
   setDiffMode: (v: boolean) => void;
   addUserMessage: (text: string, targetFiles?: string[]) => RefineMessage;
-  addAgentTurn: (agentId: string) => RefineMessage;
+  setTurns: (turns: RefineTurn[]) => void;
+  markLatestTurnSending: (
+    agentId: string | null,
+    displayItemStartIndex: number | null,
+  ) => void;
+  markLatestTurnAccepted: (agentId: string, runStarted: boolean) => void;
+  advanceAgentTurnQueue: (
+    agentId: string,
+    displayItemEndIndex?: number | null,
+  ) => { hasRunningTurn: boolean };
+  failOpenTurnsForAgent: (
+    agentId: string,
+    displayItemEndIndex?: number | null,
+  ) => void;
+  addAgentTurn: (agentId: string, displayItemStartIndex?: number) => RefineMessage;
   attachDiffToLastAgentTurn: (diff: RefineDiff) => void;
   addQuestionMessage: (
     agentId: string,
@@ -121,6 +155,7 @@ export function isAuthoredSkillFile(filename: string): boolean {
 /** Session state that resets when switching skills or clearing the session. */
 const SESSION_DEFAULTS = {
   messages: [] as RefineMessage[],
+  turns: [] as RefineTurn[],
   pendingFollowupMessage: null as string | null,
   activeAgentId: null as string | null,
   isRunning: false,
@@ -177,15 +212,115 @@ export const useRefineStore = create<RefineState>((set, get) => ({
       targetFiles,
       timestamp: Date.now(),
     };
-    set((state) => ({ messages: [...state.messages, message] }));
+    set((state) => {
+      const nextState: Partial<RefineState> = {
+        messages: [...state.messages, message],
+      };
+      if (state.conversationId) {
+        const turn: RefineTurn = {
+          turnId: crypto.randomUUID(),
+          conversationId: state.conversationId,
+          agentId: null,
+          userMessageId: message.id,
+          displayItemStartIndex: null,
+          displayItemEndIndex: null,
+          status: "local",
+          acceptedAt: null,
+        };
+        nextState.turns = [...state.turns, turn];
+      }
+      return nextState as Partial<RefineState>;
+    });
     return message;
   },
 
-  addAgentTurn: (agentId) => {
+  setTurns: (turns) => set({ turns }),
+
+  markLatestTurnSending: (agentId, displayItemStartIndex) =>
+    set((state) => {
+      const turns = [...state.turns];
+      const idx = turns.length - 1;
+      if (idx < 0) return {};
+      turns[idx] = {
+        ...turns[idx],
+        agentId,
+        displayItemStartIndex,
+        status: "sending",
+      };
+      return { turns };
+    }),
+
+  markLatestTurnAccepted: (agentId, runStarted) =>
+    set((state) => {
+      const turns = [...state.turns];
+      const idx = turns.length - 1;
+      if (idx < 0) return {};
+      turns[idx] = {
+        ...turns[idx],
+        agentId,
+        status: runStarted ? "running" : "accepted",
+        acceptedAt: Date.now(),
+      };
+      return { turns };
+    }),
+
+  advanceAgentTurnQueue: (agentId, displayItemEndIndex = null) => {
+    let hasRunningTurn = false;
+    set((state) => {
+      const turns = [...state.turns];
+      const currentIdx = turns.findIndex(
+        (turn) =>
+          turn.agentId === agentId &&
+          ["running", "accepted", "sending", "local"].includes(turn.status),
+      );
+      if (currentIdx === -1) return {};
+
+      turns[currentIdx] = {
+        ...turns[currentIdx],
+        status: "completed",
+        displayItemEndIndex,
+      };
+
+      const nextIdx = turns.findIndex(
+        (turn, index) =>
+          index > currentIdx &&
+          turn.agentId === agentId &&
+          turn.status === "accepted",
+      );
+
+      if (nextIdx !== -1) {
+        turns[nextIdx] = {
+          ...turns[nextIdx],
+          status: "running",
+        };
+        hasRunningTurn = true;
+      }
+
+      return { turns };
+    });
+    return { hasRunningTurn };
+  },
+
+  failOpenTurnsForAgent: (agentId, displayItemEndIndex = null) =>
+    set((state) => ({
+      turns: state.turns.map((turn) =>
+        turn.agentId === agentId &&
+        ["local", "sending", "accepted", "running"].includes(turn.status)
+          ? {
+              ...turn,
+              status: "failed",
+              displayItemEndIndex,
+            }
+          : turn,
+      ),
+    })),
+
+  addAgentTurn: (agentId, displayItemStartIndex) => {
     const message: RefineMessage = {
       id: crypto.randomUUID(),
       role: "agent",
       agentId,
+      displayItemStartIndex,
       timestamp: Date.now(),
     };
     set((state) => ({ messages: [...state.messages, message] }));

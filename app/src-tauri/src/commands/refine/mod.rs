@@ -5,6 +5,7 @@ pub mod output;
 pub(crate) mod protocol;
 
 use serde::Deserialize;
+use std::time::Instant;
 use tauri::Manager;
 
 use crate::db::Db;
@@ -273,11 +274,15 @@ pub async fn send_refine_message(
 
     let active_conversation_id = dispatch_plan;
 
+    let dispatch_started_at = Instant::now();
     log::info!(
-        "[send_refine_message] skill={} plugin={} conversation_id={}",
+        "[send_refine_message] dispatch_start skill={} plugin={} conversation_id={} conversation_running={} agent_id={} target_files_count={}",
         skill_name,
         plugin_slug,
-        active_conversation_id
+        active_conversation_id,
+        conversation_running,
+        agent_id,
+        target_files.as_ref().map(|files| files.len()).unwrap_or(0)
     );
 
     let returned_conversation_id =
@@ -288,6 +293,15 @@ pub async fn send_refine_message(
             active_conversation_id,
         )
         .await?;
+    log::info!(
+        "[send_refine_message] dispatch_accepted skill={} plugin={} conversation_id={} run_started={} agent_id={} duration_ms={}",
+        skill_name,
+        plugin_slug,
+        returned_conversation_id,
+        !conversation_running,
+        agent_id,
+        dispatch_started_at.elapsed().as_millis()
+    );
 
     {
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;

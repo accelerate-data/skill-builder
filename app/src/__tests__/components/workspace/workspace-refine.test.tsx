@@ -52,6 +52,7 @@ const refineStoreState = vi.hoisted(() => ({
   skillFiles: [] as { filename: string; content: string }[],
   previewRevision: 0,
   selectedModifiedFile: null as string | null,
+  turns: [] as unknown[],
   isRunning: false,
   activeAgentId: null as string | null,
   conversationId: null as string | null,
@@ -70,6 +71,10 @@ const refineStoreState = vi.hoisted(() => ({
   setMessages: vi.fn(),
   setPendingFollowupMessage: vi.fn(),
   addUserMessage: vi.fn(),
+  markLatestTurnSending: vi.fn(),
+  markLatestTurnAccepted: vi.fn(),
+  advanceAgentTurnQueue: vi.fn().mockReturnValue({ hasRunningTurn: false }),
+  failOpenTurnsForAgent: vi.fn(),
   addAgentTurn: vi.fn(),
   updateSkillFiles: vi.fn(),
   clearSession: vi.fn(),
@@ -166,6 +171,7 @@ describe("WorkspaceRefine", () => {
     refineStoreState.selectedModifiedFile = null;
     refineStoreState.isRunning = false;
     refineStoreState.activeAgentId = null;
+    agentStoreState.runs = {};
     settingsStoreState.modelSettings.model = null;
     leaveGuardCapture.onLeave = undefined;
   });
@@ -252,12 +258,27 @@ describe("WorkspaceRefine", () => {
       "Refine this",
       undefined,
     );
+    expect(refineStoreState.markLatestTurnSending).toHaveBeenCalledWith(null, null);
+    expect(refineStoreState.markLatestTurnAccepted).toHaveBeenCalledWith("agent-1", true);
     expect(agentStoreState.registerRun).toHaveBeenCalledWith(
       "agent-1",
       "openhands",
       "my-skill",
       "refine",
       "synthetic:refine:my-skill:conv-1",
+    );
+    expect(agentStoreState.addConversationEvent).toHaveBeenCalledWith(
+      "agent-1",
+      expect.objectContaining({
+        type: "conversation_event",
+        runtime: "openhands",
+        conversationId: "conv-1",
+        eventClass: "MessageEvent",
+        event: expect.objectContaining({
+          source: "user",
+          message: "Refine this",
+        }),
+      }),
     );
     expect(refineStoreState.addAgentTurn).toHaveBeenCalledWith("agent-1");
   });
@@ -268,6 +289,11 @@ describe("WorkspaceRefine", () => {
     refineStoreState.conversationId = "conv-1";
     refineStoreState.isRunning = true;
     refineStoreState.activeAgentId = "agent-live";
+    agentStoreState.runs = {
+      "agent-live": {
+        displayItems: [{ id: "item-1" }, { id: "item-2" }],
+      },
+    };
     tauriMocks.sendRefineMessage.mockResolvedValueOnce({
       agent_id: "agent-live",
       conversation_id: "conv-1",
@@ -293,8 +319,11 @@ describe("WorkspaceRefine", () => {
       "Refine this",
       undefined,
     );
+    expect(refineStoreState.markLatestTurnSending).toHaveBeenCalledWith("agent-live", 2);
+    expect(refineStoreState.markLatestTurnAccepted).toHaveBeenCalledWith("agent-live", false);
     expect(agentStoreState.registerRun).not.toHaveBeenCalled();
-    expect(refineStoreState.addAgentTurn).not.toHaveBeenCalled();
+    expect(agentStoreState.addConversationEvent).not.toHaveBeenCalled();
+    expect(refineStoreState.addAgentTurn).toHaveBeenCalledWith("agent-live", 2);
     expect(refineStoreState.setActiveAgentId).not.toHaveBeenCalledWith("agent-live");
   });
 

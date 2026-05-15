@@ -27,9 +27,28 @@ import { initAgentStream } from "@/hooks/use-agent-stream";
 import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
 import { loadSkillFiles } from "@/lib/skill-file-loader";
 import { parseResultTextPayload } from "@/lib/result-text-payload";
+import type { OpenHandsConversationEvent } from "@/lib/openhands-conversation-events";
 
 interface WorkspaceRefineProps {
   skill: EditableSkill;
+}
+
+function buildSyntheticUserConversationEvent(
+  conversationId: string,
+  text: string,
+): OpenHandsConversationEvent {
+  return {
+    type: "conversation_event",
+    runtime: "openhands",
+    conversationId,
+    eventClass: "MessageEvent",
+    event: {
+      event_class: "MessageEvent",
+      source: "user",
+      message: text,
+    },
+    timestamp: Date.now(),
+  };
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -160,6 +179,14 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       store.setGitDiff(null);
       store.setRunning(true);
       store.addUserMessage(text, targetFiles);
+      const followupDisplayItemStartIndex =
+        store.isRunning && store.activeAgentId
+          ? (useAgentStore.getState().runs[store.activeAgentId]?.displayItems.length ?? 0)
+          : undefined;
+      store.markLatestTurnSending(
+        store.activeAgentId,
+        followupDisplayItemStartIndex ?? null,
+      );
 
       try {
         const dispatch = await sendRefineMessage(
@@ -170,6 +197,7 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           targetFiles,
         );
         const { agent_id: agentId, run_started: runStarted } = dispatch;
+        store.markLatestTurnAccepted(agentId, runStarted);
 
         if (runStarted) {
           useAgentStore
@@ -181,9 +209,15 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
               "refine",
               `synthetic:refine:${activeSkill.name}:${conversationId}`,
             );
+          useAgentStore.getState().addConversationEvent(
+            agentId,
+            buildSyntheticUserConversationEvent(conversationId, text),
+          );
 
           store.addAgentTurn(agentId);
           store.setActiveAgentId(agentId);
+        } else {
+          store.addAgentTurn(agentId, followupDisplayItemStartIndex);
         }
       } catch (err) {
         console.error("[workspace-refine] Failed to send refine message:", err);
@@ -192,6 +226,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         if (lastMessage?.role === "user" && lastMessage.userText === text) {
           nextMessages.pop();
           useRefineStore.getState().setMessages(nextMessages);
+        }
+        if (store.activeAgentId) {
+          store.failOpenTurnsForAgent(store.activeAgentId);
         }
         store.setRunning(false);
         store.setActiveAgentId(null);
@@ -246,6 +283,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
     const complete = async () => {
       const store = useRefineStore.getState();
+      const run = useAgentStore.getState().runs[activeAgentId];
+      const displayItemEndIndex = run?.displayItems.length ?? null;
+
+      if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
+        store.failOpenTurnsForAgent(activeAgentId, displayItemEndIndex);
+      }
 
       if (activeRunStatus === "completed" && workspacePath && completionSkill) {
         const resultPayload = extractResultPayload(activeAgentId);
