@@ -451,7 +451,7 @@ integer `step_id` as the caller-facing abstraction, no remaining compatibility
 wrapper like `build_skill_session_config(...)`, and throwaway callers all using
 the shared system-temp runtime root.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/api_validation.rs app/src-tauri/src/commands/skill/scope_review.rs app/src-tauri/src/commands/eval_workbench/mod.rs app/src-tauri/src/skill_paths.rs docs/design/openhands-runtime-contract/README.md
