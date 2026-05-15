@@ -675,10 +675,6 @@ export function useWorkflowStateMachine({
       // Guard: when passed directly to onClick, React sends a MouseEvent as the first arg.
       const targetStep =
         typeof overrideStep === "number" ? overrideStep : currentStep;
-      if (!workspacePath) {
-        toast.error("Missing workspace path", { duration: Infinity });
-        return;
-      }
       // Read state from the store directly — avoids stale closures when called
       // from performStepReset before React re-renders with cleared state.
       const storeState = useWorkflowStore.getState();
@@ -717,7 +713,6 @@ export function useWorkflowStateMachine({
           skillId!,
           skillName,
           targetStep,
-          workspacePath,
         );
         agentStartRun(agentId, model);
       } catch (err) {
@@ -732,7 +727,6 @@ export function useWorkflowStateMachine({
       }
     },
     [
-      workspacePath,
       skillName,
       currentStep,
       gate,

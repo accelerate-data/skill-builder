@@ -19,8 +19,9 @@ Author context: {{author_context}}
 
 {{clarifications_json}}
 
-Use the `creating-skills` skill to generate the final skill package from the
-confirmed workflow decisions.
+Use the `invoke_skill` tool to load the `creating-skills` skill, then use that
+skill to generate the final skill package from the confirmed workflow
+decisions.
 
 The decisions and clarifications records are provided below.
 
@@ -28,8 +29,8 @@ The decisions record is the canonical input for this step. Use clarifications an
 user context only to fill in supporting details that do not conflict with the
 confirmed decisions.
 
-Before invoking `creating-skills`, synthesize a generation brief from the
-confirmed decisions. The brief must cover:
+Before calling `invoke_skill` for `creating-skills`, synthesize a generation
+brief from the confirmed decisions. The brief must cover:
 
 - what the generated skill should enable a future agent to do
 - when the generated skill should trigger and when it should not trigger
@@ -40,8 +41,8 @@ confirmed decisions. The brief must cover:
 - the exact output paths above
 - the verification contract below
 
-Pass this brief to `creating-skills` as the caller-provided generation brief,
-and keep the raw contents of `decisions.json`, and
+Pass this brief to the `creating-skills` skill as the caller-provided
+generation brief, and keep the raw contents of `decisions.json`, and
 `clarifications.json` available in context for the skill. Do not reduce the
 handoff to only the summary brief; `creating-skills` must be able to use exact
 question wording, answers, decisions, implications, examples, and notes from the
@@ -67,7 +68,7 @@ boundaries from the confirmed decisions. Do not run a separate description
 candidate generation, ranking, or tuning flow here.
 
 Use the verifier prompt bundled inside the `creating-skills` skill to launch
-the named `skill-verifier` subagent via `task_tool_set` for a fresh-context
+the named `skill-verifier` subagent via the `task` tool for a fresh-context
 verification pass.
 Give the verifier only the synthesized generation brief, generated files, and
 verifier instructions.

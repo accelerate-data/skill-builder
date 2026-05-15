@@ -241,7 +241,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       0,
-      "/workspace",
     );
     expect(mockAgentStartRun).toHaveBeenCalledWith(
       "agent-abc",
@@ -384,7 +383,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       0,
-      "/workspace",
     );
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
@@ -435,7 +433,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       2,
-      "/workspace",
     );
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(2, "in_progress");
   });
@@ -583,7 +580,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       0,
-      "/workspace",
     );
     });
 
@@ -662,9 +658,7 @@ describe("useWorkflowStateMachine", () => {
     expect(mockRunWorkflowStep).not.toHaveBeenCalled();
   });
 
-  it("handleStartAgentStep shows error when workspace path missing", async () => {
-    const { toast } = await import("@/lib/toast");
-
+  it("handleStartAgentStep runs without workspace path", async () => {
     const { result } = renderHook(() =>
       useWorkflowStateMachine({ ...defaultOptions, workspacePath: null }),
     );
@@ -673,10 +667,10 @@ describe("useWorkflowStateMachine", () => {
       await result.current.handleStartAgentStep();
     });
 
-    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
-      "Missing workspace path",
-      expect.any(Object),
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+      1,
+      "test-skill",
+      0,
     );
   });
 });

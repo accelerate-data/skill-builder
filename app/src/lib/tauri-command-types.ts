@@ -204,7 +204,7 @@ export interface TauriCommandMap {
     result: ScopeReviewResult;
   };
   run_workflow_step: {
-    args: { skillId: number; skillName: string; stepId: number; workspacePath: string };
+    args: { skillId: number; skillName: string; stepId: number };
     result: string;
   };
   reset_workflow_step: { args: { workspacePath: string; skillName: string; fromStepId: number }; result: void };

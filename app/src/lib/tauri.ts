@@ -99,8 +99,7 @@ export const runWorkflowStep = (
   skillId: number,
   skillName: string,
   stepId: number,
-  workspacePath: string,
-) => invokeCommand("run_workflow_step", { skillId, skillName, stepId, workspacePath });
+) => invokeCommand("run_workflow_step", { skillId, skillName, stepId });
 
 export const resetWorkflowStep = (
   workspacePath: string,

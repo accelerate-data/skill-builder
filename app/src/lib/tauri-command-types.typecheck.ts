@@ -50,7 +50,6 @@ void invokeCommand("run_workflow_step", {
   skillId: 1,
   skillName: "demo",
   stepId: 1,
-  workspacePath: "/tmp/workspace",
 });
 
 void invokeCommand("get_workspace_path", {});

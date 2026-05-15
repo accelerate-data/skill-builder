@@ -1158,9 +1158,10 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
         !prompt.contains("Eval definitions file:"),
         "step 3 prompt must not have 'Eval definitions file:' named-path instruction"
     );
-    assert!(prompt.contains("Use the `creating-skills` skill"));
-    assert!(prompt.contains("synthesize a generation brief"));
-    assert!(prompt.contains("Pass this brief to `creating-skills`"));
+    assert!(prompt.contains("Use the `invoke_skill` tool to load the `creating-skills` skill"));
+    assert!(prompt.contains("synthesize a generation"));
+    assert!(prompt.contains("brief from the confirmed decisions"));
+    assert!(prompt.contains("Pass this brief to the `creating-skills` skill"));
     // VU-1157: user-context.md file read instruction removed; context inlined
     assert!(
         !prompt.contains("Read these workspace files as source material:"),
@@ -1180,7 +1181,7 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("fresh-context"));
     assert!(prompt.contains("launch"));
     assert!(prompt.contains("named `skill-verifier` subagent"));
-    assert!(prompt.contains("via `task_tool_set`"));
+    assert!(prompt.contains("via the `task` tool"));
     assert!(prompt.contains("run exactly one re-verification"));
     assert!(prompt.contains("Do not invoke a separate validator skill"));
     assert!(prompt.contains("Do not invoke a legacy writer agent"));

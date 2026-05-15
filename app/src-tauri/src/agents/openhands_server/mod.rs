@@ -1055,9 +1055,6 @@ pub async fn run_openhands_conversation(
         Some(server.session_api_key.clone()),
     );
 
-    let config_event = redact_openhands_config_for_log(&config, server.port);
-    super::events::handle_runtime_message(app, agent_id, &config_event.to_string());
-
     let summary_context = OpenHandsRunSummaryContext::new(&request, &conversation_id);
     let websocket_url = server.websocket_url(&conversation_id);
 
@@ -1647,44 +1644,6 @@ fn build_missing_completed_payload_state(
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "error_detail": error_detail,
         "result_text": null,
-    })
-}
-
-fn redact_openhands_config_for_log(
-    config: &OpenHandsRuntimeConfig,
-    port: u16,
-) -> serde_json::Value {
-    let mut value = serde_json::to_value(config).unwrap_or(serde_json::Value::Null);
-    if let Some(obj) = value.as_object_mut() {
-        if obj.contains_key("openhandsApiKey") {
-            obj.insert(
-                "openhandsApiKey".to_string(),
-                serde_json::Value::String("[REDACTED]".to_string()),
-            );
-        }
-        if let Some(llm) = obj.get_mut("llm").and_then(|v| v.as_object_mut()) {
-            if llm.contains_key("apiKey") {
-                llm.insert(
-                    "apiKey".to_string(),
-                    serde_json::Value::String("[REDACTED]".to_string()),
-                );
-            }
-            if let Some(headers) = llm.get_mut("extraHeaders").and_then(|v| v.as_object_mut()) {
-                for value in headers.values_mut() {
-                    if value.is_string() {
-                        *value = serde_json::Value::String("[REDACTED]".to_string());
-                    }
-                }
-            }
-        }
-        obj.insert(
-            "agentServer".to_string(),
-            serde_json::json!({"host": "127.0.0.1", "port": port}),
-        );
-    }
-    serde_json::json!({
-        "type": "config",
-        "config": value,
     })
 }
 

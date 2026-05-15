@@ -1,5 +1,6 @@
 use super::types::StartConversationRequest;
 use reqwest::{Method, Request, Response, StatusCode, Url};
+use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct OpenHandsServerClient {
@@ -153,11 +154,12 @@ impl OpenHandsServerClient {
         let request = self
             .build_run_request(conversation_id)
             .map_err(Self::request_error)?;
+        let label = Self::request_label(&request);
         let response = self.execute(request).await?;
         if response.status() == StatusCode::CONFLICT {
             return Ok(());
         }
-        Self::ensure_success(response).await?;
+        Self::ensure_success(response, &label).await?;
         Ok(())
     }
 
@@ -168,11 +170,12 @@ impl OpenHandsServerClient {
         let request = self
             .build_get_conversation_request(conversation_id)
             .map_err(Self::request_error)?;
+        let label = Self::request_label(&request);
         let response = self.execute(request).await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        Ok(Some(Self::json_success(response).await?))
+        Ok(Some(Self::json_success(response, &label).await?))
     }
 
     pub async fn fork_conversation(
@@ -189,8 +192,9 @@ impl OpenHandsServerClient {
         let request = self
             .build_pause_request(conversation_id)
             .map_err(Self::request_error)?;
+        let label = Self::request_label(&request);
         let response = self.execute(request).await?;
-        Self::ensure_success(response).await?;
+        Self::ensure_success(response, &label).await?;
         Ok(())
     }
 
@@ -202,8 +206,9 @@ impl OpenHandsServerClient {
         let request = self
             .build_send_event_request(conversation_id, event)
             .map_err(Self::request_error)?;
+        let label = Self::request_label(&request);
         let response = self.execute(request).await?;
-        Self::ensure_success(response).await?;
+        Self::ensure_success(response, &label).await?;
         Ok(())
     }
 
@@ -237,8 +242,9 @@ impl OpenHandsServerClient {
         let request = self
             .build_delete_request(conversation_id)
             .map_err(Self::request_error)?;
+        let label = Self::request_label(&request);
         let response = self.execute(request).await?;
-        Self::ensure_success(response).await?;
+        Self::ensure_success(response, &label).await?;
         Ok(())
     }
 
@@ -266,8 +272,9 @@ impl OpenHandsServerClient {
             let request = self
                 .build_search_events_request(conversation_id, page_id.as_deref(), 100)
                 .map_err(Self::request_error)?;
+            let label = Self::request_label(&request);
             let response = self.execute(request).await?;
-            let response = Self::json_success(response).await?;
+            let response = Self::json_success(response, &label).await?;
             if let Some(items) = response.get("items").and_then(|value| value.as_array()) {
                 events.reserve(items.len());
                 events.extend(items.iter().cloned());
@@ -301,42 +308,71 @@ impl OpenHandsServerClient {
         }
     }
 
+    fn request_label(request: &Request) -> String {
+        let query = request
+            .url()
+            .query()
+            .map(|value| format!("?{value}"))
+            .unwrap_or_default();
+        format!("{} {}{}", request.method(), request.url().path(), query)
+    }
+
     async fn execute(&self, request: Request) -> Result<Response, String> {
+        let label = Self::request_label(&request);
+        let started_at = Instant::now();
         self.http
             .execute(request)
             .await
-            .map_err(|e| format!("request failed: {e}"))
+            .map(|response| {
+                log::debug!(
+                    "[openhands-api] {} -> {} ({}ms)",
+                    label,
+                    response.status(),
+                    started_at.elapsed().as_millis()
+                );
+                response
+            })
+            .map_err(|e| {
+                log::warn!("[openhands-api] {label} failed: {e}");
+                format!("{label} failed: {e}")
+            })
     }
 
     async fn execute_json(&self, request: Request) -> Result<serde_json::Value, String> {
+        let label = Self::request_label(&request);
         let response = self.execute(request).await?;
-        Self::json_success(response).await
+        Self::json_success(response, &label).await
     }
 
-    async fn json_success(response: Response) -> Result<serde_json::Value, String> {
-        let response = Self::ensure_success(response).await?;
+    async fn json_success(response: Response, label: &str) -> Result<serde_json::Value, String> {
+        let response = Self::ensure_success(response, label).await?;
         response
             .json()
             .await
-            .map_err(|e| format!("failed to decode OpenHands API response body: {e}"))
+            .map_err(|e| format!("{label} failed to decode OpenHands API response body: {e}"))
     }
 
-    async fn ensure_success(response: Response) -> Result<Response, String> {
+    async fn ensure_success(response: Response, label: &str) -> Result<Response, String> {
         let status = response.status();
         if status.is_success() {
             return Ok(response);
         }
 
         let body = response.text().await.map_err(|e| {
-            format!("OpenHands API returned {status} and the response body could not be read: {e}")
+            let detail =
+                format!("{label} returned {status} and the response body could not be read: {e}");
+            log::warn!("[openhands-api] {detail}");
+            detail
         })?;
         let body = body.trim();
         if body.is_empty() {
-            Err(format!(
-                "OpenHands API returned {status} with an empty response body"
-            ))
+            let detail = format!("{label} returned {status} with an empty response body");
+            log::warn!("[openhands-api] {detail}");
+            Err(detail)
         } else {
-            Err(format!("OpenHands API returned {status}: {body}"))
+            let detail = format!("{label} returned {status}: {body}");
+            log::warn!("[openhands-api] {detail}");
+            Err(detail)
         }
     }
 }

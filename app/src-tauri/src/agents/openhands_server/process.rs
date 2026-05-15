@@ -149,16 +149,29 @@ pub struct OpenHandsAgentServerHandle {
     pub stderr_tail: Arc<AsyncMutex<VecDeque<String>>>,
 }
 
+pub fn agent_server_port(port: u16) -> u16 {
+    port
+}
+
+pub fn agent_server_base_url(port: u16) -> String {
+    format!("http://127.0.0.1:{}", agent_server_port(port))
+}
+
+fn agent_server_websocket_url(port: u16, conversation_id: &str) -> String {
+    format!(
+        "ws://127.0.0.1:{}/sockets/events/{}",
+        agent_server_port(port),
+        conversation_id
+    )
+}
+
 impl OpenHandsAgentServerHandle {
     pub fn base_url(&self) -> String {
-        format!("http://127.0.0.1:{}", self.port)
+        agent_server_base_url(self.port)
     }
 
     pub fn websocket_url(&self, conversation_id: &str) -> String {
-        format!(
-            "ws://127.0.0.1:{}/sockets/events/{}",
-            self.port, conversation_id
-        )
+        agent_server_websocket_url(self.port, conversation_id)
     }
 }
 
@@ -635,24 +648,34 @@ pub fn redact_stderr(text: &str, secrets: &[String]) -> String {
 async fn wait_until_healthy(port: u16, timeout: Duration) -> Result<(), String> {
     let client = reqwest::Client::new();
     let deadline = Instant::now() + timeout;
+    let base_url = agent_server_base_url(port);
     let urls = [
-        format!("http://127.0.0.1:{port}/alive"),
-        format!("http://127.0.0.1:{port}/health"),
+        format!("{base_url}/alive"),
+        format!("{base_url}/health"),
     ];
+    let mut last_failure = "no response received".to_string();
 
     loop {
         for url in &urls {
-            if let Ok(response) = client.get(url).send().await {
-                if response.status().is_success() {
+            match client.get(url).send().await {
+                Ok(response) if response.status().is_success() => {
                     return Ok(());
+                }
+                Ok(response) => {
+                    last_failure = format!("GET {url} returned {}", response.status());
+                }
+                Err(error) => {
+                    last_failure = format!("GET {url} failed: {error}");
                 }
             }
         }
 
         if Instant::now() >= deadline {
-            return Err(format!(
-                "Timed out waiting for OpenHands Agent Server health on 127.0.0.1:{port}"
-            ));
+            let detail = format!(
+                "Timed out waiting for OpenHands Agent Server health on {base_url} ({last_failure})"
+            );
+            log::warn!("[openhands-agent-server] {detail}");
+            return Err(detail);
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
