@@ -18,8 +18,154 @@ substantive code changes land:
 - keep the commit steps bundled with the substantive code changes they validate
 - do a final docs pass after the temp-root throwaway migration so plan/design
   text and tests all point at the same runtime-root contract
+- after the refine turn-lane work lands, clear any obsolete local-debug logging
+  that was added only to prove send timing or event ordering
 
 ---
+
+## Task 7: Make Refine Turn Handling Explicit and Split Command vs Event Lanes
+
+**Files:**
+
+- Modify: `app/src/components/workspace/workspace-refine.tsx`
+- Modify: `app/src/components/refine/chat-message-list.tsx`
+- Modify: `app/src/components/refine/chat-input-bar.tsx`
+- Modify: `app/src/stores/refine-store.ts`
+- Modify: `app/src/stores/agent-store.ts`
+- Modify: `app/src/lib/openhands-event-projection.ts`
+- Modify: `app/src-tauri/src/commands/refine/mod.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
+- Modify: `app/src-tauri/src/agents/openhands_server/client.rs`
+- Modify: `docs/design/openhands-runtime-contract/README.md`
+- Modify: `docs/design/openhands-runtime-contract/refine-sequence.md`
+- Test: `app/src/__tests__/components/workspace/workspace-refine.test.tsx`
+- Test: `app/src/__tests__/components/refine/chat-message-list.test.tsx`
+- Test: `app/src/__tests__/stores/refine-store.test.ts`
+- Test: `app/src/__tests__/lib/skill-openhands-session.test.ts`
+- Test: `app/src-tauri/src/commands/refine/tests.rs`
+
+- [ ] **Step 1: Treat every refine user send as a first-class product turn**
+
+Extend the refine store so a user send creates an app-owned logical turn
+record, not just a user bubble plus an optional shared `agentId`.
+
+The turn model must be Skill Builder-owned. Do not depend on a per-turn
+identifier from OpenHands conversation events.
+
+Minimum required fields:
+
+```ts
+type RefineTurnStatus = "local" | "sending" | "accepted" | "running" | "completed" | "failed";
+
+interface RefineTurn {
+  turnId: string;
+  conversationId: string;
+  agentId: string | null;
+  userMessageId: string;
+  displayItemStartIndex: number | null;
+  displayItemEndIndex: number | null;
+  status: RefineTurnStatus;
+  acceptedAt: number | null;
+}
+```
+
+Every user send starts a new turn, even if the same OpenHands conversation and
+the same live run remain active.
+
+- [ ] **Step 2: Split the refine UI into an outbound command lane and an inbound event lane**
+
+Keep the product contract explicit:
+
+- the command lane owns user intent (`send`, `pause`, `answer question`)
+- the event lane owns OpenHands inbound events and status transitions
+- one central store/reducer merges both into render state
+
+Do not let live WebSocket events directly invent new UI turn boundaries. Turn
+boundaries are opened by the command lane when the user sends a message.
+
+- [ ] **Step 3: Make send acceptance explicit and prove whether later sends are delayed by the app or the runtime**
+
+Instrument the refine send path so the app can distinguish:
+
+- local optimistic bubble appended
+- backend send request dispatched
+- backend send request accepted
+- later runtime/tool events observed
+
+Do this with precise API-level logging around the existing conversation send
+path, not raw TCP logging. For example:
+
+- when `send_refine_message(...)` begins
+- when `POST /api/conversations/{id}/events` returns success
+- when `run_started` is true or false
+
+This step must make it possible to tell whether a follow-up send was blocked in
+Skill Builder or merely processed later by OpenHands.
+
+- [ ] **Step 4: Keep first-turn and follow-up-turn projection consistent**
+
+The first refine send on an idle conversation currently uses `send` then `run`,
+while follow-up sends during an active run use `send` only. The UI must render
+both cases consistently.
+
+Required outcomes:
+
+- first-turn `task_sent` is visible live, not only after reopen
+- follow-up sends while running stay visible immediately
+- later tool/activity events attach to the correct logical turn
+- live projection and restored projection follow the same visibility rules
+
+If the first `task_sent` event is missed by the live stream because the run is
+attached after the send, synthesize or backfill the matching display item at
+the app boundary rather than leaving first-turn behavior inconsistent.
+
+- [ ] **Step 5: Move tool/activity ownership from raw agent continuity to turn continuity**
+
+Do not rely on one shared `agentId` stream as the render grouping key for the
+entire refine transcript.
+
+Instead:
+
+- each turn starts at a known display-item boundary
+- subsequent tool/action/observation items belong to that turn until the next
+  user send starts a new turn
+- the same `agentId` may span many turns
+
+This is required so the UI stays chronological even when one live run handles
+many steering messages.
+
+- [ ] **Step 6: Update the runtime design docs to describe the turn-aware model**
+
+Update the design docs so they explicitly say:
+
+- OpenHands owns one ordered conversation event stream
+- Skill Builder owns product turns above that stream
+- Refine uses one outbound command lane and one inbound event lane
+- follow-up sends during an active run are valid and expected
+- app-owned turn state, not raw event continuity, is the render contract
+
+- [ ] **Step 7: Run focused refine synchronization tests**
+
+Run:
+
+```bash
+cd app && npx vitest run src/__tests__/components/workspace/workspace-refine.test.tsx src/__tests__/components/refine/chat-message-list.test.tsx src/__tests__/stores/refine-store.test.ts src/__tests__/lib/skill-openhands-session.test.ts
+cd app && npx tsc --noEmit
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine --quiet
+markdownlint docs/design/openhands-runtime-contract/README.md docs/design/openhands-runtime-contract/refine-sequence.md docs/plans/2026-05-13-refactor-openhands-runtime-model.md
+```
+
+Expected: PASS with turn boundaries owned by Skill Builder, no hidden
+`task_sent` discrepancy between live and restored refine sessions, and
+timestamps/logging sufficient to distinguish backend acceptance from later
+runtime processing.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add app/src/components/workspace/workspace-refine.tsx app/src/components/refine/chat-message-list.tsx app/src/components/refine/chat-input-bar.tsx app/src/stores/refine-store.ts app/src/stores/agent-store.ts app/src/lib/openhands-event-projection.ts app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/agents/openhands_server/client.rs docs/design/openhands-runtime-contract/README.md docs/design/openhands-runtime-contract/refine-sequence.md docs/plans/2026-05-13-refactor-openhands-runtime-model.md
+git commit -m "fix: make refine turns explicit across live runs"
+```
 
 ## Task 1: Split Raw Conversation Primitives and Keep One Pause Primitive
 

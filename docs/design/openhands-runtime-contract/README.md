@@ -20,6 +20,7 @@ This doc is the canonical source for:
 - runtime layers and responsibilities
 - core wrapper APIs at each layer
 - raw conversation lifecycle primitives
+- interactive persistent-surface turn ownership
 - raw side-channel inspection primitives
 - persistent versus throwaway session behavior
 - storage roots and canonical path ownership
@@ -59,6 +60,8 @@ Companion sequence pages:
 | Throwaway runs declare tool-access mode. | The backend must know whether a throwaway run is read-only or write-capable before selecting allowed tools. |
 | Conversations are deleted when their owning skill is deleted or after a successful fork. | Conversation history is durable during active use, but the app cleans up persisted conversations when they are no longer referenced: deleting a skill removes all its bound conversations, and forking a conversation deletes the source after the fork succeeds. |
 | Raw conversation APIs mirror the OpenHands send-then-run model. | Sending a user message and starting agent processing are separate operations. That separation is required for send-while-running behavior. |
+| Product surfaces own logical turn boundaries above the raw OpenHands conversation stream. | OpenHands persists one ordered conversation event stream, but it does not provide a product-level per-user turn identifier that Refine can render directly. Skill Builder must start a new logical turn every time the user sends a message and group subsequent tool/output events under that turn until the next user send. |
+| Persistent interactive surfaces use separate outbound command and inbound event lanes. | User intent should be recorded immediately and independently from runtime event delivery. Refine should never depend on the live event stream to invent turn boundaries or decide whether a send was accepted. |
 | `ask_agent` starts at the raw OpenHands layer only. | It is a non-authoritative side-channel inspection capability. How product surfaces use it is intentionally deferred. |
 | App data owns shared OpenHands persistence roots. | Conversations, bash events, logs, DB state, and app-local runtime files belong to app data rather than the user-configured skills tree. |
 | Steps 0-2 are DB-authoritative; step 3 is file-output-authoritative. | Clarifications and decisions are canonical typed records in SQLite; generated skill files remain canonical on disk. |
@@ -249,6 +252,15 @@ This is the layer that decides whether a surface is:
 - a persistent selected-skill session
 - a throwaway validation/evaluation/scope-review run
 - a typed workflow step that must materialize app-owned outputs
+
+This layer also owns logical turn boundaries for persistent chat-style surfaces. Refine uses one OpenHands conversation and one live run at a time, but every user send starts a new product turn. The frontend groups later tool/output events under that turn until the next user send starts the next turn.
+
+Persistent interactive surfaces also own two distinct product lanes:
+
+- an outbound command lane that records user intent (`send`, `pause`, question answers) and dispatches it to the backend runtime contract
+- an inbound event lane that receives normalized OpenHands events and terminal state updates
+
+These lanes merge in app-owned turn state. Refine must not rely on raw event continuity alone to decide where a new user turn begins.
 
 Core APIs:
 
