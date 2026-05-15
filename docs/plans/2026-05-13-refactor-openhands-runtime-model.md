@@ -306,14 +306,16 @@ git commit -m "refactor: reuse live OpenHands conversation runners"
 
 - Modify: `app/src-tauri/src/agents/skill_creator.rs`
 - Modify: `app/src-tauri/src/commands/skill_session.rs`
+- Modify: `app/src-tauri/src/commands/refine/mod.rs`
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
 - Modify: `app/src-tauri/src/commands/api_validation.rs`
 - Modify: `app/src-tauri/src/commands/skill/scope_review.rs`
 - Modify: `app/src-tauri/src/commands/eval_workbench/mod.rs`
+- Modify: `docs/design/openhands-runtime-contract/README.md`
 - Test: `app/src-tauri/src/agents/skill_creator.rs`
 - Test: `app/src-tauri/src/commands/refine/tests.rs`
 
-- [ ] **Step 1: Replace ad hoc policy fields with typed runtime intent**
+- [x] **Step 1: Replace ad hoc policy fields with typed runtime intent**
 
 Refactor `app/src-tauri/src/agents/skill_creator.rs` so the canonical builder
 accepts a typed context:
@@ -346,7 +348,7 @@ pub enum SkillCreatorIntent {
 The builder should derive `task_kind`, `run_source`, `allowed_tools`,
 `max_turns`, `output_format`, and persisted `step_id` from `intent`.
 
-- [ ] **Step 2: Keep `step_id` derived, not caller-owned**
+- [x] **Step 2: Keep `step_id` derived, not caller-owned**
 
 Do not make integer `step_id` values the public API. The mapping should live
 inside the builder:
@@ -409,6 +411,10 @@ canonical skill dir. Only non-skill-related throwaway intents should resolve to
 Selected-skill/refine callers should construct `SkillCreatorRuntimeContext`
 directly rather than routing through a refine-specific config wrapper.
 
+Update `docs/design/openhands-runtime-contract/README.md` in the same task so
+the Layer 4 API list no longer claims `build_skill_session_config(...)` is a
+first-class wrapper if that helper is removed.
+
 - [ ] **Step 5: Run focused builder and caller tests**
 
 Run:
@@ -427,7 +433,7 @@ compatibility wrapper like `build_skill_session_config(...)`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/api_validation.rs app/src-tauri/src/commands/skill/scope_review.rs app/src-tauri/src/commands/eval_workbench/mod.rs
+git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/api_validation.rs app/src-tauri/src/commands/skill/scope_review.rs app/src-tauri/src/commands/eval_workbench/mod.rs docs/design/openhands-runtime-contract/README.md
 git commit -m "refactor: make skill creator config intent-driven"
 ```
 
@@ -436,17 +442,22 @@ git commit -m "refactor: make skill creator config intent-driven"
 **Files:**
 
 - Modify: `app/src-tauri/src/agents/openhands_server/mod.rs`
-- Modify: `app/src-tauri/src/agents/skill_creator.rs`
 - Modify: `app/src-tauri/src/commands/skill/crud.rs`
 - Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
 - Modify: `app/src-tauri/src/commands/workflow/runtime.rs`
+- Modify: `docs/design/openhands-runtime-contract/README.md`
 - Test: `app/src-tauri/src/commands/skill/tests.rs`
 - Test: `app/src-tauri/src/commands/workflow/evaluation.rs`
 - Test: `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-- [ ] **Step 1: Update `delete_skill(...)` to pause and delete with real runtime config**
+- [ ] **Step 1: Finish the remaining `delete_skill(...)` contract cleanup**
 
-Change `delete_skill(...)` to take `app: tauri::AppHandle` and build one pause config before looping over conversation IDs:
+On this branch, `delete_skill(...)` already takes `app: tauri::AppHandle`,
+already builds pause config, and already performs best-effort remote
+pause/delete per conversation. The remaining work is to preserve that behavior
+while removing the incorrect local cleanup keyed by `conversation_id`.
+
+Preserve this remote cleanup shape:
 
 ```rust
 #[tauri::command]
@@ -506,9 +517,33 @@ values, delete the incorrect conversation-ID cleanup loop entirely. If there is
 still one missing path, add the smallest helper that resolves tracked
 `agent_id`s without broadening the runtime contract.
 
-- [ ] **Step 3: Add raw and shared fork APIs**
+- [ ] **Step 3: Keep reset ownership at the product-command layer**
 
-Add the raw runtime wrapper:
+`reset_workflow_step(...)` is the product owner of reset semantics. It should
+sequence:
+
+1. pause current conversation
+2. reset local product state
+3. fork the paused conversation
+4. delete the source conversation
+5. bind the skill to the fork ID
+6. leave future execution to the normal send/run path
+
+Do not add a Layer 3 reset abstraction.
+
+Do not route reset through a Layer 2 fork helper. The product command should
+call the raw Layer 1 fork API directly.
+
+- [ ] **Step 4: Align the fork helper boundary with the chosen ownership model**
+
+Make the plan and docs consistent with the chosen ownership model:
+
+- delete `fork_skill_session(...)`
+- call `fork_openhands_conversation(...)` directly from the product reset command
+- update `docs/design/openhands-runtime-contract/README.md` so it no longer
+  claims Layer 2 owns skill rebinding during reset
+
+The raw runtime wrapper remains:
 
 ```rust
 pub struct ForkedOpenHandsSession {
@@ -526,24 +561,11 @@ pub async fn fork_openhands_conversation(
 }
 ```
 
-Add the shared session wrapper:
-
-```rust
-pub async fn fork_skill_session(
-    app: &tauri::AppHandle,
-    config: OpenHandsRuntimeConfig,
-    source_conversation_id: &str,
-) -> Result<ForkedOpenHandsSession, String> {
-    // fork raw conversation
-    // return the fork result to the caller that owns product rebinding
-}
-```
-
 Fork creates a new `conversation_id`. It does not create a new `agent_id`.
-Do not let this helper silently clear or overwrite the new binding after it is
-returned.
+Do not let any helper silently clear or overwrite the new binding after it is
+returned to the product reset flow.
 
-- [ ] **Step 4: Update `reset_workflow_step(...)` to pause, reset, fork, delete source, and rebind**
+- [ ] **Step 5: Update `reset_workflow_step(...)` to pause, reset, fork, delete source, and rebind**
 
 Change reset to this sequence:
 
@@ -557,7 +579,7 @@ Change reset to this sequence:
 The old conversation must be deleted after the fork succeeds. Remove the conversation-dir deletion
 and do not clear conversation state as a destructive reset primitive.
 
-Sketch:
+Final target after this cleanup:
 
 ```rust
 let pause_config =
@@ -571,7 +593,7 @@ crate::agents::openhands_server::pause_openhands_conversation(
 
 // reset files/artifacts/db to target step
 
-let forked = crate::agents::skill_creator::fork_skill_session(
+let forked = crate::agents::openhands_server::fork_openhands_conversation(
     &app_handle,
     pause_config,
     &active_conversation_id,
@@ -583,7 +605,7 @@ Critical correctness rule: do not call `clear_skill_conversation_db_records(...)
 after saving the new fork ID. If old-record cleanup is still needed, it must
 target only the superseded source binding without deleting the new fork binding.
 
-- [ ] **Step 5: Keep `agent_id` creation in the next live send/run path**
+- [ ] **Step 6: Keep `agent_id` creation in the next live send/run path**
 
 Do not create a new `agent_id` during fork. The next live execution on the fork
 should create the new tracked `agent_id` through the existing product send/run
@@ -591,7 +613,7 @@ entrypoint, for example in `run_workflow_step(...)`.
 
 If needed, add a short code comment or helper boundary to make this explicit.
 
-- [ ] **Step 6: Add or update tests around the new boundary**
+- [ ] **Step 7: Add or update tests around the new boundary**
 
 Cover these cases with the smallest existing suites:
 
@@ -615,7 +637,7 @@ If a direct async command test is too expensive, extract smaller helpers for:
 - fork-and-rebind behavior
 - delete-path tracked-agent cleanup
 
-- [ ] **Step 7: Run the affected command tests**
+- [ ] **Step 8: Run the affected command tests**
 
 Run:
 
@@ -629,10 +651,10 @@ Expected: PASS with no remaining destructive reset of conversation storage and
 with reset moving to pause → reset → fork → delete source → rebind semantics,
 and with delete-path local cleanup no longer keyed by `conversation_id`.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/skill/tests.rs
+git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/skill/tests.rs docs/design/openhands-runtime-contract/README.md
 git commit -m "refactor: fork workflow conversations on reset"
 ```
 
@@ -711,7 +733,7 @@ git commit -m "test: align OpenHands runtime contract coverage"
 - Verify only: `app/src-tauri/src/lib.rs`
 - Verify only: `app/src-tauri/src/commands/runtime_lifecycle.rs`
 
-- [ ] **Step 1: Add a raw shutdown wrapper parallel to `ensure_openhands_server(...)`**
+- [x] **Step 1: Add a raw shutdown wrapper parallel to `ensure_openhands_server(...)`**
 
 Add a raw wrapper in `app/src-tauri/src/agents/openhands_server/mod.rs`:
 
@@ -724,7 +746,7 @@ pub async fn shutdown_openhands_server() -> Result<(), String> {
 This keeps app-lifecycle callers on the raw OpenHands API surface instead of
 reaching into `process.rs` directly.
 
-- [ ] **Step 2: Verify shutdown remains confined to app-exit flows**
+- [x] **Step 2: Verify shutdown remains confined to app-exit flows**
 
 Confirm the only remaining `shutdown_agent_server()` call sites are app-shutdown lifecycle paths:
 
@@ -740,7 +762,7 @@ app/src-tauri/src/commands/runtime_lifecycle.rs
 app/src-tauri/src/agents/openhands_server/process.rs
 ```
 
-- [ ] **Step 3: Move app-shutdown callers onto the raw shutdown wrapper**
+- [x] **Step 3: Move app-shutdown callers onto the raw shutdown wrapper**
 
 Update app-exit orchestration to call `crate::agents::openhands_server::shutdown_openhands_server()`
 instead of `process::shutdown_agent_server()` directly:
@@ -759,6 +781,9 @@ if let Err(e) = crate::agents::openhands_server::shutdown_openhands_server().awa
 }
 ```
 
+Status on this branch: already implemented in `app/src-tauri/src/agents/openhands_server/mod.rs`,
+`app/src-tauri/src/lib.rs`, and `app/src-tauri/src/commands/runtime_lifecycle.rs`.
+
 Expected after the refactor:
 
 ```bash
@@ -768,7 +793,7 @@ rg -n "process::shutdown_agent_server|shutdown_openhands_server\\(" app/src-taur
 shows product call sites using the raw wrapper, with `process::shutdown_agent_server()`
 remaining only inside the raw wrapper module.
 
-- [ ] **Step 4: Run final repo checks for this change**
+- [x] **Step 4: Run final repo checks for this change**
 
 Run:
 
@@ -781,9 +806,12 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow --quiet
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/lib.rs app/src-tauri/src/commands/runtime_lifecycle.rs
 git commit -m "refactor: add raw OpenHands shutdown wrapper"
 ```
+
+Status on this branch: the focused verification filters for this shutdown-wrapper
+state have already passed.
