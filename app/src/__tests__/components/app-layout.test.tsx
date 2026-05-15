@@ -831,6 +831,70 @@ describe("AppLayout", () => {
     expect(useRefineStore.getState().conversationId).toBe("conv-sales");
   });
 
+  it("bootstraps an OpenHands session without requiring workspace path", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") {
+        return Promise.resolve({
+          ...defaultSettings,
+          workspace_path: null,
+        });
+      }
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            id: 1,
+            name: "sales-skill",
+            current_step: null,
+            status: "completed",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "select_skill_openhands_session") {
+        return Promise.resolve({
+          conversation_id: "conv-sales",
+          skill_name: "sales-skill",
+          created_at: new Date().toISOString(),
+          available_agents: ["skill-creator"],
+          restored_messages: [],
+          restored_transcript_events: [],
+        });
+      }
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Startup activate sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Startup activate sales"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillId: 1,
+      });
+    });
+
+    expect(toast.error).not.toHaveBeenCalledWith("Workspace path is not configured", expect.anything());
+    expect(useRefineStore.getState().conversationId).toBe("conv-sales");
+  });
+
   it("does not bootstrap a locked skill from the panel", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);

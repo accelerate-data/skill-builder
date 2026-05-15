@@ -43,7 +43,6 @@ import {
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
-  const workspacePath = useSettingsStore((s) => s.workspacePath);
   const { data: builderSkills = [] } = useBuilderSkillsQuery();
   const { data: importedSkills = [] } = useImportedSkillsQuery();
   const selectedWorkspaceSkillId = useSkillStore((s) => s.activeSkillId);
@@ -213,9 +212,6 @@ export function AppLayout() {
         throw new Error(`Skill '${skillId}' is not available`);
       }
       const { editableSkill } = resolvedSkill;
-      if (!workspacePath) {
-        throw new Error("Workspace path is not configured");
-      }
 
       const refineStore = useRefineStore.getState();
       const sessionAlreadyActive =
@@ -260,7 +256,6 @@ export function AppLayout() {
     [
       lockedSkills,
       resolveSkillSelection,
-      workspacePath,
       selectedWorkspaceSkillId,
       setSelectedWorkspaceSkill,
       setWorkspaceSurface,
