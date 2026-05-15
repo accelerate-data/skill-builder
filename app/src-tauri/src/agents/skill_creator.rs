@@ -329,16 +329,6 @@ pub async fn ensure_skill_session(
         .await
 }
 
-pub async fn fork_skill_session(
-    app: &tauri::AppHandle,
-    config: OpenHandsRuntimeConfig,
-    source_conversation_id: &str,
-) -> Result<crate::agents::openhands_server::ForkedOpenHandsSession, String> {
-    crate::agents::openhands_server::ensure_openhands_server(&config).await?;
-    crate::agents::openhands_server::fork_openhands_conversation(app, config, source_conversation_id)
-        .await
-}
-
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

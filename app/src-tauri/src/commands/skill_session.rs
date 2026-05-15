@@ -10,26 +10,6 @@ use std::path::Path;
 use std::sync::Mutex;
 use tauri::Manager;
 
-pub fn build_skill_session_config(
-    skill_name: &str,
-    plugin_slug: &str,
-    prompt: &str,
-    app_data_root: &str,
-    skills_root: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorRuntimeContext {
-        app_data_root: app_data_root.to_string(),
-        skills_root: skills_root.to_string(),
-        skill_name: skill_name.to_string(),
-        plugin_slug: plugin_slug.to_string(),
-        prompt: prompt.to_string(),
-        llm,
-        intent: SkillCreatorIntent::Refine,
-        skill_dir_override: None,
-    })
-}
-
 pub(crate) fn build_pause_runtime_config(
     app: &tauri::AppHandle,
     db: &crate::db::Db,
@@ -45,14 +25,16 @@ pub(crate) fn build_pause_runtime_config(
         .to_string_lossy()
         .replace('\\', "/");
 
-    Ok(build_skill_session_config(
-        skill_name,
-        plugin_slug,
-        "",
-        &app_data_root,
-        &skills_root,
-        runtime_ctx.llm,
-    ))
+    Ok(build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root,
+        skills_root,
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: String::new(),
+        llm: runtime_ctx.llm,
+        intent: SkillCreatorIntent::Refine,
+        skill_dir_override: None,
+    }))
 }
 
 pub(crate) async fn ensure_skill_runtime_ready(
@@ -204,14 +186,16 @@ pub async fn select_skill_openhands_session(
             .map_err(|e| format!("failed to resolve app data dir: {e}"))?
             .to_string_lossy()
             .replace('\\', "/");
-        let session_config = build_skill_session_config(
-            &skill_name,
-            &plugin_slug,
-            "",
-            &app_data_root,
-            &skills_path,
-            runtime_ctx.llm.clone(),
-        );
+        let session_config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root,
+            skills_root: skills_path.clone(),
+            skill_name: skill_name.clone(),
+            plugin_slug: plugin_slug.clone(),
+            prompt: String::new(),
+            llm: runtime_ctx.llm.clone(),
+            intent: SkillCreatorIntent::Refine,
+            skill_dir_override: None,
+        });
         let started_session = crate::agents::skill_creator::ensure_skill_session(
             &app,
             session_config,

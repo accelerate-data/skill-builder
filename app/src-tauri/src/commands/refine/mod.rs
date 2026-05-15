@@ -236,14 +236,19 @@ pub async fn send_refine_message(
         .map_err(|e| format!("failed to resolve app data dir: {e}"))?
         .to_string_lossy()
         .replace('\\', "/");
-    let config = crate::commands::skill_session::build_skill_session_config(
-        &skill_name,
-        &plugin_slug,
-        &prompt,
-        &app_data_root,
-        &skills_path,
-        runtime_ctx.llm.clone(),
-    );
+    let config =
+        crate::agents::skill_creator::build_skill_creator_config(
+            crate::agents::skill_creator::SkillCreatorRuntimeContext {
+                app_data_root,
+                skills_root: skills_path,
+                skill_name: skill_name.clone(),
+                plugin_slug: plugin_slug.clone(),
+                prompt,
+                llm: runtime_ctx.llm.clone(),
+                intent: crate::agents::skill_creator::SkillCreatorIntent::Refine,
+                skill_dir_override: None,
+            },
+        );
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,

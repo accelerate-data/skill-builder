@@ -1734,26 +1734,30 @@ fn test_finalize_creates_exactly_one_tag_after_fixup() {
 
 #[test]
 fn test_refine_openhands_config_uses_skill_creator_system_message_suffix() {
-    let config = crate::commands::skill_session::build_skill_session_config(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        "Refine the skill",
-        "/tmp/app-data",
-        "/tmp/skills",
-        crate::types::WorkflowLlmConfig {
-            model: "anthropic/claude-sonnet-4-5".to_string(),
-            api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
-            base_url: None,
-            api_version: None,
-            temperature: None,
-            max_output_tokens: None,
-            timeout_seconds: None,
-            num_retries: None,
-            reasoning_effort: None,
-            extra_headers: None,
-            input_cost_per_token: None,
-            output_cost_per_token: None,
-            usage_id: Some("workflow".to_string()),
+    let config = crate::agents::skill_creator::build_skill_creator_config(
+        crate::agents::skill_creator::SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "my-skill".to_string(),
+            plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+            prompt: "Refine the skill".to_string(),
+            llm: crate::types::WorkflowLlmConfig {
+                model: "anthropic/claude-sonnet-4-5".to_string(),
+                api_key: Some(crate::types::SecretString::new("sk-test".to_string())),
+                base_url: None,
+                api_version: None,
+                temperature: None,
+                max_output_tokens: None,
+                timeout_seconds: None,
+                num_retries: None,
+                reasoning_effort: None,
+                extra_headers: None,
+                input_cost_per_token: None,
+                output_cost_per_token: None,
+                usage_id: Some("workflow".to_string()),
+            },
+            intent: crate::agents::skill_creator::SkillCreatorIntent::Refine,
+            skill_dir_override: None,
         },
     );
 

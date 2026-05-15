@@ -574,21 +574,17 @@ pub async fn delete_skill(
     for conv_id in &conversation_ids {
         if let Ok(config) = pause_config.clone() {
             if let Err(error) =
-                crate::agents::openhands_server::pause_openhands_conversation(config, conv_id).await
+                crate::agents::openhands_server::pause_openhands_conversation(config.clone(), conv_id).await
             {
                 log::warn!("[delete_skill] failed to pause conversation {}: {}", conv_id, error);
             }
+            // After pausing, delete the conversation from the OpenHands server
+            if let Err(error) =
+                crate::agents::openhands_server::delete_openhands_conversation(config, conv_id).await
+            {
+                log::warn!("[delete_skill] failed to delete conversation {}: {}", conv_id, error);
+            }
         }
-    }
-
-    // Best-effort local-run cleanup for tracked agents
-    for conv_id in &conversation_ids {
-        crate::agents::openhands_server::close_local_openhands_run(conv_id);
-        log::info!(
-            "[delete_skill] closed local run for conversation {} of skill={}",
-            conv_id,
-            name
-        );
     }
 
     for agent_id in &shutdown_plan.agent_ids {

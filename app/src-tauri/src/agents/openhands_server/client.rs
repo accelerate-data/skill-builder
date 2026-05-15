@@ -91,6 +91,17 @@ impl OpenHandsServerClient {
         .build()
     }
 
+    pub fn build_delete_request(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Request, reqwest::Error> {
+        self.request(
+            Method::DELETE,
+            &format!("api/conversations/{conversation_id}"),
+        )
+        .build()
+    }
+
     pub fn build_agent_final_response_request(
         &self,
         conversation_id: &str,
@@ -220,6 +231,15 @@ impl OpenHandsServerClient {
             .and_then(|value| value.as_str())
             .map(str::to_string)
             .ok_or_else(|| "OpenHands ask_agent returned no response field".to_string())
+    }
+
+    pub async fn delete_conversation(&self, conversation_id: &str) -> Result<(), String> {
+        let request = self
+            .build_delete_request(conversation_id)
+            .map_err(Self::request_error)?;
+        let response = self.execute(request).await?;
+        Self::ensure_success(response).await?;
+        Ok(())
     }
 
     /// Fetch every persisted event for the conversation in chronological order.
@@ -546,6 +566,14 @@ mod tests {
             "/api/conversations/abc/fork"
         );
         assert_eq!(
+            client.build_delete_request("abc").unwrap().url().path(),
+            "/api/conversations/abc"
+        );
+        assert_eq!(
+            client.build_delete_request("abc").unwrap().method(),
+            reqwest::Method::DELETE
+        );
+        assert_eq!(
             client
                 .build_agent_final_response_request("abc")
                 .unwrap()
@@ -656,6 +684,83 @@ mod tests {
         let error = client.pause_conversation("conv-1").await.unwrap_err();
         assert!(error.contains("500 Internal Server Error"), "{error}");
         assert!(error.contains("pause failed"), "{error}");
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_conversation_surfaces_status_and_body_for_api_errors() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0_u8; 2048];
+            let n = stream.read(&mut request).await.unwrap();
+            let request_text = String::from_utf8_lossy(&request[..n]);
+            assert!(
+                request_text.starts_with("DELETE /api/conversations/conv-1"),
+                "expected DELETE request, got: {request_text}"
+            );
+            let body = b"delete failed";
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            stream.write_all(body).await.unwrap();
+        });
+
+        let client = OpenHandsServerClient::new(
+            format!("http://{addr}").parse().unwrap(),
+            Some("session-key".to_string()),
+        );
+
+        let error = client.delete_conversation("conv-1").await.unwrap_err();
+        assert!(error.contains("500 Internal Server Error"), "{error}");
+        assert!(error.contains("delete failed"), "{error}");
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fork_conversation_returns_json_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0_u8; 2048];
+            let n = stream.read(&mut request).await.unwrap();
+            let request_text = String::from_utf8_lossy(&request[..n]);
+            assert!(
+                request_text.starts_with("POST /api/conversations/conv-src/fork"),
+                "expected POST fork request, got: {request_text}"
+            );
+            let body = br#"{"conversation_id":"conv-forked"}"#;
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            stream.write_all(body).await.unwrap();
+        });
+
+        let client = OpenHandsServerClient::new(
+            format!("http://{addr}").parse().unwrap(),
+            Some("session-key".to_string()),
+        );
+
+        let result = client.fork_conversation("conv-src").await.unwrap();
+        assert_eq!(result["conversation_id"], "conv-forked");
 
         server.await.unwrap();
     }

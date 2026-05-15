@@ -1124,6 +1124,34 @@ pub async fn ask_openhands_agent(
     client.ask_agent(conversation_id, question).await
 }
 
+pub async fn delete_openhands_conversation(
+    config: OpenHandsRuntimeConfig,
+    conversation_id: &str,
+) -> Result<(), String> {
+    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
+    let server =
+        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
+            .await?;
+    let client = OpenHandsServerClient::new(
+        server.base_url().parse::<reqwest::Url>().map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "parse OpenHands Agent Server base URL",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })?,
+        Some(server.session_api_key),
+    );
+
+    client.delete_conversation(conversation_id).await.map_err(|e| {
+        OpenHandsRuntimeError::Operation {
+            operation: "delete OpenHands Agent Server conversation",
+            detail: e.to_string(),
+        }
+        .to_string()
+    })
+}
+
 pub(crate) fn has_registered_local_run(agent_id: &str) -> bool {
     task_registry().contains_key(agent_id) || cancel_registry().contains_key(agent_id)
 }

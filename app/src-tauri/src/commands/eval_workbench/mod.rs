@@ -240,28 +240,6 @@ fn parse_suggested_scenario_response(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_generation_runtime_config(
-    app_data_root: &str,
-    plugin_slug: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    skill_dir: &str,
-    runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorRuntimeContext {
-        app_data_root: app_data_root.to_string(),
-        skills_root: skills_root.to_string(),
-        skill_name: skill_name.to_string(),
-        plugin_slug: plugin_slug.to_string(),
-        prompt: prompt.to_string(),
-        llm: runtime_ctx.llm.clone(),
-        intent: SkillCreatorIntent::Eval,
-        skill_dir_override: Some(skill_dir.replace('\\', "/")),
-    })
-}
-
 async fn run_define_eval_scenario_throwaway_turn<
     EnsureRuntimeDir,
     EnsureRuntimeDirFuture,
@@ -297,15 +275,16 @@ where
     std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
     ensure_runtime_dir(&runtime_run_dir).await?;
-    let config = build_generation_runtime_config(
-        app_data_root,
-        plugin_slug,
-        skill_name,
-        prompt,
-        &runtime_ctx.skills_root,
-        &runtime_run_dir.to_string_lossy(),
-        runtime_ctx,
-    );
+    let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: runtime_ctx.skills_root.clone(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: prompt.to_string(),
+        llm: runtime_ctx.llm.clone(),
+        intent: SkillCreatorIntent::Eval,
+        skill_dir_override: Some(runtime_run_dir.to_string_lossy().replace('\\', "/")),
+    });
     run_turn(OpenHandsThrowawayRunParams {
         agent_id: format!("{skill_name}-scenario-suggest-{}", uuid::Uuid::new_v4()),
         config,
