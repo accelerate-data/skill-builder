@@ -19,7 +19,7 @@
 - Test: `app/src-tauri/src/agents/openhands_server/mod.rs`
 - Test: `app/src-tauri/src/agents/openhands_server/client.rs`
 
-- [ ] **Step 1: Expose raw send-message and run primitives separately**
+- [x] **Step 1: Expose raw send-message and run primitives separately**
 
 Refactor `app/src-tauri/src/agents/openhands_server/mod.rs` so the raw layer
 exposes distinct conversation operations:
@@ -43,7 +43,7 @@ pub async fn run_openhands_conversation(
 `run_openhands_conversation(...)` should own the local socket/task lifecycle for
 that run.
 
-- [ ] **Step 2: Add raw `ask_agent` client and wrapper support**
+- [x] **Step 2: Add raw `ask_agent` client and wrapper support**
 
 Add raw Agent Server support in `app/src-tauri/src/agents/openhands_server/client.rs`:
 
@@ -74,7 +74,7 @@ pub async fn ask_openhands_agent(
 This step is intentionally limited to the raw layer. Do not add tracked,
 workflow, or UI usage in this plan.
 
-- [ ] **Step 3: Remove the cached-server-only pause helper from the raw wrapper surface**
+- [x] **Step 3: Remove the cached-server-only pause helper from the raw wrapper surface**
 
 Delete `pause_conversation_if_server_running(...)` from `app/src-tauri/src/agents/openhands_server/mod.rs` and keep only the real pause API:
 
@@ -110,7 +110,7 @@ pub async fn pause_openhands_conversation(
 }
 ```
 
-- [ ] **Step 4: Unbundle the current send-plus-run path**
+- [x] **Step 4: Unbundle the current send-plus-run path**
 
 Refactor `dispatch_openhands_turn_with_request(...)` so it is no longer the
 public raw entrypoint for both message send and run start.
@@ -159,7 +159,7 @@ git commit -m "refactor: expand raw OpenHands conversation APIs"
 - Test: `app/src-tauri/src/commands/skill_session.rs`
 - Test: `app/src-tauri/src/commands/workflow/runtime.rs`
 
-- [ ] **Step 1: Rename the throwaway tracked wrapper to match what it does**
+- [x] **Step 1: Rename the throwaway tracked wrapper to match what it does**
 
 Rename `run_tracked_throwaway_openhands_session(...)` in
 `app/src-tauri/src/agents/tracked_openhands.rs` to `send_tracked_throwaway(...)`.
@@ -180,7 +180,7 @@ Update callers in:
 - `app/src-tauri/src/commands/skill/scope_review.rs`
 - `app/src-tauri/src/commands/eval_workbench/mod.rs`
 
-- [ ] **Step 2: Remove tracked abort and terminate APIs**
+- [x] **Step 2: Remove tracked abort and terminate APIs**
 
 Delete these functions from `app/src-tauri/src/agents/tracked_openhands.rs`:
 
@@ -196,7 +196,7 @@ pub async fn terminate_tracked_openhands_session(
 The tracked layer should not expose local-detach or local-terminate semantics.
 Tracked runs stop through pause.
 
-- [ ] **Step 3: Extract the existing pause config build pattern into a reusable helper**
+- [x] **Step 3: Extract the existing pause config build pattern into a reusable helper**
 
 Add a helper near `build_skill_session_config(...)` so delete/reset paths can build the same real pause config as selected-skill pause:
 
@@ -229,7 +229,7 @@ pub(crate) fn build_pause_runtime_config(
 
 Use that helper inside `pause_openhands_session(...)` instead of duplicating the same config-building logic inline.
 
-- [ ] **Step 4: Keep the helper read-only in intent**
+- [x] **Step 4: Keep the helper read-only in intent**
 
 Do not add new pause semantics here. The helper only builds config for the existing raw pause API:
 
@@ -254,7 +254,7 @@ If the current workflow-run state does not retain enough conversation context
 to pause correctly, add the smallest missing state needed for that operation
 instead of reintroducing a local-abort API.
 
-- [ ] **Step 6: Make tracked persistent send reuse the existing live runner**
+- [x] **Step 6: Make tracked persistent send reuse the existing live runner**
 
 Update `send_tracked_openhands_message(...)` so it no longer assumes every send
 must start a new run task.
@@ -271,7 +271,7 @@ Target behavior:
 This may require adding the smallest conversation-ownership lookup needed to
 tell whether a live local runner already exists for the target conversation.
 
-- [ ] **Step 7: Rewrite skill-delete cleanup to use pause semantics**
+- [x] **Step 7: Rewrite skill-delete cleanup to use pause semantics**
 
 Replace `terminate_tracked_openhands_session(...)` usage in
 `app/src-tauri/src/commands/skill/crud.rs` with pause-oriented cleanup. Delete
@@ -364,7 +364,7 @@ match intent {
 }
 ```
 
-- [ ] **Step 3: Remove specialized config builders where they add no policy**
+- [x] **Step 3: Remove specialized config builders where they add no policy**
 
 Delete or inline wrappers like `build_skill_session_config(...)`,
 `build_generation_runtime_config(...)`, and any remaining per-surface config
@@ -460,7 +460,7 @@ git commit -m "refactor: make skill creator config intent-driven"
 - Test: `app/src-tauri/src/commands/workflow/evaluation.rs`
 - Test: `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-- [ ] **Step 1: Finish the remaining `delete_skill(...)` contract cleanup**
+- [x] **Step 1: Finish the remaining `delete_skill(...)` contract cleanup**
 
 On this branch, `delete_skill(...)` already takes `app: tauri::AppHandle`,
 already builds pause config, and already performs best-effort remote
@@ -510,7 +510,7 @@ Important: keep delete as best-effort at the call site. Failure to pause must lo
     }
 ```
 
-- [ ] **Step 2: Fix delete-path local cleanup ownership**
+- [x] **Step 2: Fix delete-path local cleanup ownership**
 
 `delete_skill(...)` currently has two distinct cleanup concerns:
 
@@ -527,7 +527,7 @@ values, delete the incorrect conversation-ID cleanup loop entirely. If there is
 still one missing path, add the smallest helper that resolves tracked
 `agent_id`s without broadening the runtime contract.
 
-- [ ] **Step 3: Keep reset ownership at the product-command layer**
+- [x] **Step 3: Keep reset ownership at the product-command layer**
 
 `reset_workflow_step(...)` is the product owner of reset semantics. It should
 sequence:
@@ -544,7 +544,7 @@ Do not add a Layer 3 reset abstraction.
 Do not route reset through a Layer 2 fork helper. The product command should
 call the raw Layer 1 fork API directly.
 
-- [ ] **Step 4: Align the fork helper boundary with the chosen ownership model**
+- [x] **Step 4: Align the fork helper boundary with the chosen ownership model**
 
 Make the plan and docs consistent with the chosen ownership model:
 
@@ -575,7 +575,7 @@ Fork creates a new `conversation_id`. It does not create a new `agent_id`.
 Do not let any helper silently clear or overwrite the new binding after it is
 returned to the product reset flow.
 
-- [ ] **Step 5: Update `reset_workflow_step(...)` to pause, reset, fork, delete source, and rebind**
+- [x] **Step 5: Update `reset_workflow_step(...)` to pause, reset, fork, delete source, and rebind**
 
 Change reset to this sequence:
 
@@ -615,7 +615,7 @@ Critical correctness rule: do not call `clear_skill_conversation_db_records(...)
 after saving the new fork ID. If old-record cleanup is still needed, it must
 target only the superseded source binding without deleting the new fork binding.
 
-- [ ] **Step 6: Keep `agent_id` creation in the next live send/run path**
+- [x] **Step 6: Keep `agent_id` creation in the next live send/run path**
 
 Do not create a new `agent_id` during fork. The next live execution on the fork
 should create the new tracked `agent_id` through the existing product send/run
@@ -677,7 +677,7 @@ git commit -m "refactor: fork workflow conversations on reset"
 - Modify: `app/src-tauri/src/commands/refine/tests.rs`
 - Modify: `app/src-tauri/src/commands/workflow/tests.rs`
 
-- [ ] **Step 1: Remove tests that encode the wrong reset outcome**
+- [x] **Step 1: Remove tests that encode the wrong reset outcome**
 
 Delete or rewrite any tests that currently simulate:
 
