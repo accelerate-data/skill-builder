@@ -170,9 +170,21 @@ const emptyReconciliation: ReconciliationResult = {
   auto_cleaned: 0,
 };
 
+const baseMockImplementation = mockInvoke.mockImplementation.bind(mockInvoke);
+
+function installAppLayoutInvokeDefaults() {
+  mockInvoke.mockImplementation = ((impl: Parameters<typeof mockInvoke.mockImplementation>[0]) =>
+    baseMockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "refresh_model_catalog") return Promise.resolve([]);
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
+      return impl(cmd, args);
+    })) as typeof mockInvoke.mockImplementation;
+}
+
 describe("AppLayout", () => {
   beforeEach(() => {
     resetTauriMocks();
+    installAppLayoutInvokeDefaults();
     useSettingsStore.getState().reset();
     useRefineStore.getState().clearSession();
     useWorkflowStore.getState().reset();
