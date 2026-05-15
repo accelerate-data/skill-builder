@@ -567,10 +567,22 @@ export interface DecisionsOutput {
 }
 
 /** Structured output for workflow step 3 (generate-skill, rewrite-skill, or benchmark-skill agent). */
+export interface VerifierFinding {
+  severity: string
+  file: string
+  finding: string
+  recommendation: string
+}
+
+export interface VerifierResult {
+  status: "pass" | "needs_fix"
+  findings: VerifierFinding[]
+}
+
 export type GenerateSkillOutput =
-  | { status: "generated"; skipped?: boolean; benchmark_path?: string }
-  | { status: "rewritten"; skipped?: boolean; benchmark_path?: string }
-  | { status: "complete" | "partial" | "skipped"; benchmark_path?: string }
+  | { status: "generated"; skipped?: boolean; benchmark_path?: string; commit_summary?: string; call_trace?: string[]; verifier_result?: VerifierResult }
+  | { status: "rewritten"; skipped?: boolean; benchmark_path?: string; commit_summary?: string; call_trace?: string[]; verifier_result?: VerifierResult }
+  | { status: "complete" | "partial" | "skipped"; benchmark_path?: string; commit_summary?: string; call_trace?: string[]; verifier_result?: VerifierResult }
 
 /** Discriminated union for a parsed workflow result payload per step index. */
 export type WorkflowStepResultPayload =

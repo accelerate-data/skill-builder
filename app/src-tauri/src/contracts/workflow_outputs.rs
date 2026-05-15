@@ -64,6 +64,25 @@ pub struct DecisionsOutput {
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
 )]
+pub struct VerifierFinding {
+    pub severity: String,
+    pub file: String,
+    pub finding: String,
+    pub recommendation: String,
+}
+
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
+pub struct VerifierResult {
+    pub status: String,
+    #[serde(default)]
+    pub findings: Vec<VerifierFinding>,
+}
+
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
 pub struct GenerateSkillOutput {
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -74,6 +93,8 @@ pub struct GenerateSkillOutput {
     pub commit_summary: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call_trace: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verifier_result: Option<VerifierResult>,
 }
 
 // ─── Answer Evaluator ────────────────────────────────────────────────────────

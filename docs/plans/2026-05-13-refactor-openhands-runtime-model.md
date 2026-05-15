@@ -8,6 +8,17 @@
 
 **Tech Stack:** Rust, Tauri commands, OpenHands Agent Server runtime, SQLite-backed runtime settings, markdown docs
 
+## Non-Substantive Remaining Todo
+
+These are admin and verification chores that should be cleared as the remaining
+substantive code changes land:
+
+- run the focused cargo filters still listed in Tasks 1, 2, 4, and 5
+- check off any completed validation steps immediately after the commands pass
+- keep the commit steps bundled with the substantive code changes they validate
+- do a final docs pass after the temp-root throwaway migration so plan/design
+  text and tests all point at the same runtime-root contract
+
 ---
 
 ## Task 1: Split Raw Conversation Primitives and Keep One Pause Primitive
@@ -126,7 +137,7 @@ Today it conflates:
 After the refactor, those concerns should be reachable through the explicit raw
 APIs above.
 
-- [ ] **Step 5: Run the focused raw-wrapper tests**
+- [x] **Step 5: Run the focused raw-wrapper tests**
 
 Run:
 
@@ -278,7 +289,7 @@ Replace `terminate_tracked_openhands_session(...)` usage in
 should pause known conversations and then clear local bookkeeping; it should
 not perform local terminate semantics for tracked runs.
 
-- [ ] **Step 8: Run the affected tests**
+- [x] **Step 8: Run the affected tests**
 
 Run:
 
@@ -623,7 +634,7 @@ entrypoint, for example in `run_workflow_step(...)`.
 
 If needed, add a short code comment or helper boundary to make this explicit.
 
-- [ ] **Step 7: Add or update tests around the new boundary**
+- [x] **Step 7: Add or update tests around the new boundary**
 
 Cover these cases with the smallest existing suites:
 
@@ -647,7 +658,7 @@ If a direct async command test is too expensive, extract smaller helpers for:
 - fork-and-rebind behavior
 - delete-path tracked-agent cleanup
 
-- [ ] **Step 8: Run the affected command tests**
+- [x] **Step 8: Run the affected command tests**
 
 Run:
 
@@ -689,7 +700,7 @@ That sequence encodes the opposite of the design contract. After a successful
 fork-and-rebind reset, the skill should remain bound to the forked
 `conversation_id`.
 
-- [ ] **Step 2: Replace DB-only smoke tests with boundary-focused helper tests**
+- [x] **Step 2: Replace DB-only smoke tests with boundary-focused helper tests**
 
 Prefer smaller tests that prove the actual contract boundaries over broad
 “smoke” tests that only mutate DB rows. At minimum, cover these helper-level
@@ -703,7 +714,7 @@ behaviors:
 If the current command functions are too heavy to test directly, extract narrow
 helpers for these boundaries and test those helpers instead.
 
-- [ ] **Step 3: Tighten persistent-send and reuse assertions where the contract changed**
+- [x] **Step 3: Tighten persistent-send and reuse assertions where the contract changed**
 
 Review refine/workflow tests that cover persistent-send behavior and make sure
 they assert the actual one-runner contract:
@@ -714,7 +725,7 @@ they assert the actual one-runner contract:
 - a new tracked `agent_id` is created only on the next live run boundary, not
   during fork
 
-- [ ] **Step 4: Run the contract-focused test filters**
+- [x] **Step 4: Run the contract-focused test filters**
 
 Run:
 

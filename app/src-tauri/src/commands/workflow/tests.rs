@@ -1158,9 +1158,10 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
         !prompt.contains("Eval definitions file:"),
         "step 3 prompt must not have 'Eval definitions file:' named-path instruction"
     );
-    assert!(prompt.contains("Use the `invoke_skill` tool to load the `creating-skills` skill"));
+    assert!(prompt.contains("Use the `creating-skills` skill to generate the final skill package"));
     assert!(prompt.contains("synthesize a generation"));
-    assert!(prompt.contains("brief from the confirmed decisions"));
+    assert!(prompt.contains("brief from the"));
+    assert!(prompt.contains("confirmed decisions"));
     assert!(prompt.contains("Pass this brief to the `creating-skills` skill"));
     // VU-1157: user-context.md file read instruction removed; context inlined
     assert!(
@@ -1178,11 +1179,13 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     );
     assert!(prompt.contains("decisions.json"));
     assert!(prompt.contains("clarifications.json"));
-    assert!(prompt.contains("fresh-context"));
     assert!(prompt.contains("launch"));
-    assert!(prompt.contains("named `skill-verifier` subagent"));
-    assert!(prompt.contains("via the `task` tool"));
-    assert!(prompt.contains("run exactly one re-verification"));
+    assert!(prompt.contains("named `skill-verifier` agent for verifier pass 1"));
+    assert!(prompt.contains("launch the"));
+    assert!(prompt.contains("agent again for verifier pass 2"));
+    assert!(prompt.contains("Return the final verifier outcome after pass 2"));
+    assert!(!prompt.contains("invoke_skill"));
+    assert!(!prompt.contains("`task` tool"));
     assert!(prompt.contains("Do not invoke a separate validator skill"));
     assert!(prompt.contains("Do not invoke a legacy writer agent"));
     assert!(
@@ -1196,6 +1199,9 @@ fn skill_generation_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("fresh-context-verifier-review"));
     assert!(prompt.contains("`call_trace` must be an array of string values"));
     assert!(prompt.contains("Do not\nreturn objects inside `call_trace`."));
+    assert!(prompt.contains("\"verifier_result\""));
+    assert!(prompt.contains("\"status\": \"pass\""));
+    assert!(prompt.contains("\"status\": \"needs_fix\""));
 }
 
 #[test]
@@ -2223,6 +2229,61 @@ fn test_materialize_step3_generate_rejects_missing_required_trace_entry() {
     let (db, skill_id) = db_with_seeded_skill("my-skill");
     let err = materialize_workflow_step_output_value(&db, &skill_id, 3, &payload).unwrap_err();
     assert!(err.contains("call_trace missing required entry 'read-clarifications'"));
+}
+
+#[test]
+fn test_materialize_step3_generate_accepts_verifier_result() {
+    let payload = serde_json::json!({
+        "status": "generated",
+        "commit_summary": "Create skill package with required files",
+        "verifier_result": {
+            "status": "pass",
+            "findings": []
+        },
+        "call_trace": [
+            "read-user-context",
+            "read-decisions",
+            "read-clarifications",
+            "synthesize-generation-brief",
+            "use-creating-skills",
+            "write-skill",
+            "fresh-context-verifier-review"
+        ]
+    });
+    let (db, skill_id) = db_with_seeded_skill("my-skill");
+    let result = materialize_workflow_step_output_value(&db, &skill_id, 3, &payload);
+    assert!(result.is_ok(), "expected verifier_result to validate");
+}
+
+#[test]
+fn test_materialize_step3_generate_rejects_invalid_verifier_result() {
+    let payload = serde_json::json!({
+        "status": "generated",
+        "commit_summary": "Create skill package with required files",
+        "verifier_result": {
+            "status": "pass",
+            "findings": [
+                {
+                    "severity": "material",
+                    "file": "SKILL.md",
+                    "finding": "Issue",
+                    "recommendation": "Fix it"
+                }
+            ]
+        },
+        "call_trace": [
+            "read-user-context",
+            "read-decisions",
+            "read-clarifications",
+            "synthesize-generation-brief",
+            "use-creating-skills",
+            "write-skill",
+            "fresh-context-verifier-review"
+        ]
+    });
+    let (db, skill_id) = db_with_seeded_skill("my-skill");
+    let err = materialize_workflow_step_output_value(&db, &skill_id, 3, &payload).unwrap_err();
+    assert!(err.contains("verifier_result with status 'pass' must have an empty findings array"));
 }
 
 #[test]

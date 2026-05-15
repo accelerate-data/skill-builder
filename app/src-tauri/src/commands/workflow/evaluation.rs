@@ -654,92 +654,61 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_skill_smoke_pause_then_delete_sequence() {
-        // Smoke test: verify the pause-then-delete sequence for conversation cleanup.
-        // This tests the DB path only (no live OpenHands server).
+    fn test_collect_skill_conversation_ids_includes_active_and_legacy_plugin_records() {
         let conn = create_test_db();
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_name = "delete-pause-test";
+        let plugin_slug = "skills";
+        let skill_name = "multi-conversation-reset-test";
 
+        crate::db::ensure_plugin(&conn, plugin_slug, "Skills", "synthetic", None, None, false)
+            .unwrap();
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", plugin_slug)
+            .unwrap();
         crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
             .unwrap();
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-to-delete")
-            .unwrap();
-
-        // Verify conversation ID exists before delete
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            Some("conv-to-delete".to_string()),
-        );
-
-        // Delete skill DB records (simulates the DB cleanup phase of delete_skill)
-        clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
-
-        // After delete, conversation ID should be cleared
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            None,
-            "conversation ID should be cleared after skill deletion"
-        );
-    }
-
-    #[test]
-    fn test_reset_smoke_pause_fork_delete_rebind_sequence() {
-        // Smoke test: verify the pause → fork → delete source → rebind sequence.
-        // This tests the DB path only (no live OpenHands server).
-        let conn = create_test_db();
-        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_name = "reset-fork-delete-test";
-
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
-            .unwrap();
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-source")
-            .unwrap();
-
-        // Step 1: pause (no-op in DB test — would pause remote server in real flow)
-        // Step 2: fork creates new conversation ID
-        let fork_id = "conv-forked";
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, fork_id).unwrap();
-
-        // Step 3: verify skill now points to fork
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            Some(fork_id.to_string()),
-        );
-
-        // After reset, the skill should remain bound to the fork conversation ID.
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            Some(fork_id.to_string()),
-            "conversation ID should remain bound to the fork after reset"
-        );
-    }
-
-    #[test]
-    fn test_delete_multiple_conversations_smoke() {
-        // Smoke test: verify delete handles multiple conversation IDs (default + non-default plugin).
-        let conn = create_test_db();
-        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_name = "multi-conv-delete-test";
-
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+        crate::db::save_skill_conversation_id(&conn, plugin_slug, skill_name, "conv-active")
             .unwrap();
         crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
             .unwrap();
 
-        // Conversation ID should exist
+        let ids = super::collect_skill_conversation_ids(&conn, plugin_slug, skill_name);
+
         assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            Some("conv-default".to_string()),
+            ids,
+            vec![
+                (plugin_slug.to_string(), "conv-active".to_string()),
+                (default_slug.to_string(), "conv-default".to_string()),
+            ]
         );
+    }
 
-        // Clear conversation DB records (simulates the delete loop over conversation IDs)
-        clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
+    #[test]
+    fn test_clear_skill_conversation_db_records_clears_active_and_legacy_plugin_records() {
+        let conn = create_test_db();
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+        let plugin_slug = "skills";
+        let skill_name = "clear-conversation-records-test";
 
-        // Should be cleared
+        crate::db::ensure_plugin(&conn, plugin_slug, "Skills", "synthetic", None, None, false)
+            .unwrap();
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", plugin_slug)
+            .unwrap();
+        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
+            .unwrap();
+        crate::db::save_skill_conversation_id(&conn, plugin_slug, skill_name, "conv-active")
+            .unwrap();
+        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-default")
+            .unwrap();
+
+        clear_skill_conversation_db_records(&conn, plugin_slug, skill_name).unwrap();
+
+        assert_eq!(
+            crate::db::get_skill_conversation_id(&conn, plugin_slug, skill_name).unwrap(),
+            None
+        );
         assert_eq!(
             crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            None,
+            None
         );
     }
 }

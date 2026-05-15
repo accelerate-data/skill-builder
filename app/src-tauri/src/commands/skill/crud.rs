@@ -8,6 +8,39 @@ use crate::types::SkillSummary;
 use std::fs;
 use std::path::Path;
 
+pub(crate) async fn cleanup_openhands_conversations_with<Pause, PauseFuture, Delete, DeleteFuture>(
+    pause_config: Result<crate::agents::runtime_config::OpenHandsRuntimeConfig, String>,
+    conversation_ids: &[String],
+    pause: Pause,
+    delete: Delete,
+) where
+    Pause: Fn(crate::agents::runtime_config::OpenHandsRuntimeConfig, String) -> PauseFuture,
+    PauseFuture: std::future::Future<Output = Result<(), String>>,
+    Delete: Fn(crate::agents::runtime_config::OpenHandsRuntimeConfig, String) -> DeleteFuture,
+    DeleteFuture: std::future::Future<Output = Result<(), String>>,
+{
+    let Ok(config) = pause_config else {
+        return;
+    };
+
+    for conversation_id in conversation_ids {
+        if let Err(error) = pause(config.clone(), conversation_id.clone()).await {
+            log::warn!(
+                "[delete_skill] failed to pause conversation {}: {}",
+                conversation_id,
+                error
+            );
+        }
+        if let Err(error) = delete(config.clone(), conversation_id.clone()).await {
+            log::warn!(
+                "[delete_skill] failed to delete conversation {}: {}",
+                conversation_id,
+                error
+            );
+        }
+    }
+}
+
 #[tauri::command]
 pub fn list_skills(
     source_url: Option<String>,
@@ -571,21 +604,19 @@ pub async fn delete_skill(
     let pause_config =
         crate::commands::skill_session::build_pause_runtime_config(&app, &db, &name, &plugin_slug);
 
-    for conv_id in &conversation_ids {
-        if let Ok(config) = pause_config.clone() {
-            if let Err(error) =
-                crate::agents::openhands_server::pause_openhands_conversation(config.clone(), conv_id).await
-            {
-                log::warn!("[delete_skill] failed to pause conversation {}: {}", conv_id, error);
-            }
-            // After pausing, delete the conversation from the OpenHands server
-            if let Err(error) =
-                crate::agents::openhands_server::delete_openhands_conversation(config, conv_id).await
-            {
-                log::warn!("[delete_skill] failed to delete conversation {}: {}", conv_id, error);
-            }
-        }
-    }
+    cleanup_openhands_conversations_with(
+        pause_config,
+        &conversation_ids,
+        |config, conversation_id| async move {
+            crate::agents::openhands_server::pause_openhands_conversation(config, &conversation_id)
+                .await
+        },
+        |config, conversation_id| async move {
+            crate::agents::openhands_server::delete_openhands_conversation(config, &conversation_id)
+                .await
+        },
+    )
+    .await;
 
     for agent_id in &shutdown_plan.agent_ids {
         let stopped = crate::agents::openhands_server::close_local_openhands_run(agent_id);

@@ -45,7 +45,7 @@ Do not create eval cases, eval suggestions, or trigger-prompt drafts during skil
 
 ## Fresh-Context Verification
 
-After generating files, launch the named `skill-verifier` subagent via `task_tool_set` for the verifier pass. Launching it via `task_tool_set` gives the verifier a fresh context — free from the generator's accumulated conversation history — so it can catch issues the generator has reasoned past. Do not run the verifier inline in the same agent context.
+After generating files, launch the `skill-verifier` subagent for the verifier pass. Do not run the verifier inline in the same agent context.
 
 Build the subagent prompt from `references/verifier-subagent-prompt.md`. Include only:
 
@@ -56,10 +56,34 @@ Build the subagent prompt from `references/verifier-subagent-prompt.md`. Include
 
 Do not pass the full workflow conversation history into the subagent prompt.
 
-Do not invoke a separate validator skill. Verification is owned by this skill and runs through the reference prompt so the generator-verifier loop stays inside the skill-writing flow.
-
-If the verifier returns material findings, fix them and run exactly one re-verification pass. Do not run an unbounded verification loop. If material findings remain after that one re-verification pass, return the caller's skipped result and summarize the blocker instead of publishing a weak skill.
+If the verifier returns material findings, fix them and run exactly one re-verification pass. Return the final verifier result from that last verifier pass in `verifier_result`. Do not run an unbounded verification loop. If material findings remain after that one re-verification pass, return the caller's skipped result and summarize the blocker instead of publishing a weak skill.
 
 ## Return
 
-Return the raw JSON object requested by the caller. Include a `call_trace` entry for the main generation and verification steps so the app can verify that the generator-verifier loop ran.
+Return the raw JSON object requested by the caller. Unless the caller overrides it, the expected shape is:
+
+```json
+{
+  "status": "generated",
+  "benchmark_path": null,
+  "skipped": false,
+  "commit_summary": "one concise sentence describing generated files",
+  "verifier_result": {
+    "status": "pass",
+    "findings": []
+  },
+  "call_trace": [
+    "read-user-context",
+    "read-decisions",
+    "read-clarifications",
+    "synthesize-generation-brief",
+    "use-creating-skills",
+    "write-skill",
+    "write-references",
+    "fresh-context-verifier-review"
+  ]
+}
+```
+
+`call_trace` must be a non-empty array of string values. Do not return objects inside `call_trace`.
+If you include `verifier_result`, mirror the final `skill-verifier` result exactly. Use `{ "status": "pass", "findings": [] }` after a clean verifier pass, or `{ "status": "needs_fix", "findings": [ ... ] }` when returning a skipped result because material findings remain after the single re-verification pass.

@@ -113,6 +113,12 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
     },
     "status": {
       "type": "string"
+    },
+    "verifier_result": {
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "required": [
@@ -120,7 +126,8 @@ pub const GENERATE_SKILL_SCHEMA: &str = r###"{
     "call_trace",
     "commit_summary",
     "skipped",
-    "status"
+    "status",
+    "verifier_result"
   ],
   "title": "GenerateSkillOutput",
   "type": "object"

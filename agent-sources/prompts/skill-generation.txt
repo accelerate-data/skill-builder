@@ -19,9 +19,8 @@ Author context: {{author_context}}
 
 {{clarifications_json}}
 
-Use the `invoke_skill` tool to load the `creating-skills` skill, then use that
-skill to generate the final skill package from the confirmed workflow
-decisions.
+Use the `creating-skills` skill to generate the final skill package from the
+confirmed workflow decisions.
 
 The decisions and clarifications records are provided below.
 
@@ -29,8 +28,8 @@ The decisions record is the canonical input for this step. Use clarifications an
 user context only to fill in supporting details that do not conflict with the
 confirmed decisions.
 
-Before calling `invoke_skill` for `creating-skills`, synthesize a generation
-brief from the confirmed decisions. The brief must cover:
+Before using `creating-skills`, synthesize a generation brief from the
+confirmed decisions. The brief must cover:
 
 - what the generated skill should enable a future agent to do
 - when the generated skill should trigger and when it should not trigger
@@ -68,14 +67,14 @@ boundaries from the confirmed decisions. Do not run a separate description
 candidate generation, ranking, or tuning flow here.
 
 Use the verifier prompt bundled inside the `creating-skills` skill to launch
-the named `skill-verifier` subagent via the `task` tool for a fresh-context
-verification pass.
+the named `skill-verifier` agent for verifier pass 1.
 Give the verifier only the synthesized generation brief, generated files, and
 verifier instructions.
-Incorporate material verifier findings, then run exactly one re-verification
-pass. Do not run an unbounded verification loop. If material findings remain
-after the one re-verification pass, return `skipped: true` and explain the
-blocking findings in `commit_summary`.
+If verifier pass 1 returns material findings, incorporate them and launch the
+named `skill-verifier` agent again for verifier pass 2.
+Return the final verifier outcome after pass 2. Do not run an unbounded
+verification loop. If material findings remain after pass 2, return
+`skipped: true` and explain the blocking findings in `commit_summary`.
 
 Do not invoke a separate validator skill.
 Do not invoke a legacy writer agent.
@@ -92,6 +91,10 @@ Return only a raw JSON object with this shape:
   "benchmark_path": null,
   "skipped": false,
   "commit_summary": "one concise sentence describing generated files",
+  "verifier_result": {
+    "status": "pass",
+    "findings": []
+  },
   "call_trace": [
     "read-user-context",
     "read-decisions",
@@ -106,3 +109,6 @@ Return only a raw JSON object with this shape:
 
 `call_trace` must be an array of string values exactly like the example. Do not
 return objects inside `call_trace`.
+If you include `verifier_result`, it must mirror the final `skill-verifier`
+output exactly: `{ "status": "pass", "findings": [] }` or
+`{ "status": "needs_fix", "findings": [ ... ] }`.

@@ -131,7 +131,12 @@ const mockSettingsState = vi.hoisted(() => ({
 let mockActiveAgentId: string | null = null;
 let mockRuns: Record<
   string,
-  { status: string; displayItems: unknown[]; totalCost?: number }
+  {
+    status: string;
+    displayItems: unknown[];
+    totalCost?: number;
+    conversationState?: { resultText?: string | null };
+  }
 > = {};
 
 vi.mock("@/stores/workflow-store", () => ({
@@ -214,8 +219,11 @@ describe("useWorkflowStateMachine", () => {
     mockWorkflowState = {
       ...mockWorkflowState,
       workflowSessionId: null,
+      currentStep: 0,
       steps: [{ id: 0, status: "pending" }],
       isRunning: false,
+      isStopping: false,
+      isInitializing: false,
       reviewMode: false,
       gateLoading: false,
       disabledSteps: [],
@@ -516,6 +524,71 @@ describe("useWorkflowStateMachine", () => {
 
     // The step must have been marked completed and isRunning set to false
     expect(mockSetRunning).toHaveBeenCalledWith(false);
+  });
+
+  it("shows a warning toast when step 3 completes with verifier findings", async () => {
+    const { toast } = await import("@/lib/toast");
+
+    mockWorkflowState = {
+      ...mockWorkflowState,
+      currentStep: 3,
+      steps: [
+        { id: 0, status: "completed" },
+        { id: 1, status: "completed" },
+        { id: 2, status: "completed" },
+        { id: 3, status: "in_progress" },
+      ],
+      isRunning: true,
+    };
+    mockActiveAgentId = "agent-generate-1";
+    mockRuns = {
+      "agent-generate-1": {
+        status: "completed",
+        displayItems: [],
+        conversationState: {
+          resultText: JSON.stringify({
+            status: "generated",
+            skipped: false,
+            verifier_result: {
+              status: "needs_fix",
+              findings: [
+                {
+                  severity: "warning",
+                  file: "SKILL.md",
+                  finding: "Missing example",
+                  recommendation: "Add one example",
+                },
+              ],
+            },
+          }),
+        },
+        totalCost: 0,
+      },
+    };
+    mockVerifyStepOutput.mockResolvedValueOnce(true);
+    mockGetDisabledSteps.mockResolvedValueOnce([]);
+
+    renderHook(() =>
+      useWorkflowStateMachine({
+        ...defaultOptions,
+        currentStep: 3,
+        steps: [
+          { id: 0, status: "completed", name: "Research" },
+          { id: 1, status: "completed", name: "Clarify" },
+          { id: 2, status: "completed", name: "Decide" },
+          { id: 3, status: "in_progress", name: "Generate" },
+        ],
+        stepConfig: STEP_CONFIGS[3],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mockUpdateStepStatus).toHaveBeenCalledWith(3, "completed");
+    });
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Skill verifier reported findings. Review the generated skill before proceeding.",
+    );
   });
 
   // --- State setters ---

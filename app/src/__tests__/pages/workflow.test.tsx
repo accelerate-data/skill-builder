@@ -3116,6 +3116,53 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     expect(wf.isRunning).toBe(false);
   });
 
+  it("shows a warning toast when step 3 completes with non-pass verifier status", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 3; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-build", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().applyConversationState("agent-build", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-build",
+        status: "completed",
+        resultText: JSON.stringify({
+          status: "generated",
+          benchmark_path: null,
+          verifier_result: {
+            status: "needs_fix",
+            findings: [
+              {
+                severity: "warning",
+                file: "SKILL.md",
+                finding: "Trigger language is too broad",
+                recommendation: "Tighten the inclusion boundary",
+              },
+            ],
+          },
+        }),
+        timestamp: Date.now(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
+    });
+
+    expect(mockToast.warning).toHaveBeenCalledWith(
+      "Skill verifier reported findings. Review the generated skill before proceeding.",
+    );
+  });
+
 });
 
 // ---------------------------------------------------------------------------

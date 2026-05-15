@@ -1,16 +1,20 @@
 use super::crud::{
-    create_skill_db_records_inner, create_skill_filesystem_inner, create_skill_inner,
-    delete_skill_db_records_inner, delete_skill_filesystem_inner, delete_skill_inner,
-    list_refinable_skills_inner, list_skills_inner, prepare_skill_runtime_shutdown_inner,
+    cleanup_openhands_conversations_with, create_skill_db_records_inner,
+    create_skill_filesystem_inner, create_skill_inner, delete_skill_db_records_inner,
+    delete_skill_filesystem_inner, delete_skill_inner, list_refinable_skills_inner,
+    list_skills_inner, prepare_skill_runtime_shutdown_inner,
 };
 use super::metadata::{externally_locked_skills_log_message, is_valid_kebab, rename_skill_inner};
+use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 use crate::commands::skill_session::{SkillSession, SkillSessionManager};
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::runtime::{WorkflowStepRun, WorkflowStepRunManager};
 use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+use crate::types::SecretString;
 use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use tempfile::tempdir;
 
 /// Helper: canonical plugin-layout skill path: {root}/{DEFAULT_PLUGIN_SLUG}/skills/{name}/
@@ -22,6 +26,41 @@ fn nested_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
 /// Use this for workspace assertions (workspace is now plugin-namespaced with canonical layout).
 fn flat_skill(root: &str, skill_name: &str) -> std::path::PathBuf {
     crate::skill_paths::resolve_skill_dir(Path::new(root), DEFAULT_PLUGIN_SLUG, skill_name)
+}
+
+fn test_runtime_config() -> OpenHandsRuntimeConfig {
+    OpenHandsRuntimeConfig {
+        mode: None,
+        prompt: "test".to_string(),
+        system_prompt: None,
+        model: None,
+        llm: None,
+        model_base_url: None,
+        openhands_api_key: SecretString::new("test-key".to_string()),
+        app_data_root: "/tmp/app-data".to_string(),
+        skills_root: "/tmp/skills".to_string(),
+        skill_dir: "/tmp/skills/default/skills/test-skill".to_string(),
+        allowed_tools: None,
+        max_turns: None,
+        permission_mode: None,
+        betas: None,
+        thinking: None,
+        output_format: None,
+        prompt_suggestions: None,
+        agent_name: Some("skill-creator".to_string()),
+        required_plugins: None,
+        setting_sources: None,
+        conversation_history: None,
+        skill_name: Some("test-skill".to_string()),
+        step_id: None,
+        usage_session_id: None,
+        run_source: Some("workflow".to_string()),
+        persistence_dir: None,
+        plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+        task_kind: Some("workflow.research".to_string()),
+        user_message_suffix: None,
+        system_message_suffix: None,
+    }
 }
 
 // ===== list_skills_inner tests =====
@@ -455,6 +494,138 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
         )
         .unwrap();
     assert!(ended_other.is_none());
+}
+
+#[test]
+fn test_prepare_skill_runtime_shutdown_tracks_agent_ids_not_conversation_ids() {
+    let conn = create_test_db();
+    crate::db::upsert_skill(&conn, "active-skill", "skill-builder", "domain").unwrap();
+    crate::db::save_workflow_run(&conn, "active-skill", 0, "pending", "domain").unwrap();
+
+    let workflow_runs = WorkflowStepRunManager::new();
+    {
+        let mut map = workflow_runs.0.lock().unwrap();
+        map.insert(
+            "workflow-agent".to_string(),
+            WorkflowStepRun {
+                skill_name: "active-skill".to_string(),
+                conversation_id: Some("workflow-conversation".to_string()),
+            },
+        );
+    }
+
+    let refine_sessions = SkillSessionManager::new();
+    {
+        let mut map = refine_sessions.0.lock().unwrap();
+        map.insert(
+            "skill-builder::active-skill".to_string(),
+            SkillSession {
+                skill_name: "active-skill".to_string(),
+                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
+                usage_session_id: "usage-1".to_string(),
+                conversation_id: Some("refine-conversation".to_string()),
+                current_agent_id: Some("refine-agent".to_string()),
+                dispatched_user_turn_count: 0,
+                head_sha_at_start: None,
+            },
+        );
+    }
+
+    let plan = prepare_skill_runtime_shutdown_inner(
+        &conn,
+        "active-skill",
+        DEFAULT_PLUGIN_SLUG,
+        &workflow_runs,
+        &refine_sessions,
+    )
+    .unwrap();
+
+    assert!(plan.agent_ids.contains(&"workflow-agent".to_string()));
+    assert!(plan.agent_ids.contains(&"refine-agent".to_string()));
+    assert!(!plan.agent_ids.contains(&"workflow-conversation".to_string()));
+    assert!(!plan.agent_ids.contains(&"refine-conversation".to_string()));
+}
+
+#[test]
+fn test_cleanup_openhands_conversations_is_best_effort() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let events = Arc::new(Mutex::new(Vec::<String>::new()));
+    let pause_events = Arc::clone(&events);
+    let delete_events = Arc::clone(&events);
+    let conversation_ids = vec!["conv-1".to_string(), "conv-2".to_string()];
+
+    rt.block_on(cleanup_openhands_conversations_with(
+        Ok(test_runtime_config()),
+        &conversation_ids,
+        move |_config, conversation_id| {
+            let pause_events = Arc::clone(&pause_events);
+            async move {
+                pause_events
+                    .lock()
+                    .unwrap()
+                    .push(format!("pause:{conversation_id}"));
+                if conversation_id == "conv-1" {
+                    Err("pause failed".to_string())
+                } else {
+                    Ok(())
+                }
+            }
+        },
+        move |_config, conversation_id| {
+            let delete_events = Arc::clone(&delete_events);
+            async move {
+                delete_events
+                    .lock()
+                    .unwrap()
+                    .push(format!("delete:{conversation_id}"));
+                if conversation_id == "conv-2" {
+                    Err("delete failed".to_string())
+                } else {
+                    Ok(())
+                }
+            }
+        },
+    ));
+
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        [
+            "pause:conv-1",
+            "delete:conv-1",
+            "pause:conv-2",
+            "delete:conv-2",
+        ]
+    );
+}
+
+#[test]
+fn test_cleanup_openhands_conversations_skips_when_pause_config_fails() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let called = Arc::new(Mutex::new(false));
+    let pause_called = Arc::clone(&called);
+    let delete_called = Arc::clone(&called);
+    let conversation_ids = vec!["conv-1".to_string()];
+
+    rt.block_on(cleanup_openhands_conversations_with(
+        Err("missing config".to_string()),
+        &conversation_ids,
+        move |_config, _conversation_id| {
+            let pause_called = Arc::clone(&pause_called);
+            async move {
+                *pause_called.lock().unwrap() = true;
+                Ok(())
+            }
+        },
+        move |_config, _conversation_id| {
+            let delete_called = Arc::clone(&delete_called);
+            async move {
+                *delete_called.lock().unwrap() = true;
+                Ok(())
+            }
+        },
+    ));
+
+    assert!(!*called.lock().unwrap());
 }
 
 #[test]
