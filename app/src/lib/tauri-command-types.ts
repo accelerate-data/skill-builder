@@ -183,6 +183,7 @@ export interface TauriCommandMap {
   get_default_skills_path: { args: NoArgs; result: string };
   set_log_level: { args: { level: string }; result: void };
   check_startup_deps: { args: NoArgs; result: StartupResult };
+  ensure_openhands_runtime_ready: { args: NoArgs; result: void };
   reconcile_startup: { args: NoArgs | { apply: true }; result: ReconciliationResult };
   record_reconciliation_cancel: {
     args: { notificationCount: number };

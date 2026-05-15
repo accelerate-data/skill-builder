@@ -77,6 +77,8 @@ export function AppLayout() {
     ackDone,
     reconRequiresApply,
     reconApplying,
+    runtimeReady,
+    runtimeError,
     handleApplyReconciliation,
     handleCancelReconciliation,
   } = useAppStartup();
@@ -328,7 +330,7 @@ export function AppLayout() {
     });
   }, [activateSkill, pendingSkillSwitch]);
 
-  const ready = settingsLoaded && reconciled && startupReady && ackDone;
+  const ready = settingsLoaded && reconciled && runtimeReady && startupReady && ackDone;
 
   const [skillPanelWidth, setSkillPanelWidth] = useState(260);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
@@ -414,6 +416,15 @@ export function AppLayout() {
       )}
       {!splashDismissed && (
         <SplashScreen
+          canDismiss={runtimeReady}
+          runtimeStatus={
+            startupReady && !runtimeReady
+              ? {
+                  kind: runtimeError ? "error" : "pending",
+                  message: runtimeError ?? "Launching the OpenHands Agent Server for this app session.",
+                }
+              : null
+          }
           onDismiss={() => setSplashDismissed(true)}
           onReady={() => setStartupReady(true)}
         />

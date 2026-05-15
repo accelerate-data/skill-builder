@@ -43,6 +43,9 @@ export const getDataDir = () => invokeCommand("get_data_dir", {});
 
 export const getDefaultSkillsPath = () => invokeCommand("get_default_skills_path", {});
 
+export const ensureOpenHandsRuntimeReady = () =>
+  invokeCommand("ensure_openhands_runtime_ready", {});
+
 // --- Skills ---
 
 export const deleteSkill = (workspacePath: string, name: string) =>

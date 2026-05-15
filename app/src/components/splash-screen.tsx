@@ -5,8 +5,13 @@ import { useStartupValidation } from "@/hooks/use-node-validation";
 import type { BootstrapCheck, StartupResult } from "@/lib/types";
 
 interface SplashScreenProps {
+  canDismiss?: boolean;
   onDismiss: () => void;
   onReady: () => void;
+  runtimeStatus?: {
+    kind: "pending" | "error";
+    message: string;
+  } | null;
 }
 
 function CheckRow({ check }: { check: BootstrapCheck }) {
@@ -30,9 +35,15 @@ function CheckRow({ check }: { check: BootstrapCheck }) {
   );
 }
 
-export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
+export function SplashScreen({
+  canDismiss = true,
+  onDismiss,
+  onReady,
+  runtimeStatus = null,
+}: SplashScreenProps) {
   const [fading, setFading] = useState(false);
   const { deps, isChecking, error, retry } = useStartupValidation();
+  const readySignalledRef = useRef(false);
 
   const onReadyRef = useRef(onReady);
   const onDismissRef = useRef(onDismiss);
@@ -43,14 +54,19 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
     if (isChecking) return;
     const result = deps as StartupResult | null;
     if (result?.status && result.status.status === "Ready") {
-      const timer = setTimeout(() => {
+      if (!readySignalledRef.current) {
+        readySignalledRef.current = true;
         onReadyRef.current();
+      }
+    }
+    if (result?.status && result.status.status === "Ready" && canDismiss) {
+      const timer = setTimeout(() => {
         setFading(true);
         setTimeout(() => onDismissRef.current(), 500);
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isChecking, deps]);
+  }, [canDismiss, isChecking, deps]);
 
   const result = deps as StartupResult | null;
   const hasFailed = !isChecking && (error !== null || (result !== null && result.status.status === "Failed"));
@@ -113,6 +129,25 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
               {result?.status.status === "Failed" && result.status.detail
                 ? result.status.detail
                 : "Resolve the issues listed above, then retry startup."}
+            </p>
+          </div>
+        )}
+
+        {runtimeStatus && (
+          <div className={`w-full rounded-lg border px-4 py-3 text-left text-sm ${
+            runtimeStatus.kind === "error"
+              ? "border-destructive/30 bg-destructive/5"
+              : "border-border bg-muted/30"
+          }`}>
+            <p className={`font-medium ${
+              runtimeStatus.kind === "error" ? "text-destructive" : ""
+            }`}>
+              {runtimeStatus.kind === "error"
+                ? "Startup blocked — OpenHands runtime failed to start"
+                : "Starting OpenHands runtime…"}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              {runtimeStatus.message}
             </p>
           </div>
         )}

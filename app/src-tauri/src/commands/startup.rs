@@ -1,5 +1,6 @@
 #[cfg(target_os = "windows")]
 use crate::agents::node_resolver;
+use std::time::Duration;
 use crate::types::{BootstrapCheck, BootstrapStatus, StartupResult};
 
 fn check_ok(name: &str, detail: String) -> BootstrapCheck {
@@ -45,6 +46,19 @@ pub async fn check_startup_deps(_app: tauri::AppHandle) -> Result<StartupResult,
     };
 
     Ok(StartupResult { status, checks })
+}
+
+#[tauri::command]
+pub async fn ensure_openhands_runtime_ready(
+    data_dir: tauri::State<'_, crate::DataDir>,
+) -> Result<(), String> {
+    log::info!("[ensure_openhands_runtime_ready]");
+    crate::agents::openhands_server::process::ensure_agent_server(
+        Duration::from_secs(60),
+        &data_dir.0,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Check that git is available on PATH (both platforms) and git-bash is

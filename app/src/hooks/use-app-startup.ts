@@ -3,7 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, refreshModelCatalog } from "@/lib/tauri";
+import { ensureOpenHandsRuntimeReady, getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, refreshModelCatalog } from "@/lib/tauri";
 import type { AppSettings, ModelSettings } from "@/lib/types";
 import { checkForMarketplaceUpdates } from "./use-marketplace-updates";
 import { queryKeys } from "@/lib/queries/query-keys";
@@ -16,6 +16,8 @@ interface StartupState {
   ackDone: boolean;
   reconRequiresApply: boolean;
   reconApplying: boolean;
+  runtimeReady: boolean;
+  runtimeError: string | null;
 }
 
 export interface UseAppStartupReturn extends StartupState {
@@ -65,6 +67,9 @@ export function useAppStartup(): UseAppStartupReturn {
   const [ackDone, setAckDone] = useState(true);
   const [reconRequiresApply, setReconRequiresApply] = useState(false);
   const [reconApplying, setReconApplying] = useState(false);
+  const [runtimeWarmupStarted, setRuntimeWarmupStarted] = useState(false);
+  const [runtimeReady, setRuntimeReady] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
 
   // Hydrate settings and run reconciliation in parallel on app startup.
   // Both read from SQLite/filesystem independently — no frontend data dependency.
@@ -146,6 +151,24 @@ export function useAppStartup(): UseAppStartupReturn {
     return () => { cancelledRef.current = true; };
   }, [queryClient, router, setSettings]);
 
+  useEffect(() => {
+    if (!settingsLoaded || !reconciled || runtimeWarmupStarted) {
+      return;
+    }
+
+    setRuntimeWarmupStarted(true);
+    setRuntimeError(null);
+    ensureOpenHandsRuntimeReady()
+      .then(() => {
+        setRuntimeReady(true);
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn("[app-layout] OpenHands runtime warmup failed:", message);
+        setRuntimeError(message);
+      });
+  }, [reconciled, runtimeWarmupStarted, settingsLoaded]);
+
   const handleApplyReconciliation = async () => {
     if (!reconRequiresApply) {
       setAckDone(true);
@@ -191,6 +214,8 @@ export function useAppStartup(): UseAppStartupReturn {
     ackDone,
     reconRequiresApply,
     reconApplying,
+    runtimeReady,
+    runtimeError,
     setAckDone,
     setReconNotifications,
     setReconRequiresApply,
