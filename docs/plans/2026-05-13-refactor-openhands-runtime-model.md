@@ -300,7 +300,7 @@ git add app/src-tauri/src/agents/tracked_openhands.rs app/src-tauri/src/commands
 git commit -m "refactor: reuse live OpenHands conversation runners"
 ```
 
-## Task 3: Make `build_skill_creator_config(...)` the Canonical Config API
+## Task 3: Finish the Canonical Config API Cleanup
 
 **Files:**
 
@@ -364,9 +364,9 @@ match intent {
 
 - [ ] **Step 3: Remove specialized config builders where they add no policy**
 
-Delete or inline wrappers like `build_skill_session_config(...)` and the
-per-step workflow config builders once callers can construct a
-`SkillCreatorRuntimeContext` directly.
+Delete or inline wrappers like `build_skill_session_config(...)`,
+`build_generation_runtime_config(...)`, and any remaining per-surface config
+builders once callers can construct a `SkillCreatorRuntimeContext` directly.
 
 The final caller pattern should look like:
 
@@ -383,6 +383,10 @@ let config = build_skill_creator_config(SkillCreatorRuntimeContext {
     },
 });
 ```
+
+Keep `build_pause_runtime_config(...)` only if it remains a pause-config helper
+with real caller value. It should not keep `build_skill_session_config(...)`
+alive as a compatibility layer.
 
 - [ ] **Step 4: Update all runtime-config callers**
 
@@ -402,6 +406,9 @@ Skill-related throwaway intents should resolve their working directory to the
 canonical skill dir. Only non-skill-related throwaway intents should resolve to
 `/tmp/skill-builder/throwaway/{surface}/{run_id}`.
 
+Selected-skill/refine callers should construct `SkillCreatorRuntimeContext`
+directly rather than routing through a refine-specific config wrapper.
+
 - [ ] **Step 5: Run focused builder and caller tests**
 
 Run:
@@ -410,10 +417,12 @@ Run:
 cargo test --manifest-path app/src-tauri/Cargo.toml agents::skill_creator --quiet
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow --quiet
 cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill_session --quiet
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine --quiet
 ```
 
 Expected: PASS with one canonical config builder and no public reliance on raw
-integer `step_id` as the caller-facing abstraction.
+integer `step_id` as the caller-facing abstraction, and no remaining
+compatibility wrapper like `build_skill_session_config(...)`.
 
 - [ ] **Step 6: Commit**
 
@@ -422,7 +431,7 @@ git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/ski
 git commit -m "refactor: make skill creator config intent-driven"
 ```
 
-## Task 4: Route Delete Through Pause and Reset Through Pause-Then-Fork
+## Task 4: Clean Up Delete and Reset Contract Boundaries
 
 **Files:**
 
@@ -435,7 +444,7 @@ git commit -m "refactor: make skill creator config intent-driven"
 - Test: `app/src-tauri/src/commands/workflow/evaluation.rs`
 - Test: `app/src-tauri/src/agents/openhands_server/mod.rs`
 
-- [ ] **Step 1: Update `delete_skill(...)` to pause with real runtime config**
+- [ ] **Step 1: Update `delete_skill(...)` to pause and delete with real runtime config**
 
 Change `delete_skill(...)` to take `app: tauri::AppHandle` and build one pause config before looping over conversation IDs:
 
@@ -466,9 +475,38 @@ pub async fn delete_skill(
 }
 ```
 
-Important: keep delete as best-effort at the call site. Failure to pause must log and continue; it must not block deletion.
+Important: keep delete as best-effort at the call site. Failure to pause must log and continue; it must not block deletion. After pausing, delete each conversation from the OpenHands server:
 
-- [ ] **Step 2: Add raw and shared fork APIs**
+```rust
+    for conv_id in &conversation_ids {
+        if let Ok(config) = pause_config.clone() {
+            if let Err(error) =
+                crate::agents::openhands_server::delete_openhands_conversation(config, conv_id).await
+            {
+                log::warn!("[delete_skill] failed to delete conversation {}: {}", conv_id, error);
+            }
+        }
+    }
+```
+
+- [ ] **Step 2: Fix delete-path local cleanup ownership**
+
+`delete_skill(...)` currently has two distinct cleanup concerns:
+
+- remote cleanup keyed by `conversation_id`
+- local tracked-run cleanup keyed by `agent_id`
+
+Do not call `close_local_openhands_run(...)` with `conversation_id` values.
+Instead, use the tracked runtime bookkeeping that already knows the active
+`agent_id` values for refine/workflow sessions and only close local runs by
+`agent_id`.
+
+If the existing shutdown plan already collects the necessary tracked `agent_id`
+values, delete the incorrect conversation-ID cleanup loop entirely. If there is
+still one missing path, add the smallest helper that resolves tracked
+`agent_id`s without broadening the runtime contract.
+
+- [ ] **Step 3: Add raw and shared fork APIs**
 
 Add the raw runtime wrapper:
 
@@ -497,23 +535,26 @@ pub async fn fork_skill_session(
     source_conversation_id: &str,
 ) -> Result<ForkedOpenHandsSession, String> {
     // fork raw conversation
-    // bind skill to fork conversation_id
+    // return the fork result to the caller that owns product rebinding
 }
 ```
 
 Fork creates a new `conversation_id`. It does not create a new `agent_id`.
+Do not let this helper silently clear or overwrite the new binding after it is
+returned.
 
-- [ ] **Step 3: Update `reset_workflow_step(...)` to pause, reset, fork, and rebind**
+- [ ] **Step 4: Update `reset_workflow_step(...)` to pause, reset, fork, delete source, and rebind**
 
 Change reset to this sequence:
 
 1. pause current conversation
 2. reset files, artifacts, and DB state to the target step
 3. fork the paused conversation
-4. bind the skill to the fork ID
-5. leave future live execution to the normal workflow send/run path
+4. delete the source conversation from the OpenHands server
+5. bind the skill to the fork ID
+6. leave future live execution to the normal workflow send/run path
 
-The old conversation must remain persisted. Remove the conversation-dir deletion
+The old conversation must be deleted after the fork succeeds. Remove the conversation-dir deletion
 and do not clear conversation state as a destructive reset primitive.
 
 Sketch:
@@ -538,7 +579,11 @@ let forked = crate::agents::skill_creator::fork_skill_session(
 .await?;
 ```
 
-- [ ] **Step 4: Keep `agent_id` creation in the next live send/run path**
+Critical correctness rule: do not call `clear_skill_conversation_db_records(...)`
+after saving the new fork ID. If old-record cleanup is still needed, it must
+target only the superseded source binding without deleting the new fork binding.
+
+- [ ] **Step 5: Keep `agent_id` creation in the next live send/run path**
 
 Do not create a new `agent_id` during fork. The next live execution on the fork
 should create the new tracked `agent_id` through the existing product send/run
@@ -546,18 +591,21 @@ entrypoint, for example in `run_workflow_step(...)`.
 
 If needed, add a short code comment or helper boundary to make this explicit.
 
-- [ ] **Step 5: Add or update tests around the new boundary**
+- [ ] **Step 6: Add or update tests around the new boundary**
 
 Cover these cases with the smallest existing suites:
 
 ```rust
 // commands/skill/tests.rs
 // Assert delete still completes when pause config resolution fails or pause returns an error.
+// Assert delete deletes conversations from the OpenHands server.
+// Assert delete only closes local tracked runs by agent_id, not conversation_id.
 
 // commands/workflow/evaluation.rs tests
-// Assert reset does not delete conversation storage.
-// Assert reset forks and rebinds the skill conversation.
-// Assert the previous conversation remains persisted.
+// Assert reset does not delete conversation storage before fork.
+// Assert reset forks, deletes source, and rebinds the skill conversation.
+// Assert the previous conversation is deleted from the OpenHands server after fork succeeds.
+// Assert the new fork binding remains persisted after reset completes.
 ```
 
 If a direct async command test is too expensive, extract smaller helpers for:
@@ -565,8 +613,9 @@ If a direct async command test is too expensive, extract smaller helpers for:
 - pause-and-log behavior
 - reset-state mutation
 - fork-and-rebind behavior
+- delete-path tracked-agent cleanup
 
-- [ ] **Step 6: Run the affected command tests**
+- [ ] **Step 7: Run the affected command tests**
 
 Run:
 
@@ -577,16 +626,84 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow --quiet
 ```
 
 Expected: PASS with no remaining destructive reset of conversation storage and
-with reset moving to pause → reset → fork → rebind semantics.
+with reset moving to pause → reset → fork → delete source → rebind semantics,
+and with delete-path local cleanup no longer keyed by `conversation_id`.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/skill/tests.rs
 git commit -m "refactor: fork workflow conversations on reset"
 ```
 
-## Task 5: Keep Server Shutdown App-Lifecycle Only and Update Docs
+## Task 5: Validation Cleanup for the Runtime Contract
+
+**Files:**
+
+- Modify: `app/src-tauri/src/commands/workflow/evaluation.rs`
+- Modify: `app/src-tauri/src/commands/skill/tests.rs`
+- Modify: `app/src-tauri/src/commands/refine/tests.rs`
+- Modify: `app/src-tauri/src/commands/workflow/tests.rs`
+
+- [ ] **Step 1: Remove tests that encode the wrong reset outcome**
+
+Delete or rewrite any tests that currently simulate:
+
+1. saving a forked `conversation_id`
+2. clearing all conversation bindings
+3. asserting `None` as the expected post-reset state
+
+That sequence encodes the opposite of the design contract. After a successful
+fork-and-rebind reset, the skill should remain bound to the forked
+`conversation_id`.
+
+- [ ] **Step 2: Replace DB-only smoke tests with boundary-focused helper tests**
+
+Prefer smaller tests that prove the actual contract boundaries over broad
+“smoke” tests that only mutate DB rows. At minimum, cover these helper-level
+behaviors:
+
+- successful fork keeps the new bound `conversation_id`
+- source conversation delete happens only after fork succeeds
+- delete-skill pause/delete stays best-effort and non-blocking
+- local tracked-run cleanup uses `agent_id` ownership, not `conversation_id`
+
+If the current command functions are too heavy to test directly, extract narrow
+helpers for these boundaries and test those helpers instead.
+
+- [ ] **Step 3: Tighten persistent-send and reuse assertions where the contract changed**
+
+Review refine/workflow tests that cover persistent-send behavior and make sure
+they assert the actual one-runner contract:
+
+- sending to an idle conversation performs send then run
+- sending to a live conversation performs send only
+- the conversation ID is reused
+- a new tracked `agent_id` is created only on the next live run boundary, not
+  during fork
+
+- [ ] **Step 4: Run the contract-focused test filters**
+
+Run:
+
+```bash
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::workflow --quiet
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::skill --quiet
+cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine --quiet
+```
+
+Expected: PASS with no test still encoding “clear the fork binding and expect
+None,” and with focused coverage around the real delete/reset ownership
+boundaries.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/skill/tests.rs app/src-tauri/src/commands/refine/tests.rs app/src-tauri/src/commands/workflow/tests.rs
+git commit -m "test: align OpenHands runtime contract coverage"
+```
+
+## Task 6: Keep Server Shutdown App-Lifecycle Only and Update Docs
 
 **Files:**
 
