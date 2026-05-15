@@ -1041,6 +1041,73 @@ describe("AppLayout", () => {
     });
   });
 
+  it("reboots the selected skill session before navigating when the active skill has no conversation", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            id: 1,
+            name: "sales-skill",
+            current_step: "1",
+            status: "in_progress",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "select_skill_openhands_session") {
+        return Promise.resolve({
+          conversation_id: "conv-restarted",
+          skill_name: "sales-skill",
+          created_at: new Date().toISOString(),
+          available_agents: ["skill-creator"],
+          restored_messages: [],
+          restored_transcript_events: [],
+        });
+      }
+      if (cmd === "github_get_user") return Promise.resolve(null);
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+
+    useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Select sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Select sales"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillId: 1,
+      });
+    });
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/workflow/$skillId",
+        params: { skillId: SALES_SKILL_ID },
+      });
+    });
+    expect(useRefineStore.getState().conversationId).toBe("conv-restarted");
+  });
+
   it("does not navigate to a locked already-active skill", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);

@@ -274,8 +274,13 @@ export function AppLayout() {
       const resolvedSkill = resolveSkillSelection(skillId);
       if (!resolvedSkill) return;
       const { editableSkill } = resolvedSkill;
+      const refineStore = useRefineStore.getState();
+      const sessionAlreadyActive =
+        refineStore.selectedSkill?.name === editableSkill.name &&
+        refineStore.selectedSkill.plugin_slug === editableSkill.plugin_slug &&
+        !!refineStore.conversationId;
 
-      if (skillId === selectedWorkspaceSkillId) {
+      if (skillId === selectedWorkspaceSkillId && sessionAlreadyActive) {
         const surface = getSkillSurface(editableSkill);
         if (surface === "workspace") {
           setWorkspaceSurface(targetSurface);
