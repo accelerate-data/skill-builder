@@ -110,10 +110,14 @@ async function fillStep1AndAdvance(
 }
 
 function renderDialog(props: Partial<{ onCreated: () => Promise<void>; tagSuggestions: string[]; existingNames: string[] }> = {}) {
+  if (!useSettingsStore.getState().skillsPath) {
+    useSettingsStore.getState().setSettings({
+      skillsPath: "/skills",
+    });
+  }
   return render(
     <SkillDialog
       mode="create"
-      workspacePath="/workspace"
       onCreated={props.onCreated ?? vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
       tagSuggestions={props.tagSuggestions}
       existingNames={props.existingNames}
@@ -440,7 +444,6 @@ describe("SkillDialog (create mode)", () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("create_skill", {
-        workspacePath: "/workspace",
         name: "sales-pipeline",
         tags: null,
         purpose: "domain",

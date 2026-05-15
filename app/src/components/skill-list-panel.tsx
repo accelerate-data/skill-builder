@@ -428,19 +428,16 @@ export function SkillListPanel({
         })}
       </ScrollArea>
 
-      {workspacePath && (
-        <SkillDialog
-          mode="create"
-          workspacePath={workspacePath}
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          onCreated={async (createdSkillId) => {
-            localStorage.setItem("last-selected-skill", createdSkillId);
-            useSkillStore.getState().setActiveSkill(createdSkillId);
-            await invalidateSkillQueries();
-          }}
-        />
-      )}
+      <SkillDialog
+        mode="create"
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={async (createdSkillId) => {
+          localStorage.setItem("last-selected-skill", createdSkillId);
+          useSkillStore.getState().setActiveSkill(createdSkillId);
+          await invalidateSkillQueries();
+        }}
+      />
 
       <DeleteSkillDialog
         skill={deleteTarget}

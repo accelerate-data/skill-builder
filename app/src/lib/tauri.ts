@@ -522,7 +522,6 @@ export const importSkillFromFile = (params: {
 // --- Additional typed wrappers ---
 
 export const createSkill = (params: {
-  workspacePath: string;
   name: string;
   tags?: string[] | null;
   purpose?: string | null;
@@ -532,7 +531,6 @@ export const createSkill = (params: {
   userInvocable?: boolean | null;
   disableModelInvocation?: boolean | null;
 }) => invokeCommand("create_skill", {
-  workspacePath: params.workspacePath,
   name: params.name,
   tags: params.tags ?? null,
   purpose: params.purpose ?? null,

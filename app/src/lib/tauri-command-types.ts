@@ -416,7 +416,6 @@ export interface TauriCommandMap {
   };
   create_skill: {
     args: {
-      workspacePath: string;
       name: string;
       tags: string[] | null;
       purpose: SkillPurpose;
