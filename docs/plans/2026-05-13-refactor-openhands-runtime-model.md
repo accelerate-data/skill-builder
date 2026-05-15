@@ -148,7 +148,7 @@ cargo test --manifest-path app/src-tauri/Cargo.toml agents::openhands_server --q
 Expected: PASS with distinct raw send/run operations, raw `ask_agent` support,
 and no references to `pause_conversation_if_server_running`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/agents/openhands_server/client.rs
@@ -304,7 +304,7 @@ pause wrapper, throwaway callers using `send_tracked_throwaway(...)`, no
 remaining references to tracked abort/terminate helpers, and no second local
 runner created for a send to an already running conversation.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/tracked_openhands.rs app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/api_validation.rs app/src-tauri/src/commands/skill/scope_review.rs app/src-tauri/src/commands/eval_workbench/mod.rs
@@ -672,7 +672,7 @@ Expected: PASS with no remaining destructive reset of conversation storage and
 with reset moving to pause → reset → fork → delete source → rebind semantics,
 and with delete-path local cleanup no longer keyed by `conversation_id`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src-tauri/src/agents/openhands_server/mod.rs app/src-tauri/src/commands/skill/crud.rs app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/skill/tests.rs docs/design/openhands-runtime-contract/README.md
@@ -739,7 +739,7 @@ Expected: PASS with no test still encoding “clear the fork binding and expect
 None,” and with focused coverage around the real delete/reset ownership
 boundaries.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/evaluation.rs app/src-tauri/src/commands/skill/tests.rs app/src-tauri/src/commands/refine/tests.rs app/src-tauri/src/commands/workflow/tests.rs

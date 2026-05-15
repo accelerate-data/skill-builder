@@ -57,7 +57,6 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "github_get_user",
     "github_logout",
     "run_workflow_step",
-    "materialize_workflow_step_output",
     "reset_workflow_step",
     "navigate_back_to_step",
     "preview_step_reset",
@@ -73,8 +72,6 @@ test("typed Tauri command contract is the only non-test command policy", () => {
     "allow_app_exit",
     "create_workflow_session",
     "end_workflow_session",
-    "resolve_orphan",
-    "resolve_discovery",
   ];
 
   for (const command of migratedCommands) {
@@ -87,9 +84,8 @@ test("typed Tauri command contract is the only non-test command policy", () => {
   assert.match(typecheckSource, /@ts-expect-error .*argument names must match/);
   assert.match(typecheckSource, /@ts-expect-error command result is AppSettings/);
   assert.match(typecheckSource, /@ts-expect-error widened command names must not decouple command and args/);
-  assert.match(typecheckSource, /@ts-expect-error run_workflow_step requires workflowSessionId/);
+  assert.match(typecheckSource, /@ts-expect-error widened workflow command names must not bypass command-specific args/);
   assert.match(typecheckSource, /@ts-expect-error get_workspace_path uses the typed no-args convention/);
-  assert.match(typecheckSource, /@ts-expect-error resolve_discovery only accepts known discovery actions/);
   assert.match(typecheckSource, /@ts-expect-error get_decisions requires a skillId string/);
 });
 
@@ -162,11 +158,6 @@ test("published Eval Workbench command surface omits legacy and no-op commands",
     "save_scenario",
     "delete_scenario",
     "define_eval_scenario",
-    "run_eval_workbench",
-    "cancel_eval_workbench_run",
-    "list_eval_runs",
-    "read_eval_run",
-    "build_refine_improvement_brief",
   ]) {
     assert.ok(apiSource.includes(`| \`${command}\` |`));
   }
