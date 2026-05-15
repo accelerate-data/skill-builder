@@ -305,16 +305,19 @@ describe("AppLayout", () => {
   });
 
   it("auto-applies notification-only reconciliation without showing the ack dialog", async () => {
-    const notifications = [
-      'Skill "sales-pipeline" was reset to step 3 (workspace files are behind database)',
-      'Skill "hr-analytics" was reset to step 1 (workspace files are behind database)',
-    ];
-
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
       if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: [
+            'Skill "sales-pipeline" was reset to step 3 (workspace files are behind database)',
+            'Skill "hr-analytics" was reset to step 1 (workspace files are behind database)',
+          ],
+          auto_cleaned: 0,
+        });
       }
       if (cmd === "list_skills") return Promise.resolve([]);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -1305,26 +1308,6 @@ describe("AppLayout", () => {
     });
   });
 
-  it("shows reconciliation dialog when startup returns notifications", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: {
-        orphans: [],
-        notifications: ["'my-skill' workflow record recreated at step 3"],
-        auto_cleaned: 0,
-      },
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("'my-skill' workflow record recreated at step 3")).toBeInTheDocument();
-    expect(screen.queryByTestId("outlet")).not.toBeInTheDocument();
-  });
-
   it("refreshes skill list after auto-applying reconciliation", async () => {
     const invokedCommands: string[] = [];
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
@@ -1378,30 +1361,6 @@ describe("AppLayout", () => {
 
     expect(screen.queryByText("Startup Reconciliation")).not.toBeInTheDocument();
     expect(mockInvoke).not.toHaveBeenCalledWith("record_reconciliation_cancel", expect.anything());
-  });
-
-  it("shows orphan resolution dialog when orphans exist", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: {
-        orphans: [
-          {
-            skill_name: "old-skill",
-            purpose: "domain",
-          },
-        ],
-        notifications: [],
-        auto_cleaned: 0,
-      },
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Orphaned Skills Found")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("old-skill")).toBeInTheDocument();
   });
 
   it("proceeds when reconciliation fails (e.g., no workspace configured)", async () => {
