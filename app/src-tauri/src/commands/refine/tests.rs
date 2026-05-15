@@ -398,6 +398,46 @@ fn test_extract_restored_conversation_events_preserves_tool_activity_and_dispatc
 }
 
 #[test]
+fn test_extract_restore_helpers_accept_persisted_message_events_without_event_class() {
+    let events = vec![
+        serde_json::json!({
+            "timestamp": "2026-05-07T10:00:01Z",
+            "source": "user",
+            "llm_message": {
+                "content": [{ "type": "text", "text": "Check other things" }]
+            }
+        }),
+        serde_json::json!({
+            "timestamp": "2026-05-07T10:00:02Z",
+            "source": "assistant",
+            "llm_message": {
+                "content": [{ "type": "text", "text": "What specifically should I check?" }]
+            }
+        }),
+    ];
+
+    assert_eq!(
+        extract_conversation_messages(&events),
+        vec![
+            ConversationMessage {
+                role: "user".to_string(),
+                content: "Check other things".to_string(),
+            },
+            ConversationMessage {
+                role: "agent".to_string(),
+                content: "What specifically should I check?".to_string(),
+            },
+        ]
+    );
+
+    let restored = extract_restored_conversation_events(&events);
+    assert_eq!(restored.len(), 2);
+    assert_eq!(restored[0].event_class, "MessageEvent");
+    assert_eq!(restored[1].event_class, "MessageEvent");
+    assert_eq!(restored_conversation_user_turn_count(&restored), 1);
+}
+
+#[test]
 fn test_saved_refine_conversation_matches_runtime_contract() {
     let request = crate::agents::openhands_server::OpenHandsRuntimeRequest {
         prompt: String::new(),

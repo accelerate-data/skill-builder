@@ -60,7 +60,9 @@ function buildRestoredMessages(
   conversationId: string,
   restoredEvents: RestoredConversationEvent[],
 ): RefineMessage[] {
-  const normalizedEvents = restoredEvents.map(toConversationEvent);
+  const normalizedEvents = restoredEvents
+    .map(toConversationEvent)
+    .sort((left, right) => left.timestamp - right.timestamp);
   const messages: RefineMessage[] = [];
   const usageSessionId = `restored:refine:${skill.name}:${conversationId}`;
   const agentStore = useAgentStore.getState();

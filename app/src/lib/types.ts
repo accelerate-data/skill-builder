@@ -207,6 +207,7 @@ export interface SkillSessionInfo {
 export interface RefineDispatchResult {
   agent_id: string
   conversation_id: string
+  run_started: boolean
 }
 
 

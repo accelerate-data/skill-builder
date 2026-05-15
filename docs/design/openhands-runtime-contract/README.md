@@ -26,6 +26,11 @@ This doc is the canonical source for:
 - normalized event ingress and terminal result handling
 - workflow artifact authority and typed step-output contracts
 
+Companion sequence pages:
+
+- [Refine Sequence](./refine-sequence.md)
+- [Workflow Sequence](./workflow-sequence.md)
+
 ## Design Scope
 
 **Covers**

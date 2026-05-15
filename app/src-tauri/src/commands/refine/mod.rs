@@ -179,7 +179,7 @@ pub async fn send_refine_message(
     }
 
     let session_key = skill_session_key(&skill_name, &plugin_slug);
-    let (is_first_turn, dispatch_plan) = {
+    let (is_first_turn, dispatch_plan, conversation_running, active_agent_id) = {
         let map = sessions.0.lock().map_err(|e| {
             log::error!(
                 "[send_refine_message] failed to acquire session lock: {}",
@@ -198,7 +198,14 @@ pub async fn send_refine_message(
             msg
         })?;
         let dispatch_plan = plan_refine_conversation_dispatch(session, conversation_id)?;
-        (session.dispatched_user_turn_count == 0, dispatch_plan)
+        let conversation_running =
+            crate::agents::openhands_server::has_live_runner_for_conversation(&dispatch_plan);
+        (
+            session.dispatched_user_turn_count == 0,
+            dispatch_plan,
+            conversation_running,
+            session.current_agent_id.clone(),
+        )
     };
 
     let runtime_ctx = crate::commands::skill_session::ensure_skill_runtime_ready(
@@ -249,11 +256,20 @@ pub async fn send_refine_message(
                 skill_dir_override: None,
             },
         );
-    let agent_id = format!(
-        "refine-{}-{}",
-        skill_name,
-        chrono::Utc::now().timestamp_millis()
-    );
+    let agent_id = if conversation_running {
+        active_agent_id.ok_or_else(|| {
+            format!(
+                "Refine session for skill '{}' plugin '{}' has a live conversation runner but no active agent_id",
+                skill_name, plugin_slug
+            )
+        })?
+    } else {
+        format!(
+            "refine-{}-{}",
+            skill_name,
+            chrono::Utc::now().timestamp_millis()
+        )
+    };
 
     let active_conversation_id = dispatch_plan;
 
@@ -277,7 +293,9 @@ pub async fn send_refine_message(
         let mut map = sessions.0.lock().map_err(|e| e.to_string())?;
         if let Some(session) = map.get_mut(&session_key) {
             session.conversation_id = Some(returned_conversation_id.clone());
-            session.current_agent_id = Some(agent_id.clone());
+            if !conversation_running {
+                session.current_agent_id = Some(agent_id.clone());
+            }
             session.dispatched_user_turn_count += 1;
         }
     }
@@ -285,6 +303,7 @@ pub async fn send_refine_message(
     Ok(RefineDispatchResult {
         agent_id,
         conversation_id: returned_conversation_id,
+        run_started: !conversation_running,
     })
 }
 

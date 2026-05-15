@@ -142,7 +142,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const store = useRefineStore.getState();
       const conversationId = store.conversationId;
       if (!activeSkill) return;
-      if (store.isRunning) return;
       if (!conversationId) {
         const message = `Refine session for '${activeSkill.name}' has no active conversation`;
         console.error("[workspace-refine] %s", message);
@@ -170,20 +169,22 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           text,
           targetFiles,
         );
-        const { agent_id: agentId } = dispatch;
+        const { agent_id: agentId, run_started: runStarted } = dispatch;
 
-        useAgentStore
-          .getState()
-          .registerRun(
-            agentId,
-            selectedModel ?? "openhands",
-            activeSkill.name,
-            "refine",
-            `synthetic:refine:${activeSkill.name}:${conversationId}`,
-          );
+        if (runStarted) {
+          useAgentStore
+            .getState()
+            .registerRun(
+              agentId,
+              selectedModel ?? "openhands",
+              activeSkill.name,
+              "refine",
+              `synthetic:refine:${activeSkill.name}:${conversationId}`,
+            );
 
-        store.addAgentTurn(agentId);
-        store.setActiveAgentId(agentId);
+          store.addAgentTurn(agentId);
+          store.setActiveAgentId(agentId);
+        }
       } catch (err) {
         console.error("[workspace-refine] Failed to send refine message:", err);
         const nextMessages = [...useRefineStore.getState().messages];

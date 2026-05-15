@@ -17,6 +17,7 @@ const tauriMocks = vi.hoisted(() => ({
   sendRefineMessage: vi.fn().mockResolvedValue({
     agent_id: "agent-1",
     conversation_id: "conv-1",
+    run_started: true,
   }),
   cancelAgentRun: vi.fn().mockResolvedValue(undefined),
   finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
@@ -259,6 +260,42 @@ describe("WorkspaceRefine", () => {
       "synthetic:refine:my-skill:conv-1",
     );
     expect(refineStoreState.addAgentTurn).toHaveBeenCalledWith("agent-1");
+  });
+
+  it("sends followup refine messages while the current run is still active", async () => {
+    const skill = makeSkill("my-skill");
+    refineStoreState.selectedSkill = skill;
+    refineStoreState.conversationId = "conv-1";
+    refineStoreState.isRunning = true;
+    refineStoreState.activeAgentId = "agent-live";
+    tauriMocks.sendRefineMessage.mockResolvedValueOnce({
+      agent_id: "agent-live",
+      conversation_id: "conv-1",
+      run_started: false,
+    });
+
+    await act(async () => {
+      renderRefine(skill);
+    });
+
+    await act(async () => {
+      screen.getByTestId("chat-panel").click();
+    });
+
+    expect(tauriMocks.sendRefineMessage).toHaveBeenCalledWith(
+      "my-skill",
+      "skills",
+      "conv-1",
+      "Refine this",
+      undefined,
+    );
+    expect(refineStoreState.addUserMessage).toHaveBeenCalledWith(
+      "Refine this",
+      undefined,
+    );
+    expect(agentStoreState.registerRun).not.toHaveBeenCalled();
+    expect(refineStoreState.addAgentTurn).not.toHaveBeenCalled();
+    expect(refineStoreState.setActiveAgentId).not.toHaveBeenCalledWith("agent-live");
   });
 
   it("fails loudly when the selected skill has no conversation id", async () => {

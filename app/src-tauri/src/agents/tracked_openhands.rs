@@ -74,6 +74,7 @@ pub async fn send_tracked_openhands_message(
                     &agent_id,
                     config,
                     conversation_id,
+                    openhands_server::PromptDelivery::AlreadySent,
                 )
                 .await
             }
@@ -140,6 +141,7 @@ pub async fn send_tracked_throwaway(
         &agent_id,
         config.clone(),
         conversation_id,
+        openhands_server::PromptDelivery::ViaSendEvent,
     )
     .await
     .inspect_err(|_| {

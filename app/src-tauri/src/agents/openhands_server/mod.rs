@@ -208,6 +208,7 @@ struct OpenHandsConversationTask {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PromptDelivery {
+    AlreadySent,
     ViaSendEvent,
 }
 
@@ -1042,6 +1043,7 @@ pub async fn run_openhands_conversation(
     agent_id: &str,
     config: OpenHandsRuntimeConfig,
     conversation_id: String,
+    prompt_delivery: PromptDelivery,
 ) -> Result<String, String> {
     let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
     let server =
@@ -1073,7 +1075,7 @@ pub async fn run_openhands_conversation(
             client,
             conversation_id: conversation_id_clone.clone(),
             prompt: request.prompt.clone(),
-            prompt_delivery: PromptDelivery::ViaSendEvent,
+            prompt_delivery,
             websocket_url,
             session_api_key,
             summary_context,
@@ -1203,11 +1205,11 @@ async fn run_conversation_task_inner(
 
     if matches!(task.prompt_delivery, PromptDelivery::ViaSendEvent) {
         send_user_message(&task.client, &task.conversation_id, &task.prompt).await?;
-        task.client
-            .run_conversation(&task.conversation_id)
-            .await
-            .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
     }
+    task.client
+        .run_conversation(&task.conversation_id)
+        .await
+        .map_err(|e| format!("Failed to run OpenHands Agent Server conversation: {e}"))?;
 
     let stop_subagent_stream = Arc::new(AtomicBool::new(false));
     let subagent_stream_handle = if terminal_state.is_none() {

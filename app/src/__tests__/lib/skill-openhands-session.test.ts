@@ -189,4 +189,83 @@ describe("skill-openhands-session", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]?.status).toBe("completed");
   });
+
+  it("hydrates restored transcript events chronologically from persisted OpenHands message shapes", () => {
+    const session: SkillSessionInfo = {
+      conversation_id: "conv-chronological",
+      skill_name: "sales-skill",
+      created_at: new Date().toISOString(),
+      available_agents: ["skill-creator"],
+      restored_messages: [],
+      restored_transcript_events: [
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "assistant",
+            llm_message: {
+              content: [{ type: "text", text: "Second reply" }],
+            },
+          },
+          timestamp: 40,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "user",
+            llm_message: {
+              content: [{ type: "text", text: "First prompt" }],
+            },
+          },
+          timestamp: 10,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "agent",
+            llm_message: {
+              content: [{ type: "text", text: "First reply" }],
+            },
+          },
+          timestamp: 20,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "user",
+            llm_message: {
+              content: [{ type: "text", text: "Second prompt" }],
+            },
+          },
+          timestamp: 30,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+      ],
+    };
+
+    hydrateSelectedSkillOpenHandsSession(
+      { name: "sales-skill", plugin_slug: "skills", skill_source: "skill-builder" },
+      session,
+    );
+
+    const messages = useRefineStore.getState().messages;
+    expect(messages.map((message) => message.role)).toEqual([
+      "user",
+      "agent",
+      "user",
+      "agent",
+    ]);
+    expect(messages[0]?.userText).toBe("First prompt");
+    expect(messages[2]?.userText).toBe("Second prompt");
+  });
 });

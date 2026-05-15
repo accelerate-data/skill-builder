@@ -34,4 +34,5 @@ pub struct RefineFinalizeResult {
 pub struct RefineDispatchResult {
     pub agent_id: String,
     pub conversation_id: String,
+    pub run_started: bool,
 }
