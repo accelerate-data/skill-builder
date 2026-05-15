@@ -191,7 +191,7 @@ export default function WorkflowPage() {
   const activeRunDisplayItemCount = useAgentStore((s) =>
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );
-  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery();
   const currentSkill = builderSkills.find(
     (sk) => String(sk.id) === skillId,
   );

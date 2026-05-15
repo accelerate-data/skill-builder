@@ -85,7 +85,7 @@ export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellPr
   const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const { isFetching: isSkillListFetching } = useBuilderSkillsQuery(workspacePath);
+  const { isFetching: isSkillListFetching } = useBuilderSkillsQuery();
 
   const toggleFileViewer = useCallback(async () => {
     const store = useRefineStore.getState();

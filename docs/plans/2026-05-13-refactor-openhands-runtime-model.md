@@ -4,7 +4,7 @@
 
 **Goal:** Make `pause` the only non-shutdown OpenHands control path, reserve OpenHands server shutdown for app shutdown only, split raw OpenHands conversation APIs into `send message` and `run`, add raw `ask_agent` support, and make `build_skill_creator_config(...)` the single canonical runtime-config API.
 
-**Architecture:** Keep the lifecycle boundary explicit. Conversation-level control stays on the runtime/session path through `pause_openhands_conversation(...)`, tracked wrappers only own app-run identity plus throwaway waiting, and process shutdown stays confined to app-exit orchestration in `lib.rs` and `commands/runtime_lifecycle.rs`. Raw conversation operations must mirror the OpenHands model: send message, start run, send more messages while the run is active, then pause if needed. Raw `ask_agent` support should exist at the OpenHands layer as a non-authoritative inspection primitive, but its tracked/product usage is intentionally deferred. Skill-related throwaway runs use the canonical skill dir as their working directory; non-skill-related throwaways use `/tmp/skill-builder/throwaway/{surface}/{run_id}`. At the config boundary, replace specialized session/workflow config builders with one canonical `build_skill_creator_config(...)` API driven by typed `SkillCreatorIntent` rather than magic `step_id` values or caller-filled policy fields. Remove the cached-server-only pause helper, remove tracked abort/terminate APIs, make delete/reset/stale-run cleanup use the same real pause path as normal session flows, and ensure one local runner owns each live conversation.
+**Architecture:** Keep the lifecycle boundary explicit. Conversation-level control stays on the runtime/session path through `pause_openhands_conversation(...)`, tracked wrappers only own app-run identity plus throwaway waiting, and process shutdown stays confined to app-exit orchestration in `lib.rs` and `commands/runtime_lifecycle.rs`. Raw conversation operations must mirror the OpenHands model: send message, start run, send more messages while the run is active, then pause if needed. Raw `ask_agent` support should exist at the OpenHands layer as a non-authoritative inspection primitive, but its tracked/product usage is intentionally deferred. All throwaway runs use a system temp root, resolved from the configured temp environment (`TMPDIR`, `TMP`, `TEMP`, then `std::env::temp_dir()`), under `skill-builder/throwaway/{surface}/{run_id}`. Throwaway runtime state must not live under the canonical skills output tree. At the config boundary, replace specialized session/workflow config builders with one canonical `build_skill_creator_config(...)` API driven by typed `SkillCreatorIntent` rather than magic `step_id` values or caller-filled policy fields. Remove the cached-server-only pause helper, remove tracked abort/terminate APIs, make delete/reset/stale-run cleanup use the same real pause path as normal session flows, and ensure one local runner owns each live conversation.
 
 **Tech Stack:** Rust, Tauri commands, OpenHands Agent Server runtime, SQLite-backed runtime settings, markdown docs
 
@@ -404,9 +404,18 @@ Move these surfaces onto the canonical builder:
 If a surface needs a different runtime policy, encode it as a typed intent
 variant rather than another thin builder wrapper.
 
-Skill-related throwaway intents should resolve their working directory to the
-canonical skill dir. Only non-skill-related throwaway intents should resolve to
-`/tmp/skill-builder/throwaway/{surface}/{run_id}`.
+All throwaway intents should resolve their working directory under the system
+temp root, not under `skills_path`. Use one shared helper that resolves the
+base temp directory from `TMPDIR`, `TMP`, `TEMP`, then `std::env::temp_dir()`,
+and place throwaway runs at:
+
+```text
+{system_tmp}/skill-builder/throwaway/{surface}/{run_id}
+```
+
+Apply this uniformly to scope review, eval workbench, model validation, and any
+future throwaway surfaces. Persistent selected-skill or workflow sessions keep
+their existing non-throwaway storage contract.
 
 Selected-skill/refine callers should construct `SkillCreatorRuntimeContext`
 directly rather than routing through a refine-specific config wrapper.
@@ -427,13 +436,14 @@ cargo test --manifest-path app/src-tauri/Cargo.toml commands::refine --quiet
 ```
 
 Expected: PASS with one canonical config builder and no public reliance on raw
-integer `step_id` as the caller-facing abstraction, and no remaining
-compatibility wrapper like `build_skill_session_config(...)`.
+integer `step_id` as the caller-facing abstraction, no remaining compatibility
+wrapper like `build_skill_session_config(...)`, and throwaway callers all using
+the shared system-temp runtime root.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/api_validation.rs app/src-tauri/src/commands/skill/scope_review.rs app/src-tauri/src/commands/eval_workbench/mod.rs docs/design/openhands-runtime-contract/README.md
+git add app/src-tauri/src/agents/skill_creator.rs app/src-tauri/src/commands/skill_session.rs app/src-tauri/src/commands/refine/mod.rs app/src-tauri/src/commands/workflow/runtime.rs app/src-tauri/src/commands/api_validation.rs app/src-tauri/src/commands/skill/scope_review.rs app/src-tauri/src/commands/eval_workbench/mod.rs app/src-tauri/src/skill_paths.rs docs/design/openhands-runtime-contract/README.md
 git commit -m "refactor: make skill creator config intent-driven"
 ```
 

@@ -85,7 +85,7 @@ export function SkillListPanel({
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const selectedSkillId = useSkillStore((s) => s.activeSkillId);
   const setSelectedSkill = useSkillStore((s) => s.setActiveSkill);
-  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery();
   const { data: importedSkills = [] } = useImportedSkillsQuery();
   const deleteImportedSkillMutation = useDeleteImportedSkillMutation();
   const invalidateSkillQueries = useInvalidateSkillQueries();

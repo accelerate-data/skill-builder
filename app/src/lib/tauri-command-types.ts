@@ -279,7 +279,7 @@ export interface TauriCommandMap {
   get_workflow_skill_names: { args: NoArgs; result: string[] };
   reset_usage: { args: NoArgs; result: void };
   get_dashboard_skill_names: { args: NoArgs; result: string[] };
-  list_skills: { args: { workspacePath: string; sourceUrl: string | null }; result: SkillSummary[] };
+  list_skills: { args: { sourceUrl: string | null }; result: SkillSummary[] };
   list_imported_skills: { args: { sourceUrl: string | null }; result: ImportedSkill[] };
   delete_imported_skill: { args: { skillId: number }; result: void };
   list_plugins: { args: NoArgs; result: LibraryPlugin[] };

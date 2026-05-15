@@ -70,8 +70,7 @@ function makeBuilderSkill(name: string): SkillSummary {
 
 function renderWithSkills(skills: SkillSummary[]) {
   const queryClient = createTestQueryClient();
-  const workspacePath = useSettingsStore.getState().workspacePath ?? null;
-  queryClient.setQueryData(queryKeys.skills.builder(workspacePath, null), skills);
+  queryClient.setQueryData(queryKeys.skills.builder(), skills);
   queryClient.setQueryData(queryKeys.skills.imported(), []);
 
   return render(

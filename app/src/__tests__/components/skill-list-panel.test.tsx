@@ -133,8 +133,7 @@ function setImportedSkills(skills: ImportedSkill[]) {
 
 function renderWithSkillQueries(ui: React.ReactElement) {
   const queryClient = createTestQueryClient();
-  const workspacePath = useSettingsStore.getState().workspacePath ?? null;
-  queryClient.setQueryData(queryKeys.skills.builder(workspacePath, null), builderSkillResults);
+  queryClient.setQueryData(queryKeys.skills.builder(), builderSkillResults);
   queryClient.setQueryData(queryKeys.skills.imported(), importedSkillResults);
 
   return render(

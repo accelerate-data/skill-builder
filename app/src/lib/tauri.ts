@@ -309,9 +309,8 @@ export async function getDashboardSkillNames(): Promise<string[]> {
   return invokeCommand("get_dashboard_skill_names", {})
 }
 
-export async function listSkills(workspacePath: string, sourceUrl?: string | null): Promise<SkillSummary[]> {
+export async function listSkills(sourceUrl?: string | null): Promise<SkillSummary[]> {
   return invokeCommand("list_skills", {
-    workspacePath,
     sourceUrl: sourceUrl ?? null,
   })
 }

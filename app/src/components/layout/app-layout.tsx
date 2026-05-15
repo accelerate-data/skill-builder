@@ -44,7 +44,7 @@ import {
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
   const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery();
   const { data: importedSkills = [] } = useImportedSkillsQuery();
   const selectedWorkspaceSkillId = useSkillStore((s) => s.activeSkillId);
   const setSelectedWorkspaceSkill = useSkillStore((s) => s.setActiveSkill);

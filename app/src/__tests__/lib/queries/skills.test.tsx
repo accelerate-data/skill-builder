@@ -50,27 +50,30 @@ describe("skill queries", () => {
     mockInvokeCommands({ list_skills: [skill] });
     const { Wrapper } = wrapper();
 
-    const { result } = renderHook(() => useBuilderSkillsQuery("/workspace"), {
+    const { result } = renderHook(() => useBuilderSkillsQuery(), {
       wrapper: Wrapper,
     });
 
     await waitFor(() => expect(result.current.data).toEqual([skill]));
     expect(result.current.data).toEqual([skill]);
     expect(mockInvoke).toHaveBeenCalledWith("list_skills", {
-      workspacePath: "/workspace",
       sourceUrl: null,
     });
   });
 
-  it("does not load builder skills until workspace path exists", () => {
+  it("loads builder skills even when no workspace path is configured", async () => {
+    const skill = makeSkillSummary({ name: "forecasting-revenue" });
+    mockInvokeCommands({ list_skills: [skill] });
     const { Wrapper } = wrapper();
 
-    const { result } = renderHook(() => useBuilderSkillsQuery(null), {
+    const { result } = renderHook(() => useBuilderSkillsQuery(), {
       wrapper: Wrapper,
     });
 
-    expect(result.current.fetchStatus).toBe("idle");
-    expect(mockInvoke).not.toHaveBeenCalledWith("list_skills", expect.anything());
+    await waitFor(() => expect(result.current.data).toEqual([skill]));
+    expect(mockInvoke).toHaveBeenCalledWith("list_skills", {
+      sourceUrl: null,
+    });
   });
 
   it("loads imported skills through the query cache", async () => {
