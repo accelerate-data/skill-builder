@@ -260,7 +260,7 @@ export type RunInitEvent = { sessionId: string; model: string }
 /**
  * Terminal event with full run summary and token usage.
  */
-export type RunResultEvent = { skillName: string; stepId: number; usageSessionId?: string | null; runSource?: RunSource | null; sessionId?: string | null; model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCostUsd: number; modelUsageBreakdown: ModelUsageEntry[]; contextWindow: number; resultSubtype?: string | null; resultErrors?: string[] | null; stopReason?: string | null; numTurns: number; durationMs: number; durationApiMs?: number | null; toolUseCount: number; compactionCount: number; status: RunResultStatus; resultText?: string | null; workspacePath?: string | null; pluginSlug: string }
+export type RunResultEvent = { skillName: string; stepId: number; usageSessionId?: string | null; runSource?: RunSource | null; sessionId?: string | null; model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCostUsd: number; modelUsageBreakdown: ModelUsageEntry[]; contextWindow: number; resultSubtype?: string | null; resultErrors?: string[] | null; stopReason?: string | null; numTurns: number; durationMs: number; durationApiMs?: number | null; toolUseCount: number; compactionCount: number; status: RunResultStatus; resultText?: string | null; pluginSlug: string }
 
 /**
  * Terminal status of a run.

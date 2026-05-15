@@ -204,8 +204,8 @@ impl OpenHandsServerCommand {
     }
 }
 
-fn python_module_command_parts() -> (String, Vec<String>) {
-    let package_args = vec![
+fn uv_python_tool_prefix_args() -> Vec<String> {
+    vec![
         "--from".to_string(),
         OPENHANDS_AGENT_SERVER_PACKAGE.to_string(),
         "--with".to_string(),
@@ -213,8 +213,11 @@ fn python_module_command_parts() -> (String, Vec<String>) {
         "--with".to_string(),
         "libtmux".to_string(),
         "python".to_string(),
-        "-m".to_string(),
-    ];
+    ]
+}
+
+fn bundled_uv_python_command_parts() -> (String, Vec<String>) {
+    let package_args = uv_python_tool_prefix_args();
 
     // Use bundled uv when available (set by init_bundled_uv_path at startup).
     // OnceLock::get() returns None when not yet initialized (e.g. unit tests),
@@ -228,11 +231,14 @@ fn python_module_command_parts() -> (String, Vec<String>) {
     ("uvx".to_string(), package_args)
 }
 
-/// Return the program + args that would be used to run a Python module
-/// via the bundled uv (or system uvx fallback). Used by both runtime
-/// launch and startup probing.
-pub fn bundled_uv_tool_run_args() -> (String, Vec<String>) {
-    python_module_command_parts()
+fn python_module_command_parts() -> (String, Vec<String>) {
+    let (program, mut args) = bundled_uv_python_command_parts();
+    args.push("-m".to_string());
+    (program, args)
+}
+
+pub fn bundled_uv_python_run_args() -> (String, Vec<String>) {
+    bundled_uv_python_command_parts()
 }
 
 #[derive(Debug)]

@@ -100,7 +100,7 @@ async fn check_git_available() -> BootstrapCheck {
 }
 
 async fn check_openhands_agent_server_available() -> BootstrapCheck {
-    let (program, args) = crate::agents::openhands_server::process::bundled_uv_tool_run_args();
+    let (program, args) = crate::agents::openhands_server::process::bundled_uv_python_run_args();
     let script = "import openhands.agent_server; print(openhands.agent_server.__file__)";
     let mut command = tokio::process::Command::new(&program);
     command.args(&args).arg("-c").arg(script);
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn openhands_agent_server_probe_uses_bundled_uv_or_uvx_fallback() {
         let (program, args) =
-            crate::agents::openhands_server::process::bundled_uv_tool_run_args();
+            crate::agents::openhands_server::process::bundled_uv_python_run_args();
 
         // Without init_bundled_uv_path called, falls back to uvx
         assert_eq!(program, "uvx");
@@ -139,6 +139,6 @@ mod tests {
             .iter()
             .any(|arg| arg == crate::agents::openhands_server::process::OPENHANDS_TOOLS_PACKAGE));
         assert!(args.iter().any(|arg| arg == "python"));
-        assert!(args.iter().any(|arg| arg == "-m"));
+        assert!(!args.iter().any(|arg| arg == "-m"));
     }
 }
