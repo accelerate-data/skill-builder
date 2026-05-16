@@ -58,6 +58,10 @@ struct WorkflowStepMaterializedPayload {
     error_detail: Option<String>,
 }
 
+struct WorkflowMaterializationListeners {
+    listener_ids: Vec<tauri::EventId>,
+}
+
 async fn dispatch_persistent_skill_turn(
     app: &tauri::AppHandle,
     config: OpenHandsRuntimeConfig,
@@ -103,15 +107,62 @@ fn parse_target_conversation_state(
         return None;
     }
 
-    let message = value.get("message")?;
-    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+    if let Some(message) = value.get("message") {
+        if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+            return None;
+        }
+
+        return match message.get("status").and_then(|v| v.as_str()) {
+            Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
+            _ => None,
+        };
+    }
+
+    if value.get("type").and_then(|v| v.as_str()) != Some("run_result") {
         return None;
     }
 
-    match message.get("status").and_then(|v| v.as_str()) {
-        Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
-        _ => None,
+    let status = value.get("status").and_then(|v| v.as_str())?;
+    match status {
+        "completed" | "error" | "cancelled" | "canceled" => {}
+        _ => return None,
     }
+
+    let error_detail = value
+        .get("resultErrors")
+        .and_then(|value| value.as_array())
+        .map(|errors| {
+            errors
+                .iter()
+                .filter_map(|error| error.as_str())
+                .filter(|error| !error.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .filter(|detail| !detail.is_empty());
+
+    Some(serde_json::json!({
+        "type": "conversation_state",
+        "status": status,
+        "result_text": value.get("resultText").cloned().unwrap_or(serde_json::Value::Null),
+        "error_detail": error_detail,
+    }))
+}
+
+fn listen_for_terminal_workflow_state(
+    app: &tauri::AppHandle,
+    tx: tokio::sync::mpsc::UnboundedSender<serde_json::Value>,
+    conversation_id: &str,
+    event_name: &'static str,
+) -> tauri::EventId {
+    let target_conversation_id = conversation_id.to_string();
+    app.listen(event_name, move |event| {
+        if let Some(state) =
+            parse_target_conversation_state(event.payload(), &target_conversation_id)
+        {
+            let _ = tx.send(state);
+        }
+    })
 }
 
 fn install_workflow_step_materialization_listener(
@@ -121,24 +172,19 @@ fn install_workflow_step_materialization_listener(
     skill_id: i64,
     skill_name: &str,
     step_id: u32,
-) -> tauri::EventId {
+) -> WorkflowMaterializationListeners {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
-    let target_conversation_id = conversation_id.to_string();
-    let tx_message = tx.clone();
-    let listener_id = app.listen("agent-message", move |event| {
-        if let Some(state) =
-            parse_target_conversation_state(event.payload(), &target_conversation_id)
-        {
-            let _ = tx_message.send(state);
-        }
-    });
+    let listener_ids = vec![
+        listen_for_terminal_workflow_state(app, tx.clone(), conversation_id, "agent-message"),
+        listen_for_terminal_workflow_state(app, tx.clone(), conversation_id, "agent-run-result"),
+    ];
 
     let app_handle = app.clone();
     let runs_map = runs.0.clone();
-    let listener_to_remove = listener_id;
     let conversation_id = conversation_id.to_string();
     let skill_name = skill_name.to_string();
     let skill_id_for_db = skill_id.to_string();
+    let listener_ids_to_remove = listener_ids.clone();
     tokio::spawn(async move {
         let result = match rx.recv().await {
             Some(state) => {
@@ -167,7 +213,9 @@ fn install_workflow_step_materialization_listener(
             )),
         };
 
-        app_handle.unlisten(listener_to_remove);
+        for listener_id in listener_ids_to_remove {
+            app_handle.unlisten(listener_id);
+        }
         if let Ok(mut map) = runs_map.lock() {
             map.remove(&conversation_id);
         }
@@ -189,7 +237,7 @@ fn install_workflow_step_materialization_listener(
         }
     });
 
-    listener_id
+    WorkflowMaterializationListeners { listener_ids }
 }
 
 // ─── run_workflow_step_inner ─────────────────────────────────────────────────
@@ -402,7 +450,7 @@ async fn run_workflow_step_inner(
         crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None).await?;
     let conversation_id = session.conversation_id;
 
-    let materialization_listener = Some(install_workflow_step_materialization_listener(
+    let materialization_listeners = Some(install_workflow_step_materialization_listener(
         app,
         runs,
         &conversation_id,
@@ -433,8 +481,10 @@ async fn run_workflow_step_inner(
             conversation_id,
             e
         );
-        if let Some(listener_id) = materialization_listener {
-            app.unlisten(listener_id);
+        if let Some(listeners) = materialization_listeners {
+            for listener_id in listeners.listener_ids {
+                app.unlisten(listener_id);
+            }
         }
         if let Ok(mut map) = runs.0.lock() {
             map.remove(&conversation_id);
@@ -724,4 +774,63 @@ pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) 
         sanitize(&verdict),
         sanitize(&decision)
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_target_conversation_state;
+
+    #[test]
+    fn parse_target_conversation_state_accepts_completed_agent_message() {
+        let payload = serde_json::json!({
+            "conversation_id": "conv-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "completed",
+                "result_text": "{\"status\":\"research_complete\",\"research_output\":{\"sections\":[]}}"
+            }
+        })
+        .to_string();
+
+        let state = parse_target_conversation_state(&payload, "conv-1")
+            .expect("completed conversation_state should be accepted");
+
+        assert_eq!(
+            state.get("type").and_then(|value| value.as_str()),
+            Some("conversation_state")
+        );
+        assert_eq!(
+            state.get("status").and_then(|value| value.as_str()),
+            Some("completed")
+        );
+    }
+
+    #[test]
+    fn parse_target_conversation_state_accepts_completed_run_result() {
+        let payload = serde_json::json!({
+            "conversation_id": "conv-1",
+            "timestamp": 123_u64,
+            "type": "run_result",
+            "status": "completed",
+            "resultText": "{\"status\":\"research_complete\",\"research_output\":{\"sections\":[]}}",
+            "resultErrors": null
+        })
+        .to_string();
+
+        let state = parse_target_conversation_state(&payload, "conv-1")
+            .expect("completed run_result should be accepted");
+
+        assert_eq!(
+            state.get("type").and_then(|value| value.as_str()),
+            Some("conversation_state")
+        );
+        assert_eq!(
+            state.get("status").and_then(|value| value.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            state.get("result_text").and_then(|value| value.as_str()),
+            Some("{\"status\":\"research_complete\",\"research_output\":{\"sections\":[]}}")
+        );
+    }
 }

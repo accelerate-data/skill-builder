@@ -36,6 +36,20 @@ fn build_frontend_event_payload(
     serde_json::Value::Object(payload)
 }
 
+fn build_run_result_payload(
+    conversation_id: &str,
+    summary: &RuntimeRunSummary,
+) -> serde_json::Value {
+    serde_json::json!({
+        "conversation_id": conversation_id,
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "type": "run_result",
+        "status": summary.status,
+        "resultText": summary.result_text,
+        "resultErrors": summary.result_errors,
+    })
+}
+
 pub(super) fn route_runtime_message(
     conversation_id: &str,
     message: serde_json::Value,
@@ -163,6 +177,14 @@ pub fn handle_runtime_message(app_handle: &tauri::AppHandle, conversation_id: &s
         Ok(message) => match route_runtime_message(conversation_id, message) {
             Some(RuntimeMessageAction::PersistRunSummary(summary)) => {
                 persist_run_summary(app_handle, conversation_id, &summary);
+                let payload = build_run_result_payload(conversation_id, &summary);
+                if let Err(e) = app_handle.emit("agent-run-result", &payload) {
+                    log::warn!(
+                        "Failed to emit agent-run-result for {}: {}",
+                        conversation_id,
+                        e
+                    );
+                }
             }
             Some(RuntimeMessageAction::EmitFrontendEvent {
                 event_name,
