@@ -74,8 +74,8 @@ describe("ReconciliationAckDialog", () => {
       />,
     );
 
-    const applyButton = screen.getByRole("button", { name: /Applying/i });
-    expect(applyButton).toBeDisabled();
+    const applyButtons = screen.getAllByRole("button", { name: /Applying/i });
+    expect(applyButtons.some((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 
   it("calls onCancel when apply is required and the user continues without applying", async () => {

@@ -289,7 +289,6 @@ where
         skill_dir_override: Some(runtime_run_dir.to_string_lossy().replace('\\', "/")),
     });
     run_turn(OpenHandsThrowawayRunParams {
-        agent_id: format!("{skill_name}-scenario-suggest-{}", uuid::Uuid::new_v4()),
         config,
         timeout: std::time::Duration::from_secs(90),
     })
@@ -436,34 +435,32 @@ pub async fn define_eval_scenario(
         .map_err(|e| format!("failed to resolve app data dir: {e}"))?
         .to_string_lossy()
         .replace('\\', "/");
-    let run = run_define_eval_scenario_throwaway_turn(
-        &app_data_root,
-        &plugin_slug,
-        &skill_name,
-        &prompt,
-        &runtime_ctx,
-        |runtime_run_dir| {
-            let runtime_run_dir = runtime_run_dir.to_path_buf();
-            let app = app.clone();
-            async move {
-                crate::commands::workflow::deploy::ensure_openhands_runtime_dir(
-                    &app,
-                    &runtime_run_dir,
-                )
-                .await
-            }
-        },
-        |params| {
-            let app = app.clone();
-            async move {
-                crate::agents::tracked_openhands::send_tracked_throwaway(
-                    &app, params,
-                )
-                .await
-            }
-        },
-    )
-    .await?;
+    let run =
+        run_define_eval_scenario_throwaway_turn(
+            &app_data_root,
+            &plugin_slug,
+            &skill_name,
+            &prompt,
+            &runtime_ctx,
+            |runtime_run_dir| {
+                let runtime_run_dir = runtime_run_dir.to_path_buf();
+                let app = app.clone();
+                async move {
+                    crate::commands::workflow::deploy::ensure_openhands_runtime_dir(
+                        &app,
+                        &runtime_run_dir,
+                    )
+                    .await
+                }
+            },
+            |params| {
+                let app = app.clone();
+                async move {
+                    crate::agents::tracked_openhands::send_tracked_throwaway(&app, params).await
+                }
+            },
+        )
+        .await?;
 
     let suggested_scenario =
         parse_suggested_scenario_response(&run.conversation_state, &existing_scenario)?;
@@ -516,7 +513,6 @@ mod tests {
                     }
                 },
                 |params| async move {
-                    assert!(params.agent_id.contains("lead-conversion-scenario-suggest-"));
                     assert_eq!(params.config.mode.as_deref(), Some("throwaway"));
                     assert_eq!(params.config.task_kind.as_deref(), Some("scenario-suggest"));
                     assert!(params

@@ -16,9 +16,7 @@ use super::prompt::format_user_context;
 use super::prompt::{
     build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
 };
-use super::runtime::{
-    dispatch_persistent_skill_turn_with_runtime,
-};
+use super::runtime::dispatch_persistent_skill_turn_with_runtime;
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     workflow_output_format_for_step,
@@ -293,18 +291,16 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
     let conversation_id = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(dispatch_persistent_skill_turn_with_runtime(
-            "agent-1",
             config.clone(),
             existing_conversation_id.clone(),
-            move |agent_id, send_config, conversation_id| {
+            move |send_config, conversation_id| {
                 let send_events = Arc::clone(&send_events);
                 let expected_prompt = expected_prompt_for_send.clone();
-                let agent_id = agent_id.to_string();
                 async move {
                     send_events
                         .lock()
                         .unwrap()
-                        .push(format!("send:{agent_id}:{conversation_id}"));
+                        .push(format!("send:{conversation_id}"));
                     assert_eq!(send_config.prompt, expected_prompt);
                     Ok(())
                 }
@@ -313,21 +309,12 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
         .unwrap();
 
     assert_eq!(conversation_id, "conversation-123");
-    assert_eq!(
-        events.lock().unwrap().as_slice(),
-        ["send:agent-1:conversation-123"]
-    );
+    assert_eq!(events.lock().unwrap().as_slice(), ["send:conversation-123"]);
 }
 
 #[test]
 fn research_prompt_renders_app_owned_openhands_task_context() {
-    let prompt = build_step0_prompt(
-        "lead-conversion",
-        "/tmp/skills",
-        DEFAULT_PLUGIN_SLUG,
-        4,
-        "",
-    );
+    let prompt = build_step0_prompt("lead-conversion", "/tmp/skills", DEFAULT_PLUGIN_SLUG, 4, "");
 
     assert!(!prompt.contains("What should this skill enable Claude to do?"));
     assert!(!prompt.contains("Claude Code"));
@@ -1138,10 +1125,7 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
         Some("workflow.confirm_decisions")
     );
     assert!(config.mode.is_none());
-    assert_eq!(
-        config.allowed_tools,
-        Some(vec!["file_editor".to_string()])
-    );
+    assert_eq!(config.allowed_tools, Some(vec!["file_editor".to_string()]));
     assert_eq!(config.max_turns, Some(100));
     assert_eq!(config.skill_name.as_deref(), Some("lead-conversion"));
     assert_eq!(config.step_id, Some(2));
@@ -2603,13 +2587,8 @@ fn test_materialize_step3_rejects_wrong_status() {
 
 #[test]
 fn test_evaluator_prompt_does_not_contain_stale_routing_tokens() {
-    let prompt = super::prompt::build_evaluator_prompt(
-        "s",
-        "/sk",
-        DEFAULT_PLUGIN_SLUG,
-        "context",
-        "{}",
-    );
+    let prompt =
+        super::prompt::build_evaluator_prompt("s", "/sk", DEFAULT_PLUGIN_SLUG, "context", "{}");
     for forbidden in [
         ".claude/plugins",
         "skill-content-researcher:",
@@ -2694,8 +2673,7 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     );
 
     assert!(prompt.contains("We are writing the skill my-skill."));
-    assert!(prompt
-        .contains("Skill directory: /home/user/my-skills/default/skills/my-skill"));
+    assert!(prompt.contains("Skill directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains("Skill output directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains("User context:\n## User Context"));
     assert!(prompt.contains("Clarifications JSON:\n{\n  \"sections\": []\n}"));
@@ -2735,12 +2713,7 @@ fn test_delete_step_output_files_from_step_onwards() {
     std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
     // Reset from step 2 onwards
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        2,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // Step 3 outputs should be deleted
     assert!(!skill_dir.join("SKILL.md").exists());
@@ -2753,12 +2726,7 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let nonexistent = std::env::temp_dir().join("nonexistent");
-    crate::cleanup::delete_step_output_files(
-        "no-skill",
-        DEFAULT_PLUGIN_SLUG,
-        0,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("no-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 }
 
 #[test]
@@ -2774,12 +2742,7 @@ fn test_delete_step_output_files_cleans_last_steps() {
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
 
     // Reset from step 2 onwards should clean up SKILL.md
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        2,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // SKILL.md should be deleted
     assert!(!skill_dir.join("SKILL.md").exists());
@@ -2790,12 +2753,7 @@ fn test_delete_step_output_files_last_step() {
     // Verify delete_step_output_files(from=3) doesn't panic
     let skills_tmp = tempfile::tempdir().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        3,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 3, skills_path);
 }
 
 #[test]
@@ -2998,12 +2956,7 @@ fn test_reset_cleans_workspace_context_files() {
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
     // Call delete_step_output_files from step 0
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        0,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 
     // SKILL.md should be gone
     assert!(!output_dir.join("SKILL.md").exists());

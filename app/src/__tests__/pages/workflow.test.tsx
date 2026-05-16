@@ -924,7 +924,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-step0-materialized",
+          conversation_id: "agent-step0-materialized",
           skill_name: "test-skill",
           step_id: 0,
           success: true,
@@ -970,7 +970,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-step0-verify-error",
+          conversation_id: "agent-step0-verify-error",
           skill_name: "test-skill",
           step_id: 0,
           success: true,
@@ -1008,7 +1008,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-step0-materialized-early",
+          conversation_id: "agent-step0-materialized-early",
           skill_name: "test-skill",
           step_id: 0,
           success: true,
@@ -1075,7 +1075,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-invalid-step0",
+          conversation_id: "agent-invalid-step0",
           skill_name: "test-skill",
           step_id: 0,
           success: false,

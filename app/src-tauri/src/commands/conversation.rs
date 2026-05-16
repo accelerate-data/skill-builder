@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-use crate::agents::skill_creator::{build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext};
-use crate::commands::skill_session::{ensure_skill_runtime_ready, resolve_skills_path, SkillSessionManager};
-use crate::commands::workflow::guards::make_agent_id;
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
+};
+use crate::commands::skill_session::{
+    ensure_skill_runtime_ready, resolve_skills_path, SkillSessionManager,
+};
 use crate::db::Db;
 
 #[derive(Debug, Deserialize)]
@@ -37,7 +40,6 @@ struct ResolvedSkillConversationSession {
     plugin_slug: String,
     conversation_id: String,
     usage_session_id: String,
-    current_agent_id: Option<String>,
     dispatched_user_turn_count: usize,
 }
 
@@ -57,7 +59,6 @@ fn resolve_session_for_conversation(
             plugin_slug: session.plugin_slug.clone(),
             conversation_id: conversation_id.to_string(),
             usage_session_id: session.usage_session_id.clone(),
-            current_agent_id: session.current_agent_id.clone(),
             dispatched_user_turn_count: session.dispatched_user_turn_count,
         })
         .ok_or_else(|| {
@@ -68,19 +69,9 @@ fn resolve_session_for_conversation(
         })
 }
 
-fn selected_skill_agent_id(
-    session: &ResolvedSkillConversationSession,
-) -> String {
-    session
-        .current_agent_id
-        .clone()
-        .unwrap_or_else(|| make_agent_id(&session.skill_name, "selected-skill"))
-}
-
 fn mark_session_message_dispatched(
     sessions: &SkillSessionManager,
     conversation_id: &str,
-    agent_id: &str,
 ) -> Result<(), String> {
     let mut map = sessions
         .0
@@ -97,7 +88,6 @@ fn mark_session_message_dispatched(
             )
         })?;
 
-    session.current_agent_id = Some(agent_id.to_string());
     session.dispatched_user_turn_count += 1;
     Ok(())
 }
@@ -142,17 +132,14 @@ pub async fn send_conversation_message(
     });
     config.usage_session_id = Some(session.usage_session_id.clone());
 
-    let agent_id = selected_skill_agent_id(&session);
-
     crate::agents::tracked_openhands::send_tracked_openhands_message(
         &app,
-        &agent_id,
         config,
         session.conversation_id.clone(),
     )
     .await?;
 
-    mark_session_message_dispatched(&sessions, &session.conversation_id, &agent_id)?;
+    mark_session_message_dispatched(&sessions, &session.conversation_id)?;
 
     log::info!(
         "[send_conversation_message] conversation_id={} local_event_id={} skill={} plugin={} turn_count={}",
@@ -182,7 +169,6 @@ mod tests {
                 plugin_slug: "skills".to_string(),
                 usage_session_id: "usage-1".to_string(),
                 conversation_id: Some("conv-1".to_string()),
-                current_agent_id: None,
                 dispatched_user_turn_count: 0,
                 head_sha_at_start: None,
             },
@@ -199,7 +185,6 @@ mod tests {
         assert_eq!(session.skill_name, "sales-skill");
         assert_eq!(session.plugin_slug, "skills");
         assert_eq!(session.usage_session_id, "usage-1");
-        assert_eq!(session.current_agent_id, None);
     }
 
     #[test]
@@ -215,13 +200,12 @@ mod tests {
     }
 
     #[test]
-    fn mark_session_message_dispatched_sets_agent_id_and_increments_turn_count() {
+    fn mark_session_message_dispatched_increments_turn_count_without_runtime_agent_state() {
         let sessions = test_sessions();
 
-        mark_session_message_dispatched(&sessions, "conv-1", "agent-1").unwrap();
+        mark_session_message_dispatched(&sessions, "conv-1").unwrap();
 
         let session = resolve_session_for_conversation(&sessions, "conv-1").unwrap();
-        assert_eq!(session.current_agent_id.as_deref(), Some("agent-1"));
         assert_eq!(session.dispatched_user_turn_count, 1);
     }
 }

@@ -14,12 +14,24 @@ export const E2E_SKILLS_PATH = joinE2ePath("skills");
 export const E2E_DEFAULT_SKILLS_PATH = joinE2ePath("default-skills");
 export const E2E_PREFERRED_MODEL = "claude-sonnet-4-6";
 export const E2E_MODEL_SETTINGS = {
-  provider: "anthropic",
-  model: E2E_PREFERRED_MODEL,
-  api_key: "sk-ant-test",
-  base_url: null,
-  reasoning_effort: "auto",
-  usage_id: "workflow",
+  provider_id: "anthropic",
+  model_id: E2E_PREFERRED_MODEL,
+  provider_overrides: {
+    anthropic: {
+      api_key: "sk-ant-test",
+      base_url: null,
+      api_version: null,
+      temperature: null,
+      max_output_tokens: null,
+      timeout_seconds: null,
+      num_retries: null,
+      reasoning_effort: "auto",
+      extra_headers: null,
+      input_cost_per_token: null,
+      output_cost_per_token: null,
+      usage_id: "workflow",
+    },
+  },
 };
 
 export function workspaceSkillPath(skillName: string): string {

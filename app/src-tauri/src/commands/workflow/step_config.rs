@@ -18,6 +18,7 @@ pub(crate) fn skill_generation_workflow_tools() -> Vec<String> {
         .collect()
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn answer_evaluator_workflow_tools() -> Vec<String> {
     ["file_editor"].iter().map(|s| s.to_string()).collect()
 }

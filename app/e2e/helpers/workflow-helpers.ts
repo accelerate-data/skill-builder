@@ -8,6 +8,7 @@
 import type { Page } from "@playwright/test";
 import { waitForAppReady } from "./app-helpers";
 import {
+  E2E_MODEL_SETTINGS,
   E2E_SKILLS_PATH,
   E2E_WORKSPACE_PATH,
   skillContextPath,
@@ -19,14 +20,7 @@ import {
  */
 export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   get_settings: {
-    model_settings: {
-      provider: "anthropic",
-      model: "claude-sonnet-4-5",
-      api_key: "sk-ant-test",
-      base_url: null,
-      reasoning_effort: "auto",
-      usage_id: "workflow",
-    },
+    model_settings: E2E_MODEL_SETTINGS,
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
   },
@@ -36,6 +30,7 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
       id: 301,
       name: "test-skill",
       purpose: "domain",
+      description: null,
       current_step: null,
       status: null,
       last_modified: null,
@@ -43,13 +38,18 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
       author_login: null,
       author_avatar: null,
       intake_json: null,
+      source: "created",
+      skill_source: "skill-builder",
+      plugin_slug: "default",
+      plugin_display_name: "Skill Builder",
+      is_default_plugin: true,
     },
   ],
   get_workflow_state: { run: null, steps: [] },
   save_workflow_state: undefined,
   capture_step_artifacts: [],
   reset_workflow_step: undefined,
-  run_workflow_step: "agent-001",
+  run_workflow_step: "conv-001",
   // Provide canonical step-0 artifacts so workflow completion can advance in e2e mocks.
   read_file: {
     [skillContextPath(E2E_SKILLS_PATH, "test-skill", "research-plan.md")]:
@@ -118,7 +118,11 @@ export async function navigateToWorkflow(
   }, merged);
   await page.goto("/workflow/301");
   await waitForAppReady(page);
-  await page.getByText("STEPS").waitFor({ timeout: 10_000 });
+  const stepsHeading = page.getByText("STEPS");
+  if (!(await stepsHeading.isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: /test-skill/ }).first().click();
+  }
+  await stepsHeading.waitFor({ timeout: 10_000 });
 }
 
 /**

@@ -23,27 +23,48 @@ import type {
 } from "@/lib/agent-events";
 
 interface AgentMessagePayload {
-  agent_id: string;
+  conversation_id: string;
   message: {
     type: string;
     [key: string]: unknown;
   };
 }
 
-type AgentRunConfigPayload = { agent_id: string; timestamp: number } & RunConfigEvent;
-type AgentRunInitPayload = { agent_id: string; timestamp: number } & RunInitEvent;
-type AgentTurnUsagePayload = { agent_id: string; timestamp: number } & TurnUsageEvent;
-type AgentCompactionPayload = { agent_id: string; timestamp: number } & CompactionEvent;
-type AgentContextWindowPayload = { agent_id: string; timestamp: number } & ContextWindowEvent;
+type AgentRunConfigPayload = {
+  conversation_id: string;
+  timestamp: number;
+} & RunConfigEvent;
+type AgentRunInitPayload = {
+  conversation_id: string;
+  timestamp: number;
+} & RunInitEvent;
+type AgentTurnUsagePayload = {
+  conversation_id: string;
+  timestamp: number;
+} & TurnUsageEvent;
+type AgentCompactionPayload = {
+  conversation_id: string;
+  timestamp: number;
+} & CompactionEvent;
+type AgentContextWindowPayload = {
+  conversation_id: string;
+  timestamp: number;
+} & ContextWindowEvent;
 
 interface AgentExitPayload {
-  agent_id: string;
+  conversation_id: string;
   success: boolean;
   error_detail?: string;
 }
 
-type AgentInitProgressPayload = { agent_id: string; timestamp: number } & InitProgressEvent;
-type AgentSessionExhaustedPayload = { agent_id: string; timestamp: number } & SessionExhaustedEvent;
+type AgentInitProgressPayload = {
+  conversation_id: string;
+  timestamp: number;
+} & InitProgressEvent;
+type AgentSessionExhaustedPayload = {
+  conversation_id: string;
+  timestamp: number;
+} & SessionExhaustedEvent;
 
 interface AgentInitErrorPayload {
   error_type: string;
@@ -52,7 +73,7 @@ interface AgentInitErrorPayload {
 }
 
 interface AgentShutdownPayload {
-  agent_id: string;
+  conversation_id: string;
 }
 
 const INIT_PROGRESS_MESSAGES: Record<string, string> = {
@@ -69,7 +90,9 @@ function selectedConversationId(): string | null {
 }
 
 function appendCanonicalRuntimeEvent(
-  event: ReturnType<typeof normalizeConversationEventMessage> | ReturnType<typeof normalizeConversationStateMessage>,
+  event:
+    | ReturnType<typeof normalizeConversationEventMessage>
+    | ReturnType<typeof normalizeConversationStateMessage>,
 ) {
   if (!event) return;
 
@@ -91,7 +114,10 @@ export async function initSessionRuntimeStream() {
   if (initialized) return;
   if (initPromise) return initPromise;
 
-  function reg<T>(event: string, handler: (e: { payload: T }) => void): Promise<void> {
+  function reg<T>(
+    event: string,
+    handler: (e: { payload: T }) => void,
+  ): Promise<void> {
     return listen<T>(event, handler).then((unlisten) => {
       unlisteners.push(unlisten);
     });
@@ -99,10 +125,10 @@ export async function initSessionRuntimeStream() {
 
   initPromise = Promise.all([
     reg<AgentInitProgressPayload>("agent-init-progress", (event) => {
-      const { agent_id, stage } = event.payload;
+      const { conversation_id, stage } = event.payload;
       console.debug(
-        "[use-session-runtime-stream] event=agent_init_progress agent_id=%s stage=%s",
-        agent_id,
+        "[use-session-runtime-stream] event=agent_init_progress conversation_id=%s stage=%s",
+        conversation_id,
         stage,
       );
       const progressMessage = INIT_PROGRESS_MESSAGES[stage];
@@ -114,10 +140,10 @@ export async function initSessionRuntimeStream() {
       }
     }),
     reg<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
-      const { agent_id, sessionId } = event.payload;
+      const { conversation_id, sessionId } = event.payload;
       console.debug(
-        "[use-session-runtime-stream] event=agent_session_exhausted agent_id=%s session_id=%s",
-        agent_id,
+        "[use-session-runtime-stream] event=agent_session_exhausted conversation_id=%s session_id=%s",
+        conversation_id,
         sessionId,
       );
       toast.info("Session limit reached. Start a new session to continue.");
@@ -132,27 +158,35 @@ export async function initSessionRuntimeStream() {
       });
     }),
     reg<AgentRunConfigPayload>("agent-run-config", (event) => {
-      const { agent_id, ...runConfig } = event.payload;
-      useSessionRuntimeStore.getState().applyRunConfig(agent_id, runConfig);
+      const { conversation_id, ...runConfig } = event.payload;
+      useSessionRuntimeStore
+        .getState()
+        .applyRunConfig(conversation_id, runConfig);
     }),
     reg<AgentRunInitPayload>("agent-run-init", (event) => {
-      const { agent_id, ...runInit } = event.payload;
-      useSessionRuntimeStore.getState().applyRunInit(agent_id, runInit);
+      const { conversation_id, ...runInit } = event.payload;
+      useSessionRuntimeStore.getState().applyRunInit(conversation_id, runInit);
     }),
     reg<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
-      const { agent_id, ...turnUsage } = event.payload;
-      useSessionRuntimeStore.getState().applyTurnUsage(agent_id, turnUsage);
+      const { conversation_id, ...turnUsage } = event.payload;
+      useSessionRuntimeStore
+        .getState()
+        .applyTurnUsage(conversation_id, turnUsage);
     }),
     reg<AgentCompactionPayload>("agent-compaction", (event) => {
-      const { agent_id, ...compaction } = event.payload;
-      useSessionRuntimeStore.getState().applyCompaction(agent_id, compaction);
+      const { conversation_id, ...compaction } = event.payload;
+      useSessionRuntimeStore
+        .getState()
+        .applyCompaction(conversation_id, compaction);
     }),
     reg<AgentContextWindowPayload>("agent-context-window", (event) => {
-      const { agent_id, ...contextWindow } = event.payload;
-      useSessionRuntimeStore.getState().applyContextWindow(agent_id, contextWindow);
+      const { conversation_id, ...contextWindow } = event.payload;
+      useSessionRuntimeStore
+        .getState()
+        .applyContextWindow(conversation_id, contextWindow);
     }),
     reg<AgentMessagePayload>("agent-message", (event) => {
-      const { agent_id, message } = event.payload;
+      const { conversation_id, message } = event.payload;
 
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
@@ -168,8 +202,8 @@ export async function initSessionRuntimeStream() {
           appendCanonicalRuntimeEvent(conversationEvent);
           const reasoningText = getReasoningText(conversationEvent);
           console.debug(
-            "[use-session-runtime-stream] event=conversation_event agent_id=%s event_class=%s reasoning_len=%d",
-            agent_id,
+            "[use-session-runtime-stream] event=conversation_event conversation_id=%s event_class=%s reasoning_len=%d",
+            conversation_id,
             conversationEvent.eventClass,
             reasoningText?.length ?? 0,
           );
@@ -181,7 +215,10 @@ export async function initSessionRuntimeStream() {
         const conversationState = normalizeConversationStateMessage(message);
         if (conversationState) {
           if (conversationState.conversationId) {
-            runtimeStore.bindTransportRun(agent_id, conversationState.conversationId);
+            runtimeStore.bindTransportRun(
+              conversation_id,
+              conversationState.conversationId,
+            );
             runtimeStore.applyConversationState(
               conversationState.conversationId,
               conversationState,
@@ -201,28 +238,35 @@ export async function initSessionRuntimeStream() {
       }
 
       if (message.type === "agent_event") {
-        const eventPayload = message.event as Record<string, unknown> | undefined;
+        const eventPayload = message.event as
+          | Record<string, unknown>
+          | undefined;
         if (
           eventPayload?.type === "prompt_suggestion" &&
           typeof eventPayload.suggestion === "string"
         ) {
-          runtimeStore.setPromptSuggestion(agent_id, eventPayload.suggestion);
+          runtimeStore.setPromptSuggestion(
+            conversation_id,
+            eventPayload.suggestion,
+          );
           return;
         }
       }
 
       console.debug(
-        "[use-session-runtime-stream] event=unhandled_message agent_id=%s msg_type=%s",
-        agent_id,
+        "[use-session-runtime-stream] event=unhandled_message conversation_id=%s msg_type=%s",
+        conversation_id,
         message.type,
       );
     }),
     reg<AgentExitPayload>("agent-exit", (event) => {
-      useSessionRuntimeStore.getState().completeRun(
-        event.payload.agent_id,
-        event.payload.success,
-        event.payload.error_detail,
-      );
+      useSessionRuntimeStore
+        .getState()
+        .completeRun(
+          event.payload.conversation_id,
+          event.payload.success,
+          event.payload.error_detail,
+        );
       invalidateUsageDataAfterAgentRun().catch((error) => {
         console.warn(
           "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",
@@ -231,13 +275,21 @@ export async function initSessionRuntimeStream() {
       });
     }),
     reg<AgentShutdownPayload>("agent-shutdown", (event) => {
-      useSessionRuntimeStore.getState().shutdownRun(event.payload.agent_id);
+      useSessionRuntimeStore
+        .getState()
+        .shutdownRun(event.payload.conversation_id);
     }),
-    listen<{ reason: string; conversation_id: string }>("skill-session-reset", () => {
-      toast.warning("Previous session not found — started a new conversation.", {
-        duration: Infinity,
-      });
-    }).then((unlisten) => {
+    listen<{ reason: string; conversation_id: string }>(
+      "skill-session-reset",
+      () => {
+        toast.warning(
+          "Previous session not found — started a new conversation.",
+          {
+            duration: Infinity,
+          },
+        );
+      },
+    ).then((unlisten) => {
       unlisteners.push(unlisten);
     }),
   ])

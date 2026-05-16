@@ -1279,6 +1279,7 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
 /// Returns the JSON Schema for the answer-evaluator structured output.
 ///
 /// Uses the generated schema from `contracts::workflow_outputs::AnswerEvaluationOutput`.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
     let schema: serde_json::Value =
         serde_json::from_str(crate::generated::schemas::ANSWER_EVALUATION_SCHEMA)

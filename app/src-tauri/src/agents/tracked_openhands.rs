@@ -2,13 +2,10 @@ use std::time::{Duration, Instant};
 
 use tauri::Listener;
 
-use crate::agents::openhands_server::{
-    self, OpenHandsRuntimeEvent, OpenHandsThrowawayRun,
-};
+use crate::agents::openhands_server::{self, OpenHandsRuntimeEvent, OpenHandsThrowawayRun};
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 
 pub struct OpenHandsThrowawayRunParams {
-    pub agent_id: String,
     pub config: OpenHandsRuntimeConfig,
     pub timeout: Duration,
 }
@@ -52,12 +49,10 @@ where
 
 pub async fn send_tracked_openhands_message(
     app: &tauri::AppHandle,
-    agent_id: &str,
     config: OpenHandsRuntimeConfig,
     conversation_id: String,
 ) -> Result<String, String> {
     let app = app.clone();
-    let agent_id = agent_id.to_string();
     send_tracked_openhands_message_with(
         config,
         conversation_id,
@@ -72,11 +67,9 @@ pub async fn send_tracked_openhands_message(
         },
         move |config, conversation_id, prompt_delivery| {
             let app = app.clone();
-            let agent_id = agent_id.clone();
             async move {
                 openhands_server::run_openhands_conversation(
                     &app,
-                    &agent_id,
                     config,
                     conversation_id,
                     prompt_delivery,
@@ -91,12 +84,9 @@ pub async fn send_tracked_openhands_message(
 pub async fn pause_tracked_openhands_conversation(
     config: OpenHandsRuntimeConfig,
     conversation_id: &str,
-    agent_id: Option<&str>,
 ) -> Result<bool, String> {
     openhands_server::pause_openhands_conversation(config, conversation_id).await?;
-    Ok(agent_id
-        .map(openhands_server::send_cancel_signal)
-        .unwrap_or(false))
+    Ok(openhands_server::send_cancel_signal(conversation_id))
 }
 
 pub async fn send_tracked_throwaway(
@@ -104,37 +94,37 @@ pub async fn send_tracked_throwaway(
     params: OpenHandsThrowawayRunParams,
 ) -> Result<OpenHandsThrowawayRun, String> {
     let config = params.config;
-    let agent_id = params.agent_id.clone();
     let started_at = Instant::now();
 
     let conversation_id = openhands_server::create_openhands_conversation(app, &config).await?;
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsRuntimeEvent>();
-    let target_agent_id = agent_id.clone();
+    let target_conversation_id = conversation_id.clone();
     let tx_message = tx.clone();
     let message_listener = app.listen("agent-message", move |event| {
         if let Some(result) = openhands_server::parse_openhands_runtime_terminal_state(
             event.payload(),
-            target_agent_id.as_str(),
+            target_conversation_id.as_str(),
         ) {
             let _ = tx_message.send(OpenHandsRuntimeEvent::TerminalState(result));
         }
     });
 
-    let target_agent_id = agent_id.clone();
+    let target_conversation_id = conversation_id.clone();
     let tx_exit = tx.clone();
     let exit_listener = app.listen("agent-exit", move |event| {
-        if let Some(result) =
-            openhands_server::parse_openhands_lifecycle_state(event.payload(), &target_agent_id)
-        {
+        if let Some(result) = openhands_server::parse_openhands_lifecycle_state(
+            event.payload(),
+            &target_conversation_id,
+        ) {
             let _ = tx_exit.send(OpenHandsRuntimeEvent::Lifecycle(result));
         }
     });
 
-    let target_agent_id = agent_id.clone();
+    let target_conversation_id = conversation_id.clone();
     let tx_shutdown = tx.clone();
     let shutdown_listener = app.listen("agent-shutdown", move |event| {
-        if event.payload().contains(target_agent_id.as_str()) {
+        if event.payload().contains(target_conversation_id.as_str()) {
             let _ = tx_shutdown.send(OpenHandsRuntimeEvent::Lifecycle(Err(
                 "OpenHands throwaway run cancelled".to_string(),
             )));
@@ -143,9 +133,8 @@ pub async fn send_tracked_throwaway(
 
     openhands_server::run_openhands_conversation(
         app,
-        &agent_id,
         config.clone(),
-        conversation_id,
+        conversation_id.clone(),
         openhands_server::PromptDelivery::ViaSendEvent,
     )
     .await
@@ -184,10 +173,10 @@ pub async fn send_tracked_throwaway(
         Ok(Ok(())) => {}
         Ok(Err(error)) => return Err(error),
         Err(_) => {
-            if !openhands_server::close_local_openhands_run(&agent_id) {
+            if !openhands_server::close_local_openhands_run(&conversation_id) {
                 log::warn!(
-                    "[openhands-agent-server] throwaway_run_timeout agent_id={} cleanup=not-found",
-                    agent_id
+                    "[openhands-agent-server] throwaway_run_timeout conversation_id={} cleanup=not-found",
+                    conversation_id
                 );
             }
             return Err("OpenHands throwaway run timed out".to_string());
@@ -202,8 +191,8 @@ pub async fn send_tracked_throwaway(
     })?;
 
     log::info!(
-        "[openhands-agent-server] throwaway_run_completed agent_id={} duration_ms={}",
-        agent_id,
+        "[openhands-agent-server] throwaway_run_completed conversation_id={} duration_ms={}",
+        conversation_id,
         started_at.elapsed().as_millis()
     );
 
@@ -329,9 +318,7 @@ mod tests {
         assert_eq!(conversation_id, "conversation-456");
         assert_eq!(
             events.lock().unwrap().as_slice(),
-            [
-                "run:agent-1:ViaSendEvent:conversation-456",
-            ]
+            ["run:agent-1:ViaSendEvent:conversation-456",]
         );
     }
 }

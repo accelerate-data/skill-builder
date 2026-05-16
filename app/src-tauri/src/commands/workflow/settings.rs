@@ -160,6 +160,7 @@ pub(crate) fn read_workflow_settings_by_skill_id(
     })
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn read_workflow_settings(
     db: &Db,
     skill_name: &str,

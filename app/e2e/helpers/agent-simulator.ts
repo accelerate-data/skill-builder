@@ -13,11 +13,11 @@ import type { Page } from "@playwright/test";
 import type { InitProgressStage } from "../../src/generated/contracts";
 
 // ---------------------------------------------------------------------------
-// Types — mirror the payload shapes from use-agent-stream.ts
+// Types — mirror the payload shapes from use-session-runtime-stream.ts
 // ---------------------------------------------------------------------------
 
 interface AgentInitProgressPayload {
-  agent_id: string;
+  conversation_id: string;
   stage: InitProgressStage;
   timestamp: number;
 }
@@ -29,7 +29,7 @@ interface AgentInitErrorPayload {
 }
 
 interface AgentExitPayload {
-  agent_id: string;
+  conversation_id: string;
   success: boolean;
 }
 
@@ -40,14 +40,14 @@ async function emitInitProgressSequence(
   delayMs: number,
 ): Promise<void> {
   await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
+    conversation_id: agentId,
     stage: "init_start",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
   await wait(delayMs);
 
   await emitTauriEvent(page, "agent-init-progress", {
-    agent_id: agentId,
+    conversation_id: agentId,
     stage: "runtime_ready",
     timestamp: Date.now(),
   } satisfies AgentInitProgressPayload);
@@ -150,7 +150,7 @@ export async function simulateAgentRun(
   // 3. Output display items for each message
   for (let i = 0; i < messages.length; i++) {
     await emitTauriEvent(page, "agent-message", {
-      agent_id: agentId,
+      conversation_id: agentId,
       message: {
         type: "display_item",
         item: {
@@ -166,7 +166,7 @@ export async function simulateAgentRun(
 
   // 4. Result display item
   await emitTauriEvent(page, "agent-message", {
-    agent_id: agentId,
+    conversation_id: agentId,
     message: {
       type: "display_item",
       item: {
@@ -182,7 +182,7 @@ export async function simulateAgentRun(
 
   // 5. Result message (pass-through for usage tracking)
   await emitTauriEvent(page, "agent-message", {
-    agent_id: agentId,
+    conversation_id: agentId,
     message: {
       type: "result",
       result,
@@ -193,7 +193,7 @@ export async function simulateAgentRun(
 
   // 6. Exit with success
   await emitTauriEvent(page, "agent-exit", {
-    agent_id: agentId,
+    conversation_id: agentId,
     success: true,
   } satisfies AgentExitPayload);
 }
@@ -256,7 +256,7 @@ export async function simulateAgentRunWithDisplayItems(
   // Display items
   for (const item of items) {
     await emitTauriEvent(page, "agent-message", {
-      agent_id: agentId,
+      conversation_id: agentId,
       message: {
         type: "display_item",
         item,
@@ -267,7 +267,7 @@ export async function simulateAgentRunWithDisplayItems(
 
   // Result message (pass-through for usage tracking)
   await emitTauriEvent(page, "agent-message", {
-    agent_id: agentId,
+    conversation_id: agentId,
     message: {
       type: "result",
       result,
@@ -278,7 +278,7 @@ export async function simulateAgentRunWithDisplayItems(
 
   // Exit
   await emitTauriEvent(page, "agent-exit", {
-    agent_id: agentId,
+    conversation_id: agentId,
     success: true,
   } satisfies AgentExitPayload);
 }
@@ -299,7 +299,7 @@ export async function simulateAgentError(
 
   // Exit with failure
   await emitTauriEvent(page, "agent-exit", {
-    agent_id: agentId,
+    conversation_id: agentId,
     success: false,
   } satisfies AgentExitPayload);
 }

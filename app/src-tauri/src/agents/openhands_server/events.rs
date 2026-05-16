@@ -1,16 +1,15 @@
 pub fn normalize_server_event(
-    agent_id: &str,
+    _conversation_owner_id: &str,
     conversation_id: &str,
     raw: &serde_json::Value,
 ) -> serde_json::Value {
     if let Some(status) = terminal_status(raw) {
-        return normalize_terminal_state(agent_id, conversation_id, status, raw);
+        return normalize_terminal_state(conversation_id, status, raw);
     }
 
     serde_json::json!({
         "type": "conversation_event",
         "runtime": "openhands",
-        "agent_id": agent_id,
         "conversation_id": conversation_id,
         "tool_call_id": extract_tool_call_id(raw),
         "parent_tool_call_id": raw
@@ -40,7 +39,6 @@ fn extract_tool_call_id(raw: &serde_json::Value) -> Option<serde_json::Value> {
 }
 
 fn normalize_terminal_state(
-    agent_id: &str,
     conversation_id: &str,
     status: &str,
     raw: &serde_json::Value,
@@ -48,7 +46,6 @@ fn normalize_terminal_state(
     serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
-        "agent_id": agent_id,
         "conversation_id": conversation_id,
         "status": status,
         "timestamp": chrono::Utc::now().timestamp_millis(),
@@ -150,8 +147,8 @@ mod tests {
         let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
 
         assert_eq!(normalized["type"], "conversation_event");
-        assert_eq!(normalized["agent_id"], "agent-1");
         assert_eq!(normalized["conversation_id"], "conversation-1");
+        assert!(normalized.get("agent_id").is_none());
         assert_eq!(normalized["event_class"], "MessageEvent");
         assert_eq!(normalized["event"], raw);
     }

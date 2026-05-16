@@ -152,6 +152,7 @@ pub struct StartedOpenHandsSession {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OpenHandsConversationSelection {
     ResumeOrCreate,
+    #[cfg_attr(not(test), allow(dead_code))]
     SendExistingOnly,
     CreateFresh,
 }
@@ -195,7 +196,6 @@ impl OpenHandsRunSummaryContext {
 
 struct OpenHandsConversationTask {
     app: tauri::AppHandle,
-    agent_id: String,
     client: OpenHandsServerClient,
     conversation_id: String,
     prompt: String,
@@ -281,7 +281,12 @@ fn maybe_record_subagent_launch(
     }
 }
 
-fn persisted_subagents_root(skills_root: &str, plugin_slug: &str, skill_name: &str, conversation_id: &str) -> PathBuf {
+fn persisted_subagents_root(
+    skills_root: &str,
+    plugin_slug: &str,
+    skill_name: &str,
+    conversation_id: &str,
+) -> PathBuf {
     let storage_dir = conversation_id.replace('-', "");
     Path::new(skills_root)
         .join(plugin_slug)
@@ -412,7 +417,7 @@ fn extract_user_message_text(raw: &serde_json::Value) -> Option<String> {
 
 fn collect_live_child_subagent_events(
     root: &Path,
-    agent_id: &str,
+    conversation_id: &str,
     launches: &HashMap<String, PendingSubagentLaunch>,
     state: &mut LiveSubagentStreamState,
 ) -> Result<Vec<serde_json::Value>, String> {
@@ -424,7 +429,7 @@ fn collect_live_child_subagent_events(
     if !launches.is_empty() || !children.is_empty() {
         log::debug!(
             "[openhands-agent-server:{}] live_subagent_scan root={} launch_count={} child_count={} known_links={} emitted_keys={}",
-            agent_id,
+            conversation_id,
             root.display(),
             launches.len(),
             children.len(),
@@ -441,7 +446,7 @@ fn collect_live_child_subagent_events(
         {
             log::debug!(
                 "[openhands-agent-server:{}] live_subagent_scan reuse_link child_conversation={} parent_tool_call_id={}",
-                agent_id,
+                conversation_id,
                 child.conversation_id,
                 existing
             );
@@ -461,7 +466,7 @@ fn collect_live_child_subagent_events(
             let Some(matched) = matched else {
                 log::debug!(
                     "[openhands-agent-server:{}] live_subagent_scan no_match child_conversation={} first_prompt_len={} child_first_event_ts={}",
-                    agent_id,
+                    conversation_id,
                     child.conversation_id,
                     child.first_prompt.len(),
                     child.first_event_timestamp_ms
@@ -473,7 +478,7 @@ fn collect_live_child_subagent_events(
                 .insert(child.conversation_id.clone(), matched.clone());
             log::debug!(
                 "[openhands-agent-server:{}] live_subagent_scan matched child_conversation={} parent_tool_call_id={} first_prompt_len={} event_count={}",
-                agent_id,
+                conversation_id,
                 child.conversation_id,
                 matched,
                 child.first_prompt.len(),
@@ -496,12 +501,12 @@ fn collect_live_child_subagent_events(
                 );
             }
             let normalized =
-                normalize_server_event(agent_id, &child.conversation_id, &linked_child);
+                normalize_server_event(conversation_id, &child.conversation_id, &linked_child);
             if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
             {
                 log::debug!(
                     "[openhands-agent-server:{}] live_subagent_emit child_conversation={} parent_tool_call_id={} event_class={} tool_call_id={} raw_kind={}",
-                    agent_id,
+                    conversation_id,
                     child.conversation_id,
                     parent_tool_call_id,
                     normalized.get("event_class").and_then(|value| value.as_str()).unwrap_or("unknown"),
@@ -553,7 +558,7 @@ async fn stream_live_child_subagent_events(
             Err(error) => {
                 log::warn!(
                     "[openhands-agent-server:{}] failed to lock subagent launches for live stream: {}",
-                    task.agent_id,
+                    task.conversation_id,
                     error
                 );
                 HashMap::new()
@@ -562,7 +567,7 @@ async fn stream_live_child_subagent_events(
 
         match collect_live_child_subagent_events(
             &root,
-            &task.agent_id,
+            &task.conversation_id,
             &launches_snapshot,
             &mut state,
         ) {
@@ -570,7 +575,7 @@ async fn stream_live_child_subagent_events(
                 for event in events {
                     super::events::handle_runtime_message(
                         &task.app,
-                        &task.agent_id,
+                        &task.conversation_id,
                         &event.to_string(),
                     );
                 }
@@ -578,7 +583,7 @@ async fn stream_live_child_subagent_events(
             Err(error) => {
                 log::warn!(
                     "[openhands-agent-server:{}] live child subagent event scan failed: {}",
-                    task.agent_id,
+                    task.conversation_id,
                     error
                 );
             }
@@ -897,17 +902,17 @@ async fn list_openhands_conversation_events_from_request(
     client.list_all_events(conversation_id).await
 }
 
-pub(crate) fn close_local_openhands_run(agent_id: &str) -> bool {
+pub(crate) fn close_local_openhands_run(conversation_id: &str) -> bool {
     let mut found = false;
 
-    if let Some((_, previous)) = cancel_registry().remove(agent_id) {
+    if let Some((_, previous)) = cancel_registry().remove(conversation_id) {
         found = true;
         if let Some(sender) = previous.sender {
             let _ = sender.send(());
         }
     }
 
-    if let Some((_, handle)) = task_registry().remove(agent_id) {
+    if let Some((_, handle)) = task_registry().remove(conversation_id) {
         handle.abort();
         found = true;
     }
@@ -917,8 +922,8 @@ pub(crate) fn close_local_openhands_run(agent_id: &str) -> bool {
 
 /// Send the cancel oneshot signal to a registered agent's Tokio task.
 /// Returns `true` if the agent is registered (or was already signaled), `false` if not found.
-pub(crate) fn send_cancel_signal(agent_id: &str) -> bool {
-    let mut handle = match cancel_registry().get_mut(agent_id) {
+pub(crate) fn send_cancel_signal(conversation_id: &str) -> bool {
+    let mut handle = match cancel_registry().get_mut(conversation_id) {
         Some(h) => h,
         None => return false,
     };
@@ -1039,7 +1044,6 @@ pub async fn send_message_to_openhands_conversation(
 
 pub async fn run_openhands_conversation(
     app: &tauri::AppHandle,
-    agent_id: &str,
     config: OpenHandsRuntimeConfig,
     conversation_id: String,
     prompt_delivery: PromptDelivery,
@@ -1060,17 +1064,14 @@ pub async fn run_openhands_conversation(
     let websocket_url = server.websocket_url(&conversation_id);
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    register_cancel(agent_id, cancel_tx)?;
+    register_cancel(&conversation_id, cancel_tx)?;
 
     let app_for_task = app.clone();
-    let agent_for_task = agent_id.to_string();
     let conversation_id_clone = conversation_id.clone();
     let session_api_key = server.session_api_key.clone();
     let task_handle = tokio::spawn(async move {
-        register_conversation_owner(&conversation_id_clone, &agent_for_task);
         let task = OpenHandsConversationTask {
             app: app_for_task.clone(),
-            agent_id: agent_for_task.clone(),
             client,
             conversation_id: conversation_id_clone.clone(),
             prompt: request.prompt.clone(),
@@ -1081,19 +1082,18 @@ pub async fn run_openhands_conversation(
             stderr_tail: server.stderr_tail.clone(),
         };
         let result = run_conversation_task(task, cancel_rx).await;
-        unregister_conversation_owner(&conversation_id_clone);
-        unregister_cancel(&agent_for_task);
-        unregister_task_handle(&agent_for_task);
+        unregister_cancel(&conversation_id_clone);
+        unregister_task_handle(&conversation_id_clone);
         if let Err(error) = result {
             super::events::handle_runtime_exit_with_detail(
                 &app_for_task,
-                &agent_for_task,
+                &conversation_id_clone,
                 false,
                 Some(error),
             );
         }
     });
-    register_task_handle(agent_id, &task_handle);
+    register_task_handle(&conversation_id, &task_handle);
 
     Ok(conversation_id)
 }
@@ -1141,17 +1141,20 @@ pub async fn delete_openhands_conversation(
         Some(server.session_api_key),
     );
 
-    client.delete_conversation(conversation_id).await.map_err(|e| {
-        OpenHandsRuntimeError::Operation {
-            operation: "delete OpenHands Agent Server conversation",
-            detail: e.to_string(),
-        }
-        .to_string()
-    })
+    client
+        .delete_conversation(conversation_id)
+        .await
+        .map_err(|e| {
+            OpenHandsRuntimeError::Operation {
+                operation: "delete OpenHands Agent Server conversation",
+                detail: e.to_string(),
+            }
+            .to_string()
+        })
 }
 
-pub(crate) fn has_registered_local_run(agent_id: &str) -> bool {
-    task_registry().contains_key(agent_id) || cancel_registry().contains_key(agent_id)
+pub(crate) fn has_registered_local_run(conversation_id: &str) -> bool {
+    task_registry().contains_key(conversation_id) || cancel_registry().contains_key(conversation_id)
 }
 
 async fn run_conversation_task(
@@ -1164,7 +1167,7 @@ async fn run_conversation_task(
         if let Err(error) = task.client.pause_conversation(&task.conversation_id).await {
             log::error!(
                 "[openhands-agent-server:{}] cleanup_pause_failed conversation_id={} error={}",
-                task.agent_id,
+                task.conversation_id,
                 task.conversation_id,
                 error
             );
@@ -1216,7 +1219,6 @@ async fn run_conversation_task_inner(
         let stop = Arc::clone(&stop_subagent_stream);
         let worker_task = OpenHandsConversationTask {
             app: task.app.clone(),
-            agent_id: task.agent_id.clone(),
             client: task.client.clone(),
             conversation_id: task.conversation_id.clone(),
             prompt: task.prompt.clone(),
@@ -1240,7 +1242,7 @@ async fn run_conversation_task_inner(
             _ = &mut *cancel_rx, if !cancel_pending => {
                 log::debug!(
                     "[openhands-agent-server:{}] pause_request dispatch conversation_id={}",
-                    task.agent_id,
+                    task.conversation_id,
                     task.conversation_id
                 );
                 task.client
@@ -1249,7 +1251,7 @@ async fn run_conversation_task_inner(
                     .map_err(|e| format!("Failed to pause OpenHands Agent Server conversation: {e}"))?;
                 log::debug!(
                     "[openhands-agent-server:{}] pause_request result=ok conversation_id={}",
-                    task.agent_id,
+                    task.conversation_id,
                     task.conversation_id
                 );
                 // Continue reading the WebSocket — the server will stream back a PauseEvent
@@ -1273,7 +1275,7 @@ async fn run_conversation_task_inner(
                 if matches!(&message, Message::Close(Some(f)) if f.code == CloseCode::Restart) {
                     log::debug!(
                         "[openhands-agent-server:{}] server_restart_close conversation_id={} action=cancel_pending",
-                        task.agent_id,
+                        task.conversation_id,
                         task.conversation_id
                     );
                     cancel_pending = true;
@@ -1290,7 +1292,7 @@ async fn run_conversation_task_inner(
                     Err(e) => {
                         log::debug!(
                             "[openhands-agent-server:{}] ignored non-json socket message: {}",
-                            task.agent_id,
+                            task.conversation_id,
                             e
                         );
                         continue;
@@ -1302,7 +1304,8 @@ async fn run_conversation_task_inner(
                     }
                 }
                 record_subagent_launch(&raw, &pending_subagent_launches);
-                let normalized = normalize_server_event(&task.agent_id, &task.conversation_id, &raw);
+                let normalized =
+                    normalize_server_event(&task.conversation_id, &task.conversation_id, &raw);
                 let is_terminal = normalized
                     .get("type")
                     .and_then(|value| value.as_str())
@@ -1311,7 +1314,11 @@ async fn run_conversation_task_inner(
                     terminal_state = Some(normalized);
                     break;
                 } else {
-                    super::events::handle_runtime_message(&task.app, &task.agent_id, &normalized.to_string());
+                    super::events::handle_runtime_message(
+                        &task.app,
+                        &task.conversation_id,
+                        &normalized.to_string(),
+                    );
                 }
             }
         }
@@ -1322,7 +1329,7 @@ async fn run_conversation_task_inner(
         if let Err(error) = handle.await {
             log::warn!(
                 "[openhands-agent-server:{}] subagent event stream worker join failed: {}",
-                task.agent_id,
+                task.conversation_id,
                 error
             );
         }
@@ -1330,24 +1337,14 @@ async fn run_conversation_task_inner(
 
     let mut terminal_state = match terminal_state {
         Some(state) if terminal_state_needs_final_response(&state) => {
-            match fetch_final_response_state(
-                &task.client,
-                &task.agent_id,
-                &task.conversation_id,
-                Some(state),
-            )
-            .await
+            match fetch_final_response_state(&task.client, &task.conversation_id, Some(state)).await
             {
                 Ok(final_state) => final_state,
-                Err(error) => build_missing_completed_payload_state(
-                    &task.agent_id,
-                    &task.conversation_id,
-                    &error,
-                ),
+                Err(error) => build_missing_completed_payload_state(&task.conversation_id, &error),
             }
         }
         Some(state) => state,
-        None if cancel_pending => build_cancelled_state(&task.agent_id, &task.conversation_id),
+        None if cancel_pending => build_cancelled_state(&task.conversation_id),
         None => recover_terminal_state_after_socket_failure(task, socket_error.as_deref()).await,
     };
 
@@ -1373,21 +1370,20 @@ async fn run_conversation_task_inner(
             .unwrap_or("unknown");
         log::info!(
             "[openhands-agent-server:{}] pause_terminal_outcome status={} conversation_id={}",
-            task.agent_id,
+            task.conversation_id,
             terminal_status,
             task.conversation_id
         );
     }
-    emit_openhands_run_result(
+    emit_openhands_run_result(&task.app, &terminal_state, &task.summary_context);
+    super::events::handle_runtime_message(
         &task.app,
-        &task.agent_id,
-        &terminal_state,
-        &task.summary_context,
+        &task.conversation_id,
+        &terminal_state.to_string(),
     );
-    super::events::handle_runtime_message(&task.app, &task.agent_id, &terminal_state.to_string());
     super::events::handle_runtime_exit_with_detail(
         &task.app,
-        &task.agent_id,
+        &task.conversation_id,
         terminal_error.is_none(),
         terminal_error,
     );
@@ -1431,13 +1427,11 @@ async fn recover_terminal_state_after_socket_failure(
 ) -> serde_json::Value {
     match task.client.list_all_events(&task.conversation_id).await {
         Ok(events) => {
-            if let Some(state) =
-                recover_terminal_state_from_events(&task.agent_id, &task.conversation_id, &events)
+            if let Some(state) = recover_terminal_state_from_events(&task.conversation_id, &events)
             {
                 if terminal_state_needs_final_response(&state) {
                     match fetch_final_response_state(
                         &task.client,
-                        &task.agent_id,
                         &task.conversation_id,
                         Some(state.clone()),
                     )
@@ -1446,7 +1440,6 @@ async fn recover_terminal_state_after_socket_failure(
                         Ok(final_state) => return final_state,
                         Err(error) => {
                             return build_missing_completed_payload_state(
-                                &task.agent_id,
                                 &task.conversation_id,
                                 &error,
                             );
@@ -1459,14 +1452,13 @@ async fn recover_terminal_state_after_socket_failure(
         Err(error) => {
             log::warn!(
                 "[openhands-agent-server:{}] failed to recover persisted events after socket failure: {}",
-                task.agent_id,
+                task.conversation_id,
                 error
             );
         }
     }
 
     build_socket_closed_state(
-        &task.agent_id,
         &task.conversation_id,
         socket_error
             .unwrap_or("OpenHands Agent Server socket closed before terminal conversation_state"),
@@ -1474,32 +1466,26 @@ async fn recover_terminal_state_after_socket_failure(
 }
 
 fn recover_terminal_state_from_events(
-    agent_id: &str,
     conversation_id: &str,
     events: &[serde_json::Value],
 ) -> Option<serde_json::Value> {
     events.iter().rev().find_map(|raw| {
-        let normalized = normalize_server_event(agent_id, conversation_id, raw);
+        let normalized = normalize_server_event(conversation_id, conversation_id, raw);
         (normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_state"))
             .then_some(normalized)
     })
 }
 
-fn build_socket_closed_state(
-    agent_id: &str,
-    conversation_id: &str,
-    error_detail: &str,
-) -> serde_json::Value {
+fn build_socket_closed_state(conversation_id: &str, error_detail: &str) -> serde_json::Value {
     log::error!(
         "[openhands-agent-server:{}] socket_closed_terminal_state conversation_id={} error={}",
-        agent_id,
+        conversation_id,
         conversation_id,
         error_detail
     );
     serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
-        "agent_id": agent_id,
         "conversation_id": conversation_id,
         "status": "error",
         "timestamp": chrono::Utc::now().timestamp_millis(),
@@ -1512,11 +1498,10 @@ fn build_socket_closed_state(
 /// the WebSocket closed without a follow-up `PauseEvent`. Without this the
 /// loop falls through to `build_socket_closed_state` and surfaces the cancel
 /// as `status: "error"`, which is wrong — the user explicitly cancelled.
-fn build_cancelled_state(agent_id: &str, conversation_id: &str) -> serde_json::Value {
+fn build_cancelled_state(conversation_id: &str) -> serde_json::Value {
     serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
-        "agent_id": agent_id,
         "conversation_id": conversation_id,
         "status": "cancelled",
         "timestamp": chrono::Utc::now().timestamp_millis(),
@@ -1527,12 +1512,11 @@ fn build_cancelled_state(agent_id: &str, conversation_id: &str) -> serde_json::V
 
 fn emit_openhands_run_result(
     app: &tauri::AppHandle,
-    agent_id: &str,
     terminal_state: &serde_json::Value,
     context: &OpenHandsRunSummaryContext,
 ) {
     let run_result = build_openhands_run_result_event(terminal_state, context);
-    super::events::handle_runtime_message(app, agent_id, &run_result.to_string());
+    super::events::handle_runtime_message(app, &context.session_id, &run_result.to_string());
 }
 
 fn build_openhands_run_result_event(
@@ -1600,7 +1584,6 @@ fn terminal_state_needs_final_response(state: &serde_json::Value) -> bool {
 
 async fn fetch_final_response_state(
     client: &OpenHandsServerClient,
-    agent_id: &str,
     conversation_id: &str,
     terminal_event: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
@@ -1619,7 +1602,6 @@ async fn fetch_final_response_state(
     Ok(serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
-        "agent_id": agent_id,
         "conversation_id": conversation_id,
         "status": "completed",
         "timestamp": chrono::Utc::now().timestamp_millis(),
@@ -1632,14 +1614,12 @@ async fn fetch_final_response_state(
 }
 
 fn build_missing_completed_payload_state(
-    agent_id: &str,
     conversation_id: &str,
     error_detail: &str,
 ) -> serde_json::Value {
     serde_json::json!({
         "type": "conversation_state",
         "runtime": "openhands",
-        "agent_id": agent_id,
         "conversation_id": conversation_id,
         "status": "error",
         "timestamp": chrono::Utc::now().timestamp_millis(),
@@ -1665,10 +1645,10 @@ fn extract_conversation_id(conversation: &serde_json::Value) -> Result<String, S
 
 pub(crate) fn parse_openhands_runtime_terminal_state(
     payload: &str,
-    target_agent_id: &str,
+    target_conversation_id: &str,
 ) -> Option<Result<serde_json::Value, String>> {
     let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
-    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+    if value.get("conversation_id").and_then(|v| v.as_str()) != Some(target_conversation_id) {
         return None;
     }
 
@@ -1693,10 +1673,10 @@ pub(crate) fn parse_openhands_runtime_terminal_state(
 
 pub(crate) fn parse_openhands_lifecycle_state(
     payload: &str,
-    target_agent_id: &str,
+    target_conversation_id: &str,
 ) -> Option<Result<(), String>> {
     let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
-    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+    if value.get("conversation_id").and_then(|v| v.as_str()) != Some(target_conversation_id) {
         return None;
     }
     let success = value
@@ -1734,7 +1714,6 @@ struct OpenHandsCancelHandle {
 
 type OpenHandsCancelRegistry = DashMap<String, OpenHandsCancelHandle>;
 type OpenHandsTaskRegistry = DashMap<String, tokio::task::AbortHandle>;
-type OpenHandsConversationOwnerRegistry = DashMap<String, String>;
 
 fn cancel_registry() -> &'static OpenHandsCancelRegistry {
     static REGISTRY: std::sync::OnceLock<OpenHandsCancelRegistry> = std::sync::OnceLock::new();
@@ -1746,20 +1725,17 @@ fn task_registry() -> &'static OpenHandsTaskRegistry {
     REGISTRY.get_or_init(OpenHandsTaskRegistry::new)
 }
 
-fn conversation_owner_registry() -> &'static OpenHandsConversationOwnerRegistry {
-    static REGISTRY: std::sync::OnceLock<OpenHandsConversationOwnerRegistry> =
-        std::sync::OnceLock::new();
-    REGISTRY.get_or_init(OpenHandsConversationOwnerRegistry::new)
-}
-
-fn register_cancel(agent_id: &str, cancel: tokio::sync::oneshot::Sender<()>) -> Result<(), String> {
-    if let Some((_, previous)) = cancel_registry().remove(agent_id) {
+fn register_cancel(
+    conversation_id: &str,
+    cancel: tokio::sync::oneshot::Sender<()>,
+) -> Result<(), String> {
+    if let Some((_, previous)) = cancel_registry().remove(conversation_id) {
         if let Some(sender) = previous.sender {
             let _ = sender.send(());
         }
     }
     cancel_registry().insert(
-        agent_id.to_string(),
+        conversation_id.to_string(),
         OpenHandsCancelHandle {
             sender: Some(cancel),
             pause_requested: false,
@@ -1768,40 +1744,23 @@ fn register_cancel(agent_id: &str, cancel: tokio::sync::oneshot::Sender<()>) -> 
     Ok(())
 }
 
-fn unregister_cancel(agent_id: &str) {
-    cancel_registry().remove(agent_id);
+fn unregister_cancel(conversation_id: &str) {
+    cancel_registry().remove(conversation_id);
 }
 
-fn register_task_handle(agent_id: &str, handle: &tokio::task::JoinHandle<()>) {
-    if let Some((_, previous)) = task_registry().remove(agent_id) {
+fn register_task_handle(conversation_id: &str, handle: &tokio::task::JoinHandle<()>) {
+    if let Some((_, previous)) = task_registry().remove(conversation_id) {
         previous.abort();
     }
-    task_registry().insert(agent_id.to_string(), handle.abort_handle());
+    task_registry().insert(conversation_id.to_string(), handle.abort_handle());
 }
 
-fn unregister_task_handle(agent_id: &str) {
-    task_registry().remove(agent_id);
-}
-
-fn register_conversation_owner(conversation_id: &str, agent_id: &str) {
-    conversation_owner_registry()
-        .insert(conversation_id.to_string(), agent_id.to_string());
-}
-
-fn unregister_conversation_owner(conversation_id: &str) {
-    conversation_owner_registry().remove(conversation_id);
-}
-
-pub(crate) fn find_agent_for_conversation(conversation_id: &str) -> Option<String> {
-    conversation_owner_registry()
-        .get(conversation_id)
-        .map(|entry| entry.value().clone())
+fn unregister_task_handle(conversation_id: &str) {
+    task_registry().remove(conversation_id);
 }
 
 pub(crate) fn has_live_runner_for_conversation(conversation_id: &str) -> bool {
-    find_agent_for_conversation(conversation_id).is_some_and(|agent_id| {
-        has_registered_local_run(&agent_id)
-    })
+    has_registered_local_run(conversation_id)
 }
 
 #[cfg(test)]
@@ -1842,7 +1801,6 @@ mod tests {
     #[test]
     fn empty_fetched_final_response_is_not_a_valid_completed_payload() {
         let state = build_missing_completed_payload_state(
-            "agent-1",
             "conversation-1",
             "OpenHands completed without result text or final response",
         );
@@ -1859,7 +1817,6 @@ mod tests {
     #[test]
     fn socket_close_without_terminal_state_is_error_state() {
         let state = build_socket_closed_state(
-            "agent-1",
             "conversation-1",
             "OpenHands Agent Server socket closed before terminal conversation_state",
         );
@@ -1883,7 +1840,7 @@ mod tests {
         // PauseEvent. Without this fallback the user would see the cancel
         // surface as `status: "error"` — which is a UX regression on a
         // user-driven cancel.
-        let state = build_cancelled_state("agent-1", "conversation-1");
+        let state = build_cancelled_state("conversation-1");
 
         assert_eq!(
             state.get("type").and_then(|v| v.as_str()),
@@ -1903,7 +1860,6 @@ mod tests {
     #[test]
     fn persisted_terminal_event_can_be_recovered_after_socket_failure() {
         let recovered = recover_terminal_state_from_events(
-            "agent-1",
             "conversation-1",
             &[serde_json::json!({
                 "event_class": "ConversationStateUpdateEvent",
@@ -1915,7 +1871,6 @@ mod tests {
 
         assert_eq!(recovered["type"], "conversation_state");
         assert_eq!(recovered["status"], "completed");
-        assert_eq!(recovered["agent_id"], "agent-1");
         assert_eq!(recovered["conversation_id"], "conversation-1");
     }
 
@@ -2278,7 +2233,7 @@ mod tests {
     #[test]
     fn terminal_state_error_uses_runtime_fallback_text() {
         let payload = serde_json::json!({
-            "agent_id": "agent-1",
+            "conversation_id": "conversation-1",
             "message": {
                 "type": "conversation_state",
                 "status": "error"
@@ -2286,8 +2241,8 @@ mod tests {
         })
         .to_string();
 
-        let result =
-            parse_openhands_runtime_terminal_state(&payload, "agent-1").expect("terminal state");
+        let result = parse_openhands_runtime_terminal_state(&payload, "conversation-1")
+            .expect("terminal state");
 
         assert_eq!(result, Err("OpenHands runtime run failed".to_string()));
     }
@@ -2295,12 +2250,13 @@ mod tests {
     #[test]
     fn lifecycle_state_error_uses_runtime_fallback_text() {
         let payload = serde_json::json!({
-            "agent_id": "agent-1",
+            "conversation_id": "conversation-1",
             "success": false
         })
         .to_string();
 
-        let result = parse_openhands_lifecycle_state(&payload, "agent-1").expect("lifecycle state");
+        let result =
+            parse_openhands_lifecycle_state(&payload, "conversation-1").expect("lifecycle state");
 
         assert_eq!(result, Err("OpenHands runtime run failed".to_string()));
     }
@@ -2686,41 +2642,41 @@ mod tests {
 
     #[test]
     fn cancel_signal_sends_once_and_is_idempotent_until_unregistered() {
-        let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
+        let conversation_id = format!("test-conversation-{}", uuid::Uuid::new_v4());
         let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
 
-        register_cancel(&agent_id, cancel_tx).unwrap();
+        register_cancel(&conversation_id, cancel_tx).unwrap();
 
-        assert!(send_cancel_signal(&agent_id));
+        assert!(send_cancel_signal(&conversation_id));
         assert!(cancel_rx.try_recv().is_ok());
-        assert!(send_cancel_signal(&agent_id)); // idempotent after sender consumed
+        assert!(send_cancel_signal(&conversation_id)); // idempotent after sender consumed
 
-        unregister_cancel(&agent_id);
-        assert!(!send_cancel_signal(&agent_id)); // false once unregistered
+        unregister_cancel(&conversation_id);
+        assert!(!send_cancel_signal(&conversation_id)); // false once unregistered
     }
 
     #[tokio::test]
     async fn close_local_run_forces_registry_cleanup() {
-        let agent_id = format!("test-agent-{}", uuid::Uuid::new_v4());
+        let conversation_id = format!("test-conversation-{}", uuid::Uuid::new_v4());
         let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
-        register_cancel(&agent_id, cancel_tx).unwrap();
+        register_cancel(&conversation_id, cancel_tx).unwrap();
 
         let handle = tokio::spawn(async move {
             let _ = tokio::time::sleep(Duration::from_secs(30)).await;
         });
-        register_task_handle(&agent_id, &handle);
+        register_task_handle(&conversation_id, &handle);
 
         assert!(
-            close_local_openhands_run(&agent_id),
+            close_local_openhands_run(&conversation_id),
             "close should report that a live run was present"
         );
         assert!(cancel_rx.try_recv().is_ok(), "cancel signal should be sent");
         assert!(
-            !cancel_registry().contains_key(&agent_id),
+            !cancel_registry().contains_key(&conversation_id),
             "cancel registry entry should be removed"
         );
         assert!(
-            !task_registry().contains_key(&agent_id),
+            !task_registry().contains_key(&conversation_id),
             "task registry entry should be removed"
         );
     }

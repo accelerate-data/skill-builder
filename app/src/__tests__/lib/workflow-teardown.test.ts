@@ -10,9 +10,7 @@ vi.mock("@/lib/tauri", () => ({
 const {
   mockWorkflowStore,
   mockRuntimeStore,
-  mockSkillStore,
   mockClearSessionRuns,
-  mockSetActiveAgentId,
 } = vi.hoisted(() => {
   let workflowState = {
     workflowSessionId: "session-123",
@@ -37,15 +35,11 @@ const {
   };
 
   const mockClearSessionRuns = vi.fn();
-  const mockSetActiveAgentId = vi.fn();
   const mockRuntimeStore = {
     getState: vi.fn(() => ({ clearSessionRuns: mockClearSessionRuns })),
   };
-  const mockSkillStore = {
-    getState: vi.fn(() => ({ setActiveAgentId: mockSetActiveAgentId })),
-  };
 
-  return { mockWorkflowStore, mockRuntimeStore, mockSkillStore, mockClearSessionRuns, mockSetActiveAgentId };
+  return { mockWorkflowStore, mockRuntimeStore, mockClearSessionRuns };
 });
 
 vi.mock("@/stores/workflow-store", () => ({
@@ -54,10 +48,6 @@ vi.mock("@/stores/workflow-store", () => ({
 
 vi.mock("@/stores/session-runtime-store", () => ({
   useSessionRuntimeStore: mockRuntimeStore,
-}));
-
-vi.mock("@/stores/skill-store", () => ({
-  useSkillStore: mockSkillStore,
 }));
 
 describe("teardownWorkflowSession", () => {
@@ -87,7 +77,6 @@ describe("teardownWorkflowSession", () => {
     expect(state.clearInitializing).toHaveBeenCalled();
     expect(state.clearRuntimeError).toHaveBeenCalled();
     expect(mockClearSessionRuns).toHaveBeenCalled();
-    expect(mockSetActiveAgentId).toHaveBeenCalledWith(null);
     expect(mockEndWorkflowSession).toHaveBeenCalledWith("session-123");
     expect(mockWorkflowStore.setState).not.toHaveBeenCalled();
   });

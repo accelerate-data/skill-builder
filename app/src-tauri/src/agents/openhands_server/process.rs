@@ -351,6 +351,7 @@ pub async fn ensure_agent_server(
 /// Does NOT start a new server — callers that only need the handle for
 /// best-effort operations (e.g. pause before delete) use this instead of
 /// `ensure_agent_server`.
+#[cfg_attr(not(test), allow(dead_code))]
 pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle> {
     let registry = agent_server_registry().lock().await;
     registry.as_ref().map(|s| s.handle.clone())

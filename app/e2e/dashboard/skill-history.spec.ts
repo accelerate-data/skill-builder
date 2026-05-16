@@ -44,13 +44,9 @@ test.describe("Skill History & Restore", { tag: "@dashboard" }, () => {
   test("Restore version menu item opens history dialog", async ({ page }) => {
     await reloadWithOverrides(page, HISTORY_OVERRIDES);
 
-    // Hover the skill row to show the context menu trigger
-    const skillRow = page.getByText("test-skill").first();
-    await skillRow.hover();
-
-    // Open the "More actions" dropdown
-    const moreButton = page.getByLabel("More actions");
-    await moreButton.click({ force: true });
+    const skillRow = page.getByRole("button", { name: /test-skill/ }).first();
+    await skillRow.click();
+    await skillRow.click({ button: "right" });
 
     // Click "Restore version"
     await page.getByRole("menuitem", { name: "Restore version" }).click();
@@ -62,10 +58,9 @@ test.describe("Skill History & Restore", { tag: "@dashboard" }, () => {
   test("history dialog displays version badges", async ({ page }) => {
     await reloadWithOverrides(page, HISTORY_OVERRIDES);
 
-    const skillRow = page.getByText("test-skill").first();
-    await skillRow.hover();
-    const moreButton = page.getByLabel("More actions");
-    await moreButton.click({ force: true });
+    const skillRow = page.getByRole("button", { name: /test-skill/ }).first();
+    await skillRow.click();
+    await skillRow.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore version" }).click();
     const dialog = page.getByRole("alertdialog", { name: "Restore Version" });
 
@@ -85,10 +80,9 @@ test.describe("Skill History & Restore", { tag: "@dashboard" }, () => {
   test("restoring a version shows success toast", async ({ page }) => {
     await reloadWithOverrides(page, HISTORY_OVERRIDES);
 
-    const skillRow = page.getByText("test-skill").first();
-    await skillRow.hover();
-    const moreButton = page.getByLabel("More actions");
-    await moreButton.click({ force: true });
+    const skillRow = page.getByRole("button", { name: /test-skill/ }).first();
+    await skillRow.click();
+    await skillRow.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore version" }).click();
 
     // Click Restore on the v1 entry (second Restore button)
@@ -108,10 +102,9 @@ test.describe("Skill History & Restore", { tag: "@dashboard" }, () => {
       get_skill_history: [],
     });
 
-    const skillRow = page.getByText("test-skill").first();
-    await skillRow.hover();
-    const moreButton = page.getByLabel("More actions");
-    await moreButton.click({ force: true });
+    const skillRow = page.getByRole("button", { name: /test-skill/ }).first();
+    await skillRow.click();
+    await skillRow.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Restore version" }).click();
 
     await expect(page.getByText("No tagged versions found")).toBeVisible({ timeout: 5_000 });

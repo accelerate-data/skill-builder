@@ -34,10 +34,8 @@ pub async fn test_model_connection(
     let skills_path = read_initialized_skills_path(&db)?;
 
     let run_id = uuid::Uuid::new_v4().to_string();
-    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        MODEL_CONNECTION_TEST_SURFACE,
-        &run_id,
-    );
+    let runtime_run_dir =
+        crate::skill_paths::throwaway_runtime_dir(MODEL_CONNECTION_TEST_SURFACE, &run_id);
 
     std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
         std::path::Path::new(&runtime_run_dir),
@@ -74,11 +72,7 @@ pub async fn test_model_connection(
     });
     let run = tracked_openhands::send_tracked_throwaway(
         &app,
-        OpenHandsThrowawayRunParams {
-            agent_id: format!("model-connection-test-{}", uuid::Uuid::new_v4()),
-            config,
-            timeout,
-        },
+        OpenHandsThrowawayRunParams { config, timeout },
     )
     .await?;
 

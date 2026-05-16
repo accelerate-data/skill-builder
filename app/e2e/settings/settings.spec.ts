@@ -1,8 +1,21 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { reloadWithOverrides, waitForAppReady } from "../helpers/app-helpers";
-import { E2E_SKILLS_PATH, E2E_WORKSPACE_PATH } from "../helpers/test-paths";
+import {
+  E2E_MODEL_SETTINGS,
+  E2E_SKILLS_PATH,
+  E2E_WORKSPACE_PATH,
+} from "../helpers/test-paths";
 
 test.describe("Settings Page", { tag: "@settings" }, () => {
+  async function selectAnthropicProvider(page: Page) {
+    await page.getByRole("combobox", { name: "Provider" }).click();
+    await page
+      .getByRole("listbox")
+      .getByRole("option", { name: /anthropic/i })
+      .first()
+      .click();
+  }
+
   test.beforeEach(async ({ page }) => {
     await page.goto("/settings");
     await waitForAppReady(page);
@@ -11,8 +24,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
   test("can type API key and test it", async ({ page }) => {
     await page.getByRole("button", { name: "Models" }).click();
     await expect(page.getByText("Anthropic Model List")).toHaveCount(0);
-    await page.getByRole("combobox", { name: "Provider" }).click();
-    await page.getByRole("option", { name: "Anthropic" }).click();
+    await selectAnthropicProvider(page);
     const input = page.getByPlaceholder("Provider API key");
     await input.fill("sk-ant-test-key");
 
@@ -39,8 +51,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     });
 
     await page.getByRole("button", { name: "Models" }).click();
-    await page.getByRole("combobox", { name: "Provider" }).click();
-    await page.getByRole("option", { name: "Anthropic" }).click();
+    await selectAnthropicProvider(page);
     const input = page.getByPlaceholder("Provider API key");
     await input.fill("sk-ant-invalid-key");
 
@@ -58,14 +69,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
       get_settings: {
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
-        model_settings: {
-          provider: "anthropic",
-          model: "claude-sonnet-4-5",
-          api_key: "sk-ant-test",
-          base_url: null,
-          reasoning_effort: "auto",
-          usage_id: "workflow",
-        },
+        model_settings: E2E_MODEL_SETTINGS,
       },
       check_workspace_path: true,
       save_settings: undefined,
@@ -93,11 +97,11 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     // Wait for "Saved" confirmation to appear
     await expect(page.getByText("Saved")).toBeVisible({ timeout: 5_000 });
 
-    // Navigate away to dashboard using the back button (client-side navigation)
-    await page.getByRole("button", { name: "Back to Dashboard" }).click();
+    // Toggle out of settings via the icon rail so the client store stays live.
+    await page.locator("aside").getByTitle("Settings").click();
     await expect(page).toHaveURL("/", { timeout: 5_000 });
 
-    // Navigate back to settings using the Settings icon in the sidebar rail (client-side, preserves store)
+    // Navigate back to settings using the same icon toggle.
     await page.locator("aside").getByTitle("Settings").click();
     await expect(page).toHaveURL("/settings", { timeout: 5_000 });
 
@@ -133,14 +137,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
       get_settings: {
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
-        model_settings: {
-          provider: "anthropic",
-          model: "claude-sonnet-4-5",
-          api_key: "sk-ant-test",
-          base_url: null,
-          reasoning_effort: "auto",
-          usage_id: "workflow",
-        },
+        model_settings: E2E_MODEL_SETTINGS,
         marketplace_registries: [
           {
             name: "Vibedata Skills",
@@ -188,14 +185,7 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
       get_settings: {
         workspace_path: E2E_WORKSPACE_PATH,
         skills_path: E2E_SKILLS_PATH,
-        model_settings: {
-          provider: "anthropic",
-          model: "claude-sonnet-4-5",
-          api_key: "sk-ant-test",
-          base_url: null,
-          reasoning_effort: "auto",
-          usage_id: "workflow",
-        },
+        model_settings: E2E_MODEL_SETTINGS,
         log_level: "info",
       },
       check_workspace_path: true,

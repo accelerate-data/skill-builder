@@ -66,8 +66,8 @@ pub struct SkillSession {
     #[allow(dead_code)]
     pub usage_session_id: String,
     pub conversation_id: Option<String>,
-    pub current_agent_id: Option<String>,
     pub dispatched_user_turn_count: usize,
+    #[allow(dead_code)]
     pub head_sha_at_start: Option<String>,
 }
 
@@ -135,7 +135,11 @@ fn restore_skill_conversation_state(
 }
 
 fn new_skill_usage_session_id(skill_name: &str) -> String {
-    format!("synthetic:selected-skill:{}:{}", skill_name, uuid::Uuid::new_v4())
+    format!(
+        "synthetic:selected-skill:{}:{}",
+        skill_name,
+        uuid::Uuid::new_v4()
+    )
 }
 
 fn event_class(raw: &serde_json::Value) -> Option<&str> {
@@ -398,7 +402,6 @@ pub async fn select_skill_openhands_session(
                 plugin_slug: plugin_slug.clone(),
                 usage_session_id: new_skill_usage_session_id(&skill_name),
                 conversation_id: Some(active_conversation_id.clone()),
-                current_agent_id: None,
                 dispatched_user_turn_count,
                 head_sha_at_start,
             },
@@ -471,7 +474,6 @@ pub async fn pause_openhands_session(
     let local_closed = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
         config,
         &conversation_id,
-        None,
     )
     .await?;
 
@@ -515,7 +517,6 @@ mod tests {
             plugin_slug: plugin_slug.to_string(),
             usage_session_id: usage_session_id.to_string(),
             conversation_id: None,
-            current_agent_id: None,
             dispatched_user_turn_count: 0,
             head_sha_at_start: None,
         }

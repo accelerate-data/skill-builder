@@ -323,14 +323,13 @@ impl OpenHandsServerClient {
         self.http
             .execute(request)
             .await
-            .map(|response| {
+            .inspect(|response| {
                 log::debug!(
                     "[openhands-api] {} -> {} ({}ms)",
                     label,
                     response.status(),
                     started_at.elapsed().as_millis()
                 );
-                response
             })
             .map_err(|e| {
                 log::warn!("[openhands-api] {label} failed: {e}");

@@ -2,14 +2,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentEvent {
-    pub agent_id: String,
+    pub conversation_id: String,
     pub message: serde_json::Value,
 }
 
 /// Payload emitted as the `agent-exit` Tauri event when a runtime agent process terminates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentExitPayload {
-    pub agent_id: String,
+    pub conversation_id: String,
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_detail: Option<String>,
@@ -19,7 +19,7 @@ pub struct AgentExitPayload {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentShutdownPayload {
-    pub agent_id: String,
+    pub conversation_id: String,
 }
 
 /// Payload for runtime startup error events sent to the frontend.

@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { reloadWithOverrides } from "./app-helpers";
 import {
-  E2E_PREFERRED_MODEL,
+  E2E_MODEL_SETTINGS,
   E2E_SKILLS_PATH,
   E2E_WORKSPACE_PATH,
 } from "./test-paths";
@@ -9,14 +9,7 @@ import {
 /** Common overrides for a configured workspace on the settings page. */
 export const BASE_SETTINGS_OVERRIDES: Record<string, unknown> = {
   get_settings: {
-    model_settings: {
-      provider: "anthropic",
-      model: E2E_PREFERRED_MODEL,
-      api_key: "sk-ant-test-e2e",
-      base_url: null,
-      reasoning_effort: "auto",
-      usage_id: "workflow",
-    },
+    model_settings: E2E_MODEL_SETTINGS,
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
   },
