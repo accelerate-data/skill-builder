@@ -29,7 +29,7 @@
 - Modify: `repo-map.json`
 - Delete/Modify tests: `app/src/__tests__/components/workspace/workspace-refine.test.tsx`, `app/src/__tests__/components/refine/**`, `app/src/__tests__/stores/refine-store.test.ts`, `app/src/__tests__/lib/skill-openhands-session.test.ts`
 
-- [ ] **Step 1: Remove Refine from the Workflow page and route-level UI**
+- [x] **Step 1: Remove Refine from the Workflow page and route-level UI**
 
 ```tsx
 // app/src/pages/workflow.tsx
@@ -41,7 +41,7 @@ const tabs = [
 ];
 ```
 
-- [ ] **Step 2: Delete the old Refine component tree and store**
+- [x] **Step 2: Delete the old Refine component tree and store**
 
 ```text
 Delete:
@@ -50,7 +50,7 @@ Delete:
 - app/src/stores/refine-store.ts
 ```
 
-- [ ] **Step 3: Delete the Refine-specific Tauri command module**
+- [x] **Step 3: Delete the Refine-specific Tauri command module**
 
 ```rust
 // app/src-tauri/src/lib.rs
@@ -58,7 +58,7 @@ Delete:
 // Remove the `commands::refine` module import if nothing else uses it.
 ```
 
-- [ ] **Step 4: Keep shared runtime helpers that are still used outside Refine**
+- [x] **Step 4: Keep shared runtime helpers that are still used outside Refine**
 
 ```text
 Do not delete in PR 1:
@@ -71,7 +71,7 @@ Do not delete in PR 1:
 These remain the migration seam for Workflow and other surfaces until later PRs.
 ```
 
-- [ ] **Step 5: Remove or rewrite tests that only cover the deleted Refine surface**
+- [x] **Step 5: Remove or rewrite tests that only cover the deleted Refine surface**
 
 ```bash
 cd app && npx vitest run \
@@ -84,7 +84,7 @@ Expected:
 - deleted Refine test files are gone
 - remaining Workflow tests either pass or are updated to match the Refine removal
 
-- [ ] **Step 6: Update design docs to record the Refine clean break**
+- [x] **Step 6: Update design docs to record the Refine clean break**
 
 ```text
 Update:
@@ -95,7 +95,7 @@ Record that the legacy Refine surface and Refine-only backend command path have 
 and that the repo is intentionally between surfaces until the new conversation model lands.
 ```
 
-- [ ] **Step 7: Verify PR 1 and commit**
+- [x] **Step 7: Verify PR 1 and commit**
 
 ```bash
 cd app && npx tsc --noEmit

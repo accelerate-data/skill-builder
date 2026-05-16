@@ -185,7 +185,7 @@ export default function WorkflowPage() {
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const refineSelectedSkill = useSkillStore((s) => s.selectedSkill);
+  const selectedSkill = useSkillStore((s) => s.selectedSkill);
   const conversationId = useSkillStore((s) => s.conversationId);
   const activeRunDisplayItemCount = useAgentStore((s) =>
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
@@ -195,16 +195,16 @@ export default function WorkflowPage() {
     (sk) => String(sk.id) === skillId,
   );
   const selectedSkillMatchesRoute =
-    refineSelectedSkill != null && String(refineSelectedSkill.id ?? "") === skillId;
+    selectedSkill != null && String(selectedSkill.id ?? "") === skillId;
   const currentSkillId = currentSkill?.id ?? (
-    selectedSkillMatchesRoute ? refineSelectedSkill?.id ?? null : null
+    selectedSkillMatchesRoute ? selectedSkill?.id ?? null : null
   );
   const isLocked = useIsSkillLocked(currentSkillId);
   const pluginSlug = currentSkill?.plugin_slug ?? (
-    selectedSkillMatchesRoute ? refineSelectedSkill?.plugin_slug : undefined
+    selectedSkillMatchesRoute ? selectedSkill?.plugin_slug : undefined
   );
   const actualSkillName = currentSkill?.name ?? (
-    selectedSkillMatchesRoute ? refineSelectedSkill?.name : skillId
+    selectedSkillMatchesRoute ? selectedSkill?.name : skillId
   );
 
   const stepConfig = STEP_CONFIGS[currentStep];
@@ -262,7 +262,7 @@ export default function WorkflowPage() {
 
   const restartSelectedSkillSession = useCallback(async () => {
     const restartSkill =
-      String(refineSelectedSkill?.id ?? "") === skillId ? refineSelectedSkill : null;
+      String(selectedSkill?.id ?? "") === skillId ? selectedSkill : null;
 
     if (!restartSkill) {
       throw new Error(
@@ -270,7 +270,7 @@ export default function WorkflowPage() {
       );
     }
     await restartSkillOpenHandsSession(restartSkill);
-  }, [refineSelectedSkill, skillId]);
+  }, [selectedSkill, skillId]);
 
   // 4. State machine — step transitions, agent orchestration, gate evaluation
   const {
