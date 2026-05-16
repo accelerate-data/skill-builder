@@ -754,11 +754,11 @@ fn research_json_extraction_repairs_missing_commas_between_array_objects() {
 }
 
 #[test]
-fn research_json_extraction_repairs_missing_section_closers_before_notes() {
+fn research_json_extraction_parses_valid_output() {
     let state = serde_json::json!({
         "type": "conversation_state",
         "status": "completed",
-        "result_text": r#"{"status":"research_complete","question_count":1,"research_output":{"version":"1","metadata":{"question_count":1,"section_count":1,"refinement_count":0,"must_answer_count":1,"priority_questions":["Q1"],"scope_recommendation":false,"scope_reason":null,"warning":null,"error":null},"sections":[{"id":1,"title":"Pipeline Scope","questions":[{"id":"Q1","title":"Pipeline type","text":"What type of pipeline does pipeline value refer to?","must_answer":true,"choices":[{"id":"C1","text":"Sales pipeline","is_other":false},{"id":"C2","text":"Other (please specify)","is_other":true}],"refinements":[]}],"notes":[{"type":"critical_gap","title":"Pipeline type ambiguous","body":"Need pipeline type before continuing."}],"answer_evaluator_notes":[]}}"#
+        "result_text": r#"{"status":"research_complete","question_count":1,"research_output":{"version":"1","metadata":{"question_count":1,"section_count":1,"refinement_count":0,"must_answer_count":1,"priority_questions":["Q1"],"scope_recommendation":false,"scope_reason":null,"warning":null,"error":null},"sections":[{"id":1,"title":"Pipeline Scope","questions":[{"id":"Q1","title":"Pipeline type","text":"What type of pipeline does pipeline value refer to?","must_answer":true,"choices":[{"id":"C1","text":"Sales pipeline","is_other":false},{"id":"C2","text":"Other (please specify)","is_other":true}]}],"notes":[{"type":"critical_gap","title":"Pipeline type ambiguous","body":"Need pipeline type before continuing."}],"answer_evaluator_notes":[]}]}}"#
     });
 
     let parsed = extract_research_json_from_conversation_state(&state).unwrap();
@@ -772,17 +772,17 @@ fn research_json_extraction_repairs_missing_section_closers_before_notes() {
         1
     );
     assert_eq!(
-        parsed["research_output"]["notes"].as_array().unwrap().len(),
+        parsed["research_output"]["sections"][0]["notes"].as_array().unwrap().len(),
         1
     );
 }
 
 #[test]
-fn workflow_json_extraction_repairs_missing_section_closers_before_next_section() {
+fn workflow_json_extraction_parses_valid_detailed_research() {
     let state = serde_json::json!({
         "type": "conversation_state",
         "status": "completed",
-        "result_text": r#"{"status":"detailed_research_complete","refinement_count":3,"section_count":5,"clarifications_json":{"version":"1","metadata":{"question_count":7,"section_count":5,"refinement_count":3,"must_answer_count":5,"priority_questions":["Q1","Q2","Q3","Q5","R4.1"],"scope_recommendation":false,"scope_reason":null,"scope_next_action":null,"duplicates_removed":0,"warning":null,"error":null},"notes":[],"answer_evaluator_notes":[],"sections":[{"id":1,"title":"Pipeline Scope and Definition","questions":[{"id":"Q1","title":"Pipeline type","text":"What type?","must_answer":true,"choices":[{"id":"C1","text":"Sales","is_other":false}],"answer_choice":"C1","answer_text":"Sales","refinements":[]},{"id":"Q2","title":"Pipeline stages","text":"What stages?","must_answer":true,"choices":[{"id":"C1","text":"Standard","is_other":false}],"answer_choice":"C1","answer_text":"Standard","refinements":[]}]},{"id":2,"title":"Value Metrics and Calculation Logic","questions":[{"id":"Q3","title":"Value measures","text":"Which measures?","must_answer":true,"choices":[{"id":"C1","text":"All","is_other":false}],"answer_choice":"C1","answer_text":"All","refinements":[]},{"id":"Q4","title":"Probability weighting method","text":"How weighted?","must_answer":false,"choices":[{"id":"C1","text":"Fixed","is_other":false}],"answer_choice":"C1","answer_text":"Fixed","refinements":[{"id":"R4.1","title":"Stage probability values","text":"What fixed percentages?","must_answer":true,"choices":[{"id":"C1","text":"10/25/50/75/100","is_other":false}],"refinements":[]}]},{"id":4,"title":"Business Rules and Edge Cases","questions":[{"id":"Q6","title":"Material business rules","text":"Which rules?","must_answer":false,"choices":[{"id":"C1","text":"All of the above","is_other":false}],"answer_choice":"C1","answer_text":"All of the above","refinements":[{"id":"R6.1","title":"Value allocation method","text":"How allocate?","must_answer":false,"choices":[{"id":"C1","text":"Proportional split","is_other":false}],"refinements":[]},{"id":"R6.2","title":"Aging threshold and write-off","text":"What aging threshold?","must_answer":false,"choices":[{"id":"C1","text":"90 days excluded","is_other":false}],"refinements":[]}]},{"id":5,"title":"Reconciliation and Validation","questions":[{"id":"Q7","title":"Reconciliation expectations","text":"What reconcile?","must_answer":false,"choices":[{"id":"C1","text":"All of the above","is_other":false}],"answer_choice":"C1","answer_text":"All of the above","refinements":[]}]},{"id":3,"title":"Grain and Dimensional Hierarchy","questions":[{"id":"Q5","title":"Measurement grain","text":"At what grain?","must_answer":true,"choices":[{"id":"C1","text":"Nested hierarchy","is_other":false}],"answer_choice":"C1","answer_text":"Nested hierarchy","refinements":[]}]}]}}"#
+        "result_text": r#"{"status":"detailed_research_complete","refinement_count":1,"section_count":2,"clarifications_json":{"version":"1","metadata":{"question_count":2,"section_count":2,"refinement_count":1,"must_answer_count":2,"priority_questions":["Q1","Q2"],"scope_recommendation":false},"notes":[],"sections":[{"id":1,"title":"Pipeline Scope","questions":[{"id":"Q1","title":"Pipeline type","text":"What type?","must_answer":true,"choices":[{"id":"C1","text":"Sales","is_other":false}],"answer_choice":"C1","answer_text":"Sales"}]},{"id":2,"title":"Value Metrics","questions":[{"id":"Q2","title":"Value measures","text":"Which measures?","must_answer":true,"choices":[{"id":"C1","text":"All","is_other":false}],"answer_choice":"C1","answer_text":"All"}]}]},"refinements_json":{"version":"1","metadata":{"question_count":1,"section_count":1,"refinement_count":1,"must_answer_count":1,"priority_questions":["R1"]},"sections":[{"id":1,"title":"Pipeline Scope","questions":[{"id":"R1","title":"Follow-up","text":"More detail?","must_answer":true,"choices":[],"refinements":[]}]}],"notes":[]}}"#
     });
 
     let parsed =
@@ -794,7 +794,7 @@ fn workflow_json_extraction_repairs_missing_section_closers_before_next_section(
             .as_array()
             .unwrap()
             .len(),
-        5
+        2
     );
 }
 
@@ -895,7 +895,34 @@ mod backend_materialization {
             "status": "detailed_research_complete",
             "refinement_count": 1,
             "section_count": 1,
-            "clarifications_json": valid_clarifications_value()
+            "clarifications_json": valid_clarifications_value(),
+            "refinements_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 1,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [
+                    {
+                        "id": 1,
+                        "title": "Refinements",
+                        "questions": [
+                            {
+                                "id": "R1",
+                                "title": "Follow-up",
+                                "text": "More detail?",
+                                "must_answer": true,
+                                "choices": [],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
         });
         let state = serde_json::json!({
             "type": "conversation_state",
@@ -908,10 +935,10 @@ mod backend_materialization {
         materialize_workflow_step_output_value(&db, &skill_id, 1, &parsed).unwrap();
 
         let conn = db.0.lock().unwrap();
-        let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
             .unwrap()
             .unwrap();
-        assert_eq!(clarifications.refinement_count, 1);
+        assert_eq!(refinements.refinement_count, 1);
     }
 
     #[test]
@@ -1621,7 +1648,33 @@ fn test_materialize_step1_writes_clarifications_only() {
                             "text": "Question text",
                             "choices": [
                                 {"id":"A","text":"Choice","is_other":false}
-                            ],
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        },
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 1,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Refinements",
+                    "questions": [
+                        {
+                            "id": "R1",
+                            "title": "Refinement Q",
+                            "must_answer": true,
+                            "text": "Refinement text",
+                            "choices": [],
                             "refinements": []
                         }
                     ]
@@ -1636,8 +1689,10 @@ fn test_materialize_step1_writes_clarifications_only() {
     let record = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
         .unwrap()
         .unwrap();
-    assert_eq!(record.refinement_count, 1);
     assert_eq!(record.questions.len(), 1);
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap();
+    assert!(refinements.is_some());
 }
 
 #[test]
@@ -1650,11 +1705,11 @@ fn test_materialize_step1_writes_additive_detailed_research_output() {
         "clarifications_json": {
             "version": "1",
             "metadata": {
-                "question_count": 5,
+                "question_count": 2,
                 "section_count": 2,
                 "refinement_count": 1,
-                "must_answer_count": 4,
-                "priority_questions": ["Q1", "Q3", "R3.1", "Q5"],
+                "must_answer_count": 2,
+                "priority_questions": ["Q4", "Q5"],
                 "duplicates_removed": 0,
                 "scope_recommendation": false,
                 "scope_reason": null,
@@ -1667,48 +1722,11 @@ fn test_materialize_step1_writes_additive_detailed_research_output() {
                     "title": "Existing section",
                     "questions": [
                         {
-                            "id": "Q1",
-                            "title": "Existing clear question",
-                            "text": "Which layers are in scope?",
-                            "must_answer": true,
-                            "choices": [],
-                            "answer_text": "Bronze, silver, gold",
-                            "refinements": []
-                        },
-                        {
-                            "id": "Q2",
-                            "title": "Existing clear question",
-                            "text": "What is the incremental policy?",
-                            "must_answer": false,
-                            "choices": [],
-                            "answer_text": "Merge on natural key and updated_at",
-                            "refinements": []
-                        },
-                        {
-                            "id": "Q3",
-                            "title": "Existing vague question",
-                            "text": "Who uses this skill?",
-                            "must_answer": true,
-                            "choices": [],
-                            "answer_text": "TBD",
-                            "refinements": [
-                                {
-                                    "id": "R3.1",
-                                    "title": "Primary user persona",
-                                    "text": "Which primary role should this skill optimize for?",
-                                    "must_answer": true,
-                                    "choices": [],
-                                    "refinements": []
-                                }
-                            ]
-                        },
-                        {
                             "id": "Q4",
                             "title": "New section-level question",
                             "text": "What naming convention should generated models follow?",
                             "must_answer": false,
-                            "choices": [],
-                            "refinements": []
+                            "choices": []
                         }
                     ]
                 },
@@ -1721,14 +1739,40 @@ fn test_materialize_step1_writes_additive_detailed_research_output() {
                             "title": "Approval process",
                             "text": "Who approves changes to shared modeling standards?",
                             "must_answer": true,
-                            "choices": [],
-                            "refinements": []
+                            "choices": []
                         }
                     ]
                 }
             ],
             "notes": [],
             "answer_evaluator_notes": []
+        },
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 1,
+                "must_answer_count": 1,
+                "priority_questions": ["R3.1"]
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Existing section",
+                    "questions": [
+                        {
+                            "id": "R3.1",
+                            "title": "Primary user persona",
+                            "text": "Which primary role should this skill optimize for?",
+                            "must_answer": true,
+                            "choices": [],
+                            "refinements": []
+                        }
+                    ]
+                }
+            ],
+            "notes": []
         }
     });
 
@@ -1740,14 +1784,12 @@ fn test_materialize_step1_writes_additive_detailed_research_output() {
     assert_eq!(record.sections.len(), 2);
     assert_eq!(record.sections[0].section_id, 1);
     assert_eq!(record.sections[1].section_id, 2);
-    let q3 = record
-        .questions
-        .iter()
-        .find(|q| q.question_id == "Q3")
-        .expect("Q3 should be present");
-    assert_eq!(q3.refinements.len(), 1);
-    assert_eq!(q3.refinements[0].question_id, "R3.1");
     assert!(record.questions.iter().any(|q| q.question_id == "Q4"));
+    assert!(record.questions.iter().any(|q| q.question_id == "Q5"));
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap();
+    assert!(refinements.is_some());
+    assert_eq!(refinements.unwrap().questions.len(), 1);
 }
 
 #[test]
@@ -1861,7 +1903,19 @@ fn test_materialize_step1_rejects_wrong_status() {
         "status": "research_complete",
         "refinement_count": 1,
         "section_count": 1,
-        "clarifications_json": valid_clarifications_value()
+        "clarifications_json": valid_clarifications_value(),
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
+        }
     });
     let err = materialize_workflow_step_output_value(&db, &skill_id, 1, &payload).unwrap_err();
     assert!(err.contains("workflow result payload status must be 'detailed_research_complete'"));
@@ -1875,7 +1929,19 @@ fn test_materialize_step1_rejects_missing_required_fields() {
     let missing_refinement_count = serde_json::json!({
         "status": "detailed_research_complete",
         "section_count": 1,
-        "clarifications_json": valid_clarifications_value()
+        "clarifications_json": valid_clarifications_value(),
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
+        }
     });
     let err = materialize_workflow_step_output_value(&db, &skill_id, 1, &missing_refinement_count)
         .unwrap_err();
@@ -1889,7 +1955,19 @@ fn test_materialize_step1_rejects_missing_required_fields() {
         "status": "detailed_research_complete",
         "refinement_count": 1,
         "section_count": "one",
-        "clarifications_json": valid_clarifications_value()
+        "clarifications_json": valid_clarifications_value(),
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
+        }
     });
     let err = materialize_workflow_step_output_value(&db, &skill_id, 1, &non_integer_section_count)
         .unwrap_err();
@@ -1902,7 +1980,19 @@ fn test_materialize_step1_rejects_missing_clarifications_json() {
     let payload = serde_json::json!({
         "status": "detailed_research_complete",
         "refinement_count": 1,
-        "section_count": 1
+        "section_count": 1,
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
+        }
     });
     let err = materialize_workflow_step_output_value(&db, &skill_id, 1, &payload).unwrap_err();
     assert!(err.contains("invalid detailed research output"));
@@ -1917,7 +2007,19 @@ fn test_materialize_step1_validation_failure_preserves_existing_db_state() {
         "status": "detailed_research_complete",
         "refinement_count": 0,
         "section_count": 1,
-        "clarifications_json": valid_clarifications_value()
+        "clarifications_json": valid_clarifications_value(),
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
+        }
     });
     materialize_workflow_step_output_value(&db, &skill_id, 1, &valid).unwrap();
 
@@ -1938,6 +2040,18 @@ fn test_materialize_step1_validation_failure_preserves_existing_db_state() {
             },
             "sections": [],
             "notes": "not-an-array"
+        },
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
         }
     });
     let err =
@@ -3331,16 +3445,51 @@ mod materialization {
             "status": "detailed_research_complete",
             "refinement_count": 2,
             "section_count": 2,
-            "clarifications_json": clarifications_fixture()
+            "clarifications_json": clarifications_fixture(),
+            "refinements_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 2,
+                    "section_count": 1,
+                    "refinement_count": 2,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [
+                    {
+                        "id": 1,
+                        "title": "Refinements",
+                        "questions": [
+                            {
+                                "id": "R1",
+                                "title": "Refinement 1",
+                                "text": "Follow-up 1",
+                                "must_answer": true,
+                                "choices": [],
+                                "refinements": []
+                            },
+                            {
+                                "id": "R2",
+                                "title": "Refinement 2",
+                                "text": "Follow-up 2",
+                                "must_answer": true,
+                                "choices": [],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
         });
 
         materialize_workflow_step_output_value(&db, &skill_id, 1, &json).unwrap();
 
         let conn = db.0.lock().unwrap();
-        let record = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
             .unwrap()
             .unwrap();
-        assert_eq!(record.refinement_count, 2);
+        assert_eq!(refinements.refinement_count, 2);
     }
 
     #[test]
@@ -3358,15 +3507,42 @@ mod materialization {
             "status": "detailed_research_complete",
             "refinement_count": 3,
             "section_count": 2,
-            "clarifications_json": clarifications_fixture()
+            "clarifications_json": clarifications_fixture(),
+            "refinements_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 3,
+                    "section_count": 1,
+                    "refinement_count": 3,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [
+                    {
+                        "id": 1,
+                        "title": "Refinements",
+                        "questions": [
+                            {
+                                "id": "R1",
+                                "title": "R1",
+                                "text": "Follow-up",
+                                "must_answer": true,
+                                "choices": [],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
         });
         materialize_workflow_step_output_value(&db, &skill_id, 1, &step1).unwrap();
 
         let conn = db.0.lock().unwrap();
-        let record = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
             .unwrap()
             .unwrap();
-        assert_eq!(record.refinement_count, 3);
+        assert_eq!(refinements.refinement_count, 3);
     }
 
     #[test]
