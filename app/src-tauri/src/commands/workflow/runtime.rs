@@ -112,7 +112,20 @@ fn parse_target_conversation_state(
             return None;
         }
 
-        return match message.get("status").and_then(|v| v.as_str()) {
+        let status = message.get("status").and_then(|v| v.as_str());
+        if status == Some("completed") {
+            let has_result_text = message
+                .get("result_text")
+                .or_else(|| message.get("resultText"))
+                .and_then(|value| value.as_str())
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false);
+            if !has_result_text {
+                return None;
+            }
+        }
+
+        return match status {
             Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
             _ => None,
         };
@@ -803,6 +816,23 @@ mod tests {
             state.get("status").and_then(|value| value.as_str()),
             Some("completed")
         );
+    }
+
+    #[test]
+    fn parse_target_conversation_state_skips_completed_agent_message_without_result_text() {
+        let payload = serde_json::json!({
+            "conversation_id": "conv-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "completed",
+                "result_text": null
+            }
+        })
+        .to_string();
+
+        let state = parse_target_conversation_state(&payload, "conv-1");
+
+        assert!(state.is_none());
     }
 
     #[test]
