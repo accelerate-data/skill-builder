@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCanonicalConversationEventEnvelope,
   getErrorText,
   getEventText,
   getInternalEventSummary,
@@ -117,6 +118,52 @@ describe("OpenHands conversation event helpers", () => {
       resultText: '```json\n{"verdict":"mixed"}\n```',
       timestamp: 1_778_000_100,
     });
+  });
+
+  it("builds unique canonical event ids for repeated runtime events in the same millisecond", () => {
+    const event = normalized({
+      type: "conversation_event",
+      runtime: "openhands",
+      conversation_id: "conv-repeat",
+      agent_id: "agent-repeat",
+      event_class: "ActionEvent",
+      timestamp: 1_778_000_200,
+      event: {
+        source: "agent",
+        tool_call: {
+          id: "call-repeat",
+          type: "function",
+          function: {
+            name: "read_file",
+            arguments: { path: "README.md" },
+          },
+        },
+      },
+    });
+
+    const first = buildCanonicalConversationEventEnvelope(event);
+    const second = buildCanonicalConversationEventEnvelope(event);
+
+    expect(first.eventId).not.toBe(second.eventId);
+    expect(first.eventId).toContain("conv-repeat");
+    expect(second.eventId).toContain("conv-repeat");
+  });
+
+  it("rejects runtime events when no conversation identity can be resolved", () => {
+    const event = normalized({
+      type: "conversation_event",
+      runtime: "openhands",
+      event_class: "MessageEvent",
+      timestamp: 1_778_000_201,
+      event: {
+        source: "agent",
+        message: "missing identity",
+      },
+    });
+
+    expect(() => buildCanonicalConversationEventEnvelope(event)).toThrow(
+      /conversation identity/i,
+    );
   });
 
   it("extracts nested message text from llm_message content blocks", () => {

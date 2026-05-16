@@ -45,6 +45,8 @@ export type ConversationActionEventProjection =
       reasoningText?: string;
     };
 
+let canonicalConversationEventSequence = 0;
+
 export function isTerminalConversationStatus(
   status: OpenHandsConversationStatus,
 ): boolean {
@@ -137,15 +139,18 @@ export function buildCanonicalConversationEventEnvelope(
   const conversationId =
     event.conversationId ??
     fallbackConversationId ??
-    event.agentId ??
-    "unknown-conversation";
+    event.agentId;
+  if (!conversationId) {
+    throw new Error("Unable to resolve a canonical conversation identity.");
+  }
   const eventKey =
     event.type === "conversation_state"
       ? event.status
       : event.eventClass || "unknown-event";
+  canonicalConversationEventSequence += 1;
 
   return {
-    eventId: `${conversationId}:${event.type}:${event.timestamp}:${eventKey}`,
+    eventId: `${conversationId}:${event.type}:${event.timestamp}:${eventKey}:${canonicalConversationEventSequence}`,
     conversationId,
     origin: "backend",
     status: "observed",

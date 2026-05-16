@@ -77,11 +77,18 @@ function appendCanonicalRuntimeEvent(
   if (!event) {
     return;
   }
-  const envelope = buildCanonicalConversationEventEnvelope(
-    event,
-    selectedConversationId(),
-  );
-  useConversationStore.getState().appendBackendObservedEvent(envelope);
+  try {
+    const envelope = buildCanonicalConversationEventEnvelope(
+      event,
+      selectedConversationId(),
+    );
+    useConversationStore.getState().appendBackendObservedEvent(envelope);
+  } catch (error) {
+    console.warn(
+      "[use-agent-stream] event=canonical_event_skipped reason=%s",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 interface AgentShutdownPayload {
