@@ -235,7 +235,7 @@ export function mergeClarificationsAndRefinements(
   const refinementSections = refinementFile.sections ?? [];
   if (refinementSections.length > 0) {
     mergedSections.push({
-      id: Date.now(),
+      id: -1,
       title: "Refinements",
       description: "Detailed follow-up questions from step 1",
       questions: refinementSections.flatMap((s) => s.questions ?? []),

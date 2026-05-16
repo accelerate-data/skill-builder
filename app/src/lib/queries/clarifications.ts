@@ -14,7 +14,7 @@ export function useClarifications(skillId: string | null) {
 
 export function useRefinements(skillId: string | null) {
   return useQuery<RefinementsDto | null>({
-    queryKey: ["refinements", skillId ?? ""],
+    queryKey: queryKeys.refinements.bySkill(skillId ?? ""),
     queryFn: async () =>
       (await invokeCommand("get_refinements", { skillId: skillId! })) ?? null,
     enabled: !!skillId,
@@ -43,6 +43,21 @@ export function useUpdateClarificationVerdicts() {
       invokeCommand("update_clarification_verdicts", args),
     onSuccess: (_data, { skillId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.clarifications.bySkill(skillId) });
+    },
+  });
+}
+
+export function useUpdateRefinementAnswer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      skillId: string;
+      questionId: string;
+      answerChoice: string | null;
+      answerText: string | null;
+    }) => invokeCommand("update_refinement_answer", args),
+    onSuccess: (_data, { skillId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.refinements.bySkill(skillId) });
     },
   });
 }
