@@ -68,6 +68,19 @@ function getBodyText(node: DisplayNode): string {
   return "Event captured";
 }
 
+function getKindContainerClass(kind: DisplayNode["kind"]): string {
+  switch (kind) {
+    case "user_message":
+      return "ml-auto max-w-[85%] border-primary/20 bg-primary/5";
+    case "agent_message":
+      return "mr-auto max-w-[90%] border-border bg-card";
+    case "error":
+      return "mr-auto max-w-[90%] border-destructive/40 bg-destructive/5";
+    default:
+      return "mr-auto max-w-[90%] border-border bg-card";
+  }
+}
+
 export function ConversationEventRow({ node }: ConversationEventRowProps) {
   const label = node.label?.trim() || getDefaultLabel(node.kind);
   const bodyText = getBodyText(node);
@@ -77,7 +90,9 @@ export function ConversationEventRow({ node }: ConversationEventRowProps) {
       data-testid="conversation-event-row"
       className={cn(
         "flex flex-col gap-2 rounded-lg border px-4 py-3",
-        node.status === "failed" ? "border-destructive/40 bg-destructive/5" : "bg-card",
+        node.status === "failed"
+          ? "mr-auto max-w-[90%] border-destructive/40 bg-destructive/5"
+          : getKindContainerClass(node.kind),
       )}
     >
       <div className="flex items-center justify-between gap-3">
