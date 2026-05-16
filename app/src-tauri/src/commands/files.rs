@@ -81,13 +81,13 @@ pub fn get_skill_content_at_path(path: String) -> Result<Vec<SkillFileContent>, 
 }
 
 #[tauri::command]
-pub fn get_skill_content_for_refine(
+pub fn get_selected_skill_content(
     skill_name: String,
     plugin_slug: String,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
     log::info!(
-        "[get_skill_content_for_refine] skill={} plugin={}",
+        "[get_selected_skill_content] skill={} plugin={}",
         skill_name,
         plugin_slug
     );
@@ -100,7 +100,7 @@ pub fn get_skill_content_for_refine(
     drop(conn);
     let skill_root = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
     get_skill_content_from_dir(&skill_root).map_err(|e| {
-        log::error!("[get_skill_content_for_refine] {}", e);
+        log::error!("[get_selected_skill_content] {}", e);
         e
     })
 }

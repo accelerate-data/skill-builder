@@ -568,6 +568,59 @@ This contract guarantees that upper layers can reason about:
 Frontend projection is a separate concern and is documented in
 `docs/design/openhands-event-display-projection/README.md`.
 
+Task 2 of the conversation-model reimplementation also adds a new canonical
+frontend event core:
+
+- `app/src/lib/conversation-event-types.ts` defines the app-owned envelope
+- `app/src/lib/conversation-event-ordering.ts` defines the in-place mutation
+  and append ordering rules
+- `app/src/stores/conversation-store.ts` is the new transcript authority keyed
+  by `conversationId`
+- `app/src/lib/conversation-event-projection.ts` is the pure display-node
+  projection boundary
+
+Task 3 adds the first conversation-centric helper layer above the existing
+transport seam:
+
+- `app/src/lib/conversation-runtime.ts` is the frontend helper for
+  `send_conversation_message`
+- `app/src-tauri/src/commands/conversation.rs` is the session-based backend
+  command surface for selected-skill conversation sends
+- `app/src/hooks/use-agent-stream.ts` now appends normalized backend-observed
+  events into `conversation-store` while still feeding the legacy projection
+  path
+
+The legacy `agent-store` / `DisplayItem` path still exists as a transport and
+projection seam for current consumers, but transcript authority now has a
+distinct canonical event layer in code.
+
+Task 4 begins the first surface adoption on the workspace side:
+
+- `app/src/components/conversation/conversation-timeline.tsx` and
+  `conversation-event-row.tsx` render a flat canonical timeline from
+  `projectConversationEvents(...)`
+- `app/src/components/workspace/workspace-conversation.tsx` is the clean-slate
+  workspace conversation surface for the selected skill session
+- `app/src/components/layout/app-layout.tsx` now restores workspace skills onto
+  the conversation surface by default when the selected session is rehydrated
+
+Workspace still does not hydrate restored transcript history into
+`conversation-store`, but the session-backed workspace surface now reads from
+the canonical conversation layer instead of the legacy `agent-store`
+transcript path.
+
+Task 5 extends that surface adoption into Workflow:
+
+- `app/src/pages/workflow.tsx` now renders live workflow transcript activity
+  through `ConversationTimeline` keyed by the selected session's
+  `conversationId`
+- workflow rendering no longer depends on `runs[agentId].displayItems` for
+  transcript ownership or empty-state detection
+
+Workflow still uses `agent-store` for run lifecycle/orchestration inside the
+workflow state machine, but transcript rendering now reads from the canonical
+conversation layer rather than the legacy display projection path.
+
 ### Terminal Result Ownership
 
 Workflow commands extract terminal `conversation_state.result_text` from a

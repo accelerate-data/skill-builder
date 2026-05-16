@@ -29,7 +29,7 @@
 - Modify: `repo-map.json`
 - Delete/Modify tests: `app/src/__tests__/components/workspace/workspace-refine.test.tsx`, `app/src/__tests__/components/refine/**`, `app/src/__tests__/stores/refine-store.test.ts`, `app/src/__tests__/lib/skill-openhands-session.test.ts`
 
-- [ ] **Step 1: Remove Refine from the Workflow page and route-level UI**
+- [x] **Step 1: Remove Refine from the Workflow page and route-level UI**
 
 ```tsx
 // app/src/pages/workflow.tsx
@@ -41,7 +41,7 @@ const tabs = [
 ];
 ```
 
-- [ ] **Step 2: Delete the old Refine component tree and store**
+- [x] **Step 2: Delete the old Refine component tree and store**
 
 ```text
 Delete:
@@ -50,7 +50,7 @@ Delete:
 - app/src/stores/refine-store.ts
 ```
 
-- [ ] **Step 3: Delete the Refine-specific Tauri command module**
+- [x] **Step 3: Delete the Refine-specific Tauri command module**
 
 ```rust
 // app/src-tauri/src/lib.rs
@@ -58,7 +58,7 @@ Delete:
 // Remove the `commands::refine` module import if nothing else uses it.
 ```
 
-- [ ] **Step 4: Keep shared runtime helpers that are still used outside Refine**
+- [x] **Step 4: Keep shared runtime helpers that are still used outside Refine**
 
 ```text
 Do not delete in PR 1:
@@ -71,7 +71,7 @@ Do not delete in PR 1:
 These remain the migration seam for Workflow and other surfaces until later PRs.
 ```
 
-- [ ] **Step 5: Remove or rewrite tests that only cover the deleted Refine surface**
+- [x] **Step 5: Remove or rewrite tests that only cover the deleted Refine surface**
 
 ```bash
 cd app && npx vitest run \
@@ -84,7 +84,7 @@ Expected:
 - deleted Refine test files are gone
 - remaining Workflow tests either pass or are updated to match the Refine removal
 
-- [ ] **Step 6: Update design docs to record the Refine clean break**
+- [x] **Step 6: Update design docs to record the Refine clean break**
 
 ```text
 Update:
@@ -95,7 +95,7 @@ Record that the legacy Refine surface and Refine-only backend command path have 
 and that the repo is intentionally between surfaces until the new conversation model lands.
 ```
 
-- [ ] **Step 7: Verify PR 1 and commit**
+- [x] **Step 7: Verify PR 1 and commit**
 
 ```bash
 cd app && npx tsc --noEmit
@@ -124,7 +124,7 @@ git commit -m "refactor: remove legacy refine surface"
 - Test: `app/src/__tests__/stores/conversation-store.test.ts`
 - Test: `app/src/__tests__/lib/conversation-event-projection.test.ts`
 
-- [ ] **Step 1: Define the canonical frontend event envelope**
+- [x] **Step 1: Define the canonical frontend event envelope**
 
 ```ts
 // app/src/lib/conversation-event-types.ts
@@ -152,7 +152,7 @@ export interface ConversationEventEnvelope {
 }
 ```
 
-- [ ] **Step 2: Write ordering tests before the store**
+- [x] **Step 2: Write ordering tests before the store**
 
 ```ts
 // app/src/__tests__/lib/conversation-event-ordering.test.ts
@@ -170,7 +170,7 @@ it("keeps a sending user event in place when it becomes accepted", () => {
 });
 ```
 
-- [ ] **Step 3: Implement the conversation store as the only transcript authority**
+- [x] **Step 3: Implement the conversation store as the only transcript authority**
 
 ```ts
 // app/src/stores/conversation-store.ts
@@ -184,7 +184,7 @@ interface ConversationStoreState {
 }
 ```
 
-- [ ] **Step 4: Add a pure projection layer from canonical events to display nodes**
+- [x] **Step 4: Add a pure projection layer from canonical events to display nodes**
 
 ```ts
 // app/src/lib/conversation-event-projection.ts
@@ -199,7 +199,7 @@ export function projectConversationEvents(events: ConversationEventEnvelope[]): 
 }
 ```
 
-- [ ] **Step 5: Update design docs for the canonical event core**
+- [x] **Step 5: Update design docs for the canonical event core**
 
 ```text
 Update:
@@ -210,7 +210,7 @@ Document the exact canonical event envelope, status transitions, and projection-
 that now exist in code.
 ```
 
-- [ ] **Step 6: Verify Task 2 and commit**
+- [x] **Step 6: Verify Task 2 and commit**
 
 ```bash
 cd app && npx vitest run \
@@ -243,7 +243,7 @@ git commit -m "feat: add canonical conversation event core"
 - Test: `app/src/__tests__/lib/conversation-runtime.test.ts`
 - Test: `app/src-tauri/src/commands/conversation.rs` (inline tests if appropriate)
 
-- [ ] **Step 1: Add conversation-centric frontend helpers**
+- [x] **Step 1: Add conversation-centric frontend helpers**
 
 ```ts
 // app/src/lib/conversation-runtime.ts
@@ -256,7 +256,7 @@ export async function sendConversationMessage(args: {
 }
 ```
 
-- [ ] **Step 2: Add a shared backend command surface for conversation actions**
+- [x] **Step 2: Add a shared backend command surface for conversation actions**
 
 ```rust
 // app/src-tauri/src/commands/conversation.rs
@@ -273,7 +273,7 @@ pub async fn send_conversation_message(
 }
 ```
 
-- [ ] **Step 3: Bridge legacy `agent_id` transport events into canonical backend events**
+- [x] **Step 3: Bridge legacy `agent_id` transport events into canonical backend events**
 
 ```ts
 // app/src/hooks/use-conversation-stream.ts
@@ -287,7 +287,7 @@ useEffect(() => {
 }, []);
 ```
 
-- [ ] **Step 4: Freeze the old helpers as transport-only seams**
+- [x] **Step 4: Freeze the old helpers as transport-only seams**
 
 ```text
 Allowed temporary role:
@@ -300,7 +300,7 @@ Forbidden after this task:
 - new product-level state additions
 ```
 
-- [ ] **Step 5: Update design docs for the new helper boundary**
+- [x] **Step 5: Update design docs for the new helper boundary**
 
 ```text
 Update:
@@ -312,7 +312,7 @@ Describe the new conversation-centric helper layer and mark the legacy `agent_id
 temporary transport bridge only.
 ```
 
-- [ ] **Step 6: Verify Task 3 and commit**
+- [x] **Step 6: Verify Task 3 and commit**
 
 ```bash
 cd app && npx vitest run \
@@ -341,7 +341,7 @@ git commit -m "feat: add conversation-centric runtime helpers"
 - Test: `app/src/__tests__/components/conversation/conversation-timeline.test.tsx`
 - Test: `app/src/__tests__/components/workspace/workspace-conversation.test.tsx`
 
-- [ ] **Step 1: Build the flat timeline renderer over canonical events**
+- [x] **Step 1: Build the flat timeline renderer over canonical events**
 
 ```tsx
 // app/src/components/conversation/conversation-timeline.tsx
@@ -359,7 +359,7 @@ export function ConversationTimeline({ conversationId }: { conversationId: strin
 }
 ```
 
-- [ ] **Step 2: Add the new clean-slate conversation workspace surface**
+- [x] **Step 2: Add the new clean-slate conversation workspace surface**
 
 ```tsx
 // app/src/components/workspace/workspace-conversation.tsx
@@ -367,7 +367,7 @@ export function ConversationTimeline({ conversationId }: { conversationId: strin
 // It reads only from conversation-store and conversation-runtime helpers.
 ```
 
-- [ ] **Step 3: Wire the workspace surface to selected-skill session restoration**
+- [x] **Step 3: Wire the workspace surface to selected-skill session restoration**
 
 ```ts
 // app/src/lib/skill-openhands-session.ts
@@ -375,7 +375,7 @@ export function ConversationTimeline({ conversationId }: { conversationId: strin
 // Feed the workspace conversation surface without any refine-store shim.
 ```
 
-- [ ] **Step 4: Update design docs for the new workspace conversation surface**
+- [x] **Step 4: Update design docs for the new workspace conversation surface**
 
 ```text
 Update:
@@ -386,7 +386,7 @@ Record that the first consumer of the canonical conversation stream is now the w
 conversation surface, and remove any stale Refine-specific rendering assumptions.
 ```
 
-- [ ] **Step 5: Verify the workspace-only PR and commit**
+- [x] **Step 5: Verify the workspace-only PR and commit**
 
 ```bash
 cd app && npx vitest run \
@@ -415,7 +415,7 @@ git commit -m "feat: add workspace conversation surface"
 - Test: `app/src/__tests__/pages/workflow.test.tsx`
 - Test: `app/src/__tests__/components/agent-output-panel.test.tsx`
 
-- [ ] **Step 1: Replace workflow transcript rendering with the canonical conversation surface**
+- [x] **Step 1: Replace workflow transcript rendering with the canonical conversation surface**
 
 ```tsx
 // app/src/pages/workflow.tsx
@@ -424,7 +424,7 @@ git commit -m "feat: add workspace conversation surface"
 // Render the canonical event stream directly.
 ```
 
-- [ ] **Step 2: Migrate workflow-side viewers away from agent-store transcript state**
+- [x] **Step 2: Migrate workflow-side viewers away from agent-store transcript state**
 
 ```text
 Review and migrate:
@@ -433,7 +433,7 @@ Review and migrate:
 - app/src/components/workflow-sidebar.tsx
 ```
 
-- [ ] **Step 3: Update design docs for Workflow adoption**
+- [x] **Step 3: Update design docs for Workflow adoption**
 
 ```text
 Update:
@@ -445,7 +445,7 @@ Document Workflow as a consumer of the canonical conversation stream and remove 
 workflow-side transcript assumptions.
 ```
 
-- [ ] **Step 4: Verify the workflow migration PR and commit**
+- [x] **Step 4: Verify the workflow migration PR and commit**
 
 ```bash
 cd app && npx vitest run \

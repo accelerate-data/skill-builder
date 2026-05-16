@@ -54,6 +54,13 @@ pub struct SkillFileEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillFileContent {
+    /// Relative path from the skill root (e.g. "SKILL.md", "references/guide.md")
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportedSkill {
     pub skill_id: i64,
     pub skill_name: String,

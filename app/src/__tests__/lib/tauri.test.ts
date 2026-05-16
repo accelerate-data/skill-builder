@@ -13,6 +13,7 @@ import {
   importMarketplacePluginToLibrary,
   importMarketplaceToLibrary,
   importSkillFromFile,
+  getSelectedSkillContent,
   listGitHubPlugins,
   listImportedSkills,
   listPlugins,
@@ -99,6 +100,12 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
         contextQuestions: null,
         industry: null,
       },
+    },
+    {
+      name: "getSelectedSkillContent",
+      call: () => getSelectedSkillContent("demo-skill", "/tmp/skills", "analytics-pack"),
+      command: "get_selected_skill_content",
+      args: { skillName: "demo-skill", workspacePath: "/tmp/skills", pluginSlug: "analytics-pack" },
     },
     {
       name: "selectSkillOpenHandsSession",

@@ -1,4 +1,4 @@
-import { getSkillContentForRefine, getSkillContentAtPath } from "@/lib/tauri";
+import { getSelectedSkillContent, getSkillContentAtPath } from "@/lib/tauri";
 import type { SkillFile } from "@/stores/workspace-store";
 
 export interface SkillFileSource {
@@ -18,9 +18,9 @@ export async function loadSkillFiles(
   source: SkillFileSource | ImportedSkillFileSource,
 ): Promise<SkillFile[] | null> {
   try {
-    let contents: Awaited<ReturnType<typeof getSkillContentForRefine>>;
+    let contents: Awaited<ReturnType<typeof getSelectedSkillContent>>;
     if (source.type === "builder") {
-      contents = await getSkillContentForRefine(
+      contents = await getSelectedSkillContent(
         source.skillName,
         source.workspacePath,
         source.pluginSlug,

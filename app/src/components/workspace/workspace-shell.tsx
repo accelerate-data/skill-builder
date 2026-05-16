@@ -17,11 +17,12 @@ import { loadSkillFiles } from "@/lib/skill-file-loader";
 import { PreviewPanel } from "@/components/workspace/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
 import { WorkspaceEvalWorkbench } from "./workspace-eval-workbench";
+import { WorkspaceConversation } from "./workspace-conversation";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 import { useBuilderSkillsQuery } from "@/lib/queries/skills";
 import { useIsSkillLocked } from "@/stores/skill-store";
 
-export type WorkspaceSurface = "overview" | "evals";
+export type WorkspaceSurface = "conversation" | "overview" | "evals";
 
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
@@ -145,9 +146,14 @@ export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellPr
           className="flex h-full flex-col"
         >
           <TabsList variant="line" className="shrink-0 border-b px-4">
+            <TabsTrigger value="conversation">Conversation</TabsTrigger>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="evals">Eval Workbench</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="conversation" className="min-h-0 flex-1 overflow-hidden p-6">
+            <WorkspaceConversation skillName={skillName} />
+          </TabsContent>
 
           <TabsContent value="overview" className="flex-1 overflow-y-auto p-6">
             <WorkspaceOverview

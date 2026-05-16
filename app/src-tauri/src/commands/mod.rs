@@ -1,4 +1,5 @@
 pub mod api_validation;
+pub mod conversation;
 pub mod documents;
 pub mod eval_workbench;
 pub mod feedback;

@@ -33,7 +33,7 @@ const tauriCommandTypesPath = path.join(sourceRoot, "lib/tauri-command-types.ts"
 
 const vu1140Commands = [
   "get_skill_content_at_path",
-  "get_skill_content_for_refine",
+  "get_selected_skill_content",
   "select_skill_openhands_session",
   "pause_openhands_session",
   "get_skill_history",

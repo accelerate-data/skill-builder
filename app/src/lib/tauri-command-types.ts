@@ -308,7 +308,7 @@ export interface TauriCommandMap {
   check_marketplace_updates: { args: NoArgs; result: MarketplaceUpdateResult };
   check_skill_customized: { args: { skillName: string }; result: boolean };
   get_skill_content_at_path: { args: { path: string }; result: SkillFileContent[] };
-  get_skill_content_for_refine: {
+  get_selected_skill_content: {
     args: { skillName: string; workspacePath: string; pluginSlug: string };
     result: SkillFileContent[];
   };
@@ -327,6 +327,18 @@ export interface TauriCommandMap {
       };
     };
     result: void;
+  };
+  send_conversation_message: {
+    args: {
+      input: {
+        conversationId: string;
+        localEventId: string;
+        message: string;
+      };
+    };
+    result:
+      | { accepted: true; error?: null | undefined }
+      | { accepted: false; error: string };
   };
   get_skill_history: {
     args: { workspacePath: string; skillName: string; pluginSlug: string; limit: number | null };

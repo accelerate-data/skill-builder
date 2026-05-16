@@ -62,7 +62,6 @@ Changes to these files affect all test layers.
 | `app/src/test/mocks/tauri-e2e-window.ts` | E2E window mock infrastructure. |
 | `app/e2e/helpers/app-helpers.ts` | Shared E2E app startup and splash helpers. |
 | `app/e2e/helpers/workflow-helpers.ts` | Shared workflow E2E helpers. |
-| `app/e2e/helpers/refine-helpers.ts` | Shared refine E2E helpers. |
 | `app/e2e/helpers/agent-simulator.ts` | Agent lifecycle event simulator. |
 | `app/e2e/helpers/settings-helpers.ts` | Shared settings E2E helpers. |
 | `app/src/test/setup.ts` | Vitest global setup. |

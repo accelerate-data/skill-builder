@@ -71,14 +71,12 @@ interface CanonicalConversationEvent {
   conversationId: string;
   origin: ConversationEventOrigin;
   status: ConversationEventStatus;
-  sequence: number;
   createdAtMs: number;
   acceptedAtMs?: number | null;
   failedAtMs?: number | null;
   display: {
     kind: "user_message" | "agent_message" | "tool_call" | "tool_result" | "subagent" | "state" | "error" | "system";
     label?: string;
-    severity?: "info" | "warning" | "error";
     collapsedByDefault?: boolean;
   };
   payload: {
@@ -103,6 +101,21 @@ Important rules:
 - Frontend sends are represented as canonical events, not separate local-only chat state.
 - Backend-originated runtime events retain the raw OpenHands-native payload inside `payload.rawOpenHandsEvent`.
 - The canonical event shape may add app-owned display metadata, but it must not lossy-rewrite the raw OpenHands payload.
+
+Current Task 2 implementation lives in:
+
+- `app/src/lib/conversation-event-types.ts`
+- `app/src/lib/conversation-event-ordering.ts`
+- `app/src/stores/conversation-store.ts`
+- `app/src/lib/conversation-event-projection.ts`
+- `app/src/lib/openhands-conversation-events.ts`
+
+Current Task 3 implementation adds the first shared helper boundary above the
+existing transport:
+
+- `app/src/lib/conversation-runtime.ts`
+- `app/src-tauri/src/commands/conversation.rs`
+- `app/src/hooks/use-agent-stream.ts`
 
 ## Event Sources
 
@@ -164,6 +177,12 @@ This means the stream is stable from the user’s perspective:
 - no reinsertion after acceptance
 - no “missing second message” ambiguity when the backend is still processing later runtime work
 
+The current store implementation encodes those rules in pure helpers:
+
+- `markEventAccepted(...)`
+- `markEventFailed(...)`
+- `appendObservedEvent(...)`
+
 ## Display Semantics
 
 The UI does not invent higher-level chat ownership. It renders the canonical stream using event-type semantics.
@@ -187,6 +206,7 @@ Important rules:
 - The renderer should not depend on `displayItemStartIndex` slicing.
 - The renderer should not treat `agentId` as the grouping key.
 - Live and restored views must use the same canonical event stream and the same display mapping rules.
+- `projectConversationEvents(...)` is the current pure projection boundary from canonical events into renderer-facing `DisplayNode` values.
 
 ## Relationship to Current Runtime Structures
 
@@ -230,6 +250,15 @@ Short-term compatibility rule:
 - the canonical conversation model remains keyed by `conversationId`
 - `agentId` must not be a first-class public transcript concept
 
+Current migration state:
+
+- frontend sends go through `sendConversationMessage(...)` and the typed
+  `send_conversation_message` backend command
+- backend-observed runtime events append into `conversation-store` through
+  `use-agent-stream`
+- `agent-store` still keeps the legacy display projection path for current UI
+  consumers, but that state is now a seam rather than the only transcript model
+
 ## Surface Adoption
 
 ### Refine
@@ -243,9 +272,46 @@ Target behavior:
 - later runtime activity simply appears after them in the same conversation stream
 - no synthetic turn ownership is required for correctness
 
+### Workspace
+
+Workspace is now the first shipped canonical conversation surface for selected
+skill sessions.
+
+Current behavior:
+
+- the selected session's `conversationId` remains the public transcript key
+- `WorkspaceConversation` renders the canonical conversation timeline through
+  `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat
+  timeline row renderer
+- implicit workspace entry after selected-skill session bootstrap now restores
+  to the conversation surface by default
+
+Current limitation:
+
+- restored selected-skill history is still not replayed into
+  `conversation-store`, so the workspace conversation surface currently shows
+  canonical live events plus frontend sends rather than a fully reconstructed
+  restored transcript
+
 ### Workflow
 
-Workflow may adopt the same canonical event stream underneath step-specific UIs, while still choosing a more structured presentation at the page level.
+Workflow now renders live transcript activity from the same canonical event
+stream while keeping its step-specific page structure.
+
+Current behavior:
+
+- the workflow page renders `ConversationTimeline` for the active selected
+  session `conversationId`
+- workflow initialization still uses a lightweight spinner until canonical
+  conversation events arrive for the active run
+- completed-step and gate-specific UI remain workflow-specific page concerns
+  layered around the shared conversation stream
+
+Current limitation:
+
+- workflow orchestration still tracks active run lifecycle through
+  `agent-store`, even though transcript rendering no longer depends on
+  `displayItems`
 
 Important rule:
 
@@ -259,12 +325,17 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 
 | File | Purpose |
 |---|---|
-| [app/src/hooks/use-agent-stream.ts](/Users/hbanerjee/src/worktrees/feature/openhands-runtime-contract-refactor/app/src/hooks/use-agent-stream.ts) | Current frontend listener for Tauri runtime events keyed by `agent_id` |
-| [app/src/stores/agent-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-runtime-contract-refactor/app/src/stores/agent-store.ts) | Current runtime-oriented frontend store; should become adapter-only rather than transcript authority |
-| [app/src/lib/openhands-event-projection.ts](/Users/hbanerjee/src/worktrees/feature/openhands-runtime-contract-refactor/app/src/lib/openhands-event-projection.ts) | Current projection from normalized OpenHands events into render items; useful reference for the new view-layer mapping |
-| [app/src/components/refine/chat-message-list.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-runtime-contract-refactor/app/src/components/refine/chat-message-list.tsx) | Current Refine transcript renderer that still depends on higher-level grouping semantics |
-| [app/src/components/refine/agent-turn-inline.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-runtime-contract-refactor/app/src/components/refine/agent-turn-inline.tsx) | Current inline renderer for grouped agent output; likely to be replaced or simplified by stream rendering |
-| [app/src-tauri/src/commands/refine/mod.rs](/Users/hbanerjee/src/worktrees/feature/openhands-runtime-contract-refactor/app/src-tauri/src/commands/refine/mod.rs) | Backend Refine send/start session command surface |
+| [app/src/lib/conversation-event-types.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-event-types.ts) | Canonical event envelope, statuses, origins, and payload metadata |
+| [app/src/lib/conversation-event-ordering.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-event-ordering.ts) | Pure ordering helpers for in-place acceptance/failure mutation and observed-event appends |
+| [app/src/stores/conversation-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/conversation-store.ts) | Canonical frontend transcript authority keyed by `conversationId` |
+| [app/src/lib/conversation-event-projection.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-event-projection.ts) | Pure projection from canonical events into renderer-facing display nodes |
+| [app/src/lib/openhands-conversation-events.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/openhands-conversation-events.ts) | Normalization helpers plus backend-to-canonical envelope mapping for OpenHands runtime payloads |
+| [app/src/lib/conversation-runtime.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-runtime.ts) | Frontend send helper for conversation-scoped actions |
+| [app/src-tauri/src/commands/conversation.rs](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src-tauri/src/commands/conversation.rs) | Session-based backend command surface for selected-skill conversation sends |
+| [app/src/components/conversation/conversation-timeline.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/conversation/conversation-timeline.tsx) | Flat canonical renderer for conversation-store-backed display nodes |
+| [app/src/components/workspace/workspace-conversation.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/workspace/workspace-conversation.tsx) | Clean-slate workspace transcript surface bound to the selected session |
+| [app/src/pages/workflow.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/pages/workflow.tsx) | Workflow page that now renders canonical conversation activity for the active selected session |
+| [app/src/stores/agent-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/agent-store.ts) | Existing migration-era runtime store that still owns legacy display projection paths until later tasks move consumers over |
 
 ## Relationship to Existing Design Specs
 
@@ -279,3 +350,4 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 
 1. `[design]` Whether send acknowledgement should come from a dedicated backend acknowledgement event or from correlation against current command responses.
 2. `[design]` Whether the canonical event stream should be persisted app-side as a normalized cache or always rebuilt from OpenHands conversation history plus local pending state.
+3. `[migration]` When the remaining workflow orchestration state should stop depending on `agent-store` and move fully to session-centric conversation/runtime ownership.

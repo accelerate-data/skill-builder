@@ -1,3 +1,8 @@
+import type {
+  ConversationDisplayKind,
+  ConversationEventStatus,
+} from "./conversation-event-types";
+
 /**
  * Canonical frontend DisplayItem type definitions for rendering OpenHands output.
  *
@@ -95,8 +100,29 @@ export interface DisplayItemEnvelope {
   item: DisplayItem;
 }
 
+export interface DisplayNode {
+  id: string;
+  kind: ConversationDisplayKind;
+  status: ConversationEventStatus;
+  label?: string;
+  collapsedByDefault?: boolean;
+  createdAtMs: number;
+  payload: {
+    rawOpenHandsEvent?: unknown;
+    frontendCommand?: {
+      type: "send_message";
+      text: string;
+      targetFiles?: string[];
+    };
+    backendError?: {
+      message: string;
+      code?: string;
+    };
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Version tag for structural sync tests
 // ---------------------------------------------------------------------------
 
-export const DISPLAY_TYPES_VERSION = 7;
+export const DISPLAY_TYPES_VERSION = 8;

@@ -1,6 +1,5 @@
 mod github;
 mod model_catalog;
-mod refine;
 mod secret;
 mod session;
 mod settings;
@@ -12,7 +11,6 @@ mod workflow;
 // Re-export all types at the crate::types level so callers don't need to change.
 pub use github::*;
 pub use model_catalog::*;
-pub use refine::*;
 pub use secret::*;
 pub use session::*;
 pub use settings::*;
