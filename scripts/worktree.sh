@@ -13,20 +13,48 @@ fi
 branch="$1"
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-git_common_dir="$(git -C "$script_dir" rev-parse --git-common-dir)"
-repo_root="$(cd "$git_common_dir/.." && pwd)"
-worktree_base="${WORKTREE_BASE_DIR:-$repo_root/../worktrees}"
-worktree_path="$worktree_base/$branch"
+
+resolve_repo_root() {
+  local checkout_root="$1"
+  local common_root=""
+  common_root="$(
+    cd "$checkout_root" &&
+      common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" &&
+      cd "$common_dir/.." &&
+      pwd -P
+  )" || true
+
+  if [[ -n "$common_root" ]]; then
+    printf '%s\n' "$common_root"
+    return
+  fi
+
+  cd "$checkout_root" && pwd -P
+}
 
 canonicalize_path() {
   local path="$1"
-  python3 - "$path" <<'PY'
-import os
-import sys
+  local parent_dir=""
+  local leaf_name=""
 
-print(os.path.realpath(sys.argv[1]))
-PY
+  if [[ -d "$path" ]]; then
+    cd "$path" && pwd -P
+    return
+  fi
+
+  parent_dir="$(dirname "$path")"
+  leaf_name="$(basename "$path")"
+  if cd "$parent_dir" 2>/dev/null; then
+    printf '%s/%s\n' "$(pwd -P)" "$leaf_name"
+    return
+  fi
+
+  printf '%s\n' "$path"
 }
+
+repo_root="$(resolve_repo_root "$script_dir/..")"
+worktree_base="${WORKTREE_BASE_DIR:-$repo_root/../worktrees}"
+worktree_path="$worktree_base/$branch"
 
 retry_command() {
   printf '%s %s' "$0" "$branch"
@@ -182,15 +210,15 @@ branch_exists() {
 
 handle_existing_worktree() {
   local checked_out_path="$1"
-  local requested_canonical_path=""
-  local checked_out_canonical_path=""
+  local canonical_checked_out_path=""
+  local canonical_worktree_path=""
 
   if [[ -n "$checked_out_path" ]]; then
-    requested_canonical_path="$(canonicalize_path "$worktree_path")"
-    checked_out_canonical_path="$(canonicalize_path "$checked_out_path")"
+    canonical_checked_out_path="$(canonicalize_path "$checked_out_path")"
+    canonical_worktree_path="$(canonicalize_path "$worktree_path")"
   fi
 
-  if [[ -n "$checked_out_path" && "$checked_out_canonical_path" != "$requested_canonical_path" ]]; then
+  if [[ -n "$checked_out_path" && "$canonical_checked_out_path" != "$canonical_worktree_path" ]]; then
     json_error \
       "WORKTREE_BRANCH_ALREADY_CHECKED_OUT" \
       "branch_conflict" \
