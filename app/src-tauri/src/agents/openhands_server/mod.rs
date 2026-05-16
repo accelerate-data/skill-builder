@@ -208,7 +208,6 @@ struct OpenHandsConversationTask {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PromptDelivery {
-    AlreadySent,
     ViaSendEvent,
 }
 

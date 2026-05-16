@@ -30,7 +30,8 @@ where
     HasLiveRunner: Fn(&str) -> bool,
     SendMessage: Fn(OpenHandsRuntimeConfig, String, String) -> SendFuture,
     SendFuture: std::future::Future<Output = Result<(), String>>,
-    RunConversation: Fn(OpenHandsRuntimeConfig, String) -> RunFuture,
+    RunConversation:
+        Fn(OpenHandsRuntimeConfig, String, openhands_server::PromptDelivery) -> RunFuture,
     RunFuture: std::future::Future<Output = Result<String, String>>,
 {
     let prompt = config.prompt.clone();
@@ -40,8 +41,12 @@ where
         return Ok(conversation_id);
     }
 
-    send_message(config.clone(), conversation_id.clone(), prompt).await?;
-    run_conversation(config, conversation_id.clone()).await?;
+    run_conversation(
+        config,
+        conversation_id.clone(),
+        openhands_server::PromptDelivery::ViaSendEvent,
+    )
+    .await?;
     Ok(conversation_id)
 }
 
@@ -65,7 +70,7 @@ pub async fn send_tracked_openhands_message(
             )
             .await
         },
-        move |config, conversation_id| {
+        move |config, conversation_id, prompt_delivery| {
             let app = app.clone();
             let agent_id = agent_id.clone();
             async move {
@@ -74,7 +79,7 @@ pub async fn send_tracked_openhands_message(
                     &agent_id,
                     config,
                     conversation_id,
-                    openhands_server::PromptDelivery::AlreadySent,
+                    prompt_delivery,
                 )
                 .await
             }
@@ -266,10 +271,13 @@ mod tests {
                     Ok(())
                 }
             },
-            move |_config, conversation_id| {
+            move |_config, conversation_id, prompt_delivery| {
                 let run_events = Arc::clone(&run_events);
                 async move {
-                    run_events.lock().unwrap().push(format!("run:{conversation_id}"));
+                    run_events
+                        .lock()
+                        .unwrap()
+                        .push(format!("run:{prompt_delivery:?}:{conversation_id}"));
                     Ok(conversation_id)
                 }
             },
@@ -304,13 +312,13 @@ mod tests {
                     Ok(())
                 }
             },
-            move |_config, conversation_id| {
+            move |_config, conversation_id, prompt_delivery| {
                 let run_events = Arc::clone(&run_events);
                 async move {
                     run_events
                         .lock()
                         .unwrap()
-                        .push(format!("run:agent-1:{conversation_id}"));
+                        .push(format!("run:agent-1:{prompt_delivery:?}:{conversation_id}"));
                     Ok(conversation_id)
                 }
             },
@@ -322,8 +330,7 @@ mod tests {
         assert_eq!(
             events.lock().unwrap().as_slice(),
             [
-                "send:conversation-456:write the skill",
-                "run:agent-1:conversation-456",
+                "run:agent-1:ViaSendEvent:conversation-456",
             ]
         );
     }
