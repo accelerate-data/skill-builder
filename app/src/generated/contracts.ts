@@ -48,7 +48,7 @@ export type ClarificationNoteDto = {
 note_id?: number | null; ordinal: number; note_type: string; title: string; body: string }
 
 /**
- * Question DTO. Recursive via `refinements`.
+ * Question DTO.
  */
 export type ClarificationQuestionDto = { question_id: string; section_id: number; 
 /**
@@ -59,7 +59,7 @@ parent_question_id?: string | null; ordinal: number; title: string; text: string
  * Allowed values: `"clear" | "vague" | "not_answered" | "needs_refinement"
  * | "contradictory"`. Validated at the command boundary.
  */
-answer_verdict?: string | null; answer_verdict_reason?: string | null; choices: ClarificationChoiceDto[]; refinements: ClarificationQuestionDto[] }
+answer_verdict?: string | null; answer_verdict_reason?: string | null; choices: ClarificationChoiceDto[] }
 
 export type ClarificationSectionDto = { section_id: number; ordinal: number; title: string; description?: string | null }
 
@@ -195,9 +195,9 @@ export type DecisionsOutput = { version: string; metadata: DecisionsMetadata; de
  * Structured output produced by the OpenHands detailed-research workflow step.
  * 
  * Required fields: `status` (const `"detailed_research_complete"`), `refinement_count`,
- * `section_count`, `clarifications_json`.
+ * `section_count`, `clarifications_json`, `refinements_json`.
  */
-export type DetailedResearchOutput = { status: string; refinement_count: number; section_count: number; clarifications_json: ClarificationsFile }
+export type DetailedResearchOutput = { status: string; refinement_count: number; section_count: number; clarifications_json: ClarificationsFile; refinements_json: ClarificationsFile }
 
 export type GenerateSkillOutput = { status: string; benchmark_path?: string | null; skipped?: boolean | null; commit_summary?: string | null; call_trace?: string[] | null; verifier_result?: VerifierResult | null }
 
@@ -227,9 +227,9 @@ export type Note = { type: string; title: string; body: string }
 export type PerQuestionEntry = { question_id: string; verdict: string; reason: string | null }
 
 /**
- * A question with choices and optional answer fields. Recursive via `refinements`.
+ * A question with choices and optional answer fields.
  */
-export type Question = { id: string; title: string; text: string; must_answer: boolean; consolidated_from?: string[] | null; choices?: Choice[]; recommendation?: string | null; answer_choice?: string | null; answer_text?: string | null; refinements?: Question[] }
+export type Question = { id: string; title: string; text: string; must_answer: boolean; consolidated_from?: string[] | null; choices?: Choice[]; recommendation?: string | null; answer_choice?: string | null; answer_text?: string | null }
 
 /**
  * Structured output produced by the OpenHands research workflow step.

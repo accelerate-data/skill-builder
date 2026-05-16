@@ -200,7 +200,7 @@
                 "default": [],
                 "items": {
                   "additionalProperties": false,
-                  "description": "A question with choices and optional answer fields. Recursive via `refinements`.",
+                  "description": "A question with choices and optional answer fields.",
                   "properties": {
                     "answer_choice": {
                       "type": [
@@ -259,14 +259,6 @@
                         "string",
                         "null"
                       ]
-                    },
-                    "refinements": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "type": "object"
-                      },
-                      "type": "array"
                     },
                     "text": {
                       "type": "string"
