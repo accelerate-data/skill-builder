@@ -705,4 +705,66 @@ mod tests {
         assert_eq!(back.items[0].status, "resolved");
         assert_eq!(back.contradictory_inputs_state.as_deref(), Some("inactive"));
     }
+
+    #[test]
+    fn refinements_dto_round_trip() {
+        let dto = RefinementsDto {
+            skill_id: "s".to_string(),
+            version: "1".to_string(),
+            refinement_count: 1,
+            must_answer_count: 1,
+            question_count: 2,
+            section_count: 1,
+            title: "Refinements".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            sections: vec![RefinementSectionDto {
+                section_id: 1,
+                ordinal: 0,
+                title: "Scope".to_string(),
+                description: None,
+            }],
+            questions: vec![RefinementQuestionDto {
+                question_id: "rq1".to_string(),
+                section_id: 1,
+                ordinal: 0,
+                title: "Refinement Q1".to_string(),
+                text: "What about X?".to_string(),
+                must_answer: true,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![RefinementChoiceDto {
+                    choice_id: "a".to_string(),
+                    ordinal: 0,
+                    text: "Yes".to_string(),
+                    is_other: false,
+                }],
+            }],
+            notes: vec![],
+        };
+
+        let json = serde_json::to_string(&dto).expect("serialize");
+        let back: RefinementsDto = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.skill_id, "s");
+        assert_eq!(back.questions.len(), 1);
+        assert_eq!(back.questions[0].choices.len(), 1);
+        assert_eq!(back.questions[0].question_id, "rq1");
+    }
 }
