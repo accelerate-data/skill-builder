@@ -11,12 +11,11 @@ functional-specs: []
 
 Skill Builder now has a single production conversation UI model for active OpenHands sessions: a **top-to-bottom semantic timeline built directly from conversation events**.
 
-The canonical input is `conversationEvents`. The production renderer is `ConversationTimeline`, shared by the Workflow page and the Workspace Conversation surface. `displayItems` is no longer part of the active OpenHands transcript contract.
+The canonical input is `conversationEvents`. The production renderer is `ConversationTimeline`, shared by the Workflow page and the Workspace Conversation surface.
 
 The timeline is **semantic, not generic**:
 
-- every conversation event is rendered as a meaningful row instead of a raw
-  `"Event captured"` placeholder
+- every conversation event is rendered as a meaningful row instead of a raw `"Event captured"` placeholder
 - agent updates, skill activations, and subagent launches are always visible
 - ordinary operational tool traffic can be grouped for readability
 - unknown or newly introduced event shapes remain visible through fallback rows
@@ -119,8 +118,7 @@ Ordinary tool traffic may be grouped into a `Tool Activity` row when the items b
 
 ### Disallowed grouping
 
-These rows must remain individually visible and must never be absorbed into
-generic tool grouping:
+These rows must remain individually visible and must never be absorbed into generic tool grouping:
 
 - `Agent update`
 - `Skill`
@@ -163,8 +161,7 @@ In other words:
 
 This renderer is editorial, not lossy.
 
-**Invariant:** every raw conversation event must be accounted for as visible,
-grouped-visible, nested-visible, or explicitly suppressed.
+**Invariant:** every raw conversation event must be accounted for as visible, grouped-visible, nested-visible, or explicitly suppressed.
 
 The renderer must never silently no-op an event because:
 
