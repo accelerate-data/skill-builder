@@ -82,6 +82,9 @@ export function QuestionCard({
         <span className="flex-1 text-sm font-semibold leading-snug tracking-tight text-foreground">
           {question.title}
         </span>
+        {(question.refinements ?? []).length > 0 && (
+          <RefinementBadge refinements={question.refinements ?? []} />
+        )}
         {reviewFeedback && <ReviewStatusBadge status={reviewFeedback.status} />}
         {!reviewFeedback && relatedConflictQuestionIds && relatedConflictQuestionIds.length > 0 && (
           <RelatedConflictBadge relatedQuestionIds={relatedConflictQuestionIds} />
@@ -169,6 +172,20 @@ export function QuestionCard({
 }
 
 // ─── Badges ──────────────────────────────────────────────────────────────────
+
+function RefinementBadge({ refinements }: { refinements: Question[] }) {
+  const pendingCount = refinements.filter((refinement) => !isQuestionAnswered(refinement)).length;
+  const total = refinements.length;
+  const label = pendingCount > 0
+    ? `${pendingCount} follow-up pending`
+    : `${total} follow-up${total === 1 ? "" : "s"}`;
+
+  return (
+    <span className="shrink-0 rounded border border-[color:var(--color-ocean)]/40 bg-[color:var(--color-ocean)]/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-ocean)]">
+      {label}
+    </span>
+  );
+}
 
 function MustBadge() {
   return (

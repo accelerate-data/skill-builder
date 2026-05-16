@@ -42,6 +42,60 @@ export function parseRecommendedChoiceId(recommendation: string | null | undefin
   return recommendation.split(/\s*[—–-]\s*/)[0].trim() || null;
 }
 
+function extractQuestionSequence(id: string | null | undefined): number | null {
+  if (!id) return null;
+  const match = /^[A-Z](\d+)(?:\.(\d+))?$/i.exec(id);
+  if (!match) return null;
+  const major = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isFinite(major)) return null;
+  const minor = match[2] ? Number.parseInt(match[2], 10) : 0;
+  return major * 1000 + minor;
+}
+
+function sortQuestionsForDisplay(questions: Question[]): Question[] {
+  return [...questions]
+    .map((question) => ({
+      ...question,
+      refinements: question.refinements
+        ? sortQuestionsForDisplay(question.refinements)
+        : [],
+    }))
+    .sort((left, right) => {
+      const leftSeq = extractQuestionSequence(left.id);
+      const rightSeq = extractQuestionSequence(right.id);
+      if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
+        return leftSeq - rightSeq;
+      }
+      return left.id.localeCompare(right.id);
+    });
+}
+
+function getSectionSequence(section: Section): number {
+  const sequences = (section.questions ?? [])
+    .map((question) => extractQuestionSequence((question as Question).id))
+    .filter((value): value is number => value != null);
+  return sequences.length > 0 ? Math.min(...sequences) : Number.MAX_SAFE_INTEGER;
+}
+
+function normalizeClarificationsForDisplay(file: ClarificationsFile): ClarificationsFile {
+  const sortedSections = [...(file.sections ?? [])]
+    .map((section) => ({
+      ...section,
+      questions: sortQuestionsForDisplay((section.questions ?? []) as Question[]),
+    }))
+    .sort((left, right) => {
+      const leftSeq = getSectionSequence(left);
+      const rightSeq = getSectionSequence(right);
+      if (leftSeq !== rightSeq) return leftSeq - rightSeq;
+      return left.title.localeCompare(right.title);
+    });
+
+  return {
+    ...file,
+    sections: sortedSections,
+  };
+}
+
 // Derived helpers
 
 export type SectionStatus = "complete" | "partial" | "blocked";
@@ -231,9 +285,9 @@ export function mergeClarificationsAndRefinements(
   if (!clarifications && !refinements) return null;
   if (!clarifications) {
     if (!refinements) return null;
-    return refinementsDtoToFile(refinements);
+    return normalizeClarificationsForDisplay(refinementsDtoToFile(refinements));
   }
-  if (!refinements) return clarifications;
+  if (!refinements) return normalizeClarificationsForDisplay(clarifications);
 
   const refinementFile = refinementsDtoToFile(refinements);
   const refinementsByParent = new Map<string, Question[]>();
@@ -275,7 +329,7 @@ export function mergeClarificationsAndRefinements(
     });
   }
 
-  return {
+  return normalizeClarificationsForDisplay({
     ...clarifications,
     sections: mergedSections,
     notes: [...(clarifications.notes ?? []), ...(refinementFile.notes ?? [])],
@@ -283,5 +337,5 @@ export function mergeClarificationsAndRefinements(
       ...clarifications.metadata,
       refinement_count: refinements.refinement_count,
     },
-  };
+  });
 }

@@ -166,6 +166,13 @@ describe("Scenario B: Refinement with choices, answer_choice=null", () => {
   const dataWithRefinement = () =>
     makeClarificationsWithNestedRefinement(makeRefinement({ id: "R1.1" }));
 
+  it("shows a collapsed follow-up indicator on the parent question", () => {
+    render(
+      <ClarificationsEditor data={dataWithRefinement()} onChange={vi.fn()} />,
+    );
+    expect(screen.getByText("1 follow-up pending")).toBeInTheDocument();
+  });
+
   it("shows refinement choices so user can select one", async () => {
     const user = userEvent.setup();
     render(

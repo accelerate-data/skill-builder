@@ -229,4 +229,61 @@ describe("parseClarifications", () => {
     expect(merged?.sections[0]?.questions[0]?.refinements?.[0]?.id).toBe("R3.1");
   });
 
+  it("orders merged sections by top-level question id instead of incoming section order", () => {
+    const clarifications = {
+      version: "1",
+      metadata: {
+        title: "Clarifications",
+        question_count: 2,
+        section_count: 2,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+      },
+      sections: [
+        {
+          id: 6,
+          title: "Pipeline Segmentation and Grain",
+          questions: [
+            {
+              id: "Q6",
+              title: "Pipeline Segmentation",
+              must_answer: false,
+              text: "Late-added question",
+              choices: [],
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+        {
+          id: 2,
+          title: "Probability Model",
+          questions: [
+            {
+              id: "Q2",
+              title: "Probability Model",
+              must_answer: false,
+              text: "Existing earlier question",
+              choices: [],
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+      ],
+      notes: [],
+      answer_evaluator_notes: [],
+    };
+
+    const merged = mergeClarificationsAndRefinements(clarifications, null);
+
+    expect(merged?.sections.map((section) => section.title)).toEqual([
+      "Probability Model",
+      "Pipeline Segmentation and Grain",
+    ]);
+  });
+
 });
