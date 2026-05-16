@@ -29,12 +29,24 @@ const defaultPerformanceScenario = {
 
 const defaultSettings = {
   model_settings: {
-    provider: "anthropic",
-    model: "claude-sonnet-4-5",
-    api_key: "sk-ant-test-e2e",
-    base_url: null,
-    reasoning_effort: "auto",
-    usage_id: "workflow",
+    provider_id: "anthropic",
+    model_id: "claude-sonnet-4-5",
+    provider_overrides: {
+      anthropic: {
+        api_key: "sk-ant-test-e2e",
+        base_url: null,
+        api_version: null,
+        temperature: null,
+        max_output_tokens: null,
+        timeout_seconds: null,
+        num_retries: null,
+        reasoning_effort: "auto",
+        extra_headers: null,
+        input_cost_per_token: null,
+        output_cost_per_token: null,
+        usage_id: "workflow",
+      },
+    },
   },
   workspace_path: null,
   skills_path: E2E_SKILLS_PATH,
@@ -47,10 +59,14 @@ const mockResponses: Record<string, unknown> = {
   update_user_settings: undefined,
   test_model_connection: true,
   set_log_level: undefined,
+  log_frontend: undefined,
+  ensure_openhands_runtime_ready: undefined,
   get_default_skills_path: E2E_DEFAULT_SKILLS_PATH,
   get_data_dir: `${E2E_ROOT}/data`,
+  get_cached_model_catalog: [],
+  get_cached_model_providers: [],
   check_startup_deps: {
-    all_ok: true,
+    status: { status: "Ready" as const },
     checks: [
       { code: "openhands_agent_server", name: "OpenHands Agent Server", ok: true, detail: "python3 -m openhands.agent_server" },
       { code: "git_binary", name: "Git", ok: true, detail: "git version 2.50.1" },
@@ -67,9 +83,11 @@ const mockResponses: Record<string, unknown> = {
   read_file: "",
   check_workspace_path: true,
   check_marketplace_updates: { library: [], workspace: [], registry_name: null, registry_names: [] },
+  refresh_model_catalog: [],
+  "plugin:opener|open_url": undefined,
   has_running_agents: false,
-  run_workflow_step: "agent-001",
-  run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
+  run_workflow_step: "conv-001",
+  run_parallel_agents: { agent_id_a: "conv-001", agent_id_b: "conv-002" },
 
 // Workflow state
   get_workflow_state: { run: null, steps: [] },

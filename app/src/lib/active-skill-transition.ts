@@ -5,7 +5,6 @@ import {
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
-import { useAgentStore } from "@/stores/agent-store";
 import { useSkillStore } from "@/stores/skill-store";
 
 interface ActiveSkillSession {
@@ -13,7 +12,6 @@ interface ActiveSkillSession {
   skillName: string;
   pluginSlug: string;
   conversationId: string | null;
-  agentId: string | null;
 }
 
 interface LeaveCurrentSkillOptions {
@@ -27,19 +25,11 @@ function getActiveSkillSession(): ActiveSkillSession | null {
     return null;
   }
 
-  const runningWorkflow = Object.values(useAgentStore.getState().runs).find(
-    (run): run is typeof run & { skillName: string } =>
-      run.status === "running" &&
-      run.runSource === "workflow" &&
-      !!run.skillName,
-  );
-
   return {
     skillId: selectedSkill.id ?? null,
     skillName: selectedSkill.name,
     pluginSlug: selectedSkill.plugin_slug,
     conversationId: skillStore.conversationId,
-    agentId: runningWorkflow?.agentId ?? skillStore.activeAgentId,
   };
 }
 
@@ -66,7 +56,6 @@ export async function leaveCurrentSkill(
       session.skillName,
       session.pluginSlug,
       session.conversationId,
-      session.agentId,
       session.skillId,
     );
   }

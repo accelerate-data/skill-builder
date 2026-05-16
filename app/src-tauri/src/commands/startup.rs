@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 use crate::agents::node_resolver;
-use std::time::Duration;
 use crate::types::{BootstrapCheck, BootstrapStatus, StartupResult};
+use std::time::Duration;
 
 fn check_ok(name: &str, detail: String) -> BootstrapCheck {
     BootstrapCheck {
@@ -39,9 +39,16 @@ pub async fn check_startup_deps(_app: tauri::AppHandle) -> Result<StartupResult,
             detail: format!(
                 "{} check(s) failed: {}",
                 failed.len(),
-                failed.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
+                failed
+                    .iter()
+                    .map(|c| c.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
-            remediation: Some("The app will attempt to install missing runtime packages automatically.".to_string()),
+            remediation: Some(
+                "The app will attempt to install missing runtime packages automatically."
+                    .to_string(),
+            ),
         }
     };
 
@@ -79,25 +86,15 @@ async fn check_git_available() -> BootstrapCheck {
     #[cfg(target_os = "windows")]
     {
         match (git_version, node_resolver::find_git_bash()) {
-            (Some(ver), Some(bash_path)) => check_ok(
-                "Git",
-                format!("{} (bash: {})", ver, bash_path),
-            ),
-            (Some(ver), None) => check_fail(
-                "Git",
-                format!(
-                    "{} found but bash.exe missing",
-                    ver
-                ),
-            ),
+            (Some(ver), Some(bash_path)) => {
+                check_ok("Git", format!("{} (bash: {})", ver, bash_path))
+            }
+            (Some(ver), None) => check_fail("Git", format!("{} found but bash.exe missing", ver)),
             (None, Some(bash_path)) => check_fail(
                 "Git",
                 format!("git not on PATH (git-bash found at {})", bash_path),
             ),
-            (None, None) => check_fail(
-                "Git",
-                "Not found".to_string(),
-            ),
+            (None, None) => check_fail("Git", "Not found".to_string()),
         }
     }
 
@@ -105,10 +102,7 @@ async fn check_git_available() -> BootstrapCheck {
     {
         match git_version {
             Some(ver) => check_ok("Git", ver),
-            None => check_fail(
-                "Git",
-                "Not found".to_string(),
-            ),
+            None => check_fail("Git", "Not found".to_string()),
         }
     }
 }
@@ -126,12 +120,12 @@ async fn check_openhands_agent_server_available() -> BootstrapCheck {
         ),
         Ok(out) => check_fail(
             "OpenHands Agent Server",
-            format!("Not available: {}", String::from_utf8_lossy(&out.stderr).trim()),
+            format!(
+                "Not available: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
         ),
-        Err(e) => check_fail(
-            "OpenHands Agent Server",
-            format!("Not available: {e}"),
-        ),
+        Err(e) => check_fail("OpenHands Agent Server", format!("Not available: {e}")),
     }
 }
 

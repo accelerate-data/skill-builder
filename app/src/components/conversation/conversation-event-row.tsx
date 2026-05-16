@@ -1,5 +1,14 @@
 import type { DisplayNode } from "@/lib/display-types";
 import { Badge } from "@/components/ui/badge";
+import {
+  getErrorText,
+  getInternalEventSummary,
+  getMessageText,
+  getObservationText,
+  getToolName,
+  type OpenHandsConversationEvent,
+  type OpenHandsConversationState,
+} from "@/lib/openhands-conversation-events";
 import { cn } from "@/lib/utils";
 
 interface ConversationEventRowProps {
@@ -50,18 +59,41 @@ function getBodyText(node: DisplayNode): string {
   }
 
   const rawEvent = node.payload.rawOpenHandsEvent;
+  if (rawEvent && typeof rawEvent === "object" && "type" in rawEvent) {
+    const event = rawEvent as OpenHandsConversationEvent | OpenHandsConversationState;
+    if (event.type === "conversation_state") {
+      if (event.resultText?.trim()) {
+        return event.resultText;
+      }
+      if (event.errorDetail?.trim()) {
+        return event.errorDetail;
+      }
+      return `Conversation ${event.status}`;
+    }
+
+    return (
+      getMessageText(event) ??
+      getObservationText(event) ??
+      getErrorText(event) ??
+      getInternalEventSummary(event) ??
+      getToolName(event) ??
+      "Event captured"
+    );
+  }
+
   if (rawEvent && typeof rawEvent === "object") {
     const candidate = rawEvent as Record<string, unknown>;
-    const text =
-      candidate.text ??
-      candidate.message ??
-      candidate.content ??
-      candidate.summary ??
-      candidate.tool_name ??
-      candidate.event;
-
-    if (typeof text === "string" && text.trim().length > 0) {
-      return text;
+    for (const value of [
+      candidate.text,
+      candidate.message,
+      candidate.content,
+      candidate.summary,
+      candidate.tool_name,
+      candidate.event,
+    ]) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value;
+      }
     }
   }
 

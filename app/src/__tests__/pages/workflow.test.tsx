@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore as useAgentStore } from "@/stores/session-runtime-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { mockListen, mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
@@ -208,11 +208,17 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
   };
 }
 
+function startActiveRun(agentId: string, model = "sonnet") {
+  useAgentStore.getState().startSessionRun(agentId, model);
+  useWorkflowStore.getState().setActiveConversationId(agentId);
+}
+
 // Global reset: ensure location state doesn't leak between describe blocks.
 // Each describe's beforeEach may set mockLocation.state; this outer reset guarantees
 // every test starts with a clean slate regardless of describe-level setup order.
 beforeEach(() => {
   mockLocation.state = {};
+  useWorkflowStore.getState().setActiveConversationId(null);
   useSkillStore.getState().selectSkill({
     id: 1,
     name: "test-skill",
@@ -235,7 +241,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSkillStore.getState().selectSkill({
       id: 1,
       name: "test-skill",
@@ -285,7 +291,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSkillStore.getState().clearSelectedSkillSession();
     useSettingsStore.getState().reset();
   });
@@ -296,7 +302,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
+    startActiveRun("agent-1");
 
     render(<WorkflowPage />);
 
@@ -346,7 +352,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
+    startActiveRun("agent-1");
 
     render(<WorkflowPage />);
 
@@ -446,7 +452,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().setRunning(false);
 
     // Stale agent from step 0
-    useAgentStore.getState().startRun("stale-agent", "sonnet");
+    useAgentStore.getState().startSessionRun("stale-agent", "sonnet");
     useAgentStore.getState().completeRun("stale-agent", true);
 
     render(<WorkflowPage />);
@@ -470,7 +476,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
+    startActiveRun("agent-1");
 
     const { unmount } = render(<WorkflowPage />);
 
@@ -510,7 +516,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
+    startActiveRun("agent-1");
 
     const { unmount } = render(<WorkflowPage />);
 
@@ -566,7 +572,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
+    startActiveRun("agent-1");
 
     // Simulate blocker triggered by navigation attempt
     mockBlocker.status = "blocked";
@@ -581,11 +587,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
   it("clears stale agent data when switching skills", async () => {
     // Simulate: stale agent data from a previous skill
-    useAgentStore.getState().startRun("old-agent", "sonnet");
+    useAgentStore.getState().startSessionRun("old-agent", "sonnet");
     useAgentStore.getState().completeRun("old-agent", true);
-    useAgentStore.getState().setActiveAgent("old-agent");
+    useWorkflowStore.getState().setActiveConversationId("old-agent");
 
-    expect(useAgentStore.getState().activeAgentId).toBe("old-agent");
+    expect(useWorkflowStore.getState().activeConversationId).toBe("old-agent");
 
     // Render triggers init effect which should clear agent store
     render(<WorkflowPage />);
@@ -596,7 +602,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // Stale agent data should be cleared — "old-agent" is no longer active
     // (auto-start may have kicked off a new agent, so we check the stale ID is gone)
-    expect(useAgentStore.getState().activeAgentId).not.toBe("old-agent");
+    expect(useWorkflowStore.getState().activeConversationId).not.toBe("old-agent");
     expect(useAgentStore.getState().runs).not.toHaveProperty("old-agent");
   });
 
@@ -637,7 +643,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -665,7 +671,7 @@ describe("WorkflowPage — clarifications loading on completed agent step", () =
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
   });
 
@@ -723,7 +729,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -755,7 +761,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
   });
 
@@ -765,7 +771,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
+    startActiveRun("agent-1");
 
     render(<WorkflowPage />);
 
@@ -816,7 +822,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setCurrentStep(1);
     useWorkflowStore.getState().updateStepStatus(1, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-2", "sonnet");
+    startActiveRun("agent-2");
 
     render(<WorkflowPage />);
 
@@ -867,7 +873,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-step0-verified", "sonnet");
+    startActiveRun("agent-step0-verified");
 
     render(<WorkflowPage />);
 
@@ -899,7 +905,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-step0-materialized", "sonnet");
+    startActiveRun("agent-step0-materialized");
 
     render(<WorkflowPage />);
 
@@ -918,7 +924,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-step0-materialized",
+          conversation_id: "agent-step0-materialized",
           skill_name: "test-skill",
           step_id: 0,
           success: true,
@@ -945,7 +951,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-step0-verify-error", "sonnet");
+    startActiveRun("agent-step0-verify-error");
 
     render(<WorkflowPage />);
 
@@ -964,7 +970,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-step0-verify-error",
+          conversation_id: "agent-step0-verify-error",
           skill_name: "test-skill",
           step_id: 0,
           success: true,
@@ -991,7 +997,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-step0-materialized-early", "sonnet");
+    startActiveRun("agent-step0-materialized-early");
 
     render(<WorkflowPage />);
 
@@ -1002,7 +1008,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-step0-materialized-early",
+          conversation_id: "agent-step0-materialized-early",
           skill_name: "test-skill",
           step_id: 0,
           success: true,
@@ -1028,7 +1034,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-missing-step0", "sonnet");
+    startActiveRun("agent-missing-step0");
 
     render(<WorkflowPage />);
 
@@ -1058,7 +1064,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-invalid-step0", "sonnet");
+    startActiveRun("agent-invalid-step0");
 
     render(<WorkflowPage />);
 
@@ -1069,7 +1075,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     act(() => {
       materializedListener?.({
         payload: {
-          agent_id: "agent-invalid-step0",
+          conversation_id: "agent-invalid-step0",
           skill_name: "test-skill",
           step_id: 0,
           success: false,
@@ -1375,7 +1381,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     });
 
     act(() => {
-      useAgentStore.getState().startRun("gate-agent-missing-result-text", "haiku");
+      startActiveRun("gate-agent-missing-result-text", "haiku");
       useAgentStore.getState().completeRun("gate-agent-missing-result-text", true);
     });
 
@@ -1658,7 +1664,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -1696,7 +1702,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
     mockLocation.state = {};
     // Restore the default sidebar mock in case a test overrode it
@@ -1929,7 +1935,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -1960,7 +1966,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
   });
 
@@ -2013,7 +2019,7 @@ describe("WorkflowPage — VD-615 clarifications editor on completed agent step"
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().startSessionRun("agent-1", "sonnet");
 
     mockBlocker.status = "blocked";
 
@@ -2030,7 +2036,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -2061,7 +2067,7 @@ describe("WorkflowPage — VD-863 autosave on completed agent step with clarific
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
   });
 
@@ -2163,7 +2169,7 @@ describe("WorkflowPage — review mode default state", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -2187,7 +2193,7 @@ describe("WorkflowPage — review mode default state", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
   });
 
@@ -2238,7 +2244,7 @@ describe("step reset behavior regressions", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -2275,7 +2281,7 @@ describe("step reset behavior regressions", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
     mockLocation.state = {};
     // Restore default mocks in case a test overrode them
@@ -2283,8 +2289,8 @@ describe("step reset behavior regressions", () => {
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
 
-  it("onResetStep on step 1 calls resetWorkflowStep with stepId 0 (rerun from research)", async () => {
-    // Detailed-research rerun resets from step 0, clearing clarifications.json.
+  it("onResetStep on step 1 calls resetWorkflowStep with stepId 1", async () => {
+    // Detailed-research rerun should preserve step 0 clarifications and rerun step 1+ only.
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
@@ -2313,19 +2319,19 @@ describe("step reset behavior regressions", () => {
       capturedOnResetStep!();
     });
 
-    // Must reset from step 0, not step 1, so clarifications.json is deleted
+    // Must reset from step 1, not step 0, so clarifications stay intact.
     expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
       "/test/workspace",
       "test-skill",
-      0,
+      1,
     );
     expect(vi.mocked(restartSkillOpenHandsSession)).toHaveBeenCalled();
 
-    // Step 0 is no longer completed (auto-start fires so it becomes in_progress)
-    expect(useWorkflowStore.getState().steps[0].status).not.toBe("completed");
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[1].status).toBe("in_progress");
   });
 
-  it("onResetStep on step 1 resets all steps from 0 onward", async () => {
+  it("onResetStep on step 1 resets step 1 onward and preserves step 0", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
@@ -2355,11 +2361,11 @@ describe("step reset behavior regressions", () => {
     expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      0,
+      1,
     );
 
-    // Step 0 is no longer completed (auto-start fires → in_progress); steps 2+ are pending
-    expect(useWorkflowStore.getState().steps[0].status).not.toBe("completed");
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[1].status).toBe("in_progress");
     expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
     expect(useWorkflowStore.getState().steps[3].status).toBe("pending");
   });
@@ -2493,18 +2499,16 @@ describe("step reset behavior regressions", () => {
     );
     expect(vi.mocked(navigateBackToStepDb)).not.toHaveBeenCalled();
 
-    // Step 0 must be pending — resetToStep(0) was called (not navigateBackToStep)
+    // Step 0 should immediately rerun through the shared reset path.
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+      expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
     });
 
     // currentStep should reposition to 0
     expect(useWorkflowStore.getState().currentStep).toBe(0);
   });
 
-  it("ResetStepDialog for step 1 calls navigateBackToStep(1) keeping step 1 completed", async () => {
-    // When clicking step 1 from step 2 in update mode, the dialog calls navigateBackToStep(1).
-    // navigateBackToStep keeps the target step as-is (completed) and resets only steps > 1.
+  it("ResetStepDialog for step 1 reruns the step instead of preserving the completed view", async () => {
     vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
       <div data-testid="workflow-sidebar">
         <button data-testid="sidebar-step-1" onClick={() => onStepClick?.(1)}>Step 1</button>
@@ -2541,11 +2545,18 @@ describe("step reset behavior regressions", () => {
       screen.getByRole("button", { name: "Reset" }).click();
     });
 
-    // navigateBackToStep(1): keeps step 1 completed, resets steps > 1 to pending
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
+      expect.anything(),
+      "test-skill",
+      1,
+    );
+    expect(vi.mocked(navigateBackToStepDb)).not.toHaveBeenCalled();
+
     await waitFor(() => {
       expect(useWorkflowStore.getState().currentStep).toBe(1);
     });
-    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[1].status).toBe("in_progress");
     expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
   });
 
@@ -2609,7 +2620,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -2648,7 +2659,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
   });
 
@@ -2662,7 +2673,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     useWorkflowStore.getState().setCurrentStep(2);
     useWorkflowStore.getState().updateStepStatus(2, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-decisions", "sonnet");
+    startActiveRun("agent-decisions");
 
     render(<WorkflowPage />);
 
@@ -2866,7 +2877,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     useWorkflowStore.getState().setCurrentStep(2);
     useWorkflowStore.getState().updateStepStatus(2, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-d", "sonnet");
+    startActiveRun("agent-d");
 
     render(<WorkflowPage />);
 
@@ -3000,7 +3011,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
     useWorkflowStore.getState().setCurrentStep(1);
     useWorkflowStore.getState().updateStepStatus(1, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-r", "sonnet");
+    startActiveRun("agent-r");
 
     render(<WorkflowPage />);
 
@@ -3039,7 +3050,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -3069,7 +3080,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
   });
 
@@ -3083,7 +3094,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     useWorkflowStore.getState().setCurrentStep(3);
     useWorkflowStore.getState().updateStepStatus(3, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-build", "sonnet");
+    startActiveRun("agent-build");
 
     render(<WorkflowPage />);
 
@@ -3126,7 +3137,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
     useWorkflowStore.getState().setCurrentStep(3);
     useWorkflowStore.getState().updateStepStatus(3, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-build", "sonnet");
+    startActiveRun("agent-build");
 
     render(<WorkflowPage />);
 
@@ -3173,7 +3184,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -3207,7 +3218,7 @@ describe("WorkflowPage — gate handler isolated paths (TF-02)", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
     vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
@@ -3280,7 +3291,7 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
 
     act(() => {
       if (!success) {
-        useAgentStore.getState().startRun(agentId, "haiku");
+        useAgentStore.getState().startSessionRun(agentId, "haiku");
         useAgentStore.getState().completeRun(agentId, false);
         return;
       }
@@ -3796,7 +3807,7 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
 
     // Gate agent starts and fails
     act(() => {
-      useAgentStore.getState().startRun("gate-error-agent", "haiku");
+      startActiveRun("gate-error-agent", "haiku");
       useAgentStore.getState().completeRun("gate-error-agent", false);
     });
 
@@ -4009,7 +4020,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
 
     useSettingsStore.getState().setSettings({
@@ -4041,7 +4052,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
     vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
   });
@@ -4057,7 +4068,7 @@ describe("WorkflowPage — step-completion error paths (TF-03)", () => {
     useWorkflowStore.getState().setCurrentStep(2);
     useWorkflowStore.getState().updateStepStatus(2, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-step2-no-structured", "sonnet");
+    startActiveRun("agent-step2-no-structured");
 
     render(<WorkflowPage />);
 
@@ -4079,7 +4090,7 @@ describe("WorkflowPage — loading shimmer", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSettingsStore.getState().reset();
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
@@ -4092,7 +4103,7 @@ describe("WorkflowPage — loading shimmer", () => {
 
   afterEach(() => {
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSkillStore.getState().clearSelectedSkillSession();
     useSettingsStore.getState().reset();
   });

@@ -1,5 +1,4 @@
 import type { AppSettings, SkillSummary } from "@/lib/tauri";
-import type { DisplayItem } from "@/lib/display-types";
 
 // --- Settings fixtures ---
 
@@ -43,18 +42,6 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
     plugin_slug: "skills",
     plugin_display_name: "Skills",
     is_default_plugin: true,
-    ...overrides,
-  };
-}
-
-// --- Display item fixtures ---
-
-export function makeDisplayItem(overrides?: Partial<DisplayItem>): DisplayItem {
-  return {
-    id: `di-${Date.now()}`,
-    type: "output",
-    timestamp: Date.now(),
-    outputText: "Analyzing domain...",
     ...overrides,
   };
 }

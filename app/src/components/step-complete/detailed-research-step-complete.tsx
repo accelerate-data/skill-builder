@@ -1,7 +1,10 @@
 import { Loader2, AlertTriangle } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
-import { clarificationsDtoToFile, mergeClarificationsAndRefinements } from "@/lib/clarifications-types";
+import {
+  clarificationsDtoToFile,
+  mergeClarificationsAndRefinements,
+} from "@/lib/clarifications-types";
 import { useClarifications, useRefinements } from "@/lib/queries/clarifications";
 import { StepActionBar } from "./step-action-bar";
 import type { StepCompleteBaseProps, ClarificationsEditableProps } from "./step-complete-types";
@@ -24,6 +27,7 @@ export function DetailedResearchStepComplete(props: Props) {
   const isLoading = clarLoading || refineLoading;
   const clarData = clarDto ? clarificationsDtoToFile(clarDto) : null;
   const mergedData = mergeClarificationsAndRefinements(clarData, refinementsDto ?? null);
+  const editorData = controlledClarData ?? mergedData;
 
   if (isLoading) {
     return (
@@ -53,7 +57,7 @@ export function DetailedResearchStepComplete(props: Props) {
       {clarificationsEditable ? (
         <div className="flex-1 min-h-0 overflow-hidden">
           <ClarificationsEditor
-            data={controlledClarData ?? mergedData!}
+            data={editorData!}
             onChange={onClarificationsChange ?? (() => {})}
             onContinue={onClarificationsContinue}
             onReset={onReset}

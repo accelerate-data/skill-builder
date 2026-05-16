@@ -97,12 +97,7 @@ pub fn list_step_output_files(
 }
 
 /// Delete output files for a single step.
-pub fn clean_step_output(
-    skill_name: &str,
-    plugin_slug: &str,
-    step_id: u32,
-    skills_path: &str,
-) {
+pub fn clean_step_output(skill_name: &str, plugin_slug: &str, step_id: u32, skills_path: &str) {
     const LABEL: &str = "clean_step_output";
     log::debug!(
         "[{}] skill='{}': step={} skills_path={}",
@@ -177,12 +172,7 @@ pub fn cleanup_future_steps(
         if (step_id as i32) <= after_step {
             continue;
         }
-        clean_step_output(
-            skill_name,
-            plugin_slug,
-            step_id,
-            skills_path,
-        );
+        clean_step_output(skill_name, plugin_slug, step_id, skills_path);
     }
 }
 
@@ -200,12 +190,7 @@ pub fn delete_step_output_files(
         skills_path
     );
     for step_id in from_step_id..=3 {
-        clean_step_output(
-            skill_name,
-            plugin_slug,
-            step_id,
-            skills_path,
-        );
+        clean_step_output(skill_name, plugin_slug, step_id, skills_path);
     }
 }
 

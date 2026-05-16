@@ -53,7 +53,6 @@ function renderCard(
   const onDownload = vi.fn();
   const onEdit = vi.fn();
   const onEditWorkflow = vi.fn();
-  const onRefine = vi.fn();
 
   render(
     <SkillCard
@@ -63,12 +62,11 @@ function renderCard(
       onDownload={onDownload}
       onEdit={onEdit}
       onEditWorkflow={onEditWorkflow}
-      onRefine={onRefine}
       {...overrides}
     />
   );
 
-  return { onContinue, onDelete, onDownload, onEdit, onEditWorkflow, onRefine };
+  return { onContinue, onDelete, onDownload, onEdit, onEditWorkflow };
 }
 
 // ---------------------------------------------------------------------------
@@ -133,11 +131,6 @@ describe("SkillCard — created skill", () => {
     expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
   });
 
-  it("shows Refine button when workflow is complete", () => {
-    renderCard(createdComplete);
-    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
-  });
-
   it("shows Download button when workflow is complete", () => {
     renderCard(createdComplete);
     expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
@@ -146,11 +139,6 @@ describe("SkillCard — created skill", () => {
   it("shows Delete button", () => {
     renderCard(createdComplete);
     expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
-  });
-
-  it("hides Refine button when workflow is incomplete", () => {
-    renderCard(createdIncomplete);
-    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
   });
 
   it("hides Download button when workflow is incomplete", () => {
@@ -188,13 +176,6 @@ describe("SkillCard — created skill", () => {
     expect(onEditWorkflow).toHaveBeenCalledWith(createdComplete);
   });
 
-  it("calls onRefine when Refine button is clicked", async () => {
-    const user = userEvent.setup();
-    const { onRefine } = renderCard(createdComplete);
-    await user.click(screen.getByRole("button", { name: /Refine skill/i }));
-    expect(onRefine).toHaveBeenCalledWith(createdComplete);
-  });
-
   it("calls onDelete when Delete button is clicked", async () => {
     const user = userEvent.setup();
     const { onDelete } = renderCard(createdComplete);
@@ -217,11 +198,6 @@ describe("SkillCard — marketplace skill", () => {
   it("hides Edit Workflow button", () => {
     renderCard(marketplaceSkill);
     expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
-  });
-
-  it("hides Refine button (marketplace skills are not refinable)", () => {
-    renderCard(marketplaceSkill);
-    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
   });
 
   it("shows Download button", () => {

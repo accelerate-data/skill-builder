@@ -59,8 +59,8 @@ const agentRunsState = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/stores/agent-store", () => ({
-  useAgentStore: {
+vi.mock("@/stores/session-runtime-store", () => ({
+  useSessionRuntimeStore: {
     getState: () => agentRunsState,
   },
 }));

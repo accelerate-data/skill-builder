@@ -15,14 +15,14 @@ pub(super) enum RuntimeMessageAction {
 }
 
 fn build_frontend_event_payload(
-    agent_id: &str,
+    conversation_id: &str,
     timestamp: u64,
     event: &serde_json::Value,
 ) -> serde_json::Value {
     let mut payload = serde_json::Map::new();
     payload.insert(
-        "agent_id".to_string(),
-        serde_json::Value::String(agent_id.to_string()),
+        "conversation_id".to_string(),
+        serde_json::Value::String(conversation_id.to_string()),
     );
     payload.insert(
         "timestamp".to_string(),
@@ -36,8 +36,22 @@ fn build_frontend_event_payload(
     serde_json::Value::Object(payload)
 }
 
+fn build_run_result_payload(
+    conversation_id: &str,
+    summary: &RuntimeRunSummary,
+) -> serde_json::Value {
+    serde_json::json!({
+        "conversation_id": conversation_id,
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "type": "run_result",
+        "status": summary.status,
+        "resultText": summary.result_text,
+        "resultErrors": summary.result_errors,
+    })
+}
+
 pub(super) fn route_runtime_message(
-    agent_id: &str,
+    conversation_id: &str,
     message: serde_json::Value,
 ) -> Option<RuntimeMessageAction> {
     let msg_type = message
@@ -49,7 +63,15 @@ pub(super) fn route_runtime_message(
     {
         log::debug!(
             "[event:agent-message:{}] skipping sdk_stderr diagnostic",
-            agent_id
+            conversation_id
+        );
+        return None;
+    }
+
+    if msg_type == "display_item" {
+        log::debug!(
+            "[event:agent-message:{}] skipping legacy display_item payload",
+            conversation_id
         );
         return None;
     }
@@ -66,7 +88,7 @@ pub(super) fn route_runtime_message(
             .unwrap_or("unknown");
         log::debug!(
             "[event:agent_event:{}] routing subtype={}",
-            agent_id,
+            conversation_id,
             event_subtype
         );
         return match message.get("event") {
@@ -79,7 +101,7 @@ pub(super) fn route_runtime_message(
                         Err(e) => {
                             log::error!(
                                 "[event:agent_event.run_result:{}] Failed to deserialize: {}",
-                                agent_id,
+                                conversation_id,
                                 e
                             );
                             None
@@ -88,40 +110,40 @@ pub(super) fn route_runtime_message(
                 }
                 Some("run_config") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-run-config",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some("run_init") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-run-init",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some("turn_usage") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-turn-usage",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some("compaction") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-compaction",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some("context_window") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-context-window",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some("session_exhausted") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-session-exhausted",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some("init_progress") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-init-progress",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some("turn_complete") => Some(RuntimeMessageAction::EmitFrontendEvent {
                     event_name: "agent-turn-complete",
-                    payload: build_frontend_event_payload(agent_id, timestamp, event),
+                    payload: build_frontend_event_payload(conversation_id, timestamp, event),
                 }),
                 Some(other) => {
                     log::warn!(
                         "[event:agent_event:{}] Unsupported event type '{}' — skipping",
-                        agent_id,
+                        conversation_id,
                         other
                     );
                     None
@@ -129,36 +151,52 @@ pub(super) fn route_runtime_message(
                 None => {
                     log::warn!(
                         "[event:agent_event:{}] Missing 'event.type' field — skipping",
-                        agent_id
+                        conversation_id
                     );
                     None
                 }
             },
             None => {
-                log::error!("[event:agent_event:{}] Missing 'event' field", agent_id);
+                log::error!(
+                    "[event:agent_event:{}] Missing 'event' field",
+                    conversation_id
+                );
                 None
             }
         };
     }
 
     Some(RuntimeMessageAction::ForwardAgentMessage(AgentEvent {
-        agent_id: agent_id.to_string(),
+        conversation_id: conversation_id.to_string(),
         message,
     }))
 }
 
-pub fn handle_runtime_message(app_handle: &tauri::AppHandle, agent_id: &str, line: &str) {
+pub fn handle_runtime_message(app_handle: &tauri::AppHandle, conversation_id: &str, line: &str) {
     match serde_json::from_str::<serde_json::Value>(line) {
-        Ok(message) => match route_runtime_message(agent_id, message) {
+        Ok(message) => match route_runtime_message(conversation_id, message) {
             Some(RuntimeMessageAction::PersistRunSummary(summary)) => {
-                persist_run_summary(app_handle, agent_id, &summary);
+                persist_run_summary(app_handle, conversation_id, &summary);
+                let payload = build_run_result_payload(conversation_id, &summary);
+                if let Err(e) = app_handle.emit("agent-run-result", &payload) {
+                    log::warn!(
+                        "Failed to emit agent-run-result for {}: {}",
+                        conversation_id,
+                        e
+                    );
+                }
             }
             Some(RuntimeMessageAction::EmitFrontendEvent {
                 event_name,
                 payload,
             }) => {
                 if let Err(e) = app_handle.emit(event_name, &payload) {
-                    log::warn!("Failed to emit {} for {}: {}", event_name, agent_id, e);
+                    log::warn!(
+                        "Failed to emit {} for {}: {}",
+                        event_name,
+                        conversation_id,
+                        e
+                    );
                 }
             }
             Some(RuntimeMessageAction::ForwardAgentMessage(event)) => {
@@ -167,57 +205,18 @@ pub fn handle_runtime_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                     .get("type")
                     .and_then(|t| t.as_str())
                     .unwrap_or("unknown");
-                if msg_type == "display_item" {
-                    let item_type = event
-                        .message
-                        .get("item")
-                        .and_then(|i| i.get("type"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("unknown");
-                    let item_id = event
-                        .message
-                        .get("item")
-                        .and_then(|i| i.get("id"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("unknown");
-                    if item_type == "error" {
-                        let error_content = event
-                            .message
-                            .get("item")
-                            .and_then(|i| i.get("content"))
-                            .map(|c| c.to_string())
-                            .or_else(|| {
-                                event
-                                    .message
-                                    .get("item")
-                                    .and_then(|i| i.get("error"))
-                                    .map(|e| e.to_string())
-                            })
-                            .unwrap_or_default();
-                        log::error!(
-                            "[event:agent-message:{}] display_item type=error id={} detail={}",
-                            agent_id,
-                            item_id,
-                            error_content
-                        );
-                    } else {
-                        log::debug!(
-                            "[event:agent-message:{}] display_item type={} id={}",
-                            agent_id,
-                            item_type,
-                            item_id
-                        );
-                    }
-                } else {
-                    log::debug!(
-                        "[event:agent-message:{}] pass_through type={}",
-                        agent_id,
-                        msg_type
-                    );
-                }
+                log::debug!(
+                    "[event:agent-message:{}] pass_through type={}",
+                    conversation_id,
+                    msg_type
+                );
 
                 if let Err(e) = app_handle.emit("agent-message", &event) {
-                    log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
+                    log::warn!(
+                        "Failed to emit agent-message for {}: {}",
+                        conversation_id,
+                        e
+                    );
                 }
             }
             None => {}
@@ -229,26 +228,26 @@ pub fn handle_runtime_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
 }
 
 #[allow(dead_code)]
-pub fn handle_runtime_exit(app_handle: &tauri::AppHandle, agent_id: &str, success: bool) {
-    handle_runtime_exit_with_detail(app_handle, agent_id, success, None);
+pub fn handle_runtime_exit(app_handle: &tauri::AppHandle, conversation_id: &str, success: bool) {
+    handle_runtime_exit_with_detail(app_handle, conversation_id, success, None);
 }
 
 pub fn handle_runtime_exit_with_detail(
     app_handle: &tauri::AppHandle,
-    agent_id: &str,
+    conversation_id: &str,
     success: bool,
     error_detail: Option<String>,
 ) {
-    log::info!("[event:agent-exit:{}] success={}", agent_id, success);
+    log::info!("[event:agent-exit:{}] success={}", conversation_id, success);
     let payload = AgentExitPayload {
-        agent_id: agent_id.to_string(),
+        conversation_id: conversation_id.to_string(),
         success,
         error_detail,
     };
     if let Err(e) = app_handle.emit("agent-exit", &payload) {
         log::warn!(
             "Failed to emit agent-exit for {} (success={}): {}",
-            agent_id,
+            conversation_id,
             success,
             e
         );
@@ -256,13 +255,17 @@ pub fn handle_runtime_exit_with_detail(
 }
 
 #[allow(dead_code)]
-pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, agent_id: &str) {
-    log::info!("[event:agent-shutdown:{}]", agent_id);
+pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, conversation_id: &str) {
+    log::info!("[event:agent-shutdown:{}]", conversation_id);
     let payload = AgentShutdownPayload {
-        agent_id: agent_id.to_string(),
+        conversation_id: conversation_id.to_string(),
     };
     if let Err(e) = app_handle.emit("agent-shutdown", &payload) {
-        log::warn!("Failed to emit agent-shutdown for {}: {}", agent_id, e);
+        log::warn!(
+            "Failed to emit agent-shutdown for {}: {}",
+            conversation_id,
+            e
+        );
     }
 }
 
@@ -434,7 +437,7 @@ mod tests {
                     payload,
                 }) => {
                     assert_eq!(event_name, expected_name);
-                    assert_eq!(payload["agent_id"], "agent-1");
+                    assert_eq!(payload["conversation_id"], "agent-1");
                     assert_eq!(payload["timestamp"], expected_timestamp);
                     assert_eq!(payload[expected_field], expected_value);
                 }
@@ -463,7 +466,7 @@ mod tests {
                 payload,
             }) => {
                 assert_eq!(event_name, "agent-run-init");
-                assert_eq!(payload["agent_id"], "agent-1");
+                assert_eq!(payload["conversation_id"], "agent-1");
                 assert_eq!(payload["timestamp"], 42);
                 assert_eq!(payload["sessionId"], "sess-123");
             }
@@ -490,7 +493,7 @@ mod tests {
                 payload,
             }) => {
                 assert_eq!(event_name, "agent-init-progress");
-                assert_eq!(payload["agent_id"], "agent-2");
+                assert_eq!(payload["conversation_id"], "agent-2");
                 assert_eq!(payload["timestamp"], 99);
                 assert_eq!(payload["stage"], "runtime_ready");
             }
@@ -517,7 +520,7 @@ mod tests {
                 payload,
             }) => {
                 assert_eq!(event_name, "agent-session-exhausted");
-                assert_eq!(payload["agent_id"], "agent-5");
+                assert_eq!(payload["conversation_id"], "agent-5");
                 assert_eq!(payload["sessionId"], "sess-456");
             }
             other => panic!("expected frontend event action, got {:?}", other),
@@ -542,7 +545,7 @@ mod tests {
                 payload,
             }) => {
                 assert_eq!(event_name, "agent-turn-complete");
-                assert_eq!(payload["agent_id"], "agent-6");
+                assert_eq!(payload["conversation_id"], "agent-6");
             }
             other => panic!("expected frontend event action, got {:?}", other),
         }
@@ -564,7 +567,7 @@ mod tests {
 
         match action {
             Some(RuntimeMessageAction::ForwardAgentMessage(event)) => {
-                assert_eq!(event.agent_id, "agent-6");
+                assert_eq!(event.conversation_id, "agent-6");
                 assert_eq!(event.message, message);
             }
             other => panic!(
@@ -588,7 +591,7 @@ mod tests {
 
         match action {
             Some(RuntimeMessageAction::ForwardAgentMessage(event)) => {
-                assert_eq!(event.agent_id, "agent-6");
+                assert_eq!(event.conversation_id, "agent-6");
                 assert_eq!(event.message, message);
             }
             other => panic!(
@@ -604,6 +607,19 @@ mod tests {
             "type": "system",
             "subtype": "sdk_stderr",
             "data": "diagnostic stderr line"
+        });
+
+        assert!(route_runtime_message("agent-6", message).is_none());
+    }
+
+    #[test]
+    fn route_runtime_message_skips_legacy_display_items() {
+        let message = serde_json::json!({
+            "type": "display_item",
+            "item": {
+                "id": "legacy-item-1",
+                "type": "output"
+            }
         });
 
         assert!(route_runtime_message("agent-6", message).is_none());

@@ -5,6 +5,9 @@ import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import { useSkillStore } from "@/stores/skill-store";
 
+const mockInvalidateWorkflowArtifactsAfterStep = vi.fn();
+const mockInvalidateWorkflowArtifactsAfterReset = vi.fn();
+
 vi.mock("@/lib/toast", () => ({
   toast: {
     success: vi.fn(),
@@ -13,6 +16,13 @@ vi.mock("@/lib/toast", () => ({
     warning: vi.fn(),
     loading: vi.fn(() => "loading-toast-id"),
   },
+}));
+
+vi.mock("@/lib/queries/agent-stream-cache", () => ({
+  invalidateWorkflowArtifactsAfterStep: (...args: unknown[]) =>
+    mockInvalidateWorkflowArtifactsAfterStep(...args),
+  invalidateWorkflowArtifactsAfterReset: (...args: unknown[]) =>
+    mockInvalidateWorkflowArtifactsAfterReset(...args),
 }));
 
 const mockRunWorkflowStep = vi.fn((..._args: unknown[]) =>
@@ -97,6 +107,7 @@ const mockSetGateLoading = vi.fn();
 const mockResetToStep = vi.fn();
 const mockClearRuntimeError = vi.fn();
 const mockSetStopping = vi.fn();
+const mockSetActiveConversationId = vi.fn();
 let mockWorkflowState = {
   workflowSessionId: null as string | null,
   currentStep: 0,
@@ -106,6 +117,7 @@ let mockWorkflowState = {
   isInitializing: false,
   reviewMode: false,
   gateLoading: false,
+  activeConversationId: null as string | null,
   disabledSteps: [] as number[],
   setCurrentStep: mockSetCurrentStep,
   updateStepStatus: mockUpdateStepStatus,
@@ -114,12 +126,12 @@ let mockWorkflowState = {
   setInitializing: mockSetInitializing,
   clearInitializing: mockClearInitializing,
   setGateLoading: mockSetGateLoading,
+  setActiveConversationId: mockSetActiveConversationId,
   resetToStep: mockResetToStep,
   clearRuntimeError: mockClearRuntimeError,
   setDisabledSteps: vi.fn(),
 };
 
-const mockSetActiveAgent = vi.fn();
 const mockClearRuns = vi.fn();
 const mockClearRunsBySource = vi.fn();
 const mockAgentStartRun = vi.fn();
@@ -128,12 +140,10 @@ const mockSettingsState = vi.hoisted(() => ({
     model_id: "test-settings-model" as string | null,
   },
 }));
-let mockActiveAgentId: string | null = null;
 let mockRuns: Record<
   string,
   {
     status: string;
-    displayItems: unknown[];
     totalCost?: number;
     conversationState?: { resultText?: string | null };
   }
@@ -153,27 +163,23 @@ vi.mock("@/stores/workflow-store", () => ({
   ),
 }));
 
-vi.mock("@/stores/agent-store", () => ({
-  useAgentStore: Object.assign(
+vi.mock("@/stores/session-runtime-store", () => ({
+  useSessionRuntimeStore: Object.assign(
     vi.fn((selector?: (s: unknown) => unknown) => {
       const state = {
-        activeAgentId: mockActiveAgentId,
         runs: mockRuns,
-        setActiveAgent: mockSetActiveAgent,
-        clearRuns: mockClearRuns,
+        clearSessionRuns: mockClearRuns,
         clearRunsBySource: mockClearRunsBySource,
-        startRun: mockAgentStartRun,
+        startSessionRun: mockAgentStartRun,
       };
       return selector ? selector(state) : state;
     }),
     {
       getState: vi.fn(() => ({
         runs: mockRuns,
-        setActiveAgent: mockSetActiveAgent,
-        clearRuns: mockClearRuns,
+        clearSessionRuns: mockClearRuns,
         clearRunsBySource: mockClearRunsBySource,
-        startRun: mockAgentStartRun,
-        activeAgentId: mockActiveAgentId,
+        startSessionRun: mockAgentStartRun,
       })),
     },
   ),
@@ -213,7 +219,6 @@ describe("useWorkflowStateMachine", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockActiveAgentId = null;
     mockRuns = {};
     useSkillStore.getState().clearSelectedSkillSession();
     mockWorkflowState = {
@@ -226,6 +231,7 @@ describe("useWorkflowStateMachine", () => {
       isInitializing: false,
       reviewMode: false,
       gateLoading: false,
+      activeConversationId: null,
       disabledSteps: [],
     };
     mockRestartOpenHandsSession.mockClear();
@@ -245,11 +251,7 @@ describe("useWorkflowStateMachine", () => {
 
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
     expect(mockAgentStartRun).toHaveBeenCalledWith(
       "agent-abc",
       expect.any(String),
@@ -360,9 +362,7 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       0,
     );
-    expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(
-      99,
-    );
+    expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(99);
 
     const session = useSkillStore.getState();
     expect(session.conversationId).toBe("conv-reset-123");
@@ -382,11 +382,7 @@ describe("useWorkflowStateMachine", () => {
     });
 
     expect(mockResetToStep).toHaveBeenCalledWith(0);
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
   });
@@ -421,6 +417,58 @@ describe("useWorkflowStateMachine", () => {
     expect(mockRunWorkflowStep).not.toHaveBeenCalled();
   });
 
+  it("performStepReset on step 1 preserves step 0 and reruns step 1", async () => {
+    mockRunWorkflowStep.mockResolvedValueOnce("agent-reset-step-1");
+
+    const { result } = renderHook(() =>
+      useWorkflowStateMachine(defaultOptions),
+    );
+
+    await act(async () => {
+      await result.current.performStepReset(1);
+    });
+
+    expect(mockResetWorkflowStep).toHaveBeenCalledWith(
+      "/workspace",
+      "test-skill",
+      1,
+    );
+    expect(mockInvalidateWorkflowArtifactsAfterReset).toHaveBeenCalledWith(
+      "1",
+      1,
+    );
+    expect(mockResetToStep).toHaveBeenCalledWith(1);
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 1);
+  });
+
+  it("performStepReset updates local workflow state before backend reset resolves", async () => {
+    let resolveReset: (() => void) | undefined;
+    mockResetWorkflowStep.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveReset = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useWorkflowStateMachine(defaultOptions),
+    );
+
+    await act(async () => {
+      void result.current.performStepReset(1);
+      await Promise.resolve();
+    });
+
+    expect(mockResetToStep).toHaveBeenCalledWith(1);
+    expect(mockRestartOpenHandsSession).not.toHaveBeenCalled();
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveReset?.();
+      await Promise.resolve();
+    });
+  });
+
   it("handleStartAgentStep uses overrideStep when provided", async () => {
     mockRunWorkflowStep.mockResolvedValueOnce("agent-override-1");
 
@@ -432,11 +480,7 @@ describe("useWorkflowStateMachine", () => {
       await result.current.handleStartAgentStep(2);
     });
 
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      2,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 2);
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(2, "in_progress");
   });
 
@@ -466,33 +510,10 @@ describe("useWorkflowStateMachine", () => {
       steps: [{ id: 0, status: "in_progress" }],
       isRunning: true,
     };
-    mockActiveAgentId = "agent-finish-1";
+    mockWorkflowState.activeConversationId = "agent-finish-1";
     mockRuns = {
       "agent-finish-1": {
         status: "completed",
-        displayItems: [
-          {
-            id: "output-agent-finish-1",
-            type: "output",
-            timestamp: Date.now(),
-            outputText: JSON.stringify({
-              status: "research_complete",
-              question_count: 1,
-              research_output: {
-                version: "1",
-                metadata: {
-                  question_count: 0,
-                  section_count: 0,
-                  refinement_count: 0,
-                  must_answer_count: 0,
-                  priority_questions: [],
-                },
-                sections: [],
-                notes: [],
-              },
-            }),
-          },
-        ],
         totalCost: 0,
       },
     };
@@ -519,6 +540,10 @@ describe("useWorkflowStateMachine", () => {
 
     // The step must have been marked completed and isRunning set to false
     expect(mockSetRunning).toHaveBeenCalledWith(false);
+    expect(mockInvalidateWorkflowArtifactsAfterStep).toHaveBeenCalledWith(
+      "1",
+      0,
+    );
   });
 
   it("shows a warning toast when step 3 completes with verifier findings", async () => {
@@ -535,11 +560,10 @@ describe("useWorkflowStateMachine", () => {
       ],
       isRunning: true,
     };
-    mockActiveAgentId = "agent-generate-1";
+    mockWorkflowState.activeConversationId = "agent-generate-1";
     mockRuns = {
       "agent-generate-1": {
         status: "completed",
-        displayItems: [],
         conversationState: {
           resultText: JSON.stringify({
             status: "generated",
@@ -644,11 +668,7 @@ describe("useWorkflowStateMachine", () => {
 
     // The toggle effect sets pendingAutoStartStep, then the auto-start effect fires
     await waitFor(() => {
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+      expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
     });
 
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
@@ -735,10 +755,6 @@ describe("useWorkflowStateMachine", () => {
       await result.current.handleStartAgentStep();
     });
 
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
   });
 });

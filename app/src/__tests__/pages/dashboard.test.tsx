@@ -78,12 +78,12 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("skill-dialog")).toBeInTheDocument();
   });
 
-  it("does not render SkillDialog when workspacePath is not set", async () => {
+  it("opens SkillDialog even when workspacePath is not set", async () => {
     const user = userEvent.setup();
     render(<DashboardPage />);
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    expect(screen.queryByTestId("skill-dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("skill-dialog")).toBeInTheDocument();
   });
 });

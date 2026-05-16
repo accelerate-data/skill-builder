@@ -145,12 +145,13 @@ pub async fn review_skill_scope(
         .to_string_lossy()
         .replace('\\', "/");
 
-    let skills_path = crate::commands::skill_session::resolve_skills_path(&db).inspect_err(|e| {
-        log::error!("[review_skill_scope] Failed to resolve skills path: {}", e)
-    })?;
+    let skills_path =
+        crate::commands::skill_session::resolve_skills_path(&db).inspect_err(|e| {
+            log::error!("[review_skill_scope] Failed to resolve skills path: {}", e)
+        })?;
 
     let config = build_skill_creator_config(SkillCreatorRuntimeContext {
-        app_data_root: app_data_root,
+        app_data_root,
         skills_root: skills_path,
         skill_name: skill_name.clone(),
         plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
@@ -163,7 +164,6 @@ pub async fn review_skill_scope(
     let run = tracked_openhands::send_tracked_throwaway(
         &app,
         OpenHandsThrowawayRunParams {
-            agent_id: format!("{}-scope-review-{}", skill_name, uuid::Uuid::new_v4()),
             config,
             timeout: std::time::Duration::from_secs(90),
         },
@@ -394,9 +394,7 @@ mod tests {
                 usage_id: Some("workflow".to_string()),
             },
             intent: SkillCreatorIntent::ScopeReview,
-            skill_dir_override: Some(
-                "/tmp/skill-builder/throwaway/scope-review/run-1".to_string(),
-            ),
+            skill_dir_override: Some("/tmp/skill-builder/throwaway/scope-review/run-1".to_string()),
         });
 
         let json = serde_json::to_value(&config).unwrap();

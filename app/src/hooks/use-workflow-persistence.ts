@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   getWorkflowState,
@@ -50,7 +50,7 @@ export function useWorkflowPersistence({
   const loadWorkflowState = useWorkflowStore((state) => state.loadWorkflowState);
   const setHydrated = useWorkflowStore((state) => state.setHydrated);
 
-  const clearRuns = useAgentStore.getState().clearRuns;
+  const clearSessionRuns = useSessionRuntimeStore.getState().clearSessionRuns;
 
   // Initialize workflow from saved state on skill change
   useEffect(() => {
@@ -78,7 +78,7 @@ export function useWorkflowPersistence({
     }
 
     // Clear stale agent data from previous skill
-    clearRuns();
+    clearSessionRuns();
 
     // Read workflow state and disabled steps in parallel
     if (skillId == null) {

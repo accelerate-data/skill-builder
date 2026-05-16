@@ -176,6 +176,65 @@ fn test_openhands_settings_migration_does_not_backfill_legacy_model() {
 }
 
 #[test]
+fn test_drop_legacy_chat_tables_migration_removes_chat_sessions_and_messages() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+    run_skill_conversations_migration(&conn).unwrap();
+
+    conn.execute_batch(
+        "CREATE TABLE chat_sessions (
+            id TEXT PRIMARY KEY
+        );
+        CREATE TABLE chat_messages (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL
+        );",
+    )
+    .unwrap();
+
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_sessions'",
+            [],
+            |_| Ok(())
+        )
+        .is_ok());
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'",
+            [],
+            |_| Ok(())
+        )
+        .is_ok());
+
+    run_drop_legacy_chat_tables_migration(&conn).unwrap();
+    run_drop_legacy_chat_tables_migration(&conn).unwrap();
+
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_sessions'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_conversations'",
+            [],
+            |_| Ok(())
+        )
+        .is_ok());
+}
+
+#[test]
 fn test_migration_count_matches_expected() {
     // Guard against missing registrations in NUMBERED_MIGRATIONS.
     // Applies every migration from the module-level constant and asserts the count
@@ -432,8 +491,8 @@ fn test_repair_plugin_ownership_schema_recovers_when_migration_38_was_only_marke
         .unwrap();
     assert_eq!(default_plugin_count, 1);
 
-    save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
-    let skill = get_skill_master(&conn, "test-skill").unwrap().unwrap();
+    let skill_id = upsert_skill(&conn, "test-skill", "skill-builder", "domain").unwrap();
+    let skill = get_skill_master_by_id(&conn, skill_id).unwrap().unwrap();
     assert_eq!(skill.plugin_slug, crate::skill_paths::DEFAULT_PLUGIN_SLUG);
 }
 
@@ -786,6 +845,11 @@ fn test_workflow_steps_crud() {
     save_workflow_step_by_skill_id(&conn, skill_id, 2, "pending").unwrap();
     let steps = get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
     assert_eq!(steps.len(), 3);
+    assert_eq!(steps[0].skill_id, skill_id);
+    assert_eq!(
+        steps[0].plugin_slug,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG
+    );
     assert_eq!(steps[0].status, "completed");
     assert_eq!(steps[1].status, "in_progress");
     assert_eq!(steps[2].status, "pending");
@@ -2879,7 +2943,7 @@ fn test_end_all_sessions_for_pid() {
 }
 
 #[test]
-fn test_end_active_workflow_sessions_for_skill() {
+fn test_end_active_workflow_sessions_for_skill_id() {
     let conn = create_test_db();
     let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
@@ -2888,7 +2952,7 @@ fn test_end_active_workflow_sessions_for_skill() {
     create_workflow_session_by_skill_id(&conn, "sess-3", skill_id_b, 100).unwrap();
     end_workflow_session(&conn, "sess-2").unwrap();
 
-    let count = end_active_workflow_sessions_for_skill(&conn, "skill-a").unwrap();
+    let count = end_active_workflow_sessions_for_skill_id(&conn, skill_id_a).unwrap();
     assert_eq!(count, 1);
 
     let ended_a1: Option<String> = conn
@@ -2917,6 +2981,67 @@ fn test_end_active_workflow_sessions_for_skill() {
         )
         .unwrap();
     assert!(ended_b.is_none());
+}
+
+#[test]
+fn test_workflow_runtime_rows_preserve_plugin_identity_for_same_named_skills() {
+    let conn = create_test_db();
+    ensure_plugin(
+        &conn,
+        "analytics-pack",
+        "Analytics Pack",
+        "marketplace",
+        Some("https://example.com/analytics-pack"),
+        None,
+        false,
+    )
+    .unwrap();
+
+    let default_skill_id = upsert_skill_in_plugin(
+        &conn,
+        "shared-skill",
+        "skill-builder",
+        "domain",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
+    let marketplace_skill_id = upsert_skill_in_plugin(
+        &conn,
+        "shared-skill",
+        "skill-builder",
+        "domain",
+        "analytics-pack",
+    )
+    .unwrap();
+
+    save_workflow_run_by_skill_id(&conn, default_skill_id, 0, "pending", "domain").unwrap();
+    save_workflow_run_by_skill_id(&conn, marketplace_skill_id, 1, "in_progress", "domain").unwrap();
+    save_workflow_step_by_skill_id(&conn, default_skill_id, 0, "completed").unwrap();
+    save_workflow_step_by_skill_id(&conn, marketplace_skill_id, 1, "in_progress").unwrap();
+
+    let default_run = get_workflow_run_by_skill_id(&conn, default_skill_id)
+        .unwrap()
+        .unwrap();
+    let marketplace_run = get_workflow_run_by_skill_id(&conn, marketplace_skill_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        default_run.plugin_slug,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG
+    );
+    assert_eq!(marketplace_run.plugin_slug, "analytics-pack");
+
+    let default_steps = get_workflow_steps_by_skill_id(&conn, default_skill_id).unwrap();
+    let marketplace_steps = get_workflow_steps_by_skill_id(&conn, marketplace_skill_id).unwrap();
+    assert_eq!(default_steps.len(), 1);
+    assert_eq!(marketplace_steps.len(), 1);
+    assert_eq!(
+        default_steps[0].plugin_slug,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG
+    );
+    assert_eq!(marketplace_steps[0].plugin_slug, "analytics-pack");
+    assert_eq!(default_steps[0].skill_id, default_skill_id);
+    assert_eq!(marketplace_steps[0].skill_id, marketplace_skill_id);
 }
 
 #[test]

@@ -14,5 +14,5 @@
 | [per-skill-git-repos/](per-skill-git-repos/README.md) | Per-skill git repositories: topology change from shared root repo to one `.git/` per skill, tag simplification, migration, and impact on reset/restore/publish |
 | [workspace-ui-refinement/](workspace-ui-refinement/README.md) | Workspace UI polish: design review and improvement plan for Skills Overview, Refine, and Skill List Panel |
 | [skill-scope-review/](skill-scope-review/README.md) | Skill scope review: advisory LLM check during skill creation — detects overly broad skills and suggests gerund-named alternatives |
-| [openhands-event-display-projection/](openhands-event-display-projection/README.md) | Frontend-only projection rules for normalized runtime events: agent-store mapping into `DisplayItem`, pairing/grouping rules, result summaries, and consumer rendering expectations |
+| [openhands-event-display-projection/](openhands-event-display-projection/README.md) | Historical pre-clean-break design for the removed `agent-store` / `DisplayItem` transcript path. Keep only as migration history, not as the current runtime contract. |
 | [write-eval-test-refine-loop/](write-eval-test-refine-loop/README.md) | Historical pre-clean-break eval/design doc. Keep for reference only; the Eval Workbench design is the current source for active eval behavior. |

@@ -1,5 +1,5 @@
 import { endWorkflowSession } from "@/lib/tauri";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 
 interface TeardownWorkflowSessionOptions {
@@ -25,7 +25,7 @@ export function teardownWorkflowSession({
   store.setGateLoading(false);
   store.clearInitializing();
   store.clearRuntimeError();
-  useAgentStore.getState().clearRuns();
+  useSessionRuntimeStore.getState().clearSessionRuns();
 
   if (!workflowSessionId) return;
 

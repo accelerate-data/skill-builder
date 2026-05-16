@@ -14,8 +14,8 @@ use crate::contracts::workflow_artifacts::{
 };
 use crate::db::workflow_artifacts as db_artifacts;
 use crate::db::workflow_artifacts::{
-    ClarificationsRecord, DecisionsRecord, RefinementChoice, RefinementQuestion,
-    RefinementSection, RefinementsRecord,
+    ClarificationsRecord, DecisionsRecord, RefinementChoice, RefinementQuestion, RefinementSection,
+    RefinementsRecord,
 };
 use crate::db::Db;
 
@@ -108,6 +108,26 @@ fn parse_research_result_text(
     match serde_json::from_str::<serde_json::Value>(json_text) {
         Ok(parsed) => Ok(parsed),
         Err(parse_error) => {
+            if let Ok(repaired) = jsonrepair_rs::jsonrepair(json_text) {
+                match serde_json::from_str::<serde_json::Value>(&repaired) {
+                    Ok(parsed) if parsed.is_object() => {
+                        let parsed = normalize_repaired_workflow_payload(parsed);
+                        log::warn!(
+                            "[materialize_step] repaired OpenHands {} result_text with jsonrepair-rs",
+                            workflow_label
+                        );
+                        return Ok(parsed);
+                    }
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
+            } else {
+                log::warn!(
+                    "[materialize_step] jsonrepair-rs could not repair OpenHands {} result_text; falling back to object extraction",
+                    workflow_label
+                );
+            }
+
             let mut fallback_object = None;
             for candidate in top_level_json_object_candidates(json_text)
                 .into_iter()
@@ -132,70 +152,12 @@ fn parse_research_result_text(
                 return Ok(parsed);
             }
 
-            if let Some(repaired) = repair_missing_commas_between_json_values(json_text) {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&repaired) {
-                    if parsed.is_object() {
-                        log::warn!(
-                            "[materialize_step] repaired OpenHands research result_text with missing JSON commas"
-                        );
-                        return Ok(parsed);
-                    }
-                }
-            }
-
             Err(format!(
                 "OpenHands {workflow_label} result_text invalid JSON: {}",
                 parse_error
             ))
         }
     }
-}
-
-fn repair_missing_commas_between_json_values(text: &str) -> Option<String> {
-    let mut repaired = String::with_capacity(text.len());
-    let mut changed = false;
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut last_significant: Option<char> = None;
-
-    for ch in text.chars() {
-        if in_string {
-            repaired.push(ch);
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-                last_significant = Some('"');
-            }
-            continue;
-        }
-
-        if ch == '"' {
-            if last_significant.is_some_and(json_value_can_precede_missing_comma) {
-                repaired.push(',');
-                changed = true;
-            }
-            in_string = true;
-            repaired.push(ch);
-            continue;
-        }
-
-        if !ch.is_whitespace() {
-            if json_value_can_start(ch)
-                && last_significant.is_some_and(json_value_can_precede_missing_comma)
-            {
-                repaired.push(',');
-                changed = true;
-            }
-            last_significant = Some(ch);
-        }
-
-        repaired.push(ch);
-    }
-
-    changed.then_some(repaired)
 }
 
 fn normalize_decisions_output_missing_statuses(
@@ -223,11 +185,13 @@ fn normalize_decisions_output_missing_statuses(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 enum JsonContainer {
     Object,
     Array { is_questions: bool },
 }
 
+#[allow(dead_code)]
 fn repair_nested_numeric_sections_in_questions(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut repaired = String::with_capacity(text.len() + 32);
@@ -317,6 +281,7 @@ fn repair_nested_numeric_sections_in_questions(text: &str) -> Option<String> {
     changed.then_some(repaired)
 }
 
+#[allow(dead_code)]
 fn starts_numeric_section_entry(bytes: &[u8], index: usize) -> bool {
     if !bytes[index..].starts_with(br#",{"id":"#) {
         return false;
@@ -329,14 +294,6 @@ fn starts_numeric_section_entry(bytes: &[u8], index: usize) -> bool {
     }
 
     cursor > digit_start && bytes[cursor..].starts_with(br#","title":"#)
-}
-
-fn json_value_can_start(ch: char) -> bool {
-    matches!(ch, '{' | '[' | '"' | '-' | '0'..='9' | 't' | 'f' | 'n')
-}
-
-fn json_value_can_precede_missing_comma(ch: char) -> bool {
-    matches!(ch, '}' | ']' | '"')
 }
 
 fn top_level_json_object_candidates(text: &str) -> Vec<&str> {
@@ -398,6 +355,65 @@ fn strip_single_json_markdown_fence(text: &str) -> &str {
     } else {
         inner
     }
+}
+
+fn normalize_repaired_workflow_payload(mut parsed: serde_json::Value) -> serde_json::Value {
+    let Some(root) = parsed.as_object_mut() else {
+        return parsed;
+    };
+
+    hoist_misnested_top_level_member(root, "clarifications_json", "sections");
+    parsed
+}
+
+fn hoist_misnested_top_level_member(
+    root: &mut serde_json::Map<String, serde_json::Value>,
+    container_key: &str,
+    array_key: &str,
+) {
+    let Some((index, key, value)) = root
+        .get(container_key)
+        .and_then(|v| v.as_object())
+        .and_then(|container| container.get(array_key))
+        .and_then(|v| v.as_array())
+        .and_then(|items| find_misnested_top_level_member(items))
+    else {
+        return;
+    };
+    if root.contains_key(&key) {
+        return;
+    }
+
+    let Some(container) = root.get_mut(container_key).and_then(|v| v.as_object_mut()) else {
+        return;
+    };
+    let Some(items) = container.get_mut(array_key).and_then(|v| v.as_array_mut()) else {
+        return;
+    };
+    items.truncate(index);
+    root.insert(key, value);
+}
+
+fn find_misnested_top_level_member(
+    items: &[serde_json::Value],
+) -> Option<(usize, String, serde_json::Value)> {
+    for (index, window) in items.windows(3).enumerate() {
+        let serde_json::Value::String(key) = &window[0] else {
+            continue;
+        };
+        if !key.ends_with("_json") {
+            continue;
+        }
+        if window[1] != serde_json::Value::String(":".to_string()) {
+            continue;
+        }
+        if !window[2].is_object() {
+            continue;
+        }
+        return Some((index, key.clone(), window[2].clone()));
+    }
+
+    None
 }
 
 fn validate_generated_skill_output(
@@ -995,17 +1011,17 @@ pub(crate) fn materialize_workflow_step_output_value(
                 parsed.refinement_count
             );
 
-            let mut conn = db
-                .0
-                .lock()
-                .map_err(|e| format!("Failed to lock DB: {}", e))?;
+            let mut conn =
+                db.0.lock()
+                    .map_err(|e| format!("Failed to lock DB: {}", e))?;
 
             // 1. Read existing clarifications to know which question_ids already exist
-            let existing_qids: HashSet<String> = db_artifacts::read_clarifications(&conn, &canonical_id)
-                .map_err(|e| format!("Failed to read existing clarifications: {}", e))?
-                .iter()
-                .flat_map(|c| c.questions.iter().map(|q| q.question_id.clone()))
-                .collect();
+            let existing_qids: HashSet<String> =
+                db_artifacts::read_clarifications(&conn, &canonical_id)
+                    .map_err(|e| format!("Failed to read existing clarifications: {}", e))?
+                    .iter()
+                    .flat_map(|c| c.questions.iter().map(|q| q.question_id.clone()))
+                    .collect();
 
             // 2. Extract new sections with filtered questions from clarifications_json
             let new_sections: Vec<crate::contracts::clarifications::Section> = parsed
@@ -1013,10 +1029,7 @@ pub(crate) fn materialize_workflow_step_output_value(
                 .sections
                 .into_iter()
                 .map(|mut s| {
-                    s.questions = s.questions
-                        .into_iter()
-                        .filter(|q| !existing_qids.contains(&q.id))
-                        .collect();
+                    s.questions.retain(|q| !existing_qids.contains(&q.id));
                     s
                 })
                 .filter(|s| !s.questions.is_empty())
@@ -1033,11 +1046,8 @@ pub(crate) fn materialize_workflow_step_output_value(
             }
 
             // 4. Write refinements (full replace)
-            let refinements_record = agent_json_to_refinements_record(
-                &canonical_id,
-                parsed.refinements_json,
-                now_ms(),
-            );
+            let refinements_record =
+                agent_json_to_refinements_record(&canonical_id, parsed.refinements_json, now_ms());
             db_artifacts::upsert_refinements(&tx, &refinements_record)
                 .map_err(|e| format!("Failed to upsert refinements: {}", e))?;
             tx.commit()
@@ -1279,6 +1289,7 @@ pub(crate) fn publish_commit_and_tag_generated_skill(
 /// Returns the JSON Schema for the answer-evaluator structured output.
 ///
 /// Uses the generated schema from `contracts::workflow_outputs::AnswerEvaluationOutput`.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn answer_evaluator_output_format() -> serde_json::Value {
     let schema: serde_json::Value =
         serde_json::from_str(crate::generated::schemas::ANSWER_EVALUATION_SCHEMA)
@@ -1398,6 +1409,41 @@ pub fn materialize_answer_evaluation_output(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn extract_research_json_from_conversation_state_repairs_missing_trailing_brace() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": "{\"status\":\"research_complete\",\"question_count\":1,\"research_output\":{\"version\":\"1\",\"metadata\":{\"title\":\"Research\",\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":1,\"priority_questions\":[\"Q1\"],\"scope_recommendation\":false,\"scope_reason\":null,\"scope_next_action\":null,\"warning\":null,\"error\":null},\"sections\":[{\"id\":1,\"title\":\"Scope\",\"questions\":[{\"id\":\"Q1\",\"title\":\"Scope\",\"text\":\"Question?\",\"must_answer\":true,\"choices\":[{\"id\":\"C1\",\"text\":\"Choice\",\"is_other\":false}],\"refinements\":[]}]}],\"notes\":[],\"answer_evaluator_notes\":[]}"
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state)
+            .expect("missing trailing brace should be repaired");
+
+        assert_eq!(
+            parsed.get("status").and_then(|value| value.as_str()),
+            Some("research_complete")
+        );
+    }
+
+    #[test]
+    fn extract_research_json_from_conversation_state_repairs_mismatched_closer_before_final_object_end(
+    ) {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": "{\"status\":\"research_complete\",\"question_count\":1,\"research_output\":{\"version\":\"1\",\"metadata\":{\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":1,\"priority_questions\":[\"Q1\"],\"scope_recommendation\":false,\"scope_reason\":null,\"warning\":null,\"error\":null},\"sections\":[{\"id\":1,\"title\":\"Scope\",\"questions\":[{\"id\":\"Q1\",\"title\":\"Scope\",\"text\":\"Question?\",\"must_answer\":true,\"choices\":[{\"id\":\"C1\",\"text\":\"Choice\",\"is_other\":false}],\"refinements\":[]}],\"notes\":[{\"type\":\"flag\",\"title\":\"Gap\",\"body\":\"Body\"}],\"answer_evaluator_notes\":[]}}"
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state)
+            .expect("mismatched trailing closer should be repaired");
+
+        assert_eq!(
+            parsed.get("status").and_then(|value| value.as_str()),
+            Some("research_complete")
+        );
+    }
 
     #[test]
     fn publish_generated_skill_output_copies_workspace_skill_to_library_layout() {

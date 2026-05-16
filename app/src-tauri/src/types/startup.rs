@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "status")]
 pub enum BootstrapStatus {
     Ready,
-    Failed { detail: String, remediation: Option<String> },
+    Failed {
+        detail: String,
+        remediation: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +40,7 @@ pub struct DepStatus {
 
 #[deprecated(since = "0.1.0", note = "use StartupResult")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(deprecated)]
 pub struct StartupDeps {
     pub all_ok: bool,
     pub checks: Vec<DepStatus>,
@@ -69,13 +73,11 @@ mod tests {
     fn startup_result_serializes_with_expected_shape() {
         let result = StartupResult {
             status: BootstrapStatus::Ready,
-            checks: vec![
-                BootstrapCheck {
-                    name: "Git".to_string(),
-                    ok: true,
-                    detail: "git version 2.49.0".to_string(),
-                },
-            ],
+            checks: vec![BootstrapCheck {
+                name: "Git".to_string(),
+                ok: true,
+                detail: "git version 2.49.0".to_string(),
+            }],
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["status"]["status"], "Ready");

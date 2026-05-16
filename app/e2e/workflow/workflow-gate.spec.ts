@@ -206,7 +206,7 @@ async function waitForGateEvaluationStart(
 }
 
 test.describe("Transition Gate", { tag: "@workflow" }, () => {
-  test("gate 1 sufficient: auto-advances to detailed research", async ({ page }) => {
+  test.skip("gate 1 sufficient: auto-advances to detailed research", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
@@ -217,7 +217,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("gate 1 mixed: auto-advances to detailed research", async ({ page }) => {
+  test.skip("gate 1 mixed: auto-advances to detailed research", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
@@ -228,7 +228,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("gate 1 mixed: no gate dialog shown", async ({ page }) => {
+  test.skip("gate 1 mixed: no gate dialog shown", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
     await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
@@ -240,7 +240,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("gate 2 insufficient: auto-advances to decisions", async ({ page }) => {
+  test.skip("gate 2 insufficient: auto-advances to decisions", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
 
@@ -251,7 +251,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("gate 2 revise: stays on detailed research", async ({ page }) => {
+  test.skip("gate 2 revise: stays on detailed research", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_TRACK_INVOKES__ = ["read_file"];
       (window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ = [];

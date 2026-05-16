@@ -4,7 +4,7 @@ functional-specs: [custom-plugin-management]
 
 # OpenHands Conversation Model
 
-> **Status:** Draft
+> **Status:** Implemented
 > **Functional specs:** Not applicable; this design defines the shared conversation/event model for OpenHands-backed surfaces.
 
 ## Overview
@@ -29,7 +29,7 @@ This model is shared across Refine, Workflow, Eval Workbench, and throwaway Open
 - event ordering, acceptance, and failure semantics
 - raw OpenHands payload retention with app-owned display metadata
 - projection from canonical events into UI display models
-- migration work needed to move away from `agent-store` / `DisplayItem` authority
+- the final steady state after removing the legacy transcript authority path
 
 **Does not cover**
 
@@ -47,7 +47,7 @@ This model is shared across Refine, Workflow, Eval Workbench, and throwaway Open
 | Frontend-originated events mutate in place to `accepted` or `failed`. | The UI should not reorder accepted messages or reinsert them later based on backend timestamp. |
 | Backend-originated events keep the raw OpenHands-native payload. | Raw payload retention avoids translation drift and keeps replay/debugging possible. |
 | Canonical events carry a small app-owned envelope for UI metadata. | The UI needs stable local ids, local status, and display hints without rewriting the underlying OpenHands event. |
-| Projection into display nodes is a pure view layer. | `DisplayItem`-style structures should be render outputs, not authoritative state. |
+| Projection into display nodes is a pure view layer. | Renderer-facing display nodes should be render outputs, not authoritative state. |
 | Product surfaces render one shared event timeline, not synthetic turn ownership. | The UI already differentiates event types visually, so a flat event stream is sufficient and more robust than inferred turn grouping. |
 | `agentId` may remain in the transport adapter temporarily, but it is not part of the target public model. | The live bridge is still keyed by `agent_id` today, but the new conversation model should be conversation-centric. |
 
@@ -110,12 +110,11 @@ Current Task 2 implementation lives in:
 - `app/src/lib/conversation-event-projection.ts`
 - `app/src/lib/openhands-conversation-events.ts`
 
-Current Task 3 implementation adds the first shared helper boundary above the
-existing transport:
+Current shared helper boundary above the transport is:
 
 - `app/src/lib/conversation-runtime.ts`
 - `app/src-tauri/src/commands/conversation.rs`
-- `app/src/hooks/use-agent-stream.ts`
+- `app/src/hooks/use-session-runtime-stream.ts`
 
 ## Event Sources
 
@@ -210,16 +209,10 @@ Important rules:
 
 ## Relationship to Current Runtime Structures
 
-Current frontend runtime state has two layers that are too authoritative:
+The legacy transcript authority path is removed. The shipped model keeps exactly two frontend authorities:
 
-- `agent-store`
-- `DisplayItem` projection
-
-Those structures are useful today, but in the target model:
-
-- `agent-store` becomes a transport/runtime adapter concern
-- `DisplayItem` becomes a derived render model
-- neither remains the source of truth for a conversation transcript
+- `conversation-store` for transcript state
+- `session-runtime-store` for selected-session runtime lifecycle metadata
 
 The long-term target shape is:
 
@@ -228,14 +221,6 @@ OpenHands raw events / frontend send acknowledgements
   -> canonical conversation events
   -> pure display projection
   -> UI rendering
-```
-
-Not:
-
-```text
-OpenHands raw events
-  -> agent-store displayItems
-  -> UI transcript authority
 ```
 
 ## Transport Compatibility
@@ -250,14 +235,14 @@ Short-term compatibility rule:
 - the canonical conversation model remains keyed by `conversationId`
 - `agentId` must not be a first-class public transcript concept
 
-Current migration state:
+Current implementation state:
 
 - frontend sends go through `sendConversationMessage(...)` and the typed
   `send_conversation_message` backend command
 - backend-observed runtime events append into `conversation-store` through
-  `use-agent-stream`
-- `agent-store` still keeps the legacy display projection path for current UI
-  consumers, but that state is now a seam rather than the only transcript model
+  `use-session-runtime-stream`
+- transport metadata lives in `session-runtime-store`
+- legacy `display_item` frontend transcript handling has been removed
 
 ## Surface Adoption
 
@@ -274,45 +259,26 @@ Target behavior:
 
 ### Workspace
 
-Workspace is now the first shipped canonical conversation surface for selected
-skill sessions.
+Workspace is now the first shipped canonical conversation surface for selected skill sessions.
 
 Current behavior:
 
 - the selected session's `conversationId` remains the public transcript key
-- `WorkspaceConversation` renders the canonical conversation timeline through
-  `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat
-  timeline row renderer
-- implicit workspace entry after selected-skill session bootstrap now restores
-  to the conversation surface by default
-
-Current limitation:
-
-- restored selected-skill history is still not replayed into
-  `conversation-store`, so the workspace conversation surface currently shows
-  canonical live events plus frontend sends rather than a fully reconstructed
-  restored transcript
+- `WorkspaceConversation` renders the canonical conversation timeline through `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat timeline row renderer
+- selected-session hydration replays `restored_transcript_events` into `conversation-store` as canonical backend-observed events for that `conversationId`
+- implicit workspace entry after selected-skill session bootstrap now restores to the conversation surface by default
 
 ### Workflow
 
-Workflow now renders live transcript activity from the same canonical event
-stream while keeping its step-specific page structure.
+Workflow now renders live transcript activity from the same canonical event stream while keeping its step-specific page structure.
 
 Current behavior:
 
-- the workflow page renders `ConversationTimeline` for the active selected
-  session `conversationId`
-- workflow initialization still uses a lightweight spinner until canonical
-  conversation events arrive for the active run
-- completed-step and gate-specific UI remain workflow-specific page concerns
-  layered around the shared conversation stream
+- the workflow page renders `ConversationTimeline` for the active selected session `conversationId`
+- workflow initialization still uses a lightweight spinner until canonical conversation events arrive for the active run
+- completed-step and gate-specific UI remain workflow-specific page concerns layered around the shared conversation stream
 
-Current limitation:
-
-- workflow orchestration still tracks active run lifecycle through
-  `agent-store`, even though transcript rendering no longer depends on
-  `displayItems`
-
+Workflow now tracks active run lifecycle through `session-runtime-store`.
 Important rule:
 
 - Workflow may project the shared stream differently, but it should not fork the underlying event authority model.
@@ -335,7 +301,7 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 | [app/src/components/conversation/conversation-timeline.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/conversation/conversation-timeline.tsx) | Flat canonical renderer for conversation-store-backed display nodes |
 | [app/src/components/workspace/workspace-conversation.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/workspace/workspace-conversation.tsx) | Clean-slate workspace transcript surface bound to the selected session |
 | [app/src/pages/workflow.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/pages/workflow.tsx) | Workflow page that now renders canonical conversation activity for the active selected session |
-| [app/src/stores/agent-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/agent-store.ts) | Existing migration-era runtime store that still owns legacy display projection paths until later tasks move consumers over |
+| [app/src/stores/session-runtime-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/session-runtime-store.ts) | Session-centric runtime lifecycle store for active selected-skill runs without transcript state |
 
 ## Relationship to Existing Design Specs
 
@@ -350,4 +316,4 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 
 1. `[design]` Whether send acknowledgement should come from a dedicated backend acknowledgement event or from correlation against current command responses.
 2. `[design]` Whether the canonical event stream should be persisted app-side as a normalized cache or always rebuilt from OpenHands conversation history plus local pending state.
-3. `[migration]` When the remaining workflow orchestration state should stop depending on `agent-store` and move fully to session-centric conversation/runtime ownership.
+3. `[design]` Whether additional throwaway OpenHands surfaces should also adopt `session-runtime-store`, or keep lighter-weight local runtime state when they do not expose a transcript.

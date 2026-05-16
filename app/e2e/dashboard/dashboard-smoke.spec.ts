@@ -117,13 +117,9 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
       delete_skill: undefined,
     });
 
-    // Hover over the skill row to reveal the dropdown trigger
-    const skillRow = page.getByText("delete-me").first();
-    await skillRow.hover();
-
-    // Open the "More actions" dropdown menu
-    const moreButton = page.getByLabel("More actions");
-    await moreButton.click({ force: true });
+    const skillRow = page.getByRole("button", { name: /delete-me/ }).first();
+    await skillRow.click();
+    await skillRow.click({ button: "right" });
 
     // Click "Delete" in the dropdown menu
     await page.getByRole("menuitem", { name: "Delete" }).click();
@@ -143,7 +139,7 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
     await expect(page).toHaveURL(/\/settings\?tab=skills/);
   });
 
-  test("dashboard skill menu can open Refine directly", async ({ page }) => {
+  test("dashboard skill context menu can open Overview directly", async ({ page }) => {
     await reloadWithOverrides(page, {
       ...WORKSPACE_OVERRIDES,
       list_skills: [
@@ -162,13 +158,13 @@ test.describe("Dashboard Smoke", { tag: "@dashboard" }, () => {
       ],
     });
 
-    const skillRow = page.getByText("test-skill").first();
-    await skillRow.hover();
-    await page.getByLabel("More actions").click({ force: true });
-    await page.getByRole("menuitem", { name: "Refine" }).click();
+    const skillRow = page.getByRole("button", { name: /test-skill/ }).first();
+    await skillRow.click();
+    await skillRow.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Overview" }).click();
 
     await expect(page).toHaveURL(/\/workspace\/103/);
-    await expect(page.getByRole("tab", { name: "Refine", exact: true })).toHaveAttribute("data-state", "active");
-    await expect(page.getByTestId("refine-chat-input")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Overview", exact: true })).toHaveAttribute("data-state", "active");
+    await expect(page.getByRole("tab", { name: "Conversation", exact: true })).toBeVisible();
   });
 });

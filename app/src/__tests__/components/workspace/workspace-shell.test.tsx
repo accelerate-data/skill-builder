@@ -28,8 +28,8 @@ vi.mock("@/stores/skill-store", () => ({
   useIsSkillLocked: vi.fn(() => false),
 }));
 
-vi.mock("@/stores/agent-store", () => ({
-  useAgentStore: vi.fn((selector) => selector({ runs: {} })),
+vi.mock("@/stores/session-runtime-store", () => ({
+  useSessionRuntimeStore: vi.fn((selector) => selector({ runs: {} })),
 }));
 
 vi.mock("@/hooks/use-leave-guard", () => ({
@@ -40,7 +40,7 @@ vi.mock("@/hooks/use-scope-blocked", () => ({
   useScopeBlocked: () => false,
 }));
 
-vi.mock("@/hooks/use-agent-stream", () => ({}));
+vi.mock("@/hooks/use-session-runtime-stream", () => ({}));
 
 vi.mock("@/lib/tauri", () => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),

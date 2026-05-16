@@ -16,9 +16,7 @@ use super::prompt::format_user_context;
 use super::prompt::{
     build_step0_prompt, build_step1_prompt, build_step2_prompt, build_step3_prompt,
 };
-use super::runtime::{
-    dispatch_persistent_skill_turn_with_runtime,
-};
+use super::runtime::dispatch_persistent_skill_turn_with_runtime;
 use super::step_config::{
     confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
     workflow_output_format_for_step,
@@ -96,6 +94,97 @@ fn valid_clarifications_value() -> serde_json::Value {
             }
         ],
         "notes": []
+    })
+}
+
+fn prompt_merge_step0_payload() -> serde_json::Value {
+    serde_json::json!({
+        "status": "research_complete",
+        "question_count": 1,
+        "research_output": {
+            "version": "1",
+            "metadata": {
+                "title": "Prompt Merge",
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 0,
+                "must_answer_count": 1,
+                "priority_questions": ["Q3"]
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Deal Value Basis",
+                    "questions": [
+                        {
+                            "id": "Q3",
+                            "title": "Deal Value Basis",
+                            "must_answer": true,
+                            "text": "Which deal value basis should the skill use?",
+                            "choices": [
+                                {"id":"A","text":"TCV","is_other":false}
+                            ],
+                            "answer_choice": "A",
+                            "answer_text": "Use TCV"
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        }
+    })
+}
+
+fn prompt_merge_step1_payload() -> serde_json::Value {
+    serde_json::json!({
+        "status": "detailed_research_complete",
+        "refinement_count": 1,
+        "section_count": 1,
+        "clarifications_json": {
+            "version": "1",
+            "metadata": {
+                "title": "Prompt Merge Step 1",
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 1,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
+        },
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "title": "Prompt Merge Refinements",
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 1,
+                "must_answer_count": 1,
+                "priority_questions": ["R3.1"]
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Deal Value Basis",
+                    "questions": [
+                        {
+                            "id": "R3.1",
+                            "title": "TCV Multi-Year Deal Handling",
+                            "must_answer": true,
+                            "text": "Should TCV represent the full multi-year commitment?",
+                            "choices": [
+                                {"id":"C1","text":"Yes","is_other":false}
+                            ],
+                            "answer_choice": "C1",
+                            "answer_text": "Yes, use full multi-year TCV",
+                            "refinements": []
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        }
     })
 }
 
@@ -293,18 +382,16 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
     let conversation_id = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(dispatch_persistent_skill_turn_with_runtime(
-            "agent-1",
             config.clone(),
             existing_conversation_id.clone(),
-            move |agent_id, send_config, conversation_id| {
+            move |send_config, conversation_id| {
                 let send_events = Arc::clone(&send_events);
                 let expected_prompt = expected_prompt_for_send.clone();
-                let agent_id = agent_id.to_string();
                 async move {
                     send_events
                         .lock()
                         .unwrap()
-                        .push(format!("send:{agent_id}:{conversation_id}"));
+                        .push(format!("send:{conversation_id}"));
                     assert_eq!(send_config.prompt, expected_prompt);
                     Ok(())
                 }
@@ -313,21 +400,12 @@ fn workflow_persistent_turn_dispatch_uses_existing_conversation_and_send_only() 
         .unwrap();
 
     assert_eq!(conversation_id, "conversation-123");
-    assert_eq!(
-        events.lock().unwrap().as_slice(),
-        ["send:agent-1:conversation-123"]
-    );
+    assert_eq!(events.lock().unwrap().as_slice(), ["send:conversation-123"]);
 }
 
 #[test]
 fn research_prompt_renders_app_owned_openhands_task_context() {
-    let prompt = build_step0_prompt(
-        "lead-conversion",
-        "/tmp/skills",
-        DEFAULT_PLUGIN_SLUG,
-        4,
-        "",
-    );
+    let prompt = build_step0_prompt("lead-conversion", "/tmp/skills", DEFAULT_PLUGIN_SLUG, 4, "");
 
     assert!(!prompt.contains("What should this skill enable Claude to do?"));
     assert!(!prompt.contains("Claude Code"));
@@ -772,7 +850,10 @@ fn research_json_extraction_parses_valid_output() {
         1
     );
     assert_eq!(
-        parsed["research_output"]["sections"][0]["notes"].as_array().unwrap().len(),
+        parsed["research_output"]["sections"][0]["notes"]
+            .as_array()
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -1121,6 +1202,95 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
 }
 
 #[test]
+fn workflow_prompt_input_json_merges_persisted_refinements_under_parent_questions() {
+    let (db, skill_id) = db_with_seeded_skill("prompt-merge");
+    materialize_workflow_step_output_value(&db, &skill_id, 0, &prompt_merge_step0_payload())
+        .unwrap();
+    materialize_workflow_step_output_value(&db, &skill_id, 1, &prompt_merge_step1_payload())
+        .unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+
+    let merged_json =
+        super::prompt::workflow_prompt_input_json_string(&clarifications, Some(&refinements));
+    let parsed: serde_json::Value = serde_json::from_str(&merged_json).unwrap();
+    let question = &parsed["sections"][0]["questions"][0];
+
+    assert_eq!(question["id"].as_str(), Some("Q3"));
+    assert_eq!(question["refinements"][0]["id"].as_str(), Some("R3.1"));
+    assert_eq!(
+        question["refinements"][0]["answer_text"].as_str(),
+        Some("Yes, use full multi-year TCV")
+    );
+}
+
+#[test]
+fn evaluator_prompt_includes_persisted_refinements_in_clarifications_json_block() {
+    let (db, skill_id) = db_with_seeded_skill("evaluator-prompt-merge");
+    materialize_workflow_step_output_value(&db, &skill_id, 0, &prompt_merge_step0_payload())
+        .unwrap();
+    materialize_workflow_step_output_value(&db, &skill_id, 1, &prompt_merge_step1_payload())
+        .unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+
+    let merged_json =
+        super::prompt::workflow_prompt_input_json_string(&clarifications, Some(&refinements));
+    let prompt = super::prompt::build_evaluator_prompt(
+        "pipeline-skill",
+        "/tmp/skills",
+        DEFAULT_PLUGIN_SLUG,
+        "",
+        &merged_json,
+    );
+
+    assert!(prompt.contains("\"id\": \"R3.1\""));
+    assert!(prompt.contains("Yes, use full multi-year TCV"));
+}
+
+#[test]
+fn confirm_decisions_prompt_includes_persisted_refinements_in_clarifications_record() {
+    let (db, skill_id) = db_with_seeded_skill("confirm-decisions-prompt-merge");
+    materialize_workflow_step_output_value(&db, &skill_id, 0, &prompt_merge_step0_payload())
+        .unwrap();
+    materialize_workflow_step_output_value(&db, &skill_id, 1, &prompt_merge_step1_payload())
+        .unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+
+    let merged_json =
+        super::prompt::workflow_prompt_input_json_string(&clarifications, Some(&refinements));
+    let prompt = build_step2_prompt(
+        "pipeline-skill",
+        "/tmp/skills",
+        DEFAULT_PLUGIN_SLUG,
+        "",
+        &merged_json,
+    );
+
+    assert!(prompt.contains("\"id\": \"R3.1\""));
+    assert!(prompt.contains("TCV Multi-Year Deal Handling"));
+}
+
+#[test]
 fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
     let config = test_workflow_step_config(
         "/tmp/app-data",
@@ -1138,10 +1308,7 @@ fn confirm_decisions_runtime_config_uses_skill_creator_openhands_contract() {
         Some("workflow.confirm_decisions")
     );
     assert!(config.mode.is_none());
-    assert_eq!(
-        config.allowed_tools,
-        Some(vec!["file_editor".to_string()])
-    );
+    assert_eq!(config.allowed_tools, Some(vec!["file_editor".to_string()]));
     assert_eq!(config.max_turns, Some(100));
     assert_eq!(config.skill_name.as_deref(), Some("lead-conversion"));
     assert_eq!(config.step_id, Some(2));
@@ -1690,8 +1857,7 @@ fn test_materialize_step1_writes_clarifications_only() {
         .unwrap()
         .unwrap();
     assert_eq!(record.questions.len(), 1);
-    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
-        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id).unwrap();
     assert!(refinements.is_some());
 }
 
@@ -1786,8 +1952,7 @@ fn test_materialize_step1_writes_additive_detailed_research_output() {
     assert_eq!(record.sections[1].section_id, 2);
     assert!(record.questions.iter().any(|q| q.question_id == "Q4"));
     assert!(record.questions.iter().any(|q| q.question_id == "Q5"));
-    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
-        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id).unwrap();
     assert!(refinements.is_some());
     assert_eq!(refinements.unwrap().questions.len(), 1);
 }
@@ -2603,13 +2768,8 @@ fn test_materialize_step3_rejects_wrong_status() {
 
 #[test]
 fn test_evaluator_prompt_does_not_contain_stale_routing_tokens() {
-    let prompt = super::prompt::build_evaluator_prompt(
-        "s",
-        "/sk",
-        DEFAULT_PLUGIN_SLUG,
-        "context",
-        "{}",
-    );
+    let prompt =
+        super::prompt::build_evaluator_prompt("s", "/sk", DEFAULT_PLUGIN_SLUG, "context", "{}");
     for forbidden in [
         ".claude/plugins",
         "skill-content-researcher:",
@@ -2694,8 +2854,7 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     );
 
     assert!(prompt.contains("We are writing the skill my-skill."));
-    assert!(prompt
-        .contains("Skill directory: /home/user/my-skills/default/skills/my-skill"));
+    assert!(prompt.contains("Skill directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains("Skill output directory: /home/user/my-skills/default/skills/my-skill"));
     assert!(prompt.contains("User context:\n## User Context"));
     assert!(prompt.contains("Clarifications JSON:\n{\n  \"sections\": []\n}"));
@@ -2735,12 +2894,7 @@ fn test_delete_step_output_files_from_step_onwards() {
     std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
     // Reset from step 2 onwards
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        2,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // Step 3 outputs should be deleted
     assert!(!skill_dir.join("SKILL.md").exists());
@@ -2753,12 +2907,7 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
     let nonexistent = std::env::temp_dir().join("nonexistent");
-    crate::cleanup::delete_step_output_files(
-        "no-skill",
-        DEFAULT_PLUGIN_SLUG,
-        0,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("no-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 }
 
 #[test]
@@ -2774,12 +2923,7 @@ fn test_delete_step_output_files_cleans_last_steps() {
     std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
 
     // Reset from step 2 onwards should clean up SKILL.md
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        2,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 2, skills_path);
 
     // SKILL.md should be deleted
     assert!(!skill_dir.join("SKILL.md").exists());
@@ -2790,12 +2934,7 @@ fn test_delete_step_output_files_last_step() {
     // Verify delete_step_output_files(from=3) doesn't panic
     let skills_tmp = tempfile::tempdir().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        3,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 3, skills_path);
 }
 
 #[test]
@@ -2998,12 +3137,7 @@ fn test_reset_cleans_workspace_context_files() {
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
     // Call delete_step_output_files from step 0
-    crate::cleanup::delete_step_output_files(
-        "my-skill",
-        DEFAULT_PLUGIN_SLUG,
-        0,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files("my-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 
     // SKILL.md should be gone
     assert!(!output_dir.join("SKILL.md").exists());
@@ -3331,6 +3465,7 @@ fn test_format_user_context_includes_intake_json_context() {
 mod materialization {
     use super::*;
     use crate::commands::workflow::guards;
+    use crate::commands::workflow::output_format::extract_workflow_json_from_conversation_state;
 
     fn clarifications_fixture() -> serde_json::Value {
         serde_json::json!({
@@ -3490,6 +3625,76 @@ mod materialization {
             .unwrap()
             .unwrap();
         assert_eq!(refinements.refinement_count, 2);
+    }
+
+    #[test]
+    fn step1_repairs_measuring_pipeline_value_fixture_before_materialization() {
+        let (db, skill_id) = db_with_seeded_skill("rt-step1-repair");
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/fixtures/workflow/measuring-pipeline-value-step1-result_text.json"
+            )),
+        });
+
+        let parsed =
+            extract_workflow_json_from_conversation_state(&state, "detailed research").unwrap();
+        materialize_workflow_step_output_value(&db, &skill_id, 1, &parsed).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+            .unwrap()
+            .unwrap();
+        assert!(clarifications
+            .questions
+            .iter()
+            .any(|q| q.question_id == "Q6"));
+
+        let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(refinements.refinement_count, 2);
+        assert_eq!(refinements.section_count, 2);
+        assert!(refinements
+            .questions
+            .iter()
+            .any(|q| q.question_id == "R3.1"));
+        assert!(refinements
+            .questions
+            .iter()
+            .any(|q| q.question_id == "R5.1"));
+    }
+
+    #[test]
+    fn step1_measuring_pipeline_value_fixture_is_repairable_to_expected_shape() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/fixtures/workflow/measuring-pipeline-value-step1-result_text.json"
+            )),
+        });
+        let parsed =
+            extract_workflow_json_from_conversation_state(&state, "detailed research").unwrap();
+        assert_eq!(
+            parsed["status"].as_str(),
+            Some("detailed_research_complete")
+        );
+        assert_eq!(
+            parsed["clarifications_json"]["sections"][0]["questions"][0]["id"].as_str(),
+            Some("Q6")
+        );
+        assert_eq!(
+            parsed["refinements_json"]["sections"][0]["questions"][0]["id"].as_str(),
+            Some("R3.1")
+        );
+        assert_eq!(
+            parsed["refinements_json"]["sections"][1]["questions"][0]["id"].as_str(),
+            Some("R5.1")
+        );
     }
 
     #[test]

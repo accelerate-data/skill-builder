@@ -59,9 +59,7 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
         let _ = BUNDLED_UV_PATH.set(Some(dev_candidate));
         return;
     }
-    log::debug!(
-        "[openhands-agent-server] no bundled uv found; falling back to system uvx"
-    );
+    log::debug!("[openhands-agent-server] no bundled uv found; falling back to system uvx");
     let _ = BUNDLED_UV_PATH.set(None);
 }
 
@@ -351,6 +349,7 @@ pub async fn ensure_agent_server(
 /// Does NOT start a new server — callers that only need the handle for
 /// best-effort operations (e.g. pause before delete) use this instead of
 /// `ensure_agent_server`.
+#[cfg_attr(not(test), allow(dead_code))]
 pub async fn try_get_cached_server_handle() -> Option<OpenHandsAgentServerHandle> {
     let registry = agent_server_registry().lock().await;
     registry.as_ref().map(|s| s.handle.clone())
@@ -649,10 +648,7 @@ async fn wait_until_healthy(port: u16, timeout: Duration) -> Result<(), String> 
     let client = reqwest::Client::new();
     let deadline = Instant::now() + timeout;
     let base_url = agent_server_base_url(port);
-    let urls = [
-        format!("{base_url}/alive"),
-        format!("{base_url}/health"),
-    ];
+    let urls = [format!("{base_url}/alive"), format!("{base_url}/health")];
     let mut last_failure = "no response received".to_string();
 
     loop {

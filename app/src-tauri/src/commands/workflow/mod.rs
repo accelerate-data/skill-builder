@@ -16,10 +16,7 @@ pub mod step_config;
 pub(crate) use settings::read_initialized_runtime_context;
 
 // deploy
-pub(crate) use deploy::{
-    ensure_workspace_prompts, invalidate_workspace_cache,
-    redeploy_agents,
-};
+pub(crate) use deploy::{ensure_workspace_prompts, invalidate_workspace_cache, redeploy_agents};
 
 // evaluation
 pub(crate) use evaluation::get_step_output_files;

@@ -2,10 +2,12 @@ use crate::db::Db;
 use std::fs;
 use std::path::Path;
 
+#[allow(dead_code)]
 const OPENHANDS_SUBDIR: &str = "openhands";
 
 /// Resolve the app-local OpenHands conversations directory.
 /// Shape: `{app_data_root}/openhands/conversations/`
+#[allow(dead_code)]
 pub fn resolve_openhands_conversations_dir(app_data_root: &Path) -> std::path::PathBuf {
     app_data_root.join(OPENHANDS_SUBDIR).join("conversations")
 }

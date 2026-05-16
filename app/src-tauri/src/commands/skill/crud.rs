@@ -61,6 +61,9 @@ pub(crate) fn list_skills_inner(
     source_url: Option<&str>,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
+    let workflow_run_key =
+        |plugin_slug: &str, skill_name: &str| format!("{plugin_slug}::{skill_name}");
+
     // Query the skills master table
     let master_skills = crate::db::list_all_skills(conn)?;
 
@@ -73,7 +76,7 @@ pub(crate) fn list_skills_inner(
     let runs = crate::db::list_all_workflow_runs(conn)?;
     let runs_map: std::collections::HashMap<String, crate::types::WorkflowRunRow> = runs
         .into_iter()
-        .map(|r| (r.skill_name.clone(), r))
+        .map(|r| (workflow_run_key(&r.plugin_slug, &r.skill_name), r))
         .collect();
 
     // Batch-fetch tags for all skills
@@ -97,7 +100,9 @@ pub(crate) fn list_skills_inner(
             if master.skill_source == "skill-builder" {
                 // For skill-builder: workflow_runs provides step state and workflow-specific fields.
                 // Frontmatter fields come from skills master (canonical since migration 24).
-                if let Some(run) = runs_map.get(&master.name) {
+                if let Some(run) =
+                    runs_map.get(&workflow_run_key(&master.plugin_slug, &master.name))
+                {
                     return SkillSummary {
                         id: master.id,
                         name: run.skill_name.clone(),
@@ -312,11 +317,7 @@ pub(crate) fn create_skill_inner(
 ) -> Result<(), String> {
     super::super::imported_skills::validate_skill_name(name)?;
     let overwrite_orphaned = should_overwrite_orphaned_skill_dirs(conn, name)?;
-    create_skill_filesystem_inner_with_policy(
-        name,
-        skills_path,
-        overwrite_orphaned,
-    )?;
+    create_skill_filesystem_inner_with_policy(name, skills_path, overwrite_orphaned)?;
     if let Some(conn) = conn {
         create_skill_db_records_inner(
             conn,
@@ -539,7 +540,11 @@ pub async fn delete_skill(
     workflow_runs: tauri::State<'_, WorkflowStepRunManager>,
     refine_sessions: tauri::State<'_, SkillSessionManager>,
 ) -> Result<(), String> {
-    log::info!("[delete_skill] name={} workspace_path={}", name, workspace_path);
+    log::info!(
+        "[delete_skill] name={} workspace_path={}",
+        name,
+        workspace_path
+    );
     let (skills_path, plugin_slug) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
@@ -618,18 +623,18 @@ pub async fn delete_skill(
     )
     .await;
 
-    for agent_id in &shutdown_plan.agent_ids {
-        let stopped = crate::agents::openhands_server::close_local_openhands_run(agent_id);
+    for conversation_id in &shutdown_plan.conversation_ids {
+        let stopped = crate::agents::openhands_server::close_local_openhands_run(conversation_id);
         log::info!(
-            "[delete_skill] quiesce runtime skill={} agent={} stopped={} ended_workflow_sessions={}",
+            "[delete_skill] quiesce runtime skill={} conversation={} stopped={} ended_workflow_sessions={}",
             name,
-            agent_id,
+            conversation_id,
             stopped,
             shutdown_plan.ended_workflow_sessions
         );
     }
 
-    if shutdown_plan.agent_ids.is_empty() && shutdown_plan.ended_workflow_sessions > 0 {
+    if shutdown_plan.conversation_ids.is_empty() && shutdown_plan.ended_workflow_sessions > 0 {
         log::info!(
             "[delete_skill] ended {} active workflow session(s) for skill={} before deletion",
             shutdown_plan.ended_workflow_sessions,
@@ -728,7 +733,7 @@ fn post_delete_skill_filesystem_inner(name: &str, skills_path: Option<&str>, plu
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct SkillRuntimeShutdownPlan {
-    pub agent_ids: Vec<String>,
+    pub conversation_ids: Vec<String>,
     pub ended_workflow_sessions: u32,
 }
 
@@ -739,19 +744,25 @@ pub(crate) fn prepare_skill_runtime_shutdown_inner(
     workflow_runs: &WorkflowStepRunManager,
     refine_sessions: &SkillSessionManager,
 ) -> Result<SkillRuntimeShutdownPlan, String> {
-    let mut agent_ids = Vec::new();
+    let mut conversation_ids = Vec::new();
+    let skill_id = crate::db::get_skill_master_id_in_plugin(conn, name, plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", name, plugin_slug))?;
 
     {
         let mut map = workflow_runs.0.lock().map_err(|e| e.to_string())?;
-        let stale_runs: Vec<String> = map
+        let stale_runs: Vec<(String, String)> = map
             .iter()
-            .filter(|(_, run)| run.skill_name == name)
-            .map(|(agent_id, _)| agent_id.clone())
+            .filter(|(_, run)| run.skill_name == name && run.plugin_slug == plugin_slug)
+            .map(|(entry_key, run)| (entry_key.clone(), run.conversation_id.clone()))
             .collect();
-        for agent_id in &stale_runs {
-            map.remove(agent_id);
+        for (entry_key, _) in &stale_runs {
+            map.remove(entry_key);
         }
-        agent_ids.extend(stale_runs);
+        conversation_ids.extend(
+            stale_runs
+                .into_iter()
+                .map(|(_, conversation_id)| conversation_id),
+        );
     }
 
     {
@@ -763,17 +774,18 @@ pub(crate) fn prepare_skill_runtime_shutdown_inner(
             .collect();
         for session_key in stale_sessions {
             if let Some(session) = map.remove(&session_key) {
-                if let Some(agent_id) = session.current_agent_id {
-                    agent_ids.push(agent_id);
+                if let Some(conversation_id) = session.conversation_id {
+                    conversation_ids.push(conversation_id);
                 }
             }
         }
     }
 
-    let ended_workflow_sessions = crate::db::end_active_workflow_sessions_for_skill(conn, name)?;
+    let ended_workflow_sessions =
+        crate::db::end_active_workflow_sessions_for_skill_id(conn, skill_id)?;
 
     Ok(SkillRuntimeShutdownPlan {
-        agent_ids,
+        conversation_ids,
         ended_workflow_sessions,
     })
 }
@@ -855,12 +867,7 @@ mod tests {
         let skills_str = skills.path().to_str().unwrap();
 
         // Skills dir is created via ensure_nested_skill_dir.
-        create_skill_filesystem_inner_with_policy(
-            "my-new-skill",
-            Some(skills_str),
-            false,
-        )
-        .unwrap();
+        create_skill_filesystem_inner_with_policy("my-new-skill", Some(skills_str), false).unwrap();
 
         let skill_dir = crate::skill_paths::resolve_skill_dir(
             skills.path(),

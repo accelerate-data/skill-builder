@@ -45,11 +45,8 @@ describe("runtime API contract", () => {
     expect(source).not.toContain("WorkspaceRefine");
   });
 
-  it("does not expose workflow AskUserQuestion UI for workflow runs", () => {
-    const source = readSource("components/agent-output-panel.tsx");
-
-    expect(source).not.toContain("answerWorkflowStepQuestion");
-    expect(source).not.toContain("RefineQuestionInline");
+  it("removes the legacy workflow transcript panel", () => {
+    expect(() => readSource("components/agent-output-panel.tsx")).toThrow();
   });
 
   it("keeps the workflow page subscribed to active run data instead of the full runs map", () => {

@@ -1,17 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { waitForAppReady } from "../helpers/app-helpers";
 import { simulateAgentInitError } from "../helpers/agent-simulator";
-import { WORKFLOW_OVERRIDES } from "../helpers/workflow-helpers";
+import { navigateToWorkflow } from "../helpers/workflow-helpers";
 
 test.describe("Startup Error (agent-init-error)", { tag: "@setup" }, () => {
   test("shows error dialog when agent-init-error fires on workflow page", async ({ page }) => {
-    await page.addInitScript((overrides) => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
-    }, WORKFLOW_OVERRIDES);
-
-    await page.goto("/workflow/301");
-    await waitForAppReady(page);
-    await page.getByText("STEPS").waitFor({ timeout: 10_000 });
+    await navigateToWorkflow(page);
 
     // Simulate the agent-init-error event firing (e.g. Node.js not found)
     await simulateAgentInitError(page, {

@@ -16,12 +16,10 @@ use crate::skill_paths::validate_skill_content_exists;
 use super::deploy::ensure_workspace_prompts;
 use super::evaluation::workflow_step_log_name;
 use super::guards::{
-    check_decisions_guard_db, check_scope_recommendation_db, make_agent_id,
-    workflow_step_runtime_label,
+    check_decisions_guard_db, check_scope_recommendation_db, workflow_step_runtime_label,
 };
 use super::output_format::{
-    extract_workflow_json_from_conversation_state,
-    materialize_workflow_step_output_value,
+    extract_workflow_json_from_conversation_state, materialize_workflow_step_output_value,
 };
 use super::prompt::{
     build_evaluator_prompt, build_step0_prompt, build_step1_prompt, build_step2_prompt,
@@ -33,15 +31,15 @@ use super::step_config::{get_step_config, workflow_output_format_for_step};
 // ─── Session management ──────────────────────────────────────────────────────
 
 /// In-memory state for a single workflow turn.
-/// Keyed by agent_id in WorkflowStepRunManager.
+/// Keyed by conversation_id in WorkflowStepRunManager.
 pub struct WorkflowStepRun {
     pub skill_name: String,
     pub plugin_slug: String,
-    pub conversation_id: Option<String>,
+    pub conversation_id: String,
 }
 
 /// Manages active workflow step runs. Registered as Tauri managed state.
-/// Allows `cancel_workflow_step` to look up the skill key for a given agent.
+/// Allows runtime cleanup to look up the skill key for a given conversation.
 pub struct WorkflowStepRunManager(pub Arc<Mutex<HashMap<String, WorkflowStepRun>>>);
 
 impl WorkflowStepRunManager {
@@ -52,7 +50,7 @@ impl WorkflowStepRunManager {
 
 #[derive(Debug, Clone, Serialize)]
 struct WorkflowStepMaterializedPayload {
-    agent_id: String,
+    conversation_id: String,
     skill_name: String,
     step_id: u32,
     success: bool,
@@ -60,35 +58,22 @@ struct WorkflowStepMaterializedPayload {
     error_detail: Option<String>,
 }
 
+struct WorkflowMaterializationListeners {
+    listener_ids: Vec<tauri::EventId>,
+}
+
 async fn dispatch_persistent_skill_turn(
     app: &tauri::AppHandle,
-    agent_id: &str,
-    plugin_slug: &str,
     config: OpenHandsRuntimeConfig,
-    runs: &WorkflowStepRunManager,
+    conversation_id: String,
 ) -> Result<String, String> {
-    let session = crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None)
-        .await?;
-    let conversation_id = session.conversation_id;
-
-    // Update the run entry with the conversation_id for pause-based cleanup
-    if let Ok(mut map) = runs.0.lock() {
-        if let Some(run) = map.get_mut(agent_id) {
-            run.plugin_slug = plugin_slug.to_string();
-            run.conversation_id = Some(conversation_id.clone());
-        }
-    }
-
     dispatch_persistent_skill_turn_with_runtime(
-        agent_id,
         config,
         conversation_id,
-        |agent_id, config, conversation_id| {
-            let agent_id = agent_id.to_string();
+        |config, conversation_id| {
             Box::pin(async move {
                 crate::agents::tracked_openhands::send_tracked_openhands_message(
                     app,
-                    &agent_id,
                     config,
                     conversation_id,
                 )
@@ -101,62 +86,118 @@ async fn dispatch_persistent_skill_turn(
 }
 
 pub(crate) async fn dispatch_persistent_skill_turn_with_runtime<Send, SendFuture>(
-    agent_id: &str,
     config: OpenHandsRuntimeConfig,
     conversation_id: String,
     send: Send,
 ) -> Result<String, String>
 where
-    Send: FnOnce(&str, OpenHandsRuntimeConfig, String) -> SendFuture,
+    Send: FnOnce(OpenHandsRuntimeConfig, String) -> SendFuture,
     SendFuture: std::future::Future<Output = Result<(), String>>,
 {
-    send(agent_id, config, conversation_id.clone()).await?;
+    send(config, conversation_id.clone()).await?;
     Ok(conversation_id)
 }
 
 fn parse_target_conversation_state(
     payload: &str,
-    target_agent_id: &str,
+    target_conversation_id: &str,
 ) -> Option<serde_json::Value> {
     let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
-    if value.get("agent_id").and_then(|v| v.as_str()) != Some(target_agent_id) {
+    if value.get("conversation_id").and_then(|v| v.as_str()) != Some(target_conversation_id) {
         return None;
     }
 
-    let message = value.get("message")?;
-    if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+    if let Some(message) = value.get("message") {
+        if message.get("type").and_then(|v| v.as_str()) != Some("conversation_state") {
+            return None;
+        }
+
+        let status = message.get("status").and_then(|v| v.as_str());
+        if status == Some("completed") {
+            let has_result_text = message
+                .get("result_text")
+                .or_else(|| message.get("resultText"))
+                .and_then(|value| value.as_str())
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false);
+            if !has_result_text {
+                return None;
+            }
+        }
+
+        return match status {
+            Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
+            _ => None,
+        };
+    }
+
+    if value.get("type").and_then(|v| v.as_str()) != Some("run_result") {
         return None;
     }
 
-    match message.get("status").and_then(|v| v.as_str()) {
-        Some("completed" | "error" | "cancelled" | "canceled") => Some(message.clone()),
-        _ => None,
+    let status = value.get("status").and_then(|v| v.as_str())?;
+    match status {
+        "completed" | "error" | "cancelled" | "canceled" => {}
+        _ => return None,
     }
+
+    let error_detail = value
+        .get("resultErrors")
+        .and_then(|value| value.as_array())
+        .map(|errors| {
+            errors
+                .iter()
+                .filter_map(|error| error.as_str())
+                .filter(|error| !error.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .filter(|detail| !detail.is_empty());
+
+    Some(serde_json::json!({
+        "type": "conversation_state",
+        "status": status,
+        "result_text": value.get("resultText").cloned().unwrap_or(serde_json::Value::Null),
+        "error_detail": error_detail,
+    }))
+}
+
+fn listen_for_terminal_workflow_state(
+    app: &tauri::AppHandle,
+    tx: tokio::sync::mpsc::UnboundedSender<serde_json::Value>,
+    conversation_id: &str,
+    event_name: &'static str,
+) -> tauri::EventId {
+    let target_conversation_id = conversation_id.to_string();
+    app.listen(event_name, move |event| {
+        if let Some(state) =
+            parse_target_conversation_state(event.payload(), &target_conversation_id)
+        {
+            let _ = tx.send(state);
+        }
+    })
 }
 
 fn install_workflow_step_materialization_listener(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
-    agent_id: &str,
+    conversation_id: &str,
     skill_id: i64,
     skill_name: &str,
     step_id: u32,
-) -> tauri::EventId {
+) -> WorkflowMaterializationListeners {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
-    let target_agent_id = agent_id.to_string();
-    let tx_message = tx.clone();
-    let listener_id = app.listen("agent-message", move |event| {
-        if let Some(state) = parse_target_conversation_state(event.payload(), &target_agent_id) {
-            let _ = tx_message.send(state);
-        }
-    });
+    let listener_ids = vec![
+        listen_for_terminal_workflow_state(app, tx.clone(), conversation_id, "agent-message"),
+        listen_for_terminal_workflow_state(app, tx.clone(), conversation_id, "agent-run-result"),
+    ];
 
     let app_handle = app.clone();
     let runs_map = runs.0.clone();
-    let listener_to_remove = listener_id;
-    let agent_id = agent_id.to_string();
+    let conversation_id = conversation_id.to_string();
     let skill_name = skill_name.to_string();
     let skill_id_for_db = skill_id.to_string();
+    let listener_ids_to_remove = listener_ids.clone();
     tokio::spawn(async move {
         let result = match rx.recv().await {
             Some(state) => {
@@ -185,13 +226,15 @@ fn install_workflow_step_materialization_listener(
             )),
         };
 
-        app_handle.unlisten(listener_to_remove);
+        for listener_id in listener_ids_to_remove {
+            app_handle.unlisten(listener_id);
+        }
         if let Ok(mut map) = runs_map.lock() {
-            map.remove(&agent_id);
+            map.remove(&conversation_id);
         }
 
         let payload = WorkflowStepMaterializedPayload {
-            agent_id: agent_id.clone(),
+            conversation_id: conversation_id.clone(),
             skill_name,
             step_id,
             success: result.is_ok(),
@@ -199,22 +242,22 @@ fn install_workflow_step_materialization_listener(
         };
         if let Err(e) = app_handle.emit("workflow-step-materialized", &payload) {
             log::warn!(
-                "[workflow_materialize] failed to emit event for agent={} step_id={}: {}",
-                agent_id,
+                "[workflow_materialize] failed to emit event for conversation={} step_id={}: {}",
+                conversation_id,
                 step_id,
                 e
             );
         }
     });
 
-    listener_id
+    WorkflowMaterializationListeners { listener_ids }
 }
 
 // ─── run_workflow_step_inner ─────────────────────────────────────────────────
 
 /// Core logic for launching a single workflow step via a persistent skill turn.
 /// Builds the prompt, constructs the runtime config, and starts the request.
-/// Returns the agent_id, which is also the OpenHands request_id.
+/// Returns the conversation_id for the started workflow step run.
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
@@ -280,9 +323,19 @@ async fn run_workflow_step_inner(
         2 => {
             let clarifications_json = {
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
-                match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str) {
-                    Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
-                    _ => "{}".to_string(),
+                let clarifications =
+                    crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str)
+                        .ok()
+                        .flatten();
+                let refinements =
+                    crate::db::workflow_artifacts::read_refinements(&conn, &skill_id_str)
+                        .ok()
+                        .flatten();
+                match clarifications {
+                    Some(rec) => {
+                        super::prompt::workflow_prompt_input_json_string(&rec, refinements.as_ref())
+                    }
+                    None => "{}".to_string(),
                 }
             };
             build_step2_prompt(
@@ -332,12 +385,12 @@ async fn run_workflow_step_inner(
 
     let agent_name = step.agent_name.clone();
     let required_plugins: Vec<String> = step.required_plugins.clone();
-    let agent_id = make_agent_id(skill_name, &workflow_step_runtime_label(&step));
     log::info!(
-        "run_workflow_step: skill={} step={} step_id={} agent={} plugins={:?}",
+        "run_workflow_step: skill={} step={} step_id={} runtime_label={} agent={} plugins={:?}",
         skill_name,
         workflow_step_log_name(step_id as i32),
         step_id,
+        workflow_step_runtime_label(&step),
         agent_name,
         required_plugins,
     );
@@ -412,13 +465,21 @@ async fn run_workflow_step_inner(
     };
 
     log::debug!(
-        "[run_workflow_step] starting persistent request agent={} skill_dir={}",
-        agent_id,
+        "[run_workflow_step] preparing persistent request skill_dir={}",
         config.skill_dir,
     );
 
-    let materialization_listener = Some(install_workflow_step_materialization_listener(
-        app, runs, &agent_id, skill_id, skill_name, step_id,
+    let session =
+        crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None).await?;
+    let conversation_id = session.conversation_id;
+
+    let materialization_listeners = Some(install_workflow_step_materialization_listener(
+        app,
+        runs,
+        &conversation_id,
+        skill_id,
+        skill_name,
+        step_id,
     ));
 
     // Register before dispatch so a fast terminal conversation_state can clean
@@ -426,34 +487,35 @@ async fn run_workflow_step_inner(
     {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
         map.insert(
-            agent_id.clone(),
+            conversation_id.clone(),
             WorkflowStepRun {
                 skill_name: skill_name.to_string(),
                 plugin_slug: settings.plugin_slug.clone(),
-                conversation_id: None,
+                conversation_id: conversation_id.clone(),
             },
         );
     }
 
-    let start_result =
-        dispatch_persistent_skill_turn(app, &agent_id, &settings.plugin_slug, config, runs).await;
+    let start_result = dispatch_persistent_skill_turn(app, config, conversation_id.clone()).await;
 
-    start_result.map_err(|e| {
+    let conversation_id = start_result.map_err(|e| {
         log::error!(
-            "[run_workflow_step] Failed to start persistent request for agent={}: {}",
-            agent_id,
+            "[run_workflow_step] Failed to start persistent request for conversation={}: {}",
+            conversation_id,
             e
         );
-        if let Some(listener_id) = materialization_listener {
-            app.unlisten(listener_id);
+        if let Some(listeners) = materialization_listeners {
+            for listener_id in listeners.listener_ids {
+                app.unlisten(listener_id);
+            }
         }
         if let Ok(mut map) = runs.0.lock() {
-            map.remove(&agent_id);
+            map.remove(&conversation_id);
         }
         e
     })?;
 
-    Ok(agent_id)
+    Ok(conversation_id)
 }
 
 #[tauri::command]
@@ -473,8 +535,7 @@ pub async fn run_workflow_step(
     );
     crate::commands::workflow_lifecycle::validate_run_request(&skill_name, step_id)?;
 
-    let settings =
-        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, step_id)?;
+    let settings = read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, step_id)?;
     log::info!(
         "[run_workflow_step] settings: skills_path={} purpose={} intake={} industry={:?} function={:?}",
         settings.skills_path,
@@ -485,52 +546,38 @@ pub async fn run_workflow_step(
     );
 
     // Pause any stale workflow runs for this skill before starting a new step.
-    let stale_runs: Vec<(String, String, Option<String>)> = {
+    let stale_runs: Vec<(String, String)> = {
         let map = runs.0.lock().map_err(|e| e.to_string())?;
         map.iter()
             .filter(|(_, s)| s.skill_name == skill_name && s.plugin_slug == settings.plugin_slug)
-            .map(|(agent_id, s)| {
-                (
-                    agent_id.clone(),
-                    s.plugin_slug.clone(),
-                    s.conversation_id.clone(),
-                )
-            })
+            .map(|(conversation_id, s)| (conversation_id.clone(), s.plugin_slug.clone()))
             .collect()
     };
-    for (stale_agent_id, stale_plugin_slug, stale_conversation_id) in &stale_runs {
+    for (stale_conversation_id, stale_plugin_slug) in &stale_runs {
         log::info!(
-            "[run_workflow_step] pausing stale workflow run agent={} before starting step_id={}",
-            stale_agent_id,
+            "[run_workflow_step] pausing stale workflow run conversation={} before starting step_id={}",
+            stale_conversation_id,
             step_id,
         );
-        if let Some(conv_id) = stale_conversation_id {
-            let pause_result = crate::commands::skill_session::build_pause_runtime_config(
-                &app,
-                &db,
-                &skill_name,
-                stale_plugin_slug,
-            );
-            if let Ok(config) = pause_result {
-                let _ = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
-                    config,
-                    conv_id,
-                    Some(stale_agent_id),
-                )
-                .await;
-            }
-        } else {
-            log::warn!(
-                "[run_workflow_step] stale workflow run agent={} had no conversation_id; removing local bookkeeping without pause",
-                stale_agent_id
-            );
+        let pause_result = crate::commands::skill_session::build_pause_runtime_config(
+            &app,
+            &db,
+            &skill_name,
+            stale_plugin_slug,
+        );
+        if let Ok(config) = pause_result {
+            let _ = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
+                config,
+                stale_conversation_id,
+            )
+            .await;
         }
-        openhands_server::close_local_openhands_run(stale_agent_id);
+        openhands_server::close_local_openhands_run(stale_conversation_id);
     }
     if !stale_runs.is_empty() {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
-        for (stale_agent_id, _, _) in &stale_runs {
-            map.remove(stale_agent_id);
+        for (stale_conversation_id, _) in &stale_runs {
+            map.remove(stale_conversation_id);
         }
     }
 
@@ -622,7 +669,7 @@ pub async fn run_workflow_step(
 
 /// Run the answer-evaluator agent as a persistent skill turn.
 ///
-/// Returns the agent ID for the frontend to subscribe to completion events.
+/// Returns the conversation ID for the frontend to subscribe to completion events.
 #[tauri::command]
 pub async fn run_answer_evaluator(
     app: tauri::AppHandle,
@@ -633,8 +680,7 @@ pub async fn run_answer_evaluator(
 ) -> Result<String, String> {
     log::info!("run_answer_evaluator: skill={}", skill_name);
 
-    let settings =
-        read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, 0)?;
+    let settings = read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, 0)?;
 
     // Validate that the skill has published content before running the evaluator.
     validate_skill_content_exists(
@@ -661,9 +707,19 @@ pub async fn run_answer_evaluator(
 
     let clarifications_json = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id.to_string()) {
-            Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
-            _ => "{}".to_string(),
+        let skill_id_str = skill_id.to_string();
+        let clarifications =
+            crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str)
+                .ok()
+                .flatten();
+        let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id_str)
+            .ok()
+            .flatten();
+        match clarifications {
+            Some(rec) => {
+                super::prompt::workflow_prompt_input_json_string(&rec, refinements.as_ref())
+            }
+            None => "{}".to_string(),
         }
     };
 
@@ -680,8 +736,6 @@ pub async fn run_answer_evaluator(
         "run_answer_evaluator: skill={} agent=skill-creator task=workflow.answer_evaluator",
         skill_name
     );
-
-    let agent_id = make_agent_id(&skill_name, "gate-eval");
 
     let app_data_root = app
         .path()
@@ -702,46 +756,41 @@ pub async fn run_answer_evaluator(
     });
 
     log::debug!(
-        "[run_answer_evaluator] starting persistent request agent={} skill_dir={}",
-        agent_id,
+        "[run_answer_evaluator] preparing persistent request skill_dir={}",
         config.skill_dir,
     );
 
-    // Register before dispatch so cancellation can route to the native OpenHands
-    // runner even if the user cancels immediately after the command returns.
+    let session =
+        crate::agents::skill_creator::ensure_skill_session(&app, config.clone(), None).await?;
+    let conversation_id = session.conversation_id;
+
     {
         let mut map = runs.0.lock().map_err(|e| e.to_string())?;
         map.insert(
-            agent_id.clone(),
+            conversation_id.clone(),
             WorkflowStepRun {
                 skill_name: skill_name.clone(),
                 plugin_slug: settings.plugin_slug.clone(),
-                conversation_id: None,
+                conversation_id: conversation_id.clone(),
             },
         );
     }
 
-    dispatch_persistent_skill_turn(
-        &app,
-        &agent_id,
-        &settings.plugin_slug,
-        config,
-        runs.inner(),
-    )
+    let conversation_id = dispatch_persistent_skill_turn(&app, config, conversation_id.clone())
         .await
         .map_err(|e| {
             log::error!(
-                "[run_answer_evaluator] Failed to start persistent request for agent={}: {}",
-                agent_id,
+                "[run_answer_evaluator] Failed to start persistent request for conversation={}: {}",
+                conversation_id,
                 e
             );
             if let Ok(mut map) = runs.0.lock() {
-                map.remove(&agent_id);
+                map.remove(&conversation_id);
             }
             e
         })?;
 
-    Ok(agent_id)
+    Ok(conversation_id)
 }
 
 /// Cancel a running workflow step request by agent_id.
@@ -758,4 +807,80 @@ pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) 
         sanitize(&verdict),
         sanitize(&decision)
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_target_conversation_state;
+
+    #[test]
+    fn parse_target_conversation_state_accepts_completed_agent_message() {
+        let payload = serde_json::json!({
+            "conversation_id": "conv-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "completed",
+                "result_text": "{\"status\":\"research_complete\",\"research_output\":{\"sections\":[]}}"
+            }
+        })
+        .to_string();
+
+        let state = parse_target_conversation_state(&payload, "conv-1")
+            .expect("completed conversation_state should be accepted");
+
+        assert_eq!(
+            state.get("type").and_then(|value| value.as_str()),
+            Some("conversation_state")
+        );
+        assert_eq!(
+            state.get("status").and_then(|value| value.as_str()),
+            Some("completed")
+        );
+    }
+
+    #[test]
+    fn parse_target_conversation_state_skips_completed_agent_message_without_result_text() {
+        let payload = serde_json::json!({
+            "conversation_id": "conv-1",
+            "message": {
+                "type": "conversation_state",
+                "status": "completed",
+                "result_text": null
+            }
+        })
+        .to_string();
+
+        let state = parse_target_conversation_state(&payload, "conv-1");
+
+        assert!(state.is_none());
+    }
+
+    #[test]
+    fn parse_target_conversation_state_accepts_completed_run_result() {
+        let payload = serde_json::json!({
+            "conversation_id": "conv-1",
+            "timestamp": 123_u64,
+            "type": "run_result",
+            "status": "completed",
+            "resultText": "{\"status\":\"research_complete\",\"research_output\":{\"sections\":[]}}",
+            "resultErrors": null
+        })
+        .to_string();
+
+        let state = parse_target_conversation_state(&payload, "conv-1")
+            .expect("completed run_result should be accepted");
+
+        assert_eq!(
+            state.get("type").and_then(|value| value.as_str()),
+            Some("conversation_state")
+        );
+        assert_eq!(
+            state.get("status").and_then(|value| value.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            state.get("result_text").and_then(|value| value.as_str()),
+            Some("{\"status\":\"research_complete\",\"research_output\":{\"sections\":[]}}")
+        );
+    }
 }

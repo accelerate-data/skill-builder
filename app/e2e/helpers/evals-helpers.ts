@@ -4,7 +4,7 @@
 import type { Page } from "@playwright/test";
 import { waitForAppReady } from "./app-helpers";
 import {
-  E2E_PREFERRED_MODEL,
+  E2E_MODEL_SETTINGS,
   E2E_SKILLS_PATH,
   E2E_WORKSPACE_PATH,
 } from "./test-paths";
@@ -15,14 +15,7 @@ import {
  */
 export const EVALS_OVERRIDES: Record<string, unknown> = {
   get_settings: {
-    model_settings: {
-      provider: "anthropic",
-      model: E2E_PREFERRED_MODEL,
-      api_key: "sk-ant-test",
-      base_url: null,
-      reasoning_effort: "auto",
-      usage_id: "workflow",
-    },
+    model_settings: E2E_MODEL_SETTINGS,
     workspace_path: E2E_WORKSPACE_PATH,
     skills_path: E2E_SKILLS_PATH,
   },

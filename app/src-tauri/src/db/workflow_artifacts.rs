@@ -616,6 +616,12 @@ pub fn update_question_verdicts(
              WHERE skill_id = ?1 AND question_id = ?2",
             rusqlite::params![skill_id, question_id, verdict, reason],
         )?;
+        tx.execute(
+            "UPDATE refinement_questions
+             SET answer_verdict = ?3, answer_verdict_reason = ?4
+             WHERE skill_id = ?1 AND question_id = ?2",
+            rusqlite::params![skill_id, question_id, verdict, reason],
+        )?;
     }
     tx.commit()?;
     Ok(())
@@ -1248,7 +1254,10 @@ pub fn read_refinements(
     Ok(Some(record))
 }
 
-pub fn delete_refinements(conn: &Connection, skill_identifier: &str) -> Result<(), rusqlite::Error> {
+pub fn delete_refinements(
+    conn: &Connection,
+    skill_identifier: &str,
+) -> Result<(), rusqlite::Error> {
     let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
         return Ok(());
     };
@@ -1294,6 +1303,7 @@ pub fn update_refinement_question_answer(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn update_refinement_question_verdicts(
     conn: &mut Connection,
     skill_identifier: &str,
@@ -1923,27 +1933,25 @@ mod tests {
                 title: "Scope".to_string(),
                 description: None,
             }],
-            questions: vec![
-                RefinementQuestion {
-                    question_id: "rq1".to_string(),
-                    section_id: 1,
+            questions: vec![RefinementQuestion {
+                question_id: "rq1".to_string(),
+                section_id: 1,
+                ordinal: 0,
+                title: "Refinement Q1".to_string(),
+                text: "What about X?".to_string(),
+                must_answer: true,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![RefinementChoice {
+                    choice_id: "a".to_string(),
                     ordinal: 0,
-                    title: "Refinement Q1".to_string(),
-                    text: "What about X?".to_string(),
-                    must_answer: true,
-                    answer_choice: None,
-                    answer_text: None,
-                    recommendation: None,
-                    answer_verdict: None,
-                    answer_verdict_reason: None,
-                    choices: vec![RefinementChoice {
-                        choice_id: "a".to_string(),
-                        ordinal: 0,
-                        text: "Yes".to_string(),
-                        is_other: false,
-                    }],
-                },
-            ],
+                    text: "Yes".to_string(),
+                    is_other: false,
+                }],
+            }],
             notes: vec![],
         };
 
@@ -2016,5 +2024,86 @@ mod tests {
 
         delete_refinements(&conn, &identifier).unwrap();
         assert!(read_refinements(&conn, &identifier).unwrap().is_none());
+    }
+
+    #[test]
+    fn update_question_verdicts_updates_refinement_rows_too() {
+        let mut conn = create_test_db_for_tests();
+        let skill_id = seed_skill(&conn, "skill-refine-verdicts");
+        let identifier = skill_identifier(skill_id);
+
+        let record = RefinementsRecord {
+            skill_id: identifier.clone(),
+            version: "1".to_string(),
+            refinement_count: 1,
+            must_answer_count: 1,
+            question_count: 1,
+            section_count: 1,
+            title: "Refinements".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            sections: vec![RefinementSection {
+                section_id: 1,
+                ordinal: 0,
+                title: "Scope".to_string(),
+                description: None,
+            }],
+            questions: vec![RefinementQuestion {
+                question_id: "R3.1".to_string(),
+                section_id: 1,
+                ordinal: 0,
+                title: "Refinement Q1".to_string(),
+                text: "What about X?".to_string(),
+                must_answer: true,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![],
+            }],
+            notes: vec![],
+        };
+
+        let tx = conn.transaction().unwrap();
+        upsert_refinements(&tx, &record).unwrap();
+        tx.commit().unwrap();
+
+        update_question_verdicts(
+            &mut conn,
+            &identifier,
+            &[(
+                "R3.1".to_string(),
+                Some("needs_refinement".to_string()),
+                Some("Missing rollover handling.".to_string()),
+            )],
+        )
+        .unwrap();
+
+        let read_back = read_refinements(&conn, &identifier).unwrap().unwrap();
+        let question = read_back
+            .questions
+            .iter()
+            .find(|q| q.question_id == "R3.1")
+            .unwrap();
+        assert_eq!(question.answer_verdict.as_deref(), Some("needs_refinement"));
+        assert_eq!(
+            question.answer_verdict_reason.as_deref(),
+            Some("Missing rollover handling.")
+        );
     }
 }

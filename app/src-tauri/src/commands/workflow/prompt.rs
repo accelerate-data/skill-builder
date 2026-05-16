@@ -1,4 +1,5 @@
 use crate::skill_paths::resolve_skill_dir;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 const ANSWER_EVALUATOR_TEMPLATE: &str = include_str!(concat!(
@@ -26,7 +27,12 @@ const SKILL_GENERATION_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/skill-generation.txt"
 ));
 
-fn render_skill_prompt(template: &str, skill_name: &str, skills_path: &str, plugin_slug: &str) -> String {
+fn render_skill_prompt(
+    template: &str,
+    skill_name: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+) -> String {
     let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     template
@@ -43,9 +49,14 @@ pub(crate) fn build_step0_prompt(
     max_dimensions: u32,
     user_context_block: &str,
 ) -> String {
-    render_skill_prompt(RESEARCH_PROMPT_TEMPLATE, skill_name, skills_path, plugin_slug)
-        .replace("{{max_dimensions}}", &max_dimensions.to_string())
-        .replace("{{user_context_block}}", user_context_block)
+    render_skill_prompt(
+        RESEARCH_PROMPT_TEMPLATE,
+        skill_name,
+        skills_path,
+        plugin_slug,
+    )
+    .replace("{{max_dimensions}}", &max_dimensions.to_string())
+    .replace("{{user_context_block}}", user_context_block)
 }
 
 /// Build the prompt for step 1 (detailed research).
@@ -57,10 +68,15 @@ pub(crate) fn build_step1_prompt(
     clarifications_json: &str,
     answer_verdicts_block: &str,
 ) -> String {
-    render_skill_prompt(DETAILED_RESEARCH_TEMPLATE, skill_name, skills_path, plugin_slug)
-        .replace("{{user_context_block}}", user_context_block)
-        .replace("{{clarifications_json}}", clarifications_json)
-        .replace("{{answer_verdicts_block}}", answer_verdicts_block)
+    render_skill_prompt(
+        DETAILED_RESEARCH_TEMPLATE,
+        skill_name,
+        skills_path,
+        plugin_slug,
+    )
+    .replace("{{user_context_block}}", user_context_block)
+    .replace("{{clarifications_json}}", clarifications_json)
+    .replace("{{answer_verdicts_block}}", answer_verdicts_block)
 }
 
 /// Build the prompt for step 2 (confirm decisions).
@@ -71,9 +87,14 @@ pub(crate) fn build_step2_prompt(
     user_context_block: &str,
     clarifications_json: &str,
 ) -> String {
-    render_skill_prompt(CONFIRM_DECISIONS_TEMPLATE, skill_name, skills_path, plugin_slug)
-        .replace("{{user_context_block}}", user_context_block)
-        .replace("{{clarifications_json}}", clarifications_json)
+    render_skill_prompt(
+        CONFIRM_DECISIONS_TEMPLATE,
+        skill_name,
+        skills_path,
+        plugin_slug,
+    )
+    .replace("{{user_context_block}}", user_context_block)
+    .replace("{{clarifications_json}}", clarifications_json)
 }
 
 /// Build the prompt for step 3 (generate skill).
@@ -124,56 +145,20 @@ pub(crate) fn build_step3_prompt(
 pub(crate) fn clarifications_record_to_json_string(
     rec: &crate::db::workflow_artifacts::ClarificationsRecord,
 ) -> String {
-    let sections: Vec<serde_json::Value> = rec
-        .sections
-        .iter()
-        .map(|s| {
-            let section_questions: Vec<&crate::db::workflow_artifacts::ClarificationQuestion> = rec
-                .questions
-                .iter()
-                .filter(|q| q.section_id == s.section_id && q.parent_question_id.is_none())
-                .collect();
-
-            let questions_json: Vec<serde_json::Value> = section_questions
-                .iter()
-                .map(|q| question_to_json(q, &rec.questions))
-                .collect();
-
-            serde_json::json!({
-                "id": s.section_id,
-                "title": s.title,
-                "description": s.description,
-                "questions": questions_json
-            })
-        })
-        .collect();
-
-    let json_val = serde_json::json!({
-        "version": rec.version,
-        "metadata": {
-            "title": rec.title,
-            "question_count": rec.question_count,
-            "section_count": rec.section_count,
-            "refinement_count": rec.refinement_count,
-            "must_answer_count": rec.must_answer_count,
-            "scope_recommendation": rec.scope_recommendation,
-            "scope_reason": rec.scope_reason,
-            "scope_next_action": rec.scope_next_action,
-        },
-        "sections": sections,
-        "notes": rec.notes.iter().map(|n| serde_json::json!({
-            "type": n.note_type,
-            "title": n.title,
-            "body": n.body
-        })).collect::<Vec<_>>()
-    });
-
-    serde_json::to_string_pretty(&json_val).unwrap_or_else(|_| "{}".to_string())
+    workflow_prompt_input_json_string(rec, None)
 }
 
-fn question_to_json(
-    q: &crate::db::workflow_artifacts::ClarificationQuestion,
-    all_questions: &[crate::db::workflow_artifacts::ClarificationQuestion],
+fn refinement_parent_question_id(question_id: &str) -> Option<String> {
+    let rest = question_id.strip_prefix('R')?;
+    let (major, _) = rest.split_once('.')?;
+    if major.is_empty() || !major.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    Some(format!("Q{major}"))
+}
+
+fn refinement_question_to_json(
+    q: &crate::db::workflow_artifacts::RefinementQuestion,
 ) -> serde_json::Value {
     let choices: Vec<serde_json::Value> = q
         .choices
@@ -187,11 +172,74 @@ fn question_to_json(
         })
         .collect();
 
-    let refinements: Vec<serde_json::Value> = all_questions
+    let mut obj = serde_json::json!({
+        "id": q.question_id,
+        "title": q.title,
+        "text": q.text,
+        "must_answer": q.must_answer,
+        "choices": choices,
+        "refinements": []
+    });
+
+    if let Some(v) = &q.answer_choice {
+        obj["answer_choice"] = serde_json::Value::String(v.clone());
+    }
+    if let Some(v) = &q.answer_text {
+        obj["answer_text"] = serde_json::Value::String(v.clone());
+    }
+    if let Some(v) = &q.recommendation {
+        obj["recommendation"] = serde_json::Value::String(v.clone());
+    }
+    if let Some(v) = &q.answer_verdict {
+        obj["answer_verdict"] = serde_json::Value::String(v.clone());
+    }
+    if let Some(v) = &q.answer_verdict_reason {
+        obj["answer_verdict_reason"] = serde_json::Value::String(v.clone());
+    }
+
+    obj
+}
+
+fn clarification_question_to_json(
+    q: &crate::db::workflow_artifacts::ClarificationQuestion,
+    all_questions: &[crate::db::workflow_artifacts::ClarificationQuestion],
+    refinements_by_parent: &HashMap<
+        String,
+        Vec<&crate::db::workflow_artifacts::RefinementQuestion>,
+    >,
+    attached_refinement_ids: &mut HashSet<String>,
+) -> serde_json::Value {
+    let choices: Vec<serde_json::Value> = q
+        .choices
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "id": c.choice_id,
+                "text": c.text,
+                "is_other": c.is_other
+            })
+        })
+        .collect();
+
+    let mut refinements: Vec<serde_json::Value> = all_questions
         .iter()
         .filter(|r| r.parent_question_id.as_deref() == Some(&q.question_id))
-        .map(|r| question_to_json(r, all_questions))
+        .map(|r| {
+            clarification_question_to_json(
+                r,
+                all_questions,
+                refinements_by_parent,
+                attached_refinement_ids,
+            )
+        })
         .collect();
+
+    if let Some(persisted_refinements) = refinements_by_parent.get(&q.question_id) {
+        refinements.extend(persisted_refinements.iter().map(|refinement| {
+            attached_refinement_ids.insert(refinement.question_id.clone());
+            refinement_question_to_json(refinement)
+        }));
+    }
 
     let mut obj = serde_json::json!({
         "id": q.question_id,
@@ -211,8 +259,112 @@ fn question_to_json(
     if let Some(v) = &q.recommendation {
         obj["recommendation"] = serde_json::Value::String(v.clone());
     }
+    if let Some(v) = &q.answer_verdict {
+        obj["answer_verdict"] = serde_json::Value::String(v.clone());
+    }
+    if let Some(v) = &q.answer_verdict_reason {
+        obj["answer_verdict_reason"] = serde_json::Value::String(v.clone());
+    }
 
     obj
+}
+
+pub(crate) fn workflow_prompt_input_json_string(
+    rec: &crate::db::workflow_artifacts::ClarificationsRecord,
+    refinements: Option<&crate::db::workflow_artifacts::RefinementsRecord>,
+) -> String {
+    let mut refinements_by_parent: HashMap<
+        String,
+        Vec<&crate::db::workflow_artifacts::RefinementQuestion>,
+    > = HashMap::new();
+    let mut orphan_refinements_by_section: HashMap<
+        i64,
+        Vec<&crate::db::workflow_artifacts::RefinementQuestion>,
+    > = HashMap::new();
+
+    if let Some(refinements_record) = refinements {
+        for refinement in &refinements_record.questions {
+            match refinement_parent_question_id(&refinement.question_id) {
+                Some(parent_id) => refinements_by_parent
+                    .entry(parent_id)
+                    .or_default()
+                    .push(refinement),
+                None => orphan_refinements_by_section
+                    .entry(refinement.section_id)
+                    .or_default()
+                    .push(refinement),
+            }
+        }
+    }
+
+    let mut attached_refinement_ids = HashSet::new();
+    let sections: Vec<serde_json::Value> = rec
+        .sections
+        .iter()
+        .map(|s| {
+            let section_questions: Vec<&crate::db::workflow_artifacts::ClarificationQuestion> = rec
+                .questions
+                .iter()
+                .filter(|q| q.section_id == s.section_id && q.parent_question_id.is_none())
+                .collect();
+
+            let mut questions_json: Vec<serde_json::Value> = section_questions
+                .iter()
+                .map(|q| {
+                    clarification_question_to_json(
+                        q,
+                        &rec.questions,
+                        &refinements_by_parent,
+                        &mut attached_refinement_ids,
+                    )
+                })
+                .collect();
+
+            if let Some(orphan_refinements) = orphan_refinements_by_section.get(&s.section_id) {
+                questions_json.extend(
+                    orphan_refinements
+                        .iter()
+                        .filter(|refinement| {
+                            !attached_refinement_ids.contains(refinement.question_id.as_str())
+                        })
+                        .map(|refinement| refinement_question_to_json(refinement)),
+                );
+            }
+
+            serde_json::json!({
+                "id": s.section_id,
+                "title": s.title,
+                "description": s.description,
+                "questions": questions_json
+            })
+        })
+        .collect();
+
+    let merged_refinement_count = refinements
+        .map(|record| record.refinement_count)
+        .unwrap_or(rec.refinement_count);
+
+    let json_val = serde_json::json!({
+        "version": rec.version,
+        "metadata": {
+            "title": rec.title,
+            "question_count": rec.question_count,
+            "section_count": rec.section_count,
+            "refinement_count": merged_refinement_count,
+            "must_answer_count": rec.must_answer_count,
+            "scope_recommendation": rec.scope_recommendation,
+            "scope_reason": rec.scope_reason,
+            "scope_next_action": rec.scope_next_action,
+        },
+        "sections": sections,
+        "notes": rec.notes.iter().map(|n| serde_json::json!({
+            "type": n.note_type,
+            "title": n.title,
+            "body": n.body
+        })).collect::<Vec<_>>()
+    });
+
+    serde_json::to_string_pretty(&json_val).unwrap_or_else(|_| "{}".to_string())
 }
 
 /// Render per-question answer evaluation verdicts for inline prompt injection.

@@ -35,6 +35,7 @@ interface WorkflowState {
 
   /** Transient: true while the answer-evaluator gate agent is running (not persisted to SQLite). */
   gateLoading: boolean;
+  activeConversationId: string | null;
 
   /** Transient: like pendingUpdateMode but suppresses auto-start. Used when navigating to an existing in-progress skill from the sidebar. */
   pendingNoReviewMode: boolean;
@@ -60,6 +61,7 @@ interface WorkflowState {
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
   clearRuntimeError: () => void;
   setGateLoading: (loading: boolean) => void;
+  setActiveConversationId: (conversationId: string | null) => void;
   setPendingNoReviewMode: (mode: boolean) => void;
   updateStepLabel: (stepId: number, name: string, description: string) => void;
   reset: () => void;
@@ -85,6 +87,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   initProgressMessage: null,
   runtimeError: null,
   gateLoading: false,
+  activeConversationId: null,
   pendingNoReviewMode: false,
   hydrated: false,
   disabledSteps: [],
@@ -105,7 +108,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
-          hydrated: false,
+      activeConversationId: null,
+      hydrated: false,
       disabledSteps: [],
     }),
 
@@ -159,6 +163,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearRuntimeError: () => set({ runtimeError: null }),
 
   setGateLoading: (loading) => set({ gateLoading: loading }),
+  setActiveConversationId: (activeConversationId) => set({ activeConversationId }),
   setPendingNoReviewMode: (mode) => set({ pendingNoReviewMode: mode }),
 
   updateStepLabel: (stepId, name, description) =>
@@ -176,6 +181,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
+      activeConversationId: null,
       steps: state.steps.map((s) =>
         s.id >= stepId ? { ...s, status: "pending" as const } : s
       ),
@@ -193,6 +199,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
+      activeConversationId: null,
       steps: state.steps.map((s) =>
         s.id > stepId ? { ...s, status: "pending" as const } : s
       ),
@@ -245,6 +252,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
+      activeConversationId: null,
       hydrated: false,
       disabledSteps: [],
     }),

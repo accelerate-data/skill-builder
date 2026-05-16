@@ -25,7 +25,7 @@ sequenceDiagram
     L1->>OHS: resume or create conversation
     OHS-->>L1: restored events + conversation_id
     L1-->>CMD: session ready
-    CMD-->>FE: hydrated workflow/refine state
+    CMD-->>FE: hydrated workflow session state
 
     U->>FE: Run workflow step
     FE->>CMD: run_workflow_step(skill_id, skill_name, step_id)
@@ -72,9 +72,7 @@ sequenceDiagram
 
 ## Key Rules
 
-- Workflow uses the same persistent selected-skill conversation model as
-  Refine.
-- Workflow steps send into the existing conversation and only start a run when
-  no live runner exists.
-- Reset ownership stays at the product-command layer: pause, clear typed
-  artifacts, fork, delete source, then rebind the saved conversation ID.
+- Workflow uses the same persistent selected-skill conversation model as the workspace conversation surface.
+- Workflow steps send into the existing conversation and only start a run when no live runner exists.
+- Reset ownership stays at the product-command layer: pause, clear typed artifacts, fork, delete source, then rebind the saved conversation ID.
+- Transcript rendering reads from the canonical `conversation-store` timeline keyed by the selected session `conversationId`, and workflow runtime state uses the session-centric `session-runtime-store` lifecycle surface rather than any legacy transcript seam.

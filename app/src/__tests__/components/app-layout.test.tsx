@@ -120,7 +120,7 @@ vi.mock("@/lib/toast", () => ({
 
 // Must import after mocks are set up
 import { AppLayout } from "@/components/layout/app-layout";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore as useAgentStore } from "@/stores/session-runtime-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
@@ -187,7 +187,7 @@ describe("AppLayout", () => {
     installAppLayoutInvokeDefaults();
     useSettingsStore.getState().reset();
     useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     useSkillStore.setState({
       activeSkillId: null,
       lockedSkills: new Set(),
@@ -195,7 +195,6 @@ describe("AppLayout", () => {
       selectedSkill: null,
       conversationId: null,
       availableAgents: [],
-      activeAgentId: null,
     });
     useWorkspaceStore.setState({ activeSurface: "overview" });
     setEvalsRunning(false);
@@ -385,7 +384,7 @@ describe("AppLayout", () => {
       if (cmd === "pause_openhands_session") return Promise.resolve(true);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
-    useAgentStore.getState().registerRun(
+    useAgentStore.getState().registerSessionRun(
       "workflow-agent-1",
       "test-model",
       "my-skill",
@@ -397,7 +396,7 @@ describe("AppLayout", () => {
         ...state.runs,
         "workflow-agent-1": {
           ...state.runs["workflow-agent-1"],
-          sessionId: "conv-workflow",
+          conversationId: "conv-workflow",
         },
       },
     }));
@@ -423,7 +422,6 @@ describe("AppLayout", () => {
           skillName: "my-skill",
           pluginSlug: "skills",
           conversationId: "conv-workflow",
-          agentId: "workflow-agent-1",
           skillId: null,
         },
       });
@@ -485,7 +483,7 @@ describe("AppLayout", () => {
       if (cmd === "pause_openhands_session") return Promise.resolve(true);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
-    useAgentStore.getState().registerRun(
+    useAgentStore.getState().registerSessionRun(
       "workflow-agent-1",
       "test-model",
       "my-skill",
@@ -545,9 +543,7 @@ describe("AppLayout", () => {
         is_default_plugin: true,
       },
       conversationId: "conv-workflow-fallback",
-      activeAgentId: "workflow-agent-pending",
     });
-    useAgentStore.getState().setActiveAgent("workflow-agent-pending");
     useWorkflowStore.getState().setRunning(true);
     useWorkflowStore.getState().setStopping(false);
 
@@ -567,7 +563,6 @@ describe("AppLayout", () => {
           skillName: "my-skill",
           pluginSlug: "skills",
           conversationId: "conv-workflow-fallback",
-          agentId: "workflow-agent-pending",
           skillId: null,
         },
       });
@@ -1112,7 +1107,6 @@ describe("AppLayout", () => {
           skillName: "sales-skill",
           pluginSlug: "skills",
           conversationId: "conv-current",
-          agentId: null,
           skillId: 1,
         },
       });

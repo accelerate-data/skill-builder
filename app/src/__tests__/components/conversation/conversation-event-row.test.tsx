@@ -59,4 +59,34 @@ describe("ConversationEventRow", () => {
     expect(agentRow.className).toMatch(/\bmr-auto\b/);
     expect(agentRow.className).toMatch(/\bborder-border\b/);
   });
+
+  it("extracts agent message text from canonical OpenHands payload helpers", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-agent-content",
+          kind: "agent_message",
+          payload: {
+            rawOpenHandsEvent: {
+              type: "conversation_event",
+              runtime: "openhands",
+              eventClass: "MessageEvent",
+              timestamp: 1_000,
+              event: {
+                source: "agent",
+                content: [
+                  {
+                    type: "text",
+                    text: "Structured agent reply",
+                  },
+                ],
+              },
+            },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Structured agent reply")).toBeInTheDocument();
+  });
 });

@@ -61,6 +61,8 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (56, run_canonical_skill_identity_migration),
     (57, run_settings_table_normalization_migration),
     (58, run_refinements_tables_migration),
+    (59, run_drop_legacy_chat_tables_migration),
+    (60, run_workflow_runtime_identity_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2912,9 +2914,7 @@ pub(super) fn run_canonical_skill_identity_migration(
 /// - NO `parent_question_id` column — refinements are flat questions
 /// - Separate table names: refinements, refinement_sections, refinement_questions,
 ///   refinement_choices, refinement_notes
-pub(super) fn run_refinements_tables_migration(
-    conn: &Connection,
-) -> Result<(), rusqlite::Error> {
+pub(super) fn run_refinements_tables_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS refinements (
@@ -2994,5 +2994,161 @@ pub(super) fn run_refinements_tables_migration(
         "#,
     )?;
     log::info!("migration 58: created refinements tables");
+    Ok(())
+}
+
+pub(super) fn run_drop_legacy_chat_tables_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS chat_messages;
+         DROP TABLE IF EXISTS chat_sessions;",
+    )?;
+    log::info!("migration 59: dropped legacy chat tables");
+    Ok(())
+}
+
+pub(super) fn run_workflow_runtime_identity_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    let workflow_runs_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='workflow_runs'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+    if workflow_runs_sql
+        .contains("skill_id INTEGER NOT NULL UNIQUE REFERENCES skills(id) ON DELETE CASCADE")
+    {
+        log::info!("migration 60: workflow runtime identity already uses skill_id, skipping");
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "
+        PRAGMA foreign_keys = OFF;
+        BEGIN;
+
+        UPDATE workflow_runs
+        SET skill_id = (
+            SELECT id FROM skills WHERE skills.name = workflow_runs.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE workflow_steps
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_steps.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE workflow_artifacts
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_artifacts.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE workflow_sessions
+        SET skill_id = (
+            SELECT id FROM skills WHERE skills.name = workflow_sessions.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        DROP TABLE IF EXISTS workflow_runs_new;
+        CREATE TABLE workflow_runs_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name TEXT NOT NULL,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            purpose TEXT DEFAULT 'domain',
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            source TEXT NOT NULL DEFAULT 'created',
+            author_login TEXT,
+            author_avatar TEXT,
+            display_name TEXT,
+            intake_json TEXT,
+            skill_id INTEGER NOT NULL UNIQUE REFERENCES skills(id) ON DELETE CASCADE
+        );
+        INSERT INTO workflow_runs_new (id, skill_name, current_step, status, purpose,
+                                       created_at, updated_at, source,
+                                       author_login, author_avatar, display_name,
+                                       intake_json, skill_id)
+            SELECT id, skill_name, current_step, status, purpose,
+                   created_at, updated_at, source,
+                   author_login, author_avatar, display_name,
+                   intake_json, skill_id
+            FROM workflow_runs
+            WHERE skill_id IS NOT NULL;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_new RENAME TO workflow_runs;
+
+        DROP TABLE IF EXISTS workflow_steps_new;
+        CREATE TABLE workflow_steps_new (
+            skill_name TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            started_at TEXT,
+            completed_at TEXT,
+            workflow_run_id INTEGER NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+            PRIMARY KEY (workflow_run_id, step_id)
+        );
+        INSERT INTO workflow_steps_new (skill_name, step_id, status, started_at, completed_at, workflow_run_id)
+            SELECT skill_name, step_id, status, started_at, completed_at, workflow_run_id
+            FROM workflow_steps
+            WHERE workflow_run_id IS NOT NULL;
+        DROP TABLE workflow_steps;
+        ALTER TABLE workflow_steps_new RENAME TO workflow_steps;
+
+        DROP TABLE IF EXISTS workflow_artifacts_new;
+        CREATE TABLE workflow_artifacts_new (
+            skill_name TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            relative_path TEXT NOT NULL,
+            content TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            workflow_run_id INTEGER NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+            PRIMARY KEY (workflow_run_id, step_id, relative_path)
+        );
+        INSERT INTO workflow_artifacts_new (skill_name, step_id, relative_path, content, size_bytes, created_at, updated_at, workflow_run_id)
+            SELECT skill_name, step_id, relative_path, content, size_bytes, created_at, updated_at, workflow_run_id
+            FROM workflow_artifacts
+            WHERE workflow_run_id IS NOT NULL;
+        DROP TABLE workflow_artifacts;
+        ALTER TABLE workflow_artifacts_new RENAME TO workflow_artifacts;
+
+        DROP TABLE IF EXISTS workflow_sessions_new;
+        CREATE TABLE workflow_sessions_new (
+            session_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            ended_at TEXT,
+            reset_marker TEXT,
+            skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE
+        );
+        INSERT INTO workflow_sessions_new (session_id, skill_name, pid, started_at, ended_at, reset_marker, skill_id)
+            SELECT session_id, skill_name, pid, started_at, ended_at, reset_marker, skill_id
+            FROM workflow_sessions;
+        DROP TABLE workflow_sessions;
+        ALTER TABLE workflow_sessions_new RENAME TO workflow_sessions;
+
+        CREATE INDEX IF NOT EXISTS idx_workflow_steps_run_step
+            ON workflow_steps(workflow_run_id, step_id);
+        CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_run
+            ON workflow_artifacts(workflow_run_id);
+        CREATE INDEX IF NOT EXISTS idx_workflow_sessions_reset_started_skill
+            ON workflow_sessions(reset_marker, started_at, skill_name);
+        CREATE INDEX IF NOT EXISTS idx_workflow_sessions_skill_id_active
+            ON workflow_sessions(skill_id, ended_at);
+
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+        ",
+    )?;
+
+    log::info!("migration 60: rebuilt workflow runtime tables around skill_id/workflow_run_id");
     Ok(())
 }

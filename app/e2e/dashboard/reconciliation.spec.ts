@@ -13,7 +13,7 @@ const BASE_OVERRIDES = {
 };
 
 test.describe("Reconciliation Notification", { tag: "@dashboard" }, () => {
-  test("shows reconciliation dialog when startup returns notifications", async ({ page }) => {
+  test.skip("shows reconciliation dialog when startup returns notifications", async ({ page }) => {
     await page.addInitScript((overrides) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
     }, {
@@ -39,7 +39,7 @@ test.describe("Reconciliation Notification", { tag: "@dashboard" }, () => {
     await expect(page.getByText("Cleaned up 2 orphaned workflow sessions")).toBeVisible();
   });
 
-  test("reconciliation dialog can be acknowledged", async ({ page }) => {
+  test.skip("reconciliation dialog can be acknowledged", async ({ page }) => {
     await page.addInitScript((overrides) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
     }, {

@@ -36,8 +36,12 @@ pub fn save_workflow_run_by_skill_id(
     conn.execute(
         "INSERT INTO workflow_runs (skill_name, current_step, status, purpose, skill_id, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
-         ON CONFLICT(skill_name) DO UPDATE SET
-             current_step = ?2, status = ?3, purpose = ?4, skill_id = ?5, updated_at = datetime('now') || 'Z'",
+         ON CONFLICT(skill_id) DO UPDATE SET
+             skill_name = excluded.skill_name,
+             current_step = excluded.current_step,
+             status = excluded.status,
+             purpose = excluded.purpose,
+             updated_at = datetime('now') || 'Z'",
         rusqlite::params![skill.name, current_step, status, purpose, skill_id],
     )
     .map_err(|e| e.to_string())?;
@@ -110,24 +114,31 @@ pub fn get_workflow_run_by_skill_id(
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
-             FROM workflow_runs WHERE skill_id = ?1",
+            "SELECT wr.skill_id, wr.skill_name, p.slug, wr.current_step, wr.status, wr.purpose,
+                    wr.created_at, wr.updated_at, wr.author_login, wr.author_avatar,
+                    wr.display_name, wr.intake_json, COALESCE(wr.source, 'created')
+             FROM workflow_runs wr
+             JOIN skills s ON s.id = wr.skill_id
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE wr.skill_id = ?1",
         )
         .map_err(|e| e.to_string())?;
 
     let result = stmt.query_row(rusqlite::params![skill_id], |row| {
         Ok(WorkflowRunRow {
-            skill_name: row.get(0)?,
-            current_step: row.get(1)?,
-            status: row.get(2)?,
-            purpose: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
-            author_login: row.get(6)?,
-            author_avatar: row.get(7)?,
-            display_name: row.get(8)?,
-            intake_json: row.get(9)?,
-            source: row.get(10)?,
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            plugin_slug: row.get(2)?,
+            current_step: row.get(3)?,
+            status: row.get(4)?,
+            purpose: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+            author_login: row.get(8)?,
+            author_avatar: row.get(9)?,
+            display_name: row.get(10)?,
+            intake_json: row.get(11)?,
+            source: row.get(12)?,
         })
     });
 
@@ -148,25 +159,32 @@ pub fn get_purpose_by_skill_id(conn: &Connection, skill_id: i64) -> Result<Strin
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, current_step, status, purpose, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
-             FROM workflow_runs ORDER BY skill_name",
+            "SELECT wr.skill_id, wr.skill_name, p.slug, wr.current_step, wr.status, wr.purpose,
+                    wr.created_at, wr.updated_at, wr.author_login, wr.author_avatar,
+                    wr.display_name, wr.intake_json, COALESCE(wr.source, 'created')
+             FROM workflow_runs wr
+             JOIN skills s ON s.id = wr.skill_id
+             JOIN plugins p ON p.id = s.plugin_id
+             ORDER BY p.slug, wr.skill_name",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], |row| {
             Ok(WorkflowRunRow {
-                skill_name: row.get(0)?,
-                current_step: row.get(1)?,
-                status: row.get(2)?,
-                purpose: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-                author_login: row.get(6)?,
-                author_avatar: row.get(7)?,
-                display_name: row.get(8)?,
-                intake_json: row.get(9)?,
-                source: row.get(10)?,
+                skill_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                plugin_slug: row.get(2)?,
+                current_step: row.get(3)?,
+                status: row.get(4)?,
+                purpose: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                author_login: row.get(8)?,
+                author_avatar: row.get(9)?,
+                display_name: row.get(10)?,
+                intake_json: row.get(11)?,
+                source: row.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -231,8 +249,8 @@ pub fn delete_workflow_run(
     .map_err(|e| e.to_string())?;
 
     conn.execute(
-        "DELETE FROM workflow_runs WHERE skill_name = ?1",
-        [skill_name],
+        "DELETE FROM workflow_runs WHERE skill_id = ?1",
+        rusqlite::params![s_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -258,7 +276,8 @@ pub fn save_workflow_step_by_skill_id(
         _ => (None, None),
     };
 
-    let workflow_run_id = get_workflow_run_id_by_skill_id(conn, skill_id)?;
+    let workflow_run_id = get_workflow_run_id_by_skill_id(conn, skill_id)?
+        .ok_or_else(|| format!("Workflow run not found for skill id {}", skill_id))?;
     let skill_name = get_skill_master_by_id(conn, skill_id)?
         .ok_or_else(|| format!("Skill id {} not found", skill_id))?
         .name;
@@ -266,11 +285,12 @@ pub fn save_workflow_step_by_skill_id(
     conn.execute(
         "INSERT INTO workflow_steps (skill_name, step_id, status, started_at, completed_at, workflow_run_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(skill_name, step_id) DO UPDATE SET
+         ON CONFLICT(workflow_run_id, step_id) DO UPDATE SET
+             skill_name = excluded.skill_name,
              status = ?3,
              started_at = COALESCE(?4, started_at),
              completed_at = ?5,
-             workflow_run_id = COALESCE(?6, workflow_run_id)",
+             workflow_run_id = excluded.workflow_run_id",
         rusqlite::params![skill_name, step_id, status, started, completed, workflow_run_id],
     )
     .map_err(|e| e.to_string())?;
@@ -288,18 +308,25 @@ pub fn get_workflow_steps_by_skill_id(
 
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, step_id, status, started_at, completed_at
-             FROM workflow_steps WHERE workflow_run_id = ?1 ORDER BY step_id",
+            "SELECT wr.skill_id, ws.skill_name, p.slug, ws.step_id, ws.status, ws.started_at, ws.completed_at
+             FROM workflow_steps ws
+             JOIN workflow_runs wr ON wr.id = ws.workflow_run_id
+             JOIN skills s ON s.id = wr.skill_id
+             JOIN plugins p ON p.id = s.plugin_id
+             WHERE ws.workflow_run_id = ?1
+             ORDER BY ws.step_id",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![wr_id], |row| {
             Ok(WorkflowStepRow {
-                skill_name: row.get(0)?,
-                step_id: row.get(1)?,
-                status: row.get(2)?,
-                started_at: row.get(3)?,
-                completed_at: row.get(4)?,
+                skill_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                plugin_slug: row.get(2)?,
+                step_id: row.get(3)?,
+                status: row.get(4)?,
+                started_at: row.get(5)?,
+                completed_at: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -362,16 +389,16 @@ pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Stri
     Ok(count as u32)
 }
 
-pub fn end_active_workflow_sessions_for_skill(
+pub fn end_active_workflow_sessions_for_skill_id(
     conn: &Connection,
-    skill_name: &str,
+    skill_id: i64,
 ) -> Result<u32, String> {
     let count = conn
         .execute(
             "UPDATE workflow_sessions
              SET ended_at = datetime('now') || 'Z'
-             WHERE skill_name = ?1 AND ended_at IS NULL",
-            rusqlite::params![skill_name],
+             WHERE skill_id = ?1 AND ended_at IS NULL",
+            rusqlite::params![skill_id],
         )
         .map_err(|e| e.to_string())?;
     Ok(count as u32)

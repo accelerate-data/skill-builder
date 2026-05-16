@@ -139,6 +139,70 @@ fn test_list_skills_db_primary_no_filesystem_access_needed() {
 }
 
 #[test]
+fn test_list_skills_keeps_same_named_workflow_runs_scoped_to_plugin() {
+    let conn = create_test_db();
+    crate::db::ensure_plugin(
+        &conn,
+        "analytics-pack",
+        "Analytics Pack",
+        "marketplace",
+        Some("https://example.com/analytics-pack"),
+        None,
+        false,
+    )
+    .unwrap();
+
+    let default_skill_id = crate::db::upsert_skill_in_plugin(
+        &conn,
+        "shared-skill",
+        "skill-builder",
+        "domain",
+        DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
+    let marketplace_skill_id = crate::db::upsert_skill_in_plugin(
+        &conn,
+        "shared-skill",
+        "skill-builder",
+        "domain",
+        "analytics-pack",
+    )
+    .unwrap();
+
+    crate::db::save_workflow_run_by_skill_id(&conn, default_skill_id, 0, "pending", "domain")
+        .unwrap();
+    crate::db::save_workflow_run_by_skill_id(
+        &conn,
+        marketplace_skill_id,
+        3,
+        "in_progress",
+        "source",
+    )
+    .unwrap();
+
+    let skills = list_skills_inner(None, &conn).unwrap();
+    let default_skill = skills
+        .iter()
+        .find(|skill| {
+            skill.name == "shared-skill"
+                && skill.plugin_slug.as_deref() == Some(DEFAULT_PLUGIN_SLUG)
+        })
+        .unwrap();
+    let marketplace_skill = skills
+        .iter()
+        .find(|skill| {
+            skill.name == "shared-skill" && skill.plugin_slug.as_deref() == Some("analytics-pack")
+        })
+        .unwrap();
+
+    assert_eq!(default_skill.current_step.as_deref(), Some("Step 0"));
+    assert_eq!(default_skill.status.as_deref(), Some("pending"));
+    assert_eq!(marketplace_skill.current_step.as_deref(), Some("Step 3"));
+    assert_eq!(marketplace_skill.status.as_deref(), Some("in_progress"));
+    assert_eq!(marketplace_skill.purpose.as_deref(), Some("source"));
+}
+
+#[test]
 fn test_list_skills_db_primary_sorted_by_created_at_desc() {
     let conn = create_test_db();
     // Insert skills with explicit created_at timestamps to guarantee ordering
@@ -330,12 +394,8 @@ fn test_delete_skill_filesystem_phase_does_not_delete_db_records() {
     )
     .unwrap();
 
-    delete_skill_filesystem_inner(
-        "delete-fs-only",
-        DEFAULT_PLUGIN_SLUG,
-        Some(skills_path),
-    )
-    .unwrap();
+    delete_skill_filesystem_inner("delete-fs-only", DEFAULT_PLUGIN_SLUG, Some(skills_path))
+        .unwrap();
 
     let skill_id: i64 = conn
         .query_row(
@@ -413,7 +473,7 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
             WorkflowStepRun {
                 skill_name: "active-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
-                conversation_id: None,
+                conversation_id: "workflow-agent".to_string(),
             },
         );
         map.insert(
@@ -421,7 +481,7 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
             WorkflowStepRun {
                 skill_name: "other-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
-                conversation_id: None,
+                conversation_id: "other-agent".to_string(),
             },
         );
     }
@@ -436,7 +496,6 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-1".to_string(),
                 conversation_id: Some("conversation-1".to_string()),
-                current_agent_id: Some("refine-agent".to_string()),
                 dispatched_user_turn_count: 0,
                 head_sha_at_start: None,
             },
@@ -448,7 +507,6 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-2".to_string(),
                 conversation_id: Some("conversation-2".to_string()),
-                current_agent_id: Some("other-refine-agent".to_string()),
                 dispatched_user_turn_count: 0,
                 head_sha_at_start: None,
             },
@@ -465,9 +523,13 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
     .unwrap();
 
     assert_eq!(plan.ended_workflow_sessions, 1);
-    assert_eq!(plan.agent_ids.len(), 2);
-    assert!(plan.agent_ids.contains(&"workflow-agent".to_string()));
-    assert!(plan.agent_ids.contains(&"refine-agent".to_string()));
+    assert_eq!(plan.conversation_ids.len(), 2);
+    assert!(plan
+        .conversation_ids
+        .contains(&"workflow-agent".to_string()));
+    assert!(plan
+        .conversation_ids
+        .contains(&"conversation-1".to_string()));
 
     let workflow_map = workflow_runs.0.lock().unwrap();
     assert!(!workflow_map.contains_key("workflow-agent"));
@@ -499,7 +561,7 @@ fn test_prepare_skill_runtime_shutdown_cancels_managed_runs_and_ends_sessions() 
 }
 
 #[test]
-fn test_prepare_skill_runtime_shutdown_tracks_agent_ids_not_conversation_ids() {
+fn test_prepare_skill_runtime_shutdown_tracks_conversation_ids() {
     let conn = create_test_db();
     crate::db::upsert_skill(&conn, "active-skill", "skill-builder", "domain").unwrap();
     crate::db::save_workflow_run(&conn, "active-skill", 0, "pending", "domain").unwrap();
@@ -512,7 +574,7 @@ fn test_prepare_skill_runtime_shutdown_tracks_agent_ids_not_conversation_ids() {
             WorkflowStepRun {
                 skill_name: "active-skill".to_string(),
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
-                conversation_id: Some("workflow-conversation".to_string()),
+                conversation_id: "workflow-conversation".to_string(),
             },
         );
     }
@@ -527,7 +589,6 @@ fn test_prepare_skill_runtime_shutdown_tracks_agent_ids_not_conversation_ids() {
                 plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
                 usage_session_id: "usage-1".to_string(),
                 conversation_id: Some("refine-conversation".to_string()),
-                current_agent_id: Some("refine-agent".to_string()),
                 dispatched_user_turn_count: 0,
                 head_sha_at_start: None,
             },
@@ -543,10 +604,12 @@ fn test_prepare_skill_runtime_shutdown_tracks_agent_ids_not_conversation_ids() {
     )
     .unwrap();
 
-    assert!(plan.agent_ids.contains(&"workflow-agent".to_string()));
-    assert!(plan.agent_ids.contains(&"refine-agent".to_string()));
-    assert!(!plan.agent_ids.contains(&"workflow-conversation".to_string()));
-    assert!(!plan.agent_ids.contains(&"refine-conversation".to_string()));
+    assert!(plan
+        .conversation_ids
+        .contains(&"workflow-conversation".to_string()));
+    assert!(plan
+        .conversation_ids
+        .contains(&"refine-conversation".to_string()));
 }
 
 #[test]
@@ -843,13 +906,7 @@ fn test_delete_skill_cleans_db_fully() {
     )
     .unwrap();
 
-    delete_skill_inner(
-        "db-cleanup",
-        DEFAULT_PLUGIN_SLUG,
-        Some(&conn),
-        None,
-    )
-    .unwrap();
+    delete_skill_inner("db-cleanup", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
 
     // Verify all DB records are cleaned up
     assert!(crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
@@ -956,29 +1013,13 @@ fn test_delete_skill_directory_traversal() {
     // The workspace has a dir that resolves outside via ".."
     // workspace/legit is a real skill
     create_skill_inner(
-        "legit",
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        "legit", None, None, None, None, None, None, None, None, None, None, None,
     )
     .unwrap();
 
     // Attempt to delete using enough ".." segments to escape the canonical
     // workspace path workspace/{plugin}/skills/{skill}.
-    let result = delete_skill_inner(
-        "../../../outside-target",
-        DEFAULT_PLUGIN_SLUG,
-        None,
-        None,
-    );
+    let result = delete_skill_inner("../../../outside-target", DEFAULT_PLUGIN_SLUG, None, None);
     assert!(result.is_err(), "Directory traversal should be rejected");
 
     // The outside directory should still exist (not deleted)
@@ -1069,13 +1110,7 @@ fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
         .unwrap();
 
     // Delete via delete_skill_inner
-    delete_skill_inner(
-        "mkt-skill",
-        DEFAULT_PLUGIN_SLUG,
-        Some(&conn),
-        None,
-    )
-    .unwrap();
+    delete_skill_inner("mkt-skill", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
 
     // skills master row is removed and imported_skills row is removed
     let skill_count: i64 = conn
@@ -1139,13 +1174,7 @@ fn test_delete_skill_inner_skill_builder_routes_to_workflow_path() {
         "skill-builder skill should have workflow_run"
     );
 
-    delete_skill_inner(
-        "builder-skill",
-        DEFAULT_PLUGIN_SLUG,
-        Some(&conn),
-        None,
-    )
-    .unwrap();
+    delete_skill_inner("builder-skill", DEFAULT_PLUGIN_SLUG, Some(&conn), None).unwrap();
 
     // workflow_runs row should be gone
     let wf_after = crate::db::get_workflow_run_by_skill_id(&conn, builder_skill_id).unwrap();
@@ -1653,13 +1682,7 @@ fn test_rename_skill_basic() {
     crate::db::save_skill_conversation_id(&conn, DEFAULT_PLUGIN_SLUG, "old-name", "conv-old")
         .unwrap();
 
-    rename_skill_inner(
-        "old-name",
-        "new-name",
-        &mut conn,
-        Some(skills_path),
-    )
-    .unwrap();
+    rename_skill_inner("old-name", "new-name", &mut conn, Some(skills_path)).unwrap();
 
     assert!(!nested_skill(skills_path, "old-name").exists());
     assert!(nested_skill(skills_path, "new-name").exists());
@@ -1869,29 +1892,25 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
     // The easiest: add a UNIQUE constraint violation by pre-inserting the new name
     // into a table that the transaction will try to UPDATE into.
     //
-    // Actually, the cleanest way: put a row in workflow_steps with the NEW name
-    // and a UNIQUE constraint, but workflow_steps PK is (skill_name, step_id) so
-    // we need a conflicting row. Let's add a step for "rollback-target" (the new name)
-    // with the same step_id that "will-rollback" has after the UPDATE tries to set it.
-    //
-    // The transaction first does INSERT+DELETE on workflow_runs (succeeds), then
-    // UPDATE workflow_steps. If we pre-insert a workflow_steps row with
-    // (skill_name="rollback-target", step_id=0), the UPDATE from
-    // (skill_name="will-rollback", step_id=0) to (skill_name="rollback-target", step_id=0)
-    // will violate the PK and fail.
+    // Force a skill_tags primary-key collision without creating a skills master
+    // row for the new name. The rename precheck only guards the skills table,
+    // so a stale tag row under the new name is enough to make the in-transaction
+    // UPDATE fail and verify rollback semantics.
     crate::db::save_workflow_step_by_skill_id(&conn, will_rollback_id, 0, "completed").unwrap();
-    // Pre-insert a conflicting row for the new name
-    conn.execute(
-        "INSERT INTO workflow_steps (skill_name, step_id, status) VALUES ('rollback-target', 0, 'pending')",
-        [],
-    ).unwrap();
-
-    let result = rename_skill_inner(
+    crate::db::set_skill_tags(
+        &conn,
         "will-rollback",
-        "rollback-target",
-        &mut conn,
-        None,
-    );
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["shared-tag".to_string()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO skill_tags (skill_name, tag, skill_id) VALUES ('rollback-target', 'shared-tag', NULL)",
+        [],
+    )
+    .unwrap();
+
+    let result = rename_skill_inner("will-rollback", "rollback-target", &mut conn, None);
     assert!(
         result.is_err(),
         "Rename should fail due to DB constraint violation"
@@ -2029,12 +2048,7 @@ fn test_rename_skill_inner_disk_failure_returns_error() {
     fs::create_dir_all(&conflicting_target).unwrap();
     fs::write(conflicting_target.join("SKILL.md"), "# Existing").unwrap();
 
-    let result = rename_skill_inner(
-        "rename-fail",
-        "rename-success",
-        &mut conn,
-        Some(skills_str),
-    );
+    let result = rename_skill_inner("rename-fail", "rename-success", &mut conn, Some(skills_str));
 
     // The rename should fail because the target directory already exists.
     assert!(

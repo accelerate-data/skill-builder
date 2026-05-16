@@ -111,6 +111,44 @@ describe("useWorkflowAutosave", () => {
     });
   });
 
+  it("persists nested refinement answers through update_refinement_answer", async () => {
+    vi.useRealTimers();
+    const refinement = makeQuestion({
+      id: "R1.1",
+      answer_choice: null,
+      answer_text: null,
+    });
+    const parent = makeQuestion({
+      id: "Q1",
+      refinements: [refinement],
+    });
+    const dbData = { sections: [makeSection([parent])] };
+
+    const { result } = renderHook(() =>
+      useWorkflowAutosave({ ...defaultOptions, dbClarificationsData: dbData })
+    );
+
+    await waitFor(() => expect(result.current.clarificationsData).not.toBeNull());
+
+    act(() => {
+      result.current.handleClarificationsChange({
+        sections: [makeSection([{
+          ...parent,
+          refinements: [{ ...refinement, answer_choice: "A", answer_text: "Nested answer" }],
+        }])],
+      });
+    });
+
+    await waitFor(() => {
+      expect(invokeCommand).toHaveBeenCalledWith("update_refinement_answer", {
+        skillId: "1",
+        questionId: "R1.1",
+        answerChoice: "A",
+        answerText: "Nested answer",
+      });
+    });
+  });
+
   it("handleClarificationsChange does not call invokeCommand when nothing changed", async () => {
     vi.useRealTimers();
     const q = makeQuestion({ id: "q1", answer_choice: "B", answer_text: null });

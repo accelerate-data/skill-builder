@@ -32,6 +32,7 @@ import type { Question as BaseQuestion } from "@/generated/contracts";
 export type Question = BaseQuestion & {
   answer_verdict?: string | null;
   answer_verdict_reason?: string | null;
+  refinements?: Question[];
 };
 
 /** Extract the recommended choice ID from a recommendation string.
@@ -39,6 +40,60 @@ export type Question = BaseQuestion & {
 export function parseRecommendedChoiceId(recommendation: string | null | undefined): string | null {
   if (!recommendation) return null;
   return recommendation.split(/\s*[—–-]\s*/)[0].trim() || null;
+}
+
+function extractQuestionSequence(id: string | null | undefined): number | null {
+  if (!id) return null;
+  const match = /^[A-Z](\d+)(?:\.(\d+))?$/i.exec(id);
+  if (!match) return null;
+  const major = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isFinite(major)) return null;
+  const minor = match[2] ? Number.parseInt(match[2], 10) : 0;
+  return major * 1000 + minor;
+}
+
+function sortQuestionsForDisplay(questions: Question[]): Question[] {
+  return [...questions]
+    .map((question) => ({
+      ...question,
+      refinements: question.refinements
+        ? sortQuestionsForDisplay(question.refinements)
+        : [],
+    }))
+    .sort((left, right) => {
+      const leftSeq = extractQuestionSequence(left.id);
+      const rightSeq = extractQuestionSequence(right.id);
+      if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
+        return leftSeq - rightSeq;
+      }
+      return left.id.localeCompare(right.id);
+    });
+}
+
+function getSectionSequence(section: Section): number {
+  const sequences = (section.questions ?? [])
+    .map((question) => extractQuestionSequence((question as Question).id))
+    .filter((value): value is number => value != null);
+  return sequences.length > 0 ? Math.min(...sequences) : Number.MAX_SAFE_INTEGER;
+}
+
+function normalizeClarificationsForDisplay(file: ClarificationsFile): ClarificationsFile {
+  const sortedSections = [...(file.sections ?? [])]
+    .map((section) => ({
+      ...section,
+      questions: sortQuestionsForDisplay((section.questions ?? []) as Question[]),
+    }))
+    .sort((left, right) => {
+      const leftSeq = getSectionSequence(left);
+      const rightSeq = getSectionSequence(right);
+      if (leftSeq !== rightSeq) return leftSeq - rightSeq;
+      return left.title.localeCompare(right.title);
+    });
+
+  return {
+    ...file,
+    sections: sortedSections,
+  };
 }
 
 // Derived helpers
@@ -203,6 +258,7 @@ function refinementsDtoToFile(dto: RefinementsDto): ClarificationsFile {
           recommendation: q.recommendation,
           answer_choice: q.answer_choice,
           answer_text: q.answer_text,
+          refinements: [],
         })),
     })),
     notes: dto.notes.map((n) => ({
@@ -213,8 +269,15 @@ function refinementsDtoToFile(dto: RefinementsDto): ClarificationsFile {
   };
 }
 
+function getParentQuestionIdForRefinementId(refinementId: string): string | null {
+  const match = /^R(\d+)(?:\..+)?$/.exec(refinementId);
+  return match ? `Q${match[1]}` : null;
+}
+
 /** Merge clarifications and refinements into a single ClarificationsFile for display.
- *  Refinements appear as a separate "Refinements" section appended at the end. */
+ *  Refinements are re-attached under their original parent question when their
+ *  IDs follow the canonical `R<question>.<n>` convention (e.g. `R3.1` → `Q3`).
+ *  Any unmatched refinements are preserved in a trailing synthetic section. */
 export function mergeClarificationsAndRefinements(
   clarifications: ClarificationsFile | null,
   refinements: RefinementsDto | null,
@@ -222,27 +285,51 @@ export function mergeClarificationsAndRefinements(
   if (!clarifications && !refinements) return null;
   if (!clarifications) {
     if (!refinements) return null;
-    return refinementsDtoToFile(refinements);
+    return normalizeClarificationsForDisplay(refinementsDtoToFile(refinements));
   }
-  if (!refinements) return clarifications;
+  if (!refinements) return normalizeClarificationsForDisplay(clarifications);
 
   const refinementFile = refinementsDtoToFile(refinements);
+  const refinementsByParent = new Map<string, Question[]>();
+  const unmatchedRefinements: Question[] = [];
 
-  const mergedSections: Section[] = [
-    ...(clarifications.sections ?? []).map((s) => ({ ...s })),
-  ];
+  for (const section of refinementFile.sections ?? []) {
+    for (const refinement of section.questions ?? []) {
+      const parentId = getParentQuestionIdForRefinementId(refinement.id);
+      if (!parentId) {
+        unmatchedRefinements.push(refinement);
+        continue;
+      }
+      const group = refinementsByParent.get(parentId) ?? [];
+      group.push(refinement);
+      refinementsByParent.set(parentId, group);
+    }
+  }
 
-  const refinementSections = refinementFile.sections ?? [];
-  if (refinementSections.length > 0) {
+  const mergedSections: Section[] = (clarifications.sections ?? []).map((section) => ({
+    ...section,
+    questions: (section.questions ?? []).map((question) => {
+      const baseQuestion = question as Question;
+      return {
+        ...baseQuestion,
+        refinements: [
+          ...(baseQuestion.refinements ?? []),
+          ...(refinementsByParent.get(baseQuestion.id) ?? []),
+        ],
+      };
+    }),
+  }));
+
+  if (unmatchedRefinements.length > 0) {
     mergedSections.push({
       id: -1,
       title: "Refinements",
       description: "Detailed follow-up questions from step 1",
-      questions: refinementSections.flatMap((s) => s.questions ?? []),
+      questions: unmatchedRefinements,
     });
   }
 
-  return {
+  return normalizeClarificationsForDisplay({
     ...clarifications,
     sections: mergedSections,
     notes: [...(clarifications.notes ?? []), ...(refinementFile.notes ?? [])],
@@ -250,5 +337,5 @@ export function mergeClarificationsAndRefinements(
       ...clarifications.metadata,
       refinement_count: refinements.refinement_count,
     },
-  };
+  });
 }

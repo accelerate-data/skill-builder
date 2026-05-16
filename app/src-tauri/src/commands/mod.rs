@@ -10,12 +10,12 @@ pub mod github_import;
 pub mod imported_skills;
 pub mod lifecycle;
 pub mod model_catalog;
-pub mod startup;
 pub mod reconciliation;
 pub mod runtime_lifecycle;
 pub mod settings;
 pub mod skill;
 pub mod skill_session;
+pub mod startup;
 #[cfg(test)]
 pub mod test_utils;
 pub mod usage;

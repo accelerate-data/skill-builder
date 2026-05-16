@@ -25,6 +25,14 @@ pub(crate) fn workflow_step_log_name(step_id: i32) -> String {
     crate::db::step_name(step_id)
 }
 
+fn get_delete_from_step(step_id: u32, preserve_target_step: bool) -> u32 {
+    if preserve_target_step {
+        step_id + 1
+    } else {
+        step_id
+    }
+}
+
 /// Collect the saved conversation IDs for a skill (and its legacy default-plugin
 /// entry if the skill moved plugins). Returns (plugin_slug, conversation_id) pairs.
 fn collect_skill_conversation_ids(
@@ -75,7 +83,11 @@ fn clear_legacy_skill_conversation_db_records(
         return Ok(());
     }
 
-    crate::db::clear_skill_conversation_id(conn, crate::skill_paths::DEFAULT_PLUGIN_SLUG, skill_name)
+    crate::db::clear_skill_conversation_id(
+        conn,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        skill_name,
+    )
 }
 
 /// Delete stale clarifications and decisions based on which step is being reset.
@@ -146,11 +158,7 @@ fn navigate_back_to_step_impl(
     // Delete output files for steps from the target onwards.
     // Step 0 is a special case: navigating back to it means a full rerun, so its own
     // workflow artifacts must also be cleared.
-    let delete_from = if target_step_id == 0 {
-        0
-    } else {
-        target_step_id + 1
-    };
+    let delete_from = get_delete_from_step(target_step_id, target_step_id != 0);
     let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)?
         .map(|m| m.plugin_slug)
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
@@ -173,22 +181,11 @@ fn navigate_back_to_step_impl(
             e
         );
     }
-    crate::cleanup::delete_step_output_files(
-        skill_name,
-        &plugin_slug,
-        delete_from,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files(skill_name, &plugin_slug, delete_from, skills_path);
+    clear_artifacts_for_step_reset(conn, skill_name, delete_from)?;
 
     if target_step_id == 0 {
         clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
-    }
-
-    // When navigating back to step 1, clear refinements so stale data isn't displayed
-    if target_step_id == 1 {
-        let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
-            .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
-        clear_artifacts_for_step_reset(conn, &s_id.to_string(), 2)?;
     }
 
     // Reset only steps after the target; target step status is preserved as "completed".
@@ -379,11 +376,13 @@ fn normalize_db_backed_step_statuses(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records,
+    use super::{clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records};
+    use crate::commands::test_utils::create_test_db;
+    use crate::db::workflow_artifacts::{
+        self, ClarificationQuestion, ClarificationSection, ClarificationsRecord, DecisionItem,
+        DecisionsRecord, RefinementQuestion, RefinementSection, RefinementsRecord,
     };
     use crate::db::Db;
-    use crate::commands::test_utils::create_test_db;
     use crate::types::StepStatusUpdate;
     use tempfile::tempdir;
 
@@ -405,21 +404,11 @@ mod tests {
     #[test]
     fn test_normalize_db_backed_step_statuses_rejects_missing_step0_artifact() {
         let mut conn = create_test_db();
-        let skill_id = crate::db::upsert_skill(
-            &conn,
-            "normalize-missing-step0",
-            "skill-builder",
-            "domain",
-        )
-        .unwrap();
-        crate::db::save_workflow_run(
-            &conn,
-            "normalize-missing-step0",
-            0,
-            "in_progress",
-            "domain",
-        )
-        .unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "normalize-missing-step0", "skill-builder", "domain")
+                .unwrap();
+        crate::db::save_workflow_run(&conn, "normalize-missing-step0", 0, "in_progress", "domain")
+            .unwrap();
 
         let normalized = super::normalize_db_backed_step_statuses(
             &conn,
@@ -437,21 +426,11 @@ mod tests {
     #[test]
     fn test_normalize_db_backed_step_statuses_keeps_completed_when_step0_artifact_exists() {
         let mut conn = create_test_db();
-        let skill_id = crate::db::upsert_skill(
-            &conn,
-            "normalize-present-step0",
-            "skill-builder",
-            "domain",
-        )
-        .unwrap();
-        crate::db::save_workflow_run(
-            &conn,
-            "normalize-present-step0",
-            0,
-            "in_progress",
-            "domain",
-        )
-        .unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "normalize-present-step0", "skill-builder", "domain")
+                .unwrap();
+        crate::db::save_workflow_run(&conn, "normalize-present-step0", 0, "in_progress", "domain")
+            .unwrap();
 
         let record = crate::db::workflow_artifacts::ClarificationsRecord {
             skill_id: skill_id.to_string(),
@@ -650,13 +629,8 @@ mod tests {
             .unwrap();
         crate::db::save_workflow_run(&conn, skill_name, 2, "completed", "domain").unwrap();
 
-        super::navigate_back_to_step_impl(
-            &conn,
-            skills_path.to_str().unwrap(),
-            skill_name,
-            0,
-        )
-        .unwrap();
+        super::navigate_back_to_step_impl(&conn, skills_path.to_str().unwrap(), skill_name, 0)
+            .unwrap();
 
         assert_eq!(
             crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
@@ -667,6 +641,191 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(run.current_step, 0);
+        assert_eq!(run.status, "pending");
+    }
+
+    #[test]
+    fn test_navigate_back_to_step_one_preserves_step_one_artifacts() {
+        let mut conn = create_test_db();
+        let tmp = tempdir().unwrap();
+        let skills_path = tmp.path().join("skills");
+        std::fs::create_dir_all(&skills_path).unwrap();
+
+        let skill_name = "reset-me";
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        let skill_id = crate::db::upsert_skill_in_plugin(
+            &conn,
+            skill_name,
+            "skill-builder",
+            "test",
+            default_slug,
+        )
+        .unwrap();
+        crate::db::save_workflow_run(&conn, skill_name, 2, "completed", "domain").unwrap();
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 1, "completed").unwrap();
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 2, "completed").unwrap();
+
+        let tx = conn.transaction().unwrap();
+        workflow_artifacts::upsert_clarifications(
+            &tx,
+            &ClarificationsRecord {
+                skill_id: skill_id.to_string(),
+                version: "1".to_string(),
+                refinement_count: 1,
+                must_answer_count: 1,
+                question_count: 1,
+                section_count: 1,
+                title: "Clarifications".to_string(),
+                scope_recommendation: None,
+                scope_reason: None,
+                scope_next_action: None,
+                error_code: None,
+                error_message: None,
+                warning_code: None,
+                warning_message: None,
+                eval_verdict: None,
+                eval_reasoning: None,
+                eval_at: None,
+                eval_answered_count: None,
+                eval_empty_count: None,
+                eval_vague_count: None,
+                eval_contradictory_count: None,
+                created_at: 0,
+                updated_at: 0,
+                sections: vec![ClarificationSection {
+                    section_id: 1,
+                    ordinal: 0,
+                    title: "Section".to_string(),
+                    description: None,
+                }],
+                questions: vec![ClarificationQuestion {
+                    question_id: "q1".to_string(),
+                    section_id: 1,
+                    parent_question_id: None,
+                    ordinal: 0,
+                    title: "Question".to_string(),
+                    text: "Question text".to_string(),
+                    must_answer: true,
+                    answer_choice: None,
+                    answer_text: None,
+                    recommendation: None,
+                    answer_verdict: None,
+                    answer_verdict_reason: None,
+                    choices: vec![],
+                    refinements: vec![],
+                }],
+                notes: vec![],
+            },
+        )
+        .unwrap();
+        workflow_artifacts::upsert_refinements(
+            &tx,
+            &RefinementsRecord {
+                skill_id: skill_id.to_string(),
+                version: "1".to_string(),
+                refinement_count: 1,
+                must_answer_count: 1,
+                question_count: 1,
+                section_count: 1,
+                title: "Refinements".to_string(),
+                scope_recommendation: None,
+                scope_reason: None,
+                scope_next_action: None,
+                error_code: None,
+                error_message: None,
+                warning_code: None,
+                warning_message: None,
+                eval_verdict: None,
+                eval_reasoning: None,
+                eval_at: None,
+                eval_answered_count: None,
+                eval_empty_count: None,
+                eval_vague_count: None,
+                eval_contradictory_count: None,
+                created_at: 0,
+                updated_at: 0,
+                sections: vec![RefinementSection {
+                    section_id: 1,
+                    ordinal: 0,
+                    title: "Refinement Section".to_string(),
+                    description: None,
+                }],
+                questions: vec![RefinementQuestion {
+                    question_id: "r1".to_string(),
+                    section_id: 1,
+                    ordinal: 0,
+                    title: "Refinement".to_string(),
+                    text: "Refinement text".to_string(),
+                    must_answer: true,
+                    answer_choice: None,
+                    answer_text: None,
+                    recommendation: None,
+                    answer_verdict: None,
+                    answer_verdict_reason: None,
+                    choices: vec![],
+                }],
+                notes: vec![],
+            },
+        )
+        .unwrap();
+        workflow_artifacts::upsert_decisions(
+            &tx,
+            &DecisionsRecord {
+                skill_id: skill_id.to_string(),
+                version: "1".to_string(),
+                round: 1,
+                decision_count: 1,
+                conflicts_resolved: 0,
+                contradictory_inputs_state: None,
+                scope_recommendation: None,
+                created_at: 0,
+                updated_at: 0,
+                items: vec![DecisionItem {
+                    decision_id: "d1".to_string(),
+                    ordinal: 0,
+                    title: "Decision".to_string(),
+                    original_question: "Question".to_string(),
+                    decision: "Yes".to_string(),
+                    implication: "Implication".to_string(),
+                    status: "resolved".to_string(),
+                }],
+            },
+        )
+        .unwrap();
+        tx.commit().unwrap();
+
+        super::navigate_back_to_step_impl(&conn, skills_path.to_str().unwrap(), skill_name, 1)
+            .unwrap();
+
+        assert!(
+            workflow_artifacts::read_clarifications(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some(),
+            "refinements should remain when navigating back to step 1"
+        );
+        assert!(
+            workflow_artifacts::read_decisions(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_none(),
+            "decisions should be cleared when navigating back to step 1"
+        );
+
+        let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
+        assert_eq!(steps[0].status, "completed");
+        assert_eq!(steps[1].status, "completed");
+        assert_eq!(steps[2].status, "pending");
+
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.current_step, 1);
         assert_eq!(run.status, "pending");
     }
 
@@ -728,13 +887,9 @@ mod tests {
     #[test]
     fn test_save_workflow_state_rejects_completed_step0_without_clarifications() {
         let conn = create_test_db();
-        let skill_id = crate::db::upsert_skill(
-            &conn,
-            "save-state-missing-step0",
-            "skill-builder",
-            "domain",
-        )
-        .unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "save-state-missing-step0", "skill-builder", "domain")
+                .unwrap();
         crate::db::save_workflow_run(
             &conn,
             "save-state-missing-step0",
@@ -1099,8 +1254,12 @@ pub async fn reset_workflow_step(
     };
 
     // Best-effort pause conversations — do not block reset on pause failure.
-    let pause_config =
-        crate::commands::skill_session::build_pause_runtime_config(&app_handle, &db, &skill_name, &plugin_slug);
+    let pause_config = crate::commands::skill_session::build_pause_runtime_config(
+        &app_handle,
+        &db,
+        &skill_name,
+        &plugin_slug,
+    );
 
     for (_, conv_id) in &conversation_ids {
         if let Ok(config) = pause_config.clone() {
@@ -1147,7 +1306,8 @@ pub async fn reset_workflow_step(
     // Fork the conversation and rebind the skill to the fork ID.
     // Use the first active conversation as the fork source.
     // After fork succeeds, the source conversation is deleted from the OpenHands server.
-    let _forked_conversation_id = if let Some(ref active_conversation_id) = active_conversation_id_for_fork
+    let _forked_conversation_id = if let Some(ref active_conversation_id) =
+        active_conversation_id_for_fork
     {
         if let Ok(config) = pause_config.clone() {
             match crate::agents::openhands_server::fork_openhands_conversation(
@@ -1164,11 +1324,12 @@ pub async fn reset_workflow_step(
                         forked.conversation_id
                     );
                     // Delete the source conversation from the OpenHands server
-                    if let Err(error) = crate::agents::openhands_server::delete_openhands_conversation(
-                        config.clone(),
-                        active_conversation_id,
-                    )
-                    .await
+                    if let Err(error) =
+                        crate::agents::openhands_server::delete_openhands_conversation(
+                            config.clone(),
+                            active_conversation_id,
+                        )
+                        .await
                     {
                         log::warn!(
                             "[reset_workflow_step] failed to delete source conversation {}: {}",
@@ -1186,11 +1347,7 @@ pub async fn reset_workflow_step(
                     )?;
                     // Clear only a stale legacy default-plugin record, preserving
                     // the newly rebound conversation for the active plugin.
-                    clear_legacy_skill_conversation_db_records(
-                        &conn,
-                        &plugin_slug,
-                        &skill_name,
-                    )?;
+                    clear_legacy_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
                     Some(forked.conversation_id)
                 }
                 Err(error) => {
@@ -1311,9 +1468,10 @@ pub fn preview_step_reset(
 /// as warnings and do not propagate — callers should never be blocked by cleanup.
 #[allow(dead_code)]
 pub fn clean_incomplete_iterations(skills_path: &str, plugin_slug: &str, skill_name: &str) -> u32 {
-    let evals_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
-        .join("evals")
-        .join("workspace");
+    let evals_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
+            .join("evals")
+            .join("workspace");
 
     if !evals_dir.is_dir() {
         return 0;
@@ -1383,9 +1541,10 @@ pub fn read_latest_benchmark_inner(
         .map(|m| m.plugin_slug)
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
 
-    let evals_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), &plugin_slug, skill_name)
-        .join("evals")
-        .join("workspace");
+    let evals_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(skills_path), &plugin_slug, skill_name)
+            .join("evals")
+            .join("workspace");
 
     if !evals_dir.is_dir() {
         log::debug!(
@@ -1478,13 +1637,10 @@ mod clean_iterations_tests {
     fn removes_incomplete_iteration() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         // Create complete iteration
         let iter1 = evals_dir.join("iteration-1");
@@ -1506,13 +1662,10 @@ mod clean_iterations_tests {
     fn preserves_all_complete_iterations() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         for i in 1..=3 {
             let iter = evals_dir.join(format!("iteration-{}", i));
@@ -1531,13 +1684,10 @@ mod clean_iterations_tests {
     fn handles_mixed_complete_and_incomplete() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         // iteration-1: complete
         let iter1 = evals_dir.join("iteration-1");
@@ -1569,11 +1719,8 @@ mod clean_iterations_tests {
     fn returns_zero_when_no_evals_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let skill_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        );
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
 
         let removed = clean_incomplete_iterations(skills_path, DEFAULT_PLUGIN_SLUG, "my-skill");
@@ -1617,13 +1764,10 @@ mod benchmark_tests {
     fn returns_latest_iteration() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         // Create iteration-1 with lower pass rate
         let iter1 = evals_dir.join("iteration-1");
@@ -1690,7 +1834,8 @@ mod reset_artifact_cleanup_tests {
     use crate::commands::test_utils::create_test_db;
     use crate::db::workflow_artifacts::{
         self, ClarificationQuestion, ClarificationSection, ClarificationsRecord, DecisionItem,
-        DecisionsRecord,
+        DecisionsRecord, RefinementChoice, RefinementNote, RefinementQuestion, RefinementSection,
+        RefinementsRecord,
     };
 
     fn seed_clarifications(conn: &mut rusqlite::Connection, skill_id: i64) {
@@ -1773,6 +1918,69 @@ mod reset_artifact_cleanup_tests {
         tx.commit().unwrap();
     }
 
+    fn seed_refinements(conn: &mut rusqlite::Connection, skill_id: i64) {
+        let record = RefinementsRecord {
+            skill_id: skill_id.to_string(),
+            version: "1".to_string(),
+            refinement_count: 1,
+            must_answer_count: 1,
+            question_count: 1,
+            section_count: 1,
+            title: "Test Refinements".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            sections: vec![RefinementSection {
+                section_id: 1,
+                ordinal: 0,
+                title: "Refinement Scope".to_string(),
+                description: None,
+            }],
+            questions: vec![RefinementQuestion {
+                question_id: "r1".to_string(),
+                section_id: 1,
+                ordinal: 0,
+                title: "What needs refinement?".to_string(),
+                text: "Add more detail.".to_string(),
+                must_answer: true,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![RefinementChoice {
+                    choice_id: "choice-1".to_string(),
+                    ordinal: 0,
+                    text: "More detail".to_string(),
+                    is_other: false,
+                }],
+            }],
+            notes: vec![RefinementNote {
+                note_id: None,
+                ordinal: 0,
+                note_type: "note".to_string(),
+                title: "Refinement Note".to_string(),
+                body: "Persisted refinement note".to_string(),
+            }],
+        };
+        let tx = conn.transaction().unwrap();
+        workflow_artifacts::upsert_refinements(&tx, &record).unwrap();
+        tx.commit().unwrap();
+    }
+
     fn has_clarifications(conn: &rusqlite::Connection, skill_id: i64) -> bool {
         workflow_artifacts::read_clarifications(conn, &skill_id.to_string())
             .unwrap()
@@ -1785,8 +1993,17 @@ mod reset_artifact_cleanup_tests {
             .is_some()
     }
 
+    fn count_rows_for_skill(conn: &rusqlite::Connection, table: &str, skill_id: i64) -> i64 {
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE skill_id = ?1"),
+            rusqlite::params![skill_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
     #[test]
-    fn test_reset_from_step_0_clears_clarifications_and_decisions() {
+    fn test_reset_from_step_0_clears_all_workflow_artifact_rows() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
         let skill_id = crate::db::get_skill_master_id_in_plugin(
@@ -1798,9 +2015,22 @@ mod reset_artifact_cleanup_tests {
         .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
+        seed_refinements(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
         assert!(has_clarifications(&conn, skill_id));
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
         assert!(has_decisions(&conn, skill_id));
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "decision_items", skill_id) > 0);
 
         // Reset from step 0 should clear clarifications, decisions, and refinements
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 0).unwrap();
@@ -1813,6 +2043,28 @@ mod reset_artifact_cleanup_tests {
             !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 0"
         );
+        assert_eq!(
+            count_rows_for_skill(&conn, "clarification_sections", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "clarification_questions", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_sections", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_questions", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_choices", skill_id),
+            0
+        );
+        assert_eq!(count_rows_for_skill(&conn, "refinement_notes", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
 
     #[test]
@@ -1828,9 +2080,22 @@ mod reset_artifact_cleanup_tests {
         .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
+        seed_refinements(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
         assert!(has_clarifications(&conn, skill_id));
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
         assert!(has_decisions(&conn, skill_id));
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "decision_items", skill_id) > 0);
 
         // Reset from step 1 should clear refinements and decisions, but keep clarifications.
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 1).unwrap();
@@ -1840,9 +2105,31 @@ mod reset_artifact_cleanup_tests {
             "clarifications should be preserved when resetting from step 1"
         );
         assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_none(),
+            "refinements should be deleted when resetting from step 1"
+        );
+        assert!(
             !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 1"
         );
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_sections", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_questions", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_choices", skill_id),
+            0
+        );
+        assert_eq!(count_rows_for_skill(&conn, "refinement_notes", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
 
     #[test]
@@ -1858,9 +2145,22 @@ mod reset_artifact_cleanup_tests {
         .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
+        seed_refinements(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
         assert!(has_clarifications(&conn, skill_id));
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
         assert!(has_decisions(&conn, skill_id));
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "decision_items", skill_id) > 0);
 
         // Reset from step 2 should clear decisions only
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 2).unwrap();
@@ -1873,6 +2173,13 @@ mod reset_artifact_cleanup_tests {
             !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 2"
         );
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
 
     #[test]

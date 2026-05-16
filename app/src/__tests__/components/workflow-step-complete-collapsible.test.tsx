@@ -3,8 +3,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 
 // Mock useClarifications — Research and DetailedResearch steps use TanStack Query
 const mockUseClarifications = vi.hoisted(() => vi.fn());
+const mockUseRefinements = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/queries/clarifications", () => ({
   useClarifications: mockUseClarifications,
+  useRefinements: mockUseRefinements,
 }));
 
 // ClarificationsDto matching the clarificationsJson fixture (sections + notes)
@@ -21,11 +23,40 @@ const mockClarDto = {
     { section_id: 2, ordinal: 1, title: "Section Two" },
   ],
   questions: [
-    { question_id: "Q1", section_id: 1, parent_question_id: null, ordinal: 0, title: "Question One", text: "Question one text", must_answer: false, answer_choice: null, answer_text: null, choices: [], refinements: [] },
-    { question_id: "Q2", section_id: 2, parent_question_id: null, ordinal: 0, title: "Question Two", text: "Question two text", must_answer: false, answer_choice: null, answer_text: null, choices: [], refinements: [] },
+    {
+      question_id: "Q1",
+      section_id: 1,
+      parent_question_id: null,
+      ordinal: 0,
+      title: "Question One",
+      text: "Question one text",
+      must_answer: false,
+      answer_choice: null,
+      answer_text: null,
+      choices: [],
+      refinements: [],
+    },
+    {
+      question_id: "Q2",
+      section_id: 2,
+      parent_question_id: null,
+      ordinal: 0,
+      title: "Question Two",
+      text: "Question two text",
+      must_answer: false,
+      answer_choice: null,
+      answer_text: null,
+      choices: [],
+      refinements: [],
+    },
   ],
   notes: [
-    { ordinal: 0, note_type: "general", title: "Context", body: "Important research note." },
+    {
+      ordinal: 0,
+      note_type: "general",
+      title: "Context",
+      body: "Important research note.",
+    },
   ],
 };
 
@@ -38,7 +69,8 @@ vi.mock("@/lib/tauri", () => ({
   getStepAgentRuns: (...args: unknown[]) => mockGetStepAgentRuns(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
   listSkillFiles: (...args: unknown[]) => mockListSkillFiles(...args),
-  getContextFileContent: (...args: unknown[]) => mockGetContextFileContent(...args),
+  getContextFileContent: (...args: unknown[]) =>
+    mockGetContextFileContent(...args),
   writeFile: vi.fn(),
 }));
 
@@ -114,16 +146,26 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetStepAgentRuns.mockResolvedValue([]);
   mockListSkillFiles.mockResolvedValue([]);
-  mockUseClarifications.mockReturnValue({ data: mockClarDto, isLoading: false, isError: false });
+  mockUseClarifications.mockReturnValue({
+    data: mockClarDto,
+    isLoading: false,
+    isError: false,
+  });
+  mockUseRefinements.mockReturnValue({ data: null, isLoading: false });
   mockReadFile.mockImplementation((path: string) => {
-    if (path.includes("research-plan.md")) return Promise.resolve(researchPlanMd);
-    if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
+    if (path.includes("research-plan.md"))
+      return Promise.resolve(researchPlanMd);
+    if (path.includes("clarifications.json"))
+      return Promise.resolve(clarificationsJson);
     return Promise.resolve(null);
   });
-  mockGetContextFileContent.mockImplementation((_skill: string, _workspace: string, filename: string) => {
-    if (filename === "clarifications.json") return Promise.resolve(clarificationsJson);
-    return Promise.resolve(null);
-  });
+  mockGetContextFileContent.mockImplementation(
+    (_skill: string, _workspace: string, filename: string) => {
+      if (filename === "clarifications.json")
+        return Promise.resolve(clarificationsJson);
+      return Promise.resolve(null);
+    },
+  );
 });
 
 describe("WorkflowStepComplete collapsible clarifications coverage", () => {
@@ -137,13 +179,17 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         workspacePath="/workspace"
         skillsPath="/skills"
         clarificationsEditable
-      />
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Research Notes/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Research Notes/i }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Section One/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Section One/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows collapsible notes/sections on Research step in review mode", async () => {
@@ -156,13 +202,17 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         workspacePath="/workspace"
         skillsPath="/skills"
         reviewMode
-      />
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Research Notes/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Research Notes/i }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Section One/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Section One/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows collapsible notes/sections on Detailed Research step in update mode", async () => {
@@ -175,13 +225,17 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         workspacePath="/workspace"
         skillsPath="/skills"
         clarificationsEditable
-      />
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Research Notes/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Research Notes/i }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Section One/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Section One/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows collapsible notes/sections on Detailed Research step in review mode", async () => {
@@ -194,12 +248,16 @@ describe("WorkflowStepComplete collapsible clarifications coverage", () => {
         workspacePath="/workspace"
         skillsPath="/skills"
         reviewMode
-      />
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Research Notes/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Research Notes/i }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Section One/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Section One/i }),
+    ).toBeInTheDocument();
   });
 });
