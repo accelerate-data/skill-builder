@@ -46,7 +46,7 @@ vi.mock("@/lib/tauri", () => ({
   acquireLock: vi.fn().mockResolvedValue(undefined),
   releaseLock: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
-  getSkillContentForRefine: vi.fn().mockResolvedValue([]),
+  getSelectedSkillContent: vi.fn().mockResolvedValue([]),
   getSkillHistory: vi.fn().mockResolvedValue([]),
   readLatestBenchmark: vi.fn().mockResolvedValue(null),
   listSkills: vi.fn().mockResolvedValue([]),

@@ -70,7 +70,7 @@ Relevant files:
 - `app/src/hooks/use-agent-stream.ts`
 - `app/src-tauri/src/agents/event_router.rs`
 - `app/src-tauri/src/agents/event_types.rs`
-- `app/src-tauri/src/types/refine.rs`
+- `app/src-tauri/src/types/session.rs`
 
 ## 7. Raw OpenHands Payload Retention Is Not Yet the Frontend Transcript Contract
 

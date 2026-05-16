@@ -105,7 +105,7 @@ const mockResponses: Record<string, unknown> = {
       purpose: "domain",
     },
   ],
-  get_skill_content_for_refine: [
+  get_selected_skill_content: [
     { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
     { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
     { path: "references/checklist.md", content: "# Delivery Checklist\n\n- Validate inputs\n- Log failures\n- Add regression coverage" },

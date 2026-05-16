@@ -423,7 +423,7 @@ pub fn run() {
             commands::git::restore_skill_version,
             commands::git::get_skill_files_at_sha,
             commands::files::get_skill_content_at_path,
-            commands::files::get_skill_content_for_refine,
+            commands::files::get_selected_skill_content,
             commands::skill_session::select_skill_openhands_session,
             commands::skill_session::pause_openhands_session,
             commands::workflow::evaluation::read_latest_benchmark,

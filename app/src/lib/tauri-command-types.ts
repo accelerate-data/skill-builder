@@ -308,7 +308,7 @@ export interface TauriCommandMap {
   check_marketplace_updates: { args: NoArgs; result: MarketplaceUpdateResult };
   check_skill_customized: { args: { skillName: string }; result: boolean };
   get_skill_content_at_path: { args: { path: string }; result: SkillFileContent[] };
-  get_skill_content_for_refine: {
+  get_selected_skill_content: {
     args: { skillName: string; workspacePath: string; pluginSlug: string };
     result: SkillFileContent[];
   };

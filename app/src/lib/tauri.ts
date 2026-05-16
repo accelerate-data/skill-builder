@@ -383,8 +383,8 @@ export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
 export const getSkillContentAtPath = (path: string) =>
   invokeCommand("get_skill_content_at_path", { path })
 
-export const getSkillContentForRefine = (skillName: string, workspacePath: string, pluginSlug: string) =>
-  invokeCommand("get_skill_content_for_refine", { skillName, workspacePath, pluginSlug })
+export const getSelectedSkillContent = (skillName: string, workspacePath: string, pluginSlug: string) =>
+  invokeCommand("get_selected_skill_content", { skillName, workspacePath, pluginSlug })
 
 export const selectSkillOpenHandsSession = (skillId: number) =>
   invokeCommand("select_skill_openhands_session", { skillId })
