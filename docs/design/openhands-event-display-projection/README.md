@@ -9,13 +9,9 @@ functional-specs: []
 
 ## Overview
 
-Skill Builder now has a single production conversation UI model for active
-OpenHands sessions: a **top-to-bottom semantic timeline built directly from
-conversation events**.
+Skill Builder now has a single production conversation UI model for active OpenHands sessions: a **top-to-bottom semantic timeline built directly from conversation events**.
 
-The canonical input is `conversationEvents`, not a separate `displayItems`
-projection stream. The production renderer is `ConversationTimeline`, shared
-by the Workflow page and the Workspace Conversation surface.
+The canonical input is `conversationEvents`. The production renderer is `ConversationTimeline`, shared by the Workflow page and the Workspace Conversation surface. `displayItems` is no longer part of the active OpenHands transcript contract.
 
 The timeline is **semantic, not generic**:
 
@@ -25,8 +21,7 @@ The timeline is **semantic, not generic**:
 - ordinary operational tool traffic can be grouped for readability
 - unknown or newly introduced event shapes remain visible through fallback rows
 
-The timeline is also **lossless by contract**: grouping and visual weighting are
-editorial choices, not permission to silently drop events.
+The timeline is also **lossless by contract**: grouping and visual weighting are editorial choices, not permission to silently drop events.
 
 ## Production Scope
 
@@ -40,7 +35,7 @@ Both mount the shared `ConversationTimeline` component.
 **Out of scope**
 
 - historical Refine-era surfaces and contracts
-- converting all other run summaries in the app to conversation-event rendering
+- converting unrelated non-conversation summaries in the app to conversation-event rendering
 - backend event normalization or OpenHands wire-format cleanup
 - suppression policy beyond the initial "show everything" phase
 
@@ -65,8 +60,14 @@ Both mount the shared `ConversationTimeline` component.
 
 ## Canonical Rendering Model
 
-`ConversationTimeline` consumes canonical conversation events in chronological
-order and produces a semantic row sequence.
+`ConversationTimeline` consumes canonical conversation events in chronological order and produces a semantic row sequence.
+
+The store contract for active OpenHands runs is:
+
+- raw `conversationEvents`
+- latest `conversationState`
+
+Terminal success or failure is canonical state, not a stored synthetic event. Timeline surfaces may derive a terminal `Result` or `Error` row from `conversationState` for presentation, but that row is a UI-level projection.
 
 Each raw event must be classified into exactly one of these presentation forms:
 
@@ -76,8 +77,7 @@ Each raw event must be classified into exactly one of these presentation forms:
 4. **Explicitly suppressed event**
 5. **Visible unknown/fallback row**
 
-For the first implementation pass, the suppression bucket is intentionally
-empty. Everything is shown.
+For the first implementation pass, the suppression bucket is intentionally empty. Everything is shown.
 
 ## Event Mapping
 
@@ -105,8 +105,8 @@ empty. Everything is shown.
 | `ConversationStateUpdateEvent` | `State update` row |
 | `Condensation*Event` | `Context condensed` row |
 | `PauseEvent` | `Paused` row |
-| terminal `conversation_state` success | `Result` row |
-| terminal `conversation_state` error/cancel | `Error` row |
+| latest `conversation_state` success | UI-derived `Result` row when the surface wants terminal narration |
+| latest `conversation_state` error/cancel | UI-derived `Error` row when the surface wants terminal narration |
 | unknown `eventClass` or unexpected payload | `Unknown event` row with expandable payload |
 
 ## Grouping Rules
@@ -115,9 +115,7 @@ Grouping is purely visual. It does not change event accounting.
 
 ### Allowed grouping
 
-Ordinary tool traffic may be grouped into a `Tool Activity` row when the items
-belong to the same top-level conversation flow and remain adjacent after
-semantic row construction.
+Ordinary tool traffic may be grouped into a `Tool Activity` row when the items belong to the same top-level conversation flow and remain adjacent after semantic row construction.
 
 ### Disallowed grouping
 
@@ -148,17 +146,13 @@ At minimum, grouping resets on:
 
 ### Real child subagents
 
-Nested rendering is allowed only when the event stream provides an explicit
-relationship via `parentToolCallId`.
+Nested rendering is allowed only when the event stream provides an explicit relationship via `parentToolCallId`.
 
-When child events carry `parentToolCallId`, they attach beneath the matching
-top-level `Subagent` row.
+When child events carry `parentToolCallId`, they attach beneath the matching top-level `Subagent` row.
 
 ### Skill rows
 
-`invoke_skill` is shown as a visible `Skill` row, but the renderer must not
-invent nested ownership for subsequent parent-agent tool calls unless the event
-stream provides an explicit correlation.
+`invoke_skill` is shown as a visible `Skill` row, but the renderer must not invent nested ownership for subsequent parent-agent tool calls unless the event stream provides an explicit correlation.
 
 In other words:
 
@@ -178,8 +172,7 @@ The renderer must never silently no-op an event because:
 - a payload shape drifted
 - a mapper forgot to handle a case
 
-If the renderer cannot confidently classify an event, it must emit a visible
-fallback row that includes:
+If the renderer cannot confidently classify an event, it must emit a visible fallback row that includes:
 
 - the event class
 - timestamp
@@ -188,14 +181,12 @@ fallback row that includes:
 
 ## Fixture-based Test Strategy
 
-Tests should use the existing persisted conversation fixture folders as the
-source corpus.
+Tests should use the existing persisted conversation fixture folders as the source corpus.
 
 ### Source of truth
 
 - existing checked-in conversation event fixture folders
-- real persisted event JSON files from prior runs, not re-authored synthetic
-  summaries
+- real persisted event JSON files from prior runs, not re-authored synthetic summaries
 
 ### Test flow
 
@@ -235,8 +226,7 @@ For the initial rollout:
 suppressed events = 0
 ```
 
-Any future suppression policy must change this doc and update the fixture tests
-explicitly.
+Any future suppression policy must change this doc and update the fixture tests explicitly.
 
 ## Architecture Impact
 
@@ -249,16 +239,9 @@ The production conversation surfaces converge on one renderer:
 
 The same semantic event classification rules apply to both.
 
-### Relationship to existing `displayItems`
+### Relationship to `displayItems`
 
-`displayItems` may continue to exist for legacy summaries, result extraction, or
-other non-timeline consumers, but they are no longer the canonical contract for
-active OpenHands conversation rendering.
-
-For active conversation UIs:
-
-- `conversationEvents` is canonical
-- `ConversationTimeline` is the production renderer
+`displayItems` should be removed from the active OpenHands run path entirely. The timeline contract is based on raw `conversationEvents` plus raw `conversationState`, with semantic row derivation happening in the conversation UI layer.
 
 ## Key Source Files
 
@@ -274,21 +257,20 @@ For active conversation UIs:
 
 ## Migration Notes
 
-This document replaces the older design direction that treated projected
-`displayItems` as the primary production transcript path and referenced removed
-Refine-era consumers.
+This document replaces the older design direction that treated projected `displayItems` as the primary production transcript path and referenced removed Refine-era consumers.
 
 The new direction is:
 
 - top-to-bottom conversation-event rendering
+- raw `conversationState` retained as state rather than converted into stored synthetic events
 - semantic row construction
 - visible-first event accounting
+- removal of `displayItems` from the active OpenHands transcript path
 - fixture-backed guarantees against silent event loss
 
 ## Open Follow-ups
 
-1. Define the later suppression policy once the visible-first timeline has been
-   reviewed against real runs.
+1. Define the later suppression policy once the visible-first timeline has been reviewed against real runs.
 2. Decide whether `ConversationStateUpdateEvent` remains permanently visible or
    becomes an explicitly suppressed class after the first review pass.
 3. Decide whether grouped tool activity should remain expanded by default in the
