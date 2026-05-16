@@ -60,6 +60,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (55, run_model_catalog_cache_migration),
     (56, run_canonical_skill_identity_migration),
     (57, run_settings_table_normalization_migration),
+    (58, run_refinements_tables_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2899,5 +2900,99 @@ pub(super) fn run_canonical_skill_identity_migration(
     _conn: &Connection,
 ) -> Result<(), rusqlite::Error> {
     log::info!("migration 56: canonical skill identity (code-only, no schema changes)");
+    Ok(())
+}
+
+/// Migration 58: Create refinements table family (VU-1193).
+///
+/// Separates step 1 refinements from step 0 clarifications into independent
+/// tables so step 1 can be re-run without re-running step 0.
+///
+/// Key differences from clarifications:
+/// - NO `parent_question_id` column — refinements are flat questions
+/// - Separate table names: refinements, refinement_sections, refinement_questions,
+///   refinement_choices, refinement_notes
+pub(super) fn run_refinements_tables_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS refinements (
+            skill_id                  INTEGER PRIMARY KEY REFERENCES skills(id) ON DELETE CASCADE,
+            version                   TEXT NOT NULL,
+            refinement_count          INTEGER NOT NULL DEFAULT 0,
+            must_answer_count         INTEGER NOT NULL DEFAULT 0,
+            question_count            INTEGER NOT NULL DEFAULT 0,
+            section_count             INTEGER NOT NULL DEFAULT 0,
+            title                     TEXT NOT NULL,
+            scope_recommendation      INTEGER,
+            scope_reason              TEXT,
+            scope_next_action         TEXT,
+            error_code                TEXT,
+            error_message             TEXT,
+            warning_code              TEXT,
+            warning_message           TEXT,
+            eval_verdict              TEXT,
+            eval_reasoning            TEXT,
+            eval_at                   INTEGER,
+            eval_answered_count       INTEGER,
+            eval_empty_count          INTEGER,
+            eval_vague_count          INTEGER,
+            eval_contradictory_count  INTEGER,
+            created_at                INTEGER NOT NULL,
+            updated_at                INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS refinement_sections (
+            skill_id    INTEGER NOT NULL REFERENCES refinements(skill_id) ON DELETE CASCADE,
+            section_id  INTEGER NOT NULL,
+            ordinal     INTEGER NOT NULL,
+            title       TEXT NOT NULL,
+            description TEXT,
+            PRIMARY KEY (skill_id, section_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS refinement_questions (
+            skill_id              INTEGER NOT NULL REFERENCES refinements(skill_id) ON DELETE CASCADE,
+            question_id           TEXT NOT NULL,
+            section_id            INTEGER NOT NULL,
+            ordinal               INTEGER NOT NULL,
+            title                 TEXT NOT NULL,
+            text                  TEXT NOT NULL,
+            must_answer           INTEGER NOT NULL DEFAULT 0,
+            answer_choice         TEXT,
+            answer_text           TEXT,
+            recommendation        TEXT,
+            answer_verdict        TEXT,
+            answer_verdict_reason TEXT,
+            PRIMARY KEY (skill_id, question_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS refinement_choices (
+            skill_id    INTEGER NOT NULL REFERENCES refinements(skill_id) ON DELETE CASCADE,
+            question_id TEXT NOT NULL,
+            choice_id   TEXT NOT NULL,
+            ordinal     INTEGER NOT NULL,
+            text        TEXT NOT NULL,
+            is_other    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (skill_id, question_id, choice_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS refinement_notes (
+            note_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_id INTEGER NOT NULL REFERENCES refinements(skill_id) ON DELETE CASCADE,
+            ordinal  INTEGER NOT NULL,
+            type     TEXT NOT NULL,
+            title    TEXT NOT NULL,
+            body     TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_refinement_questions_section
+            ON refinement_questions(skill_id, section_id);
+        CREATE INDEX IF NOT EXISTS idx_refinement_choices_question
+            ON refinement_choices(skill_id, question_id);
+        "#,
+    )?;
+    log::info!("migration 58: created refinements tables");
     Ok(())
 }
