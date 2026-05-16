@@ -72,7 +72,7 @@ Produce two separate outputs:
 
 1. **`clarifications_json`**: Include only **new** top-level questions and sections that do not already exist in the current clarification record. This is append-only — the backend will merge these into the existing clarifications table. If no new top-level questions are needed, return an empty sections array.
 
-2. **`refinements_json`**: Include all detailed follow-up questions (refinements) as a flat structure — no recursive nesting. Use the same canonical question shape (`id`, `title`, `text`, `must_answer`, `choices`) but without a `refinements` array. Group refinements by section.
+2. **`refinements_json`**: Include all detailed follow-up questions (refinements) as a flat structure — no recursive nesting. Use the same canonical question shape (`id`, `title`, `text`, `must_answer`, `choices`, `refinements: []`). Group refinements by section.
 
 Recompute metadata for each output independently:
 - For `clarifications_json`: counts reflect only the new questions being appended.

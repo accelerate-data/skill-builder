@@ -10,12 +10,12 @@
 
 ---
 
-### Task 1: DB Migration 57 — Create refinements table family
+### Task 1: DB Migration 58 — Create refinements table family
 
 **Files:**
 - Modify: `app/src-tauri/src/db/migrations.rs:2892-2903`
 
-Add migration 57 that creates the `refinements` table family. This mirrors the clarifications schema but with its own parent table:
+Add migration 58 that creates the `refinements` table family. This mirrors the clarifications schema but with its own parent table:
 
 ```rust
 pub(super) fn run_refinements_tables_migration(
@@ -99,7 +99,7 @@ pub(super) fn run_refinements_tables_migration(
             ON refinement_choices(skill_id, question_id);
         "#,
     )?;
-    log::info!("migration 57: created refinements tables");
+    log::info!("migration 58: created refinements tables");
     Ok(())
 }
 ```
@@ -109,7 +109,7 @@ Key differences from clarifications:
 - Separate table names: `refinements`, `refinement_sections`, `refinement_questions`, `refinement_choices`, `refinement_notes`
 - Same column types and FK pattern as clarifications
 
-Also update the migration dispatcher in `migrations.rs` to call this new function at migration 57.
+Also update the migration dispatcher in `migrations.rs` to call this new function at migration 58.
 
 - [x] **Step 1: Add the migration function and wire it into the dispatcher**
 
@@ -120,7 +120,7 @@ Expected: Compiles without errors
 
 ```bash
 git add app/src-tauri/src/db/migrations.rs
-git commit -m "feat(db): add migration 57 for refinements table family"
+git commit -m "feat(db): add migration 58 for refinements table family"
 ```
 
 ---
@@ -689,7 +689,6 @@ The logic:
     // 4. Write refinements (full replace)
     let refinements_record = agent_json_to_refinements_record(
         &canonical_id,
-        parsed.refinement_count,
         parsed.refinements_json,
         now_ms(),
     );
@@ -814,34 +813,38 @@ Add a new helper for merging clarifications + refinements for display:
 ```typescript
 export function mergeClarificationsAndRefinements(
   clarifications: ClarificationsFile | null,
-  refinements: ClarificationsFile | null,
+  refinements: RefinementsDto | null,
 ): ClarificationsFile | null {
   if (!clarifications && !refinements) return null;
-  if (!clarifications) return refinements;
+  if (!clarifications) {
+    if (!refinements) return null;
+    return refinementsDtoToFile(refinements);
+  }
   if (!refinements) return clarifications;
 
-  // Merge sections: take clarifications sections, append refinement questions
-  // as a separate "Refinements" section at the end
+  const refinementFile = refinementsDtoToFile(refinements);
+
   const mergedSections: Section[] = [
     ...clarifications.sections.map(s => ({ ...s })),
   ];
 
-  if (refinements.sections.length > 0) {
+  const refinementSections = refinementFile.sections ?? [];
+  if (refinementSections.length > 0) {
     mergedSections.push({
-      id: Date.now(), // unique id for the refinements section
+      id: -1, // stable sentinel for the refinements section
       title: "Refinements",
       description: "Detailed follow-up questions from step 1",
-      questions: refinements.sections.flatMap(s => s.questions),
+      questions: refinementSections.flatMap(s => s.questions ?? []),
     });
   }
 
   return {
     ...clarifications,
     sections: mergedSections,
-    notes: [...(clarifications.notes ?? []), ...(refinements.notes ?? [])],
+    notes: [...(clarifications.notes ?? []), ...(refinementFile.notes ?? [])],
     metadata: {
       ...clarifications.metadata,
-      refinement_count: refinements.metadata?.refinement_count ?? 0,
+      refinement_count: refinements.refinement_count,
     },
   };
 }
