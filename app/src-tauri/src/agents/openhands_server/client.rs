@@ -60,10 +60,7 @@ impl OpenHandsServerClient {
         .build()
     }
 
-    pub fn build_fork_request(
-        &self,
-        conversation_id: &str,
-    ) -> Result<Request, reqwest::Error> {
+    pub fn build_fork_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
         self.request(
             Method::POST,
             &format!("api/conversations/{conversation_id}/fork"),
@@ -92,10 +89,7 @@ impl OpenHandsServerClient {
         .build()
     }
 
-    pub fn build_delete_request(
-        &self,
-        conversation_id: &str,
-    ) -> Result<Request, reqwest::Error> {
+    pub fn build_delete_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
         self.request(
             Method::DELETE,
             &format!("api/conversations/{conversation_id}"),
@@ -222,11 +216,7 @@ impl OpenHandsServerClient {
         self.execute_json(request).await
     }
 
-    pub async fn ask_agent(
-        &self,
-        conversation_id: &str,
-        question: &str,
-    ) -> Result<String, String> {
+    pub async fn ask_agent(&self, conversation_id: &str, question: &str) -> Result<String, String> {
         let request = self
             .build_ask_agent_request(conversation_id, question)
             .map_err(Self::request_error)?;

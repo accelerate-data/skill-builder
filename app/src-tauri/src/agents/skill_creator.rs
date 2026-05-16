@@ -275,9 +275,7 @@ fn scope_review_output_format() -> serde_json::Value {
 
 // ─── Canonical builder ───────────────────────────────────────────────────────
 
-pub fn build_skill_creator_config(
-    context: SkillCreatorRuntimeContext,
-) -> OpenHandsRuntimeConfig {
+pub fn build_skill_creator_config(context: SkillCreatorRuntimeContext) -> OpenHandsRuntimeConfig {
     let skill_dir = context.skill_dir_override.unwrap_or_else(|| {
         resolve_skill_dir(
             Path::new(&context.skills_root),
@@ -390,7 +388,10 @@ mod tests {
 
         assert_eq!(config.agent_name, Some("skill-creator".to_string()));
         assert_eq!(config.task_kind, Some("selected_skill_session".to_string()));
-        assert_eq!(config.run_source, Some("selected-skill-session".to_string()));
+        assert_eq!(
+            config.run_source,
+            Some("selected-skill-session".to_string())
+        );
         assert_eq!(config.step_id, Some(-12));
         assert_eq!(config.skill_name, Some("selected-skill".to_string()));
         assert_eq!(config.plugin_slug, "default");
@@ -491,10 +492,7 @@ mod tests {
         assert_eq!(config.run_source, None);
         assert_eq!(config.mode.as_deref(), Some("throwaway"));
         assert_eq!(config.max_turns, Some(4));
-        assert_eq!(
-            config.allowed_tools,
-            Some(vec!["file_editor".to_string()])
-        );
+        assert_eq!(config.allowed_tools, Some(vec!["file_editor".to_string()]));
         assert!(config.output_format.is_some());
         assert!(config.user_message_suffix.is_some());
     }
@@ -509,7 +507,9 @@ mod tests {
             prompt: "Reply with exactly OK and nothing else.".to_string(),
             llm: test_llm_config(),
             intent: SkillCreatorIntent::ModelValidation,
-            skill_dir_override: Some("/tmp/skill-builder/throwaway/model-connection-test/run-1".to_string()),
+            skill_dir_override: Some(
+                "/tmp/skill-builder/throwaway/model-connection-test/run-1".to_string(),
+            ),
         });
 
         assert_eq!(
@@ -555,9 +555,8 @@ mod tests {
     #[test]
     fn test_throwaway_runtime_dir_override_uses_system_temp_shape() {
         let dir = crate::skill_paths::throwaway_runtime_dir("model-connection-test", "run-xyz");
-        assert!(
-            dir.to_string_lossy()
-                .contains("skill-builder/throwaway/model-connection-test/run-xyz")
-        );
+        assert!(dir
+            .to_string_lossy()
+            .contains("skill-builder/throwaway/model-connection-test/run-xyz"));
     }
 }

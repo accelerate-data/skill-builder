@@ -28,7 +28,9 @@ pub struct StepConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowRunRow {
+    pub skill_id: i64,
     pub skill_name: String,
+    pub plugin_slug: String,
     pub current_step: i32,
     pub status: String,
     #[serde(default = "default_purpose")]
@@ -72,7 +74,9 @@ pub struct SkillMasterRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowStepRow {
+    pub skill_id: i64,
     pub skill_name: String,
+    pub plugin_slug: String,
     pub step_id: i32,
     pub status: String,
     pub started_at: Option<String>,

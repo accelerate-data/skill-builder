@@ -1,8 +1,8 @@
 use crate::db::Db;
 use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
 use crate::types::{SkillFileContent, SkillFileEntry};
-use std::fs;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 /// Maximum recursion depth for collect_entries to prevent symlink cycles.
@@ -14,11 +14,7 @@ fn list_skill_files_with_roots(
     skill_name: &str,
     allowed_roots: &[PathBuf],
 ) -> Result<Vec<SkillFileEntry>, String> {
-    list_skill_files_with_plugin_roots(
-        skill_name,
-        DEFAULT_PLUGIN_SLUG,
-        allowed_roots,
-    )
+    list_skill_files_with_plugin_roots(skill_name, DEFAULT_PLUGIN_SLUG, allowed_roots)
 }
 
 fn list_skill_files_with_plugin_roots(
@@ -527,8 +523,7 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries =
-            list_skill_files_with_roots("my-skill", &roots).unwrap();
+        let entries = list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         // Should have: context/, context/clarifications.json,
         //              skill/, skill/SKILL.md, skill/references/, skill/references/ref1.md
@@ -549,8 +544,7 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries =
-            list_skill_files_with_roots("my-skill", &roots).unwrap();
+        let entries = list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         let paths: Vec<&str> = entries.iter().map(|e| e.relative_path.as_str()).collect();
         let mut sorted = paths.clone();
@@ -564,8 +558,7 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries =
-            list_skill_files_with_roots("my-skill", &roots).unwrap();
+        let entries = list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         for entry in &entries {
             assert!(
@@ -582,8 +575,7 @@ mod tests {
         setup_skill_dir(dir.path());
 
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries =
-            list_skill_files_with_roots("my-skill", &roots).unwrap();
+        let entries = list_skill_files_with_roots("my-skill", &roots).unwrap();
 
         let context_entry = entries
             .iter()
@@ -604,9 +596,7 @@ mod tests {
     fn test_nonexistent_skill_returns_empty() {
         let dir = tempdir().unwrap();
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let entries =
-            list_skill_files_with_roots("nonexistent", &roots)
-                .unwrap();
+        let entries = list_skill_files_with_roots("nonexistent", &roots).unwrap();
         assert!(entries.is_empty());
     }
 
@@ -620,8 +610,7 @@ mod tests {
         // Since the resolved path within the allowed root doesn't exist,
         // the function returns empty (not an error).
         let roots = vec![fs::canonicalize(dir.path()).unwrap()];
-        let result =
-            list_skill_files_with_roots("my-skill", &roots);
+        let result = list_skill_files_with_roots("my-skill", &roots);
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }

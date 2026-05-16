@@ -5,8 +5,10 @@ import type { AgentRunRecord } from "@/lib/types";
 
 // Mock useClarifications — ResearchStepComplete and DetailedResearchStepComplete use TanStack Query
 const mockUseClarifications = vi.hoisted(() => vi.fn());
+const mockUseRefinements = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/queries/clarifications", () => ({
   useClarifications: mockUseClarifications,
+  useRefinements: mockUseRefinements,
 }));
 
 // Mock useDecisions — DecisionsStepComplete uses TanStack Query
@@ -27,7 +29,21 @@ const minimalClarDto = {
   section_count: 1,
   title: "Test",
   sections: [{ section_id: 1, ordinal: 0, title: "Section" }],
-  questions: [{ question_id: "Q1", section_id: 1, parent_question_id: null, ordinal: 0, title: "Q1", text: "Test?", must_answer: false, answer_choice: null, answer_text: null, choices: [], refinements: [] }],
+  questions: [
+    {
+      question_id: "Q1",
+      section_id: 1,
+      parent_question_id: null,
+      ordinal: 0,
+      title: "Q1",
+      text: "Test?",
+      must_answer: false,
+      answer_choice: null,
+      answer_text: null,
+      choices: [],
+      refinements: [],
+    },
+  ],
   notes: [],
 };
 
@@ -42,8 +58,24 @@ const decisionsDtoFixture = {
   created_at: 0,
   updated_at: 0,
   items: [
-    { decision_id: "D1", ordinal: 0, title: "Capability", original_question: "What should this skill enable Claude to do?", decision: "Draft capability text", implication: "Needs user confirmation before generation", status: "needs-review" },
-    { decision_id: "D2", ordinal: 1, title: "Trigger", original_question: "When should this skill trigger?", decision: "Trigger on planning requests", implication: "Used to draft the skill description", status: "resolved" },
+    {
+      decision_id: "D1",
+      ordinal: 0,
+      title: "Capability",
+      original_question: "What should this skill enable Claude to do?",
+      decision: "Draft capability text",
+      implication: "Needs user confirmation before generation",
+      status: "needs-review",
+    },
+    {
+      decision_id: "D2",
+      ordinal: 1,
+      title: "Trigger",
+      original_question: "When should this skill trigger?",
+      decision: "Trigger on planning requests",
+      implication: "Used to draft the skill description",
+      status: "resolved",
+    },
   ],
 };
 
@@ -57,8 +89,10 @@ const mockGetDisabledSteps = vi.fn();
 vi.mock("@/lib/tauri", () => ({
   getStepAgentRuns: (...args: unknown[]) => mockGetStepAgentRuns(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
-  getContextFileContent: (...args: unknown[]) => mockGetContextFileContent(...args),
-  saveDecisionsContent: (...args: unknown[]) => mockSaveDecisionsContent(...args),
+  getContextFileContent: (...args: unknown[]) =>
+    mockGetContextFileContent(...args),
+  saveDecisionsContent: (...args: unknown[]) =>
+    mockSaveDecisionsContent(...args),
   getDisabledSteps: (...args: unknown[]) => mockGetDisabledSteps(...args),
   listSkillFiles: vi.fn().mockResolvedValue([]),
 }));
@@ -73,7 +107,12 @@ vi.mock("remark-gfm", () => ({ default: () => {} }));
 const mockOnChange = vi.fn();
 const mockOnContinue = vi.fn();
 vi.mock("@/components/clarifications-editor", () => ({
-  ClarificationsEditor: ({ data, onChange, onContinue, readOnly }: {
+  ClarificationsEditor: ({
+    data,
+    onChange,
+    onContinue,
+    readOnly,
+  }: {
     data: unknown;
     onChange?: (updated: unknown) => void;
     onContinue?: () => void;
@@ -81,21 +120,39 @@ vi.mock("@/components/clarifications-editor", () => ({
   }) => (
     <div data-testid="clarifications-editor" data-readonly={readOnly ?? false}>
       <span data-testid="clarifications-data">{JSON.stringify(data)}</span>
-      {onChange && <button data-testid="clarifications-change" onClick={() => onChange(data)}>Edit</button>}
-      {onContinue && <button data-testid="clarifications-continue" onClick={onContinue}>Continue</button>}
+      {onChange && (
+        <button
+          data-testid="clarifications-change"
+          onClick={() => onChange(data)}
+        >
+          Edit
+        </button>
+      )}
+      {onContinue && (
+        <button data-testid="clarifications-continue" onClick={onContinue}>
+          Continue
+        </button>
+      )}
     </div>
   ),
 }));
 
 // Mock ResearchSummaryCard to check editable prop
 vi.mock("@/components/research-summary-card", () => ({
-  ResearchSummaryCard: ({ editable, onClarificationsContinue }: {
+  ResearchSummaryCard: ({
+    editable,
+    onClarificationsContinue,
+  }: {
     editable?: boolean;
     onClarificationsContinue?: () => void;
     [key: string]: unknown;
   }) => (
     <div data-testid="research-summary-card" data-editable={!!editable}>
-      {onClarificationsContinue && <button data-testid="rsc-continue" onClick={onClarificationsContinue}>Continue</button>}
+      {onClarificationsContinue && (
+        <button data-testid="rsc-continue" onClick={onClarificationsContinue}>
+          Continue
+        </button>
+      )}
     </div>
   ),
 }));
@@ -138,8 +195,16 @@ const baseProps = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUseClarifications.mockReturnValue({ data: null, isLoading: false, isError: false });
-  mockUseDecisions.mockReturnValue({ data: null, isLoading: false, isError: false });
+  mockUseClarifications.mockReturnValue({
+    data: null,
+    isLoading: false,
+    isError: false,
+  });
+  mockUseDecisions.mockReturnValue({
+    data: null,
+    isLoading: false,
+    isError: false,
+  });
   mockUseSaveDecisionsEdit.mockReturnValue({ mutate: vi.fn() });
   mockReadFile.mockResolvedValue(null);
   mockGetContextFileContent.mockResolvedValue(null);
@@ -187,13 +252,17 @@ describe("WorkflowStepComplete — agent runs", () => {
     mockGetStepAgentRuns.mockResolvedValue([]);
 
     render(<WorkflowStepComplete {...baseProps} reviewMode={false} />);
-    await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith(42, 0));
+    await waitFor(() =>
+      expect(mockGetStepAgentRuns).toHaveBeenCalledWith(42, 0),
+    );
 
     vi.clearAllMocks();
     mockGetStepAgentRuns.mockResolvedValue([]);
 
     render(<WorkflowStepComplete {...baseProps} reviewMode={true} />);
-    await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith(42, 0));
+    await waitFor(() =>
+      expect(mockGetStepAgentRuns).toHaveBeenCalledWith(42, 0),
+    );
   });
 });
 
@@ -224,7 +293,11 @@ describe("WorkflowStepComplete — plugin-aware file lookup", () => {
     );
 
     await waitFor(() => {
-      expect(listSkillFiles).toHaveBeenCalledWith("/skills", "my-skill", "analytics");
+      expect(listSkillFiles).toHaveBeenCalledWith(
+        "/skills",
+        "my-skill",
+        "analytics",
+      );
     });
   });
 });
@@ -233,8 +306,32 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
   const researchPlanMd = "# Research Plan\nTest research plan content";
   const clarificationsJson = JSON.stringify({
     version: "1",
-    metadata: { title: "Test", question_count: 1, section_count: 1, refinement_count: 0, must_answer_count: 0, priority_questions: [] },
-    sections: [{ id: "S1", title: "Section", questions: [{ id: "Q1", title: "Q1", must_answer: false, text: "Test?", choices: [], answer_choice: null, answer_text: null, refinements: [] }] }],
+    metadata: {
+      title: "Test",
+      question_count: 1,
+      section_count: 1,
+      refinement_count: 0,
+      must_answer_count: 0,
+      priority_questions: [],
+    },
+    sections: [
+      {
+        id: "S1",
+        title: "Section",
+        questions: [
+          {
+            id: "Q1",
+            title: "Q1",
+            must_answer: false,
+            text: "Test?",
+            choices: [],
+            answer_choice: null,
+            answer_text: null,
+            refinements: [],
+          },
+        ],
+      },
+    ],
     notes: [],
   });
 
@@ -261,35 +358,57 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStepAgentRuns.mockResolvedValue([]);
-    mockUseClarifications.mockReturnValue({ data: minimalClarDto, isLoading: false, isError: false });
-    mockGetContextFileContent.mockImplementation((_skill: string, _workspace: string, filename: string) => {
-      if (filename === "clarifications.json") return Promise.resolve(clarificationsJson);
-      return Promise.resolve(null);
+    mockUseClarifications.mockReturnValue({
+      data: minimalClarDto,
+      isLoading: false,
+      isError: false,
     });
+    mockUseRefinements.mockReturnValue({ data: null, isLoading: false });
+    mockGetContextFileContent.mockImplementation(
+      (_skill: string, _workspace: string, filename: string) => {
+        if (filename === "clarifications.json")
+          return Promise.resolve(clarificationsJson);
+        return Promise.resolve(null);
+      },
+    );
   });
 
   it("renders ResearchSummaryCard as editable when clarificationsEditable=true on research step", async () => {
     mockReadFile.mockImplementation((path: string) => {
-      if (path.includes("research-plan.md")) return Promise.resolve(researchPlanMd);
-      if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
+      if (path.includes("research-plan.md"))
+        return Promise.resolve(researchPlanMd);
+      if (path.includes("clarifications.json"))
+        return Promise.resolve(clarificationsJson);
       return Promise.resolve(null);
     });
 
-    render(<WorkflowStepComplete {...researchProps} clarificationsEditable onClarificationsChange={mockOnChange} onClarificationsContinue={mockOnContinue} />);
+    render(
+      <WorkflowStepComplete
+        {...researchProps}
+        clarificationsEditable
+        onClarificationsChange={mockOnChange}
+        onClarificationsContinue={mockOnContinue}
+      />,
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("research-summary-card")).toBeInTheDocument();
     });
 
     // Should be editable
-    expect(screen.getByTestId("research-summary-card")).toHaveAttribute("data-editable", "true");
+    expect(screen.getByTestId("research-summary-card")).toHaveAttribute(
+      "data-editable",
+      "true",
+    );
     expect(mockUseClarifications).toHaveBeenCalledWith("42");
   });
 
   it("renders ResearchSummaryCard as read-only when clarificationsEditable is false", async () => {
     mockReadFile.mockImplementation((path: string) => {
-      if (path.includes("research-plan.md")) return Promise.resolve(researchPlanMd);
-      if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
+      if (path.includes("research-plan.md"))
+        return Promise.resolve(researchPlanMd);
+      if (path.includes("clarifications.json"))
+        return Promise.resolve(clarificationsJson);
       return Promise.resolve(null);
     });
 
@@ -300,16 +419,27 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
     });
 
     // Should NOT be editable
-    expect(screen.getByTestId("research-summary-card")).toHaveAttribute("data-editable", "false");
+    expect(screen.getByTestId("research-summary-card")).toHaveAttribute(
+      "data-editable",
+      "false",
+    );
   });
 
   it("renders ClarificationsEditor directly on detailed research step with clarificationsEditable=true", async () => {
     mockReadFile.mockImplementation((path: string) => {
-      if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
+      if (path.includes("clarifications.json"))
+        return Promise.resolve(clarificationsJson);
       return Promise.resolve(null);
     });
 
-    render(<WorkflowStepComplete {...detailedResearchProps} clarificationsEditable onClarificationsChange={mockOnChange} onClarificationsContinue={mockOnContinue} />);
+    render(
+      <WorkflowStepComplete
+        {...detailedResearchProps}
+        clarificationsEditable
+        onClarificationsChange={mockOnChange}
+        onClarificationsContinue={mockOnContinue}
+      />,
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("clarifications-editor")).toBeInTheDocument();
@@ -333,26 +463,36 @@ describe("missing-files error state", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStepAgentRuns.mockResolvedValue([]);
-    mockUseClarifications.mockReturnValue({ data: null, isLoading: false, isError: false });
+    mockUseClarifications.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+    });
     mockReadFile.mockResolvedValue("__NOT_FOUND__");
   });
 
   it("shows Reset Step button when research files are missing and onResetStep is provided", async () => {
     const onResetStep = vi.fn();
 
-    render(<WorkflowStepComplete {...researchProps} onResetStep={onResetStep} />);
+    render(
+      <WorkflowStepComplete {...researchProps} onResetStep={onResetStep} />,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Reset Step")).toBeInTheDocument();
     });
-    expect(screen.getByText("Clarifications not found in database")).toBeInTheDocument();
+    expect(
+      screen.getByText("Clarifications not found in database"),
+    ).toBeInTheDocument();
   });
 
   it("calls onResetStep when Reset Step button is clicked", async () => {
     const onResetStep = vi.fn();
     const user = userEvent.setup();
 
-    render(<WorkflowStepComplete {...researchProps} onResetStep={onResetStep} />);
+    render(
+      <WorkflowStepComplete {...researchProps} onResetStep={onResetStep} />,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Reset Step")).toBeInTheDocument();
@@ -366,7 +506,9 @@ describe("missing-files error state", () => {
     render(<WorkflowStepComplete {...researchProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Clarifications not found in database")).toBeInTheDocument();
+      expect(
+        screen.getByText("Clarifications not found in database"),
+      ).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Reset Step")).not.toBeInTheDocument();
@@ -375,10 +517,19 @@ describe("missing-files error state", () => {
   it("does not render StepActionBar (Next Step) in missing-files error state", async () => {
     const onNextStep = vi.fn();
 
-    render(<WorkflowStepComplete {...researchProps} onNextStep={onNextStep} isLastStep={false} reviewMode={false} />);
+    render(
+      <WorkflowStepComplete
+        {...researchProps}
+        onNextStep={onNextStep}
+        isLastStep={false}
+        reviewMode={false}
+      />,
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("Clarifications not found in database")).toBeInTheDocument();
+      expect(
+        screen.getByText("Clarifications not found in database"),
+      ).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Next Step")).not.toBeInTheDocument();
@@ -426,12 +577,23 @@ describe("WorkflowStepComplete — decisions step conflict resolution flow", () 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStepAgentRuns.mockResolvedValue([]);
-    mockUseClarifications.mockReturnValue({ data: null, isLoading: false, isError: false });
-    mockUseDecisions.mockReturnValue({ data: decisionsDtoFixture, isLoading: false, isError: false });
-    mockGetContextFileContent.mockImplementation((_skillName: string, _workspacePath: string, relativePath: string) => {
-      if (relativePath === "decisions.json") return Promise.resolve(decisionsJson);
-      return Promise.resolve(null);
+    mockUseClarifications.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
     });
+    mockUseDecisions.mockReturnValue({
+      data: decisionsDtoFixture,
+      isLoading: false,
+      isError: false,
+    });
+    mockGetContextFileContent.mockImplementation(
+      (_skillName: string, _workspacePath: string, relativePath: string) => {
+        if (relativePath === "decisions.json")
+          return Promise.resolve(decisionsJson);
+        return Promise.resolve(null);
+      },
+    );
   });
 
   it("shows an explicit blocked Generate Skill action instead of Done when the next step is blocked", async () => {
@@ -441,26 +603,38 @@ describe("WorkflowStepComplete — decisions step conflict resolution flow", () 
         nextStepBlocked
         nextStepLabel="Generate Skill"
         onClose={vi.fn()}
-      />
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Generate Skill" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Generate Skill" }),
+      ).toBeInTheDocument();
     });
 
     const lockedButton = screen.getByRole("button", { name: "Generate Skill" });
     expect(lockedButton).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Generate Skill is blocked until you review the decisions marked needs-review below.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Done" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Generate Skill is blocked until you review the decisions marked needs-review below.",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("shows Next Step when the next step is available", async () => {
     const onNextStep = vi.fn();
 
-    render(<WorkflowStepComplete {...decisionsProps} onNextStep={onNextStep} />);
+    render(
+      <WorkflowStepComplete {...decisionsProps} onNextStep={onNextStep} />,
+    );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Next Step" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Next Step" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -470,7 +644,7 @@ describe("WorkflowStepComplete — decisions step conflict resolution flow", () 
         {...decisionsProps}
         nextStepBlocked
         nextStepLabel="Generate Skill"
-      />
+      />,
     );
 
     await waitFor(() => {
@@ -483,21 +657,18 @@ describe("WorkflowStepComplete — decisions step conflict resolution flow", () 
         nextStepBlocked={false}
         nextStepLabel="Generate Skill"
         onNextStep={vi.fn()}
-      />
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Next Step" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Next Step" }),
+      ).toBeInTheDocument();
     });
   });
 
   it("passes the numeric skill id to the decisions query for step 2", async () => {
-    render(
-      <WorkflowStepComplete
-        {...decisionsProps}
-        skillId={2740}
-      />
-    );
+    render(<WorkflowStepComplete {...decisionsProps} skillId={2740} />);
 
     await waitFor(() => {
       expect(mockUseDecisions).toHaveBeenCalledWith("2740");

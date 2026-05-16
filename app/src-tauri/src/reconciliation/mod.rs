@@ -208,12 +208,7 @@ fn workspace_legacy_skill_candidates(
     ];
     if plugin_slug == DEFAULT_PLUGIN_SLUG {
         candidates.push(skills_root.join("skills").join(skill_name));
-        candidates.push(
-            skills_root
-                .join("skills")
-                .join("skills")
-                .join(skill_name),
-        );
+        candidates.push(skills_root.join("skills").join("skills").join(skill_name));
     }
     candidates
 }

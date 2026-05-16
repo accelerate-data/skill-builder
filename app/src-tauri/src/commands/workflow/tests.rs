@@ -759,7 +759,10 @@ fn research_json_extraction_parses_valid_output() {
         1
     );
     assert_eq!(
-        parsed["research_output"]["sections"][0]["notes"].as_array().unwrap().len(),
+        parsed["research_output"]["sections"][0]["notes"]
+            .as_array()
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -1674,8 +1677,7 @@ fn test_materialize_step1_writes_clarifications_only() {
         .unwrap()
         .unwrap();
     assert_eq!(record.questions.len(), 1);
-    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
-        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id).unwrap();
     assert!(refinements.is_some());
 }
 
@@ -1770,8 +1772,7 @@ fn test_materialize_step1_writes_additive_detailed_research_output() {
     assert_eq!(record.sections[1].section_id, 2);
     assert!(record.questions.iter().any(|q| q.question_id == "Q4"));
     assert!(record.questions.iter().any(|q| q.question_id == "Q5"));
-    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
-        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id).unwrap();
     assert!(refinements.is_some());
     assert_eq!(refinements.unwrap().questions.len(), 1);
 }

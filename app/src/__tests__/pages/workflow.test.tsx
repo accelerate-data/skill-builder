@@ -2508,9 +2508,9 @@ describe("step reset behavior regressions", () => {
     expect(useWorkflowStore.getState().currentStep).toBe(0);
   });
 
-  it("ResetStepDialog for step 1 calls navigateBackToStep(1) keeping step 1 completed", async () => {
-    // When clicking step 1 from step 2 in update mode, the dialog calls navigateBackToStep(1).
-    // navigateBackToStep keeps the target step as-is (completed) and resets only steps > 1.
+  it("ResetStepDialog for step 1 resets workflow to step 0", async () => {
+    // Steps 0 and 1 share the same OpenHands conversation. Resetting or re-running
+    // Detailed Research must reset back to step 0 so the shared session is rebuilt.
     vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
       <div data-testid="workflow-sidebar">
         <button data-testid="sidebar-step-1" onClick={() => onStepClick?.(1)}>Step 1</button>
@@ -2547,11 +2547,18 @@ describe("step reset behavior regressions", () => {
       screen.getByRole("button", { name: "Reset" }).click();
     });
 
-    // navigateBackToStep(1): keeps step 1 completed, resets steps > 1 to pending
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
+      expect.anything(),
+      "test-skill",
+      0,
+    );
+    expect(vi.mocked(navigateBackToStepDb)).not.toHaveBeenCalled();
+
     await waitFor(() => {
-      expect(useWorkflowStore.getState().currentStep).toBe(1);
+      expect(useWorkflowStore.getState().currentStep).toBe(0);
     });
-    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+    expect(useWorkflowStore.getState().steps[1].status).toBe("pending");
     expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
   });
 

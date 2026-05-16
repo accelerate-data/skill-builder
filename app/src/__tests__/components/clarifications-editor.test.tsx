@@ -44,6 +44,42 @@ function makeRefinement(overrides: Partial<Question> = {}): Question {
   };
 }
 
+function makeClarificationsWithRefinementSection(
+  refinement: Question,
+): ClarificationsFile {
+  return {
+    version: "1",
+    metadata: {
+      title: "Test Clarifications",
+      question_count: 2,
+      section_count: 2,
+      refinement_count: 1,
+      must_answer_count: 0,
+      priority_questions: [],
+    },
+    sections: [
+      {
+        id: 1,
+        title: "Test Section",
+        questions: [
+          makeQuestion({
+            id: "Q1",
+            answer_choice: "A",
+            answer_text: "Choice A",
+          }),
+        ],
+      },
+      {
+        id: 2,
+        title: "Refinements",
+        questions: [refinement],
+      },
+    ],
+    notes: [],
+    answer_evaluator_notes: [],
+  };
+}
+
 function makeClarifications(questions: Question[]): ClarificationsFile {
   return {
     version: "1",
@@ -53,7 +89,9 @@ function makeClarifications(questions: Question[]): ClarificationsFile {
       section_count: 1,
       refinement_count: questions.reduce((n, q) => n + q.refinements.length, 0),
       must_answer_count: questions.filter((q) => q.must_answer).length,
-      priority_questions: questions.filter((q) => q.must_answer).map((q) => q.id),
+      priority_questions: questions
+        .filter((q) => q.must_answer)
+        .map((q) => q.id),
     },
     sections: [{ id: 1, title: "Test Section", questions }],
     notes: [],
@@ -90,7 +128,10 @@ function makeClarificationsWithSections(): ClarificationsFile {
 }
 
 /** Expand a question card by clicking its header button */
-async function expandCard(user: ReturnType<typeof userEvent.setup>, titleText: string) {
+async function expandCard(
+  user: ReturnType<typeof userEvent.setup>,
+  titleText: string,
+) {
   const button = screen.getByRole("button", { name: new RegExp(titleText) });
   await user.click(button);
 }
@@ -126,42 +167,45 @@ describe("Scenario A: Edit existing answered question", () => {
 // ─── Scenario B: New refinement with choices, unanswered ──────────────────────
 
 describe("Scenario B: Refinement with choices, answer_choice=null", () => {
-  const dataWithRefinement = () => makeClarifications([
-    makeQuestion({
-      id: "Q1",
-      answer_choice: "A",
-      answer_text: "Choice A",
-      refinements: [makeRefinement({ id: "R1.1" })],
-    }),
-  ]);
+  const dataWithRefinement = () =>
+    makeClarificationsWithRefinementSection(makeRefinement({ id: "R1.1" }));
 
   it("shows refinement choices so user can select one", async () => {
     const user = userEvent.setup();
-    render(<ClarificationsEditor data={dataWithRefinement()} onChange={vi.fn()} />);
-    await expandCard(user, "Test Question");
-    expect(screen.getByText("Option Alpha")).toBeInTheDocument();
-    expect(screen.getByText("Option Beta")).toBeInTheDocument();
+    render(
+      <ClarificationsEditor data={dataWithRefinement()} onChange={vi.fn()} />,
+    );
+    await expandCard(user, "Refinement Question");
+    expect(
+      screen.getByRole("button", { name: /A\.\s*Option Alpha/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /B\.\s*Option Beta/i }),
+    ).toBeInTheDocument();
   });
 
   it("hides refinement answer field until a choice is selected", async () => {
     const user = userEvent.setup();
-    render(<ClarificationsEditor data={dataWithRefinement()} onChange={vi.fn()} />);
-    await expandCard(user, "Test Question");
-    // Only the main question's answer textarea should exist (not the refinement's)
-    const textareas = screen.getAllByRole("textbox");
-    expect(textareas).toHaveLength(1);
-    expect(textareas[0]).toHaveValue("Choice A");
+    render(
+      <ClarificationsEditor data={dataWithRefinement()} onChange={vi.fn()} />,
+    );
+    await expandCard(user, "Refinement Question");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("selecting a refinement choice triggers onChange", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(<ClarificationsEditor data={dataWithRefinement()} onChange={onChange} />);
-    await expandCard(user, "Test Question");
-    await user.click(screen.getByRole("button", { name: /A\.\s*Option Alpha/i }));
+    render(
+      <ClarificationsEditor data={dataWithRefinement()} onChange={onChange} />,
+    );
+    await expandCard(user, "Refinement Question");
+    await user.click(
+      screen.getByRole("button", { name: /A\.\s*Option Alpha/i }),
+    );
     expect(onChange).toHaveBeenCalled();
     const updated = onChange.mock.calls[0][0] as ClarificationsFile;
-    const ref = updated.sections[0].questions[0].refinements[0];
+    const ref = updated.sections[1].questions[0];
     expect(ref.answer_choice).toBe("A");
     expect(ref.answer_text).toBe("Option Alpha");
   });
@@ -170,31 +214,24 @@ describe("Scenario B: Refinement with choices, answer_choice=null", () => {
 // ─── Scenario C: Refinement with NO choices (freeform only) ───────────────────
 
 describe("Scenario C: Refinement with no choices", () => {
-  const dataFreeform = () => makeClarifications([
-    makeQuestion({
-      id: "Q1",
-      answer_choice: "A",
-      answer_text: "Choice A",
-      refinements: [makeRefinement({ id: "R1.1", choices: [] })],
-    }),
-  ]);
+  const dataFreeform = () =>
+    makeClarificationsWithRefinementSection(
+      makeRefinement({ id: "R1.1", choices: [] }),
+    );
 
   it("shows answer field immediately (no choices to gate on)", async () => {
     const user = userEvent.setup();
     render(<ClarificationsEditor data={dataFreeform()} onChange={vi.fn()} />);
-    await expandCard(user, "Test Question");
-    // Main question textarea + refinement textarea
-    const textareas = screen.getAllByRole("textbox");
-    expect(textareas).toHaveLength(2);
+    await expandCard(user, "Refinement Question");
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
 
   it("allows typing freeform answer directly", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<ClarificationsEditor data={dataFreeform()} onChange={onChange} />);
-    await expandCard(user, "Test Question");
-    const textareas = screen.getAllByRole("textbox");
-    await user.type(textareas[1], "Free answer");
+    await expandCard(user, "Refinement Question");
+    await user.type(screen.getByRole("textbox"), "Free answer");
     expect(onChange).toHaveBeenCalled();
   });
 });
@@ -202,19 +239,19 @@ describe("Scenario C: Refinement with no choices", () => {
 // ─── Scenario D: Previously answered refinement ───────────────────────────────
 
 describe("Scenario D: Previously answered refinement", () => {
-  const dataAnswered = () => makeClarifications([
-    makeQuestion({
-      id: "Q1",
-      answer_choice: "A",
-      answer_text: "Choice A",
-      refinements: [makeRefinement({ id: "R1.1", answer_choice: "B", answer_text: "Option Beta" })],
-    }),
-  ]);
+  const dataAnswered = () =>
+    makeClarificationsWithRefinementSection(
+      makeRefinement({
+        id: "R1.1",
+        answer_choice: "B",
+        answer_text: "Option Beta",
+      }),
+    );
 
   it("shows existing answer in the refinement textarea", async () => {
     const user = userEvent.setup();
     render(<ClarificationsEditor data={dataAnswered()} onChange={vi.fn()} />);
-    await expandCard(user, "Test Question");
+    await expandCard(user, "Refinement Question");
     expect(screen.getByDisplayValue("Option Beta")).toBeInTheDocument();
   });
 
@@ -222,11 +259,13 @@ describe("Scenario D: Previously answered refinement", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<ClarificationsEditor data={dataAnswered()} onChange={onChange} />);
-    await expandCard(user, "Test Question");
-    await user.click(screen.getByRole("button", { name: /A\.\s*Option Alpha/i }));
+    await expandCard(user, "Refinement Question");
+    await user.click(
+      screen.getByRole("button", { name: /A\.\s*Option Alpha/i }),
+    );
     expect(onChange).toHaveBeenCalled();
     const updated = onChange.mock.calls[0][0] as ClarificationsFile;
-    const ref = updated.sections[0].questions[0].refinements[0];
+    const ref = updated.sections[1].questions[0];
     expect(ref.answer_choice).toBe("A");
     expect(ref.answer_text).toBe("Option Alpha");
   });
@@ -244,7 +283,9 @@ describe("Scenario E: Recommendation badge", () => {
     // Badge is next to choice B, not A or D
     const choiceBBtn = screen.getByRole("button", { name: /B\.\s*Choice B/i });
     expect(choiceBBtn).toHaveTextContent("recommended");
-    expect(screen.getByRole("button", { name: /A\.\s*Choice A/i })).not.toHaveTextContent("recommended");
+    expect(
+      screen.getByRole("button", { name: /A\.\s*Choice A/i }),
+    ).not.toHaveTextContent("recommended");
   });
 
   it("stores the original choice text when the recommended choice is selected", async () => {
@@ -263,7 +304,9 @@ describe("Scenario E: Recommendation badge", () => {
 
   it("handles legacy recommendation format 'B — rationale text'", async () => {
     const user = userEvent.setup();
-    const data = makeClarifications([makeQuestion({ recommendation: "B — This is the best option." })]);
+    const data = makeClarifications([
+      makeQuestion({ recommendation: "B — This is the best option." }),
+    ]);
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await expandCard(user, "Test Question");
     const choiceBBtn = screen.getByRole("button", { name: /B\.\s*Choice B/i });
@@ -293,7 +336,9 @@ describe("Main question answer field visibility", () => {
   it("shows answer field when question has answer_choice set", async () => {
     const user = userEvent.setup();
     // Render directly with answer_choice already set (as if choice was selected)
-    const data = makeClarifications([makeQuestion({ answer_choice: "A", answer_text: "Choice A" })]);
+    const data = makeClarifications([
+      makeQuestion({ answer_choice: "A", answer_text: "Choice A" }),
+    ]);
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await expandCard(user, "Test Question");
     expect(screen.getByRole("textbox")).toBeInTheDocument();
@@ -305,8 +350,20 @@ describe("Need Review filter toggle", () => {
   it("shows only questions marked by evaluator feedback when enabled", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Answered Question", answer_choice: "A", answer_text: "Choice A" }),
-      makeQuestion({ id: "Q2", title: "Unanswered Question", answer_choice: null, answer_text: null, answer_verdict: "not_answered", answer_verdict_reason: "This question is still unanswered." }),
+      makeQuestion({
+        id: "Q1",
+        title: "Answered Question",
+        answer_choice: "A",
+        answer_text: "Choice A",
+      }),
+      makeQuestion({
+        id: "Q2",
+        title: "Unanswered Question",
+        answer_choice: null,
+        answer_text: null,
+        answer_verdict: "not_answered",
+        answer_verdict_reason: "This question is still unanswered.",
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
@@ -322,8 +379,20 @@ describe("Need Review filter toggle", () => {
   it("includes unanswered MUST questions when enabled", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Required Question", must_answer: true, answer_choice: null, answer_text: null }),
-      makeQuestion({ id: "Q2", title: "Optional Question", must_answer: false, answer_choice: null, answer_text: null }),
+      makeQuestion({
+        id: "Q1",
+        title: "Required Question",
+        must_answer: true,
+        answer_choice: null,
+        answer_text: null,
+      }),
+      makeQuestion({
+        id: "Q2",
+        title: "Optional Question",
+        must_answer: false,
+        answer_choice: null,
+        answer_text: null,
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
@@ -336,8 +405,22 @@ describe("Need Review filter toggle", () => {
   it("hides answered questions even when they have evaluator feedback", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Required Question", must_answer: true, answer_choice: "A", answer_text: "Choice A" }),
-      makeQuestion({ id: "Q2", title: "Flagged Question", must_answer: false, answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "This answer needs more detail." }),
+      makeQuestion({
+        id: "Q1",
+        title: "Required Question",
+        must_answer: true,
+        answer_choice: "A",
+        answer_text: "Choice A",
+      }),
+      makeQuestion({
+        id: "Q2",
+        title: "Flagged Question",
+        must_answer: false,
+        answer_choice: "A",
+        answer_text: "Choice A",
+        answer_verdict: "needs_refinement",
+        answer_verdict_reason: "This answer needs more detail.",
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
@@ -351,8 +434,20 @@ describe("Need Review filter toggle", () => {
   it("keeps answered contradictory questions visible", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A", answer_verdict: "contradictory", answer_verdict_reason: "This answer conflicts with Q2." }),
-      makeQuestion({ id: "Q2", title: "Other Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({
+        id: "Q1",
+        title: "Contradictory Question",
+        answer_choice: "A",
+        answer_text: "Choice A",
+        answer_verdict: "contradictory",
+        answer_verdict_reason: "This answer conflicts with Q2.",
+      }),
+      makeQuestion({
+        id: "Q2",
+        title: "Other Question",
+        answer_choice: "A",
+        answer_text: "Choice A",
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
@@ -366,43 +461,106 @@ describe("Need Review filter toggle", () => {
 describe("Needs Review banner count", () => {
   it("counts only unanswered questions with feedback or must_answer", () => {
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "More detail needed." }),
-      makeQuestion({ id: "Q2", title: "Unanswered Flagged", answer_choice: null, answer_text: null, answer_verdict: "not_answered", answer_verdict_reason: "Still unanswered." }),
-      makeQuestion({ id: "Q3", title: "Unanswered Must", must_answer: true, answer_choice: null, answer_text: null }),
+      makeQuestion({
+        id: "Q1",
+        title: "Answered Flagged",
+        answer_choice: "A",
+        answer_text: "Choice A",
+        answer_verdict: "needs_refinement",
+        answer_verdict_reason: "More detail needed.",
+      }),
+      makeQuestion({
+        id: "Q2",
+        title: "Unanswered Flagged",
+        answer_choice: null,
+        answer_text: null,
+        answer_verdict: "not_answered",
+        answer_verdict_reason: "Still unanswered.",
+      }),
+      makeQuestion({
+        id: "Q3",
+        title: "Unanswered Must",
+        must_answer: true,
+        answer_choice: null,
+        answer_text: null,
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
     // Q1 is answered (excluded), Q2 is unanswered+flagged (included), Q3 is unanswered+must (included) → count = 2
-    expect(screen.getByText("2 questions currently marked for review by the answer evaluator.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "2 questions currently marked for review by the answer evaluator.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows no banner when all flagged questions are answered", () => {
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Answered Flagged", answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "More detail needed." }),
+      makeQuestion({
+        id: "Q1",
+        title: "Answered Flagged",
+        answer_choice: "A",
+        answer_text: "Choice A",
+        answer_verdict: "needs_refinement",
+        answer_verdict_reason: "More detail needed.",
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
-    expect(screen.queryByText(/currently marked for review/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/currently marked for review/),
+    ).not.toBeInTheDocument();
   });
 
   it("counts contradictory questions and their referenced counterparts", () => {
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Contradictory Question", answer_choice: "A", answer_text: "Choice A", answer_verdict: "contradictory", answer_verdict_reason: "This answer conflicts with Q2." }),
-      makeQuestion({ id: "Q2", title: "Referenced Counterpart", answer_choice: "B", answer_text: "Choice B" }),
-      makeQuestion({ id: "Q3", title: "Answered Non-contradictory", answer_choice: "A", answer_text: "Choice A", answer_verdict: "needs_refinement", answer_verdict_reason: "More detail needed." }),
+      makeQuestion({
+        id: "Q1",
+        title: "Contradictory Question",
+        answer_choice: "A",
+        answer_text: "Choice A",
+        answer_verdict: "contradictory",
+        answer_verdict_reason: "This answer conflicts with Q2.",
+      }),
+      makeQuestion({
+        id: "Q2",
+        title: "Referenced Counterpart",
+        answer_choice: "B",
+        answer_text: "Choice B",
+      }),
+      makeQuestion({
+        id: "Q3",
+        title: "Answered Non-contradictory",
+        answer_choice: "A",
+        answer_text: "Choice A",
+        answer_verdict: "needs_refinement",
+        answer_verdict_reason: "More detail needed.",
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
-    expect(screen.getByText("2 questions currently marked for review by the answer evaluator.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "2 questions currently marked for review by the answer evaluator.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 
 describe("Inline evaluator feedback", () => {
   it("shows a status badge on collapsed flagged question cards", () => {
-    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question", answer_verdict: "vague", answer_verdict_reason: "Missing concrete thresholds." })]);
+    const data = makeClarifications([
+      makeQuestion({
+        id: "Q1",
+        title: "Flagged Question",
+        answer_verdict: "vague",
+        answer_verdict_reason: "Missing concrete thresholds.",
+      }),
+    ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     expect(screen.getByText("Vague")).toBeInTheDocument();
@@ -410,20 +568,41 @@ describe("Inline evaluator feedback", () => {
 
   it("shows reason inline with the flagged question in context", async () => {
     const user = userEvent.setup();
-    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question", answer_verdict: "vague", answer_verdict_reason: "Missing concrete thresholds." })]);
+    const data = makeClarifications([
+      makeQuestion({
+        id: "Q1",
+        title: "Flagged Question",
+        answer_verdict: "vague",
+        answer_verdict_reason: "Missing concrete thresholds.",
+      }),
+    ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
     await expandCard(user, "Flagged Question");
 
     expect(screen.getByText("Need Review: Vague")).toBeInTheDocument();
-    expect(screen.getByText("Why flagged: Missing concrete thresholds.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Why flagged: Missing concrete thresholds."),
+    ).toBeInTheDocument();
   });
 
   it("shows contradiction context on counterpart questions surfaced by Needs Review", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([
-      makeQuestion({ id: "Q1", title: "Flagged Contradiction", answer_choice: "A", answer_text: "Choice A", answer_verdict: "contradictory", answer_verdict_reason: "This answer conflicts with Q2." }),
-      makeQuestion({ id: "Q2", title: "Conflict Counterpart", answer_choice: "B", answer_text: "Choice B" }),
+      makeQuestion({
+        id: "Q1",
+        title: "Flagged Contradiction",
+        answer_choice: "A",
+        answer_text: "Choice A",
+        answer_verdict: "contradictory",
+        answer_verdict_reason: "This answer conflicts with Q2.",
+      }),
+      makeQuestion({
+        id: "Q2",
+        title: "Conflict Counterpart",
+        answer_choice: "B",
+        answer_text: "Choice B",
+      }),
     ]);
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
@@ -433,7 +612,9 @@ describe("Inline evaluator feedback", () => {
 
     await expandCard(user, "Conflict Counterpart");
 
-    expect(screen.getByText("Need Review: Conflict counterpart")).toBeInTheDocument();
+    expect(
+      screen.getByText("Need Review: Conflict counterpart"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Conflicts with Q1")).toBeInTheDocument();
   });
 });
@@ -442,21 +623,33 @@ describe("Collapsible research notes", () => {
   it("toggles research notes visibility", async () => {
     const user = userEvent.setup();
     const data = makeClarifications([makeQuestion()]);
-    data.notes = [{ type: "general", title: "Context", body: "Helpful implementation context." }];
+    data.notes = [
+      {
+        type: "general",
+        title: "Context",
+        body: "Helpful implementation context.",
+      },
+    ];
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
     const notesToggle = screen.getByRole("button", { name: /Research Notes/i });
     expect(notesToggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Helpful implementation context.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Helpful implementation context."),
+    ).toBeInTheDocument();
 
     await user.click(notesToggle);
     expect(notesToggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Helpful implementation context.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Helpful implementation context."),
+    ).not.toBeInTheDocument();
 
     await user.click(notesToggle);
     expect(notesToggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Helpful implementation context.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Helpful implementation context."),
+    ).toBeInTheDocument();
   });
 });
 
@@ -500,7 +693,8 @@ describe("Scenario F: Other choice (is_other: true)", () => {
     const updater = (q: typeof questionWithOtherSelected) => ({
       ...q,
       answer_text: "my custom text",
-      answer_choice: "my custom text".trim() !== "" ? (q.answer_choice ?? "custom") : null,
+      answer_choice:
+        "my custom text".trim() !== "" ? (q.answer_choice ?? "custom") : null,
     });
     const result = updater(questionWithOtherSelected);
     expect(result.answer_choice).toBe("D");
@@ -516,7 +710,8 @@ describe("Scenario F: Other choice (is_other: true)", () => {
     const updater = (q: typeof questionNoChoice) => ({
       ...q,
       answer_text: "freeform text",
-      answer_choice: "freeform text".trim() !== "" ? (q.answer_choice ?? "custom") : null,
+      answer_choice:
+        "freeform text".trim() !== "" ? (q.answer_choice ?? "custom") : null,
     });
     const result = updater(questionNoChoice);
     expect(result.answer_choice).toBe("custom");
@@ -534,8 +729,12 @@ describe("Collapsible sections", () => {
     expect(screen.getByText("Question One")).toBeInTheDocument();
     expect(screen.getByText("Question Two")).toBeInTheDocument();
 
-    const sectionOneToggle = screen.getByRole("button", { name: /Section One/i });
-    const sectionTwoToggle = screen.getByRole("button", { name: /Section Two/i });
+    const sectionOneToggle = screen.getByRole("button", {
+      name: /Section One/i,
+    });
+    const sectionTwoToggle = screen.getByRole("button", {
+      name: /Section Two/i,
+    });
 
     await user.click(sectionOneToggle);
     expect(sectionOneToggle).toHaveAttribute("aria-expanded", "false");
@@ -550,7 +749,9 @@ describe("Collapsible sections", () => {
 
     render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
 
-    const sectionOneToggle = screen.getByRole("button", { name: /Section One/i });
+    const sectionOneToggle = screen.getByRole("button", {
+      name: /Section One/i,
+    });
     sectionOneToggle.focus();
     await user.keyboard("{Enter}");
 

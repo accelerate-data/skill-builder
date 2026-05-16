@@ -139,6 +139,70 @@ fn test_list_skills_db_primary_no_filesystem_access_needed() {
 }
 
 #[test]
+fn test_list_skills_keeps_same_named_workflow_runs_scoped_to_plugin() {
+    let conn = create_test_db();
+    crate::db::ensure_plugin(
+        &conn,
+        "analytics-pack",
+        "Analytics Pack",
+        "marketplace",
+        Some("https://example.com/analytics-pack"),
+        None,
+        false,
+    )
+    .unwrap();
+
+    let default_skill_id = crate::db::upsert_skill_in_plugin(
+        &conn,
+        "shared-skill",
+        "skill-builder",
+        "domain",
+        DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap();
+    let marketplace_skill_id = crate::db::upsert_skill_in_plugin(
+        &conn,
+        "shared-skill",
+        "skill-builder",
+        "domain",
+        "analytics-pack",
+    )
+    .unwrap();
+
+    crate::db::save_workflow_run_by_skill_id(&conn, default_skill_id, 0, "pending", "domain")
+        .unwrap();
+    crate::db::save_workflow_run_by_skill_id(
+        &conn,
+        marketplace_skill_id,
+        3,
+        "in_progress",
+        "source",
+    )
+    .unwrap();
+
+    let skills = list_skills_inner(None, &conn).unwrap();
+    let default_skill = skills
+        .iter()
+        .find(|skill| {
+            skill.name == "shared-skill"
+                && skill.plugin_slug.as_deref() == Some(DEFAULT_PLUGIN_SLUG)
+        })
+        .unwrap();
+    let marketplace_skill = skills
+        .iter()
+        .find(|skill| {
+            skill.name == "shared-skill" && skill.plugin_slug.as_deref() == Some("analytics-pack")
+        })
+        .unwrap();
+
+    assert_eq!(default_skill.current_step.as_deref(), Some("Step 0"));
+    assert_eq!(default_skill.status.as_deref(), Some("pending"));
+    assert_eq!(marketplace_skill.current_step.as_deref(), Some("Step 3"));
+    assert_eq!(marketplace_skill.status.as_deref(), Some("in_progress"));
+    assert_eq!(marketplace_skill.purpose.as_deref(), Some("source"));
+}
+
+#[test]
 fn test_list_skills_db_primary_sorted_by_created_at_desc() {
     let conn = create_test_db();
     // Insert skills with explicit created_at timestamps to guarantee ordering
@@ -1828,22 +1892,23 @@ fn test_rename_skill_disk_rollback_on_db_failure() {
     // The easiest: add a UNIQUE constraint violation by pre-inserting the new name
     // into a table that the transaction will try to UPDATE into.
     //
-    // Actually, the cleanest way: put a row in workflow_steps with the NEW name
-    // and a UNIQUE constraint, but workflow_steps PK is (skill_name, step_id) so
-    // we need a conflicting row. Let's add a step for "rollback-target" (the new name)
-    // with the same step_id that "will-rollback" has after the UPDATE tries to set it.
-    //
-    // The transaction first does INSERT+DELETE on workflow_runs (succeeds), then
-    // UPDATE workflow_steps. If we pre-insert a workflow_steps row with
-    // (skill_name="rollback-target", step_id=0), the UPDATE from
-    // (skill_name="will-rollback", step_id=0) to (skill_name="rollback-target", step_id=0)
-    // will violate the PK and fail.
+    // Force a skill_tags primary-key collision without creating a skills master
+    // row for the new name. The rename precheck only guards the skills table,
+    // so a stale tag row under the new name is enough to make the in-transaction
+    // UPDATE fail and verify rollback semantics.
     crate::db::save_workflow_step_by_skill_id(&conn, will_rollback_id, 0, "completed").unwrap();
-    // Pre-insert a conflicting row for the new name
+    crate::db::set_skill_tags(
+        &conn,
+        "will-rollback",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        &["shared-tag".to_string()],
+    )
+    .unwrap();
     conn.execute(
-        "INSERT INTO workflow_steps (skill_name, step_id, status) VALUES ('rollback-target', 0, 'pending')",
+        "INSERT INTO skill_tags (skill_name, tag, skill_id) VALUES ('rollback-target', 'shared-tag', NULL)",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     let result = rename_skill_inner("will-rollback", "rollback-target", &mut conn, None);
     assert!(

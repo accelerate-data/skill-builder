@@ -59,9 +59,7 @@ pub fn init_bundled_uv_path(resource_dir: &Path) {
         let _ = BUNDLED_UV_PATH.set(Some(dev_candidate));
         return;
     }
-    log::debug!(
-        "[openhands-agent-server] no bundled uv found; falling back to system uvx"
-    );
+    log::debug!("[openhands-agent-server] no bundled uv found; falling back to system uvx");
     let _ = BUNDLED_UV_PATH.set(None);
 }
 
@@ -650,10 +648,7 @@ async fn wait_until_healthy(port: u16, timeout: Duration) -> Result<(), String> 
     let client = reqwest::Client::new();
     let deadline = Instant::now() + timeout;
     let base_url = agent_server_base_url(port);
-    let urls = [
-        format!("{base_url}/alive"),
-        format!("{base_url}/health"),
-    ];
+    let urls = [format!("{base_url}/alive"), format!("{base_url}/health")];
     let mut last_failure = "no response received".to_string();
 
     loop {

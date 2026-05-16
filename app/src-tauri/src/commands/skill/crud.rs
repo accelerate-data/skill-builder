@@ -61,6 +61,9 @@ pub(crate) fn list_skills_inner(
     source_url: Option<&str>,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
+    let workflow_run_key =
+        |plugin_slug: &str, skill_name: &str| format!("{plugin_slug}::{skill_name}");
+
     // Query the skills master table
     let master_skills = crate::db::list_all_skills(conn)?;
 
@@ -73,7 +76,7 @@ pub(crate) fn list_skills_inner(
     let runs = crate::db::list_all_workflow_runs(conn)?;
     let runs_map: std::collections::HashMap<String, crate::types::WorkflowRunRow> = runs
         .into_iter()
-        .map(|r| (r.skill_name.clone(), r))
+        .map(|r| (workflow_run_key(&r.plugin_slug, &r.skill_name), r))
         .collect();
 
     // Batch-fetch tags for all skills
@@ -97,7 +100,9 @@ pub(crate) fn list_skills_inner(
             if master.skill_source == "skill-builder" {
                 // For skill-builder: workflow_runs provides step state and workflow-specific fields.
                 // Frontmatter fields come from skills master (canonical since migration 24).
-                if let Some(run) = runs_map.get(&master.name) {
+                if let Some(run) =
+                    runs_map.get(&workflow_run_key(&master.plugin_slug, &master.name))
+                {
                     return SkillSummary {
                         id: master.id,
                         name: run.skill_name.clone(),
@@ -740,12 +745,14 @@ pub(crate) fn prepare_skill_runtime_shutdown_inner(
     refine_sessions: &SkillSessionManager,
 ) -> Result<SkillRuntimeShutdownPlan, String> {
     let mut conversation_ids = Vec::new();
+    let skill_id = crate::db::get_skill_master_id_in_plugin(conn, name, plugin_slug)?
+        .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", name, plugin_slug))?;
 
     {
         let mut map = workflow_runs.0.lock().map_err(|e| e.to_string())?;
         let stale_runs: Vec<(String, String)> = map
             .iter()
-            .filter(|(_, run)| run.skill_name == name)
+            .filter(|(_, run)| run.skill_name == name && run.plugin_slug == plugin_slug)
             .map(|(entry_key, run)| (entry_key.clone(), run.conversation_id.clone()))
             .collect();
         for (entry_key, _) in &stale_runs {
@@ -774,7 +781,8 @@ pub(crate) fn prepare_skill_runtime_shutdown_inner(
         }
     }
 
-    let ended_workflow_sessions = crate::db::end_active_workflow_sessions_for_skill(conn, name)?;
+    let ended_workflow_sessions =
+        crate::db::end_active_workflow_sessions_for_skill_id(conn, skill_id)?;
 
     Ok(SkillRuntimeShutdownPlan {
         conversation_ids,

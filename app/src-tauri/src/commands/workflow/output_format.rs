@@ -14,8 +14,8 @@ use crate::contracts::workflow_artifacts::{
 };
 use crate::db::workflow_artifacts as db_artifacts;
 use crate::db::workflow_artifacts::{
-    ClarificationsRecord, DecisionsRecord, RefinementChoice, RefinementQuestion,
-    RefinementSection, RefinementsRecord,
+    ClarificationsRecord, DecisionsRecord, RefinementChoice, RefinementQuestion, RefinementSection,
+    RefinementsRecord,
 };
 use crate::db::Db;
 
@@ -223,11 +223,13 @@ fn normalize_decisions_output_missing_statuses(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 enum JsonContainer {
     Object,
     Array { is_questions: bool },
 }
 
+#[allow(dead_code)]
 fn repair_nested_numeric_sections_in_questions(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut repaired = String::with_capacity(text.len() + 32);
@@ -317,6 +319,7 @@ fn repair_nested_numeric_sections_in_questions(text: &str) -> Option<String> {
     changed.then_some(repaired)
 }
 
+#[allow(dead_code)]
 fn starts_numeric_section_entry(bytes: &[u8], index: usize) -> bool {
     if !bytes[index..].starts_with(br#",{"id":"#) {
         return false;
@@ -995,17 +998,17 @@ pub(crate) fn materialize_workflow_step_output_value(
                 parsed.refinement_count
             );
 
-            let mut conn = db
-                .0
-                .lock()
-                .map_err(|e| format!("Failed to lock DB: {}", e))?;
+            let mut conn =
+                db.0.lock()
+                    .map_err(|e| format!("Failed to lock DB: {}", e))?;
 
             // 1. Read existing clarifications to know which question_ids already exist
-            let existing_qids: HashSet<String> = db_artifacts::read_clarifications(&conn, &canonical_id)
-                .map_err(|e| format!("Failed to read existing clarifications: {}", e))?
-                .iter()
-                .flat_map(|c| c.questions.iter().map(|q| q.question_id.clone()))
-                .collect();
+            let existing_qids: HashSet<String> =
+                db_artifacts::read_clarifications(&conn, &canonical_id)
+                    .map_err(|e| format!("Failed to read existing clarifications: {}", e))?
+                    .iter()
+                    .flat_map(|c| c.questions.iter().map(|q| q.question_id.clone()))
+                    .collect();
 
             // 2. Extract new sections with filtered questions from clarifications_json
             let new_sections: Vec<crate::contracts::clarifications::Section> = parsed
@@ -1013,10 +1016,7 @@ pub(crate) fn materialize_workflow_step_output_value(
                 .sections
                 .into_iter()
                 .map(|mut s| {
-                    s.questions = s.questions
-                        .into_iter()
-                        .filter(|q| !existing_qids.contains(&q.id))
-                        .collect();
+                    s.questions.retain(|q| !existing_qids.contains(&q.id));
                     s
                 })
                 .filter(|s| !s.questions.is_empty())
@@ -1033,11 +1033,8 @@ pub(crate) fn materialize_workflow_step_output_value(
             }
 
             // 4. Write refinements (full replace)
-            let refinements_record = agent_json_to_refinements_record(
-                &canonical_id,
-                parsed.refinements_json,
-                now_ms(),
-            );
+            let refinements_record =
+                agent_json_to_refinements_record(&canonical_id, parsed.refinements_json, now_ms());
             db_artifacts::upsert_refinements(&tx, &refinements_record)
                 .map_err(|e| format!("Failed to upsert refinements: {}", e))?;
             tx.commit()

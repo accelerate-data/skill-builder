@@ -24,6 +24,9 @@ export function invalidateWorkflowArtifactsAfterStep(
   if (stepId === 0 || stepId === 1) {
     queryClient.invalidateQueries({ queryKey: queryKeys.clarifications.bySkill(skillId) });
   }
+  if (stepId === 1) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.refinements.bySkill(skillId) });
+  }
   if (stepId === 2) {
     queryClient.invalidateQueries({ queryKey: queryKeys.decisions.bySkill(skillId) });
   }

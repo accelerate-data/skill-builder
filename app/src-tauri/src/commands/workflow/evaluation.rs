@@ -75,7 +75,11 @@ fn clear_legacy_skill_conversation_db_records(
         return Ok(());
     }
 
-    crate::db::clear_skill_conversation_id(conn, crate::skill_paths::DEFAULT_PLUGIN_SLUG, skill_name)
+    crate::db::clear_skill_conversation_id(
+        conn,
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+        skill_name,
+    )
 }
 
 /// Delete stale clarifications and decisions based on which step is being reset.
@@ -173,12 +177,7 @@ fn navigate_back_to_step_impl(
             e
         );
     }
-    crate::cleanup::delete_step_output_files(
-        skill_name,
-        &plugin_slug,
-        delete_from,
-        skills_path,
-    );
+    crate::cleanup::delete_step_output_files(skill_name, &plugin_slug, delete_from, skills_path);
 
     if target_step_id == 0 {
         clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
@@ -187,7 +186,12 @@ fn navigate_back_to_step_impl(
     // When navigating back to step 1, clear refinements so stale data isn't displayed
     if target_step_id == 1 {
         let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
-            .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+            .ok_or_else(|| {
+                format!(
+                    "Skill '{}' not found in plugin '{}'",
+                    skill_name, plugin_slug
+                )
+            })?;
         clear_artifacts_for_step_reset(conn, &s_id.to_string(), 2)?;
     }
 
@@ -379,11 +383,9 @@ fn normalize_db_backed_step_statuses(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records,
-    };
-    use crate::db::Db;
+    use super::{clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records};
     use crate::commands::test_utils::create_test_db;
+    use crate::db::Db;
     use crate::types::StepStatusUpdate;
     use tempfile::tempdir;
 
@@ -405,21 +407,11 @@ mod tests {
     #[test]
     fn test_normalize_db_backed_step_statuses_rejects_missing_step0_artifact() {
         let mut conn = create_test_db();
-        let skill_id = crate::db::upsert_skill(
-            &conn,
-            "normalize-missing-step0",
-            "skill-builder",
-            "domain",
-        )
-        .unwrap();
-        crate::db::save_workflow_run(
-            &conn,
-            "normalize-missing-step0",
-            0,
-            "in_progress",
-            "domain",
-        )
-        .unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "normalize-missing-step0", "skill-builder", "domain")
+                .unwrap();
+        crate::db::save_workflow_run(&conn, "normalize-missing-step0", 0, "in_progress", "domain")
+            .unwrap();
 
         let normalized = super::normalize_db_backed_step_statuses(
             &conn,
@@ -437,21 +429,11 @@ mod tests {
     #[test]
     fn test_normalize_db_backed_step_statuses_keeps_completed_when_step0_artifact_exists() {
         let mut conn = create_test_db();
-        let skill_id = crate::db::upsert_skill(
-            &conn,
-            "normalize-present-step0",
-            "skill-builder",
-            "domain",
-        )
-        .unwrap();
-        crate::db::save_workflow_run(
-            &conn,
-            "normalize-present-step0",
-            0,
-            "in_progress",
-            "domain",
-        )
-        .unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "normalize-present-step0", "skill-builder", "domain")
+                .unwrap();
+        crate::db::save_workflow_run(&conn, "normalize-present-step0", 0, "in_progress", "domain")
+            .unwrap();
 
         let record = crate::db::workflow_artifacts::ClarificationsRecord {
             skill_id: skill_id.to_string(),
@@ -650,13 +632,8 @@ mod tests {
             .unwrap();
         crate::db::save_workflow_run(&conn, skill_name, 2, "completed", "domain").unwrap();
 
-        super::navigate_back_to_step_impl(
-            &conn,
-            skills_path.to_str().unwrap(),
-            skill_name,
-            0,
-        )
-        .unwrap();
+        super::navigate_back_to_step_impl(&conn, skills_path.to_str().unwrap(), skill_name, 0)
+            .unwrap();
 
         assert_eq!(
             crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
@@ -728,13 +705,9 @@ mod tests {
     #[test]
     fn test_save_workflow_state_rejects_completed_step0_without_clarifications() {
         let conn = create_test_db();
-        let skill_id = crate::db::upsert_skill(
-            &conn,
-            "save-state-missing-step0",
-            "skill-builder",
-            "domain",
-        )
-        .unwrap();
+        let skill_id =
+            crate::db::upsert_skill(&conn, "save-state-missing-step0", "skill-builder", "domain")
+                .unwrap();
         crate::db::save_workflow_run(
             &conn,
             "save-state-missing-step0",
@@ -1099,8 +1072,12 @@ pub async fn reset_workflow_step(
     };
 
     // Best-effort pause conversations — do not block reset on pause failure.
-    let pause_config =
-        crate::commands::skill_session::build_pause_runtime_config(&app_handle, &db, &skill_name, &plugin_slug);
+    let pause_config = crate::commands::skill_session::build_pause_runtime_config(
+        &app_handle,
+        &db,
+        &skill_name,
+        &plugin_slug,
+    );
 
     for (_, conv_id) in &conversation_ids {
         if let Ok(config) = pause_config.clone() {
@@ -1147,7 +1124,8 @@ pub async fn reset_workflow_step(
     // Fork the conversation and rebind the skill to the fork ID.
     // Use the first active conversation as the fork source.
     // After fork succeeds, the source conversation is deleted from the OpenHands server.
-    let _forked_conversation_id = if let Some(ref active_conversation_id) = active_conversation_id_for_fork
+    let _forked_conversation_id = if let Some(ref active_conversation_id) =
+        active_conversation_id_for_fork
     {
         if let Ok(config) = pause_config.clone() {
             match crate::agents::openhands_server::fork_openhands_conversation(
@@ -1164,11 +1142,12 @@ pub async fn reset_workflow_step(
                         forked.conversation_id
                     );
                     // Delete the source conversation from the OpenHands server
-                    if let Err(error) = crate::agents::openhands_server::delete_openhands_conversation(
-                        config.clone(),
-                        active_conversation_id,
-                    )
-                    .await
+                    if let Err(error) =
+                        crate::agents::openhands_server::delete_openhands_conversation(
+                            config.clone(),
+                            active_conversation_id,
+                        )
+                        .await
                     {
                         log::warn!(
                             "[reset_workflow_step] failed to delete source conversation {}: {}",
@@ -1186,11 +1165,7 @@ pub async fn reset_workflow_step(
                     )?;
                     // Clear only a stale legacy default-plugin record, preserving
                     // the newly rebound conversation for the active plugin.
-                    clear_legacy_skill_conversation_db_records(
-                        &conn,
-                        &plugin_slug,
-                        &skill_name,
-                    )?;
+                    clear_legacy_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
                     Some(forked.conversation_id)
                 }
                 Err(error) => {
@@ -1311,9 +1286,10 @@ pub fn preview_step_reset(
 /// as warnings and do not propagate — callers should never be blocked by cleanup.
 #[allow(dead_code)]
 pub fn clean_incomplete_iterations(skills_path: &str, plugin_slug: &str, skill_name: &str) -> u32 {
-    let evals_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
-        .join("evals")
-        .join("workspace");
+    let evals_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name)
+            .join("evals")
+            .join("workspace");
 
     if !evals_dir.is_dir() {
         return 0;
@@ -1383,9 +1359,10 @@ pub fn read_latest_benchmark_inner(
         .map(|m| m.plugin_slug)
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
 
-    let evals_dir = crate::skill_paths::resolve_skill_dir(Path::new(skills_path), &plugin_slug, skill_name)
-        .join("evals")
-        .join("workspace");
+    let evals_dir =
+        crate::skill_paths::resolve_skill_dir(Path::new(skills_path), &plugin_slug, skill_name)
+            .join("evals")
+            .join("workspace");
 
     if !evals_dir.is_dir() {
         log::debug!(
@@ -1478,13 +1455,10 @@ mod clean_iterations_tests {
     fn removes_incomplete_iteration() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         // Create complete iteration
         let iter1 = evals_dir.join("iteration-1");
@@ -1506,13 +1480,10 @@ mod clean_iterations_tests {
     fn preserves_all_complete_iterations() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         for i in 1..=3 {
             let iter = evals_dir.join(format!("iteration-{}", i));
@@ -1531,13 +1502,10 @@ mod clean_iterations_tests {
     fn handles_mixed_complete_and_incomplete() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         // iteration-1: complete
         let iter1 = evals_dir.join("iteration-1");
@@ -1569,11 +1537,8 @@ mod clean_iterations_tests {
     fn returns_zero_when_no_evals_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let skill_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        );
+        let skill_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
 
         let removed = clean_incomplete_iterations(skills_path, DEFAULT_PLUGIN_SLUG, "my-skill");
@@ -1617,13 +1582,10 @@ mod benchmark_tests {
     fn returns_latest_iteration() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_path = tmp.path().to_str().unwrap();
-        let evals_dir = crate::skill_paths::resolve_skill_dir(
-            tmp.path(),
-            DEFAULT_PLUGIN_SLUG,
-            "my-skill",
-        )
-        .join("evals")
-        .join("workspace");
+        let evals_dir =
+            crate::skill_paths::resolve_skill_dir(tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill")
+                .join("evals")
+                .join("workspace");
 
         // Create iteration-1 with lower pass rate
         let iter1 = evals_dir.join("iteration-1");

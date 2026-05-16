@@ -26,7 +26,12 @@ const SKILL_GENERATION_TEMPLATE: &str = include_str!(concat!(
     "/../../agent-sources/prompts/skill-generation.txt"
 ));
 
-fn render_skill_prompt(template: &str, skill_name: &str, skills_path: &str, plugin_slug: &str) -> String {
+fn render_skill_prompt(
+    template: &str,
+    skill_name: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+) -> String {
     let skill_dir = resolve_skill_dir(Path::new(skills_path), plugin_slug, skill_name);
     let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
     template
@@ -43,9 +48,14 @@ pub(crate) fn build_step0_prompt(
     max_dimensions: u32,
     user_context_block: &str,
 ) -> String {
-    render_skill_prompt(RESEARCH_PROMPT_TEMPLATE, skill_name, skills_path, plugin_slug)
-        .replace("{{max_dimensions}}", &max_dimensions.to_string())
-        .replace("{{user_context_block}}", user_context_block)
+    render_skill_prompt(
+        RESEARCH_PROMPT_TEMPLATE,
+        skill_name,
+        skills_path,
+        plugin_slug,
+    )
+    .replace("{{max_dimensions}}", &max_dimensions.to_string())
+    .replace("{{user_context_block}}", user_context_block)
 }
 
 /// Build the prompt for step 1 (detailed research).
@@ -57,10 +67,15 @@ pub(crate) fn build_step1_prompt(
     clarifications_json: &str,
     answer_verdicts_block: &str,
 ) -> String {
-    render_skill_prompt(DETAILED_RESEARCH_TEMPLATE, skill_name, skills_path, plugin_slug)
-        .replace("{{user_context_block}}", user_context_block)
-        .replace("{{clarifications_json}}", clarifications_json)
-        .replace("{{answer_verdicts_block}}", answer_verdicts_block)
+    render_skill_prompt(
+        DETAILED_RESEARCH_TEMPLATE,
+        skill_name,
+        skills_path,
+        plugin_slug,
+    )
+    .replace("{{user_context_block}}", user_context_block)
+    .replace("{{clarifications_json}}", clarifications_json)
+    .replace("{{answer_verdicts_block}}", answer_verdicts_block)
 }
 
 /// Build the prompt for step 2 (confirm decisions).
@@ -71,9 +86,14 @@ pub(crate) fn build_step2_prompt(
     user_context_block: &str,
     clarifications_json: &str,
 ) -> String {
-    render_skill_prompt(CONFIRM_DECISIONS_TEMPLATE, skill_name, skills_path, plugin_slug)
-        .replace("{{user_context_block}}", user_context_block)
-        .replace("{{clarifications_json}}", clarifications_json)
+    render_skill_prompt(
+        CONFIRM_DECISIONS_TEMPLATE,
+        skill_name,
+        skills_path,
+        plugin_slug,
+    )
+    .replace("{{user_context_block}}", user_context_block)
+    .replace("{{clarifications_json}}", clarifications_json)
 }
 
 /// Build the prompt for step 3 (generate skill).

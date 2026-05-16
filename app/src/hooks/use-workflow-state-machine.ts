@@ -71,7 +71,12 @@ function getStep3VerifierStatus(payload: unknown): string | undefined {
   const record = asRecord(payload);
   if (!record) return undefined;
   const status = getString(record, "status");
-  if (!status || !["generated", "rewritten", "complete", "partial", "skipped"].includes(status)) {
+  if (
+    !status ||
+    !["generated", "rewritten", "complete", "partial", "skipped"].includes(
+      status,
+    )
+  ) {
     return undefined;
   }
 
@@ -88,7 +93,8 @@ function normalizeWorkflowStepMaterializedPayload(
   const conversationId = getString(record, "conversation_id", "conversationId");
   const stepId = getNumber(record, "step_id", "stepId");
   const success = getBoolean(record, "success");
-  if (!conversationId || stepId === undefined || success === undefined) return null;
+  if (!conversationId || stepId === undefined || success === undefined)
+    return null;
 
   return {
     conversationId,
@@ -159,7 +165,9 @@ export function useWorkflowStateMachine({
   const setInitializing = useWorkflowStore((s) => s.setInitializing);
   const clearInitializing = useWorkflowStore((s) => s.clearInitializing);
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
-  const setActiveConversationId = useWorkflowStore((s) => s.setActiveConversationId);
+  const setActiveConversationId = useWorkflowStore(
+    (s) => s.setActiveConversationId,
+  );
   const resetToStep = useWorkflowStore((s) => s.resetToStep);
   const clearSessionRuns = useSessionRuntimeStore((s) => s.clearSessionRuns);
   const startSessionRun = useSessionRuntimeStore((s) => s.startSessionRun);
@@ -229,13 +237,17 @@ export function useWorkflowStateMachine({
     [],
   );
 
-  const clearWorkflowMaterializationTimeout = useCallback((conversationId: string) => {
-    const timeout = workflowMaterializationTimeoutsRef.current[conversationId];
-    if (timeout) {
-      clearTimeout(timeout);
-      delete workflowMaterializationTimeoutsRef.current[conversationId];
-    }
-  }, []);
+  const clearWorkflowMaterializationTimeout = useCallback(
+    (conversationId: string) => {
+      const timeout =
+        workflowMaterializationTimeoutsRef.current[conversationId];
+      if (timeout) {
+        clearTimeout(timeout);
+        delete workflowMaterializationTimeoutsRef.current[conversationId];
+      }
+    },
+    [],
+  );
 
   const failWorkflowStep = useCallback(
     (step: number, message: string) => {
@@ -297,18 +309,20 @@ export function useWorkflowStateMachine({
 
       // Invalidate workflow artifact caches so the DB-backed queries pick up
       // the newly materialized clarifications / decisions data.
-      if (skillName) {
-        invalidateWorkflowArtifactsAfterStep(skillName, step);
+      if (skillId != null) {
+        invalidateWorkflowArtifactsAfterStep(String(skillId), step);
       }
     },
-    [skillName, setRunning, setStopping, updateStepStatus],
+    [skillId, setRunning, setStopping, updateStepStatus],
   );
 
   const maybeWarnOnVerifierResult = useCallback(
     (conversationId: string, step: number) => {
       if (step !== 3 || warnedVerifierAgentsRef.current[conversationId]) return;
 
-      const verifierStatus = getStep3VerifierStatus(extractResultPayload(conversationId));
+      const verifierStatus = getStep3VerifierStatus(
+        extractResultPayload(conversationId),
+      );
       if (!verifierStatus || verifierStatus === "pass") return;
 
       warnedVerifierAgentsRef.current[conversationId] = true;
@@ -324,7 +338,8 @@ export function useWorkflowStateMachine({
       clearWorkflowMaterializationTimeout(conversationId);
       delete pendingWorkflowCompletionRef.current[conversationId];
 
-      const materialization = workflowMaterializationRef.current[conversationId];
+      const materialization =
+        workflowMaterializationRef.current[conversationId];
       if (materialization?.success === false) {
         failWorkflowStep(
           step,
@@ -351,35 +366,38 @@ export function useWorkflowStateMachine({
       }
 
       pendingWorkflowCompletionRef.current[conversationId] = { step };
-      workflowMaterializationTimeoutsRef.current[conversationId] = setTimeout(() => {
-        void (async () => {
-          delete pendingWorkflowCompletionRef.current[conversationId];
-          delete workflowMaterializationTimeoutsRef.current[conversationId];
+      workflowMaterializationTimeoutsRef.current[conversationId] = setTimeout(
+        () => {
+          void (async () => {
+            delete pendingWorkflowCompletionRef.current[conversationId];
+            delete workflowMaterializationTimeoutsRef.current[conversationId];
 
-          const latest = workflowMaterializationRef.current[conversationId];
-          if (latest?.success === false) {
+            const latest = workflowMaterializationRef.current[conversationId];
+            if (latest?.success === false) {
+              failWorkflowStep(
+                step,
+                `Step ${step + 1} backend materialization failed: ${
+                  latest.errorDetail ?? "Unknown error"
+                }`,
+              );
+              return;
+            }
+            if (
+              latest?.success === true ||
+              (await verifyOutputFiles(step, { optimisticOnError: false }))
+            ) {
+              maybeWarnOnVerifierResult(conversationId, step);
+              await finalizeCompletedStep(step);
+              return;
+            }
             failWorkflowStep(
               step,
-              `Step ${step + 1} backend materialization failed: ${
-                latest.errorDetail ?? "Unknown error"
-              }`,
+              `Step ${step + 1} completed but backend materialization did not produce output files`,
             );
-            return;
-          }
-          if (
-            latest?.success === true ||
-            (await verifyOutputFiles(step, { optimisticOnError: false }))
-          ) {
-            maybeWarnOnVerifierResult(conversationId, step);
-            await finalizeCompletedStep(step);
-            return;
-          }
-          failWorkflowStep(
-            step,
-            `Step ${step + 1} completed but backend materialization did not produce output files`,
-          );
-        })();
-      }, WORKFLOW_MATERIALIZATION_WAIT_MS);
+          })();
+        },
+        WORKFLOW_MATERIALIZATION_WAIT_MS,
+      );
     },
     [
       clearWorkflowMaterializationTimeout,
@@ -414,9 +432,13 @@ export function useWorkflowStateMachine({
       if (payload.skillName && payload.skillName !== skillName) return;
 
       workflowMaterializationRef.current[payload.conversationId] = payload;
-      const pending = pendingWorkflowCompletionRef.current[payload.conversationId];
+      const pending =
+        pendingWorkflowCompletionRef.current[payload.conversationId];
       if (payload.success && pending) {
-        void resolveWorkflowStepCompletion(payload.conversationId, pending.step);
+        void resolveWorkflowStepCompletion(
+          payload.conversationId,
+          pending.step,
+        );
         return;
       }
 
@@ -428,7 +450,8 @@ export function useWorkflowStateMachine({
         if (
           pending ||
           (currentSteps[step]?.status === "in_progress" &&
-            useWorkflowStore.getState().activeConversationId === payload.conversationId &&
+            useWorkflowStore.getState().activeConversationId ===
+              payload.conversationId &&
             payload.stepId === step)
         ) {
           const failedStep = pending?.step ?? step;
@@ -620,14 +643,18 @@ export function useWorkflowStateMachine({
         setStopping(false);
         updateStepStatus(stepToRestore, "completed");
         gate.gateStepRef.current = null;
-        toast.error("Answer evaluation failed. Review the workflow logs and retry.", {
-          duration: Infinity,
-        });
+        toast.error(
+          "Answer evaluation failed. Review the workflow logs and retry.",
+          {
+            duration: Infinity,
+          },
+        );
         return;
       }
 
-      const evaluationPayload =
-        extractResultPayload(completedGateConversationId);
+      const evaluationPayload = extractResultPayload(
+        completedGateConversationId,
+      );
       clearSessionRuns();
       gate.finishGateEvaluation(evaluationPayload).finally(() => {
         gate.gateStepRef.current = null;
@@ -725,10 +752,9 @@ export function useWorkflowStateMachine({
           useSettingsStore.getState().modelSettings.model_id,
         );
       } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : String(err),
-          { duration: Infinity },
-        );
+        toast.error(err instanceof Error ? err.message : String(err), {
+          duration: Infinity,
+        });
         return;
       }
 
@@ -821,7 +847,10 @@ export function useWorkflowStateMachine({
       const { reviewMode: isReview } = useWorkflowStore.getState();
       const cfg = stepConfigs[effectiveStepId];
       if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
-        logFrontend("info", `[performStepReset] auto-starting step ${effectiveStepId}`);
+        logFrontend(
+          "info",
+          `[performStepReset] auto-starting step ${effectiveStepId}`,
+        );
         handleStartAgentStep(effectiveStepId);
       }
     }

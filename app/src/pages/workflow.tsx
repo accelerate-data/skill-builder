@@ -110,6 +110,10 @@ function mapClarificationsDtoToFile(dto: ClarificationsDto): ClarificationsFile 
   };
 }
 
+function getEffectiveResetTarget(stepId: number): number {
+  return stepId === 1 ? 0 : stepId;
+}
+
 interface WorkflowMainHeaderProps {
   skillName: string;
   currentStep: number;
@@ -531,12 +535,13 @@ export default function WorkflowPage() {
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
         executeReset={resetTarget !== null
-          ? resetTarget === 0
+          ? getEffectiveResetTarget(resetTarget) === 0
             ? () => resetWorkflowStep(workspacePath ?? "", actualSkillName, 0)
             : () => navigateBackToStepDb(workspacePath ?? "", actualSkillName, resetTarget)
           : undefined}
         onReset={() => {
           if (resetTarget !== null) {
+            const effectiveResetTarget = getEffectiveResetTarget(resetTarget);
             teardownWorkflowSession({ logPrefix: "workflow", clearSessionId: true });
             void (async () => {
               try {
@@ -547,10 +552,10 @@ export default function WorkflowPage() {
                   error,
                 );
               } finally {
-                if (resetTarget === 0) {
+                if (effectiveResetTarget === 0) {
                   resetToStep(0);
                 } else {
-                  navigateBackToStep(resetTarget);
+                  navigateBackToStep(effectiveResetTarget);
                 }
                 if (currentSkillId != null) {
                   getDisabledSteps(currentSkillId)

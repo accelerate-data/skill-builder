@@ -3,6 +3,7 @@ import { createAppQueryClient } from "@/lib/query-client";
 import {
   invalidateSkillDataAfterWorkflow,
   invalidateUsageDataAfterAgentRun,
+  invalidateWorkflowArtifactsAfterStep,
 } from "@/lib/queries/agent-stream-cache";
 
 describe("query client defaults", () => {
@@ -26,5 +27,24 @@ describe("stream cache integration", () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["skills"] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["usage"] });
+  });
+
+  it("invalidates the workflow artifact query families for each step", () => {
+    const client = createAppQueryClient();
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+
+    invalidateWorkflowArtifactsAfterStep("42", 0, client);
+    invalidateWorkflowArtifactsAfterStep("42", 1, client);
+    invalidateWorkflowArtifactsAfterStep("42", 2, client);
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["clarifications", "42"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["refinements", "42"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["decisions", "42"],
+    });
   });
 });

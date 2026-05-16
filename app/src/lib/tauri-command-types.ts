@@ -28,10 +28,7 @@ import type {
   UsageSummary,
   WorkflowSessionRecord,
 } from "@/lib/types";
-import type {
-  ScenarioListItem,
-  ScenarioDto,
-} from "@/lib/eval-workbench";
+import type { ScenarioListItem, ScenarioDto } from "@/lib/eval-workbench";
 import type {
   ClarificationVerdictUpdate,
   ClarificationsDto,
@@ -59,7 +56,9 @@ export interface StepResetPreview {
 }
 
 interface WorkflowRunRow {
+  skill_id: number;
   skill_name: string;
+  plugin_slug: string;
   current_step: number;
   status: string;
   purpose: string;
@@ -68,7 +67,9 @@ interface WorkflowRunRow {
 }
 
 interface WorkflowStepRow {
+  skill_id: number;
   skill_name: string;
+  plugin_slug: string;
   step_id: number;
   status: string;
   started_at: string | null;
@@ -164,7 +165,10 @@ export interface ProviderCatalogRow {
 }
 
 export interface TauriCommandMap {
-  log_frontend: { args: { level: "info" | "warn" | "error" | "debug"; message: string }; result: void };
+  log_frontend: {
+    args: { level: "info" | "warn" | "error" | "debug"; message: string };
+    result: void;
+  };
   get_settings: { args: NoArgs; result: AppSettings };
   save_settings: { args: { settings: AppSettings }; result: void };
   update_user_settings: { args: { settings: AppSettings }; result: void };
@@ -183,15 +187,24 @@ export interface TauriCommandMap {
   set_log_level: { args: { level: string }; result: void };
   check_startup_deps: { args: NoArgs; result: StartupResult };
   ensure_openhands_runtime_ready: { args: NoArgs; result: void };
-  reconcile_startup: { args: NoArgs | { apply: true }; result: ReconciliationResult };
+  reconcile_startup: {
+    args: NoArgs | { apply: true };
+    result: ReconciliationResult;
+  };
   record_reconciliation_cancel: {
     args: { notificationCount: number };
     result: void;
   };
   delete_skill: { args: { workspacePath: string; name: string }; result: void };
   update_skill_metadata: { args: SkillMetadataArgs; result: void };
-  rename_skill: { args: { oldName: string; newName: string; workspacePath: string }; result: void };
-  export_skill_as_file: { args: { skillName: string; pluginSlug: string; destPath: string }; result: void };
+  rename_skill: {
+    args: { oldName: string; newName: string; workspacePath: string };
+    result: void;
+  };
+  export_skill_as_file: {
+    args: { skillName: string; pluginSlug: string; destPath: string };
+    result: void;
+  };
   review_skill_scope: {
     args: {
       skillName: string;
@@ -206,7 +219,10 @@ export interface TauriCommandMap {
     args: { skillId: number; skillName: string; stepId: number };
     result: string;
   };
-  reset_workflow_step: { args: { workspacePath: string; skillName: string; fromStepId: number }; result: void };
+  reset_workflow_step: {
+    args: { workspacePath: string; skillName: string; fromStepId: number };
+    result: void;
+  };
   navigate_back_to_step: {
     args: { workspacePath: string; skillName: string; targetStepId: number };
     result: void;
@@ -215,9 +231,15 @@ export interface TauriCommandMap {
     args: { workspacePath: string; skillName: string; fromStepId: number };
     result: StepResetPreview[];
   };
-  verify_step_output: { args: { workspacePath: string; skillId: number; stepId: number }; result: boolean };
+  verify_step_output: {
+    args: { workspacePath: string; skillId: number; stepId: number };
+    result: boolean;
+  };
   get_disabled_steps: { args: { skillId: number }; result: number[] };
-  get_workflow_state: { args: { skillId: number }; result: WorkflowStateResponse };
+  get_workflow_state: {
+    args: { skillId: number };
+    result: WorkflowStateResponse;
+  };
   save_workflow_state: {
     args: {
       skillId: number;
@@ -231,29 +253,54 @@ export interface TauriCommandMap {
   read_file: { args: { filePath: string }; result: string };
   write_file: { args: { path: string; content: string }; result: void };
   list_skill_files: {
-    args: { workspacePath: string; skillName: string; pluginSlug: string | null };
+    args: {
+      workspacePath: string;
+      skillName: string;
+      pluginSlug: string | null;
+    };
     result: SkillFileEntry[];
   };
   get_workspace_path: { args: NoArgs; result: string };
   graceful_shutdown: { args: NoArgs; result: void };
   allow_app_exit: { args: NoArgs; result: void };
-  create_workflow_session: { args: { sessionId: string; skillId: number }; result: void };
+  create_workflow_session: {
+    args: { sessionId: string; skillId: number };
+    result: void;
+  };
   end_workflow_session: { args: { sessionId: string }; result: void };
-  create_github_issue: { args: { request: CreateGithubIssueRequest }; result: CreateGithubIssueResponse };
+  create_github_issue: {
+    args: { request: CreateGithubIssueRequest };
+    result: CreateGithubIssueResponse;
+  };
   github_start_device_flow: { args: NoArgs; result: DeviceFlowResponse };
-  github_poll_for_token: { args: { deviceCode: string }; result: GitHubAuthResult };
+  github_poll_for_token: {
+    args: { deviceCode: string };
+    result: GitHubAuthResult;
+  };
   github_get_user: { args: NoArgs; result: GitHubUser | null };
   github_logout: { args: NoArgs; result: void };
   get_externally_locked_skills: { args: NoArgs; result: number[] };
   get_usage_summary: {
-    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    args: {
+      hideCancelled: boolean;
+      startDate: string | null;
+      skillName: string | null;
+    };
     result: UsageSummary;
   };
   get_recent_workflow_sessions: {
-    args: { limit: number; hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    args: {
+      limit: number;
+      hideCancelled: boolean;
+      startDate: string | null;
+      skillName: string | null;
+    };
     result: WorkflowSessionRecord[];
   };
-  get_step_agent_runs: { args: { skillId: number; stepId: number }; result: AgentRunRecord[] };
+  get_step_agent_runs: {
+    args: { skillId: number; stepId: number };
+    result: AgentRunRecord[];
+  };
   get_agent_runs: {
     args: {
       hideCancelled: boolean;
@@ -265,33 +312,62 @@ export interface TauriCommandMap {
     result: AgentRunRecord[];
   };
   get_usage_by_step: {
-    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    args: {
+      hideCancelled: boolean;
+      startDate: string | null;
+      skillName: string | null;
+    };
     result: UsageByStep[];
   };
   get_usage_by_model: {
-    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    args: {
+      hideCancelled: boolean;
+      startDate: string | null;
+      skillName: string | null;
+    };
     result: UsageByModel[];
   };
   get_usage_by_day: {
-    args: { hideCancelled: boolean; startDate: string | null; skillName: string | null };
+    args: {
+      hideCancelled: boolean;
+      startDate: string | null;
+      skillName: string | null;
+    };
     result: UsageByDay[];
   };
   get_workflow_skill_names: { args: NoArgs; result: string[] };
   reset_usage: { args: NoArgs; result: void };
   get_dashboard_skill_names: { args: NoArgs; result: string[] };
   list_skills: { args: { sourceUrl: string | null }; result: SkillSummary[] };
-  list_imported_skills: { args: { sourceUrl: string | null }; result: ImportedSkill[] };
+  list_imported_skills: {
+    args: { sourceUrl: string | null };
+    result: ImportedSkill[];
+  };
   delete_imported_skill: { args: { skillId: number }; result: void };
   list_plugins: { args: NoArgs; result: LibraryPlugin[] };
   delete_plugin: { args: { pluginSlug: string }; result: void };
-  set_plugin_upgrade_lock: { args: { pluginSlug: string; locked: boolean }; result: void };
-  create_plugin_from_skills: { args: { pluginName: string; skillKeys: string[] }; result: string };
-  move_skill_to_plugin: { args: { skillKey: string; pluginSlug: string }; result: void };
+  set_plugin_upgrade_lock: {
+    args: { pluginSlug: string; locked: boolean };
+    result: void;
+  };
+  create_plugin_from_skills: {
+    args: { pluginName: string; skillKeys: string[] };
+    result: string;
+  };
+  move_skill_to_plugin: {
+    args: { skillKey: string; pluginSlug: string };
+    result: void;
+  };
   remove_skill_from_plugin: { args: { skillKey: string }; result: void };
   parse_github_url: { args: { url: string }; result: GitHubRepoInfo };
   check_marketplace_url: { args: { url: string }; result: string };
   list_github_plugins: {
-    args: { owner: string; repo: string; branch: string; subpath: string | null };
+    args: {
+      owner: string;
+      repo: string;
+      branch: string;
+      subpath: string | null;
+    };
     result: AvailablePlugin[];
   };
   import_marketplace_to_library: {
@@ -308,7 +384,10 @@ export interface TauriCommandMap {
   };
   check_marketplace_updates: { args: NoArgs; result: MarketplaceUpdateResult };
   check_skill_customized: { args: { skillName: string }; result: boolean };
-  get_skill_content_at_path: { args: { path: string }; result: SkillFileContent[] };
+  get_skill_content_at_path: {
+    args: { path: string };
+    result: SkillFileContent[];
+  };
   get_selected_skill_content: {
     args: { skillName: string; workspacePath: string; pluginSlug: string };
     result: SkillFileContent[];
@@ -341,24 +420,49 @@ export interface TauriCommandMap {
       | { accepted: false; error: string };
   };
   get_skill_history: {
-    args: { workspacePath: string; skillName: string; pluginSlug: string; limit: number | null };
+    args: {
+      workspacePath: string;
+      skillName: string;
+      pluginSlug: string;
+      limit: number | null;
+    };
     result: SkillCommit[];
   };
   restore_skill_version: {
-    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
+    args: {
+      workspacePath: string;
+      skillName: string;
+      pluginSlug: string;
+      sha: string;
+    };
     result: string;
   };
   get_skill_files_at_sha: {
-    args: { workspacePath: string; skillName: string; pluginSlug: string; sha: string };
+    args: {
+      workspacePath: string;
+      skillName: string;
+      pluginSlug: string;
+      sha: string;
+    };
     result: SkillFileContent[];
   };
-  run_answer_evaluator: { args: { skillId: number; skillName: string; workspacePath: string }; result: string };
+  run_answer_evaluator: {
+    args: { skillId: number; skillName: string; workspacePath: string };
+    result: string;
+  };
   materialize_answer_evaluation_output: {
-    args: { skillName: string; workspacePath: string; evaluationPayload: AnswerEvaluationOutput };
+    args: {
+      skillName: string;
+      workspacePath: string;
+      evaluationPayload: AnswerEvaluationOutput;
+    };
     result: void;
   };
   // VU-1157: typed Tauri commands backed by SQLite workflow_artifacts tables.
-  get_clarifications: { args: { skillId: string }; result: ClarificationsDto | null };
+  get_clarifications: {
+    args: { skillId: string };
+    result: ClarificationsDto | null;
+  };
   update_clarification_answer: {
     args: {
       skillId: string;
@@ -460,29 +564,52 @@ export interface TauriCommandMap {
   list_documents: { args: NoArgs; result: Document[] };
   list_skills_for_documents: { args: NoArgs; result: SkillIdName[] };
   add_document_file: {
-    args: { name: string; content: string; scope: DocumentScope; skillIds: number[] };
+    args: {
+      name: string;
+      content: string;
+      scope: DocumentScope;
+      skillIds: number[];
+    };
     result: Document;
   };
   add_document_url: {
-    args: { name: string; url: string; scope: DocumentScope; skillIds: number[] };
+    args: {
+      name: string;
+      url: string;
+      scope: DocumentScope;
+      skillIds: number[];
+    };
     result: Document;
   };
   add_document_folder: {
-    args: { name: string; folderPath: string; scope: DocumentScope; skillIds: number[] };
+    args: {
+      name: string;
+      folderPath: string;
+      scope: DocumentScope;
+      skillIds: number[];
+    };
     result: Document[];
   };
-  update_document: { args: { id: number; scope: DocumentScope; skillIds: number[] }; result: Document };
+  update_document: {
+    args: { id: number; scope: DocumentScope; skillIds: number[] };
+    result: Document;
+  };
   delete_document: { args: { id: number }; result: void };
   // Model catalog commands (PR 3)
   refresh_model_catalog: { args: NoArgs; result: ModelCatalogEntry[] };
   get_cached_model_catalog: { args: NoArgs; result: ModelCatalogEntry[] };
   get_cached_model_providers: { args: NoArgs; result: ProviderCatalogRow[] };
-  filter_models: { args: { models: ModelCatalogEntry[]; filters: ModelFilter[] }; result: ModelCatalogEntry[] };
+  filter_models: {
+    args: { models: ModelCatalogEntry[]; filters: ModelFilter[] };
+    result: ModelCatalogEntry[];
+  };
 }
 
 export type TauriCommandName = keyof TauriCommandMap;
-export type TauriCommandArgs<Name extends TauriCommandName> = TauriCommandMap[Name]["args"];
-export type TauriCommandResult<Name extends TauriCommandName> = TauriCommandMap[Name]["result"];
+export type TauriCommandArgs<Name extends TauriCommandName> =
+  TauriCommandMap[Name]["args"];
+export type TauriCommandResult<Name extends TauriCommandName> =
+  TauriCommandMap[Name]["result"];
 export type TauriCommandInvocation = {
   [Name in TauriCommandName]: [command: Name, args: TauriCommandArgs<Name>];
 }[TauriCommandName];

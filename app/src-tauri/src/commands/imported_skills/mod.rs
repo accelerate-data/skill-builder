@@ -8,8 +8,7 @@ pub mod upload;
 // Re-export everything so callers using `commands::imported_skills::*` continue to work.
 pub(crate) use frontmatter::{parse_frontmatter, parse_frontmatter_full, Frontmatter};
 pub(crate) use helpers::{
-    extract_archive, find_skill_md, generate_skill_id, get_archive_prefix,
-    validate_skill_name,
+    extract_archive, find_skill_md, generate_skill_id, get_archive_prefix, validate_skill_name,
 };
 pub(crate) use lifecycle::delete_imported_skill;
 pub(crate) use listing::list_imported_skills;

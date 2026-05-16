@@ -5,6 +5,8 @@ import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import { useSkillStore } from "@/stores/skill-store";
 
+const mockInvalidateWorkflowArtifactsAfterStep = vi.fn();
+
 vi.mock("@/lib/toast", () => ({
   toast: {
     success: vi.fn(),
@@ -13,6 +15,11 @@ vi.mock("@/lib/toast", () => ({
     warning: vi.fn(),
     loading: vi.fn(() => "loading-toast-id"),
   },
+}));
+
+vi.mock("@/lib/queries/agent-stream-cache", () => ({
+  invalidateWorkflowArtifactsAfterStep: (...args: unknown[]) =>
+    mockInvalidateWorkflowArtifactsAfterStep(...args),
 }));
 
 const mockRunWorkflowStep = vi.fn((..._args: unknown[]) =>
@@ -242,11 +249,7 @@ describe("useWorkflowStateMachine", () => {
 
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
     expect(mockAgentStartRun).toHaveBeenCalledWith(
       "agent-abc",
       expect.any(String),
@@ -357,9 +360,7 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       0,
     );
-    expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(
-      99,
-    );
+    expect(mockSelectSkillOpenHandsSession).toHaveBeenCalledWith(99);
 
     const session = useSkillStore.getState();
     expect(session.conversationId).toBe("conv-reset-123");
@@ -379,11 +380,7 @@ describe("useWorkflowStateMachine", () => {
     });
 
     expect(mockResetToStep).toHaveBeenCalledWith(0);
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
   });
@@ -429,11 +426,7 @@ describe("useWorkflowStateMachine", () => {
       await result.current.handleStartAgentStep(2);
     });
 
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      2,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 2);
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(2, "in_progress");
   });
 
@@ -516,6 +509,10 @@ describe("useWorkflowStateMachine", () => {
 
     // The step must have been marked completed and isRunning set to false
     expect(mockSetRunning).toHaveBeenCalledWith(false);
+    expect(mockInvalidateWorkflowArtifactsAfterStep).toHaveBeenCalledWith(
+      "1",
+      0,
+    );
   });
 
   it("shows a warning toast when step 3 completes with verifier findings", async () => {
@@ -640,11 +637,7 @@ describe("useWorkflowStateMachine", () => {
 
     // The toggle effect sets pendingAutoStartStep, then the auto-start effect fires
     await waitFor(() => {
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+      expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
     });
 
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
@@ -731,10 +724,6 @@ describe("useWorkflowStateMachine", () => {
       await result.current.handleStartAgentStep();
     });
 
-    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-      1,
-      "test-skill",
-      0,
-    );
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 0);
   });
 });

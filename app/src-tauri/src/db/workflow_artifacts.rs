@@ -1248,7 +1248,10 @@ pub fn read_refinements(
     Ok(Some(record))
 }
 
-pub fn delete_refinements(conn: &Connection, skill_identifier: &str) -> Result<(), rusqlite::Error> {
+pub fn delete_refinements(
+    conn: &Connection,
+    skill_identifier: &str,
+) -> Result<(), rusqlite::Error> {
     let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
         return Ok(());
     };
@@ -1294,6 +1297,7 @@ pub fn update_refinement_question_answer(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn update_refinement_question_verdicts(
     conn: &mut Connection,
     skill_identifier: &str,
@@ -1923,27 +1927,25 @@ mod tests {
                 title: "Scope".to_string(),
                 description: None,
             }],
-            questions: vec![
-                RefinementQuestion {
-                    question_id: "rq1".to_string(),
-                    section_id: 1,
+            questions: vec![RefinementQuestion {
+                question_id: "rq1".to_string(),
+                section_id: 1,
+                ordinal: 0,
+                title: "Refinement Q1".to_string(),
+                text: "What about X?".to_string(),
+                must_answer: true,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![RefinementChoice {
+                    choice_id: "a".to_string(),
                     ordinal: 0,
-                    title: "Refinement Q1".to_string(),
-                    text: "What about X?".to_string(),
-                    must_answer: true,
-                    answer_choice: None,
-                    answer_text: None,
-                    recommendation: None,
-                    answer_verdict: None,
-                    answer_verdict_reason: None,
-                    choices: vec![RefinementChoice {
-                        choice_id: "a".to_string(),
-                        ordinal: 0,
-                        text: "Yes".to_string(),
-                        is_other: false,
-                    }],
-                },
-            ],
+                    text: "Yes".to_string(),
+                    is_other: false,
+                }],
+            }],
             notes: vec![],
         };
 
