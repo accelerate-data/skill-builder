@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `conversation_id` and `skill_id` the canonical runtime and usage identities, removing the remaining internal `agent_id` seam instead of mapping between `conversation_id` and `agent_id`.
+**Goal:** Make `conversation_id` and `skill_id` the canonical runtime and usage identities, remove the remaining internal `agent_id` seam instead of mapping between `conversation_id` and `agent_id`, and finish the remaining step-1 contract cleanup so `refinements_json` is not mislabeled as `ClarificationsFile`.
 
-**Architecture:** Replace the legacy `agent_runs` usage ledger with a clean-break `conversation_runs` ledger keyed by `conversation_id` and `model`, with `skill_id` as the canonical skill reference plus `skill_name` and `plugin_slug` retained as historical snapshots. Do not migrate historical usage rows. Do not use cascading ownership from conversations, skills, or workflow rows into usage history; usage is an append-only historical ledger.
+**Architecture:** Replace the legacy `agent_runs` usage ledger with a clean-break `conversation_runs` ledger keyed by `conversation_id` and `model`, with `skill_id` as the canonical skill reference plus `skill_name` and `plugin_slug` retained as historical snapshots. Do not migrate historical usage rows. Do not use cascading ownership from conversations, skills, or workflow rows into usage history; usage is an append-only historical ledger. In the same pass, finish the step-1 schema cleanup by introducing a dedicated `RefinementsFile` contract while keeping step 1 evaluator and step 2 decision flows on the existing merged backend JSON input path.
 
 **Tech Stack:** Rust (Tauri, rusqlite, serde, Specta codegen), TypeScript (React, TanStack Query), SQLite migrations
 
@@ -18,6 +18,8 @@
 - `conversation_runs` is historical data, not owned data. It must not be deleted by skill deletion, conversation deletion, or workflow reset.
 - No historical `agent_runs` data needs to be preserved. The migration may drop and recreate the usage ledger in the new shape.
 - No app-owned runtime contract, fixture, doc, query, or persistence surface should continue to use `agent_id`. Historical review notes and archived plan documents may still mention it as past architecture only.
+- Step 1 storage and downstream runtime flow already treat clarifications and refinements separately; the remaining cleanup is the typed contract boundary.
+- Step 1 evaluator and step 2 decision generation should keep consuming the merged backend JSON produced from persisted `clarifications*` and `refinements*`. The contract split is for correctness and clarity at the step-1 output boundary, not a prompt-shape change for downstream agents.
 
 ---
 
@@ -411,4 +413,72 @@ Expected:
 ```bash
 git add -A
 git commit -m "test: verify conversation_id clean break"
+```
+
+---
+
+### Task 7: Split the step-1 contract so `refinements_json` is a real `RefinementsFile`
+
+**Files:**
+- Modify: `agent-sources/workspace/skills/shared/output-schemas/step-1-detailed-research.json`
+- Modify: `app/src-tauri/src/contracts/workflow_outputs.rs`
+- Modify: `app/src-tauri/src/contracts/clarifications.rs` or create a sibling contract file if that is the cleanest place for a dedicated `RefinementsFile`
+- Modify: `app/src-tauri/src/bin/codegen.rs`
+- Modify: `app/src/generated/contracts.ts`
+- Modify: `app/src-tauri/src/generated/schemas.rs`
+- Modify: `app/src-tauri/src/commands/workflow/output_format.rs`
+- Modify: `app/src/lib/clarifications-types.ts`
+- Test: `app/src-tauri/src/commands/workflow/tests.rs`
+- Test: `app/src/__tests__/lib/clarifications-types.test.ts`
+- Test: `app/src/__tests__/components/clarifications-editor.test.tsx`
+
+- [ ] **Step 1: Introduce a dedicated `RefinementsFile` contract**
+
+Define a dedicated step-1 refinements contract with its own top-level type name instead of reusing `ClarificationsFile`.
+
+Requirements:
+- `clarifications_json` remains typed as `ClarificationsFile`
+- `refinements_json` becomes typed as `RefinementsFile`
+- `RefinementsFile` should describe top-level refinement sections/questions without implying it is the same artifact as a step-0 clarifications file
+
+Update:
+- the canonical schema file at `agent-sources/workspace/skills/shared/output-schemas/step-1-detailed-research.json`
+- Rust `DetailedResearchOutput`
+- generated TypeScript contracts
+
+- [ ] **Step 2: Keep materialization behavior unchanged while updating typed parsing**
+
+Update `app/src-tauri/src/commands/workflow/output_format.rs` so:
+- typed deserialization uses the new `RefinementsFile`
+- step 1 still materializes `clarifications_json` into `clarifications*`
+- step 1 still materializes `refinements_json` into `refinements*`
+- step 1 evaluator and step 2 are unchanged in behavior because they continue consuming the merged backend JSON from persisted DB state
+
+- [ ] **Step 3: Update frontend display helpers only where they depend on the old shared contract name**
+
+In `app/src/lib/clarifications-types.ts` and any dependent tests:
+- keep the merged display model used by the editor/UI
+- update helper typing so it can accept a `RefinementsFile` source without pretending it is a `ClarificationsFile`
+- do not change the step 1 evaluator or step 2 input contract shape
+
+- [ ] **Step 4: Add contract regressions**
+
+Add/update tests proving:
+- `DetailedResearchOutput.refinements_json` is not `ClarificationsFile`
+- step 1 materialization still succeeds for valid dual-output payloads
+- the merged UI helpers still attach persisted refinements under parent clarification questions
+
+Run:
+- `cd app/src-tauri && cargo test commands::workflow --quiet`
+- `cd app/src-tauri && cargo run --bin codegen`
+- `cd app && npx vitest run src/__tests__/lib/clarifications-types.test.ts src/__tests__/components/clarifications-editor.test.tsx`
+- `cd app && npx tsc --noEmit`
+
+Expected: contract generation, tests, and typecheck pass
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add agent-sources/workspace/skills/shared/output-schemas/step-1-detailed-research.json app/src-tauri/src/contracts/workflow_outputs.rs app/src-tauri/src/contracts/clarifications.rs app/src-tauri/src/bin/codegen.rs app/src/generated/contracts.ts app/src-tauri/src/generated/schemas.rs app/src-tauri/src/commands/workflow/output_format.rs app/src/lib/clarifications-types.ts app/src-tauri/src/commands/workflow/tests.rs app/src/__tests__/lib/clarifications-types.test.ts app/src/__tests__/components/clarifications-editor.test.tsx docs/plans/2026-05-16-conversation-id-clean-break.md
+git commit -m "refactor(contract): split refinements_json into dedicated type"
 ```
