@@ -44,7 +44,7 @@ function makeRefinement(overrides: Partial<Question> = {}): Question {
   };
 }
 
-function makeClarificationsWithRefinementSection(
+function makeClarificationsWithNestedRefinement(
   refinement: Question,
 ): ClarificationsFile {
   return {
@@ -66,13 +66,9 @@ function makeClarificationsWithRefinementSection(
             id: "Q1",
             answer_choice: "A",
             answer_text: "Choice A",
+            refinements: [refinement],
           }),
         ],
-      },
-      {
-        id: 2,
-        title: "Refinements",
-        questions: [refinement],
       },
     ],
     notes: [],
@@ -168,14 +164,14 @@ describe("Scenario A: Edit existing answered question", () => {
 
 describe("Scenario B: Refinement with choices, answer_choice=null", () => {
   const dataWithRefinement = () =>
-    makeClarificationsWithRefinementSection(makeRefinement({ id: "R1.1" }));
+    makeClarificationsWithNestedRefinement(makeRefinement({ id: "R1.1" }));
 
   it("shows refinement choices so user can select one", async () => {
     const user = userEvent.setup();
     render(
       <ClarificationsEditor data={dataWithRefinement()} onChange={vi.fn()} />,
     );
-    await expandCard(user, "Refinement Question");
+    await expandCard(user, "Test Question");
     expect(
       screen.getByRole("button", { name: /A\.\s*Option Alpha/i }),
     ).toBeInTheDocument();
@@ -189,8 +185,10 @@ describe("Scenario B: Refinement with choices, answer_choice=null", () => {
     render(
       <ClarificationsEditor data={dataWithRefinement()} onChange={vi.fn()} />,
     );
-    await expandCard(user, "Refinement Question");
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    await expandCard(user, "Test Question");
+    expect(
+      screen.queryByPlaceholderText("Type your answer..."),
+    ).not.toBeInTheDocument();
   });
 
   it("selecting a refinement choice triggers onChange", async () => {
@@ -199,13 +197,11 @@ describe("Scenario B: Refinement with choices, answer_choice=null", () => {
     render(
       <ClarificationsEditor data={dataWithRefinement()} onChange={onChange} />,
     );
-    await expandCard(user, "Refinement Question");
-    await user.click(
-      screen.getByRole("button", { name: /A\.\s*Option Alpha/i }),
-    );
+    await expandCard(user, "Test Question");
+    await user.click(screen.getAllByRole("button", { name: /A\./i })[1]);
     expect(onChange).toHaveBeenCalled();
-    const updated = onChange.mock.calls[0][0] as ClarificationsFile;
-    const ref = updated.sections[1].questions[0];
+    const updated = onChange.mock.calls.at(-1)?.[0] as ClarificationsFile;
+    const ref = updated.sections[0].questions[0].refinements[0];
     expect(ref.answer_choice).toBe("A");
     expect(ref.answer_text).toBe("Option Alpha");
   });
@@ -215,23 +211,23 @@ describe("Scenario B: Refinement with choices, answer_choice=null", () => {
 
 describe("Scenario C: Refinement with no choices", () => {
   const dataFreeform = () =>
-    makeClarificationsWithRefinementSection(
+    makeClarificationsWithNestedRefinement(
       makeRefinement({ id: "R1.1", choices: [] }),
     );
 
   it("shows answer field immediately (no choices to gate on)", async () => {
     const user = userEvent.setup();
     render(<ClarificationsEditor data={dataFreeform()} onChange={vi.fn()} />);
-    await expandCard(user, "Refinement Question");
-    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    await expandCard(user, "Test Question");
+    expect(screen.getByPlaceholderText("Type your answer...")).toBeInTheDocument();
   });
 
   it("allows typing freeform answer directly", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<ClarificationsEditor data={dataFreeform()} onChange={onChange} />);
-    await expandCard(user, "Refinement Question");
-    await user.type(screen.getByRole("textbox"), "Free answer");
+    await expandCard(user, "Test Question");
+    await user.type(screen.getByPlaceholderText("Type your answer..."), "Free answer");
     expect(onChange).toHaveBeenCalled();
   });
 });
@@ -240,7 +236,7 @@ describe("Scenario C: Refinement with no choices", () => {
 
 describe("Scenario D: Previously answered refinement", () => {
   const dataAnswered = () =>
-    makeClarificationsWithRefinementSection(
+    makeClarificationsWithNestedRefinement(
       makeRefinement({
         id: "R1.1",
         answer_choice: "B",
@@ -251,7 +247,7 @@ describe("Scenario D: Previously answered refinement", () => {
   it("shows existing answer in the refinement textarea", async () => {
     const user = userEvent.setup();
     render(<ClarificationsEditor data={dataAnswered()} onChange={vi.fn()} />);
-    await expandCard(user, "Refinement Question");
+    await expandCard(user, "Test Question");
     expect(screen.getByDisplayValue("Option Beta")).toBeInTheDocument();
   });
 
@@ -259,13 +255,11 @@ describe("Scenario D: Previously answered refinement", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<ClarificationsEditor data={dataAnswered()} onChange={onChange} />);
-    await expandCard(user, "Refinement Question");
-    await user.click(
-      screen.getByRole("button", { name: /A\.\s*Option Alpha/i }),
-    );
+    await expandCard(user, "Test Question");
+    await user.click(screen.getAllByRole("button", { name: /A\./i })[1]);
     expect(onChange).toHaveBeenCalled();
-    const updated = onChange.mock.calls[0][0] as ClarificationsFile;
-    const ref = updated.sections[1].questions[0];
+    const updated = onChange.mock.calls.at(-1)?.[0] as ClarificationsFile;
+    const ref = updated.sections[0].questions[0].refinements[0];
     expect(ref.answer_choice).toBe("A");
     expect(ref.answer_text).toBe("Option Alpha");
   });

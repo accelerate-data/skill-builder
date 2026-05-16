@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseClarifications } from "@/lib/clarifications-types";
+import {
+  mergeClarificationsAndRefinements,
+  parseClarifications,
+} from "@/lib/clarifications-types";
 
 describe("parseClarifications", () => {
   it("parses canonical clarifications schema with numeric section id", () => {
@@ -154,6 +157,76 @@ describe("parseClarifications", () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.metadata.error?.code).toBe("missing_user_context");
     expect(parsed?.metadata.error?.message).toContain("user context");
+  });
+
+  it("reattaches refinements under their original parent question ids", () => {
+    const clarifications = {
+      version: "1",
+      metadata: {
+        title: "Clarifications",
+        question_count: 1,
+        section_count: 1,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+      },
+      sections: [
+        {
+          id: 1,
+          title: "Section",
+          questions: [
+            {
+              id: "Q3",
+              title: "Parent question",
+              must_answer: false,
+              text: "Base question",
+              choices: [],
+              answer_choice: null,
+              answer_text: null,
+              refinements: [],
+            },
+          ],
+        },
+      ],
+      notes: [],
+      answer_evaluator_notes: [],
+    };
+    const refinements = {
+      skill_id: "42",
+      version: "1",
+      refinement_count: 1,
+      must_answer_count: 0,
+      question_count: 1,
+      section_count: 1,
+      title: "Refinements",
+      created_at: 0,
+      updated_at: 0,
+      sections: [{ section_id: 3, ordinal: 0, title: "Parent section" }],
+      questions: [
+        {
+          question_id: "R3.1",
+          section_id: 3,
+          ordinal: 0,
+          title: "Child refinement",
+          text: "Follow-up",
+          must_answer: false,
+          answer_choice: null,
+          answer_text: null,
+          recommendation: null,
+          choices: [],
+        },
+      ],
+      notes: [],
+    };
+
+    const merged = mergeClarificationsAndRefinements(
+      clarifications,
+      refinements,
+    );
+
+    expect(merged?.sections).toHaveLength(1);
+    expect(merged?.sections[0]?.questions[0]?.refinements).toHaveLength(1);
+    expect(merged?.sections[0]?.questions[0]?.refinements?.[0]?.id).toBe("R3.1");
   });
 
 });

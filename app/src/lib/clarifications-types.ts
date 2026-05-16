@@ -32,6 +32,7 @@ import type { Question as BaseQuestion } from "@/generated/contracts";
 export type Question = BaseQuestion & {
   answer_verdict?: string | null;
   answer_verdict_reason?: string | null;
+  refinements?: Question[];
 };
 
 /** Extract the recommended choice ID from a recommendation string.
@@ -203,6 +204,7 @@ function refinementsDtoToFile(dto: RefinementsDto): ClarificationsFile {
           recommendation: q.recommendation,
           answer_choice: q.answer_choice,
           answer_text: q.answer_text,
+          refinements: [],
         })),
     })),
     notes: dto.notes.map((n) => ({
@@ -213,8 +215,15 @@ function refinementsDtoToFile(dto: RefinementsDto): ClarificationsFile {
   };
 }
 
+function getParentQuestionIdForRefinementId(refinementId: string): string | null {
+  const match = /^R(\d+)(?:\..+)?$/.exec(refinementId);
+  return match ? `Q${match[1]}` : null;
+}
+
 /** Merge clarifications and refinements into a single ClarificationsFile for display.
- *  Refinements appear as a separate "Refinements" section appended at the end. */
+ *  Refinements are re-attached under their original parent question when their
+ *  IDs follow the canonical `R<question>.<n>` convention (e.g. `R3.1` → `Q3`).
+ *  Any unmatched refinements are preserved in a trailing synthetic section. */
 export function mergeClarificationsAndRefinements(
   clarifications: ClarificationsFile | null,
   refinements: RefinementsDto | null,
@@ -227,18 +236,42 @@ export function mergeClarificationsAndRefinements(
   if (!refinements) return clarifications;
 
   const refinementFile = refinementsDtoToFile(refinements);
+  const refinementsByParent = new Map<string, Question[]>();
+  const unmatchedRefinements: Question[] = [];
 
-  const mergedSections: Section[] = [
-    ...(clarifications.sections ?? []).map((s) => ({ ...s })),
-  ];
+  for (const section of refinementFile.sections ?? []) {
+    for (const refinement of section.questions ?? []) {
+      const parentId = getParentQuestionIdForRefinementId(refinement.id);
+      if (!parentId) {
+        unmatchedRefinements.push(refinement);
+        continue;
+      }
+      const group = refinementsByParent.get(parentId) ?? [];
+      group.push(refinement);
+      refinementsByParent.set(parentId, group);
+    }
+  }
 
-  const refinementSections = refinementFile.sections ?? [];
-  if (refinementSections.length > 0) {
+  const mergedSections: Section[] = (clarifications.sections ?? []).map((section) => ({
+    ...section,
+    questions: (section.questions ?? []).map((question) => {
+      const baseQuestion = question as Question;
+      return {
+        ...baseQuestion,
+        refinements: [
+          ...(baseQuestion.refinements ?? []),
+          ...(refinementsByParent.get(baseQuestion.id) ?? []),
+        ],
+      };
+    }),
+  }));
+
+  if (unmatchedRefinements.length > 0) {
     mergedSections.push({
       id: -1,
       title: "Refinements",
       description: "Detailed follow-up questions from step 1",
-      questions: refinementSections.flatMap((s) => s.questions ?? []),
+      questions: unmatchedRefinements,
     });
   }
 

@@ -26,7 +26,15 @@ function makeAnswerUpdater(text: string): (q: Question) => Question {
 // ─── Question Card ───────────────────────────────────────────────────────────
 
 export function QuestionCard({
-  question, isExpanded, toggleCard, updateQuestion, readOnly, reviewFeedback, relatedConflictQuestionIds,
+  question,
+  isExpanded,
+  toggleCard,
+  updateQuestion,
+  readOnly,
+  reviewFeedback,
+  reviewFeedbackByQuestion,
+  relatedConflictQuestionIds,
+  renderRefinements,
 }: {
   question: Question;
   isExpanded: boolean;
@@ -146,6 +154,14 @@ export function QuestionCard({
               readOnly={readOnly}
             />
           )}
+
+          {(question.refinements ?? []).length > 0 &&
+            renderRefinements({
+              refinements: question.refinements ?? [],
+              updateQuestion,
+              readOnly,
+              reviewFeedbackByQuestion,
+            })}
         </div>
       )}
     </div>

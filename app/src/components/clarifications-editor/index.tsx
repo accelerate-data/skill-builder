@@ -30,7 +30,10 @@ interface ClarificationsEditorProps {
 }
 
 function flattenQuestions(questions: Question[]): Question[] {
-  return questions;
+  return questions.flatMap((question) => [
+    question,
+    ...flattenQuestions(question.refinements ?? []),
+  ]);
 }
 
 function flattenSectionQuestions(sections: Section[]): Question[] {
@@ -157,13 +160,27 @@ export function ClarificationsEditor({
 
   const updateQuestion = useCallback(
     (questionId: string, updater: (q: Question) => Question) => {
+      const updateQuestionTree = (questions: Question[]): Question[] =>
+        questions.map((question) => {
+          if (question.id === questionId) {
+            return updater(question);
+          }
+
+          if ((question.refinements ?? []).length === 0) {
+            return question;
+          }
+
+          return {
+            ...question,
+            refinements: updateQuestionTree(question.refinements ?? []),
+          };
+        });
+
       const updated: ClarificationsFile = {
         ...data,
         sections: (data.sections ?? []).map((s) => ({
           ...s,
-          questions: (s.questions ?? []).map((q) =>
-            q.id === questionId ? updater(q) : q,
-          ),
+          questions: updateQuestionTree(s.questions ?? []),
         })),
       };
       onChange(updated);
