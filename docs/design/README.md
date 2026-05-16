@@ -3,6 +3,7 @@
 | Directory | What it covers |
 |---|---|
 | [openhands-runtime-contract/](openhands-runtime-contract/README.md) | Canonical OpenHands runtime contract: runtime layers, session model, storage roots, normalized event ingress, and workflow artifact authority |
+| [openhands-runtime-contract/openhands-conversation-model.md](openhands-runtime-contract/openhands-conversation-model.md) | Clean-slate OpenHands-native conversation/event model: one canonical event stream, frontend send lifecycle, raw payload retention, and projection as a pure view layer |
 | [product-architecture/](product-architecture/README.md) | Product-level architecture entrypoint: UI, Rust backend, OpenHands runtime, persistent state, and doc routing |
 | [model-catalog/](model-catalog/README.md) | Model catalog target design: `models.dev` ingestion, SQLite cache, provider/model filtering, and OpenHands model-resolution contract |
 | [skill-purpose-taxonomy/](skill-purpose-taxonomy/README.md) | Skill purpose taxonomy: three live create-skill purposes, harness-owned exclusions, and source-system-semantics boundaries |

@@ -31,6 +31,7 @@ Companion sequence pages:
 
 - [Refine Sequence](./refine-sequence.md)
 - [Workflow Sequence](./workflow-sequence.md)
+- [OpenHands Conversation Model](./openhands-conversation-model.md)
 
 ## Design Scope
 
