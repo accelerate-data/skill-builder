@@ -128,6 +128,19 @@ mod tests {
                 },
                 "sections": [],
                 "notes": []
+            },
+            "refinements_json": {
+                "version": "1",
+                "metadata": {
+                    "title": "Refinements",
+                    "question_count": 2,
+                    "section_count": 1,
+                    "refinement_count": 2,
+                    "must_answer_count": 1,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": []
             }
         });
 

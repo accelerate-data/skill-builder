@@ -1,6 +1,8 @@
 #[cfg(test)]
 use std::path::{Path, PathBuf};
 
+use std::collections::HashSet;
+
 use crate::commands::workflow_artifacts::{
     AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
     ResearchStepOutput,
@@ -11,7 +13,10 @@ use crate::contracts::workflow_artifacts::{
     validate_contradictory_inputs_state, validate_decision_status,
 };
 use crate::db::workflow_artifacts as db_artifacts;
-use crate::db::workflow_artifacts::{ClarificationsRecord, DecisionsRecord};
+use crate::db::workflow_artifacts::{
+    ClarificationsRecord, DecisionsRecord, RefinementChoice, RefinementQuestion,
+    RefinementSection, RefinementsRecord,
+};
 use crate::db::Db;
 
 pub(crate) fn extract_workflow_json_from_conversation_state(
@@ -607,6 +612,156 @@ pub(crate) fn agent_json_to_clarifications_record(
     }
 }
 
+/// Convert a parsed agent `ClarificationsFile` (received as `refinements_json`)
+/// into a `RefinementsRecord` for the new refinements table family.
+///
+/// Refinements are flat — no recursive `parent_question_id` nesting.
+pub(crate) fn agent_json_to_refinements_record(
+    skill_id: &str,
+    file: ClarificationsFile,
+    now_ms: i64,
+) -> RefinementsRecord {
+    let metadata = file.metadata;
+
+    let mut sections_out: Vec<RefinementSection> = Vec::with_capacity(file.sections.len());
+    let mut questions_out: Vec<RefinementQuestion> = Vec::new();
+
+    for (section_idx, section) in file.sections.into_iter().enumerate() {
+        sections_out.push(RefinementSection {
+            section_id: section.id,
+            ordinal: section_idx as i64,
+            title: section.title,
+            description: section.description,
+        });
+        for (q_idx, q) in section.questions.into_iter().enumerate() {
+            let choices_out: Vec<RefinementChoice> = q
+                .choices
+                .into_iter()
+                .enumerate()
+                .map(|(idx, c)| RefinementChoice {
+                    choice_id: c.id,
+                    ordinal: idx as i64,
+                    text: c.text,
+                    is_other: c.is_other,
+                })
+                .collect();
+
+            questions_out.push(RefinementQuestion {
+                question_id: q.id,
+                section_id: section.id,
+                ordinal: q_idx as i64,
+                title: q.title,
+                text: q.text,
+                must_answer: q.must_answer,
+                answer_choice: q.answer_choice,
+                answer_text: q.answer_text,
+                recommendation: q.recommendation,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: choices_out,
+            });
+        }
+    }
+
+    let notes = file
+        .notes
+        .into_iter()
+        .enumerate()
+        .map(|(idx, note)| db_artifacts::RefinementNote {
+            note_id: None,
+            ordinal: idx as i64,
+            note_type: note.type_,
+            title: note.title,
+            body: note.body,
+        })
+        .collect();
+
+    let (error_code, error_message) = metadata
+        .error
+        .map(|e| (Some(e.code), Some(e.message)))
+        .unwrap_or((None, None));
+    let (warning_code, warning_message) = metadata
+        .warning
+        .map(|w| (Some(w.code), Some(w.message)))
+        .unwrap_or((None, None));
+
+    RefinementsRecord {
+        skill_id: skill_id.to_string(),
+        version: file.version,
+        refinement_count: metadata.refinement_count,
+        must_answer_count: metadata.must_answer_count,
+        question_count: metadata.question_count,
+        section_count: metadata.section_count,
+        title: metadata.title,
+        scope_recommendation: metadata.scope_recommendation,
+        scope_reason: metadata.scope_reason,
+        scope_next_action: metadata.scope_next_action,
+        error_code,
+        error_message,
+        warning_code,
+        warning_message,
+        eval_verdict: None,
+        eval_reasoning: None,
+        eval_at: None,
+        eval_answered_count: None,
+        eval_empty_count: None,
+        eval_vague_count: None,
+        eval_contradictory_count: None,
+        created_at: now_ms,
+        updated_at: now_ms,
+        sections: sections_out,
+        questions: questions_out,
+        notes,
+    }
+}
+
+/// Append new top-level questions from step 1 output to the clarifications tables
+/// without deleting existing rows. Inserts into `clarification_questions` and
+/// `clarification_choices` only.
+fn append_new_clarification_questions(
+    conn: &rusqlite::Connection,
+    skill_id: &str,
+    questions: &[Question],
+) -> Result<(), String> {
+    for (q_idx, q) in questions.iter().enumerate() {
+        conn.execute(
+            "INSERT OR IGNORE INTO clarification_questions (
+                skill_id, question_id, section_id, parent_question_id, ordinal,
+                title, text, must_answer, answer_choice, answer_text, recommendation
+            ) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, NULL, NULL, ?8)",
+            rusqlite::params![
+                skill_id,
+                q.id,
+                0,
+                q_idx as i64,
+                q.title,
+                q.text,
+                q.must_answer as i64,
+                q.recommendation,
+            ],
+        )
+        .map_err(|e| format!("Failed to insert clarification question: {}", e))?;
+
+        for (c_idx, c) in q.choices.iter().enumerate() {
+            conn.execute(
+                "INSERT OR IGNORE INTO clarification_choices (
+                    skill_id, question_id, choice_id, ordinal, text, is_other
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    skill_id,
+                    q.id,
+                    c.id,
+                    c_idx as i64,
+                    c.text,
+                    c.is_other as i64,
+                ],
+            )
+            .map_err(|e| format!("Failed to insert clarification choice: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
 /// Convert a single `Question` into a DB row.
 fn convert_question(
     q: Question,
@@ -825,19 +980,56 @@ pub(crate) fn materialize_workflow_step_output_value(
             }
 
             log::info!(
-                "[materialize_step] step=1 clarifications_json version={} skill_id={} refinement_count={}",
+                "[materialize_step] step=1 clarifications_json version={} refinements_json version={} skill_id={} refinement_count={}",
                 parsed.clarifications_json.version,
+                parsed.refinements_json.version,
                 skill_id,
                 parsed.refinement_count
             );
 
-            let record = agent_json_to_clarifications_record(
+            let mut conn = db
+                .0
+                .lock()
+                .map_err(|e| format!("Failed to lock DB: {}", e))?;
+
+            // 1. Read existing clarifications to know which question_ids already exist
+            let existing_qids: HashSet<String> = db_artifacts::read_clarifications(&conn, &canonical_id)
+                .map_err(|e| format!("Failed to read existing clarifications: {}", e))?
+                .iter()
+                .flat_map(|c| c.questions.iter().map(|q| q.question_id.clone()))
+                .collect();
+
+            // 2. Extract new top-level questions from clarifications_json
+            let new_questions: Vec<Question> = parsed
+                .clarifications_json
+                .sections
+                .iter()
+                .flat_map(|s| &s.questions)
+                .filter(|q| !existing_qids.contains(&q.id))
+                .cloned()
+                .collect();
+
+            // 3. Append new questions to clarifications (no delete)
+            if !new_questions.is_empty() {
+                append_new_clarification_questions(&conn, &canonical_id, &new_questions)
+                    .map_err(|e| format!("Failed to append new clarifications: {}", e))?;
+            }
+
+            // 4. Write refinements (full replace)
+            let refinements_record = agent_json_to_refinements_record(
                 &canonical_id,
-                parsed.refinement_count,
-                parsed.clarifications_json,
+                parsed.refinements_json,
                 now_ms(),
             );
-            persist_clarifications(db, &record)
+            let tx = conn
+                .transaction()
+                .map_err(|e| format!("Failed to start transaction: {}", e))?;
+            db_artifacts::upsert_refinements(&tx, &refinements_record)
+                .map_err(|e| format!("Failed to upsert refinements: {}", e))?;
+            tx.commit()
+                .map_err(|e| format!("Failed to commit refinements: {}", e))?;
+
+            Ok(())
         }
         2 => {
             let parsed = match serde_json::from_value::<DecisionsOutput>(

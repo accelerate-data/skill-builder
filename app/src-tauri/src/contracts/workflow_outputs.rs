@@ -27,7 +27,7 @@ pub struct ResearchStepOutput {
 /// Structured output produced by the OpenHands detailed-research workflow step.
 ///
 /// Required fields: `status` (const `"detailed_research_complete"`), `refinement_count`,
-/// `section_count`, `clarifications_json`.
+/// `section_count`, `clarifications_json`, `refinements_json`.
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
 )]
@@ -36,6 +36,7 @@ pub struct DetailedResearchOutput {
     pub refinement_count: i64,
     pub section_count: i64,
     pub clarifications_json: ClarificationsFile,
+    pub refinements_json: ClarificationsFile,
 }
 
 // ─── Step 2: Decision Confirmation ───────────────────────────────────────────
@@ -229,6 +230,19 @@ mod tests {
                 },
                 "sections": [],
                 "notes": []
+            },
+            "refinements_json": {
+                "version": "1",
+                "metadata": {
+                    "title": "Refinements",
+                    "question_count": 2,
+                    "section_count": 1,
+                    "refinement_count": 2,
+                    "must_answer_count": 1,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": []
             }
         });
 
@@ -237,6 +251,7 @@ mod tests {
         assert_eq!(parsed.status, "detailed_research_complete");
         assert_eq!(parsed.refinement_count, 2);
         assert_eq!(parsed.clarifications_json.metadata.section_count, 3);
+        assert_eq!(parsed.refinements_json.metadata.question_count, 2);
     }
 
     #[test]
