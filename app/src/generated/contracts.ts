@@ -231,6 +231,19 @@ export type PerQuestionEntry = { question_id: string; verdict: string; reason: s
  */
 export type Question = { id: string; title: string; text: string; must_answer: boolean; consolidated_from?: string[] | null; choices?: Choice[]; recommendation?: string | null; answer_choice?: string | null; answer_text?: string | null }
 
+export type RefinementChoiceDto = { choice_id: string; ordinal: number; text: string; is_other: boolean }
+
+export type RefinementNoteDto = { note_id?: number | null; ordinal: number; note_type: string; title: string; body: string }
+
+export type RefinementQuestionDto = { question_id: string; section_id: number; ordinal: number; title: string; text: string; must_answer: boolean; answer_choice?: string | null; answer_text?: string | null; recommendation?: string | null; answer_verdict?: string | null; answer_verdict_reason?: string | null; choices: RefinementChoiceDto[] }
+
+export type RefinementSectionDto = { section_id: number; ordinal: number; title: string; description?: string | null }
+
+/**
+ * Full refinements artifact for a skill.
+ */
+export type RefinementsDto = { skill_id: string; version: string; refinement_count: number; must_answer_count: number; question_count: number; section_count: number; title: string; scope_recommendation?: boolean | null; scope_reason?: string | null; scope_next_action?: string | null; error_code?: string | null; error_message?: string | null; warning_code?: string | null; warning_message?: string | null; eval_verdict?: string | null; eval_reasoning?: string | null; eval_at?: number | null; eval_answered_count?: number | null; eval_empty_count?: number | null; eval_vague_count?: number | null; eval_contradictory_count?: number | null; created_at: number; updated_at: number; sections: RefinementSectionDto[]; questions: RefinementQuestionDto[]; notes: RefinementNoteDto[] }
+
 /**
  * Structured output produced by the OpenHands research workflow step.
  * 

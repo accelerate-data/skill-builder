@@ -288,7 +288,8 @@ use app_lib::contracts::decisions::{
 use app_lib::contracts::workflow_artifacts::{
     ClarificationChoiceDto, ClarificationNoteDto, ClarificationQuestionDto,
     ClarificationSectionDto, ClarificationVerdictUpdate, ClarificationsDto, DecisionItemDto,
-    DecisionsDto,
+    DecisionsDto, RefinementChoiceDto, RefinementNoteDto, RefinementQuestionDto,
+    RefinementSectionDto, RefinementsDto,
 };
 use app_lib::contracts::workflow_outputs::{
     AnswerEvaluationOutput, DecisionsOutput, DetailedResearchOutput, GenerateSkillOutput,
@@ -355,6 +356,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     types.register::<ClarificationVerdictUpdate>();
     types.register::<DecisionItemDto>();
     types.register::<DecisionsDto>();
+
+    // Refinements (VU-1193)
+    types.register::<RefinementChoiceDto>();
+    types.register::<RefinementNoteDto>();
+    types.register::<RefinementSectionDto>();
+    types.register::<RefinementQuestionDto>();
+    types.register::<RefinementsDto>();
 
     // ── 2. Export TypeScript types ──────────────────────────────────────────
 
