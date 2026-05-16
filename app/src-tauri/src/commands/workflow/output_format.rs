@@ -132,15 +132,26 @@ fn parse_research_result_text(
                 return Ok(parsed);
             }
 
-            if let Some(repaired) = repair_missing_commas_between_json_values(json_text) {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&repaired) {
-                    if parsed.is_object() {
-                        log::warn!(
-                            "[materialize_step] repaired OpenHands research result_text with missing JSON commas"
-                        );
-                        return Ok(parsed);
-                    }
-                }
+            let repaired = jsonrepair_rs::jsonrepair(json_text).map_err(|repair_error| {
+                format!(
+                    "OpenHands {workflow_label} result_text invalid JSON: {}; repair failed: {}",
+                    parse_error, repair_error
+                )
+            })?;
+            let parsed = serde_json::from_str::<serde_json::Value>(&repaired).map_err(
+                |repaired_parse_error| {
+                    format!(
+                        "OpenHands {workflow_label} result_text invalid JSON: {}; repaired parse failed: {}",
+                        parse_error, repaired_parse_error
+                    )
+                },
+            )?;
+            if parsed.is_object() {
+                log::warn!(
+                    "[materialize_step] repaired OpenHands {} result_text with jsonrepair-rs",
+                    workflow_label
+                );
+                return Ok(parsed);
             }
 
             Err(format!(
@@ -149,53 +160,6 @@ fn parse_research_result_text(
             ))
         }
     }
-}
-
-fn repair_missing_commas_between_json_values(text: &str) -> Option<String> {
-    let mut repaired = String::with_capacity(text.len());
-    let mut changed = false;
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut last_significant: Option<char> = None;
-
-    for ch in text.chars() {
-        if in_string {
-            repaired.push(ch);
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-                last_significant = Some('"');
-            }
-            continue;
-        }
-
-        if ch == '"' {
-            if last_significant.is_some_and(json_value_can_precede_missing_comma) {
-                repaired.push(',');
-                changed = true;
-            }
-            in_string = true;
-            repaired.push(ch);
-            continue;
-        }
-
-        if !ch.is_whitespace() {
-            if json_value_can_start(ch)
-                && last_significant.is_some_and(json_value_can_precede_missing_comma)
-            {
-                repaired.push(',');
-                changed = true;
-            }
-            last_significant = Some(ch);
-        }
-
-        repaired.push(ch);
-    }
-
-    changed.then_some(repaired)
 }
 
 fn normalize_decisions_output_missing_statuses(
@@ -332,14 +296,6 @@ fn starts_numeric_section_entry(bytes: &[u8], index: usize) -> bool {
     }
 
     cursor > digit_start && bytes[cursor..].starts_with(br#","title":"#)
-}
-
-fn json_value_can_start(ch: char) -> bool {
-    matches!(ch, '{' | '[' | '"' | '-' | '0'..='9' | 't' | 'f' | 'n')
-}
-
-fn json_value_can_precede_missing_comma(ch: char) -> bool {
-    matches!(ch, '}' | ']' | '"')
 }
 
 fn top_level_json_object_candidates(text: &str) -> Vec<&str> {
@@ -1396,6 +1352,41 @@ pub fn materialize_answer_evaluation_output(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn extract_research_json_from_conversation_state_repairs_missing_trailing_brace() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": "{\"status\":\"research_complete\",\"question_count\":1,\"research_output\":{\"version\":\"1\",\"metadata\":{\"title\":\"Research\",\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":1,\"priority_questions\":[\"Q1\"],\"scope_recommendation\":false,\"scope_reason\":null,\"scope_next_action\":null,\"warning\":null,\"error\":null},\"sections\":[{\"id\":1,\"title\":\"Scope\",\"questions\":[{\"id\":\"Q1\",\"title\":\"Scope\",\"text\":\"Question?\",\"must_answer\":true,\"choices\":[{\"id\":\"C1\",\"text\":\"Choice\",\"is_other\":false}],\"refinements\":[]}]}],\"notes\":[],\"answer_evaluator_notes\":[]}"
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state)
+            .expect("missing trailing brace should be repaired");
+
+        assert_eq!(
+            parsed.get("status").and_then(|value| value.as_str()),
+            Some("research_complete")
+        );
+    }
+
+    #[test]
+    fn extract_research_json_from_conversation_state_repairs_mismatched_closer_before_final_object_end(
+    ) {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": "{\"status\":\"research_complete\",\"question_count\":1,\"research_output\":{\"version\":\"1\",\"metadata\":{\"question_count\":1,\"section_count\":1,\"refinement_count\":0,\"must_answer_count\":1,\"priority_questions\":[\"Q1\"],\"scope_recommendation\":false,\"scope_reason\":null,\"warning\":null,\"error\":null},\"sections\":[{\"id\":1,\"title\":\"Scope\",\"questions\":[{\"id\":\"Q1\",\"title\":\"Scope\",\"text\":\"Question?\",\"must_answer\":true,\"choices\":[{\"id\":\"C1\",\"text\":\"Choice\",\"is_other\":false}],\"refinements\":[]}],\"notes\":[{\"type\":\"flag\",\"title\":\"Gap\",\"body\":\"Body\"}],\"answer_evaluator_notes\":[]}}"
+        });
+
+        let parsed = extract_research_json_from_conversation_state(&state)
+            .expect("mismatched trailing closer should be repaired");
+
+        assert_eq!(
+            parsed.get("status").and_then(|value| value.as_str()),
+            Some("research_complete")
+        );
+    }
 
     #[test]
     fn publish_generated_skill_output_copies_workspace_skill_to_library_layout() {
