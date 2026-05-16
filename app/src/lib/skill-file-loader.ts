@@ -1,5 +1,5 @@
 import { getSkillContentForRefine, getSkillContentAtPath } from "@/lib/tauri";
-import type { SkillFile } from "@/stores/refine-store";
+import type { SkillFile } from "@/stores/workspace-store";
 
 export interface SkillFileSource {
   type: "builder";

@@ -26,7 +26,7 @@ vi.mock("@/lib/workflow-teardown", () => ({
   teardownWorkflowSession,
 }));
 
-const refineState = vi.hoisted(() => ({
+const skillSessionState = vi.hoisted(() => ({
   selectedSkill: {
     id: 7,
     name: "sales-skill",
@@ -34,17 +34,12 @@ const refineState = vi.hoisted(() => ({
   },
   conversationId: "conv-current",
   activeAgentId: "refine-agent-1",
-  selectSkill: vi.fn(),
-}));
-
-vi.mock("@/stores/refine-store", () => ({
-  useRefineStore: {
-    getState: () => refineState,
-  },
+  clearSelectedSkillSession: vi.fn(),
 }));
 
 const skillStoreState = vi.hoisted(() => ({
   setActiveSkill: vi.fn(),
+  ...skillSessionState,
 }));
 
 vi.mock("@/stores/skill-store", () => ({
@@ -100,13 +95,13 @@ describe("active-skill-transition", () => {
       restored_messages: [],
       restored_transcript_events: [],
     });
-    refineState.selectedSkill = {
+    skillSessionState.selectedSkill = {
       id: 7,
       name: "sales-skill",
       plugin_slug: "skills",
     };
-    refineState.conversationId = "conv-current";
-    refineState.activeAgentId = "refine-agent-1";
+    skillSessionState.conversationId = "conv-current";
+    skillSessionState.activeAgentId = "refine-agent-1";
     agentRunsState.runs = {
       "workflow-agent-1": {
         agentId: "workflow-agent-1",
@@ -122,7 +117,7 @@ describe("active-skill-transition", () => {
     tauriMocks.pauseOpenHandsSession.mockImplementation(async () => {
       calls.push("pause");
     });
-    refineState.selectSkill.mockImplementation(() => {
+    skillSessionState.clearSelectedSkillSession.mockImplementation(() => {
       calls.push("clear");
     });
 
@@ -140,14 +135,14 @@ describe("active-skill-transition", () => {
     tauriMocks.pauseOpenHandsSession.mockRejectedValue(new Error("pause failed"));
 
     await expect(leaveCurrentSkill()).rejects.toThrow("pause failed");
-    expect(refineState.selectSkill).not.toHaveBeenCalled();
+    expect(skillSessionState.clearSelectedSkillSession).not.toHaveBeenCalled();
   });
 
   it("ignores stale leave requests for a different skill", async () => {
     await leaveCurrentSkill({ expectedSkillName: "finance-skill" });
 
     expect(tauriMocks.pauseOpenHandsSession).not.toHaveBeenCalled();
-    expect(refineState.selectSkill).not.toHaveBeenCalled();
+    expect(skillSessionState.clearSelectedSkillSession).not.toHaveBeenCalled();
   });
 
   it("enters the selected skill by bootstrapping and hydrating", async () => {

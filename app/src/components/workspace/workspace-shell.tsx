@@ -12,19 +12,16 @@ import {
 } from "@/components/ui/dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
-import { useRefineStore } from "@/stores/refine-store";
 import { requestEvalsCancel } from "@/lib/eval-running-state";
 import { loadSkillFiles } from "@/lib/skill-file-loader";
-import { PreviewPanel } from "@/components/refine/preview-panel";
+import { PreviewPanel } from "@/components/workspace/preview-panel";
 import { WorkspaceOverview } from "./workspace-overview";
-import { WorkspaceRefine } from "./workspace-refine";
 import { WorkspaceEvalWorkbench } from "./workspace-eval-workbench";
-import type { SkillSummary, ImportedSkill, EditableSkill } from "@/lib/types";
-import { toEditableSkill } from "@/lib/types";
+import type { SkillSummary, ImportedSkill } from "@/lib/types";
 import { useBuilderSkillsQuery } from "@/lib/queries/skills";
 import { useIsSkillLocked } from "@/stores/skill-store";
 
-export type WorkspaceSurface = "overview" | "refine" | "evals";
+export type WorkspaceSurface = "overview" | "evals";
 
 interface WorkspaceShellProps {
   skill: SkillSummary | ImportedSkill;
@@ -35,18 +32,13 @@ interface WorkspaceShellProps {
 export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellProps) {
   const activeTab = useWorkspaceStore((s) => s.activeSurface);
   const setActiveTab = useWorkspaceStore((s) => s.setActiveSurface);
+  const resetFileViewer = useWorkspaceStore((s) => s.resetFileViewer);
+  const selectedModifiedFile = useWorkspaceStore((s) => s.selectedModifiedFile);
   const [pendingTab, setPendingTab] = useState<WorkspaceSurface | null>(null);
   const workbenchRunningRef = useRef(false);
 
   const handleTabChange = useCallback((value: string) => {
     const nextTab = value as WorkspaceSurface;
-    if (activeTab === "refine" && nextTab !== "refine") {
-      const refineRunning = useRefineStore.getState().isRunning;
-      if (refineRunning) {
-        setPendingTab(nextTab);
-        return;
-      }
-    }
     if (activeTab === "evals" && nextTab !== "evals" && workbenchRunningRef.current) {
       setPendingTab(nextTab);
       return;
@@ -59,10 +51,8 @@ export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellPr
   const isLocked = useIsSkillLocked(skillId);
 
   useEffect(() => {
-    const store = useRefineStore.getState();
-    store.setSkillFiles([]);
-    store.setSelectedModifiedFile(null);
-  }, [skillName]);
+    resetFileViewer();
+  }, [resetFileViewer, skillName]);
 
   const handleTabStay = useCallback(() => {
     setPendingTab(null);
@@ -82,13 +72,12 @@ export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellPr
       setPendingTab(null);
     }
   }, [pendingTab, activeTab, setActiveTab]);
-  const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
   const isBuilderSkill = "name" in skill;
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const { isFetching: isSkillListFetching } = useBuilderSkillsQuery();
 
   const toggleFileViewer = useCallback(async () => {
-    const store = useRefineStore.getState();
+    const store = useWorkspaceStore.getState();
     if (store.selectedModifiedFile) {
       store.setSelectedModifiedFile(null);
       return;
@@ -157,7 +146,6 @@ export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellPr
         >
           <TabsList variant="line" className="shrink-0 border-b px-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="refine">Refine</TabsTrigger>
             <TabsTrigger value="evals">Eval Workbench</TabsTrigger>
           </TabsList>
 
@@ -169,18 +157,11 @@ export function WorkspaceShell({ skill, skillType, className }: WorkspaceShellPr
             />
           </TabsContent>
 
-          <TabsContent value="refine" className="min-h-0 flex-1 overflow-hidden">
-            <WorkspaceRefine
-              skill={"name" in skill ? (skill as EditableSkill) : toEditableSkill(skill as ImportedSkill)}
-            />
-          </TabsContent>
-
           <TabsContent value="evals" className="min-h-0 flex-1 overflow-hidden">
             <WorkspaceEvalWorkbench
               key={"name" in skill ? skill.name : skill.skill_name}
               skill={skill}
               workspacePath={workspacePath}
-              onNavigateToRefine={() => handleTabChange("refine")}
               onRunningChange={(running) => {
                 workbenchRunningRef.current = running;
               }}

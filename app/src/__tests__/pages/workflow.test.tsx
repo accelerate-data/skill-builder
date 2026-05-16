@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, act, waitFor } from "@testing-library/react";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
-import { useRefineStore } from "@/stores/refine-store";
+import { useSkillStore } from "@/stores/skill-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { mockListen, mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { renderWithQueryClient as render } from "@/test/query-test-utils";
@@ -211,7 +211,7 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
 // every test starts with a clean slate regardless of describe-level setup order.
 beforeEach(() => {
   mockLocation.state = {};
-  useRefineStore.getState().selectSkill({
+  useSkillStore.getState().selectSkill({
     id: 1,
     name: "test-skill",
     plugin_slug: "default",
@@ -226,7 +226,7 @@ beforeEach(() => {
     status: null,
     current_step: null,
   });
-  useRefineStore.getState().setConversationId("conv-1");
+  useSkillStore.getState().setConversationId("conv-1");
 });
 
 describe("WorkflowPage — agent completion lifecycle", () => {
@@ -234,7 +234,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    useRefineStore.getState().selectSkill({
+    useSkillStore.getState().selectSkill({
       id: 1,
       name: "test-skill",
       plugin_slug: "default",
@@ -249,7 +249,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       status: null,
       current_step: null,
     });
-    useRefineStore.getState().setConversationId("conv-1");
+    useSkillStore.getState().setConversationId("conv-1");
     useSettingsStore.getState().reset();
 
     // Hydrate settings so workflow handlers don't bail
@@ -284,8 +284,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    useRefineStore.getState().selectSkill(null);
-    useRefineStore.getState().setConversationId(null);
+    useSkillStore.getState().clearSelectedSkillSession();
     useSettingsStore.getState().reset();
   });
 
@@ -4092,7 +4091,7 @@ describe("WorkflowPage — loading shimmer", () => {
   afterEach(() => {
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    useRefineStore.getState().selectSkill(null);
+    useSkillStore.getState().clearSelectedSkillSession();
     useSettingsStore.getState().reset();
   });
 

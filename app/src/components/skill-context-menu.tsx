@@ -18,7 +18,6 @@ export interface SkillContextMenuProps {
   onRedo: (skill: UnifiedSkill) => void;
   onOverview: (key: string) => void | Promise<void>;
   onEval: (key: string) => void | Promise<void>;
-  onRefine: (key: string) => void | Promise<void>;
   onContinueBuilding: (skill: UnifiedSkill) => void | Promise<void>;
   onRestore: (name: string, pluginSlug: string) => void;
   onDelete: (skill: UnifiedSkill) => void;
@@ -37,7 +36,6 @@ export function SkillContextMenu({
   onRedo,
   onOverview,
   onEval,
-  onRefine,
   onContinueBuilding,
   onRestore,
   onDelete,
@@ -78,11 +76,6 @@ export function SkillContextMenu({
             <ContextMenuItem onSelect={() => onEval(skill.key)}>
               Eval Workbench
             </ContextMenuItem>
-            {menuState.showsLifecycleActions && (
-              <ContextMenuItem onSelect={() => onRefine(skill.key)}>
-                Refine
-              </ContextMenuItem>
-            )}
             {menuState.showsLifecycleActions && (
               <ContextMenuItem onSelect={() => onRestore(skill.name, skill.pluginSlug)}>
                 Restore version

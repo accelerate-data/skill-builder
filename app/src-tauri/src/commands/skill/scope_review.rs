@@ -145,7 +145,7 @@ pub async fn review_skill_scope(
         .to_string_lossy()
         .replace('\\', "/");
 
-    let skills_path = crate::commands::refine::resolve_skills_path(&db).inspect_err(|e| {
+    let skills_path = crate::commands::skill_session::resolve_skills_path(&db).inspect_err(|e| {
         log::error!("[review_skill_scope] Failed to resolve skills path: {}", e)
     })?;
 

@@ -5,7 +5,7 @@ functional-specs: [custom-plugin-management]
 # OpenHands Runtime Contract
 
 > **Status:** Draft
-> **Functional specs:** Not applicable; this design defines the shared runtime contract used by Workflow, Refine, create-skill validation, scope review, setup validation, and Eval Workbench helpers.
+> **Functional specs:** Not applicable; this design defines the shared runtime contract used by Workflow, selected-skill session bootstrap, create-skill validation, scope review, setup validation, and Eval Workbench helpers.
 
 ## Overview
 
@@ -29,7 +29,6 @@ This doc is the canonical source for:
 
 Companion sequence pages:
 
-- [Refine Sequence](./refine-sequence.md)
 - [Workflow Sequence](./workflow-sequence.md)
 - [OpenHands Conversation Model](./openhands-conversation-model.md)
 
@@ -55,14 +54,14 @@ Companion sequence pages:
 
 | Decision | Rationale |
 |---|---|
-| One backend-owned runtime contract serves all product surfaces. | Workflow, Refine, scope review, and validation flows share the same OpenHands runtime boundary even when their prompts and allowed tools differ. |
+| One backend-owned runtime contract serves all product surfaces. | Workflow, selected-skill session bootstrap, scope review, and validation flows share the same OpenHands runtime boundary even when their prompts and allowed tools differ. |
 | Persistent runs operate in the canonical skill directory. | The active working directory for selected-skill sessions is the resolved skill dir under the user-configured skills root, not a per-skill workspace mirror. |
 | Throwaway runs declare whether they are skill-related. | Skill-related throwaway runs may need proximity to the skills tree; unrelated throwaway runs should stay out of user-owned skill directories. |
 | Throwaway runs declare tool-access mode. | The backend must know whether a throwaway run is read-only or write-capable before selecting allowed tools. |
 | Conversations are deleted when their owning skill is deleted or after a successful fork. | Conversation history is durable during active use, but the app cleans up persisted conversations when they are no longer referenced: deleting a skill removes all its bound conversations, and forking a conversation deletes the source after the fork succeeds. |
 | Raw conversation APIs mirror the OpenHands send-then-run model. | Sending a user message and starting agent processing are separate operations. That separation is required for send-while-running behavior. |
-| Product surfaces own logical turn boundaries above the raw OpenHands conversation stream. | OpenHands persists one ordered conversation event stream, but it does not provide a product-level per-user turn identifier that Refine can render directly. Skill Builder must start a new logical turn every time the user sends a message and group subsequent tool/output events under that turn until the next user send. |
-| Persistent interactive surfaces use separate outbound command and inbound event lanes. | User intent should be recorded immediately and independently from runtime event delivery. Refine should never depend on the live event stream to invent turn boundaries or decide whether a send was accepted. |
+| Product surfaces own logical turn boundaries above the raw OpenHands conversation stream. | OpenHands persists one ordered conversation event stream, but it does not provide a product-level per-user turn identifier that a future conversation UI can render directly. Skill Builder must start a new logical turn every time the user sends a message and group subsequent tool/output events under that turn until the next user send. |
+| Persistent interactive surfaces use separate outbound command and inbound event lanes. | User intent should be recorded immediately and independently from runtime event delivery. A future conversation UI should never depend on the live event stream to invent turn boundaries or decide whether a send was accepted. |
 | `ask_agent` starts at the raw OpenHands layer only. | It is a non-authoritative side-channel inspection capability. How product surfaces use it is intentionally deferred. |
 | App data owns shared OpenHands persistence roots. | Conversations, bash events, logs, DB state, and app-local runtime files belong to app data rather than the user-configured skills tree. |
 | Steps 0-2 are DB-authoritative; step 3 is file-output-authoritative. | Clarifications and decisions are canonical typed records in SQLite; generated skill files remain canonical on disk. |
@@ -171,7 +170,7 @@ pub struct SkillCreatorRuntimeContext {
 }
 
 pub enum SkillCreatorIntent {
-    Refine,
+    SelectedSkillSession,
     WorkflowStep { step: WorkflowStepKind },
     AnswerEvaluator,
     Eval,
@@ -254,14 +253,14 @@ This is the layer that decides whether a surface is:
 - a throwaway validation/evaluation/scope-review run
 - a typed workflow step that must materialize app-owned outputs
 
-This layer also owns logical turn boundaries for persistent chat-style surfaces. Refine uses one OpenHands conversation and one live run at a time, but every user send starts a new product turn. The frontend groups later tool/output events under that turn until the next user send starts the next turn.
+This layer also owns logical turn boundaries for future persistent chat-style surfaces. One selected-skill conversation should stay bound to one live run at a time, and every user send should start a new product turn. The frontend should group later tool/output events under that turn until the next user send starts the next turn.
 
 Persistent interactive surfaces also own two distinct product lanes:
 
 - an outbound command lane that records user intent (`send`, `pause`, question answers) and dispatches it to the backend runtime contract
 - an inbound event lane that receives normalized OpenHands events and terminal state updates
 
-These lanes merge in app-owned turn state. Refine must not rely on raw event continuity alone to decide where a new user turn begins.
+These lanes merge in app-owned turn state. The conversation UI must not rely on raw event continuity alone to decide where a new user turn begins.
 
 Core APIs:
 

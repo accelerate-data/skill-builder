@@ -378,7 +378,7 @@ export const checkMarketplaceUpdates = (): Promise<MarketplaceUpdateResult> =>
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invokeCommand("check_skill_customized", { skillName })
 
-// --- Refine ---
+// --- Selected Skill Session ---
 
 export const getSkillContentAtPath = (path: string) =>
   invokeCommand("get_skill_content_at_path", { path })
@@ -405,44 +405,6 @@ export const pauseOpenHandsSession = (
       skillId: skillId ?? null,
     },
   })
-
-export const sendRefineMessage = (
-  skillName: string,
-  pluginSlug: string,
-  conversationId: string | null,
-  userMessage: string,
-  targetFiles?: string[],
-) => invokeCommand("send_refine_message", {
-  input: {
-    skillName,
-    pluginSlug,
-    conversationId,
-    userMessage,
-    targetFiles: targetFiles ?? null,
-  },
-})
-
-export const finalizeRefineRun = (
-  skillName: string,
-  workspacePath: string,
-  pluginSlug: string,
-  resultPayload?: unknown,
-) => invokeCommand("finalize_refine_run", {
-  skillName,
-  workspacePath,
-  pluginSlug,
-  resultPayload: resultPayload ?? null,
-})
-
-export const cleanBenchmarkSnapshot = (
-  skillName: string,
-  workspacePath: string,
-  pluginSlug: string,
-) => invokeCommand("clean_benchmark_snapshot", {
-  skillName,
-  workspacePath,
-  pluginSlug,
-})
 
 // --- Git History ---
 

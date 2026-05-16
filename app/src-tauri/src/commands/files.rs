@@ -1,7 +1,8 @@
 use crate::db::Db;
 use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};
-use crate::types::SkillFileEntry;
+use crate::types::{SkillFileContent, SkillFileEntry};
 use std::fs;
+use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 
 /// Maximum recursion depth for collect_entries to prevent symlink cycles.
@@ -67,6 +68,104 @@ pub fn list_skill_files(
             .unwrap_or_else(|| DEFAULT_PLUGIN_SLUG.to_string())
     };
     list_skill_files_with_plugin_roots(&skill_name, &plugin_slug, &allowed_roots)
+}
+
+#[tauri::command]
+pub fn get_skill_content_at_path(path: String) -> Result<Vec<SkillFileContent>, String> {
+    log::info!("[get_skill_content_at_path] path={}", path);
+    let root = Path::new(&path);
+    get_skill_content_from_dir(root).map_err(|e| {
+        log::error!("[get_skill_content_at_path] {}", e);
+        e
+    })
+}
+
+#[tauri::command]
+pub fn get_skill_content_for_refine(
+    skill_name: String,
+    plugin_slug: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<SkillFileContent>, String> {
+    log::info!(
+        "[get_skill_content_for_refine] skill={} plugin={}",
+        skill_name,
+        plugin_slug
+    );
+    super::imported_skills::validate_skill_name(&skill_name)?;
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
+    let skills_path = settings
+        .skills_path
+        .ok_or_else(|| "Skills path not configured in settings".to_string())?;
+    drop(conn);
+    let skill_root = resolve_skill_dir(Path::new(&skills_path), &plugin_slug, &skill_name);
+    get_skill_content_from_dir(&skill_root).map_err(|e| {
+        log::error!("[get_skill_content_for_refine] {}", e);
+        e
+    })
+}
+
+fn get_skill_content_from_dir(skill_root: &Path) -> Result<Vec<SkillFileContent>, String> {
+    if !skill_root.exists() {
+        return Err(format!(
+            "Skill directory not found at {}",
+            skill_root.display()
+        ));
+    }
+
+    let mut files = Vec::new();
+    let skill_md = skill_root.join("SKILL.md");
+    if !skill_md.is_file() {
+        return Err(format!("SKILL.md not found in {}", skill_root.display()));
+    }
+    let content = std::fs::read_to_string(&skill_md)
+        .map_err(|e| format!("Failed to read SKILL.md: {}", e))?;
+    files.push(SkillFileContent {
+        path: "SKILL.md".to_string(),
+        content,
+    });
+
+    let references_dir = skill_root.join("references");
+    if references_dir.is_dir() {
+        collect_skill_content_files(&references_dir, "references", &mut files)?;
+    }
+
+    Ok(files)
+}
+
+fn collect_skill_content_files(
+    dir: &Path,
+    relative_prefix: &str,
+    files: &mut Vec<SkillFileContent>,
+) -> Result<(), String> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read {} dir: {}", relative_prefix, e))?
+        .flatten()
+        .collect();
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let rel = format!("{}/{}", relative_prefix, name);
+
+        if path.is_dir() {
+            collect_skill_content_files(&path, &rel, files)?;
+            continue;
+        }
+
+        let ext = path.extension().and_then(OsStr::to_str);
+        if !matches!(ext, Some("md" | "txt")) {
+            continue;
+        }
+
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {}", rel, e))?;
+        files.push(SkillFileContent { path: rel, content });
+    }
+
+    Ok(())
 }
 
 fn collect_entries(

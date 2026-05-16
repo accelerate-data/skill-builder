@@ -63,17 +63,6 @@ void invokeCommand("get_decisions", {});
 // @ts-expect-error selected-skill bootstrap requires skillName, pluginSlug, and workspacePath
 void invokeCommand("select_skill_openhands_session", { session_id: "session-1" });
 
-// @ts-expect-error send_refine_message requires targetFiles
-void invokeCommand("send_refine_message", {
-  input: {
-    skillName: "demo-skill",
-    pluginSlug: "skills",
-    conversationId: "conv-1",
-    userMessage: "Update this skill",
-    targetFiles: 123,
-  },
-});
-
 // @ts-expect-error answer evaluator output must match AnswerEvaluationOutput
 void invokeCommand("materialize_answer_evaluation_output", {
   skillName: "demo",

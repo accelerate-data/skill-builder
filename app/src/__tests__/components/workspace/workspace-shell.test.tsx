@@ -28,30 +28,6 @@ vi.mock("@/stores/skill-store", () => ({
   useIsSkillLocked: vi.fn(() => false),
 }));
 
-const refineState = vi.hoisted(() => ({
-  selectedSkill: null,
-  refinableSkills: [],
-  isLoadingSkills: false,
-  skillFiles: [] as { filename: string; content: string }[],
-  previewRevision: 0,
-  isRunning: false,
-  activeAgentId: null,
-  conversationId: null,
-  selectedModifiedFile: null as string | null,
-  activeFileTab: null as string | null,
-  setSkillFiles: vi.fn(),
-  setSelectedModifiedFile: vi.fn(),
-  setActiveFileTab: vi.fn(),
-  setDiffMode: vi.fn(),
-}));
-
-vi.mock("@/stores/refine-store", () => ({
-  useRefineStore: Object.assign(
-    vi.fn((selector: (s: typeof refineState) => unknown) => selector(refineState)),
-    { getState: () => refineState },
-  ),
-}));
-
 vi.mock("@/stores/agent-store", () => ({
   useAgentStore: vi.fn((selector) => selector({ runs: {} })),
 }));
@@ -71,11 +47,6 @@ vi.mock("@/lib/tauri", () => ({
   releaseLock: vi.fn().mockResolvedValue(undefined),
   cancelDescriptionOptimization: vi.fn().mockResolvedValue(undefined),
   getSkillContentForRefine: vi.fn().mockResolvedValue([]),
-  sendRefineMessage: vi.fn().mockResolvedValue({
-    agent_id: "agent-1",
-    conversation_id: "conv-1",
-  }),
-  finalizeRefineRun: vi.fn().mockResolvedValue({ files: [], diff: null }),
   getSkillHistory: vi.fn().mockResolvedValue([]),
   readLatestBenchmark: vi.fn().mockResolvedValue(null),
   listSkills: vi.fn().mockResolvedValue([]),
@@ -107,29 +78,11 @@ vi.mock("@/lib/eval-workbench", async () => {
   };
 });
 
-vi.mock("@/components/workspace/workspace-refine", () => ({
-  WorkspaceRefine: () => <div data-testid="workspace-refine" />,
-}));
-
 vi.mock("@/components/workspace/workspace-overview", () => ({
   WorkspaceOverview: () => <div data-testid="workspace-overview" />,
 }));
-
-vi.mock("@/components/refine/chat-panel", () => ({
-  ChatPanel: () => <div data-testid="chat-panel" />,
-}));
-
-vi.mock("@/components/refine/preview-panel", () => ({
+vi.mock("@/components/workspace/preview-panel", () => ({
   PreviewPanel: () => <div data-testid="preview-panel" />,
-}));
-
-vi.mock("@/components/refine/resizable-split-pane", () => ({
-  ResizableSplitPane: ({ left, right }: { left: React.ReactNode; right: React.ReactNode }) => (
-    <div>
-      {left}
-      {right}
-    </div>
-  ),
 }));
 
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
@@ -197,7 +150,6 @@ const baseBuilderSkill: SkillSummary = {
 
 describe("WorkspaceShell", () => {
   beforeEach(() => {
-    refineState.isRunning = false;
     useWorkspaceStore.setState({ activeSurface: "overview" });
     mockUseScenarios.mockReset().mockReturnValue({
       data: [performanceScenarioSummary],
@@ -287,74 +239,6 @@ describe("WorkspaceShell", () => {
     expect(wrapper).toHaveClass("flex", "h-full", "flex-col");
     expect(wrapper?.className).not.toMatch(/\bpx-6\b|\bpt-6\b|\bpb-6\b/);
   });
-
-  it("shows dialog when switching away from Refine while agent is running", async () => {
-    const user = userEvent.setup();
-    refineState.isRunning = true;
-    useWorkspaceStore.setState({ activeSurface: "refine" });
-
-    const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
-    );
-
-    const refineTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(refineTab?.textContent).toBe("Refine");
-
-    const overviewTab = container.querySelector('[role="tab"]');
-    await user.click(overviewTab!);
-
-    expect(screen.getByText("Process Running")).toBeInTheDocument();
-    expect(screen.getByText(/process is still running/i)).toBeInTheDocument();
-
-    const stillActive = container.querySelector('[role="tab"][data-state="active"]');
-    expect(stillActive?.textContent).toBe("Refine");
-
-    refineState.isRunning = false;
-  });
-
-  it("switches tab after confirming Leave in the guard dialog", async () => {
-    const user = userEvent.setup();
-    refineState.isRunning = true;
-    useWorkspaceStore.setState({ activeSurface: "refine" });
-
-    const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
-    );
-
-    const overviewTab = container.querySelector('[role="tab"]');
-    await user.click(overviewTab!);
-    expect(screen.getByText("Process Running")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Leave" }));
-
-    expect(useWorkspaceStore.getState().activeSurface).toBe("overview");
-
-    refineState.isRunning = false;
-  });
-
-  it("stays on Refine tab when clicking Stay in the guard dialog", async () => {
-    const user = userEvent.setup();
-    refineState.isRunning = true;
-    useWorkspaceStore.setState({ activeSurface: "refine" });
-
-    const { container } = render(
-      <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
-    );
-
-    const overviewTab = container.querySelector('[role="tab"]');
-    await user.click(overviewTab!);
-    expect(screen.getByText("Process Running")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Stay" }));
-
-    expect(screen.queryByText("Process Running")).not.toBeInTheDocument();
-    const activeTab = container.querySelector('[role="tab"][data-state="active"]');
-    expect(activeTab?.textContent).toBe("Refine");
-
-    refineState.isRunning = false;
-  });
-
-
 
   it("loads scenario detail from the performance-only scenario list", async () => {
     const user = userEvent.setup();
@@ -517,19 +401,26 @@ describe("WorkspaceShell", () => {
   });
 
   it("clears skillFiles cache when skill name changes", async () => {
-    refineState.setSkillFiles.mockClear();
+    useWorkspaceStore.setState({
+      skillFiles: [{ filename: "SKILL.md", content: "# Skill" }],
+      selectedModifiedFile: "SKILL.md",
+      activeFileTab: "SKILL.md",
+      diffMode: true,
+      gitDiff: { stat: "1 file changed", files: [] },
+    });
 
     const { rerender } = render(
       <WorkspaceShell skill={baseBuilderSkill} skillType="builder" />,
     );
 
-    const callsAfterMount = refineState.setSkillFiles.mock.calls.length;
-
     const newSkill = { ...baseBuilderSkill, name: "new-skill" };
     rerender(<WorkspaceShell skill={newSkill} skillType="builder" />);
 
-    expect(refineState.setSkillFiles.mock.calls.length).toBeGreaterThan(callsAfterMount);
-    const lastCall = refineState.setSkillFiles.mock.calls.at(-1);
-    expect(lastCall?.[0]).toEqual([]);
+    const workspaceState = useWorkspaceStore.getState();
+    expect(workspaceState.skillFiles).toEqual([]);
+    expect(workspaceState.selectedModifiedFile).toBeNull();
+    expect(workspaceState.activeFileTab).toBe("SKILL.md");
+    expect(workspaceState.diffMode).toBe(false);
+    expect(workspaceState.gitDiff).toBeNull();
   });
 });

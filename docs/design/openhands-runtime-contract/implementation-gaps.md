@@ -2,6 +2,10 @@
 
 Current gaps between the merged runtime contract and the target conversation model in [openhands-conversation-model.md](./openhands-conversation-model.md).
 
+Task 1 of the reimplementation plan has already removed the legacy Refine UI,
+its dedicated Zustand store, and the Refine-only backend command surface. The
+remaining gaps below are the post-clean-break conversation-model gaps.
+
 ## 1. `agent-store` Still Owns Transcript Authority
 
 Target model expects:
@@ -32,64 +36,23 @@ Relevant files:
 - `app/src/lib/display-types.ts`
 - `app/src/lib/openhands-event-projection.ts`
 - `app/src/components/agent-items/**`
-- `app/src/components/refine/agent-turn-inline.tsx`
 
-## 3. Refine Still Uses Synthetic Agent-Turn Grouping
+## 3. Resolved in Task 1: Legacy Refine Turn Grouping Removed
 
-Target model expects:
+The deleted Refine tree no longer owns transcript grouping. That removes the
+old agent-turn projection seam entirely instead of migrating it.
 
-- one flat ordered event stream
-- renderer-level event display semantics
-- no transcript authority based on synthetic turn boundaries, display item indices, or agent-group slicing
+## 4. Resolved in Task 1: Separate Refine Message State Removed
 
-Current Refine still relies on:
+The product no longer has a parallel Refine message model. Selected-skill
+session bootstrap now hydrates shared session metadata only, which avoids
+keeping a second transcript authority alive while the canonical model is built.
 
-- `RefineMessage.role === "agent"`
-- `displayItemStartIndex`
-- `displayItemSplitIndex`
-- agent-turn inline slices
+## 5. Resolved in Task 1: Refine Dispatch Command Surface Removed
 
-Relevant files:
-
-- `app/src/stores/refine-store.ts`
-- `app/src/components/refine/chat-message-list.tsx`
-- `app/src/components/refine/agent-turn-inline.tsx`
-- `app/src/components/workspace/workspace-refine.tsx`
-
-## 4. Frontend-Originated Sends Are Not Yet First-Class Canonical Events
-
-Target model expects:
-
-- a frontend-originated canonical event inserted immediately in `sending` state
-- in-place mutation to `accepted` or `failed`
-- no separate optimistic chat model outside the canonical stream
-
-Current Refine still uses separate local message insertion plus later runtime event projection, which allows drift between:
-
-- local UI state
-- backend-accepted conversation state
-- restored conversation history
-
-Relevant files:
-
-- `app/src/components/workspace/workspace-refine.tsx`
-- `app/src/stores/refine-store.ts`
-- `app/src/lib/skill-openhands-session.ts`
-
-## 5. Backend Acceptance Does Not Yet Correlate to a Canonical Frontend Event
-
-Target model expects:
-
-- the same frontend-originated event to mutate from `sending` to `accepted` or `failed`
-- a stable local event id or correlation token
-
-Current command flows return runtime data like `agent_id`, `conversation_id`, and `run_started`, but they do not yet participate in a canonical conversation-event acknowledgement contract.
-
-Relevant files:
-
-- `app/src-tauri/src/commands/refine/mod.rs`
-- `app/src/lib/tauri.ts`
-- `app/src/lib/tauri-command-types.ts`
+The Refine-specific send/finalize command path has been deleted. Future
+conversation acknowledgement work will be added on the new canonical
+conversation-event surface rather than extending the removed Refine contract.
 
 ## 6. The Live Event Bridge Is Still Keyed by `agent_id`
 
@@ -138,19 +101,20 @@ Target model expects:
 - one projection layer
 - identical behavior for live and restored views
 
-Current code still mixes:
+Current code still splits responsibilities between:
 
 - live event ingestion from `use-agent-stream`
-- restored transcript rebuilding in `skill-openhands-session.ts`
-- local Refine message state in `refine-store.ts`
+- restored session metadata bootstrap in `skill-openhands-session.ts`
+- agent-run display state in `agent-store`
 
-That split is the source of many “it was sent and persisted but not visible live” failures.
+The old Refine-specific transcript path is gone, but the canonical shared
+conversation event layer still does not exist.
 
 Relevant files:
 
 - `app/src/hooks/use-agent-stream.ts`
 - `app/src/lib/skill-openhands-session.ts`
-- `app/src/stores/refine-store.ts`
+- `app/src/stores/agent-store.ts`
 
 ## 9. Workflow and Other OpenHands-Backed Surfaces Do Not Yet Share a Canonical Conversation Event Layer
 
@@ -158,14 +122,13 @@ Target model expects one shared conversation/event model across all OpenHands-ba
 
 Current behavior is still surface-specific:
 
-- Refine has one transcript path
-- Workflow has another
+- selected-skill bootstrap only restores session metadata today
+- Workflow has its own transcript path
 - throwaway surfaces often bypass transcript concerns entirely
 
 Relevant files:
 
 - `app/src/pages/workflow.tsx`
-- `app/src/components/workspace/workspace-refine.tsx`
 - `app/src/components/agent-output-panel.tsx`
 - `app/src-tauri/src/commands/skill/scope_review.rs`
 - `app/src-tauri/src/commands/eval_workbench/mod.rs`
@@ -182,5 +145,4 @@ Current docs still describe agent/display grouping assumptions that should be do
 Relevant files:
 
 - `docs/design/openhands-runtime-contract/README.md`
-- `docs/design/openhands-runtime-contract/refine-sequence.md`
 - `docs/design/openhands-event-display-projection/README.md`

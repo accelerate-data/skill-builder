@@ -49,7 +49,7 @@ import {
 } from "@/lib/queries/skills";
 
 export interface SkillListPanelProps {
-  onSelectSkill?: (name: string, targetSurface?: "overview" | "refine" | "evals") => Promise<void> | void;
+  onSelectSkill?: (name: string, targetSurface?: "overview" | "evals") => Promise<void> | void;
   onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   onCreateSkill?: () => void;
   onCollapse?: () => void;
@@ -141,7 +141,7 @@ export function SkillListPanel({
   }, [lockedSkills, selectedSkillId, setSelectedSkill, unifiedSkills]);
 
   const runningAgent = Object.values(runs).find(
-    (r) => r.status === "running" && (r.runSource === "workflow" || r.runSource === "refine"),
+    (r) => r.status === "running" && r.runSource === "workflow",
   );
   const runningSkillName = runningAgent?.skillName ?? null;
 
@@ -164,7 +164,7 @@ export function SkillListPanel({
     : null;
 
   async function handleRowClick(skill: UnifiedSkill) {
-    // All other rows are locked while a workflow or refine agent runs
+    // All other rows are locked while a workflow agent runs
     if (runningSkillName && skill.name !== runningSkillName) return;
     // Running skill is also a no-op
     if (skill.name === runningSkillName) return;
@@ -215,11 +215,6 @@ export function SkillListPanel({
   async function handleEval(skillKey: string) {
     console.log("event=skill_eval skill=%s", skillKey);
     await onSelectSkill?.(skillKey, "evals");
-  }
-
-  async function handleRefine(skillKey: string) {
-    console.log("event=skill_refine skill=%s", skillKey);
-    await onSelectSkill?.(skillKey, "refine");
   }
 
   async function handleReview(skill: UnifiedSkill) {
@@ -412,7 +407,6 @@ export function SkillListPanel({
               onRedo={handleRedo}
               onOverview={handleOverview}
               onEval={handleEval}
-              onRefine={handleRefine}
               onContinueBuilding={handleContinueBuilding}
               onRestore={(name, pluginSlug) => setRestoreTarget({ skillName: name, pluginSlug })}
               onDelete={handleDelete}

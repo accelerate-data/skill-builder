@@ -1,19 +1,9 @@
 import { selectSkillOpenHandsSession } from "@/lib/tauri";
-import {
-  getMessageText,
-  type OpenHandsConversationEvent,
-} from "@/lib/openhands-conversation-events";
 import type {
   EditableSkill,
   SkillSessionInfo,
-  RestoredConversationEvent,
 } from "@/lib/types";
-import {
-  type RefineTurn,
-  type RefineMessage,
-  useRefineStore,
-} from "@/stores/refine-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSkillStore } from "@/stores/skill-store";
 
 function buildSessionSkill(
   skill: Pick<EditableSkill, "name" | "plugin_slug"> & Partial<EditableSkill>,
@@ -35,212 +25,16 @@ function buildSessionSkill(
   };
 }
 
-function toConversationEvent(
-  event: RestoredConversationEvent,
-): OpenHandsConversationEvent {
-  return {
-    type: "conversation_event",
-    runtime: "openhands",
-    eventClass: event.event_class,
-    event: event.event,
-    timestamp: event.timestamp,
-    toolCallId: event.tool_call_id ?? undefined,
-    parentToolCallId: event.parent_tool_call_id ?? undefined,
-  };
-}
-
-function isUserMessageEvent(event: OpenHandsConversationEvent): boolean {
-  return (
-    event.eventClass === "MessageEvent" &&
-    event.event.source === "user"
-  );
-}
-
-function buildRestoredMessages(
-  skill: EditableSkill,
-  conversationId: string,
-  restoredEvents: RestoredConversationEvent[],
-): { messages: RefineMessage[]; turns: RefineTurn[] } {
-  const normalizedEvents = restoredEvents
-    .map(toConversationEvent)
-    .sort((left, right) => left.timestamp - right.timestamp);
-  const messages: RefineMessage[] = [];
-  const turns: RefineTurn[] = [];
-  const usageSessionId = `restored:refine:${skill.name}:${conversationId}`;
-  const agentStore = useAgentStore.getState();
-  let leadingEvents: OpenHandsConversationEvent[] = [];
-  let currentUserText: string | null = null;
-  let currentTurnEvents: OpenHandsConversationEvent[] = [];
-  let turnIndex = 0;
-
-  const pushTurn = () => {
-    if (!currentUserText && currentTurnEvents.length === 0) {
-      return;
-    }
-    const timestamp =
-      currentTurnEvents[currentTurnEvents.length - 1]?.timestamp ?? Date.now();
-
-    if (currentUserText) {
-      messages.push({
-        id: crypto.randomUUID(),
-        role: "user",
-        userText: currentUserText,
-        timestamp,
-      });
-    }
-
-    const hasRenderableAgentEvents = currentTurnEvents.some(
-      (event) => !isUserMessageEvent(event),
-    );
-    if (hasRenderableAgentEvents) {
-      const agentId = `${usageSessionId}:turn:${turnIndex}`;
-      agentStore.registerRun(agentId, "restored", skill.name, "refine", usageSessionId);
-      currentTurnEvents.forEach((event) => {
-        agentStore.addConversationEvent(agentId, event);
-      });
-      useAgentStore.setState((state) => {
-        const run = state.runs[agentId];
-        if (!run) return state;
-        return {
-          runs: {
-            ...state.runs,
-            [agentId]: {
-              ...run,
-              status: "completed",
-              startTime: currentTurnEvents[0]?.timestamp ?? run.startTime,
-              endTime: timestamp,
-              conversationEvents: currentTurnEvents,
-            },
-          },
-        };
-      });
-      messages.push({
-        id: crypto.randomUUID(),
-        role: "agent",
-        agentId,
-        hideTaskSent: false,
-        timestamp,
-      });
-      turns.push({
-        turnId: crypto.randomUUID(),
-        conversationId,
-        agentId,
-        userMessageId: messages[messages.length - 2]?.id ?? crypto.randomUUID(),
-        displayItemStartIndex: 0,
-        displayItemEndIndex:
-          useAgentStore.getState().runs[agentId]?.displayItems.length ?? null,
-        status: "completed",
-        acceptedAt: timestamp,
-      });
-      turnIndex += 1;
-    } else if (currentUserText) {
-      turns.push({
-        turnId: crypto.randomUUID(),
-        conversationId,
-        agentId: null,
-        userMessageId: messages[messages.length - 1]?.id ?? crypto.randomUUID(),
-        displayItemStartIndex: null,
-        displayItemEndIndex: null,
-        status: "completed",
-        acceptedAt: timestamp,
-      });
-    }
-
-    currentUserText = null;
-    currentTurnEvents = [];
-  };
-
-  normalizedEvents.forEach((event) => {
-    if (isUserMessageEvent(event)) {
-      pushTurn();
-      currentUserText = getMessageText(event) ?? "";
-      currentTurnEvents = [
-        ...(turnIndex === 0 ? leadingEvents : []),
-        event,
-      ];
-      leadingEvents = [];
-      return;
-    }
-
-    if (currentUserText != null || currentTurnEvents.length > 0) {
-      currentTurnEvents.push(event);
-      return;
-    }
-
-    leadingEvents.push(event);
-  });
-
-  pushTurn();
-  return { messages, turns };
-}
-
-function buildFallbackMessages(
-  session: SkillSessionInfo,
-): { messages: RefineMessage[]; turns: RefineTurn[] } {
-  const messages: RefineMessage[] = session.restored_messages.map((message, index) => ({
-    id: crypto.randomUUID(),
-    role: message.role === "user" ? "user" : "agent",
-    userText: message.role === "user" ? message.content : undefined,
-    agentText: message.role === "user" ? undefined : message.content,
-    timestamp: Date.now() + index,
-  }));
-  const turns: RefineTurn[] = [];
-  let pendingUserMessageId: string | null = null;
-  messages.forEach((message) => {
-    if (message.role === "user") {
-      pendingUserMessageId = message.id;
-      return;
-    }
-    if (message.role === "agent" && pendingUserMessageId) {
-      turns.push({
-        turnId: crypto.randomUUID(),
-        conversationId: session.conversation_id,
-        agentId: null,
-        userMessageId: pendingUserMessageId,
-        displayItemStartIndex: null,
-        displayItemEndIndex: null,
-        status: "completed",
-        acceptedAt: message.timestamp,
-      });
-      pendingUserMessageId = null;
-    }
-  });
-  if (pendingUserMessageId) {
-    turns.push({
-      turnId: crypto.randomUUID(),
-      conversationId: session.conversation_id,
-      agentId: null,
-      userMessageId: pendingUserMessageId,
-      displayItemStartIndex: null,
-      displayItemEndIndex: null,
-      status: "completed",
-      acceptedAt: null,
-    });
-  }
-  return { messages, turns };
-}
-
 export function hydrateSelectedSkillOpenHandsSession(
   skill: Pick<EditableSkill, "name" | "plugin_slug"> & Partial<EditableSkill>,
   session: SkillSessionInfo,
 ): void {
   const editableSkill = buildSessionSkill(skill);
-  const store = useRefineStore.getState();
-  useAgentStore.getState().clearRunsBySource("refine");
+  const store = useSkillStore.getState();
   store.selectSkill(editableSkill);
   store.setConversationId(session.conversation_id || null);
   store.setAvailableAgents(session.available_agents ?? []);
-
-  const { messages, turns } =
-    session.restored_transcript_events.length > 0
-      ? buildRestoredMessages(
-          editableSkill,
-          session.conversation_id,
-          session.restored_transcript_events,
-        )
-      : buildFallbackMessages(session);
-  store.setMessages(messages);
-  store.setTurns(turns);
+  store.setActiveAgentId(null);
 }
 
 export async function restartSkillOpenHandsSession(

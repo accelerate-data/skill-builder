@@ -11,7 +11,6 @@ pub mod lifecycle;
 pub mod model_catalog;
 pub mod startup;
 pub mod reconciliation;
-pub mod refine;
 pub mod runtime_lifecycle;
 pub mod settings;
 pub mod skill;

@@ -9,10 +9,11 @@ function readSource(relativePath: string) {
 }
 
 describe("runtime API contract", () => {
-  it("exposes streaming refine API and does not expose removed legacy agent command", () => {
+  it("exposes selected-skill session APIs and does not expose removed legacy agent command", () => {
     const source = readSource("lib/tauri.ts");
 
-    expect(source).toContain("export const sendRefineMessage");
+    expect(source).toContain("export const selectSkillOpenHandsSession");
+    expect(source).toContain("export const pauseOpenHandsSession");
     expect(source).not.toContain("export const cancelAgentRun");
     expect(source).not.toContain("export const pauseRefineSession");
     // start_agent Tauri command has been removed — neither the old raw binding
@@ -37,12 +38,11 @@ describe("runtime API contract", () => {
     expect(evalsSource).toContain("onDefineEvalScenario");
   });
 
-  it("keeps refine UI on the streaming refine API", () => {
-    const source = readSource("components/workspace/workspace-refine.tsx");
+  it("removes the refine workspace surface", () => {
+    const source = readSource("components/workspace/workspace-shell.tsx");
 
-    expect(source).toContain("sendRefineMessage");
-    expect(source).not.toContain("answerStreamingRefineQuestion");
-    expect(source).not.toContain("startOneShotAgent");
+    expect(source).not.toContain('TabsTrigger value="refine"');
+    expect(source).not.toContain("WorkspaceRefine");
   });
 
   it("does not expose workflow AskUserQuestion UI for workflow runs", () => {

@@ -48,12 +48,12 @@ vi.mock("@/components/skill-list-panel", () => ({
     onSelectSkill,
     onActivateSkill,
   }: {
-    onSelectSkill?: (name: string, targetSurface?: "overview" | "refine" | "evals") => void;
+    onSelectSkill?: (name: string, targetSurface?: "overview" | "evals") => void;
     onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   }) => (
     <div data-testid="skill-list-panel">
-      <button onClick={() => onSelectSkill?.(SALES_SKILL_ID, "refine")}>Select sales</button>
-      <button onClick={() => onSelectSkill?.(FINANCE_SKILL_ID, "refine")}>Select finance</button>
+      <button onClick={() => onSelectSkill?.(SALES_SKILL_ID, "overview")}>Select sales</button>
+      <button onClick={() => onSelectSkill?.(FINANCE_SKILL_ID, "overview")}>Select finance</button>
       <button
         onClick={() => {
           void Promise.resolve(onActivateSkill?.(SALES_SKILL_ID, "workflow")).catch(() => {});
@@ -121,7 +121,6 @@ vi.mock("@/lib/toast", () => ({
 // Must import after mocks are set up
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAgentStore } from "@/stores/agent-store";
-import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
@@ -186,11 +185,17 @@ describe("AppLayout", () => {
     resetTauriMocks();
     installAppLayoutInvokeDefaults();
     useSettingsStore.getState().reset();
-    useRefineStore.getState().clearSession();
     useWorkflowStore.getState().reset();
     useAgentStore.getState().clearRuns();
-    useSkillStore.getState().setActiveSkill(null);
-    useSkillStore.getState().setLockedSkills(new Set());
+    useSkillStore.setState({
+      activeSkillId: null,
+      lockedSkills: new Set(),
+      latestVersion: null,
+      selectedSkill: null,
+      conversationId: null,
+      availableAgents: [],
+      activeAgentId: null,
+    });
     setEvalsRunning(false);
     setEvalsStopping(false);
     setEvalsCancelHandler(null);
@@ -347,58 +352,6 @@ describe("AppLayout", () => {
     expect(screen.queryByText("Startup Reconciliation")).not.toBeInTheDocument();
   });
 
-  it("pauses refine exactly once when Escape is pressed during a refine run", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: emptyReconciliation,
-      pause_openhands_session: true,
-    });
-    useRefineStore.setState({
-      isRunning: true,
-      activeAgentId: "refine-agent-1",
-      selectedSkill: {
-        name: "my-skill",
-        status: "completed",
-        current_step: null,
-        last_modified: null,
-        tags: [],
-        purpose: "domain",
-        skill_source: "skill-builder",
-        author_login: null,
-        author_avatar: null,
-        intake_json: null,
-        plugin_slug: "skills",
-        plugin_display_name: "Skills",
-        is_default_plugin: true,
-      },
-      conversationId: "conv-refine-1",
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("outlet")).toBeInTheDocument();
-    });
-
-    mockInvoke.mockClear();
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("pause_openhands_session", {
-        input: {
-          skillName: "my-skill",
-          pluginSlug: "skills",
-          conversationId: "conv-refine-1",
-          agentId: "refine-agent-1",
-          skillId: null,
-        },
-      });
-    });
-    expect(
-      mockInvoke.mock.calls.filter(([cmd]) => cmd === "pause_openhands_session"),
-    ).toHaveLength(1);
-  });
-
   it("pauses the workflow conversation when Escape is pressed during workflow streaming", async () => {
     const skills = [
       {
@@ -499,132 +452,6 @@ describe("AppLayout", () => {
     expect(mockInvoke).not.toHaveBeenCalledWith("pause_openhands_session", expect.anything());
   });
 
-  it("sets refine isStopping immediately when Escape is pressed during refine run", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: emptyReconciliation,
-      pause_openhands_session: true,
-    });
-    useRefineStore.setState({
-      isRunning: true,
-      isStopping: false,
-      activeAgentId: "refine-agent-1",
-      selectedSkill: {
-        name: "my-skill",
-        status: "completed",
-        current_step: null,
-        last_modified: null,
-        tags: [],
-        purpose: "domain",
-        skill_source: "skill-builder",
-        author_login: null,
-        author_avatar: null,
-        intake_json: null,
-        plugin_slug: "skills",
-        plugin_display_name: "Skills",
-        is_default_plugin: true,
-      },
-      conversationId: "conv-refine-1",
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("outlet")).toBeInTheDocument();
-    });
-
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    expect(useRefineStore.getState().isStopping).toBe(true);
-  });
-
-  it("still pauses refine when a nested element stops Escape propagation", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: emptyReconciliation,
-      pause_openhands_session: true,
-    });
-    useRefineStore.setState({
-      isRunning: true,
-      isStopping: false,
-      activeAgentId: "refine-agent-1",
-      selectedSkill: {
-        name: "my-skill",
-        status: "completed",
-        current_step: null,
-        last_modified: null,
-        tags: [],
-        purpose: "domain",
-        skill_source: "skill-builder",
-        author_login: null,
-        author_avatar: null,
-        intake_json: null,
-        plugin_slug: "skills",
-        plugin_display_name: "Skills",
-        is_default_plugin: true,
-      },
-      conversationId: "conv-refine-1",
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("outlet")).toBeInTheDocument();
-    });
-
-    const nested = document.createElement("button");
-    nested.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-      }
-    });
-    document.body.appendChild(nested);
-
-    try {
-      mockInvoke.mockClear();
-      nested.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("pause_openhands_session", {
-          input: {
-            skillName: "my-skill",
-            pluginSlug: "skills",
-            conversationId: "conv-refine-1",
-            agentId: "refine-agent-1",
-            skillId: null,
-          },
-        });
-      });
-      expect(useRefineStore.getState().isStopping).toBe(true);
-    } finally {
-      nested.remove();
-    }
-  });
-
-  it("does not call cancel again when Escape is pressed during refine stopping state", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: emptyReconciliation,
-    });
-    useRefineStore.setState({
-      isRunning: true,
-      isStopping: true,
-      activeAgentId: "refine-agent-stopping",
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("outlet")).toBeInTheDocument();
-    });
-
-    mockInvoke.mockClear();
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    await new Promise((r) => setTimeout(r, 100));
-    expect(mockInvoke).not.toHaveBeenCalledWith("pause_openhands_session", expect.anything());
-  });
-
   it("sets workflow isStopping immediately when Escape is pressed during workflow run", async () => {
     const skills = [
       {
@@ -698,7 +525,7 @@ describe("AppLayout", () => {
       pause_openhands_session: true,
       log_frontend: null,
     });
-    useRefineStore.setState({
+    useSkillStore.setState({
       selectedSkill: {
         id: 2740,
         name: "my-skill",
@@ -716,6 +543,7 @@ describe("AppLayout", () => {
         is_default_plugin: true,
       },
       conversationId: "conv-workflow-fallback",
+      activeAgentId: "workflow-agent-pending",
     });
     useAgentStore.getState().setActiveAgent("workflow-agent-pending");
     useWorkflowStore.getState().setRunning(true);
@@ -855,7 +683,7 @@ describe("AppLayout", () => {
       });
     });
 
-    expect(useRefineStore.getState().conversationId).toBe("conv-sales");
+    expect(useSkillStore.getState().conversationId).toBe("conv-sales");
   });
 
   it("bootstraps an OpenHands session without requiring workspace path", async () => {
@@ -920,7 +748,7 @@ describe("AppLayout", () => {
     });
 
     expect(toast.error).not.toHaveBeenCalledWith("Workspace path is not configured", expect.anything());
-    expect(useRefineStore.getState().conversationId).toBe("conv-sales");
+    expect(useSkillStore.getState().conversationId).toBe("conv-sales");
   });
 
   it("does not bootstrap a locked skill from the panel", async () => {
@@ -1006,7 +834,7 @@ describe("AppLayout", () => {
     });
 
     useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
-    useRefineStore.setState({
+    useSkillStore.setState({
       selectedSkill: {
         id: 1,
         name: "sales-skill",
@@ -1105,7 +933,7 @@ describe("AppLayout", () => {
         params: { skillId: SALES_SKILL_ID },
       });
     });
-    expect(useRefineStore.getState().conversationId).toBe("conv-restarted");
+    expect(useSkillStore.getState().conversationId).toBe("conv-restarted");
   });
 
   it("does not navigate to a locked already-active skill", async () => {
@@ -1146,7 +974,7 @@ describe("AppLayout", () => {
       activeSkillId: SALES_SKILL_ID,
       lockedSkills: new Set([1]),
     });
-    useRefineStore.setState({
+    useSkillStore.setState({
       selectedSkill: {
         id: 1,
         name: "sales-skill",
@@ -1247,7 +1075,7 @@ describe("AppLayout", () => {
     });
 
     useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
-    useRefineStore.setState({
+    useSkillStore.setState({
       selectedSkill: {
         id: 1,
         name: "sales-skill",
@@ -1352,7 +1180,7 @@ describe("AppLayout", () => {
     });
 
     useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
-    useRefineStore.setState({
+    useSkillStore.setState({
       selectedSkill: {
         id: 1,
         name: "sales-skill",
