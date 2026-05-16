@@ -603,11 +603,10 @@ Task 4 begins the first surface adoption on the workspace side:
   workspace conversation surface for the selected skill session
 - `app/src/components/layout/app-layout.tsx` now restores workspace skills onto
   the conversation surface by default when the selected session is rehydrated
-
-Workspace still does not hydrate restored transcript history into
-`conversation-store`, but the session-backed workspace surface now reads from
-the canonical conversation layer instead of the legacy `agent-store`
-transcript path.
+- `app/src/lib/skill-openhands-session.ts` now replays
+  `restored_transcript_events` into canonical conversation envelopes during
+  selected-session hydration, so restored workspace sessions land on the same
+  `conversation-store` timeline used for live activity
 
 Task 5 extends that surface adoption into Workflow:
 

@@ -341,7 +341,7 @@ git commit -m "feat: add conversation-centric runtime helpers"
 - Test: `app/src/__tests__/components/conversation/conversation-timeline.test.tsx`
 - Test: `app/src/__tests__/components/workspace/workspace-conversation.test.tsx`
 
-- [ ] **Step 1: Build the flat timeline renderer over canonical events**
+- [x] **Step 1: Build the flat timeline renderer over canonical events**
 
 ```tsx
 // app/src/components/conversation/conversation-timeline.tsx
@@ -359,7 +359,7 @@ export function ConversationTimeline({ conversationId }: { conversationId: strin
 }
 ```
 
-- [ ] **Step 2: Add the new clean-slate conversation workspace surface**
+- [x] **Step 2: Add the new clean-slate conversation workspace surface**
 
 ```tsx
 // app/src/components/workspace/workspace-conversation.tsx
@@ -367,7 +367,7 @@ export function ConversationTimeline({ conversationId }: { conversationId: strin
 // It reads only from conversation-store and conversation-runtime helpers.
 ```
 
-- [ ] **Step 3: Wire the workspace surface to selected-skill session restoration**
+- [x] **Step 3: Wire the workspace surface to selected-skill session restoration**
 
 ```ts
 // app/src/lib/skill-openhands-session.ts
@@ -375,7 +375,7 @@ export function ConversationTimeline({ conversationId }: { conversationId: strin
 // Feed the workspace conversation surface without any refine-store shim.
 ```
 
-- [ ] **Step 4: Update design docs for the new workspace conversation surface**
+- [x] **Step 4: Update design docs for the new workspace conversation surface**
 
 ```text
 Update:
@@ -386,7 +386,7 @@ Record that the first consumer of the canonical conversation stream is now the w
 conversation surface, and remove any stale Refine-specific rendering assumptions.
 ```
 
-- [ ] **Step 5: Verify the workspace-only PR and commit**
+- [x] **Step 5: Verify the workspace-only PR and commit**
 
 ```bash
 cd app && npx vitest run \

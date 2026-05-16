@@ -283,15 +283,11 @@ Current behavior:
 - `WorkspaceConversation` renders the canonical conversation timeline through
   `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat
   timeline row renderer
+- selected-session hydration replays `restored_transcript_events` into
+  `conversation-store` as canonical backend-observed events for that
+  `conversationId`
 - implicit workspace entry after selected-skill session bootstrap now restores
   to the conversation surface by default
-
-Current limitation:
-
-- restored selected-skill history is still not replayed into
-  `conversation-store`, so the workspace conversation surface currently shows
-  canonical live events plus frontend sends rather than a fully reconstructed
-  restored transcript
 
 ### Workflow
 
