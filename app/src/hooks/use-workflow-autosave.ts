@@ -14,9 +14,9 @@ interface UseWorkflowAutosaveOptions {
   dbClarificationsData?: ClarificationsFile | null;
 }
 
-/** Flatten all questions (including refinements) from a ClarificationsFile */
+/** Flatten all questions from a ClarificationsFile */
 function flattenQuestions(questions: Question[]): Question[] {
-  return questions.flatMap((q) => [q, ...flattenQuestions(q.refinements ?? [])]);
+  return questions;
 }
 
 function flattenFileQuestions(data: ClarificationsFile): Question[] {

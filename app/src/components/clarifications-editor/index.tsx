@@ -30,7 +30,7 @@ interface ClarificationsEditorProps {
 }
 
 function flattenQuestions(questions: Question[]): Question[] {
-  return questions.flatMap((question) => [question, ...flattenQuestions(question.refinements ?? [])]);
+  return questions;
 }
 
 function flattenSectionQuestions(sections: Section[]): Question[] {
@@ -157,20 +157,13 @@ export function ClarificationsEditor({
 
   const updateQuestion = useCallback(
     (questionId: string, updater: (q: Question) => Question) => {
-      function walkQuestions(questions: Question[]): Question[] {
-        return questions.map((q) => {
-          if (q.id === questionId) return updater(q);
-          if ((q.refinements ?? []).length > 0) {
-            return { ...q, refinements: walkQuestions(q.refinements ?? []) };
-          }
-          return q;
-        });
-      }
       const updated: ClarificationsFile = {
         ...data,
         sections: (data.sections ?? []).map((s) => ({
           ...s,
-          questions: walkQuestions(s.questions ?? []),
+          questions: (s.questions ?? []).map((q) =>
+            q.id === questionId ? updater(q) : q,
+          ),
         })),
       };
       onChange(updated);
@@ -179,8 +172,7 @@ export function ClarificationsEditor({
   );
 
   const hasNeedsReviewInTree = useCallback((q: Question): boolean => {
-    if (needsReviewQuestionIds.has(q.id)) return true;
-    return (q.refinements ?? []).some(hasNeedsReviewInTree);
+    return needsReviewQuestionIds.has(q.id);
   }, [needsReviewQuestionIds]);
 
   const visibleSections = (data.sections ?? [])
