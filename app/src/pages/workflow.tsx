@@ -28,8 +28,8 @@ import {
 
 import { ReviewModeToggle } from "@/components/review-mode-toggle";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
-import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
+import { ConversationTimeline } from "@/components/conversation/conversation-timeline";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/step-complete";
 import ResetStepDialog from "@/components/reset-step-dialog";
@@ -54,6 +54,7 @@ import type { ClarificationsDto, ClarificationQuestionDto } from "@/generated/co
 import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
 import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import { useWorkspaceStore } from "@/stores/workspace-store";
+import { useConversationEvents } from "@/hooks/use-conversation-stream";
 
 // ─── ClarificationsDto → ClarificationsFile mapper ───────────────────────────
 
@@ -187,9 +188,7 @@ export default function WorkflowPage() {
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const selectedSkill = useSkillStore((s) => s.selectedSkill);
   const conversationId = useSkillStore((s) => s.conversationId);
-  const activeRunDisplayItemCount = useAgentStore((s) =>
-    s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
-  );
+  const activeConversationEventCount = useConversationEvents(conversationId ?? "").length;
   const { data: builderSkills = [] } = useBuilderSkillsQuery();
   const currentSkill = builderSkills.find(
     (sk) => String(sk.id) === skillId,
@@ -376,11 +375,11 @@ export default function WorkflowPage() {
 
   const renderContent = () => {
     // 1. Agent running — show streaming output or init spinner
-    if (activeAgentId) {
-      if (isInitializing && activeRunDisplayItemCount === 0) {
+    if (activeAgentId && conversationId) {
+      if (isInitializing && activeConversationEventCount === 0) {
         return <AgentInitializingIndicator />;
       }
-      return <AgentOutputPanel agentId={activeAgentId} />;
+      return <ConversationTimeline conversationId={conversationId} />;
     }
 
     // 2. Agent initializing (no ID yet)

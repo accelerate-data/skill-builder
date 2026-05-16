@@ -609,6 +609,18 @@ Workspace still does not hydrate restored transcript history into
 the canonical conversation layer instead of the legacy `agent-store`
 transcript path.
 
+Task 5 extends that surface adoption into Workflow:
+
+- `app/src/pages/workflow.tsx` now renders live workflow transcript activity
+  through `ConversationTimeline` keyed by the selected session's
+  `conversationId`
+- workflow rendering no longer depends on `runs[agentId].displayItems` for
+  transcript ownership or empty-state detection
+
+Workflow still uses `agent-store` for run lifecycle/orchestration inside the
+workflow state machine, but transcript rendering now reads from the canonical
+conversation layer rather than the legacy display projection path.
+
 ### Terminal Result Ownership
 
 Workflow commands extract terminal `conversation_state.result_text` from a

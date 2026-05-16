@@ -56,6 +56,6 @@ describe("runtime API contract", () => {
     const source = readSource("pages/workflow.tsx");
 
     expect(source).not.toContain("const runs = useAgentStore((s) => s.runs)");
-    expect(source).toContain("activeRunDisplayItemCount");
+    expect(source).toContain("activeConversationEventCount");
   });
 });

@@ -295,7 +295,23 @@ Current limitation:
 
 ### Workflow
 
-Workflow may adopt the same canonical event stream underneath step-specific UIs, while still choosing a more structured presentation at the page level.
+Workflow now renders live transcript activity from the same canonical event
+stream while keeping its step-specific page structure.
+
+Current behavior:
+
+- the workflow page renders `ConversationTimeline` for the active selected
+  session `conversationId`
+- workflow initialization still uses a lightweight spinner until canonical
+  conversation events arrive for the active run
+- completed-step and gate-specific UI remain workflow-specific page concerns
+  layered around the shared conversation stream
+
+Current limitation:
+
+- workflow orchestration still tracks active run lifecycle through
+  `agent-store`, even though transcript rendering no longer depends on
+  `displayItems`
 
 Important rule:
 
@@ -318,6 +334,7 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 | [app/src-tauri/src/commands/conversation.rs](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src-tauri/src/commands/conversation.rs) | Session-based backend command surface for selected-skill conversation sends |
 | [app/src/components/conversation/conversation-timeline.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/conversation/conversation-timeline.tsx) | Flat canonical renderer for conversation-store-backed display nodes |
 | [app/src/components/workspace/workspace-conversation.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/workspace/workspace-conversation.tsx) | Clean-slate workspace transcript surface bound to the selected session |
+| [app/src/pages/workflow.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/pages/workflow.tsx) | Workflow page that now renders canonical conversation activity for the active selected session |
 | [app/src/stores/agent-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/agent-store.ts) | Existing migration-era runtime store that still owns legacy display projection paths until later tasks move consumers over |
 
 ## Relationship to Existing Design Specs
@@ -333,4 +350,4 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 
 1. `[design]` Whether send acknowledgement should come from a dedicated backend acknowledgement event or from correlation against current command responses.
 2. `[design]` Whether the canonical event stream should be persisted app-side as a normalized cache or always rebuilt from OpenHands conversation history plus local pending state.
-3. `[migration]` When Workflow and other OpenHands-backed surfaces should swap from `agent-store` display authority to `conversation-store` plus `projectConversationEvents(...)`.
+3. `[migration]` When the remaining workflow orchestration state should stop depending on `agent-store` and move fully to session-centric conversation/runtime ownership.

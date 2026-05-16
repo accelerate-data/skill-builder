@@ -133,22 +133,23 @@ Relevant files:
 - `app/src/components/workspace/workspace-conversation.tsx`
 - `app/src/stores/agent-store.ts`
 
-## 9. Partially Resolved in Task 4: Workflow and Other OpenHands-Backed Surfaces Do Not Yet Share a Canonical Conversation Event Layer
+## 9. Partially Resolved in Task 5: Workflow and Other OpenHands-Backed Surfaces Do Not Yet Share a Canonical Conversation Event Layer
 
 Target model expects one shared conversation/event model across all OpenHands-backed surfaces, even if each surface projects the stream differently.
 
 Current behavior is still surface-specific:
 
 - Workspace now has a canonical conversation surface for selected-skill sessions
+- Workflow now renders live transcript activity from the canonical conversation surface
 - restored selected-skill bootstrap still does not replay canonical history
-- Workflow still has its own transcript path
+- Workflow orchestration still depends on `agent-store` lifecycle state
 - throwaway surfaces often bypass transcript concerns entirely
 
 Relevant files:
 
 - `app/src/components/workspace/workspace-conversation.tsx`
 - `app/src/pages/workflow.tsx`
-- `app/src/components/agent-output-panel.tsx`
+- `app/src/hooks/use-workflow-state-machine.ts`
 - `app/src-tauri/src/commands/skill/scope_review.rs`
 - `app/src-tauri/src/commands/eval_workbench/mod.rs`
 
