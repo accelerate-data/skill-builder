@@ -1993,8 +1993,21 @@ mod reset_artifact_cleanup_tests {
             .is_some()
     }
 
+    fn count_rows_for_skill(
+        conn: &rusqlite::Connection,
+        table: &str,
+        skill_id: i64,
+    ) -> i64 {
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE skill_id = ?1"),
+            rusqlite::params![skill_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
     #[test]
-    fn test_reset_from_step_0_clears_clarifications_and_decisions() {
+    fn test_reset_from_step_0_clears_all_workflow_artifact_rows() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 0, "pending", "domain").unwrap();
         let skill_id = crate::db::get_skill_master_id_in_plugin(
@@ -2006,9 +2019,22 @@ mod reset_artifact_cleanup_tests {
         .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
+        seed_refinements(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
         assert!(has_clarifications(&conn, skill_id));
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
         assert!(has_decisions(&conn, skill_id));
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "decision_items", skill_id) > 0);
 
         // Reset from step 0 should clear clarifications, decisions, and refinements
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 0).unwrap();
@@ -2021,6 +2047,13 @@ mod reset_artifact_cleanup_tests {
             !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 0"
         );
+        assert_eq!(count_rows_for_skill(&conn, "clarification_sections", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "clarification_questions", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_sections", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_questions", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_choices", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_notes", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
 
     #[test]
@@ -2045,6 +2078,13 @@ mod reset_artifact_cleanup_tests {
                 .is_some()
         );
         assert!(has_decisions(&conn, skill_id));
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "decision_items", skill_id) > 0);
 
         // Reset from step 1 should clear refinements and decisions, but keep clarifications.
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 1).unwrap();
@@ -2063,6 +2103,13 @@ mod reset_artifact_cleanup_tests {
             !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 1"
         );
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_sections", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_questions", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_choices", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "refinement_notes", skill_id), 0);
+        assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
 
     #[test]
@@ -2078,9 +2125,22 @@ mod reset_artifact_cleanup_tests {
         .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
+        seed_refinements(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
         assert!(has_clarifications(&conn, skill_id));
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
         assert!(has_decisions(&conn, skill_id));
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "decision_items", skill_id) > 0);
 
         // Reset from step 2 should clear decisions only
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 2).unwrap();
@@ -2093,6 +2153,13 @@ mod reset_artifact_cleanup_tests {
             !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 2"
         );
+        assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_sections", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_questions", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_choices", skill_id) > 0);
+        assert!(count_rows_for_skill(&conn, "refinement_notes", skill_id) > 0);
+        assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
 
     #[test]
