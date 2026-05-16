@@ -143,17 +143,6 @@ fn parse_research_result_text(
                 }
             }
 
-            if let Some(repaired) = repair_missing_research_section_closers(json_text) {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&repaired) {
-                    if parsed.is_object() {
-                        log::warn!(
-                            "[materialize_step] repaired OpenHands research result_text with missing section closers"
-                        );
-                        return Ok(parsed);
-                    }
-                }
-            }
-
             Err(format!(
                 "OpenHands {workflow_label} result_text invalid JSON: {}",
                 parse_error
@@ -204,27 +193,6 @@ fn repair_missing_commas_between_json_values(text: &str) -> Option<String> {
         }
 
         repaired.push(ch);
-    }
-
-    changed.then_some(repaired)
-}
-
-fn repair_missing_research_section_closers(text: &str) -> Option<String> {
-    let mut repaired = text.to_string();
-    let mut changed = false;
-
-    for field in [r#","notes""#, r#","answer_evaluator_notes""#] {
-        let needle = format!(r#""refinements":[]}}]{field}"#);
-        let replacement = format!(r#""refinements":[]}}]}}]{field}"#);
-        if repaired.contains(&needle) {
-            repaired = repaired.replace(&needle, &replacement);
-            changed = true;
-        }
-    }
-
-    if let Some(nested_repaired) = repair_nested_numeric_sections_in_questions(&repaired) {
-        repaired = nested_repaired;
-        changed = true;
     }
 
     changed.then_some(repaired)
@@ -716,47 +684,87 @@ pub(crate) fn agent_json_to_refinements_record(
 }
 
 /// Append new top-level questions from step 1 output to the clarifications tables
-/// without deleting existing rows. Inserts into `clarification_questions` and
-/// `clarification_choices` only.
+/// without deleting existing rows. Inserts into `clarification_sections`,
+/// `clarification_questions`, and `clarification_choices`.
 fn append_new_clarification_questions(
     conn: &rusqlite::Connection,
     skill_id: &str,
-    questions: &[Question],
+    sections: &[crate::contracts::clarifications::Section],
 ) -> Result<(), String> {
-    for (q_idx, q) in questions.iter().enumerate() {
+    // Ensure the clarifications parent row exists (may not if step 0 was skipped)
+    conn.execute(
+        "INSERT OR IGNORE INTO clarifications (
+            skill_id, version, refinement_count, must_answer_count, question_count,
+            section_count, title, created_at, updated_at
+        ) VALUES (?1, '1', 0, 0, 0, 0, '', strftime('%s','now') * 1000, strftime('%s','now') * 1000)",
+        rusqlite::params![skill_id],
+    )
+    .map_err(|e| format!("Failed to ensure clarifications parent row: {}", e))?;
+
+    for section in sections {
+        // Ensure the section exists
         conn.execute(
-            "INSERT OR IGNORE INTO clarification_questions (
-                skill_id, question_id, section_id, parent_question_id, ordinal,
-                title, text, must_answer, answer_choice, answer_text, recommendation
-            ) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, NULL, NULL, ?8)",
+            "INSERT OR IGNORE INTO clarification_sections (skill_id, section_id, ordinal, title, description)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![
                 skill_id,
-                q.id,
+                section.id,
                 0,
-                q_idx as i64,
-                q.title,
-                q.text,
-                q.must_answer as i64,
-                q.recommendation,
+                section.title,
+                section.description.as_deref().unwrap_or(""),
             ],
         )
-        .map_err(|e| format!("Failed to insert clarification question: {}", e))?;
+        .map_err(|e| format!("Failed to insert clarification section: {}", e))?;
 
-        for (c_idx, c) in q.choices.iter().enumerate() {
+        // Read existing question IDs for this skill to avoid duplicates
+        let existing_qids: HashSet<String> = {
+            let mut stmt = conn
+                .prepare("SELECT question_id FROM clarification_questions WHERE skill_id = ?1")
+                .map_err(|e| format!("Failed to prepare query: {}", e))?;
+            let rows = stmt
+                .query_map([skill_id], |row| row.get::<_, String>(0))
+                .map_err(|e| format!("Failed to query: {}", e))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        for (q_idx, q) in section.questions.iter().enumerate() {
+            if existing_qids.contains(&q.id) {
+                continue;
+            }
             conn.execute(
-                "INSERT OR IGNORE INTO clarification_choices (
-                    skill_id, question_id, choice_id, ordinal, text, is_other
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT OR IGNORE INTO clarification_questions (
+                    skill_id, question_id, section_id, parent_question_id, ordinal,
+                    title, text, must_answer, answer_choice, answer_text, recommendation
+                ) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, NULL, NULL, ?8)",
                 rusqlite::params![
                     skill_id,
                     q.id,
-                    c.id,
-                    c_idx as i64,
-                    c.text,
-                    c.is_other as i64,
+                    section.id,
+                    q_idx as i64,
+                    q.title,
+                    q.text,
+                    q.must_answer as i64,
+                    q.recommendation,
                 ],
             )
-            .map_err(|e| format!("Failed to insert clarification choice: {}", e))?;
+            .map_err(|e| format!("Failed to insert clarification question: {}", e))?;
+
+            for (c_idx, c) in q.choices.iter().enumerate() {
+                conn.execute(
+                    "INSERT OR IGNORE INTO clarification_choices (
+                        skill_id, question_id, choice_id, ordinal, text, is_other
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![
+                        skill_id,
+                        q.id,
+                        c.id,
+                        c_idx as i64,
+                        c.text,
+                        c.is_other as i64,
+                    ],
+                )
+                .map_err(|e| format!("Failed to insert clarification choice: {}", e))?;
+            }
         }
     }
     Ok(())
@@ -999,19 +1007,28 @@ pub(crate) fn materialize_workflow_step_output_value(
                 .flat_map(|c| c.questions.iter().map(|q| q.question_id.clone()))
                 .collect();
 
-            // 2. Extract new top-level questions from clarifications_json
-            let new_questions: Vec<Question> = parsed
+            // 2. Extract new sections with filtered questions from clarifications_json
+            let new_sections: Vec<crate::contracts::clarifications::Section> = parsed
                 .clarifications_json
                 .sections
-                .iter()
-                .flat_map(|s| &s.questions)
-                .filter(|q| !existing_qids.contains(&q.id))
-                .cloned()
+                .into_iter()
+                .map(|mut s| {
+                    s.questions = s.questions
+                        .into_iter()
+                        .filter(|q| !existing_qids.contains(&q.id))
+                        .collect();
+                    s
+                })
+                .filter(|s| !s.questions.is_empty())
                 .collect();
 
-            // 3. Append new questions to clarifications (no delete)
-            if !new_questions.is_empty() {
-                append_new_clarification_questions(&conn, &canonical_id, &new_questions)
+            // 3. Wrap clarifications append + refinements upsert in a single transaction
+            let tx = conn
+                .transaction()
+                .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+            if !new_sections.is_empty() {
+                append_new_clarification_questions(&tx, &canonical_id, &new_sections)
                     .map_err(|e| format!("Failed to append new clarifications: {}", e))?;
             }
 
@@ -1021,13 +1038,10 @@ pub(crate) fn materialize_workflow_step_output_value(
                 parsed.refinements_json,
                 now_ms(),
             );
-            let tx = conn
-                .transaction()
-                .map_err(|e| format!("Failed to start transaction: {}", e))?;
             db_artifacts::upsert_refinements(&tx, &refinements_record)
                 .map_err(|e| format!("Failed to upsert refinements: {}", e))?;
             tx.commit()
-                .map_err(|e| format!("Failed to commit refinements: {}", e))?;
+                .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
             Ok(())
         }

@@ -19,8 +19,7 @@
 /// Full clarifications artifact for a skill.
 ///
 /// Mirrors `db::workflow_artifacts::ClarificationsRecord`. Children
-/// (`sections`, `questions`, `notes`) are reconstructed by the read path;
-/// refinements are nested inside each `ClarificationQuestionDto.refinements`.
+/// (`sections`, `questions`, `notes`) are reconstructed by the read path.
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
 )]

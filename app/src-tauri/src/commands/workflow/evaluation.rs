@@ -184,6 +184,13 @@ fn navigate_back_to_step_impl(
         clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
     }
 
+    // When navigating back to step 1, clear refinements so stale data isn't displayed
+    if target_step_id == 1 {
+        let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
+            .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+        clear_artifacts_for_step_reset(conn, &s_id.to_string(), 2)?;
+    }
+
     // Reset only steps after the target; target step status is preserved as "completed".
     let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
         .ok_or_else(|| {
@@ -759,8 +766,8 @@ pub fn verify_step_output(
         }
         1 => {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
-            Ok(db_artifacts::read_clarifications(&conn, &skill_id_str)
-                .map(|opt| opt.map(|r| r.refinement_count > 0).unwrap_or(false))
+            Ok(db_artifacts::read_refinements(&conn, &skill_id_str)
+                .map(|opt| opt.is_some())
                 .unwrap_or(false))
         }
         2 => {
