@@ -194,6 +194,9 @@ export function useWorkflowGate({
           appQueryClient.invalidateQueries({
             queryKey: queryKeys.clarifications.bySkill(String(skillId)),
           });
+          appQueryClient.invalidateQueries({
+            queryKey: queryKeys.refinements.bySkill(String(skillId)),
+          });
         } catch (err) {
           console.warn(
             "[workflow] Could not persist clarification verdicts from gate evaluation:",

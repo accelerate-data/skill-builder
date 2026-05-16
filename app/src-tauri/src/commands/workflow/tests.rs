@@ -97,6 +97,97 @@ fn valid_clarifications_value() -> serde_json::Value {
     })
 }
 
+fn prompt_merge_step0_payload() -> serde_json::Value {
+    serde_json::json!({
+        "status": "research_complete",
+        "question_count": 1,
+        "research_output": {
+            "version": "1",
+            "metadata": {
+                "title": "Prompt Merge",
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 0,
+                "must_answer_count": 1,
+                "priority_questions": ["Q3"]
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Deal Value Basis",
+                    "questions": [
+                        {
+                            "id": "Q3",
+                            "title": "Deal Value Basis",
+                            "must_answer": true,
+                            "text": "Which deal value basis should the skill use?",
+                            "choices": [
+                                {"id":"A","text":"TCV","is_other":false}
+                            ],
+                            "answer_choice": "A",
+                            "answer_text": "Use TCV"
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        }
+    })
+}
+
+fn prompt_merge_step1_payload() -> serde_json::Value {
+    serde_json::json!({
+        "status": "detailed_research_complete",
+        "refinement_count": 1,
+        "section_count": 1,
+        "clarifications_json": {
+            "version": "1",
+            "metadata": {
+                "title": "Prompt Merge Step 1",
+                "question_count": 0,
+                "section_count": 0,
+                "refinement_count": 1,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [],
+            "notes": []
+        },
+        "refinements_json": {
+            "version": "1",
+            "metadata": {
+                "title": "Prompt Merge Refinements",
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 1,
+                "must_answer_count": 1,
+                "priority_questions": ["R3.1"]
+            },
+            "sections": [
+                {
+                    "id": 1,
+                    "title": "Deal Value Basis",
+                    "questions": [
+                        {
+                            "id": "R3.1",
+                            "title": "TCV Multi-Year Deal Handling",
+                            "must_answer": true,
+                            "text": "Should TCV represent the full multi-year commitment?",
+                            "choices": [
+                                {"id":"C1","text":"Yes","is_other":false}
+                            ],
+                            "answer_choice": "C1",
+                            "answer_text": "Yes, use full multi-year TCV",
+                            "refinements": []
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        }
+    })
+}
+
 /// Build an in-memory `Db` with the named skill seeded under the default
 /// plugin so workflow-artifact upserts can resolve `skill_id`.
 /// Returns `(Db, skill_db_id_string)`.
@@ -1108,6 +1199,95 @@ fn confirm_decisions_prompt_renders_app_owned_openhands_task_context() {
     assert!(prompt.contains("What should this skill enable the assistant to do?"));
     assert!(!prompt.contains("What should this skill enable Claude to do?"));
     assert!(prompt.contains("When should this skill trigger?"));
+}
+
+#[test]
+fn workflow_prompt_input_json_merges_persisted_refinements_under_parent_questions() {
+    let (db, skill_id) = db_with_seeded_skill("prompt-merge");
+    materialize_workflow_step_output_value(&db, &skill_id, 0, &prompt_merge_step0_payload())
+        .unwrap();
+    materialize_workflow_step_output_value(&db, &skill_id, 1, &prompt_merge_step1_payload())
+        .unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+
+    let merged_json =
+        super::prompt::workflow_prompt_input_json_string(&clarifications, Some(&refinements));
+    let parsed: serde_json::Value = serde_json::from_str(&merged_json).unwrap();
+    let question = &parsed["sections"][0]["questions"][0];
+
+    assert_eq!(question["id"].as_str(), Some("Q3"));
+    assert_eq!(question["refinements"][0]["id"].as_str(), Some("R3.1"));
+    assert_eq!(
+        question["refinements"][0]["answer_text"].as_str(),
+        Some("Yes, use full multi-year TCV")
+    );
+}
+
+#[test]
+fn evaluator_prompt_includes_persisted_refinements_in_clarifications_json_block() {
+    let (db, skill_id) = db_with_seeded_skill("evaluator-prompt-merge");
+    materialize_workflow_step_output_value(&db, &skill_id, 0, &prompt_merge_step0_payload())
+        .unwrap();
+    materialize_workflow_step_output_value(&db, &skill_id, 1, &prompt_merge_step1_payload())
+        .unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+
+    let merged_json =
+        super::prompt::workflow_prompt_input_json_string(&clarifications, Some(&refinements));
+    let prompt = super::prompt::build_evaluator_prompt(
+        "pipeline-skill",
+        "/tmp/skills",
+        DEFAULT_PLUGIN_SLUG,
+        "",
+        &merged_json,
+    );
+
+    assert!(prompt.contains("\"id\": \"R3.1\""));
+    assert!(prompt.contains("Yes, use full multi-year TCV"));
+}
+
+#[test]
+fn confirm_decisions_prompt_includes_persisted_refinements_in_clarifications_record() {
+    let (db, skill_id) = db_with_seeded_skill("confirm-decisions-prompt-merge");
+    materialize_workflow_step_output_value(&db, &skill_id, 0, &prompt_merge_step0_payload())
+        .unwrap();
+    materialize_workflow_step_output_value(&db, &skill_id, 1, &prompt_merge_step1_payload())
+        .unwrap();
+
+    let conn = db.0.lock().unwrap();
+    let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+    let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+        .unwrap()
+        .unwrap();
+
+    let merged_json =
+        super::prompt::workflow_prompt_input_json_string(&clarifications, Some(&refinements));
+    let prompt = build_step2_prompt(
+        "pipeline-skill",
+        "/tmp/skills",
+        DEFAULT_PLUGIN_SLUG,
+        "",
+        &merged_json,
+    );
+
+    assert!(prompt.contains("\"id\": \"R3.1\""));
+    assert!(prompt.contains("TCV Multi-Year Deal Handling"));
 }
 
 #[test]

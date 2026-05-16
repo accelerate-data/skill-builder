@@ -323,9 +323,19 @@ async fn run_workflow_step_inner(
         2 => {
             let clarifications_json = {
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
-                match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str) {
-                    Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
-                    _ => "{}".to_string(),
+                let clarifications =
+                    crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str)
+                        .ok()
+                        .flatten();
+                let refinements =
+                    crate::db::workflow_artifacts::read_refinements(&conn, &skill_id_str)
+                        .ok()
+                        .flatten();
+                match clarifications {
+                    Some(rec) => {
+                        super::prompt::workflow_prompt_input_json_string(&rec, refinements.as_ref())
+                    }
+                    None => "{}".to_string(),
                 }
             };
             build_step2_prompt(
@@ -697,9 +707,19 @@ pub async fn run_answer_evaluator(
 
     let clarifications_json = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        match crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id.to_string()) {
-            Ok(Some(rec)) => super::prompt::clarifications_record_to_json_string(&rec),
-            _ => "{}".to_string(),
+        let skill_id_str = skill_id.to_string();
+        let clarifications =
+            crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id_str)
+                .ok()
+                .flatten();
+        let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id_str)
+            .ok()
+            .flatten();
+        match clarifications {
+            Some(rec) => {
+                super::prompt::workflow_prompt_input_json_string(&rec, refinements.as_ref())
+            }
+            None => "{}".to_string(),
         }
     };
 
