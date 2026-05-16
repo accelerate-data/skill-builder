@@ -61,6 +61,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (56, run_canonical_skill_identity_migration),
     (57, run_settings_table_normalization_migration),
     (58, run_refinements_tables_migration),
+    (59, run_drop_legacy_chat_tables_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -2912,9 +2913,7 @@ pub(super) fn run_canonical_skill_identity_migration(
 /// - NO `parent_question_id` column — refinements are flat questions
 /// - Separate table names: refinements, refinement_sections, refinement_questions,
 ///   refinement_choices, refinement_notes
-pub(super) fn run_refinements_tables_migration(
-    conn: &Connection,
-) -> Result<(), rusqlite::Error> {
+pub(super) fn run_refinements_tables_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS refinements (
@@ -2994,5 +2993,16 @@ pub(super) fn run_refinements_tables_migration(
         "#,
     )?;
     log::info!("migration 58: created refinements tables");
+    Ok(())
+}
+
+pub(super) fn run_drop_legacy_chat_tables_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS chat_messages;
+         DROP TABLE IF EXISTS chat_sessions;",
+    )?;
+    log::info!("migration 59: dropped legacy chat tables");
     Ok(())
 }

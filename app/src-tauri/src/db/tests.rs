@@ -176,6 +176,64 @@ fn test_openhands_settings_migration_does_not_backfill_legacy_model() {
 }
 
 #[test]
+fn test_drop_legacy_chat_tables_migration_removes_chat_sessions_and_messages() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_migration_table(&conn).unwrap();
+    run_migrations(&conn).unwrap();
+
+    conn.execute_batch(
+        "CREATE TABLE chat_sessions (
+            id TEXT PRIMARY KEY
+        );
+        CREATE TABLE chat_messages (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL
+        );",
+    )
+    .unwrap();
+
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_sessions'",
+            [],
+            |_| Ok(())
+        )
+        .is_ok());
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'",
+            [],
+            |_| Ok(())
+        )
+        .is_ok());
+
+    run_drop_legacy_chat_tables_migration(&conn).unwrap();
+    run_drop_legacy_chat_tables_migration(&conn).unwrap();
+
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_sessions'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+    assert!(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_conversations'",
+            [],
+            |_| Ok(())
+        )
+        .is_ok());
+}
+
+#[test]
 fn test_migration_count_matches_expected() {
     // Guard against missing registrations in NUMBERED_MIGRATIONS.
     // Applies every migration from the module-level constant and asserts the count
