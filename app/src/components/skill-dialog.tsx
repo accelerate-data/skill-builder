@@ -66,7 +66,6 @@ function parseIntakeContext(json: string | null | undefined): string {
 
 interface SkillDialogCreateProps {
   mode: "create"
-  workspacePath: string
   onCreated: (createdName: string) => Promise<void>
   tagSuggestions?: string[]
   existingNames?: string[]
@@ -123,7 +122,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const editOnOpenChange = isEdit ? (props as SkillDialogEditProps).onOpenChange : undefined
   const editOnSaved = isEdit ? (props as SkillDialogEditProps).onSaved : undefined
   const isLocked = isEdit ? ((props as SkillDialogEditProps).isLocked ?? false) : false
-  const createWorkspacePath = !isEdit ? (props as SkillDialogCreateProps).workspacePath : ""
   const createOnCreated = !isEdit ? (props as SkillDialogCreateProps).onCreated : undefined
   const createOnOpenChange = !isEdit ? (props as SkillDialogCreateProps).onOpenChange : undefined
   const tagSuggestions = props.tagSuggestions ?? []
@@ -253,8 +251,10 @@ export default function SkillDialog(props: SkillDialogProps) {
         handleOpenChange(false)
         editOnSaved?.()
       } else {
+        if (!skillsPath) {
+          throw new Error("Skills output path is not configured")
+        }
         const createdSkillId = await createSkill({
-          workspacePath: createWorkspacePath,
           name: skillName.trim(),
           tags: tags.length > 0 ? tags : null,
           purpose: purpose || null,

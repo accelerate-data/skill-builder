@@ -152,12 +152,19 @@ export function ChatMessageList({
           }
 
           if (msg.role === "agent" && msg.agentId) {
-            // Check if a question follows this agent turn — if so, split display
-            // items so content after the question appears below it.
-            const nextQuestion = messages.slice(msgIdx + 1).find(
-              (m) => m.role === "question" && m.agentId === msg.agentId && m.displayItemSplitIndex !== undefined,
+            const nextBoundary = messages.slice(msgIdx + 1).find(
+              (m) =>
+                m.agentId === msg.agentId &&
+                (
+                  (m.role === "question" && m.displayItemSplitIndex !== undefined) ||
+                  (m.role === "agent" && m.displayItemStartIndex !== undefined)
+                ),
             );
-            const splitAt = nextQuestion?.displayItemSplitIndex;
+            const startAt = msg.displayItemStartIndex;
+            const splitAt =
+              nextBoundary?.role === "agent"
+                ? nextBoundary.displayItemStartIndex
+                : nextBoundary?.displayItemSplitIndex;
 
             const diffFiles = msg.diff
               ? Array.from(new Set(
@@ -175,8 +182,9 @@ export function ChatMessageList({
                 <div className="min-w-0 overflow-hidden">
                   <AgentTurnInline
                     agentId={msg.agentId}
+                    fromIndex={startAt}
                     toIndex={splitAt}
-                    hideTaskSent={msg.hideTaskSent ?? true}
+                    hideTaskSent={msg.hideTaskSent ?? false}
                   />
                 </div>
                 {diffFiles.length > 0 && <InlineChangedFiles files={diffFiles} />}
@@ -193,7 +201,7 @@ export function ChatMessageList({
                 />
                 {msg.agentId && msg.displayItemSplitIndex !== undefined && (
                   <div className="min-w-0 overflow-hidden">
-                    <AgentTurnInline agentId={msg.agentId} fromIndex={msg.displayItemSplitIndex} hideTaskSent />
+                    <AgentTurnInline agentId={msg.agentId} fromIndex={msg.displayItemSplitIndex} hideTaskSent={false} />
                   </div>
                 )}
               </div>

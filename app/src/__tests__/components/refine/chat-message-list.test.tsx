@@ -5,8 +5,22 @@ import { ChatMessageList } from "@/components/refine/chat-message-list";
 import type { RefineMessage } from "@/stores/refine-store";
 
 vi.mock("@/components/refine/agent-turn-inline", () => ({
-  AgentTurnInline: ({ agentId }: { agentId: string }) => (
-    <div data-testid={`agent-turn-${agentId}`}>agent turn</div>
+  AgentTurnInline: ({
+    agentId,
+    fromIndex,
+    toIndex,
+  }: {
+    agentId: string;
+    fromIndex?: number;
+    toIndex?: number;
+  }) => (
+    <div
+      data-testid={`agent-turn-${agentId}`}
+      data-from-index={fromIndex ?? ""}
+      data-to-index={toIndex ?? ""}
+    >
+      agent turn
+    </div>
   ),
 }));
 
@@ -203,5 +217,29 @@ describe("ChatMessageList", () => {
     render(<ChatMessageList messages={[]} isRunning={false} />);
 
     expect(screen.getByText(/Describe a change/)).toBeInTheDocument();
+  });
+
+  it("splits logical agent turns within the same agent run by display item boundary", () => {
+    const messages: RefineMessage[] = [
+      { id: "u1", role: "user", userText: "first request", timestamp: 1 },
+      { id: "a1", role: "agent", agentId: "agent-1", timestamp: 2 },
+      { id: "u2", role: "user", userText: "followup request", timestamp: 3 },
+      {
+        id: "a2",
+        role: "agent",
+        agentId: "agent-1",
+        displayItemStartIndex: 4,
+        timestamp: 4,
+      },
+    ];
+
+    render(<ChatMessageList messages={messages} isRunning={false} />);
+
+    const turns = screen.getAllByTestId("agent-turn-agent-1");
+    expect(turns).toHaveLength(2);
+    expect(turns[0]).toHaveAttribute("data-from-index", "");
+    expect(turns[0]).toHaveAttribute("data-to-index", "4");
+    expect(turns[1]).toHaveAttribute("data-from-index", "4");
+    expect(turns[1]).toHaveAttribute("data-to-index", "");
   });
 });

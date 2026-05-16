@@ -469,6 +469,32 @@ fn validate_generated_skill_output(
             ));
         }
     }
+    if let Some(verifier_result) = parsed.verifier_result.as_ref() {
+        match verifier_result.status.as_str() {
+            "pass" => {
+                if !verifier_result.findings.is_empty() {
+                    return Err(
+                        "invalid generate-skill output: verifier_result with status 'pass' must have an empty findings array"
+                            .to_string(),
+                    );
+                }
+            }
+            "needs_fix" => {
+                if verifier_result.findings.is_empty() {
+                    return Err(
+                        "invalid generate-skill output: verifier_result with status 'needs_fix' must include at least one finding"
+                            .to_string(),
+                    );
+                }
+            }
+            other => {
+                return Err(format!(
+                    "invalid generate-skill output: verifier_result.status must be 'pass' or 'needs_fix' but got '{}'",
+                    other
+                ));
+            }
+        }
+    }
     if !parsed.skipped.unwrap_or(false)
         && parsed
             .commit_summary

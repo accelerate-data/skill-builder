@@ -1,12 +1,10 @@
 import { useParams } from "@tanstack/react-router";
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 import { useBuilderSkillsQuery, useImportedSkillsQuery } from "@/lib/queries/skills";
-import { useSettingsStore } from "@/stores/settings-store";
 
 export default function WorkspaceRoutePage() {
   const { skillId } = useParams({ strict: false });
-  const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const { data: builderSkills = [], isPending: builderPending } = useBuilderSkillsQuery(workspacePath);
+  const { data: builderSkills = [], isPending: builderPending } = useBuilderSkillsQuery();
   const { data: importedSkills = [], isPending: importedPending } = useImportedSkillsQuery();
 
   const selectedBuilderSkill = builderSkills.find(

@@ -1833,6 +1833,64 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     });
   });
 
+  it("ResetStepDialog reset still restarts the selected skill session when workspacePath is null", async () => {
+    vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
+      <div data-testid="workflow-sidebar">
+        <button data-testid="sidebar-step-0" onClick={() => onStepClick?.(0)}>Step 0</button>
+      </div>
+    ));
+
+    vi.mocked(previewStepReset).mockResolvedValue([]);
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: null,
+      skillsPath: "/test/skills",
+      modelSettings: {
+        provider_id: "anthropic",
+        model_id: "claude-3-5-sonnet",
+        auth_type: "api-key",
+        api_key: "",
+        base_url: "",
+      },
+      onboardingState: { isComplete: true, completedSteps: [] },
+      importedPlugins: [],
+      theme: "system",
+      resetCompleted: true,
+      logLevel: "info",
+      closeGuardEnabled: true,
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    await act(async () => {
+      screen.getByTestId("sidebar-step-0").click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Reset to Earlier Step")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(restartSkillOpenHandsSession)).toHaveBeenCalled();
+    });
+  });
+
   it("shows inline Retry button on error and calls runWorkflowStep when clicked", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -2343,7 +2401,6 @@ describe("step reset behavior regressions", () => {
         1,
         "test-skill",
         0,
-        "/test/workspace",
       );
     });
     expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
@@ -2380,7 +2437,6 @@ describe("step reset behavior regressions", () => {
         1,
         "test-skill",
         0,
-        "/test/workspace",
       );
     });
     expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
@@ -2794,7 +2850,6 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
         1,
         "test-skill",
         0,
-        "/test/workspace",
       );
     });
     expect(useWorkflowStore.getState().isRunning).toBe(true);
@@ -3059,6 +3114,53 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
+  });
+
+  it("shows a warning toast when step 3 completes with non-pass verifier status", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 3; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-build", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().applyConversationState("agent-build", {
+        type: "conversation_state",
+        runtime: "openhands",
+        agentId: "agent-build",
+        status: "completed",
+        resultText: JSON.stringify({
+          status: "generated",
+          benchmark_path: null,
+          verifier_result: {
+            status: "needs_fix",
+            findings: [
+              {
+                severity: "warning",
+                file: "SKILL.md",
+                finding: "Trigger language is too broad",
+                recommendation: "Tighten the inclusion boundary",
+              },
+            ],
+          },
+        }),
+        timestamp: Date.now(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
+    });
+
+    expect(mockToast.warning).toHaveBeenCalledWith(
+      "Skill verifier reported findings. Review the generated skill before proceeding.",
+    );
   });
 
 });

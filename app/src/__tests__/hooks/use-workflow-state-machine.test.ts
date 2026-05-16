@@ -131,7 +131,12 @@ const mockSettingsState = vi.hoisted(() => ({
 let mockActiveAgentId: string | null = null;
 let mockRuns: Record<
   string,
-  { status: string; displayItems: unknown[]; totalCost?: number }
+  {
+    status: string;
+    displayItems: unknown[];
+    totalCost?: number;
+    conversationState?: { resultText?: string | null };
+  }
 > = {};
 
 vi.mock("@/stores/workflow-store", () => ({
@@ -214,8 +219,11 @@ describe("useWorkflowStateMachine", () => {
     mockWorkflowState = {
       ...mockWorkflowState,
       workflowSessionId: null,
+      currentStep: 0,
       steps: [{ id: 0, status: "pending" }],
       isRunning: false,
+      isStopping: false,
+      isInitializing: false,
       reviewMode: false,
       gateLoading: false,
       disabledSteps: [],
@@ -241,7 +249,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       0,
-      "/workspace",
     );
     expect(mockAgentStartRun).toHaveBeenCalledWith(
       "agent-abc",
@@ -384,7 +391,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       0,
-      "/workspace",
     );
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(0, "in_progress");
     expect(mockSetRunning).toHaveBeenCalledWith(true);
@@ -435,7 +441,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       2,
-      "/workspace",
     );
     expect(mockUpdateStepStatus).toHaveBeenCalledWith(2, "in_progress");
   });
@@ -521,6 +526,71 @@ describe("useWorkflowStateMachine", () => {
     expect(mockSetRunning).toHaveBeenCalledWith(false);
   });
 
+  it("shows a warning toast when step 3 completes with verifier findings", async () => {
+    const { toast } = await import("@/lib/toast");
+
+    mockWorkflowState = {
+      ...mockWorkflowState,
+      currentStep: 3,
+      steps: [
+        { id: 0, status: "completed" },
+        { id: 1, status: "completed" },
+        { id: 2, status: "completed" },
+        { id: 3, status: "in_progress" },
+      ],
+      isRunning: true,
+    };
+    mockActiveAgentId = "agent-generate-1";
+    mockRuns = {
+      "agent-generate-1": {
+        status: "completed",
+        displayItems: [],
+        conversationState: {
+          resultText: JSON.stringify({
+            status: "generated",
+            skipped: false,
+            verifier_result: {
+              status: "needs_fix",
+              findings: [
+                {
+                  severity: "warning",
+                  file: "SKILL.md",
+                  finding: "Missing example",
+                  recommendation: "Add one example",
+                },
+              ],
+            },
+          }),
+        },
+        totalCost: 0,
+      },
+    };
+    mockVerifyStepOutput.mockResolvedValueOnce(true);
+    mockGetDisabledSteps.mockResolvedValueOnce([]);
+
+    renderHook(() =>
+      useWorkflowStateMachine({
+        ...defaultOptions,
+        currentStep: 3,
+        steps: [
+          { id: 0, status: "completed", name: "Research" },
+          { id: 1, status: "completed", name: "Clarify" },
+          { id: 2, status: "completed", name: "Decide" },
+          { id: 3, status: "in_progress", name: "Generate" },
+        ],
+        stepConfig: STEP_CONFIGS[3],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mockUpdateStepStatus).toHaveBeenCalledWith(3, "completed");
+    });
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Skill verifier reported findings. Review the generated skill before proceeding.",
+    );
+  });
+
   // --- State setters ---
 
   it("setPendingStepSwitch and setResetTarget work correctly", () => {
@@ -583,7 +653,6 @@ describe("useWorkflowStateMachine", () => {
       1,
       "test-skill",
       0,
-      "/workspace",
     );
     });
 
@@ -662,9 +731,7 @@ describe("useWorkflowStateMachine", () => {
     expect(mockRunWorkflowStep).not.toHaveBeenCalled();
   });
 
-  it("handleStartAgentStep shows error when workspace path missing", async () => {
-    const { toast } = await import("@/lib/toast");
-
+  it("handleStartAgentStep runs without workspace path", async () => {
     const { result } = renderHook(() =>
       useWorkflowStateMachine({ ...defaultOptions, workspacePath: null }),
     );
@@ -673,10 +740,10 @@ describe("useWorkflowStateMachine", () => {
       await result.current.handleStartAgentStep();
     });
 
-    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
-      "Missing workspace path",
-      expect.any(Object),
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+      1,
+      "test-skill",
+      0,
     );
   });
 });

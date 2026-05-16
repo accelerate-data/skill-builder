@@ -191,7 +191,7 @@ export default function WorkflowPage() {
   const activeRunDisplayItemCount = useAgentStore((s) =>
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );
-  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery();
   const currentSkill = builderSkills.find(
     (sk) => String(sk.id) === skillId,
   );
@@ -265,13 +265,13 @@ export default function WorkflowPage() {
     const restartSkill =
       String(refineSelectedSkill?.id ?? "") === skillId ? refineSelectedSkill : null;
 
-    if (!workspacePath || !restartSkill) {
+    if (!restartSkill) {
       throw new Error(
         `No active selected skill session is available for workflow skill '${skillId}'`,
       );
     }
     await restartSkillOpenHandsSession(restartSkill);
-  }, [refineSelectedSkill, skillId, workspacePath]);
+  }, [refineSelectedSkill, skillId]);
 
   // 4. State machine — step transitions, agent orchestration, gate evaluation
   const {
@@ -541,18 +541,26 @@ export default function WorkflowPage() {
           if (resetTarget !== null) {
             teardownWorkflowSession({ logPrefix: "workflow", clearSessionId: true });
             void (async () => {
-              await restartSelectedSkillSession();
-              if (resetTarget === 0) {
-                resetToStep(0);
-              } else {
-                navigateBackToStep(resetTarget);
+              try {
+                await restartSelectedSkillSession();
+              } catch (error) {
+                console.warn(
+                  "[workflow] non-fatal: op=restartSelectedSkillSessionAfterReset err=%s",
+                  error,
+                );
+              } finally {
+                if (resetTarget === 0) {
+                  resetToStep(0);
+                } else {
+                  navigateBackToStep(resetTarget);
+                }
+                if (currentSkillId != null) {
+                  getDisabledSteps(currentSkillId)
+                    .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
+                    .catch(() => { /* non-fatal */ });
+                }
+                setResetTarget(null);
               }
-              if (currentSkillId != null) {
-                getDisabledSteps(currentSkillId)
-                  .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
-                  .catch(() => { /* non-fatal */ });
-              }
-              setResetTarget(null);
             })();
           }
         }}

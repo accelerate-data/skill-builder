@@ -1,38 +1,40 @@
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Mutex;
-
-use serde::Deserialize;
-use tauri::Manager;
-
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
+};
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::types::SkillSessionInfo;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Mutex;
+use tauri::Manager;
 
-pub fn build_skill_session_config(
+pub(crate) fn build_pause_runtime_config(
+    app: &tauri::AppHandle,
+    db: &crate::db::Db,
     skill_name: &str,
     plugin_slug: &str,
-    prompt: &str,
-    app_data_root: &str,
-    skills_root: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
-    crate::agents::skill_creator::build_skill_creator_config(
-        crate::agents::skill_creator::SkillCreatorConfigParams {
-            app_data_root,
-            skill_name,
-            prompt,
-            skills_root,
-            plugin_slug,
-            llm,
-            task_kind: "refine",
-            run_source: "refine",
-            allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-            max_turns: 500,
-            step_id: -10,
-            output_format: None,
-        },
-    )
+) -> Result<crate::agents::runtime_config::OpenHandsRuntimeConfig, String> {
+    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(db)?;
+    let skills_root = resolve_skills_path(db)?;
+    let app_data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    Ok(build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root,
+        skills_root,
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: String::new(),
+        llm: runtime_ctx.llm,
+        intent: SkillCreatorIntent::Refine,
+        skill_dir_override: None,
+    }))
 }
 
 pub(crate) async fn ensure_skill_runtime_ready(
@@ -184,14 +186,16 @@ pub async fn select_skill_openhands_session(
             .map_err(|e| format!("failed to resolve app data dir: {e}"))?
             .to_string_lossy()
             .replace('\\', "/");
-        let session_config = build_skill_session_config(
-            &skill_name,
-            &plugin_slug,
-            "",
-            &app_data_root,
-            &skills_path,
-            runtime_ctx.llm.clone(),
-        );
+        let session_config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root,
+            skills_root: skills_path.clone(),
+            skill_name: skill_name.clone(),
+            plugin_slug: plugin_slug.clone(),
+            prompt: String::new(),
+            llm: runtime_ctx.llm.clone(),
+            intent: SkillCreatorIntent::Refine,
+            skill_dir_override: None,
+        });
         let started_session = crate::agents::skill_creator::ensure_skill_session(
             &app,
             session_config,
@@ -305,7 +309,6 @@ pub async fn pause_openhands_session(
         return Err("pause_openhands_session requires a non-empty conversation_id".to_string());
     }
 
-    let runtime_ctx = crate::commands::workflow::read_initialized_runtime_context(&db)?;
     let skills_root = resolve_skills_path(&db)?;
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(Path::new(&skills_root), &plugin_slug, &skill_name);
@@ -317,21 +320,7 @@ pub async fn pause_openhands_session(
         ));
     }
 
-    let skills_path = resolve_skills_path(&db)?;
-    let app_data_root = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?
-        .to_string_lossy()
-        .replace('\\', "/");
-    let config = build_skill_session_config(
-        &skill_name,
-        &plugin_slug,
-        "",
-        &app_data_root,
-        &skills_path,
-        runtime_ctx.llm.clone(),
-    );
+    let config = build_pause_runtime_config(&app, &db, &skill_name, &plugin_slug)?;
 
     let local_closed = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
         config,

@@ -1,268 +1,186 @@
-# OpenHands Runtime Contract Implementation Gaps
+# OpenHands Conversation Model Implementation Gaps
 
-Current gaps between latest `main` and the target runtime contract in
-[README.md](README.md).
+Current gaps between the merged runtime contract and the target conversation model in [openhands-conversation-model.md](./openhands-conversation-model.md).
 
-## 1. Raw OpenHands Shutdown Wrapper Is Not Exposed Yet
-
-Target model expects a raw `shutdown_openhands_server()` API in
-`agents/openhands_server/mod.rs`, parallel to `ensure_openhands_server(...)`.
-App-exit callers should use that wrapper rather than calling
-`agents/openhands_server/process.rs` directly.
-
-Latest `main` still calls `process::shutdown_agent_server()` directly from:
-
-- `app/src-tauri/src/lib.rs`
-- `app/src-tauri/src/commands/runtime_lifecycle.rs`
-
-Relevant files:
-
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-- `app/src-tauri/src/agents/openhands_server/process.rs`
-- `app/src-tauri/src/lib.rs`
-- `app/src-tauri/src/commands/runtime_lifecycle.rs`
-
-## 2. Cached-Server Pause Helper Still Exists
-
-Target model has one raw pause API:
-
-- `pause_openhands_conversation(config, conversation_id)`
-
-Best-effort behavior belongs at the caller, not in a second raw pause helper.
-
-Latest `main` still carries:
-
-- `pause_conversation_if_server_running(conversation_id)`
-
-Relevant files:
-
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-- `app/src-tauri/src/commands/skill/crud.rs`
-- `app/src-tauri/src/commands/workflow/evaluation.rs`
-
-## 3. Tracked Runtime Layer Still Exposes Abort/Terminate Semantics
-
-Target model narrows the tracked layer to:
-
-- `send_tracked_openhands_message(...)`
-- `pause_tracked_openhands_conversation(...)`
-- `send_tracked_throwaway(...)`
-
-Tracked runs stop through pause semantics. The tracked layer should not expose
-separate abort or terminate APIs for normal runtime flows.
-
-Latest `main` still includes:
-
-- `abort_tracked_openhands_run(...)`
-- `terminate_tracked_openhands_session(...)`
-- `run_tracked_throwaway_openhands_session(...)` instead of the target
-  `send_tracked_throwaway(...)` name
-
-Relevant files:
-
-- `app/src-tauri/src/agents/tracked_openhands.rs`
-- `app/src-tauri/src/commands/workflow/runtime.rs`
-- `app/src-tauri/src/commands/skill/crud.rs`
-- `app/src-tauri/src/commands/api_validation.rs`
-- `app/src-tauri/src/commands/skill/scope_review.rs`
-- `app/src-tauri/src/commands/eval_workbench/mod.rs`
-
-## 4. Specialized Runtime-Config Builders Still Exist
-
-Target model expects `build_skill_creator_config(...)` to be the single
-canonical config API, driven by:
-
-- `SkillCreatorRuntimeContext`
-- `SkillCreatorIntent`
-
-Callers should not hand-fill policy fields like `task_kind`, `run_source`,
-`allowed_tools`, `max_turns`, `step_id`, or `output_format`.
-
-Latest `main` still splits config construction across:
-
-- `build_skill_session_config(...)`
-- multiple `build_workflow_*_runtime_config(...)` functions
-- ad hoc throwaway config assembly paths
-
-Relevant files:
-
-- `app/src-tauri/src/agents/skill_creator.rs`
-- `app/src-tauri/src/commands/skill_session.rs`
-- `app/src-tauri/src/commands/workflow/runtime.rs`
-- `app/src-tauri/src/commands/api_validation.rs`
-- `app/src-tauri/src/commands/skill/scope_review.rs`
-- `app/src-tauri/src/commands/eval_workbench/mod.rs`
-
-## 5. `step_id` Is Still Part of the Caller-Facing Builder Surface
-
-Target model treats `step_id` as a derived persistence/reporting field, not the
-public abstraction. Runtime policy should be selected by typed
-`SkillCreatorIntent`.
-
-Latest `main` still passes explicit `step_id`, `task_kind`, and `run_source`
-values into the config builder call sites.
-
-Relevant files:
-
-- `app/src-tauri/src/agents/skill_creator.rs`
-- `app/src-tauri/src/commands/skill_session.rs`
-- `app/src-tauri/src/commands/workflow/runtime.rs`
-
-## 6. Skill-Related Throwaway Working Directories Do Not Yet Match the Target Model
-
-Target model says:
-
-- skill-related throwaway runs use the canonical skill dir as their working
-  directory
-- non-skill-related throwaway runs use
-  `/tmp/skill-builder/throwaway/{surface}/{run_id}`
-
-Latest `main` still roots some skill-related throwaway paths under throwaway
-subdirectories instead of reusing the canonical skill dir.
-
-Relevant files:
-
-- `app/src-tauri/src/skill_paths.rs`
-- `app/src-tauri/src/commands/skill/scope_review.rs`
-- `app/src-tauri/src/commands/api_validation.rs`
-
-## 7. Structured Shutdown-Event Matching in the Tracked Throwaway Path Is Missing
-
-Target model expects the tracked layer to consume structured app runtime events
-without relying on raw payload substring matching.
-
-Latest `main` still matches `agent-shutdown` by checking whether the payload
-string contains the target `agent_id`, even though the event is emitted as a
-structured payload.
-
-Relevant files:
-
-- `app/src-tauri/src/agents/tracked_openhands.rs`
-- `app/src-tauri/src/agents/event_router.rs`
-- `app/src-tauri/src/agents/event_types.rs`
-
-## 8. Workflow Reset Still Deletes Conversation State Instead of Forking
-
-Target model for reset/redo is:
-
-1. pause current conversation
-2. reset files, artifacts, and DB state to the target step
-3. fork the paused conversation into a new `conversation_id`
-4. bind the skill to the fork ID
-5. continue future work on the fork
-
-The old conversation remains persisted. Reset must never delete conversation
-storage.
-
-Latest `main` still:
-
-- deletes the per-conversation directory under app data
-- clears the skill's saved conversation binding
-- forces the next run onto a fresh conversation instead of a fork
-
-Relevant files:
-
-- `app/src-tauri/src/commands/workflow/evaluation.rs`
-- `app/src-tauri/src/db/skills.rs`
-
-## 9. Fork APIs Are Missing at the Raw and Shared Session Layers
+## 1. `agent-store` Still Owns Transcript Authority
 
 Target model expects:
 
-- raw `fork_openhands_conversation(app, config, source_conversation_id)`
-- shared `fork_skill_session(app, config, source_conversation_id)`
+- one canonical conversation event stream per `conversationId`
+- transcript authority to live in that stream
+- runtime-oriented stores to become transport adapters only
 
-Fork returns a new `conversation_id` plus restored events for hydration. It does
-not create a new `agent_id`.
-
-Latest `main` does not yet expose fork at either layer.
+Current frontend runtime state still treats `agent-store` as authoritative for live transcript rendering through `runs[agentId]`, `displayItems`, and `conversationEvents`.
 
 Relevant files:
 
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-- `app/src-tauri/src/agents/skill_creator.rs`
+- `app/src/stores/agent-store.ts`
+- `app/src/stores/agent-display-buffer.ts`
+- `app/src/hooks/use-agent-stream.ts`
 
-## 10. New `agent_id` Creation Is Not Yet Explicitly Tied to the Next Live Send/Run
+## 2. `DisplayItem` Is Still More Than a View Model
 
-Target model says:
+Target model expects:
 
-- fork creates a new `conversation_id`
-- the next live send/run on that fork creates the new tracked `agent_id`
+- canonical conversation events as the source of truth
+- `DisplayItem` or equivalent display nodes to be derived projections only
 
-Latest `main` still lacks the fork path entirely, so the agent-id boundary for
-post-reset fork continuation is not yet implemented.
-
-Relevant files:
-
-- `app/src-tauri/src/agents/tracked_openhands.rs`
-- `app/src-tauri/src/commands/workflow/runtime.rs`
-- `app/src-tauri/src/commands/workflow/evaluation.rs`
-
-## 11. Raw Conversation Send and Run Are Still Bundled Together
-
-Target model expects separate raw primitives for:
-
-- `send_message_to_openhands_conversation(config, conversation_id, prompt)`
-- `run_openhands_conversation(app, agent_id, config, conversation_id)`
-
-This is required so Skill Builder can support:
-
-- send initial message
-- start the run
-- send more messages while the same conversation is still processing
-
-Latest `main` still bundles those concerns in one path:
-
-- `dispatch_openhands_turn_with_request(...)`
-- `run_conversation_task_inner(...)`
-
-That bundled path opens a socket, registers local task ownership, sends the
-user message, and calls `run_conversation(...)` as one operation.
+Current code still stores transcript-like authority inside `DisplayItem[]`, including grouping and ownership assumptions that should instead be derived from canonical events.
 
 Relevant files:
 
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-- `app/src-tauri/src/agents/openhands_server/client.rs`
+- `app/src/lib/display-types.ts`
+- `app/src/lib/openhands-event-projection.ts`
+- `app/src/components/agent-items/**`
+- `app/src/components/refine/agent-turn-inline.tsx`
 
-## 12. The Tracked Layer Does Not Yet Distinguish Idle Send From Running-Conversation Send
+## 3. Refine Still Uses Synthetic Agent-Turn Grouping
 
-Target model expects one tracked local runner per live conversation.
+Target model expects:
 
-If a persistent conversation is already running:
+- one flat ordered event stream
+- renderer-level event display semantics
+- no transcript authority based on synthetic turn boundaries, display item indices, or agent-group slicing
 
-- the tracked layer should append the new user message to that conversation
-- it should not spawn a second local socket/task owner
+Current Refine still relies on:
 
-Latest `main` still routes every persistent send through
-`send_tracked_openhands_message(...)`, which always delegates to
-`dispatch_openhands_turn_with_request(...)` and therefore always creates a new
-local run task.
+- `RefineMessage.role === "agent"`
+- `displayItemStartIndex`
+- `displayItemSplitIndex`
+- agent-turn inline slices
 
 Relevant files:
 
-- `app/src-tauri/src/agents/tracked_openhands.rs`
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
-- `app/src-tauri/src/commands/workflow/runtime.rs`
+- `app/src/stores/refine-store.ts`
+- `app/src/components/refine/chat-message-list.tsx`
+- `app/src/components/refine/agent-turn-inline.tsx`
+- `app/src/components/workspace/workspace-refine.tsx`
+
+## 4. Frontend-Originated Sends Are Not Yet First-Class Canonical Events
+
+Target model expects:
+
+- a frontend-originated canonical event inserted immediately in `sending` state
+- in-place mutation to `accepted` or `failed`
+- no separate optimistic chat model outside the canonical stream
+
+Current Refine still uses separate local message insertion plus later runtime event projection, which allows drift between:
+
+- local UI state
+- backend-accepted conversation state
+- restored conversation history
+
+Relevant files:
+
+- `app/src/components/workspace/workspace-refine.tsx`
+- `app/src/stores/refine-store.ts`
+- `app/src/lib/skill-openhands-session.ts`
+
+## 5. Backend Acceptance Does Not Yet Correlate to a Canonical Frontend Event
+
+Target model expects:
+
+- the same frontend-originated event to mutate from `sending` to `accepted` or `failed`
+- a stable local event id or correlation token
+
+Current command flows return runtime data like `agent_id`, `conversation_id`, and `run_started`, but they do not yet participate in a canonical conversation-event acknowledgement contract.
+
+Relevant files:
+
 - `app/src-tauri/src/commands/refine/mod.rs`
+- `app/src/lib/tauri.ts`
+- `app/src/lib/tauri-command-types.ts`
 
-## 13. Raw `ask_agent` Support Is Not Exposed Yet
+## 6. The Live Event Bridge Is Still Keyed by `agent_id`
 
-Target model expects a raw OpenHands inspection primitive:
+Target model expects:
 
-- `ask_openhands_agent(config, conversation_id, question) -> Result<String, String>`
+- transcript authority keyed by `conversationId`
+- `agentId` to remain a transport detail only if still required
 
-Backed by raw client support for the Agent Server conversation API:
+Current Tauri event payloads and frontend listeners are still keyed primarily by `agent_id`.
 
-- `build_ask_agent_request(conversation_id, question)`
-- `ask_agent(conversation_id, question)`
-
-This capability is intentionally scoped only to the raw OpenHands layer for
-now. It does not yet imply tracked wrappers, workflow semantics, or UI usage.
-
-Latest `main` does not expose `ask_agent` anywhere in the client or raw wrapper
-layer.
+This is acceptable as a migration seam, but it means the new conversation model still needs a transport adapter before `agentId` can disappear from frontend public state.
 
 Relevant files:
 
-- `app/src-tauri/src/agents/openhands_server/client.rs`
-- `app/src-tauri/src/agents/openhands_server/mod.rs`
+- `app/src/hooks/use-agent-stream.ts`
+- `app/src-tauri/src/agents/event_router.rs`
+- `app/src-tauri/src/agents/event_types.rs`
+- `app/src-tauri/src/types/refine.rs`
+
+## 7. Raw OpenHands Payload Retention Is Not Yet the Frontend Transcript Contract
+
+Target model expects:
+
+- canonical events to carry the raw OpenHands-native payload
+- app-owned envelope metadata to sit around that payload
+- projection to remain reversible and debuggable
+
+Current frontend normalized event handling is useful, but it does not yet define one canonical event envelope that clearly retains:
+
+- raw OpenHands payload
+- frontend command payload
+- acceptance/failure state
+- display metadata
+
+Relevant files:
+
+- `app/src/lib/openhands-conversation-events.ts`
+- `app/src/lib/openhands-event-projection.ts`
+- `app/src/lib/types.ts`
+
+## 8. Live and Restored Transcript Construction Still Use Different Mental Models
+
+Target model expects:
+
+- one canonical event model
+- one projection layer
+- identical behavior for live and restored views
+
+Current code still mixes:
+
+- live event ingestion from `use-agent-stream`
+- restored transcript rebuilding in `skill-openhands-session.ts`
+- local Refine message state in `refine-store.ts`
+
+That split is the source of many “it was sent and persisted but not visible live” failures.
+
+Relevant files:
+
+- `app/src/hooks/use-agent-stream.ts`
+- `app/src/lib/skill-openhands-session.ts`
+- `app/src/stores/refine-store.ts`
+
+## 9. Workflow and Other OpenHands-Backed Surfaces Do Not Yet Share a Canonical Conversation Event Layer
+
+Target model expects one shared conversation/event model across all OpenHands-backed surfaces, even if each surface projects the stream differently.
+
+Current behavior is still surface-specific:
+
+- Refine has one transcript path
+- Workflow has another
+- throwaway surfaces often bypass transcript concerns entirely
+
+Relevant files:
+
+- `app/src/pages/workflow.tsx`
+- `app/src/components/workspace/workspace-refine.tsx`
+- `app/src/components/agent-output-panel.tsx`
+- `app/src-tauri/src/commands/skill/scope_review.rs`
+- `app/src-tauri/src/commands/eval_workbench/mod.rs`
+
+## 10. Documentation Still Splits Between Runtime Contract and Old Projection Assumptions
+
+Target model expects:
+
+- runtime contract docs to point to the canonical conversation stream
+- projection docs to describe view-layer semantics only
+
+Current docs still describe agent/display grouping assumptions that should be downgraded to migration-era behavior.
+
+Relevant files:
+
+- `docs/design/openhands-runtime-contract/README.md`
+- `docs/design/openhands-runtime-contract/refine-sequence.md`
+- `docs/design/openhands-event-display-projection/README.md`

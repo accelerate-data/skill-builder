@@ -2,12 +2,10 @@ import { useState } from "react"
 import { LayoutGrid, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import SkillDialog from "@/components/skill-dialog"
-import { useSettingsStore } from "@/stores/settings-store"
 import { useInvalidateSkillQueries } from "@/lib/queries/skills"
 
 export default function DashboardPage() {
   const [createOpen, setCreateOpen] = useState(false)
-  const workspacePath = useSettingsStore((s) => s.workspacePath)
   const invalidateSkillQueries = useInvalidateSkillQueries()
 
   return (
@@ -34,17 +32,14 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      {workspacePath && (
-        <SkillDialog
-          mode="create"
-          workspacePath={workspacePath}
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          onCreated={async () => {
-            await invalidateSkillQueries()
-          }}
-        />
-      )}
+      <SkillDialog
+        mode="create"
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={async () => {
+          await invalidateSkillQueries()
+        }}
+      />
     </div>
   )
 }

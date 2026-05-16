@@ -6,6 +6,23 @@ fn event_class(raw: &serde_json::Value) -> Option<&str> {
         .and_then(|value| value.as_str())
 }
 
+fn inferred_event_class(raw: &serde_json::Value) -> Option<&'static str> {
+    if raw.get("action").is_some() {
+        return Some("ActionEvent");
+    }
+    if raw.get("observation").is_some() {
+        return Some("ObservationEvent");
+    }
+    if matches!(
+        raw.get("source").and_then(|value| value.as_str()),
+        Some("user" | "agent" | "assistant" | "environment")
+    ) && extract_message_text(raw).is_some()
+    {
+        return Some("MessageEvent");
+    }
+    None
+}
+
 fn first_string<'a>(
     values: impl IntoIterator<Item = Option<&'a serde_json::Value>>,
 ) -> Option<&'a str> {
@@ -78,7 +95,12 @@ pub(crate) fn extract_conversation_messages(
 ) -> Vec<crate::types::ConversationMessage> {
     events
         .iter()
-        .filter(|raw| event_class(raw) == Some("MessageEvent"))
+        .filter(|raw| {
+            event_class(raw)
+                .or_else(|| inferred_event_class(raw))
+                .map(|class| class == "MessageEvent")
+                .unwrap_or(false)
+        })
         .filter_map(|raw| {
             let role = match raw.get("source").and_then(|value| value.as_str()) {
                 Some("user") => "user",
@@ -100,7 +122,7 @@ pub(crate) fn extract_restored_conversation_events(
     events
         .iter()
         .filter_map(|raw| {
-            let event_class = event_class(raw)?;
+            let event_class = event_class(raw).or_else(|| inferred_event_class(raw))?;
             Some(crate::types::RestoredConversationEvent {
                 event_class: event_class.to_string(),
                 event: raw.clone(),

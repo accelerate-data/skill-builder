@@ -8,8 +8,8 @@ export interface UsageQueryFilters {
 export const queryKeys = {
   skills: {
     all: ["skills"] as const,
-    builder: (workspacePath: string | null, sourceUrl: string | null = null) =>
-      ["skills", "builder", workspacePath, sourceUrl] as const,
+    builder: (sourceUrl: string | null = null) =>
+      ["skills", "builder", sourceUrl] as const,
     imported: (sourceUrl: string | null = null) =>
       ["skills", "imported", sourceUrl] as const,
   },

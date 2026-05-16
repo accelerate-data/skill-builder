@@ -67,6 +67,19 @@ function getBoolean(
   return undefined;
 }
 
+function getStep3VerifierStatus(payload: unknown): string | undefined {
+  const record = asRecord(payload);
+  if (!record) return undefined;
+  const status = getString(record, "status");
+  if (!status || !["generated", "rewritten", "complete", "partial", "skipped"].includes(status)) {
+    return undefined;
+  }
+
+  const verifierResult = asRecord(record.verifier_result);
+  if (!verifierResult) return undefined;
+  return getString(verifierResult, "status");
+}
+
 function normalizeWorkflowStepMaterializedPayload(
   payload: unknown,
 ): WorkflowStepMaterializedPayload | null {
@@ -177,6 +190,7 @@ export function useWorkflowStateMachine({
   const workflowMaterializationTimeoutsRef = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({});
+  const warnedVerifierAgentsRef = useRef<Record<string, true>>({});
 
   // Current state selectors
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
@@ -291,6 +305,21 @@ export function useWorkflowStateMachine({
     [skillName, setRunning, setStopping, updateStepStatus],
   );
 
+  const maybeWarnOnVerifierResult = useCallback(
+    (agentId: string, step: number) => {
+      if (step !== 3 || warnedVerifierAgentsRef.current[agentId]) return;
+
+      const verifierStatus = getStep3VerifierStatus(extractResultPayload(agentId));
+      if (!verifierStatus || verifierStatus === "pass") return;
+
+      warnedVerifierAgentsRef.current[agentId] = true;
+      toast.warning(
+        "Skill verifier reported findings. Review the generated skill before proceeding.",
+      );
+    },
+    [extractResultPayload],
+  );
+
   const resolveWorkflowStepCompletion = useCallback(
     async (agentId: string, step: number) => {
       clearWorkflowMaterializationTimeout(agentId);
@@ -308,6 +337,7 @@ export function useWorkflowStateMachine({
       }
 
       if (materialization?.success === true) {
+        maybeWarnOnVerifierResult(agentId, step);
         await finalizeCompletedStep(step);
         return;
       }
@@ -316,6 +346,7 @@ export function useWorkflowStateMachine({
         optimisticOnError: false,
       });
       if (hasOutput) {
+        maybeWarnOnVerifierResult(agentId, step);
         await finalizeCompletedStep(step);
         return;
       }
@@ -340,6 +371,7 @@ export function useWorkflowStateMachine({
             latest?.success === true ||
             (await verifyOutputFiles(step, { optimisticOnError: false }))
           ) {
+            maybeWarnOnVerifierResult(agentId, step);
             await finalizeCompletedStep(step);
             return;
           }
@@ -354,6 +386,7 @@ export function useWorkflowStateMachine({
       clearWorkflowMaterializationTimeout,
       failWorkflowStep,
       finalizeCompletedStep,
+      maybeWarnOnVerifierResult,
       verifyOutputFiles,
     ],
   );
@@ -367,6 +400,7 @@ export function useWorkflowStateMachine({
       }
       workflowMaterializationTimeoutsRef.current = {};
       pendingWorkflowCompletionRef.current = {};
+      warnedVerifierAgentsRef.current = {};
     },
     [],
   );
@@ -675,10 +709,6 @@ export function useWorkflowStateMachine({
       // Guard: when passed directly to onClick, React sends a MouseEvent as the first arg.
       const targetStep =
         typeof overrideStep === "number" ? overrideStep : currentStep;
-      if (!workspacePath) {
-        toast.error("Missing workspace path", { duration: Infinity });
-        return;
-      }
       // Read state from the store directly — avoids stale closures when called
       // from performStepReset before React re-renders with cleared state.
       const storeState = useWorkflowStore.getState();
@@ -717,7 +747,6 @@ export function useWorkflowStateMachine({
           skillId!,
           skillName,
           targetStep,
-          workspacePath,
         );
         agentStartRun(agentId, model);
       } catch (err) {
@@ -732,7 +761,6 @@ export function useWorkflowStateMachine({
       }
     },
     [
-      workspacePath,
       skillName,
       currentStep,
       gate,

@@ -183,6 +183,7 @@ export interface TauriCommandMap {
   get_default_skills_path: { args: NoArgs; result: string };
   set_log_level: { args: { level: string }; result: void };
   check_startup_deps: { args: NoArgs; result: StartupResult };
+  ensure_openhands_runtime_ready: { args: NoArgs; result: void };
   reconcile_startup: { args: NoArgs | { apply: true }; result: ReconciliationResult };
   record_reconciliation_cancel: {
     args: { notificationCount: number };
@@ -203,7 +204,7 @@ export interface TauriCommandMap {
     result: ScopeReviewResult;
   };
   run_workflow_step: {
-    args: { skillId: number; skillName: string; stepId: number; workspacePath: string };
+    args: { skillId: number; skillName: string; stepId: number };
     result: string;
   };
   reset_workflow_step: { args: { workspacePath: string; skillName: string; fromStepId: number }; result: void };
@@ -279,7 +280,7 @@ export interface TauriCommandMap {
   get_workflow_skill_names: { args: NoArgs; result: string[] };
   reset_usage: { args: NoArgs; result: void };
   get_dashboard_skill_names: { args: NoArgs; result: string[] };
-  list_skills: { args: { workspacePath: string; sourceUrl: string | null }; result: SkillSummary[] };
+  list_skills: { args: { sourceUrl: string | null }; result: SkillSummary[] };
   list_imported_skills: { args: { sourceUrl: string | null }; result: ImportedSkill[] };
   delete_imported_skill: { args: { skillId: number }; result: void };
   list_plugins: { args: NoArgs; result: LibraryPlugin[] };
@@ -416,7 +417,6 @@ export interface TauriCommandMap {
   };
   create_skill: {
     args: {
-      workspacePath: string;
       name: string;
       tags: string[] | null;
       purpose: SkillPurpose;

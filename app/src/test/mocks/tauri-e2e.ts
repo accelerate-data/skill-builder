@@ -100,6 +100,7 @@ const mockResponses: Record<string, unknown> = {
   send_refine_message: {
     agent_id: "refine-test-skill-e2e-001",
     conversation_id: "e2e-refine-conversation-001",
+    run_started: true,
   },
   pause_openhands_session: undefined,
   list_refinable_skills: [

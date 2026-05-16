@@ -43,8 +43,7 @@ import {
 
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
-  const workspacePath = useSettingsStore((s) => s.workspacePath);
-  const { data: builderSkills = [] } = useBuilderSkillsQuery(workspacePath);
+  const { data: builderSkills = [] } = useBuilderSkillsQuery();
   const { data: importedSkills = [] } = useImportedSkillsQuery();
   const selectedWorkspaceSkillId = useSkillStore((s) => s.activeSkillId);
   const setSelectedWorkspaceSkill = useSkillStore((s) => s.setActiveSkill);
@@ -78,6 +77,8 @@ export function AppLayout() {
     ackDone,
     reconRequiresApply,
     reconApplying,
+    runtimeReady,
+    runtimeError,
     handleApplyReconciliation,
     handleCancelReconciliation,
   } = useAppStartup();
@@ -213,9 +214,6 @@ export function AppLayout() {
         throw new Error(`Skill '${skillId}' is not available`);
       }
       const { editableSkill } = resolvedSkill;
-      if (!workspacePath) {
-        throw new Error("Workspace path is not configured");
-      }
 
       const refineStore = useRefineStore.getState();
       const sessionAlreadyActive =
@@ -260,7 +258,6 @@ export function AppLayout() {
     [
       lockedSkills,
       resolveSkillSelection,
-      workspacePath,
       selectedWorkspaceSkillId,
       setSelectedWorkspaceSkill,
       setWorkspaceSurface,
@@ -277,8 +274,13 @@ export function AppLayout() {
       const resolvedSkill = resolveSkillSelection(skillId);
       if (!resolvedSkill) return;
       const { editableSkill } = resolvedSkill;
+      const refineStore = useRefineStore.getState();
+      const sessionAlreadyActive =
+        refineStore.selectedSkill?.name === editableSkill.name &&
+        refineStore.selectedSkill.plugin_slug === editableSkill.plugin_slug &&
+        !!refineStore.conversationId;
 
-      if (skillId === selectedWorkspaceSkillId) {
+      if (skillId === selectedWorkspaceSkillId && sessionAlreadyActive) {
         const surface = getSkillSurface(editableSkill);
         if (surface === "workspace") {
           setWorkspaceSurface(targetSurface);
@@ -333,7 +335,7 @@ export function AppLayout() {
     });
   }, [activateSkill, pendingSkillSwitch]);
 
-  const ready = settingsLoaded && reconciled && startupReady && ackDone;
+  const ready = settingsLoaded && reconciled && runtimeReady && startupReady && ackDone;
 
   const [skillPanelWidth, setSkillPanelWidth] = useState(260);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
@@ -419,6 +421,15 @@ export function AppLayout() {
       )}
       {!splashDismissed && (
         <SplashScreen
+          canDismiss={runtimeReady}
+          runtimeStatus={
+            startupReady && !runtimeReady
+              ? {
+                  kind: runtimeError ? "error" : "pending",
+                  message: runtimeError ?? "Launching the OpenHands Agent Server for this app session.",
+                }
+              : null
+          }
           onDismiss={() => setSplashDismissed(true)}
           onReady={() => setStartupReady(true)}
         />

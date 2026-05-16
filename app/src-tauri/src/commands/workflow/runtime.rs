@@ -5,7 +5,11 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{Emitter, Listener, Manager};
 
+use crate::agents::openhands_server;
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext, WorkflowStepKind,
+};
 use crate::db::Db;
 use crate::skill_paths::validate_skill_content_exists;
 
@@ -16,7 +20,7 @@ use super::guards::{
     workflow_step_runtime_label,
 };
 use super::output_format::{
-    answer_evaluator_output_format, extract_workflow_json_from_conversation_state,
+    extract_workflow_json_from_conversation_state,
     materialize_workflow_step_output_value,
 };
 use super::prompt::{
@@ -24,10 +28,7 @@ use super::prompt::{
     build_step3_prompt, format_user_context,
 };
 use super::settings::{read_workflow_settings_by_skill_id, WorkflowSettings};
-use super::step_config::{
-    confirm_decisions_workflow_tools, get_step_config, research_workflow_tools,
-    skill_generation_workflow_tools, workflow_output_format_for_step,
-};
+use super::step_config::{get_step_config, workflow_output_format_for_step};
 
 // ─── Session management ──────────────────────────────────────────────────────
 
@@ -35,6 +36,8 @@ use super::step_config::{
 /// Keyed by agent_id in WorkflowStepRunManager.
 pub struct WorkflowStepRun {
     pub skill_name: String,
+    pub plugin_slug: String,
+    pub conversation_id: Option<String>,
 }
 
 /// Manages active workflow step runs. Registered as Tauri managed state.
@@ -57,137 +60,24 @@ struct WorkflowStepMaterializedPayload {
     error_detail: Option<String>,
 }
 
-use crate::agents::skill_creator::{build_skill_creator_config, SkillCreatorConfigParams};
-
-pub(crate) fn build_workflow_research_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.research",
-        run_source: "workflow",
-        allowed_tools: research_workflow_tools(),
-        max_turns: 50,
-        step_id: 0,
-        output_format: workflow_output_format_for_step(0),
-    })
-}
-
-pub(crate) fn build_workflow_detailed_research_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.detailed_research",
-        run_source: "workflow",
-        allowed_tools: research_workflow_tools(),
-        max_turns: 50,
-        step_id: 1,
-        output_format: workflow_output_format_for_step(1),
-    })
-}
-
-pub(crate) fn build_workflow_confirm_decisions_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.confirm_decisions",
-        run_source: "workflow",
-        allowed_tools: confirm_decisions_workflow_tools(),
-        max_turns: 100,
-        step_id: 2,
-        output_format: workflow_output_format_for_step(2),
-    })
-}
-
-pub(crate) fn build_workflow_generate_skill_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.skill_generation",
-        run_source: "workflow",
-        allowed_tools: skill_generation_workflow_tools(),
-        max_turns: 500,
-        step_id: 3,
-        output_format: workflow_output_format_for_step(3),
-    })
-}
-
-pub(crate) fn build_answer_evaluator_runtime_config(
-    app_data_root: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    plugin_slug: &str,
-    llm: crate::types::WorkflowLlmConfig,
-) -> OpenHandsRuntimeConfig {
-    build_skill_creator_config(SkillCreatorConfigParams {
-        app_data_root,
-        skill_name,
-        prompt,
-        skills_root,
-        plugin_slug,
-        llm,
-        task_kind: "workflow.answer_evaluator",
-        run_source: "gate-eval",
-        allowed_tools: crate::commands::workflow::step_config::answer_evaluator_workflow_tools(),
-        max_turns: 20,
-        step_id: -1,
-        output_format: Some(answer_evaluator_output_format()),
-    })
-}
-
 async fn dispatch_persistent_skill_turn(
     app: &tauri::AppHandle,
     agent_id: &str,
+    plugin_slug: &str,
     config: OpenHandsRuntimeConfig,
+    runs: &WorkflowStepRunManager,
 ) -> Result<String, String> {
-    let conversation_id =
-        crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None)
-            .await?
-            .conversation_id;
+    let session = crate::agents::skill_creator::ensure_skill_session(app, config.clone(), None)
+        .await?;
+    let conversation_id = session.conversation_id;
+
+    // Update the run entry with the conversation_id for pause-based cleanup
+    if let Ok(mut map) = runs.0.lock() {
+        if let Some(run) = map.get_mut(agent_id) {
+            run.plugin_slug = plugin_slug.to_string();
+            run.conversation_id = Some(conversation_id.clone());
+        }
+    }
 
     dispatch_persistent_skill_turn_with_runtime(
         agent_id,
@@ -466,38 +356,54 @@ async fn run_workflow_step_inner(
         .replace('\\', "/");
 
     let config = match step_id {
-        0 => build_workflow_research_runtime_config(
-            &app_data_root,
-            skill_name,
-            &prompt,
-            &settings.skills_path,
-            &settings.plugin_slug,
-            settings.llm.clone(),
-        ),
-        1 => build_workflow_detailed_research_runtime_config(
-            &app_data_root,
-            skill_name,
-            &prompt,
-            &settings.skills_path,
-            &settings.plugin_slug,
-            settings.llm.clone(),
-        ),
-        2 => build_workflow_confirm_decisions_runtime_config(
-            &app_data_root,
-            skill_name,
-            &prompt,
-            &settings.skills_path,
-            &settings.plugin_slug,
-            settings.llm.clone(),
-        ),
-        3 => build_workflow_generate_skill_runtime_config(
-            &app_data_root,
-            skill_name,
-            &prompt,
-            &settings.skills_path,
-            &settings.plugin_slug,
-            settings.llm.clone(),
-        ),
+        0 => build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: app_data_root.clone(),
+            skills_root: settings.skills_path.clone(),
+            skill_name: skill_name.to_string(),
+            plugin_slug: settings.plugin_slug.clone(),
+            prompt,
+            llm: settings.llm.clone(),
+            intent: SkillCreatorIntent::WorkflowStep {
+                step: WorkflowStepKind::Research,
+            },
+            skill_dir_override: None,
+        }),
+        1 => build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: app_data_root.clone(),
+            skills_root: settings.skills_path.clone(),
+            skill_name: skill_name.to_string(),
+            plugin_slug: settings.plugin_slug.clone(),
+            prompt,
+            llm: settings.llm.clone(),
+            intent: SkillCreatorIntent::WorkflowStep {
+                step: WorkflowStepKind::DetailedResearch,
+            },
+            skill_dir_override: None,
+        }),
+        2 => build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: app_data_root.clone(),
+            skills_root: settings.skills_path.clone(),
+            skill_name: skill_name.to_string(),
+            plugin_slug: settings.plugin_slug.clone(),
+            prompt,
+            llm: settings.llm.clone(),
+            intent: SkillCreatorIntent::WorkflowStep {
+                step: WorkflowStepKind::ConfirmDecisions,
+            },
+            skill_dir_override: None,
+        }),
+        3 => build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: app_data_root.clone(),
+            skills_root: settings.skills_path.clone(),
+            skill_name: skill_name.to_string(),
+            plugin_slug: settings.plugin_slug.clone(),
+            prompt,
+            llm: settings.llm.clone(),
+            intent: SkillCreatorIntent::WorkflowStep {
+                step: WorkflowStepKind::GenerateSkill,
+            },
+            skill_dir_override: None,
+        }),
         _ => {
             return Err(format!(
                 "Invalid workflow step_id={step_id}: only steps 0-3 are valid"
@@ -523,11 +429,14 @@ async fn run_workflow_step_inner(
             agent_id.clone(),
             WorkflowStepRun {
                 skill_name: skill_name.to_string(),
+                plugin_slug: settings.plugin_slug.clone(),
+                conversation_id: None,
             },
         );
     }
 
-    let start_result = dispatch_persistent_skill_turn(app, &agent_id, config).await;
+    let start_result =
+        dispatch_persistent_skill_turn(app, &agent_id, &settings.plugin_slug, config, runs).await;
 
     start_result.map_err(|e| {
         log::error!(
@@ -564,29 +473,6 @@ pub async fn run_workflow_step(
     );
     crate::commands::workflow_lifecycle::validate_run_request(&skill_name, step_id)?;
 
-    // Cancel any stale workflow requests for this skill before starting a new step.
-    let stale_runs: Vec<String> = {
-        let map = runs.0.lock().map_err(|e| e.to_string())?;
-        map.iter()
-            .filter(|(_, s)| s.skill_name == skill_name)
-            .map(|(agent_id, _)| agent_id.clone())
-            .collect()
-    };
-    for stale_agent_id in &stale_runs {
-        log::info!(
-            "[run_workflow_step] canceling stale workflow run agent={} before starting step_id={}",
-            stale_agent_id,
-            step_id,
-        );
-        crate::agents::tracked_openhands::abort_tracked_openhands_run(stale_agent_id);
-    }
-    if !stale_runs.is_empty() {
-        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
-        for stale_agent_id in &stale_runs {
-            map.remove(stale_agent_id);
-        }
-    }
-
     let settings =
         read_workflow_settings_by_skill_id(&db, skill_id, &skill_name, step_id)?;
     log::info!(
@@ -597,6 +483,56 @@ pub async fn run_workflow_step(
         settings.industry,
         settings.function_role,
     );
+
+    // Pause any stale workflow runs for this skill before starting a new step.
+    let stale_runs: Vec<(String, String, Option<String>)> = {
+        let map = runs.0.lock().map_err(|e| e.to_string())?;
+        map.iter()
+            .filter(|(_, s)| s.skill_name == skill_name && s.plugin_slug == settings.plugin_slug)
+            .map(|(agent_id, s)| {
+                (
+                    agent_id.clone(),
+                    s.plugin_slug.clone(),
+                    s.conversation_id.clone(),
+                )
+            })
+            .collect()
+    };
+    for (stale_agent_id, stale_plugin_slug, stale_conversation_id) in &stale_runs {
+        log::info!(
+            "[run_workflow_step] pausing stale workflow run agent={} before starting step_id={}",
+            stale_agent_id,
+            step_id,
+        );
+        if let Some(conv_id) = stale_conversation_id {
+            let pause_result = crate::commands::skill_session::build_pause_runtime_config(
+                &app,
+                &db,
+                &skill_name,
+                stale_plugin_slug,
+            );
+            if let Ok(config) = pause_result {
+                let _ = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
+                    config,
+                    conv_id,
+                    Some(stale_agent_id),
+                )
+                .await;
+            }
+        } else {
+            log::warn!(
+                "[run_workflow_step] stale workflow run agent={} had no conversation_id; removing local bookkeeping without pause",
+                stale_agent_id
+            );
+        }
+        openhands_server::close_local_openhands_run(stale_agent_id);
+    }
+    if !stale_runs.is_empty() {
+        let mut map = runs.0.lock().map_err(|e| e.to_string())?;
+        for (stale_agent_id, _, _) in &stale_runs {
+            map.remove(stale_agent_id);
+        }
+    }
 
     let skill_dir = crate::skill_paths::ensure_nested_skill_dir(
         Path::new(&settings.skills_path),
@@ -754,14 +690,16 @@ pub async fn run_answer_evaluator(
         .to_string_lossy()
         .replace('\\', "/");
 
-    let config = build_answer_evaluator_runtime_config(
-        &app_data_root,
-        &skill_name,
-        &prompt,
-        &settings.skills_path,
-        &settings.plugin_slug,
-        settings.llm,
-    );
+    let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root,
+        skills_root: settings.skills_path.clone(),
+        skill_name: skill_name.clone(),
+        plugin_slug: settings.plugin_slug.clone(),
+        prompt,
+        llm: settings.llm,
+        intent: SkillCreatorIntent::AnswerEvaluator,
+        skill_dir_override: None,
+    });
 
     log::debug!(
         "[run_answer_evaluator] starting persistent request agent={} skill_dir={}",
@@ -777,11 +715,19 @@ pub async fn run_answer_evaluator(
             agent_id.clone(),
             WorkflowStepRun {
                 skill_name: skill_name.clone(),
+                plugin_slug: settings.plugin_slug.clone(),
+                conversation_id: None,
             },
         );
     }
 
-    dispatch_persistent_skill_turn(&app, &agent_id, config)
+    dispatch_persistent_skill_turn(
+        &app,
+        &agent_id,
+        &settings.plugin_slug,
+        config,
+        runs.inner(),
+    )
         .await
         .map_err(|e| {
             log::error!(

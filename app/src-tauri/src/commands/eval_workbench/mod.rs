@@ -1,8 +1,8 @@
 pub mod scenarios;
 pub mod types;
 
-use crate::agents::runtime_config::{
-    build_openhands_runtime_config, BuildOpenHandsRuntimeConfigParams, OpenHandsRuntimeMode,
+use crate::agents::skill_creator::{
+    build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
 };
 use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::commands::imported_skills::validate_skill_name;
@@ -11,7 +11,6 @@ use crate::commands::skill_session::resolve_skills_path;
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::Db;
 use crate::skill_paths::validate_skill_content_exists;
-use serde_json::Value;
 use std::path::Path;
 use tauri::Manager;
 pub use types::{ScenarioDto, ScenarioSummaryDto};
@@ -152,21 +151,6 @@ fn next_default_scenario_name(eval_dir: &std::path::Path) -> Result<String, Stri
     }
 }
 
-fn suggested_scenario_output_format() -> Value {
-    serde_json::json!({
-        "type": "object",
-        "properties": {
-            "name": { "type": "string" },
-            "prompt": { "type": "string" },
-            "expectations": {
-                "type": "array",
-                "items": { "type": "string" }
-            }
-        },
-        "required": ["name", "prompt", "expectations"]
-    })
-}
-
 fn build_suggest_scenario_prompt(
     skill_name: &str,
     existing_scenario: &scenarios::Scenario,
@@ -256,37 +240,6 @@ fn parse_suggested_scenario_response(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_generation_runtime_config(
-    app_data_root: &str,
-    plugin_slug: &str,
-    skill_name: &str,
-    prompt: &str,
-    skills_root: &str,
-    skill_dir: &str,
-    output_format: Value,
-    runtime_ctx: &crate::commands::workflow::settings::InitializedRuntimeContext,
-) -> crate::agents::runtime_config::OpenHandsRuntimeConfig {
-    build_openhands_runtime_config(BuildOpenHandsRuntimeConfigParams {
-        prompt: prompt.to_string(),
-        llm: runtime_ctx.llm.clone(),
-        app_data_root: app_data_root.to_string(),
-        skills_root: skills_root.replace('\\', "/"),
-        skill_dir: skill_dir.replace('\\', "/"),
-        mode: Some(OpenHandsRuntimeMode::Throwaway),
-        agent_name: "skill-creator".to_string(),
-        task_kind: Some("scenario-suggest".to_string()),
-        user_message_suffix: None,
-        allowed_tools: vec!["file_editor".to_string(), "terminal".to_string()],
-        max_turns: 10,
-        output_format: Some(output_format),
-        skill_name: Some(skill_name.to_string()),
-        step_id: Some(-11),
-        run_source: Some("scenario-suggest".to_string()),
-        plugin_slug: plugin_slug.to_string(),
-    })
-}
-
 async fn run_define_eval_scenario_throwaway_turn<
     EnsureRuntimeDir,
     EnsureRuntimeDirFuture,
@@ -310,11 +263,7 @@ where
     >,
 {
     let run_id = uuid::Uuid::new_v4().to_string();
-    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir(
-        std::path::Path::new(&runtime_ctx.skills_root),
-        "eval-workbench",
-        &run_id,
-    );
+    let runtime_run_dir = crate::skill_paths::throwaway_runtime_dir("eval-workbench", &run_id);
     std::fs::create_dir_all(crate::skill_paths::throwaway_conversations_dir(
         &runtime_run_dir,
     ))
@@ -322,16 +271,16 @@ where
     std::fs::create_dir_all(crate::skill_paths::throwaway_logs_dir(&runtime_run_dir))
         .map_err(|e| format!("Failed to create throwaway logs dir: {e}"))?;
     ensure_runtime_dir(&runtime_run_dir).await?;
-    let config = build_generation_runtime_config(
-        app_data_root,
-        plugin_slug,
-        skill_name,
-        prompt,
-        &runtime_ctx.skills_root,
-        &runtime_run_dir.to_string_lossy(),
-        suggested_scenario_output_format(),
-        runtime_ctx,
-    );
+    let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+        app_data_root: app_data_root.to_string(),
+        skills_root: runtime_ctx.skills_root.clone(),
+        skill_name: skill_name.to_string(),
+        plugin_slug: plugin_slug.to_string(),
+        prompt: prompt.to_string(),
+        llm: runtime_ctx.llm.clone(),
+        intent: SkillCreatorIntent::Eval,
+        skill_dir_override: Some(runtime_run_dir.to_string_lossy().replace('\\', "/")),
+    });
     run_turn(OpenHandsThrowawayRunParams {
         agent_id: format!("{skill_name}-scenario-suggest-{}", uuid::Uuid::new_v4()),
         config,
@@ -500,7 +449,7 @@ pub async fn define_eval_scenario(
         |params| {
             let app = app.clone();
             async move {
-                crate::agents::tracked_openhands::run_tracked_throwaway_openhands_session(
+                crate::agents::tracked_openhands::send_tracked_throwaway(
                     &app, params,
                 )
                 .await
@@ -566,7 +515,7 @@ mod tests {
                     assert!(params
                         .config
                         .skill_dir
-                        .contains("/.openhands/throwaway/eval-workbench/"));
+                        .contains("/skill-builder/throwaway/eval-workbench/"));
                     Ok(OpenHandsThrowawayRun {
                         conversation_state: serde_json::json!({
                             "result_text": "{\"name\":\"Performance 1\",\"prompt\":\"Prompt\",\"expectations\":[\"assertion\"]}"

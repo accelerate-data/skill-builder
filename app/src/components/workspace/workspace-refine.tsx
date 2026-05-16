@@ -27,9 +27,28 @@ import { initAgentStream } from "@/hooks/use-agent-stream";
 import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
 import { loadSkillFiles } from "@/lib/skill-file-loader";
 import { parseResultTextPayload } from "@/lib/result-text-payload";
+import type { OpenHandsConversationEvent } from "@/lib/openhands-conversation-events";
 
 interface WorkspaceRefineProps {
   skill: EditableSkill;
+}
+
+function buildSyntheticUserConversationEvent(
+  conversationId: string,
+  text: string,
+): OpenHandsConversationEvent {
+  return {
+    type: "conversation_event",
+    runtime: "openhands",
+    conversationId,
+    eventClass: "MessageEvent",
+    event: {
+      event_class: "MessageEvent",
+      source: "user",
+      message: text,
+    },
+    timestamp: Date.now(),
+  };
 }
 
 export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
@@ -142,7 +161,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
       const store = useRefineStore.getState();
       const conversationId = store.conversationId;
       if (!activeSkill) return;
-      if (store.isRunning) return;
       if (!conversationId) {
         const message = `Refine session for '${activeSkill.name}' has no active conversation`;
         console.error("[workspace-refine] %s", message);
@@ -150,17 +168,19 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         return;
       }
 
-      console.log(
-        "[workspace-refine] send: skill=%s files=%s",
-        activeSkill.name,
-        targetFiles?.join(",") ?? "all",
-      );
-
       runSkillRef.current = activeSkill;
       store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
       store.setRunning(true);
       store.addUserMessage(text, targetFiles);
+      const followupDisplayItemStartIndex =
+        store.isRunning && store.activeAgentId
+          ? (useAgentStore.getState().runs[store.activeAgentId]?.displayItems.length ?? 0)
+          : undefined;
+      store.markLatestTurnSending(
+        store.activeAgentId,
+        followupDisplayItemStartIndex ?? null,
+      );
 
       try {
         const dispatch = await sendRefineMessage(
@@ -170,20 +190,29 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
           text,
           targetFiles,
         );
-        const { agent_id: agentId } = dispatch;
+        const { agent_id: agentId, run_started: runStarted } = dispatch;
+        store.markLatestTurnAccepted(agentId, runStarted);
 
-        useAgentStore
-          .getState()
-          .registerRun(
+        if (runStarted) {
+          useAgentStore
+            .getState()
+            .registerRun(
+              agentId,
+              selectedModel ?? "openhands",
+              activeSkill.name,
+              "refine",
+              `synthetic:refine:${activeSkill.name}:${conversationId}`,
+            );
+          useAgentStore.getState().addConversationEvent(
             agentId,
-            selectedModel ?? "openhands",
-            activeSkill.name,
-            "refine",
-            `synthetic:refine:${activeSkill.name}:${conversationId}`,
+            buildSyntheticUserConversationEvent(conversationId, text),
           );
 
-        store.addAgentTurn(agentId);
-        store.setActiveAgentId(agentId);
+          store.addAgentTurn(agentId);
+          store.setActiveAgentId(agentId);
+        } else {
+          store.addAgentTurn(agentId, followupDisplayItemStartIndex);
+        }
       } catch (err) {
         console.error("[workspace-refine] Failed to send refine message:", err);
         const nextMessages = [...useRefineStore.getState().messages];
@@ -191,6 +220,9 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         if (lastMessage?.role === "user" && lastMessage.userText === text) {
           nextMessages.pop();
           useRefineStore.getState().setMessages(nextMessages);
+        }
+        if (store.activeAgentId) {
+          store.failOpenTurnsForAgent(store.activeAgentId);
         }
         store.setRunning(false);
         store.setActiveAgentId(null);
@@ -213,12 +245,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
     // Clear stopping state when terminal event arrives
     useRefineStore.getState().setStopping(false);
-
-    console.log(
-      "[workspace-refine] agent %s finished: status=%s",
-      activeAgentId,
-      activeRunStatus,
-    );
 
     if (activeRunStatus === "error") {
       toast.error("Agent failed — check the chat for details", {
@@ -245,6 +271,12 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
     const complete = async () => {
       const store = useRefineStore.getState();
+      const run = useAgentStore.getState().runs[activeAgentId];
+      const displayItemEndIndex = run?.displayItems.length ?? null;
+
+      if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
+        store.failOpenTurnsForAgent(activeAgentId, displayItemEndIndex);
+      }
 
       if (activeRunStatus === "completed" && workspacePath && completionSkill) {
         const resultPayload = extractResultPayload(activeAgentId);

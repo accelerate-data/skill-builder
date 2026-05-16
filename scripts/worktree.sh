@@ -13,9 +13,20 @@ fi
 branch="$1"
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-repo_root="$(cd "$script_dir/.." && pwd)"
+git_common_dir="$(git -C "$script_dir" rev-parse --git-common-dir)"
+repo_root="$(cd "$git_common_dir/.." && pwd)"
 worktree_base="${WORKTREE_BASE_DIR:-$repo_root/../worktrees}"
 worktree_path="$worktree_base/$branch"
+
+canonicalize_path() {
+  local path="$1"
+  python3 - "$path" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+}
 
 retry_command() {
   printf '%s %s' "$0" "$branch"
@@ -171,8 +182,15 @@ branch_exists() {
 
 handle_existing_worktree() {
   local checked_out_path="$1"
+  local requested_canonical_path=""
+  local checked_out_canonical_path=""
 
-  if [[ -n "$checked_out_path" && "$checked_out_path" != "$worktree_path" ]]; then
+  if [[ -n "$checked_out_path" ]]; then
+    requested_canonical_path="$(canonicalize_path "$worktree_path")"
+    checked_out_canonical_path="$(canonicalize_path "$checked_out_path")"
+  fi
+
+  if [[ -n "$checked_out_path" && "$checked_out_canonical_path" != "$requested_canonical_path" ]]; then
     json_error \
       "WORKTREE_BRANCH_ALREADY_CHECKED_OUT" \
       "branch_conflict" \
@@ -184,7 +202,7 @@ handle_existing_worktree() {
   fi
 
   if [[ -n "$checked_out_path" ]]; then
-    echo "worktree: branch already attached at $worktree_path; rerunning bootstrap"
+    echo "worktree: branch already attached at $checked_out_path; rerunning bootstrap"
     bootstrap_worktree
     echo "worktree: ready $worktree_path"
     exit 0

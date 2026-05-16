@@ -159,9 +159,9 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
     },
     {
       name: "listSkills",
-      call: () => listSkills("/tmp/skills"),
+      call: () => listSkills(),
       command: "list_skills",
-      args: { workspacePath: "/tmp/skills", sourceUrl: null },
+      args: { sourceUrl: null },
     },
     {
       name: "listImportedSkills",

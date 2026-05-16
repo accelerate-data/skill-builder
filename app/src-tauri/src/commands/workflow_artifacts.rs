@@ -280,6 +280,24 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_skill_output_with_verifier_result_round_trip() {
+        let json = serde_json::json!({
+            "status": "generated",
+            "call_trace": ["read-user-context", "write-skill"],
+            "verifier_result": {
+                "status": "pass",
+                "findings": []
+            }
+        });
+
+        let parsed: GenerateSkillOutput =
+            serde_json::from_value(json).expect("deserialize GenerateSkillOutput");
+        let verifier_result = parsed.verifier_result.expect("verifier_result");
+        assert_eq!(verifier_result.status, "pass");
+        assert!(verifier_result.findings.is_empty());
+    }
+
+    #[test]
     fn test_generate_skill_output_skipped() {
         let json = serde_json::json!({
             "status": "generated",

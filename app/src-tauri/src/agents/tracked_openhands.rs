@@ -3,8 +3,7 @@ use std::time::{Duration, Instant};
 use tauri::Listener;
 
 use crate::agents::openhands_server::{
-    self, OpenHandsConversationSelection, OpenHandsRuntimeEvent, OpenHandsThrowawayRun,
-    PromptDelivery,
+    self, OpenHandsRuntimeEvent, OpenHandsThrowawayRun,
 };
 use crate::agents::runtime_config::OpenHandsRuntimeConfig;
 
@@ -14,27 +13,74 @@ pub struct OpenHandsThrowawayRunParams {
     pub timeout: Duration,
 }
 
+async fn send_tracked_openhands_message_with<
+    HasLiveRunner,
+    SendMessage,
+    SendFuture,
+    RunConversation,
+    RunFuture,
+>(
+    config: OpenHandsRuntimeConfig,
+    conversation_id: String,
+    has_live_runner: HasLiveRunner,
+    send_message: SendMessage,
+    run_conversation: RunConversation,
+) -> Result<String, String>
+where
+    HasLiveRunner: Fn(&str) -> bool,
+    SendMessage: Fn(OpenHandsRuntimeConfig, String, String) -> SendFuture,
+    SendFuture: std::future::Future<Output = Result<(), String>>,
+    RunConversation: Fn(OpenHandsRuntimeConfig, String) -> RunFuture,
+    RunFuture: std::future::Future<Output = Result<String, String>>,
+{
+    let prompt = config.prompt.clone();
+
+    if has_live_runner(&conversation_id) {
+        send_message(config, conversation_id.clone(), prompt).await?;
+        return Ok(conversation_id);
+    }
+
+    send_message(config.clone(), conversation_id.clone(), prompt).await?;
+    run_conversation(config, conversation_id.clone()).await?;
+    Ok(conversation_id)
+}
+
 pub async fn send_tracked_openhands_message(
     app: &tauri::AppHandle,
     agent_id: &str,
     config: OpenHandsRuntimeConfig,
     conversation_id: String,
 ) -> Result<String, String> {
-    let request = openhands_server::OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    openhands_server::dispatch_openhands_turn_with_request(
-        app,
-        agent_id,
+    let app = app.clone();
+    let agent_id = agent_id.to_string();
+    send_tracked_openhands_message_with(
         config,
-        request,
-        Some(conversation_id),
-        OpenHandsConversationSelection::SendExistingOnly,
-        PromptDelivery::ViaSendEvent,
+        conversation_id,
+        openhands_server::has_live_runner_for_conversation,
+        |config, conversation_id, prompt| async move {
+            openhands_server::send_message_to_openhands_conversation(
+                config,
+                &conversation_id,
+                &prompt,
+            )
+            .await
+        },
+        move |config, conversation_id| {
+            let app = app.clone();
+            let agent_id = agent_id.clone();
+            async move {
+                openhands_server::run_openhands_conversation(
+                    &app,
+                    &agent_id,
+                    config,
+                    conversation_id,
+                    openhands_server::PromptDelivery::AlreadySent,
+                )
+                .await
+            }
+        },
     )
     .await
-}
-
-pub fn abort_tracked_openhands_run(agent_id: &str) -> bool {
-    openhands_server::close_local_openhands_run(agent_id)
 }
 
 pub async fn pause_tracked_openhands_conversation(
@@ -48,35 +94,15 @@ pub async fn pause_tracked_openhands_conversation(
         .unwrap_or(false))
 }
 
-pub async fn terminate_tracked_openhands_session(agent_id: &str, timeout: Duration) -> bool {
-    let mut found = openhands_server::send_cancel_signal(agent_id);
-
-    if openhands_server::has_registered_local_run(agent_id) {
-        found = true;
-    }
-
-    let deadline = Instant::now() + timeout;
-    loop {
-        if !openhands_server::has_registered_local_run(agent_id) {
-            return found;
-        }
-
-        if Instant::now() >= deadline {
-            let stopped = openhands_server::close_local_openhands_run(agent_id);
-            return found || stopped;
-        }
-
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-}
-
-pub async fn run_tracked_throwaway_openhands_session(
+pub async fn send_tracked_throwaway(
     app: &tauri::AppHandle,
     params: OpenHandsThrowawayRunParams,
 ) -> Result<OpenHandsThrowawayRun, String> {
     let config = params.config;
     let agent_id = params.agent_id.clone();
     let started_at = Instant::now();
+
+    let conversation_id = openhands_server::create_openhands_conversation(app, &config).await?;
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OpenHandsRuntimeEvent>();
     let target_agent_id = agent_id.clone();
@@ -110,15 +136,12 @@ pub async fn run_tracked_throwaway_openhands_session(
         }
     });
 
-    let request = openhands_server::OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    openhands_server::dispatch_openhands_turn_with_request(
+    openhands_server::run_openhands_conversation(
         app,
         &agent_id,
-        config,
-        request,
-        None,
-        OpenHandsConversationSelection::CreateFresh,
-        PromptDelivery::ViaSendEvent,
+        config.clone(),
+        conversation_id,
+        openhands_server::PromptDelivery::ViaSendEvent,
     )
     .await
     .inspect_err(|_| {
@@ -180,4 +203,128 @@ pub async fn run_tracked_throwaway_openhands_session(
     );
 
     Ok(OpenHandsThrowawayRun { conversation_state })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::SecretString;
+    use std::sync::{Arc, Mutex};
+
+    fn test_runtime_config(prompt: &str) -> OpenHandsRuntimeConfig {
+        OpenHandsRuntimeConfig {
+            mode: None,
+            prompt: prompt.to_string(),
+            system_prompt: None,
+            model: None,
+            llm: None,
+            model_base_url: None,
+            openhands_api_key: SecretString::new("test-key".to_string()),
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_dir: "/tmp/skills/default/skills/test-skill".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            betas: None,
+            thinking: None,
+            output_format: None,
+            prompt_suggestions: None,
+            agent_name: Some("skill-creator".to_string()),
+            required_plugins: None,
+            setting_sources: None,
+            conversation_history: None,
+            skill_name: Some("test-skill".to_string()),
+            step_id: Some(0),
+            usage_session_id: None,
+            run_source: Some("workflow".to_string()),
+            persistence_dir: None,
+            plugin_slug: crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string(),
+            task_kind: Some("workflow.research".to_string()),
+            user_message_suffix: None,
+            system_message_suffix: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn send_tracked_openhands_message_reuses_live_runner_with_send_only() {
+        let events = Arc::new(Mutex::new(Vec::<String>::new()));
+        let send_events = Arc::clone(&events);
+        let run_events = Arc::clone(&events);
+
+        let conversation_id = send_tracked_openhands_message_with(
+            test_runtime_config("write the skill"),
+            "conversation-123".to_string(),
+            |_| true,
+            move |_config, conversation_id, prompt| {
+                let send_events = Arc::clone(&send_events);
+                async move {
+                    send_events
+                        .lock()
+                        .unwrap()
+                        .push(format!("send:{conversation_id}:{prompt}"));
+                    Ok(())
+                }
+            },
+            move |_config, conversation_id| {
+                let run_events = Arc::clone(&run_events);
+                async move {
+                    run_events.lock().unwrap().push(format!("run:{conversation_id}"));
+                    Ok(conversation_id)
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(conversation_id, "conversation-123");
+        assert_eq!(
+            events.lock().unwrap().as_slice(),
+            ["send:conversation-123:write the skill"]
+        );
+    }
+
+    #[tokio::test]
+    async fn send_tracked_openhands_message_starts_run_for_idle_conversation() {
+        let events = Arc::new(Mutex::new(Vec::<String>::new()));
+        let send_events = Arc::clone(&events);
+        let run_events = Arc::clone(&events);
+
+        let conversation_id = send_tracked_openhands_message_with(
+            test_runtime_config("write the skill"),
+            "conversation-456".to_string(),
+            |_| false,
+            move |_config, conversation_id, prompt| {
+                let send_events = Arc::clone(&send_events);
+                async move {
+                    send_events
+                        .lock()
+                        .unwrap()
+                        .push(format!("send:{conversation_id}:{prompt}"));
+                    Ok(())
+                }
+            },
+            move |_config, conversation_id| {
+                let run_events = Arc::clone(&run_events);
+                async move {
+                    run_events
+                        .lock()
+                        .unwrap()
+                        .push(format!("run:agent-1:{conversation_id}"));
+                    Ok(conversation_id)
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(conversation_id, "conversation-456");
+        assert_eq!(
+            events.lock().unwrap().as_slice(),
+            [
+                "send:conversation-456:write the skill",
+                "run:agent-1:conversation-456",
+            ]
+        );
+    }
 }

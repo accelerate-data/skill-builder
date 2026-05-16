@@ -148,13 +148,13 @@ describe("agent files", () => {
     expect(fm.description).toMatch(/writing a new reusable skill/i);
     expect(fm.description).not.toMatch(/workflow step|step \d/i);
     expect(content).toMatch(/Fresh-Context Verification/);
-    expect(content).toMatch(/launch the named `skill-verifier` subagent via `task_tool_set`/);
+    expect(content).toMatch(
+      /launch(?: the| the named)? `skill-verifier` subagent for (?:the )?verifier pass/i,
+    );
     expect(content).toMatch(/verifier-subagent-prompt\.md/);
     expect(content).toMatch(/run exactly one\s+re-verification pass/i);
     expect(content).toMatch(/Return the raw JSON object requested by the caller/i);
-    // Verifier must be launched as a subagent via task_tool_set so it runs in
-    // a fresh context, not inline in the generator's context.
-    expect(content).toMatch(/task_tool_set/);
+    expect(content).toMatch(/Do not run the verifier inline in the same agent context/i);
   });
 
   it("skill-verifier is a file-based subagent with verifier-only instructions", () => {

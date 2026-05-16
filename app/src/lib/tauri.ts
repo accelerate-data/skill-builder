@@ -43,6 +43,9 @@ export const getDataDir = () => invokeCommand("get_data_dir", {});
 
 export const getDefaultSkillsPath = () => invokeCommand("get_default_skills_path", {});
 
+export const ensureOpenHandsRuntimeReady = () =>
+  invokeCommand("ensure_openhands_runtime_ready", {});
+
 // --- Skills ---
 
 export const deleteSkill = (workspacePath: string, name: string) =>
@@ -96,8 +99,7 @@ export const runWorkflowStep = (
   skillId: number,
   skillName: string,
   stepId: number,
-  workspacePath: string,
-) => invokeCommand("run_workflow_step", { skillId, skillName, stepId, workspacePath });
+) => invokeCommand("run_workflow_step", { skillId, skillName, stepId });
 
 export const resetWorkflowStep = (
   workspacePath: string,
@@ -309,9 +311,8 @@ export async function getDashboardSkillNames(): Promise<string[]> {
   return invokeCommand("get_dashboard_skill_names", {})
 }
 
-export async function listSkills(workspacePath: string, sourceUrl?: string | null): Promise<SkillSummary[]> {
+export async function listSkills(sourceUrl?: string | null): Promise<SkillSummary[]> {
   return invokeCommand("list_skills", {
-    workspacePath,
     sourceUrl: sourceUrl ?? null,
   })
 }
@@ -522,7 +523,6 @@ export const importSkillFromFile = (params: {
 // --- Additional typed wrappers ---
 
 export const createSkill = (params: {
-  workspacePath: string;
   name: string;
   tags?: string[] | null;
   purpose?: string | null;
@@ -532,7 +532,6 @@ export const createSkill = (params: {
   userInvocable?: boolean | null;
   disableModelInvocation?: boolean | null;
 }) => invokeCommand("create_skill", {
-  workspacePath: params.workspacePath,
   name: params.name,
   tags: params.tags ?? null,
   purpose: params.purpose ?? null,

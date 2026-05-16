@@ -20,5 +20,6 @@ Required JSON fields:
 - benchmark_path: null
 - skipped: false for this non-stub generation case
 - commit_summary: required string for non-stub output
-- version_bump: "1.0.0" for newly generated skills
 - call_trace: required array of string values containing logical steps, including read-user-context, read-decisions, read-clarifications, synthesize-generation-brief, use-creating-skills, write-skill, write-references, and fresh-context-verifier-review. Do not return objects inside call_trace.
+- verifier_result: required object reflecting the final skill-verifier outcome, with shape `{ "status": "pass" | "needs_fix", "findings": [...] }`
+- For this eval case, return `verifier_result.status` as `"pass"` with an empty `findings` array.

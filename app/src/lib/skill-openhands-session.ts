@@ -9,6 +9,7 @@ import type {
   RestoredConversationEvent,
 } from "@/lib/types";
 import {
+  type RefineTurn,
   type RefineMessage,
   useRefineStore,
 } from "@/stores/refine-store";
@@ -59,9 +60,12 @@ function buildRestoredMessages(
   skill: EditableSkill,
   conversationId: string,
   restoredEvents: RestoredConversationEvent[],
-): RefineMessage[] {
-  const normalizedEvents = restoredEvents.map(toConversationEvent);
+): { messages: RefineMessage[]; turns: RefineTurn[] } {
+  const normalizedEvents = restoredEvents
+    .map(toConversationEvent)
+    .sort((left, right) => left.timestamp - right.timestamp);
   const messages: RefineMessage[] = [];
+  const turns: RefineTurn[] = [];
   const usageSessionId = `restored:refine:${skill.name}:${conversationId}`;
   const agentStore = useAgentStore.getState();
   let leadingEvents: OpenHandsConversationEvent[] = [];
@@ -117,7 +121,29 @@ function buildRestoredMessages(
         hideTaskSent: false,
         timestamp,
       });
+      turns.push({
+        turnId: crypto.randomUUID(),
+        conversationId,
+        agentId,
+        userMessageId: messages[messages.length - 2]?.id ?? crypto.randomUUID(),
+        displayItemStartIndex: 0,
+        displayItemEndIndex:
+          useAgentStore.getState().runs[agentId]?.displayItems.length ?? null,
+        status: "completed",
+        acceptedAt: timestamp,
+      });
       turnIndex += 1;
+    } else if (currentUserText) {
+      turns.push({
+        turnId: crypto.randomUUID(),
+        conversationId,
+        agentId: null,
+        userMessageId: messages[messages.length - 1]?.id ?? crypto.randomUUID(),
+        displayItemStartIndex: null,
+        displayItemEndIndex: null,
+        status: "completed",
+        acceptedAt: timestamp,
+      });
     }
 
     currentUserText = null;
@@ -145,19 +171,53 @@ function buildRestoredMessages(
   });
 
   pushTurn();
-  return messages;
+  return { messages, turns };
 }
 
 function buildFallbackMessages(
   session: SkillSessionInfo,
-): RefineMessage[] {
-  return session.restored_messages.map((message, index) => ({
+): { messages: RefineMessage[]; turns: RefineTurn[] } {
+  const messages: RefineMessage[] = session.restored_messages.map((message, index) => ({
     id: crypto.randomUUID(),
     role: message.role === "user" ? "user" : "agent",
     userText: message.role === "user" ? message.content : undefined,
     agentText: message.role === "user" ? undefined : message.content,
     timestamp: Date.now() + index,
   }));
+  const turns: RefineTurn[] = [];
+  let pendingUserMessageId: string | null = null;
+  messages.forEach((message) => {
+    if (message.role === "user") {
+      pendingUserMessageId = message.id;
+      return;
+    }
+    if (message.role === "agent" && pendingUserMessageId) {
+      turns.push({
+        turnId: crypto.randomUUID(),
+        conversationId: session.conversation_id,
+        agentId: null,
+        userMessageId: pendingUserMessageId,
+        displayItemStartIndex: null,
+        displayItemEndIndex: null,
+        status: "completed",
+        acceptedAt: message.timestamp,
+      });
+      pendingUserMessageId = null;
+    }
+  });
+  if (pendingUserMessageId) {
+    turns.push({
+      turnId: crypto.randomUUID(),
+      conversationId: session.conversation_id,
+      agentId: null,
+      userMessageId: pendingUserMessageId,
+      displayItemStartIndex: null,
+      displayItemEndIndex: null,
+      status: "completed",
+      acceptedAt: null,
+    });
+  }
+  return { messages, turns };
 }
 
 export function hydrateSelectedSkillOpenHandsSession(
@@ -171,7 +231,7 @@ export function hydrateSelectedSkillOpenHandsSession(
   store.setConversationId(session.conversation_id || null);
   store.setAvailableAgents(session.available_agents ?? []);
 
-  const messages =
+  const { messages, turns } =
     session.restored_transcript_events.length > 0
       ? buildRestoredMessages(
           editableSkill,
@@ -180,6 +240,7 @@ export function hydrateSelectedSkillOpenHandsSession(
         )
       : buildFallbackMessages(session);
   store.setMessages(messages);
+  store.setTurns(turns);
 }
 
 export async function restartSkillOpenHandsSession(

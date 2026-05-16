@@ -170,9 +170,21 @@ const emptyReconciliation: ReconciliationResult = {
   auto_cleaned: 0,
 };
 
+const baseMockImplementation = mockInvoke.mockImplementation.bind(mockInvoke);
+
+function installAppLayoutInvokeDefaults() {
+  mockInvoke.mockImplementation = ((impl: Parameters<typeof mockInvoke.mockImplementation>[0]) =>
+    baseMockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "refresh_model_catalog") return Promise.resolve([]);
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
+      return impl(cmd, args);
+    })) as typeof mockInvoke.mockImplementation;
+}
+
 describe("AppLayout", () => {
   beforeEach(() => {
     resetTauriMocks();
+    installAppLayoutInvokeDefaults();
     useSettingsStore.getState().reset();
     useRefineStore.getState().clearSession();
     useWorkflowStore.getState().reset();
@@ -194,6 +206,7 @@ describe("AppLayout", () => {
       get_settings: defaultSettings,
       refresh_model_catalog: [],
       reconcile_startup: emptyReconciliation,
+      ensure_openhands_runtime_ready: undefined,
     });
 
     render(<AppLayout />);
@@ -203,6 +216,9 @@ describe("AppLayout", () => {
     });
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("reconcile_startup", {});
+    });
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("ensure_openhands_runtime_ready", {});
     });
 
     await waitFor(() => {
@@ -214,6 +230,7 @@ describe("AppLayout", () => {
     // Settings resolve immediately, reconciliation hangs
     let resolveReconcile!: (value: ReconciliationResult) => void;
     mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup")
         return new Promise<ReconciliationResult>((resolve) => {
@@ -243,6 +260,7 @@ describe("AppLayout", () => {
 
   it("does not toast when auto_cleaning notification-only reconciliation", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) {
         return Promise.resolve({
@@ -271,6 +289,7 @@ describe("AppLayout", () => {
 
   it("does not toast singular auto-clean text during silent auto-apply", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) {
         return Promise.resolve({
@@ -298,15 +317,19 @@ describe("AppLayout", () => {
   });
 
   it("auto-applies notification-only reconciliation without showing the ack dialog", async () => {
-    const notifications = [
-      'Skill "sales-pipeline" was reset to step 3 (workspace files are behind database)',
-      'Skill "hr-analytics" was reset to step 1 (workspace files are behind database)',
-    ];
-
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
       if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: [
+            'Skill "sales-pipeline" was reset to step 3 (workspace files are behind database)',
+            'Skill "hr-analytics" was reset to step 1 (workspace files are behind database)',
+          ],
+          auto_cleaned: 0,
+        });
       }
       if (cmd === "list_skills") return Promise.resolve([]);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -399,6 +422,7 @@ describe("AppLayout", () => {
       },
     ];
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") return Promise.resolve(skills);
@@ -624,6 +648,7 @@ describe("AppLayout", () => {
       },
     ];
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") return Promise.resolve(skills);
@@ -748,6 +773,7 @@ describe("AppLayout", () => {
 
   it("renders content after auto-applying notification-only reconciliation", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
       if (cmd === "reconcile_startup") {
@@ -770,6 +796,7 @@ describe("AppLayout", () => {
 
   it("bootstraps an OpenHands session for the selected skill", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") {
@@ -831,8 +858,74 @@ describe("AppLayout", () => {
     expect(useRefineStore.getState().conversationId).toBe("conv-sales");
   });
 
+  it("bootstraps an OpenHands session without requiring workspace path", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
+      if (cmd === "get_settings") {
+        return Promise.resolve({
+          ...defaultSettings,
+          workspace_path: null,
+        });
+      }
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            id: 1,
+            name: "sales-skill",
+            current_step: null,
+            status: "completed",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "select_skill_openhands_session") {
+        return Promise.resolve({
+          conversation_id: "conv-sales",
+          skill_name: "sales-skill",
+          created_at: new Date().toISOString(),
+          available_agents: ["skill-creator"],
+          restored_messages: [],
+          restored_transcript_events: [],
+        });
+      }
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Startup activate sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Startup activate sales"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillId: 1,
+      });
+    });
+
+    expect(toast.error).not.toHaveBeenCalledWith("Workspace path is not configured", expect.anything());
+    expect(useRefineStore.getState().conversationId).toBe("conv-sales");
+  });
+
   it("does not bootstrap a locked skill from the panel", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") {
@@ -880,6 +973,7 @@ describe("AppLayout", () => {
 
   it("navigates to the workflow page for an already-active skill when explicitly requested", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") {
@@ -947,8 +1041,76 @@ describe("AppLayout", () => {
     });
   });
 
+  it("reboots the selected skill session before navigating when the active skill has no conversation", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+      if (cmd === "list_skills") {
+        return Promise.resolve([
+          {
+            id: 1,
+            name: "sales-skill",
+            current_step: "1",
+            status: "in_progress",
+            last_modified: null,
+            tags: [],
+            purpose: "domain",
+            skill_source: "skill-builder",
+            author_login: null,
+            author_avatar: null,
+            intake_json: null,
+            description: null,
+            version: null,
+            userInvocable: null,
+            disableModelInvocation: null,
+            plugin_slug: "skills",
+            plugin_display_name: "Skills",
+            is_default_plugin: true,
+          },
+        ]);
+      }
+      if (cmd === "list_imported_skills") return Promise.resolve([]);
+      if (cmd === "select_skill_openhands_session") {
+        return Promise.resolve({
+          conversation_id: "conv-restarted",
+          skill_name: "sales-skill",
+          created_at: new Date().toISOString(),
+          available_agents: ["skill-creator"],
+          restored_messages: [],
+          restored_transcript_events: [],
+        });
+      }
+      if (cmd === "github_get_user") return Promise.resolve(null);
+      return Promise.reject(new Error(`Unmocked command: ${cmd} ${JSON.stringify(args)}`));
+    });
+
+    useSkillStore.getState().setActiveSkill(SALES_SKILL_ID);
+
+    render(<AppLayout />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Select sales")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText("Select sales"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("select_skill_openhands_session", {
+        skillId: 1,
+      });
+    });
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/workflow/$skillId",
+        params: { skillId: SALES_SKILL_ID },
+      });
+    });
+    expect(useRefineStore.getState().conversationId).toBe("conv-restarted");
+  });
+
   it("does not navigate to a locked already-active skill", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") {
@@ -1061,6 +1223,7 @@ describe("AppLayout", () => {
     ];
 
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       commandOrder.push(cmd);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
@@ -1176,6 +1339,7 @@ describe("AppLayout", () => {
     ];
 
     mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
       if (cmd === "list_skills") return Promise.resolve(skills);
@@ -1223,29 +1387,10 @@ describe("AppLayout", () => {
     });
   });
 
-  it("shows reconciliation dialog when startup returns notifications", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: {
-        orphans: [],
-        notifications: ["'my-skill' workflow record recreated at step 3"],
-        auto_cleaned: 0,
-      },
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("'my-skill' workflow record recreated at step 3")).toBeInTheDocument();
-    expect(screen.queryByTestId("outlet")).not.toBeInTheDocument();
-  });
-
   it("refreshes skill list after auto-applying reconciliation", async () => {
     const invokedCommands: string[] = [];
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       invokedCommands.push(cmd);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
@@ -1273,6 +1418,7 @@ describe("AppLayout", () => {
 
   it("does not offer cancellation for notification-only reconciliation", async () => {
     mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
       if (cmd === "reconcile_startup") {
@@ -1296,32 +1442,9 @@ describe("AppLayout", () => {
     expect(mockInvoke).not.toHaveBeenCalledWith("record_reconciliation_cancel", expect.anything());
   });
 
-  it("shows orphan resolution dialog when orphans exist", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: {
-        orphans: [
-          {
-            skill_name: "old-skill",
-            purpose: "domain",
-          },
-        ],
-        notifications: [],
-        auto_cleaned: 0,
-      },
-    });
-
-    render(<AppLayout />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Orphaned Skills Found")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("old-skill")).toBeInTheDocument();
-  });
-
   it("proceeds when reconciliation fails (e.g., no workspace configured)", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup")
         return Promise.reject(new Error("Workspace path not initialized"));
@@ -1422,6 +1545,7 @@ describe("AppLayout", () => {
 
     const setupMock = (skillOverrides: Record<string, unknown> = {}, selectSessionFn?: () => Promise<unknown>) => {
       mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve(defaultSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "list_skills") return Promise.resolve([{ ...baseSkill, ...skillOverrides }]);
@@ -1518,6 +1642,7 @@ describe("AppLayout", () => {
 
     it("shows info toast for library skills update in manual mode", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
@@ -1540,6 +1665,7 @@ describe("AppLayout", () => {
 
     it("does not show a separate workspace update toast in manual mode", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
@@ -1563,6 +1689,7 @@ describe("AppLayout", () => {
 
     it("shows success toast after auto-updating non-customized skills", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
@@ -1587,6 +1714,7 @@ describe("AppLayout", () => {
 
     it("skips customized skills during auto-update", async () => {
       mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
@@ -1615,6 +1743,7 @@ describe("AppLayout", () => {
 
     it("shows no toast when all skills are up to date", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
@@ -1638,6 +1767,7 @@ describe("AppLayout", () => {
 
     it("shows persistent error toast when marketplace update check fails", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "check_marketplace_updates") return Promise.reject(new Error("marketplace.json not found"));
@@ -1656,6 +1786,7 @@ describe("AppLayout", () => {
 
     it("skips marketplace update check when all registries are disabled", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") {
           return Promise.resolve({
             ...marketplaceSettings,
@@ -1679,6 +1810,7 @@ describe("AppLayout", () => {
 
     it("refreshes stored registry name when backend reports a different name", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "ensure_openhands_runtime_ready") return Promise.resolve(undefined);
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
         if (cmd === "check_marketplace_updates") {

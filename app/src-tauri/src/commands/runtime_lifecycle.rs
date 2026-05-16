@@ -32,7 +32,7 @@ pub async fn graceful_shutdown(
                 log::info!("[graceful_shutdown] locks released, sessions ended");
             }
 
-            crate::agents::openhands_server::process::shutdown_agent_server()
+            crate::agents::openhands_server::shutdown_openhands_server()
                 .await
                 .map_err(|e| format!("OpenHands Agent Server shutdown failed: {e}"))?;
             log::info!("[graceful_shutdown] OpenHands Agent Server shutdown complete");

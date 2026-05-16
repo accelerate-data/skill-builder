@@ -199,15 +199,7 @@ export type DecisionsOutput = { version: string; metadata: DecisionsMetadata; de
  */
 export type DetailedResearchOutput = { status: string; refinement_count: number; section_count: number; clarifications_json: ClarificationsFile }
 
-/**
- * Structured output produced by the `generate-skill` agent (workflow step 3,
- * writing phase) or the `benchmark-skill` agent (benchmark phase).
- * 
- * generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, call_trace }`
- * rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, call_trace }`
- * benchmark-skill:  `{ status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }`
- */
-export type GenerateSkillOutput = { status: string; benchmark_path?: string | null; skipped?: boolean | null; commit_summary?: string | null; call_trace?: string[] | null }
+export type GenerateSkillOutput = { status: string; benchmark_path?: string | null; skipped?: boolean | null; commit_summary?: string | null; call_trace?: string[] | null; verifier_result?: VerifierResult | null }
 
 /**
  * Initialization progress event.
@@ -260,7 +252,7 @@ export type RunInitEvent = { sessionId: string; model: string }
 /**
  * Terminal event with full run summary and token usage.
  */
-export type RunResultEvent = { skillName: string; stepId: number; usageSessionId?: string | null; runSource?: RunSource | null; sessionId?: string | null; model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCostUsd: number; modelUsageBreakdown: ModelUsageEntry[]; contextWindow: number; resultSubtype?: string | null; resultErrors?: string[] | null; stopReason?: string | null; numTurns: number; durationMs: number; durationApiMs?: number | null; toolUseCount: number; compactionCount: number; status: RunResultStatus; resultText?: string | null; workspacePath?: string | null; pluginSlug: string }
+export type RunResultEvent = { skillName: string; stepId: number; usageSessionId?: string | null; runSource?: RunSource | null; sessionId?: string | null; model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCostUsd: number; modelUsageBreakdown: ModelUsageEntry[]; contextWindow: number; resultSubtype?: string | null; resultErrors?: string[] | null; stopReason?: string | null; numTurns: number; durationMs: number; durationApiMs?: number | null; toolUseCount: number; compactionCount: number; status: RunResultStatus; resultText?: string | null; pluginSlug: string }
 
 /**
  * Terminal status of a run.
@@ -291,4 +283,16 @@ export type TurnCompleteEvent = { streaming: boolean }
  * Per-turn token usage.
  */
 export type TurnUsageEvent = { turn: number; inputTokens: number; outputTokens: number }
+
+/**
+ * Structured output produced by the `generate-skill` agent (workflow step 3,
+ * writing phase) or the `benchmark-skill` agent (benchmark phase).
+ * 
+ * generate-skill:  `{ status: "generated", skipped?: true, commit_summary?, call_trace }`
+ * rewrite-skill:   `{ status: "rewritten", skipped?: true, commit_summary?, call_trace }`
+ * benchmark-skill:  `{ status: "complete"|"partial"|"skipped", benchmark_path?, call_trace }`
+ */
+export type VerifierFinding = { severity: string; file: string; finding: string; recommendation: string }
+
+export type VerifierResult = { status: string; findings?: VerifierFinding[] }
 

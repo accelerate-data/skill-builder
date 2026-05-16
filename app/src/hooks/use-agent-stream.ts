@@ -277,7 +277,15 @@ export async function initAgentStream() {
     // completeRun for the per-turn request. This listener is a hook for future
     // refine-store turn-boundary UI state (e.g. "waiting for input" indicator).
     listen<{ agent_id: string }>("agent-turn-complete", (event) => {
-      console.log("event=turn_complete component=use-agent-stream agent_id=%s", event.payload.agent_id);
+      const { agent_id } = event.payload;
+      const agentRun = useAgentStore.getState().runs[agent_id];
+      const displayItemEndIndex = agentRun?.displayItems.length ?? null;
+      const result = useRefineStore
+        .getState()
+        .advanceAgentTurnQueue(agent_id, displayItemEndIndex);
+      if (useRefineStore.getState().activeAgentId === agent_id) {
+        useRefineStore.getState().setRunning(result.hasRunningTurn);
+      }
     }).then((u) => { _unlisteners.push(u); }),
     // skill-session-reset fires when a saved conversation is missing and a new one is created.
     listen<{ reason: string; conversation_id: string }>("skill-session-reset", () => {

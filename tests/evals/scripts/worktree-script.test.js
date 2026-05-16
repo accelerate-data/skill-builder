@@ -18,13 +18,20 @@ function createBaseEnv(tmpDir) {
   const binDir = path.join(tmpDir, 'bin');
   const logPath = path.join(tmpDir, 'calls.log');
   const worktreeBase = path.join(tmpDir, 'worktrees');
+  const fakeGitCommonDir = path.join(tmpDir, 'repo-common', '.git');
 
   fs.mkdirSync(binDir, { recursive: true });
+  fs.mkdirSync(fakeGitCommonDir, { recursive: true });
   writeExecutable(
     path.join(binDir, 'git'),
     `#!/usr/bin/env bash
 set -euo pipefail
 echo "git $*" >> "${logPath}"
+
+if [[ "$1" == "-C" && "$3" == "rev-parse" && "$4" == "--git-common-dir" ]]; then
+  printf '%s\\n' "${fakeGitCommonDir}"
+  exit 0
+fi
 
 if [[ "$1" == "show-ref" ]]; then
   exit 1

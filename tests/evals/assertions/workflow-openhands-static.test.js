@@ -114,7 +114,7 @@ test('deterministic eval packages cover OpenHands workflow agent topology', () =
     'answer-evaluator',
     'creating-skills',
     'fresh-context-verifier',
-    '1.0.0',
+    'verifier_result',
     'agent-sources/prompts/confirm_decisions.txt',
   ]) {
     assert.ok(
@@ -198,9 +198,18 @@ test('step 3 skill generation has no legacy writer or validator runtime dependen
     readRepo('app/src-tauri/src/commands/workflow/step_config.rs'),
   ].join('\n');
 
+  assert.match(
+    step3RuntimeEvidence,
+    /task kind\s+`workflow\.skill_generation`|task_kind:\s*"workflow\.skill_generation"/i,
+    'step 3 runtime evidence must mention workflow.skill_generation',
+  );
+  assert.match(
+    step3RuntimeEvidence,
+    /`skill-creator` agent|agent name\s+`skill-creator`|agent_name:\s*"skill-creator"/i,
+    'step 3 runtime evidence must mention skill-creator',
+  );
+
   for (const token of [
-    'task_kind: "workflow.skill_generation"',
-    'agent_name: "skill-creator"',
     'creating-skills',
     'fresh-context verification',
     'app Eval Workbench owns durable prompt cases, assertions, runs, and',

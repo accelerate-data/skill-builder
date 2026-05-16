@@ -100,10 +100,16 @@ describe("skill-openhands-session", () => {
     const refine = useRefineStore.getState();
     expect(refine.conversationId).toBe("conv-123");
     expect(refine.messages).toHaveLength(2);
+    expect(refine.turns).toHaveLength(1);
     expect(refine.messages[0]?.role).toBe("user");
     expect(refine.messages[0]?.userText).toBe("Tighten the summary");
     expect(refine.messages[1]?.role).toBe("agent");
     expect(refine.messages[1]?.hideTaskSent).toBe(false);
+    expect(refine.turns[0]).toMatchObject({
+      conversationId: "conv-123",
+      status: "completed",
+      displayItemStartIndex: 0,
+    });
 
     const runs = useAgentStore.getState().runs;
     const restoredRun = Object.values(runs)[0];
@@ -130,6 +136,7 @@ describe("skill-openhands-session", () => {
 
     const refine = useRefineStore.getState();
     expect(refine.messages).toHaveLength(2);
+    expect(refine.turns).toHaveLength(1);
     expect(refine.messages[1]?.agentText).toBe("Updated the summary.");
   });
 
@@ -181,6 +188,7 @@ describe("skill-openhands-session", () => {
     const refine = useRefineStore.getState();
     expect(refine.conversationId).toBe("conv-789");
     expect(refine.messages).toHaveLength(2);
+    expect(refine.turns).toHaveLength(1);
     expect(refine.messages.map((message) => message.role)).toEqual(["user", "agent"]);
     expect(refine.messages[0]?.userText).toBe("Tighten the summary");
     expect(refine.messages[1]?.hideTaskSent).toBe(false);
@@ -188,5 +196,90 @@ describe("skill-openhands-session", () => {
     const runs = Object.values(useAgentStore.getState().runs);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.status).toBe("completed");
+  });
+
+  it("hydrates restored transcript events chronologically from persisted OpenHands message shapes", () => {
+    const session: SkillSessionInfo = {
+      conversation_id: "conv-chronological",
+      skill_name: "sales-skill",
+      created_at: new Date().toISOString(),
+      available_agents: ["skill-creator"],
+      restored_messages: [],
+      restored_transcript_events: [
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "assistant",
+            llm_message: {
+              content: [{ type: "text", text: "Second reply" }],
+            },
+          },
+          timestamp: 40,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "user",
+            llm_message: {
+              content: [{ type: "text", text: "First prompt" }],
+            },
+          },
+          timestamp: 10,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "agent",
+            llm_message: {
+              content: [{ type: "text", text: "First reply" }],
+            },
+          },
+          timestamp: 20,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+        {
+          event_class: "MessageEvent",
+          event: {
+            kind: "MessageEvent",
+            source: "user",
+            llm_message: {
+              content: [{ type: "text", text: "Second prompt" }],
+            },
+          },
+          timestamp: 30,
+          tool_call_id: null,
+          parent_tool_call_id: null,
+        },
+      ],
+    };
+
+    hydrateSelectedSkillOpenHandsSession(
+      { name: "sales-skill", plugin_slug: "skills", skill_source: "skill-builder" },
+      session,
+    );
+
+    const refine = useRefineStore.getState();
+    const messages = refine.messages;
+    expect(messages.map((message) => message.role)).toEqual([
+      "user",
+      "agent",
+      "user",
+      "agent",
+    ]);
+    expect(messages[0]?.userText).toBe("First prompt");
+    expect(messages[2]?.userText).toBe("Second prompt");
+    expect(refine.turns).toHaveLength(2);
+    expect(refine.turns.map((turn) => turn.status)).toEqual([
+      "completed",
+      "completed",
+    ]);
   });
 });

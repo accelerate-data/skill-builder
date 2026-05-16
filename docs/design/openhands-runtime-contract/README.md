@@ -20,11 +20,18 @@ This doc is the canonical source for:
 - runtime layers and responsibilities
 - core wrapper APIs at each layer
 - raw conversation lifecycle primitives
+- interactive persistent-surface turn ownership
 - raw side-channel inspection primitives
 - persistent versus throwaway session behavior
 - storage roots and canonical path ownership
 - normalized event ingress and terminal result handling
 - workflow artifact authority and typed step-output contracts
+
+Companion sequence pages:
+
+- [Refine Sequence](./refine-sequence.md)
+- [Workflow Sequence](./workflow-sequence.md)
+- [OpenHands Conversation Model](./openhands-conversation-model.md)
 
 ## Design Scope
 
@@ -52,8 +59,10 @@ This doc is the canonical source for:
 | Persistent runs operate in the canonical skill directory. | The active working directory for selected-skill sessions is the resolved skill dir under the user-configured skills root, not a per-skill workspace mirror. |
 | Throwaway runs declare whether they are skill-related. | Skill-related throwaway runs may need proximity to the skills tree; unrelated throwaway runs should stay out of user-owned skill directories. |
 | Throwaway runs declare tool-access mode. | The backend must know whether a throwaway run is read-only or write-capable before selecting allowed tools. |
-| Conversations are paused and never deleted by Skill Builder. | Conversation history is durable runtime state. Reset and redo may fork and rebind, but the app does not destroy persisted conversations. |
+| Conversations are deleted when their owning skill is deleted or after a successful fork. | Conversation history is durable during active use, but the app cleans up persisted conversations when they are no longer referenced: deleting a skill removes all its bound conversations, and forking a conversation deletes the source after the fork succeeds. |
 | Raw conversation APIs mirror the OpenHands send-then-run model. | Sending a user message and starting agent processing are separate operations. That separation is required for send-while-running behavior. |
+| Product surfaces own logical turn boundaries above the raw OpenHands conversation stream. | OpenHands persists one ordered conversation event stream, but it does not provide a product-level per-user turn identifier that Refine can render directly. Skill Builder must start a new logical turn every time the user sends a message and group subsequent tool/output events under that turn until the next user send. |
+| Persistent interactive surfaces use separate outbound command and inbound event lanes. | User intent should be recorded immediately and independently from runtime event delivery. Refine should never depend on the live event stream to invent turn boundaries or decide whether a send was accepted. |
 | `ask_agent` starts at the raw OpenHands layer only. | It is a non-authoritative side-channel inspection capability. How product surfaces use it is intentionally deferred. |
 | App data owns shared OpenHands persistence roots. | Conversations, bash events, logs, DB state, and app-local runtime files belong to app data rather than the user-configured skills tree. |
 | Steps 0-2 are DB-authoritative; step 3 is file-output-authoritative. | Clarifications and decisions are canonical typed records in SQLite; generated skill files remain canonical on disk. |
@@ -83,9 +92,10 @@ The OpenHands Agent Server process itself is shut down only during app
 shutdown. Normal runtime surfaces pause conversations; they do not shut the
 server down.
 
-Skill Builder never deletes conversations through the OpenHands API. A
-conversation may be paused, resumed, or forked into a new conversation ID, but
-the persisted conversation history remains durable runtime state.
+Skill Builder deletes conversations in two scenarios: when a skill is deleted
+(all bound conversations are paused then deleted), and after a successful fork
+(the source conversation is deleted once the fork is rebound). Outside these
+paths, conversations remain durable runtime state.
 
 Raw primitives are runtime-oriented, not product-oriented. This layer does not
 decide which product surface is running or how workflow outputs are persisted.
@@ -101,14 +111,17 @@ Core APIs:
 | `run_openhands_conversation(app, agent_id, config, conversation_id)` | Start or resume active processing for a conversation and own the live socket/task for that run. |
 | `ask_openhands_agent(config, conversation_id, question)` | Ask the agent a non-authoritative question about the current conversation state without changing product-layer runtime ownership. |
 | `pause_openhands_conversation(config, conversation_id)` | Pause active execution without deleting the conversation. |
+| `delete_openhands_conversation(config, conversation_id)` | Delete a conversation from the OpenHands Agent Server. Used when deleting a skill or after a successful fork. |
 | `fork_openhands_conversation(app, config, source_conversation_id)` | Fork an existing paused conversation into a new conversation ID and return restored events for the fork. |
 
 Raw OpenHands wrappers only handle server, runtime, and conversation concerns.
 They do not take `agent_id`. The raw layer exposes one pause API,
-`pause_openhands_conversation(config, conversation_id)`. Server shutdown is
+`pause_openhands_conversation(config, conversation_id)`, and one delete API,
+`delete_openhands_conversation(config, conversation_id)`. Server shutdown is
 also a raw-layer API, exposed as `shutdown_openhands_server()`, so app-exit
-flows do not call `process.rs` directly. Conversations are pause-only at this
-boundary; this layer does not expose delete-conversation behavior.
+flows do not call `process.rs` directly. Conversations are pause-only during
+active use; deletion occurs only when a skill is removed or after a successful
+fork.
 
 Important rule:
 
@@ -189,7 +202,7 @@ Core APIs:
 |---|---|
 | `build_skill_creator_config(context)` | Build the canonical runtime config from app-owned inputs and typed runtime intent. |
 | `ensure_skill_session(app, config, saved_conversation_id)` | Enforced persistent-session entry point: ensure server, then resume or create the skill conversation. |
-| `fork_skill_session(app, config, source_conversation_id)` | Fork a paused skill-bound conversation, bind the skill to the fork ID, and return restored events for hydration. |
+| `fork_openhands_conversation(app, config, source_conversation_id)` | Raw conversation fork API. Product commands own when to fork, delete the source conversation, and rebind persisted skill state to the fork ID. |
 
 ### Layer 3: App-Tracked Runtime Wrappers
 
@@ -241,13 +254,21 @@ This is the layer that decides whether a surface is:
 - a throwaway validation/evaluation/scope-review run
 - a typed workflow step that must materialize app-owned outputs
 
+This layer also owns logical turn boundaries for persistent chat-style surfaces. Refine uses one OpenHands conversation and one live run at a time, but every user send starts a new product turn. The frontend groups later tool/output events under that turn until the next user send starts the next turn.
+
+Persistent interactive surfaces also own two distinct product lanes:
+
+- an outbound command lane that records user intent (`send`, `pause`, question answers) and dispatches it to the backend runtime contract
+- an inbound event lane that receives normalized OpenHands events and terminal state updates
+
+These lanes merge in app-owned turn state. Refine must not rely on raw event continuity alone to decide where a new user turn begins.
+
 Core APIs:
 
 These wrappers are the main command-level surfaces that product flows call.
 
 | API | Location | Purpose |
 |---|---|---|
-| `build_skill_session_config(...)` | `commands/skill_session.rs` | Thin product wrapper over `build_skill_creator_config` for refine/selected-skill sessions. |
 | `ensure_skill_runtime_ready(...)` | `commands/skill_session.rs` | Resolve runtime context, ensure the canonical skill dir exists, and seed `.agents/`. |
 | `select_skill_openhands_session(...)` | `commands/skill_session.rs` | Selected-skill bootstrap wrapper: acquire/verify lease, ensure runtime readiness, restore or create the persistent session, and hydrate frontend session state. |
 | `pause_openhands_session(...)` | `commands/skill_session.rs` | Product wrapper for pausing a selected-skill session and releasing its lock. |
@@ -340,10 +361,13 @@ Higher layers should prefer the highest wrapper that matches their intent:
   wrapper, but that wiring is intentionally out of scope for this contract
   revision
 - workflow reset/redo should pause the active conversation, reset local product
-  state, fork the paused conversation, rebind the skill to the fork, and only
-  create a new `agent_id` when the next live send/run begins
-- all non-shutdown surfaces should pause conversations rather than shutting the
-  OpenHands server down
+  state, fork the paused conversation, delete the source conversation, rebind
+  the skill to the fork, and only create a new `agent_id` when the next live
+  send/run begins
+- deleting a skill should pause all bound conversations, then delete them from
+  the OpenHands server before removing local bookkeeping and filesystem state
+- all non-shutdown, non-delete surfaces should pause conversations rather than
+  shutting the OpenHands server down
 - server shutdown is app-lifecycle-only and should remain confined to app exit
   orchestration through the raw `shutdown_openhands_server()` wrapper
 - direct callers of `agents/openhands_server` should be implementing wrapper
@@ -365,7 +389,7 @@ The runtime contract uses three primary roots plus one derived throwaway root.
 | App data root | `app_handle.path().app_data_dir()` | Rust | App-local DB, OpenHands persistence roots, documents, runtime support files |
 | Skills root | user-configured `settings.skills_path` | Rust + user filesystem | Canonical plugin/skill tree and durable skill output |
 | Skill dir | `{skills_root}/{plugin_slug}/skills/{skill_name}` | Rust + OpenHands runtime | Working directory for persistent skill-bound runs |
-| Throwaway run dir | skill-related: `{skill_dir}`; unrelated: `/tmp/skill-builder/throwaway/{surface}/{run_id}` | Rust + OpenHands runtime | Active working directory for throwaway runs |
+| Throwaway run dir | `{system_tmp}/skill-builder/throwaway/{surface}/{run_id}` | Rust + OpenHands runtime | Active working directory for throwaway runs |
 
 ### Canonical Path Templates
 
@@ -413,26 +437,27 @@ workspace mirror under app-local data.
 
 ### Throwaway Runtime Ownership
 
-Throwaway runs choose their active working directory from an explicit backend
-flag:
+All throwaway runs use one shared temp-root contract:
 
-- `skill_related = true` → active working directory is the canonical skill dir
-- `skill_related = false` → active working directory is `/tmp/skill-builder/throwaway/{surface}/{run_id}`
+- resolve the system temp base from `TMPDIR`, `TMP`, `TEMP`, then `std::env::temp_dir()`
+- place the active working directory at `{system_tmp}/skill-builder/throwaway/{surface}/{run_id}`
 
 Examples:
 
 ```text
-skill_related = true
-  {skills_root}/{plugin_slug}/skills/{skill_name}
+scope review
+  {system_tmp}/skill-builder/throwaway/scope-review/{run_id}
 
-skill_related = false
-  /tmp/skill-builder/throwaway/{surface}/{run_id}
+eval workbench
+  {system_tmp}/skill-builder/throwaway/eval-workbench/{run_id}
+
+model validation
+  {system_tmp}/skill-builder/throwaway/model-connection-test/{run_id}
 ```
 
-Skill-related throwaways reuse the skill directory intentionally. Non-skill
-throwaways use isolated scratch directories under `/tmp`. Conversation
-history still remains app-data-owned; this section only describes the active
-working directory passed to the runtime.
+Persistent selected-skill and workflow sessions still use the canonical skill
+dir. Conversation history remains app-data-owned; this section only describes
+the active working directory passed to the runtime.
 
 ### Throwaway Tool Access Mode
 
@@ -446,11 +471,9 @@ This flag is independent of `skill_related`.
 
 Examples:
 
-- scope review may be `skill_related = true` and `read_only`
-- a future throwaway repair/migration helper may be
-  `skill_related = true` and `write_enabled`
-- model-connection validation should be
-  `skill_related = false` and `read_only`
+- scope review may be `read_only`
+- a future throwaway repair/migration helper may be `write_enabled`
+- model-connection validation should be `read_only`
 
 ### Legacy Workspace Skill Dirs
 
@@ -476,8 +499,8 @@ Important contract properties:
 - persistent conversation ids are stored in `skill_conversations`
 - a completed turn does not destroy the conversation
 - later turns reuse the same session when the saved conversation id is valid
-- a fork creates a new `conversation_id`, but does not itself create a new
-  `agent_id`
+- a fork creates a new `conversation_id`, deletes the source conversation, and
+  does not itself create a new `agent_id`
 - the next live send/run on the fork creates the new tracked `agent_id`
 
 ## Throwaway Runs

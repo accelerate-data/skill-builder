@@ -33,6 +33,11 @@ pub fn build_log_plugin(pid: u32) -> tauri_plugin_log::Builder {
         // `log::set_max_level()` in `set_log_level()`, which is called
         // during setup and whenever the user changes the setting.
         .level(log::LevelFilter::Debug)
+        // Suppress raw transport chatter from reqwest/hyper. We log OpenHands
+        // API failures explicitly at the call site with method/path/status
+        // context, so socket-connect debug noise is not useful.
+        .level_for("reqwest", log::LevelFilter::Warn)
+        .level_for("hyper", log::LevelFilter::Warn)
         .max_file_size(50_000_000) // 50 MB safety cap
 }
 

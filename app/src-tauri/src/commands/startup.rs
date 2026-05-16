@@ -1,5 +1,6 @@
 #[cfg(target_os = "windows")]
 use crate::agents::node_resolver;
+use std::time::Duration;
 use crate::types::{BootstrapCheck, BootstrapStatus, StartupResult};
 
 fn check_ok(name: &str, detail: String) -> BootstrapCheck {
@@ -45,6 +46,19 @@ pub async fn check_startup_deps(_app: tauri::AppHandle) -> Result<StartupResult,
     };
 
     Ok(StartupResult { status, checks })
+}
+
+#[tauri::command]
+pub async fn ensure_openhands_runtime_ready(
+    data_dir: tauri::State<'_, crate::DataDir>,
+) -> Result<(), String> {
+    log::info!("[ensure_openhands_runtime_ready]");
+    crate::agents::openhands_server::process::ensure_agent_server(
+        Duration::from_secs(60),
+        &data_dir.0,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Check that git is available on PATH (both platforms) and git-bash is
@@ -100,7 +114,7 @@ async fn check_git_available() -> BootstrapCheck {
 }
 
 async fn check_openhands_agent_server_available() -> BootstrapCheck {
-    let (program, args) = crate::agents::openhands_server::process::bundled_uv_tool_run_args();
+    let (program, args) = crate::agents::openhands_server::process::bundled_uv_python_run_args();
     let script = "import openhands.agent_server; print(openhands.agent_server.__file__)";
     let mut command = tokio::process::Command::new(&program);
     command.args(&args).arg("-c").arg(script);
@@ -126,7 +140,7 @@ mod tests {
     #[test]
     fn openhands_agent_server_probe_uses_bundled_uv_or_uvx_fallback() {
         let (program, args) =
-            crate::agents::openhands_server::process::bundled_uv_tool_run_args();
+            crate::agents::openhands_server::process::bundled_uv_python_run_args();
 
         // Without init_bundled_uv_path called, falls back to uvx
         assert_eq!(program, "uvx");
@@ -139,6 +153,6 @@ mod tests {
             .iter()
             .any(|arg| arg == crate::agents::openhands_server::process::OPENHANDS_TOOLS_PACKAGE));
         assert!(args.iter().any(|arg| arg == "python"));
-        assert!(args.iter().any(|arg| arg == "-m"));
+        assert!(!args.iter().any(|arg| arg == "-m"));
     }
 }

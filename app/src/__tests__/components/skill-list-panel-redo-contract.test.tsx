@@ -70,8 +70,7 @@ function makeBuilderSkill(name: string): SkillSummary {
 
 function renderWithSkills(skills: SkillSummary[]) {
   const queryClient = createTestQueryClient();
-  const workspacePath = useSettingsStore.getState().workspacePath ?? null;
-  queryClient.setQueryData(queryKeys.skills.builder(workspacePath, null), skills);
+  queryClient.setQueryData(queryKeys.skills.builder(), skills);
   queryClient.setQueryData(queryKeys.skills.imported(), []);
 
   return render(
@@ -139,5 +138,31 @@ describe("SkillListPanel redo restart contract", () => {
     expect(refine.messages[1]?.role).toBe("agent");
 
     // Navigation is handled by AppLayout via onActivateSkill callback
+  });
+
+  it("redo still resets and recreates the session when workspacePath is null", async () => {
+    const user = userEvent.setup();
+    const skill = makeBuilderSkill("redo-builder");
+    useSettingsStore.setState({ workspacePath: null });
+    tauriMocks.listSkills.mockResolvedValue([skill]);
+    renderWithSkills([skill]);
+
+    const row = await screen.findByText("redo-builder");
+    await user.click(row);
+    await user.pointer({ keys: "[MouseRight]", target: row.closest('[role=\"button\"]')! });
+    await user.click(screen.getByRole("menuitem", { name: "Redo workflow" }));
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+
+    await waitFor(() => {
+      expect(tauriMocks.resetWorkflowStep).toHaveBeenCalledWith(
+        "",
+        "redo-builder",
+        0,
+      );
+    });
+
+    await waitFor(() => {
+      expect(tauriMocks.selectSkillOpenHandsSession).toHaveBeenCalledWith(42);
+    });
   });
 });

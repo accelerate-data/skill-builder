@@ -9,13 +9,11 @@ import type { ImportedSkill } from "@/lib/types";
 import { queryKeys } from "./query-keys";
 
 export function useBuilderSkillsQuery(
-  workspacePath: string | null,
   sourceUrl: string | null = null,
 ) {
   return useQuery<SkillSummary[]>({
-    queryKey: queryKeys.skills.builder(workspacePath, sourceUrl),
-    enabled: !!workspacePath,
-    queryFn: () => listSkills(workspacePath!, sourceUrl),
+    queryKey: queryKeys.skills.builder(sourceUrl),
+    queryFn: () => listSkills(sourceUrl),
     placeholderData: [],
   });
 }

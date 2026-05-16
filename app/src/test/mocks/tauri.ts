@@ -14,7 +14,7 @@ const defaultInvokeImpl = (cmd: string) => {
     return Promise.resolve([]);
   }
 
-  if (cmd === "release_lock") {
+  if (cmd === "release_lock" || cmd === "ensure_openhands_runtime_ready") {
     return Promise.resolve(undefined);
   }
 

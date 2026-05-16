@@ -260,6 +260,66 @@ describe("initAgentStream", () => {
     });
   });
 
+  it("advances refine turn state on agent-turn-complete", async () => {
+    useAgentStore.getState().registerRun("agent-1", "sonnet", "my-skill", "refine");
+    useAgentStore.setState((state) => ({
+      runs: {
+        ...state.runs,
+        "agent-1": {
+          ...state.runs["agent-1"],
+          displayItems: [
+            { id: "d1", type: "tool_call", timestamp: 1, toolName: "task_sent", toolSummary: "Task sent" },
+            { id: "d2", type: "output", timestamp: 2, outputText: "reply" },
+            { id: "d3", type: "tool_call", timestamp: 3, toolName: "task_sent", toolSummary: "Task sent" },
+            { id: "d4", type: "output", timestamp: 4, outputText: "reply 2" },
+          ],
+        },
+      },
+    }));
+    useRefineStore.setState({
+      activeAgentId: "agent-1",
+      isRunning: true,
+      turns: [
+        {
+          turnId: "turn-1",
+          conversationId: "conv-1",
+          agentId: "agent-1",
+          userMessageId: "m1",
+          displayItemStartIndex: 0,
+          displayItemEndIndex: null,
+          status: "running",
+          acceptedAt: 1,
+        },
+        {
+          turnId: "turn-2",
+          conversationId: "conv-1",
+          agentId: "agent-1",
+          userMessageId: "m2",
+          displayItemStartIndex: 2,
+          displayItemEndIndex: null,
+          status: "accepted",
+          acceptedAt: 2,
+        },
+      ],
+    });
+
+    await initAgentStream();
+
+    listeners["agent-turn-complete"]({
+      payload: { agent_id: "agent-1" },
+    });
+
+    const refine = useRefineStore.getState();
+    expect(refine.turns[0]).toMatchObject({
+      status: "completed",
+      displayItemEndIndex: 4,
+    });
+    expect(refine.turns[1]).toMatchObject({
+      status: "running",
+    });
+    expect(refine.isRunning).toBe(true);
+  });
+
   it("auto-creates runs for OpenHands conversation events arriving before startRun", async () => {
     await initAgentStream();
 
