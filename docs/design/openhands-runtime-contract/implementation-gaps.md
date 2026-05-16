@@ -117,12 +117,7 @@ Current code still splits responsibilities between:
 - restored session metadata bootstrap in `skill-openhands-session.ts`
 - agent-run display state in `agent-store`
 
-The old Refine-specific transcript path is gone, and the canonical shared
-conversation event layer now exists for both live backend-observed events and
-restored selected-skill history. Task 4 now replays
-`restored_transcript_events` into `conversation-store` during selected-session
-hydration, so the workspace surface uses the same canonical store for restored
-and live transcript activity.
+The old Refine-specific transcript path is gone, and the canonical shared conversation event layer now exists for both live backend-observed events and restored selected-skill history. Task 4 now replays `restored_transcript_events` into `conversation-store` during selected-session hydration, so the workspace surface uses the same canonical store for restored and live transcript activity.
 
 Relevant files:
 
@@ -139,8 +134,7 @@ Current behavior is now:
 
 - Workspace has a canonical conversation surface for selected-skill sessions
 - Workflow renders transcript activity from the canonical conversation surface
-- restored selected-skill bootstrap replays canonical history into
-  `conversation-store`
+- restored selected-skill bootstrap replays canonical history into `conversation-store`
 - Workflow orchestration still depends on `agent-store` lifecycle state
 - throwaway surfaces often bypass transcript concerns entirely
 

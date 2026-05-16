@@ -274,40 +274,28 @@ Target behavior:
 
 ### Workspace
 
-Workspace is now the first shipped canonical conversation surface for selected
-skill sessions.
+Workspace is now the first shipped canonical conversation surface for selected skill sessions.
 
 Current behavior:
 
 - the selected session's `conversationId` remains the public transcript key
-- `WorkspaceConversation` renders the canonical conversation timeline through
-  `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat
-  timeline row renderer
-- selected-session hydration replays `restored_transcript_events` into
-  `conversation-store` as canonical backend-observed events for that
-  `conversationId`
-- implicit workspace entry after selected-skill session bootstrap now restores
-  to the conversation surface by default
+- `WorkspaceConversation` renders the canonical conversation timeline through `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat timeline row renderer
+- selected-session hydration replays `restored_transcript_events` into `conversation-store` as canonical backend-observed events for that `conversationId`
+- implicit workspace entry after selected-skill session bootstrap now restores to the conversation surface by default
 
 ### Workflow
 
-Workflow now renders live transcript activity from the same canonical event
-stream while keeping its step-specific page structure.
+Workflow now renders live transcript activity from the same canonical event stream while keeping its step-specific page structure.
 
 Current behavior:
 
-- the workflow page renders `ConversationTimeline` for the active selected
-  session `conversationId`
-- workflow initialization still uses a lightweight spinner until canonical
-  conversation events arrive for the active run
-- completed-step and gate-specific UI remain workflow-specific page concerns
-  layered around the shared conversation stream
+- the workflow page renders `ConversationTimeline` for the active selected session `conversationId`
+- workflow initialization still uses a lightweight spinner until canonical conversation events arrive for the active run
+- completed-step and gate-specific UI remain workflow-specific page concerns layered around the shared conversation stream
 
 Current limitation:
 
-- workflow orchestration still tracks active run lifecycle through
-  `agent-store`, even though transcript rendering no longer depends on
-  `displayItems`
+- workflow orchestration still tracks active run lifecycle through `agent-store`, even though transcript rendering no longer depends on `displayItems`
 
 Important rule:
 
