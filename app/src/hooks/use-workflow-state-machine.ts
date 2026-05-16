@@ -776,14 +776,9 @@ export function useWorkflowStateMachine({
   // --- Step reset ---
 
   const performStepReset = async (stepId: number) => {
-    // Steps 0 (Research) and 1 (Detailed Research) share the same OpenHands
-    // conversation. Resetting step 1 clears the conversation ID from the DB, so
-    // step 1 cannot resume without step 0 first creating a new conversation.
-    // Treat any reset of step 1 as a full reset to step 0.
-    const effectiveStepId = stepId === 1 ? 0 : stepId;
     logFrontend(
       "info",
-      `[performStepReset] resetting step ${stepId}, effectiveStepId=${effectiveStepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`,
+      `[performStepReset] resetting step ${stepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`,
     );
     endActiveSession();
     setPendingAutoStartStep(null);
@@ -792,14 +787,14 @@ export function useWorkflowStateMachine({
     useWorkflowStore.getState().setGateLoading(false);
     if (workspacePath) {
       try {
-        await resetWorkflowStep(workspacePath, skillName, effectiveStepId);
+        await resetWorkflowStep(workspacePath, skillName, stepId);
         await restartOpenHandsSession();
       } catch {
         // best-effort
       }
     }
     clearRuns();
-    resetToStep(effectiveStepId);
+    resetToStep(stepId);
 
     let disabled: number[] = [];
     if (skillId != null) {
@@ -811,16 +806,16 @@ export function useWorkflowStateMachine({
       }
     }
 
-    if (!disabled.includes(effectiveStepId)) {
+    if (!disabled.includes(stepId)) {
       // Start the agent directly instead of going through the pendingAutoStartStep →
       // useEffect pipeline. The effect-based approach is unreliable here because React 18
       // may batch the Zustand store updates (from resetToStep) with the React state change
       // (setPendingAutoStartStep), causing the effect to fire with stale selector values.
       const { reviewMode: isReview } = useWorkflowStore.getState();
-      const cfg = stepConfigs[effectiveStepId];
+      const cfg = stepConfigs[stepId];
       if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
-        logFrontend("info", `[performStepReset] auto-starting step ${effectiveStepId}`);
-        handleStartAgentStep(effectiveStepId);
+        logFrontend("info", `[performStepReset] auto-starting step ${stepId}`);
+        handleStartAgentStep(stepId);
       }
     }
   };
