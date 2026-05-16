@@ -80,8 +80,9 @@ fn clear_legacy_skill_conversation_db_records(
 
 /// Delete stale clarifications and decisions based on which step is being reset.
 /// Steps re-run = from_step_id and all subsequent steps.
-/// - from_step_id 0 or 1: re-runs steps that produce clarifications (0,1) and decisions (2) → delete both
-/// - from_step_id 2: re-runs step 2 (decisions) → delete decisions only, clarifications remain valid
+/// - from_step_id 0: full rerun → delete clarifications, decisions, and refinements
+/// - from_step_id 1: re-run step 1+ → delete refinements and decisions, keep clarifications
+/// - from_step_id 2: re-run step 2 (decisions) → delete decisions only, clarifications remain valid
 /// - from_step_id 3+: disk files only → no DB cleanup needed
 pub(crate) fn clear_artifacts_for_step_reset(
     conn: &rusqlite::Connection,
@@ -101,13 +102,25 @@ pub(crate) fn clear_artifacts_for_step_reset(
     let skill_id_str = s_id.to_string();
 
     match from_step_id {
-        0 | 1 => {
+        0 => {
             crate::db::workflow_artifacts::delete_clarifications(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?;
             crate::db::workflow_artifacts::delete_decisions(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?;
+            crate::db::workflow_artifacts::delete_refinements(conn, &skill_id_str)
+                .map_err(|e| e.to_string())?;
             log::info!(
-                "[clear_artifacts_for_step_reset] cleared clarifications and decisions for '{}' (resetting from step {})",
+                "[clear_artifacts_for_step_reset] cleared clarifications, decisions, and refinements for '{}' (resetting from step {})",
+                skill_name, from_step_id
+            );
+        }
+        1 => {
+            crate::db::workflow_artifacts::delete_refinements(conn, &skill_id_str)
+                .map_err(|e| e.to_string())?;
+            crate::db::workflow_artifacts::delete_decisions(conn, &skill_id_str)
+                .map_err(|e| e.to_string())?;
+            log::info!(
+                "[clear_artifacts_for_step_reset] cleared refinements and decisions for '{}' (resetting from step {})",
                 skill_name, from_step_id
             );
         }
@@ -1586,7 +1599,7 @@ mod reset_artifact_cleanup_tests {
         assert!(has_clarifications(&conn, skill_id));
         assert!(has_decisions(&conn, skill_id));
 
-        // Reset from step 0 should clear both
+        // Reset from step 0 should clear clarifications, decisions, and refinements
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 0).unwrap();
 
         assert!(
@@ -1600,7 +1613,7 @@ mod reset_artifact_cleanup_tests {
     }
 
     #[test]
-    fn test_reset_from_step_1_clears_clarifications_and_decisions() {
+    fn test_reset_from_step_1_clears_refinements_and_decisions_preserves_clarifications() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 1, "pending", "domain").unwrap();
         let skill_id = crate::db::get_skill_master_id_in_plugin(
@@ -1616,13 +1629,12 @@ mod reset_artifact_cleanup_tests {
         assert!(has_clarifications(&conn, skill_id));
         assert!(has_decisions(&conn, skill_id));
 
-        // Reset from step 1 should clear both because step 1 reruns
-        // clarifications-producing work and invalidates downstream decisions.
+        // Reset from step 1 should clear refinements and decisions, but keep clarifications.
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 1).unwrap();
 
         assert!(
-            !has_clarifications(&conn, skill_id),
-            "clarifications should be deleted when resetting from step 1"
+            has_clarifications(&conn, skill_id),
+            "clarifications should be preserved when resetting from step 1"
         );
         assert!(
             !has_decisions(&conn, skill_id),
