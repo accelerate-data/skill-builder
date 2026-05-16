@@ -2499,16 +2499,16 @@ describe("step reset behavior regressions", () => {
     );
     expect(vi.mocked(navigateBackToStepDb)).not.toHaveBeenCalled();
 
-    // Step 0 must be pending — resetToStep(0) was called (not navigateBackToStep)
+    // Step 0 should immediately rerun through the shared reset path.
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+      expect(useWorkflowStore.getState().steps[0].status).toBe("in_progress");
     });
 
     // currentStep should reposition to 0
     expect(useWorkflowStore.getState().currentStep).toBe(0);
   });
 
-  it("ResetStepDialog for step 1 resets workflow to step 1", async () => {
+  it("ResetStepDialog for step 1 reruns the step instead of preserving the completed view", async () => {
     vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
       <div data-testid="workflow-sidebar">
         <button data-testid="sidebar-step-1" onClick={() => onStepClick?.(1)}>Step 1</button>
@@ -2545,18 +2545,18 @@ describe("step reset behavior regressions", () => {
       screen.getByRole("button", { name: "Reset" }).click();
     });
 
-    expect(vi.mocked(navigateBackToStepDb)).toHaveBeenCalledWith(
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
       expect.anything(),
       "test-skill",
       1,
     );
-    expect(vi.mocked(resetWorkflowStep)).not.toHaveBeenCalled();
+    expect(vi.mocked(navigateBackToStepDb)).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(useWorkflowStore.getState().currentStep).toBe(1);
     });
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[1].status).toBe("in_progress");
     expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
   });
 

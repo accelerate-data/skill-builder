@@ -37,11 +37,6 @@ import "@/hooks/use-session-runtime-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import {
-  getDisabledSteps,
-  resetWorkflowStep,
-  navigateBackToStepDb,
-} from "@/lib/tauri";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 import { useWorkflowPersistence } from "@/hooks/use-workflow-persistence";
 import { WorkflowLoadingSkeleton } from "@/components/workflow-loading-skeleton";
@@ -49,9 +44,13 @@ import { useWorkflowAutosave } from "@/hooks/use-workflow-autosave";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 import { useBuilderSkillsQuery } from "@/lib/queries/skills";
-import { useClarifications } from "@/lib/queries/clarifications";
+import { useClarifications, useRefinements } from "@/lib/queries/clarifications";
 import type { ClarificationsDto, ClarificationQuestionDto } from "@/generated/contracts";
-import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
+import {
+  mergeClarificationsAndRefinements,
+  type ClarificationsFile,
+  type Question,
+} from "@/lib/clarifications-types";
 import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useConversationEvents } from "@/hooks/use-conversation-stream";
@@ -108,10 +107,6 @@ function mapClarificationsDtoToFile(dto: ClarificationsDto): ClarificationsFile 
       .map((n) => ({ type: n.note_type, title: n.title, body: n.body })),
     answer_evaluator_notes: [],
   };
-}
-
-function getEffectiveResetTarget(stepId: number): number {
-  return stepId;
 }
 
 function getDeleteFromStep(stepId: number, preserveTargetStep: boolean): number {
@@ -188,8 +183,6 @@ export default function WorkflowPage() {
     setCurrentStep,
     runtimeError,
     clearRuntimeError,
-    navigateBackToStep,
-    resetToStep,
   } = useWorkflowStore();
 
   const activeConversationId = useWorkflowStore((s) => s.activeConversationId);
@@ -237,9 +230,17 @@ export default function WorkflowPage() {
       ? String(currentSkillId)
       : null,
   );
+  const { data: refinementsDto } = useRefinements(
+    isClarificationsEditable && isStepCompleted && currentStep === 1 && currentSkillId != null
+      ? String(currentSkillId)
+      : null,
+  );
   const dbClarificationsData = useMemo(
-    () => clarificationsDto ? mapClarificationsDtoToFile(clarificationsDto) : null,
-    [clarificationsDto],
+    () => mergeClarificationsAndRefinements(
+      clarificationsDto ? mapClarificationsDtoToFile(clarificationsDto) : null,
+      currentStep === 1 ? refinementsDto ?? null : null,
+    ),
+    [clarificationsDto, currentStep, refinementsDto],
   );
 
   // 2b. Autosave — owns clarifications editing state and persists per-question changes
@@ -533,42 +534,16 @@ export default function WorkflowPage() {
       {/* Reset step dialog — shown when clicking a prior completed step */}
       <ResetStepDialog
         targetStep={resetTarget}
-        deleteFromStep={resetTarget !== null ? getDeleteFromStep(resetTarget, true) : undefined}
+        deleteFromStep={resetTarget !== null ? getDeleteFromStep(resetTarget, false) : undefined}
         workspacePath={workspacePath ?? ""}
         skillName={actualSkillName}
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
-        executeReset={resetTarget !== null
-          ? getEffectiveResetTarget(resetTarget) === 0
-            ? () => resetWorkflowStep(workspacePath ?? "", actualSkillName, 0)
-            : () => navigateBackToStepDb(workspacePath ?? "", actualSkillName, resetTarget)
-          : undefined}
+        executeReset={resetTarget !== null ? async () => {} : undefined}
         onReset={() => {
           if (resetTarget !== null) {
-            const effectiveResetTarget = getEffectiveResetTarget(resetTarget);
-            teardownWorkflowSession({ logPrefix: "workflow", clearSessionId: true });
-            void (async () => {
-              try {
-                await restartSelectedSkillSession();
-              } catch (error) {
-                console.warn(
-                  "[workflow] non-fatal: op=restartSelectedSkillSessionAfterReset err=%s",
-                  error,
-                );
-              } finally {
-                if (effectiveResetTarget === 0) {
-                  resetToStep(0);
-                } else {
-                  navigateBackToStep(effectiveResetTarget);
-                }
-                if (currentSkillId != null) {
-                  getDisabledSteps(currentSkillId)
-                    .then((disabled) => useWorkflowStore.getState().setDisabledSteps(disabled))
-                    .catch(() => { /* non-fatal */ });
-                }
-                setResetTarget(null);
-              }
-            })();
+            void performStepReset(resetTarget);
+            setResetTarget(null);
           }
         }}
       />

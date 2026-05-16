@@ -47,6 +47,34 @@ const minimalClarDto = {
   notes: [],
 };
 
+const minimalRefinementsDto = {
+  skill_id: "my-skill",
+  version: "1",
+  refinement_count: 1,
+  must_answer_count: 0,
+  question_count: 1,
+  section_count: 1,
+  title: "Refinements",
+  created_at: 0,
+  updated_at: 0,
+  sections: [{ section_id: "refinement-section-1", ordinal: 0, title: "Refinement Section" }],
+  questions: [
+    {
+      question_id: "R1.1",
+      section_id: "refinement-section-1",
+      ordinal: 0,
+      title: "Follow-up question",
+      text: "Need one more detail.",
+      must_answer: false,
+      answer_choice: null,
+      answer_text: null,
+      recommendation: null,
+      choices: [],
+    },
+  ],
+  notes: [],
+};
+
 // DecisionsDto matching the decisionsJson fixture in the decisions describe block
 const decisionsDtoFixture = {
   skill_id: "my-skill",
@@ -448,6 +476,59 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
     // Continue button should be rendered (since onClarificationsContinue is provided)
     expect(screen.getByTestId("clarifications-continue")).toBeInTheDocument();
     expect(mockUseClarifications).toHaveBeenCalledWith("42");
+  });
+
+  it("merges refinement questions into editable Detailed Research data", async () => {
+    mockUseRefinements.mockReturnValue({
+      data: minimalRefinementsDto,
+      isLoading: false,
+    });
+
+    render(
+      <WorkflowStepComplete
+        {...detailedResearchProps}
+        clarificationsEditable
+        clarificationsData={{
+          version: "1",
+          metadata: {
+            title: "Test",
+            question_count: 1,
+            section_count: 1,
+            refinement_count: 0,
+            must_answer_count: 0,
+            priority_questions: [],
+          },
+          sections: [
+            {
+              id: 1,
+              title: "Section",
+              questions: [
+                {
+                  id: "Q1",
+                  title: "Q1",
+                  must_answer: false,
+                  text: "Test?",
+                  choices: [],
+                  answer_choice: null,
+                  answer_text: null,
+                  refinements: [],
+                },
+              ],
+            },
+          ],
+          notes: [],
+          answer_evaluator_notes: [],
+        }}
+        onClarificationsChange={mockOnChange}
+        onClarificationsContinue={mockOnContinue}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clarifications-editor")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("clarifications-data").textContent).toContain("R1.1");
   });
 });
 

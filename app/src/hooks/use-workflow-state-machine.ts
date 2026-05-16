@@ -11,7 +11,10 @@ import {
   endWorkflowSession,
   logFrontend,
 } from "@/lib/tauri";
-import { invalidateWorkflowArtifactsAfterStep } from "@/lib/queries/agent-stream-cache";
+import {
+  invalidateWorkflowArtifactsAfterReset,
+  invalidateWorkflowArtifactsAfterStep,
+} from "@/lib/queries/agent-stream-cache";
 import { requireSettingsModel } from "@/lib/models";
 import { type StepConfig } from "@/lib/workflow-step-configs";
 import { toast } from "@/lib/toast";
@@ -813,17 +816,26 @@ export function useWorkflowStateMachine({
     // Clear gate state so Effect A isn't blocked when auto-starting after reset.
     gate.gateConversationIdRef.current = null;
     useWorkflowStore.getState().setGateLoading(false);
+    clearSessionRuns();
+    useWorkflowStore.getState().setActiveConversationId(null);
+    resetToStep(effectiveStepId);
+    if (skillId != null) {
+      invalidateWorkflowArtifactsAfterReset(String(skillId), effectiveStepId);
+    }
+
     if (workspacePath) {
       try {
         await resetWorkflowStep(workspacePath, skillName, effectiveStepId);
-        await restartOpenHandsSession();
       } catch {
         // best-effort
       }
     }
-    clearSessionRuns();
-    useWorkflowStore.getState().setActiveConversationId(null);
-    resetToStep(effectiveStepId);
+
+    try {
+      await restartOpenHandsSession();
+    } catch {
+      // best-effort
+    }
 
     let disabled: number[] = [];
     if (skillId != null) {

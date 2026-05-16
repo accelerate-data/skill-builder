@@ -6,6 +6,7 @@ import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
 import { useSkillStore } from "@/stores/skill-store";
 
 const mockInvalidateWorkflowArtifactsAfterStep = vi.fn();
+const mockInvalidateWorkflowArtifactsAfterReset = vi.fn();
 
 vi.mock("@/lib/toast", () => ({
   toast: {
@@ -20,6 +21,8 @@ vi.mock("@/lib/toast", () => ({
 vi.mock("@/lib/queries/agent-stream-cache", () => ({
   invalidateWorkflowArtifactsAfterStep: (...args: unknown[]) =>
     mockInvalidateWorkflowArtifactsAfterStep(...args),
+  invalidateWorkflowArtifactsAfterReset: (...args: unknown[]) =>
+    mockInvalidateWorkflowArtifactsAfterReset(...args),
 }));
 
 const mockRunWorkflowStep = vi.fn((..._args: unknown[]) =>
@@ -431,8 +434,40 @@ describe("useWorkflowStateMachine", () => {
       "test-skill",
       1,
     );
+    expect(mockInvalidateWorkflowArtifactsAfterReset).toHaveBeenCalledWith(
+      "1",
+      1,
+    );
     expect(mockResetToStep).toHaveBeenCalledWith(1);
     expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 1);
+  });
+
+  it("performStepReset updates local workflow state before backend reset resolves", async () => {
+    let resolveReset: (() => void) | undefined;
+    mockResetWorkflowStep.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveReset = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useWorkflowStateMachine(defaultOptions),
+    );
+
+    await act(async () => {
+      void result.current.performStepReset(1);
+      await Promise.resolve();
+    });
+
+    expect(mockResetToStep).toHaveBeenCalledWith(1);
+    expect(mockRestartOpenHandsSession).not.toHaveBeenCalled();
+    expect(mockRunWorkflowStep).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveReset?.();
+      await Promise.resolve();
+    });
   });
 
   it("handleStartAgentStep uses overrideStep when provided", async () => {
