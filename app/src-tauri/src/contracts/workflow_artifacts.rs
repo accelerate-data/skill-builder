@@ -87,7 +87,7 @@ pub struct ClarificationSectionDto {
     pub description: Option<String>,
 }
 
-/// Question DTO. Recursive via `refinements`.
+/// Question DTO.
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
 )]
@@ -114,7 +114,6 @@ pub struct ClarificationQuestionDto {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answer_verdict_reason: Option<String>,
     pub choices: Vec<ClarificationChoiceDto>,
-    pub refinements: Vec<ClarificationQuestionDto>,
 }
 
 #[derive(
@@ -196,6 +195,111 @@ pub struct DecisionItemDto {
     pub status: String,
 }
 
+// ─── Refinements ──────────────────────────────────────────────────────────────
+
+/// Full refinements artifact for a skill.
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
+pub struct RefinementsDto {
+    pub skill_id: String,
+    pub version: String,
+    pub refinement_count: i64,
+    pub must_answer_count: i64,
+    pub question_count: i64,
+    pub section_count: i64,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_recommendation: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_next_action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_verdict: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_reasoning: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_answered_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_empty_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_vague_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_contradictory_count: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub sections: Vec<RefinementSectionDto>,
+    pub questions: Vec<RefinementQuestionDto>,
+    pub notes: Vec<RefinementNoteDto>,
+}
+
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
+pub struct RefinementSectionDto {
+    pub section_id: i64,
+    pub ordinal: i64,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
+pub struct RefinementQuestionDto {
+    pub question_id: String,
+    pub section_id: i64,
+    pub ordinal: i64,
+    pub title: String,
+    pub text: String,
+    pub must_answer: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_choice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommendation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_verdict: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_verdict_reason: Option<String>,
+    pub choices: Vec<RefinementChoiceDto>,
+}
+
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
+pub struct RefinementChoiceDto {
+    pub choice_id: String,
+    pub ordinal: i64,
+    pub text: String,
+    pub is_other: bool,
+}
+
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
+)]
+pub struct RefinementNoteDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_id: Option<i64>,
+    pub ordinal: i64,
+    pub note_type: String,
+    pub title: String,
+    pub body: String,
+}
+
 // ─── Conversions from DB row records ────────────────────────────────────────
 
 use crate::db::workflow_artifacts as db_artifacts;
@@ -227,7 +331,6 @@ impl From<db_artifacts::ClarificationQuestion> for ClarificationQuestionDto {
             answer_verdict: q.answer_verdict,
             answer_verdict_reason: q.answer_verdict_reason,
             choices: q.choices.into_iter().map(Into::into).collect(),
-            refinements: q.refinements.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -315,6 +418,92 @@ impl From<db_artifacts::DecisionsRecord> for DecisionsDto {
             created_at: r.created_at,
             updated_at: r.updated_at,
             items: r.items.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<db_artifacts::RefinementChoice> for RefinementChoiceDto {
+    fn from(c: db_artifacts::RefinementChoice) -> Self {
+        Self {
+            choice_id: c.choice_id,
+            ordinal: c.ordinal,
+            text: c.text,
+            is_other: c.is_other,
+        }
+    }
+}
+
+impl From<db_artifacts::RefinementQuestion> for RefinementQuestionDto {
+    fn from(q: db_artifacts::RefinementQuestion) -> Self {
+        Self {
+            question_id: q.question_id,
+            section_id: q.section_id,
+            ordinal: q.ordinal,
+            title: q.title,
+            text: q.text,
+            must_answer: q.must_answer,
+            answer_choice: q.answer_choice,
+            answer_text: q.answer_text,
+            recommendation: q.recommendation,
+            answer_verdict: q.answer_verdict,
+            answer_verdict_reason: q.answer_verdict_reason,
+            choices: q.choices.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<db_artifacts::RefinementSection> for RefinementSectionDto {
+    fn from(s: db_artifacts::RefinementSection) -> Self {
+        Self {
+            section_id: s.section_id,
+            ordinal: s.ordinal,
+            title: s.title,
+            description: s.description,
+        }
+    }
+}
+
+impl From<db_artifacts::RefinementNote> for RefinementNoteDto {
+    fn from(n: db_artifacts::RefinementNote) -> Self {
+        Self {
+            note_id: n.note_id,
+            ordinal: n.ordinal,
+            note_type: n.note_type,
+            title: n.title,
+            body: n.body,
+        }
+    }
+}
+
+impl From<db_artifacts::RefinementsRecord> for RefinementsDto {
+    fn from(r: db_artifacts::RefinementsRecord) -> Self {
+        Self {
+            skill_id: r.skill_id,
+            version: r.version,
+            refinement_count: r.refinement_count,
+            must_answer_count: r.must_answer_count,
+            question_count: r.question_count,
+            section_count: r.section_count,
+            title: r.title,
+            scope_recommendation: r.scope_recommendation,
+            scope_reason: r.scope_reason,
+            scope_next_action: r.scope_next_action,
+            error_code: r.error_code,
+            error_message: r.error_message,
+            warning_code: r.warning_code,
+            warning_message: r.warning_message,
+            eval_verdict: r.eval_verdict,
+            eval_reasoning: r.eval_reasoning,
+            eval_at: r.eval_at,
+            eval_answered_count: r.eval_answered_count,
+            eval_empty_count: r.eval_empty_count,
+            eval_vague_count: r.eval_vague_count,
+            eval_contradictory_count: r.eval_contradictory_count,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            sections: r.sections.into_iter().map(Into::into).collect(),
+            questions: r.questions.into_iter().map(Into::into).collect(),
+            notes: r.notes.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -464,7 +653,6 @@ mod tests {
                     text: "Choice".to_string(),
                     is_other: false,
                 }],
-                refinements: vec![],
             }],
             notes: vec![],
         };

@@ -607,7 +607,7 @@ pub(crate) fn agent_json_to_clarifications_record(
     }
 }
 
-/// Convert a single `Question` (and its refinements recursively) into a DB row.
+/// Convert a single `Question` into a DB row.
 fn convert_question(
     q: Question,
     section_id: i64,
@@ -623,14 +623,7 @@ fn convert_question(
         recommendation,
         answer_choice,
         answer_text,
-        refinements,
     } = q;
-
-    let refinements_out: Vec<db_artifacts::ClarificationQuestion> = refinements
-        .into_iter()
-        .enumerate()
-        .map(|(idx, child)| convert_question(child, section_id, idx as i64))
-        .collect();
 
     let choices_out: Vec<db_artifacts::ClarificationChoice> = choices
         .into_iter()
@@ -657,7 +650,7 @@ fn convert_question(
         answer_verdict: None,
         answer_verdict_reason: None,
         choices: choices_out,
-        refinements: refinements_out,
+        refinements: vec![],
     }
 }
 
