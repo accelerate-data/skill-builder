@@ -36,6 +36,7 @@ import type {
   ClarificationVerdictUpdate,
   ClarificationsDto,
   DecisionsDto,
+  RefinementsDto,
 } from "@/generated/contracts";
 
 export type NoArgs = Record<string, never>;
@@ -370,6 +371,16 @@ export interface TauriCommandMap {
   };
   update_clarification_verdicts: {
     args: { skillId: string; updates: ClarificationVerdictUpdate[] };
+    result: void;
+  };
+  get_refinements: { args: { skillId: string }; result: RefinementsDto | null };
+  update_refinement_answer: {
+    args: {
+      skillId: string;
+      questionId: string;
+      answerChoice: string | null;
+      answerText: string | null;
+    };
     result: void;
   };
   get_decisions: { args: { skillId: string }; result: DecisionsDto | null };

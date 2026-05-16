@@ -19,6 +19,9 @@ import type {
   ClarificationsFile,
   Section,
   Note,
+  RefinementsDto,
+  ClarificationsDto,
+  ClarificationQuestionDto,
 } from "@/generated/contracts";
 import type { Question as BaseQuestion } from "@/generated/contracts";
 
@@ -112,4 +115,140 @@ export function parseClarifications(content: string | null): ClarificationsFile 
   } catch {
     return null;
   }
+}
+
+/** Convert a ClarificationsDto (from the DB query) into a ClarificationsFile shape
+ *  for display in the editor. */
+export function clarificationsDtoToFile(dto: ClarificationsDto): ClarificationsFile {
+  return {
+    version: dto.version,
+    metadata: {
+      title: dto.title,
+      question_count: dto.question_count,
+      section_count: dto.section_count,
+      refinement_count: dto.refinement_count,
+      must_answer_count: dto.must_answer_count,
+      priority_questions: [],
+      scope_recommendation: dto.scope_recommendation,
+      scope_reason: dto.scope_reason,
+      scope_next_action: dto.scope_next_action,
+    },
+    sections: dto.sections.map((s) => ({
+      id: s.section_id,
+      title: s.title,
+      description: s.description,
+      questions: dto.questions
+        .filter((q) => q.section_id === s.section_id && !q.parent_question_id)
+        .map((q) => questionDtoToQuestion(q)),
+    })),
+    notes: dto.notes.map((n) => ({
+      type: n.note_type,
+      title: n.title,
+      body: n.body,
+    })),
+  };
+}
+
+function questionDtoToQuestion(q: ClarificationQuestionDto): Question {
+  return {
+    id: q.question_id,
+    title: q.title,
+    text: q.text,
+    must_answer: q.must_answer,
+    choices: q.choices.map((c) => ({
+      id: c.choice_id,
+      text: c.text,
+      is_other: c.is_other,
+    })),
+    recommendation: q.recommendation,
+    answer_choice: q.answer_choice,
+    answer_text: q.answer_text,
+    answer_verdict: q.answer_verdict,
+    answer_verdict_reason: q.answer_verdict_reason,
+  };
+}
+
+/** Convert a RefinementsDto (from the DB query) into a ClarificationsFile shape
+ *  so it can be merged with clarifications for display. */
+function refinementsDtoToFile(dto: RefinementsDto): ClarificationsFile {
+  return {
+    version: dto.version,
+    metadata: {
+      title: dto.title,
+      question_count: dto.question_count,
+      section_count: dto.section_count,
+      refinement_count: dto.refinement_count,
+      must_answer_count: dto.must_answer_count,
+      priority_questions: [],
+      scope_recommendation: dto.scope_recommendation,
+      scope_reason: dto.scope_reason,
+      scope_next_action: dto.scope_next_action,
+    },
+    sections: dto.sections.map((s) => ({
+      id: s.section_id,
+      title: s.title,
+      description: s.description,
+      questions: dto.questions
+        .filter((q) => q.section_id === s.section_id)
+        .map((q) => ({
+          id: q.question_id,
+          title: q.title,
+          text: q.text,
+          must_answer: q.must_answer,
+          choices: q.choices.map((c) => ({
+            id: c.choice_id,
+            text: c.text,
+            is_other: c.is_other,
+          })),
+          recommendation: q.recommendation,
+          answer_choice: q.answer_choice,
+          answer_text: q.answer_text,
+        })),
+    })),
+    notes: dto.notes.map((n) => ({
+      type: n.note_type,
+      title: n.title,
+      body: n.body,
+    })),
+  };
+}
+
+/** Merge clarifications and refinements into a single ClarificationsFile for display.
+ *  Refinements appear as a separate "Refinements" section appended at the end. */
+export function mergeClarificationsAndRefinements(
+  clarifications: ClarificationsFile | null,
+  refinements: RefinementsDto | null,
+): ClarificationsFile | null {
+  if (!clarifications && !refinements) return null;
+  if (!clarifications) {
+    if (!refinements) return null;
+    return refinementsDtoToFile(refinements);
+  }
+  if (!refinements) return clarifications;
+
+  const refinementFile = refinementsDtoToFile(refinements);
+
+  const mergedSections: Section[] = [
+    ...(clarifications.sections ?? []).map((s) => ({ ...s })),
+  ];
+
+  const refinementSections = refinementFile.sections ?? [];
+  if (refinementSections.length > 0) {
+    mergedSections.push({
+      id: Date.now(),
+      title: "Refinements",
+      description: "Detailed follow-up questions from step 1",
+      questions: refinementSections.flatMap((s) => s.questions ?? []),
+    });
+  }
+
+  return {
+    ...clarifications,
+    sections: mergedSections,
+    notes: [...(clarifications.notes ?? []), ...(refinementFile.notes ?? [])],
+    metadata: {
+      ...clarifications.metadata,
+      refinement_count: refinements.refinement_count,
+    },
+  };
 }

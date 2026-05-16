@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invokeCommand } from "@/lib/tauri";
-import type { ClarificationVerdictUpdate } from "@/generated/contracts";
+import type { ClarificationVerdictUpdate, RefinementsDto } from "@/generated/contracts";
 import { queryKeys } from "./query-keys";
 
 export function useClarifications(skillId: string | null) {
@@ -8,6 +8,15 @@ export function useClarifications(skillId: string | null) {
     queryKey: queryKeys.clarifications.bySkill(skillId ?? ""),
     queryFn: async () =>
       (await invokeCommand("get_clarifications", { skillId: skillId! })) ?? null,
+    enabled: !!skillId,
+  });
+}
+
+export function useRefinements(skillId: string | null) {
+  return useQuery<RefinementsDto | null>({
+    queryKey: ["refinements", skillId ?? ""],
+    queryFn: async () =>
+      (await invokeCommand("get_refinements", { skillId: skillId! })) ?? null,
     enabled: !!skillId,
   });
 }
