@@ -44,4 +44,8 @@ export const queryKeys = {
     all: ["decisions"] as const,
     bySkill: (skillId: string) => ["decisions", skillId] as const,
   },
+  refinements: {
+    all: ["refinements"] as const,
+    bySkill: (skillId: string) => ["refinements", skillId] as const,
+  },
 };

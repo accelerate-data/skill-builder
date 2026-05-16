@@ -1,8 +1,8 @@
 import { Loader2, AlertTriangle } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
-import { clarificationsDtoToFile } from "@/lib/clarifications-types";
-import { useClarifications } from "@/lib/queries/clarifications";
+import { clarificationsDtoToFile, mergeClarificationsAndRefinements } from "@/lib/clarifications-types";
+import { useClarifications, useRefinements } from "@/lib/queries/clarifications";
 import { StepActionBar } from "./step-action-bar";
 import type { StepCompleteBaseProps, ClarificationsEditableProps } from "./step-complete-types";
 
@@ -18,7 +18,12 @@ export function DetailedResearchStepComplete(props: Props) {
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
   } = props;
 
-  const { data: clarDto, isLoading, isError } = useClarifications(skillId ?? null);
+  const { data: clarDto, isLoading: clarLoading, isError: clarError } = useClarifications(skillId ?? null);
+  const { data: refinementsDto, isLoading: refineLoading } = useRefinements(skillId ?? null);
+
+  const isLoading = clarLoading || refineLoading;
+  const clarData = clarDto ? clarificationsDtoToFile(clarDto) : null;
+  const mergedData = mergeClarificationsAndRefinements(clarData, refinementsDto ?? null);
 
   if (isLoading) {
     return (
@@ -28,7 +33,7 @@ export function DetailedResearchStepComplete(props: Props) {
     );
   }
 
-  if (isError || !clarDto) {
+  if (clarError || !clarDto) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
         <AlertTriangle className="size-8 text-destructive/50" />
@@ -40,8 +45,6 @@ export function DetailedResearchStepComplete(props: Props) {
     );
   }
 
-  const clarData = clarificationsDtoToFile(clarDto);
-
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       {reviewMode && agentRuns.length > 0 && (
@@ -50,7 +53,7 @@ export function DetailedResearchStepComplete(props: Props) {
       {clarificationsEditable ? (
         <div className="flex-1 min-h-0 overflow-hidden">
           <ClarificationsEditor
-            data={controlledClarData ?? clarData}
+            data={controlledClarData ?? mergedData!}
             onChange={onClarificationsChange ?? (() => {})}
             onContinue={onClarificationsContinue}
             onReset={onReset}
@@ -61,7 +64,7 @@ export function DetailedResearchStepComplete(props: Props) {
       ) : (
         <>
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border shadow-sm">
-            <ClarificationsEditor data={clarData} onChange={() => {}} readOnly />
+            <ClarificationsEditor data={mergedData!} onChange={() => {}} readOnly />
           </div>
           <StepActionBar isLastStep={isLastStep} nextStepBlocked={nextStepBlocked} nextStepLabel={nextStepLabel} reviewMode={reviewMode} onEval={onEval} onClose={onClose} onNextStep={onNextStep} />
         </>

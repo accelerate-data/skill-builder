@@ -66,23 +66,25 @@ Do not add refinements to every question. Add refinement questions only when the
 Preserve every existing section and every existing top-level question. Do not delete, reorder, renumber, or rewrite existing questions. Append only.
 Do not rewrite existing answers, choices, or recommendations. Keep the human's current responses intact.
 
-Recompute metadata after merging:
-- metadata.question_count is the number of top-level questions only.
-- metadata.section_count is the number of sections.
-- metadata.refinement_count is the total number of refinement questions.
-- metadata.must_answer_count includes top-level questions and refinements where must_answer is true.
-- metadata.priority_questions includes every top-level or refinement ID where must_answer is true.
-- metadata.duplicates_removed counts duplicate candidate additions that were dropped.
+## Output Structure
 
-For schema validity, every question object must include a refinements array. This is a structural field, not an instruction to add refinement questions. Default to an empty array unless the question meets the refinement threshold above.
-Do not return transient planning fields such as parent_question_id, detailed_research_type, target_section_id, or merge_action.
+Produce two separate outputs:
+
+1. **`clarifications_json`**: Include only **new** top-level questions and sections that do not already exist in the current clarification record. This is append-only — the backend will merge these into the existing clarifications table. If no new top-level questions are needed, return an empty sections array.
+
+2. **`refinements_json`**: Include all detailed follow-up questions (refinements) as a flat structure — no recursive nesting. Use the same canonical question shape (`id`, `title`, `text`, `must_answer`, `choices`, `refinements: []`). Group refinements by section.
+
+Recompute metadata for each output independently:
+- For `clarifications_json`: counts reflect only the new questions being appended.
+- For `refinements_json`: counts reflect all refinement questions.
 
 Return only a raw JSON object with this envelope:
 {
   "status": "detailed_research_complete",
   "refinement_count": number,
   "section_count": number,
-  "clarifications_json": { ...canonical clarifications.json object... }
+  "clarifications_json": { ...canonical clarifications.json object with only NEW questions... },
+  "refinements_json": { ...canonical clarifications.json object with refinements (flat, no recursive refinements array)... }
 }
 
 Never wrap the final JSON object in markdown code fences.

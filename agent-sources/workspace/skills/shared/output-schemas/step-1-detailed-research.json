@@ -196,7 +196,7 @@
                 "default": [],
                 "items": {
                   "additionalProperties": false,
-                  "description": "A question with choices and optional answer fields. Recursive via `refinements`.",
+                  "description": "A question with choices and optional answer fields.",
                   "properties": {
                     "answer_choice": {
                       "type": [
@@ -256,14 +256,6 @@
                         "null"
                       ]
                     },
-                    "refinements": {
-                      "default": [],
-                      "items": {
-                        "additionalProperties": false,
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
                     "text": {
                       "type": "string"
                     },
@@ -304,6 +296,297 @@
       "format": "int64",
       "type": "integer"
     },
+    "refinements_json": {
+      "additionalProperties": false,
+      "description": "Root type for a clarifications file.",
+      "properties": {
+        "answer_evaluator_notes": {
+          "items": {
+            "additionalProperties": false,
+            "description": "A note (research note or evaluator feedback).",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "body"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "default": {
+            "must_answer_count": 0,
+            "priority_questions": [],
+            "question_count": 0,
+            "refinement_count": 0,
+            "section_count": 0,
+            "title": ""
+          },
+          "description": "Metadata block with counts, priority questions, and optional scope info.",
+          "properties": {
+            "duplicates_removed": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Error attached to metadata.",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "must_answer_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "priority_questions": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "question_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "refinement_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "scope_next_action": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope_recommendation": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "section_count": {
+              "default": 0,
+              "format": "int64",
+              "type": "integer"
+            },
+            "title": {
+              "default": "",
+              "type": "string"
+            },
+            "warning": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Warning attached to metadata.",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "notes": {
+          "default": [],
+          "items": {
+            "additionalProperties": false,
+            "description": "A note (research note or evaluator feedback).",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "title",
+              "body"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "sections": {
+          "default": [],
+          "items": {
+            "additionalProperties": false,
+            "description": "A section grouping related questions.",
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "questions": {
+                "default": [],
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A question with choices and optional answer fields.",
+                  "properties": {
+                    "answer_choice": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "answer_text": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "choices": {
+                      "default": [],
+                      "items": {
+                        "additionalProperties": false,
+                        "description": "A multiple-choice option.",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "is_other": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "text",
+                          "is_other"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "consolidated_from": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "must_answer": {
+                      "type": "boolean"
+                    },
+                    "recommendation": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "text",
+                    "must_answer"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "version": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "section_count": {
       "format": "int64",
       "type": "integer"
@@ -316,7 +599,8 @@
     "status",
     "refinement_count",
     "section_count",
-    "clarifications_json"
+    "clarifications_json",
+    "refinements_json"
   ],
   "title": "DetailedResearchOutput",
   "type": "object"

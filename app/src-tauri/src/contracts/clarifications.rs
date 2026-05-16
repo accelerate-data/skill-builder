@@ -82,7 +82,7 @@ pub struct Section {
     pub questions: Vec<Question>,
 }
 
-/// A question with choices and optional answer fields. Recursive via `refinements`.
+/// A question with choices and optional answer fields.
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, schemars::JsonSchema,
 )]
@@ -101,8 +101,6 @@ pub struct Question {
     pub answer_choice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answer_text: Option<String>,
-    #[serde(default)]
-    pub refinements: Vec<Question>,
 }
 
 /// A multiple-choice option.
@@ -173,7 +171,6 @@ mod tests {
                     recommendation: Some("A".to_string()),
                     answer_choice: None,
                     answer_text: None,
-                    refinements: vec![],
                 }],
             }],
             notes: vec![],
@@ -187,41 +184,6 @@ mod tests {
         assert_eq!(deserialized.sections.len(), 1);
         assert_eq!(deserialized.sections[0].questions[0].id, "Q1");
         assert_eq!(deserialized.sections[0].questions[0].choices.len(), 2);
-    }
-
-    #[test]
-    fn test_recursive_refinements() {
-        let inner = Question {
-            id: "R1.1a".to_string(),
-            title: "Deep refinement".to_string(),
-            text: "Nested question".to_string(),
-            must_answer: false,
-            consolidated_from: None,
-            choices: vec![],
-            recommendation: None,
-            answer_choice: None,
-            answer_text: None,
-            refinements: vec![],
-        };
-
-        let outer = Question {
-            id: "R1.1".to_string(),
-            title: "Refinement".to_string(),
-            text: "Follow-up question".to_string(),
-            must_answer: false,
-            consolidated_from: None,
-            choices: vec![],
-            recommendation: None,
-            answer_choice: Some("A".to_string()),
-            answer_text: None,
-            refinements: vec![inner],
-        };
-
-        let json = serde_json::to_string(&outer).expect("serialize");
-        let deserialized: Question = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(deserialized.refinements.len(), 1);
-        assert_eq!(deserialized.refinements[0].id, "R1.1a");
-        assert_eq!(deserialized.refinements[0].refinements.len(), 0);
     }
 
     #[test]
@@ -311,19 +273,7 @@ mod tests {
                             ],
                             "recommendation": "A",
                             "answer_choice": "B",
-                            "answer_text": null,
-                            "refinements": [
-                                {
-                                    "id": "R1.1",
-                                    "title": "API details",
-                                    "text": "Which API?",
-                                    "must_answer": false,
-                                    "choices": [],
-                                    "answer_choice": null,
-                                    "answer_text": "REST API",
-                                    "refinements": []
-                                }
-                            ]
+                            "answer_text": null
                         }
                     ]
                 }
@@ -368,8 +318,6 @@ mod tests {
         let q1 = &file.sections[0].questions[0];
         assert_eq!(q1.answer_choice.as_deref(), Some("B"));
         assert!(q1.answer_text.is_none());
-        assert_eq!(q1.refinements.len(), 1);
-        assert_eq!(q1.refinements[0].answer_text.as_deref(), Some("REST API"));
 
         // Notes
         assert_eq!(file.notes.len(), 1);

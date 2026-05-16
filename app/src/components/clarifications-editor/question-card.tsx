@@ -26,7 +26,7 @@ function makeAnswerUpdater(text: string): (q: Question) => Question {
 // ─── Question Card ───────────────────────────────────────────────────────────
 
 export function QuestionCard({
-  question, isExpanded, toggleCard, updateQuestion, readOnly, reviewFeedback, reviewFeedbackByQuestion, relatedConflictQuestionIds, renderRefinements,
+  question, isExpanded, toggleCard, updateQuestion, readOnly, reviewFeedback, relatedConflictQuestionIds,
 }: {
   question: Question;
   isExpanded: boolean;
@@ -53,11 +53,6 @@ export function QuestionCard({
   const cardAccentColor = reviewFeedback
     ? accentColorByStatus[reviewFeedback.status]
     : (answered ? "var(--color-pacific)" : "var(--border)");
-  const refinements = question.refinements ?? [];
-  const refCount = refinements.length;
-  const refUnanswered = refCount > 0
-    ? refinements.filter((r) => !isQuestionAnswered(r)).length
-    : 0;
 
   return (
     <div
@@ -83,7 +78,6 @@ export function QuestionCard({
         {!reviewFeedback && relatedConflictQuestionIds && relatedConflictQuestionIds.length > 0 && (
           <RelatedConflictBadge relatedQuestionIds={relatedConflictQuestionIds} />
         )}
-        {refCount > 0 && <RefinementBadge count={refCount} unanswered={refUnanswered} />}
         {question.must_answer && <MustBadge />}
         <ChevronRight
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
@@ -152,13 +146,6 @@ export function QuestionCard({
               readOnly={readOnly}
             />
           )}
-
-          {refinements.length > 0 && renderRefinements({
-            refinements,
-            updateQuestion,
-            readOnly,
-            reviewFeedbackByQuestion,
-          })}
         </div>
       )}
     </div>
@@ -171,27 +158,6 @@ function MustBadge() {
   return (
     <span className="shrink-0 rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-destructive">
       must
-    </span>
-  );
-}
-
-function RefinementBadge({ count, unanswered }: { count: number; unanswered: number }) {
-  const allAnswered = unanswered === 0;
-  return (
-    <span
-      className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium"
-      style={{
-        borderColor: allAnswered
-          ? "color-mix(in oklch, var(--color-pacific), transparent 50%)"
-          : "color-mix(in oklch, var(--color-ocean), transparent 50%)",
-        background: allAnswered
-          ? "color-mix(in oklch, var(--color-pacific), transparent 88%)"
-          : "color-mix(in oklch, var(--color-ocean), transparent 88%)",
-        color: allAnswered ? "var(--color-pacific)" : "var(--color-ocean)",
-      }}
-    >
-      {count} {count === 1 ? "refinement" : "refinements"}
-      {unanswered > 0 && ` (${unanswered} unanswered)`}
     </span>
   );
 }

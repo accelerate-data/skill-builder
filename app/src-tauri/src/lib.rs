@@ -376,6 +376,8 @@ pub fn run() {
             commands::workflow::clarifications::get_clarifications,
             commands::workflow::clarifications::update_clarification_answer,
             commands::workflow::clarifications::update_clarification_verdicts,
+            commands::workflow::clarifications::get_refinements,
+            commands::workflow::clarifications::update_refinement_answer,
             commands::workflow::decisions::get_decisions,
             commands::workflow::decisions::save_decisions_edit,
             commands::workflow::runtime::run_answer_evaluator,

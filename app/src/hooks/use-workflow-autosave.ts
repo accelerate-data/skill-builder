@@ -14,13 +14,26 @@ interface UseWorkflowAutosaveOptions {
   dbClarificationsData?: ClarificationsFile | null;
 }
 
-/** Flatten all questions (including refinements) from a ClarificationsFile */
+/** Flatten all questions from a ClarificationsFile */
 function flattenQuestions(questions: Question[]): Question[] {
-  return questions.flatMap((q) => [q, ...flattenQuestions(q.refinements ?? [])]);
+  return questions;
 }
 
 function flattenFileQuestions(data: ClarificationsFile): Question[] {
   return (data.sections ?? []).flatMap((s) => flattenQuestions(s.questions ?? []));
+}
+
+/** Build a set of question IDs that belong to the refinements section */
+function buildRefinementQuestionIds(data: ClarificationsFile | null | undefined): Set<string> {
+  const ids = new Set<string>();
+  for (const section of data?.sections ?? []) {
+    if (section.title === "Refinements") {
+      for (const q of section.questions ?? []) {
+        ids.add(q.id);
+      }
+    }
+  }
+  return ids;
 }
 
 function sameClarificationsData(
@@ -49,6 +62,7 @@ export function useWorkflowAutosave({
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUnsavedChangesRef = useRef(false);
   const clarificationsDataRef = useRef<ClarificationsFile | null>(null);
+  const refinementQuestionIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     clarificationsDataRef.current = clarificationsData;
@@ -71,6 +85,7 @@ export function useWorkflowAutosave({
     ) {
       setClarificationsData(dbClarificationsData);
       setEditorDirty(false);
+      refinementQuestionIdsRef.current = buildRefinementQuestionIds(dbClarificationsData);
     }
   }, [clarificationsEditable, currentStepStatus, dbClarificationsData]);
 
@@ -81,12 +96,16 @@ export function useWorkflowAutosave({
         if (skillId == null) {
           throw new Error("Missing skill ID");
         }
-        await invokeCommand("update_clarification_answer", {
-          skillId: String(skillId),
-          questionId,
-          answerChoice,
-          answerText,
-        });
+        const isRefinement = refinementQuestionIdsRef.current.has(questionId);
+        await invokeCommand(
+          isRefinement ? "update_refinement_answer" : "update_clarification_answer",
+          {
+            skillId: String(skillId),
+            questionId,
+            answerChoice,
+            answerText,
+          },
+        );
       } catch (err) {
         toast.error(`Failed to save answer: ${err instanceof Error ? err.message : String(err)}`, {
           duration: Infinity,
@@ -131,6 +150,7 @@ export function useWorkflowAutosave({
       setClarificationsData(updated);
       setEditorDirty(true);
       hasUnsavedChangesRef.current = true;
+      refinementQuestionIdsRef.current = buildRefinementQuestionIds(updated);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     },
     [clarificationsData, persistQuestionAnswer],

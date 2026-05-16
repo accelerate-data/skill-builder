@@ -106,11 +106,6 @@
       "prompt": "packages/workspace-eval-workbench-suggest-scenario-prompt/prompt.txt",
       "purpose": "Workspace eval workbench suggest-scenario prompt behavior."
     },
-    "workspace-refine-initial-prompt": {
-      "config": "packages/workspace-refine-initial-prompt/promptfooconfig.json",
-      "prompt": "packages/workspace-refine-initial-prompt/prompt.txt",
-      "purpose": "Workspace refine initial prompt behavior."
-    },
     "workspace-skill-suggestions-prompt": {
       "config": "packages/workspace-skill-suggestions-prompt/promptfooconfig.json",
       "purpose": "Workspace skill suggestions prompt behavior."

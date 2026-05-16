@@ -10,12 +10,12 @@
 
 ---
 
-### Task 1: DB Migration 57 — Create refinements table family
+### Task 1: DB Migration 58 — Create refinements table family
 
 **Files:**
 - Modify: `app/src-tauri/src/db/migrations.rs:2892-2903`
 
-Add migration 57 that creates the `refinements` table family. This mirrors the clarifications schema but with its own parent table:
+Add migration 58 that creates the `refinements` table family. This mirrors the clarifications schema but with its own parent table:
 
 ```rust
 pub(super) fn run_refinements_tables_migration(
@@ -99,7 +99,7 @@ pub(super) fn run_refinements_tables_migration(
             ON refinement_choices(skill_id, question_id);
         "#,
     )?;
-    log::info!("migration 57: created refinements tables");
+    log::info!("migration 58: created refinements tables");
     Ok(())
 }
 ```
@@ -109,9 +109,9 @@ Key differences from clarifications:
 - Separate table names: `refinements`, `refinement_sections`, `refinement_questions`, `refinement_choices`, `refinement_notes`
 - Same column types and FK pattern as clarifications
 
-Also update the migration dispatcher in `migrations.rs` to call this new function at migration 57.
+Also update the migration dispatcher in `migrations.rs` to call this new function at migration 58.
 
-- [ ] **Step 1: Add the migration function and wire it into the dispatcher**
+- [x] **Step 1: Add the migration function and wire it into the dispatcher**
 
 Run: `cd app/src-tauri && cargo build`
 Expected: Compiles without errors
@@ -120,7 +120,7 @@ Expected: Compiles without errors
 
 ```bash
 git add app/src-tauri/src/db/migrations.rs
-git commit -m "feat(db): add migration 57 for refinements table family"
+git commit -m "feat(db): add migration 58 for refinements table family"
 ```
 
 ---
@@ -216,11 +216,11 @@ pub struct RefinementNote {
 - `update_refinement_question_answer(conn, skill_identifier, question_id, answer_choice, answer_text)` — mirrors `update_question_answer`
 - `update_refinement_question_verdicts(conn, skill_identifier, updates)` — mirrors `update_question_verdicts`
 
-- [ ] **Step 1: Add structs and CRUD functions to `workflow_artifacts.rs`**
+- [x] **Step 1: Add structs and CRUD functions to `workflow_artifacts.rs`**
 
 Use the same patterns as the clarifications functions. The key difference: no recursive tree assembly (no `parent_question_id`), so `read_refinements` is simpler — just read questions flat and attach choices.
 
-- [ ] **Step 2: Add tests for refinements CRUD**
+- [x] **Step 2: Add tests for refinements CRUD**
 
 ```rust
 #[test]
@@ -526,13 +526,13 @@ Add `From` impls from DB row types to DTO types (mirror the clarifications patte
 
 Update the `From<db_artifacts::ClarificationQuestion> for ClarificationQuestionDto` impl to remove the `.refinements` mapping.
 
-- [ ] **Step 1: Remove `refinements` field from `Question` in clarifications.rs**
+- [x] **Step 1: Remove `refinements` field from `Question` in clarifications.rs**
 
 Remove the field and update all test constructors.
 
-- [ ] **Step 2: Remove `refinements` from `ClarificationQuestionDto`, add `RefinementsDto` + child DTOs + From impls**
+- [x] **Step 2: Remove `refinements` from `ClarificationQuestionDto`, add `RefinementsDto` + child DTOs + From impls**
 
-- [ ] **Step 3: Update tests in workflow_artifacts.rs contracts**
+- [x] **Step 3: Update tests in workflow_artifacts.rs contracts**
 
 Remove `refinements: vec![]` from `ClarificationQuestionDto` test constructors. Add a basic `RefinementsDto` round-trip test.
 
@@ -600,11 +600,11 @@ commands::workflow::clarifications::get_refinements,
 commands::workflow::clarifications::update_refinement_answer,
 ```
 
-- [ ] **Step 1: Add `get_refinements` and `update_refinement_answer` commands**
+- [x] **Step 1: Add `get_refinements` and `update_refinement_answer` commands**
 
 Add to `app/src-tauri/src/commands/workflow/clarifications.rs`.
 
-- [ ] **Step 2: Register commands in `lib.rs`**
+- [x] **Step 2: Register commands in `lib.rs`**
 
 - [ ] **Step 3: Build**
 
@@ -689,7 +689,6 @@ The logic:
     // 4. Write refinements (full replace)
     let refinements_record = agent_json_to_refinements_record(
         &canonical_id,
-        parsed.refinement_count,
         parsed.refinements_json,
         now_ms(),
     );
@@ -706,19 +705,19 @@ Add a helper function `append_new_clarification_questions` that inserts new ques
 
 Also add `agent_json_to_refinements_record` — mirrors `agent_json_to_clarifications_record` but produces a `RefinementsRecord`.
 
-- [ ] **Step 1: Add `refinements_json` field to `DetailedResearchOutput` in `workflow_outputs.rs`**
+- [x] **Step 1: Add `refinements_json` field to `DetailedResearchOutput` in `workflow_outputs.rs`**
 
 Update the test `test_detailed_research_output_round_trip` to include `refinements_json`.
 
-- [ ] **Step 2: Add `agent_json_to_refinements_record` helper to `output_format.rs`**
+- [x] **Step 2: Add `agent_json_to_refinements_record` helper to `output_format.rs`**
 
 Mirror `agent_json_to_clarifications_record` but produces `RefinementsRecord`.
 
-- [ ] **Step 3: Add `append_new_clarification_questions` helper to `output_format.rs`**
+- [x] **Step 3: Add `append_new_clarification_questions` helper to `output_format.rs`**
 
 This inserts new questions + choices into the clarifications tables without deleting existing data.
 
-- [ ] **Step 4: Rewrite step 1 branch in `materialize_workflow_step_output_value`**
+- [x] **Step 4: Rewrite step 1 branch in `materialize_workflow_step_output_value`**
 
 Implement the logic described above.
 
@@ -772,9 +771,9 @@ match from_step_id {
 
 Also update `navigate_back_to_step_impl` if it has similar step 1 → step 0 mapping logic.
 
-- [ ] **Step 1: Update `clear_artifacts_for_step_reset` to separate step 0 and step 1 cases**
+- [x] **Step 1: Update `clear_artifacts_for_step_reset` to separate step 0 and step 1 cases**
 
-- [ ] **Step 2: Check `navigate_back_to_step_impl` for similar logic and update if needed**
+- [x] **Step 2: Check `navigate_back_to_step_impl` for similar logic and update if needed**
 
 - [ ] **Step 3: Run tests**
 
@@ -796,13 +795,13 @@ git commit -m "feat(reset): step 1 reset clears only refinements, not clarificat
 - Regenerate: `app/src/generated/contracts.ts`
 - Modify: `app/src/lib/clarifications-types.ts`
 
-- [ ] **Step 1: Regenerate contracts**
+- [x] **Step 1: Regenerate contracts**
 
 Run: `cd app/src-tauri && cargo run --bin codegen`
 
 This will regenerate `app/src/generated/contracts.ts` with the updated types (no `refinements` on `Question`, new `RefinementsDto` type).
 
-- [ ] **Step 2: Update `clarifications-types.ts`**
+- [x] **Step 2: Update `clarifications-types.ts`**
 
 Remove recursive `refinements` handling from:
 - `getSectionCounts` — remove `for (const r of q.refinements ?? []) countQuestion(r)`
@@ -814,34 +813,38 @@ Add a new helper for merging clarifications + refinements for display:
 ```typescript
 export function mergeClarificationsAndRefinements(
   clarifications: ClarificationsFile | null,
-  refinements: ClarificationsFile | null,
+  refinements: RefinementsDto | null,
 ): ClarificationsFile | null {
   if (!clarifications && !refinements) return null;
-  if (!clarifications) return refinements;
+  if (!clarifications) {
+    if (!refinements) return null;
+    return refinementsDtoToFile(refinements);
+  }
   if (!refinements) return clarifications;
 
-  // Merge sections: take clarifications sections, append refinement questions
-  // as a separate "Refinements" section at the end
+  const refinementFile = refinementsDtoToFile(refinements);
+
   const mergedSections: Section[] = [
     ...clarifications.sections.map(s => ({ ...s })),
   ];
 
-  if (refinements.sections.length > 0) {
+  const refinementSections = refinementFile.sections ?? [];
+  if (refinementSections.length > 0) {
     mergedSections.push({
-      id: Date.now(), // unique id for the refinements section
+      id: -1, // stable sentinel for the refinements section
       title: "Refinements",
       description: "Detailed follow-up questions from step 1",
-      questions: refinements.sections.flatMap(s => s.questions),
+      questions: refinementSections.flatMap(s => s.questions ?? []),
     });
   }
 
   return {
     ...clarifications,
     sections: mergedSections,
-    notes: [...(clarifications.notes ?? []), ...(refinements.notes ?? [])],
+    notes: [...(clarifications.notes ?? []), ...(refinementFile.notes ?? [])],
     metadata: {
       ...clarifications.metadata,
-      refinement_count: refinements.metadata?.refinement_count ?? 0,
+      refinement_count: refinements.refinement_count,
     },
   };
 }
@@ -897,9 +900,9 @@ onReset={!reviewMode && stepConfig?.clarificationsEditable && currentStep !== 0 
 onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
 ```
 
-- [ ] **Step 1: Update `performStepReset` in `use-workflow-state-machine.ts`**
+- [x] **Step 1: Update `performStepReset` in `use-workflow-state-machine.ts`**
 
-- [ ] **Step 2: Update reset button handlers in `workflow.tsx`**
+- [x] **Step 2: Update reset button handlers in `workflow.tsx`**
 
 - [ ] **Step 3: Run frontend tests**
 
@@ -921,11 +924,11 @@ git commit -m "feat(frontend): step 1 reset stays on step 1 instead of jumping t
 - Modify: `app/src/lib/queries/clarifications.ts` — add `useRefinements` query
 - Modify: ClarificationsEditor component (find via grep for `ClarificationsEditor`) — load both clarifications and refinements, merge for display
 
-- [ ] **Step 1: Add `useRefinements` React Query hook**
+- [x] **Step 1: Add `useRefinements` React Query hook**
 
 Add to `app/src/lib/queries/clarifications.ts`, mirroring the existing `useClarifications` hook but calling `get_refinements` Tauri command.
 
-- [ ] **Step 2: Update ClarificationsEditor to load refinements**
+- [x] **Step 2: Update ClarificationsEditor to load refinements**
 
 Wherever the editor currently loads clarifications, also load refinements and merge them using `mergeClarificationsAndRefinements`.
 
@@ -954,7 +957,7 @@ Step 1 currently outputs `context/clarifications.json`. With the new model, step
 1: { type: "agent", outputFiles: ["context/clarifications.json", "context/refinements.json"], clarificationsEditable: true },
 ```
 
-- [ ] **Step 1: Update step 1 config**
+- [x] **Step 1: Update step 1 config**
 
 - [ ] **Step 2: Commit**
 
@@ -975,7 +978,7 @@ The step 1 agent currently outputs a single `clarifications_json` with recursive
 - Output `clarifications_json` with only **new top-level questions** (append-only additions to step 0's work)
 - Output `refinements_json` with the detailed follow-up questions (flat, no recursive refinements)
 
-- [ ] **Step 1: Find and update step 1 agent prompt**
+- [x] **Step 1: Find and update step 1 agent prompt**
 
 - [ ] **Step 2: Run agent structural tests**
 

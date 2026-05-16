@@ -5,7 +5,7 @@
 //! `contracts::workflow_artifacts` before any DB call.
 
 use crate::contracts::workflow_artifacts::{
-    validate_answer_verdict, ClarificationVerdictUpdate, ClarificationsDto,
+    validate_answer_verdict, ClarificationVerdictUpdate, ClarificationsDto, RefinementsDto,
 };
 use crate::db::workflow_artifacts as db_artifacts;
 use crate::db::Db;
@@ -133,5 +133,74 @@ pub fn update_clarification_verdicts(
             e
         );
         format!("Failed to update clarification verdicts: {}", e)
+    })
+}
+
+/// Read the full refinements artifact for a skill.
+#[tauri::command]
+pub fn get_refinements(
+    skill_id: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Option<RefinementsDto>, String> {
+    log::info!("[workflow] get_refinements skill_id={}", skill_id);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!(
+            "[workflow] get_refinements skill_id={} lock_failed: {}",
+            skill_id,
+            e
+        );
+        e.to_string()
+    })?;
+    match db_artifacts::read_refinements(&conn, &skill_id) {
+        Ok(Some(record)) => Ok(Some(record.into())),
+        Ok(None) => Ok(None),
+        Err(e) => {
+            log::error!(
+                "[workflow] get_refinements skill_id={} read_failed: {}",
+                skill_id,
+                e
+            );
+            Err(format!("Failed to read refinements: {}", e))
+        }
+    }
+}
+
+/// Update a single refinement question's persisted answer.
+#[tauri::command]
+pub fn update_refinement_answer(
+    skill_id: String,
+    question_id: String,
+    answer_choice: Option<String>,
+    answer_text: Option<String>,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!(
+        "[workflow] update_refinement_answer skill_id={} question_id={}",
+        skill_id,
+        question_id
+    );
+    let conn = db.0.lock().map_err(|e| {
+        log::error!(
+            "[workflow] update_refinement_answer skill_id={} lock_failed: {}",
+            skill_id,
+            e
+        );
+        e.to_string()
+    })?;
+    db_artifacts::update_refinement_question_answer(
+        &conn,
+        &skill_id,
+        &question_id,
+        answer_choice.as_deref(),
+        answer_text.as_deref(),
+    )
+    .map_err(|e| {
+        log::error!(
+            "[workflow] update_refinement_answer skill_id={} question_id={} write_failed: {}",
+            skill_id,
+            question_id,
+            e
+        );
+        format!("Failed to update refinement answer: {}", e)
     })
 }

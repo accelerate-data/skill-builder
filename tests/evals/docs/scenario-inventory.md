@@ -18,7 +18,6 @@ artifact changes, run and update the matching package.
 | `skill-creator-grader` | Eval grading | Add | Covers strict grading and `grading.json` output used by app eval runs. |
 | `workspace-test-evaluator-prompt` | Skill tester plan comparison | Add | Replaces the stale bundled-skill meta eval with the app-used tester evaluator prompt behavior. |
 | `workspace-workflow-step-prompt` | Workflow prompt shell | Add | Covers app-injected workflow paths and throwaway runtime constraints. |
-| `workspace-refine-initial-prompt` | Refine prompt shell | Add | Covers refine routing, eval-failure triage, and `AskUserQuestion` handoff. |
 | `workspace-eval-generator-system-prompt` | Eval generator prompt | Add | Covers draft Eval Workbench case JSON generation from realistic skill-test user intent. |
 | `workspace-eval-workbench-suggest-scenario-prompt` | Suggest scenario prompt | Add | Covers scenario-level Eval Workbench suggestion output as one exact JSON object with required assertion `type` and `value` fields. |
 | `workspace-skill-suggestions-prompt` | Skill field suggestions | Add | Covers the create-skill form suggestion JSON returned by the Rust prompt. |
@@ -43,7 +42,6 @@ The regression subset is the full package list:
 - `npm run eval:skill-creator-grader`
 - `npm run eval:workspace-test-evaluator-prompt`
 - `npm run eval:workspace-workflow-step-prompt`
-- `npm run eval:workspace-refine-initial-prompt`
 - `npm run eval:workspace-eval-generator-system-prompt`
 - `npm run eval:workspace-eval-workbench-suggest-scenario-prompt`
 - `npm run eval:workspace-skill-suggestions-prompt`

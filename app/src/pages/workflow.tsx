@@ -74,7 +74,6 @@ function mapDtoQuestionToFile(q: ClarificationQuestionDto): Question {
       text: c.text,
       is_other: c.is_other,
     })),
-    refinements: (q.refinements ?? []).map(mapDtoQuestionToFile),
   };
 }
 
@@ -363,8 +362,8 @@ export default function WorkflowPage() {
           if (editorDirty) await handleSave();
           handleReviewContinue();
         }}
-        onReset={!reviewMode && stepConfig?.clarificationsEditable && currentStep !== 0 ? () => setResetTarget(currentStep === 1 ? 0 : currentStep) : undefined}
-        onResetStep={!reviewMode ? () => performStepReset(currentStep === 1 ? 0 : currentStep) : undefined}
+        onReset={!reviewMode && stepConfig?.clarificationsEditable && currentStep !== 0 ? () => setResetTarget(currentStep) : undefined}
+        onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
         saveStatus={saveStatus}
         evaluating={!!gateLoading}
       />

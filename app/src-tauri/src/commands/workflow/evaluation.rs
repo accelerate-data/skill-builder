@@ -80,8 +80,9 @@ fn clear_legacy_skill_conversation_db_records(
 
 /// Delete stale clarifications and decisions based on which step is being reset.
 /// Steps re-run = from_step_id and all subsequent steps.
-/// - from_step_id 0 or 1: re-runs steps that produce clarifications (0,1) and decisions (2) → delete both
-/// - from_step_id 2: re-runs step 2 (decisions) → delete decisions only, clarifications remain valid
+/// - from_step_id 0: full rerun → delete clarifications, decisions, and refinements
+/// - from_step_id 1: re-run step 1+ → delete refinements and decisions, keep clarifications
+/// - from_step_id 2: re-run step 2 (decisions) → delete decisions only, clarifications remain valid
 /// - from_step_id 3+: disk files only → no DB cleanup needed
 pub(crate) fn clear_artifacts_for_step_reset(
     conn: &rusqlite::Connection,
@@ -101,13 +102,25 @@ pub(crate) fn clear_artifacts_for_step_reset(
     let skill_id_str = s_id.to_string();
 
     match from_step_id {
-        0 | 1 => {
+        0 => {
             crate::db::workflow_artifacts::delete_clarifications(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?;
             crate::db::workflow_artifacts::delete_decisions(conn, &skill_id_str)
                 .map_err(|e| e.to_string())?;
+            crate::db::workflow_artifacts::delete_refinements(conn, &skill_id_str)
+                .map_err(|e| e.to_string())?;
             log::info!(
-                "[clear_artifacts_for_step_reset] cleared clarifications and decisions for '{}' (resetting from step {})",
+                "[clear_artifacts_for_step_reset] cleared clarifications, decisions, and refinements for '{}' (resetting from step {})",
+                skill_name, from_step_id
+            );
+        }
+        1 => {
+            crate::db::workflow_artifacts::delete_refinements(conn, &skill_id_str)
+                .map_err(|e| e.to_string())?;
+            crate::db::workflow_artifacts::delete_decisions(conn, &skill_id_str)
+                .map_err(|e| e.to_string())?;
+            log::info!(
+                "[clear_artifacts_for_step_reset] cleared refinements and decisions for '{}' (resetting from step {})",
                 skill_name, from_step_id
             );
         }
@@ -169,6 +182,13 @@ fn navigate_back_to_step_impl(
 
     if target_step_id == 0 {
         clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
+    }
+
+    // When navigating back to step 1, clear refinements so stale data isn't displayed
+    if target_step_id == 1 {
+        let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
+            .ok_or_else(|| format!("Skill '{}' not found in plugin '{}'", skill_name, plugin_slug))?;
+        clear_artifacts_for_step_reset(conn, &s_id.to_string(), 2)?;
     }
 
     // Reset only steps after the target; target step status is preserved as "completed".
@@ -249,17 +269,22 @@ pub fn save_workflow_state(
         e.to_string()
     })?;
 
+    let normalized_step_statuses =
+        normalize_db_backed_step_statuses(&conn, skill_id, &step_statuses)?;
+
     // Backend-authoritative status: if all submitted steps are completed,
     // override the run status to "completed" regardless of what the frontend sent.
     // This prevents a race where the debounced frontend save fires before the
     // final step status is computed.
-    let effective_status = if !step_statuses.is_empty()
-        && step_statuses.iter().all(|s| s.status == "completed")
+    let effective_status = if !normalized_step_statuses.is_empty()
+        && normalized_step_statuses
+            .iter()
+            .all(|s| s.status == "completed")
     {
         if status != "completed" {
             log::info!(
                 "[save_workflow_state] All {} steps completed for '{}', overriding status '{}' → 'completed'",
-                step_statuses.len(),
+                normalized_step_statuses.len(),
                 skill_id,
                 status
             );
@@ -284,7 +309,7 @@ pub fn save_workflow_state(
         );
         e
     })?;
-    for step in &step_statuses {
+    for step in &normalized_step_statuses {
         crate::db::save_workflow_step_by_skill_id(&conn, skill_id, step.step_id, &step.status).map_err(
             |e| {
                 log::error!(
@@ -307,11 +332,57 @@ pub fn save_workflow_state(
     Ok(())
 }
 
+fn normalize_db_backed_step_statuses(
+    conn: &rusqlite::Connection,
+    skill_id: i64,
+    step_statuses: &[StepStatusUpdate],
+) -> Result<Vec<StepStatusUpdate>, String> {
+    let skill_id_str = skill_id.to_string();
+
+    step_statuses
+        .iter()
+        .map(|step| {
+            if step.status != "completed" {
+                return Ok(step.clone());
+            }
+
+            let artifact_present = match step.step_id {
+                0 => db_artifacts::read_clarifications(conn, &skill_id_str)
+                    .map_err(|e| e.to_string())?
+                    .is_some(),
+                1 => db_artifacts::read_refinements(conn, &skill_id_str)
+                    .map_err(|e| e.to_string())?
+                    .is_some(),
+                2 => db_artifacts::read_decisions(conn, &skill_id_str)
+                    .map_err(|e| e.to_string())?
+                    .is_some(),
+                _ => true,
+            };
+
+            if artifact_present {
+                Ok(step.clone())
+            } else {
+                log::warn!(
+                    "[save_workflow_state] rejecting completed status for skill={} step={} step_id={} because DB-backed artifact is missing",
+                    skill_id,
+                    workflow_step_log_name(step.step_id),
+                    step.step_id
+                );
+                Ok(StepStatusUpdate {
+                    step_id: step.step_id,
+                    status: "pending".to_string(),
+                })
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records,
     };
+    use crate::db::Db;
     use crate::commands::test_utils::create_test_db;
     use crate::types::StepStatusUpdate;
     use tempfile::tempdir;
@@ -324,6 +395,107 @@ mod tests {
         } else {
             status.to_string()
         }
+    }
+
+    fn db_state(db: &Db) -> tauri::State<'_, Db> {
+        // SAFETY: `tauri::State<'_, T>` is a transparent wrapper over `&T`.
+        unsafe { std::mem::transmute(db) }
+    }
+
+    #[test]
+    fn test_normalize_db_backed_step_statuses_rejects_missing_step0_artifact() {
+        let mut conn = create_test_db();
+        let skill_id = crate::db::upsert_skill(
+            &conn,
+            "normalize-missing-step0",
+            "skill-builder",
+            "domain",
+        )
+        .unwrap();
+        crate::db::save_workflow_run(
+            &conn,
+            "normalize-missing-step0",
+            0,
+            "in_progress",
+            "domain",
+        )
+        .unwrap();
+
+        let normalized = super::normalize_db_backed_step_statuses(
+            &conn,
+            skill_id,
+            &[StepStatusUpdate {
+                step_id: 0,
+                status: "completed".to_string(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(normalized[0].status, "pending");
+    }
+
+    #[test]
+    fn test_normalize_db_backed_step_statuses_keeps_completed_when_step0_artifact_exists() {
+        let mut conn = create_test_db();
+        let skill_id = crate::db::upsert_skill(
+            &conn,
+            "normalize-present-step0",
+            "skill-builder",
+            "domain",
+        )
+        .unwrap();
+        crate::db::save_workflow_run(
+            &conn,
+            "normalize-present-step0",
+            0,
+            "in_progress",
+            "domain",
+        )
+        .unwrap();
+
+        let record = crate::db::workflow_artifacts::ClarificationsRecord {
+            skill_id: skill_id.to_string(),
+            version: "1".to_string(),
+            refinement_count: 0,
+            must_answer_count: 0,
+            question_count: 0,
+            section_count: 0,
+            title: "Clarifications".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 0,
+            updated_at: 0,
+            sections: vec![],
+            questions: vec![],
+            notes: vec![],
+        };
+        let tx = conn.transaction().unwrap();
+        crate::db::workflow_artifacts::upsert_clarifications(&tx, &record).unwrap();
+        tx.commit().unwrap();
+
+        let normalized = super::normalize_db_backed_step_statuses(
+            &conn,
+            skill_id,
+            &[StepStatusUpdate {
+                step_id: 0,
+                status: "completed".to_string(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(normalized[0].status, "completed");
     }
 
     #[test]
@@ -554,6 +726,50 @@ mod tests {
     }
 
     #[test]
+    fn test_save_workflow_state_rejects_completed_step0_without_clarifications() {
+        let conn = create_test_db();
+        let skill_id = crate::db::upsert_skill(
+            &conn,
+            "save-state-missing-step0",
+            "skill-builder",
+            "domain",
+        )
+        .unwrap();
+        crate::db::save_workflow_run(
+            &conn,
+            "save-state-missing-step0",
+            0,
+            "in_progress",
+            "domain",
+        )
+        .unwrap();
+
+        let db = Db(std::sync::Arc::new(std::sync::Mutex::new(conn)));
+        super::save_workflow_state(
+            skill_id,
+            0,
+            "pending".to_string(),
+            "domain".to_string(),
+            vec![StepStatusUpdate {
+                step_id: 0,
+                status: "completed".to_string(),
+            }],
+            db_state(&db),
+        )
+        .unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.status, "pending");
+
+        let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].status, "pending");
+    }
+
+    #[test]
     fn test_reset_does_not_delete_conversation_storage_before_fork() {
         // Verify that the reset path does not delete conversation directories
         // from disk before the fork operation. The conversation dir must remain
@@ -746,8 +962,8 @@ pub fn verify_step_output(
         }
         1 => {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
-            Ok(db_artifacts::read_clarifications(&conn, &skill_id_str)
-                .map(|opt| opt.map(|r| r.refinement_count > 0).unwrap_or(false))
+            Ok(db_artifacts::read_refinements(&conn, &skill_id_str)
+                .map(|opt| opt.is_some())
                 .unwrap_or(false))
         }
         2 => {
@@ -1586,7 +1802,7 @@ mod reset_artifact_cleanup_tests {
         assert!(has_clarifications(&conn, skill_id));
         assert!(has_decisions(&conn, skill_id));
 
-        // Reset from step 0 should clear both
+        // Reset from step 0 should clear clarifications, decisions, and refinements
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 0).unwrap();
 
         assert!(
@@ -1600,7 +1816,7 @@ mod reset_artifact_cleanup_tests {
     }
 
     #[test]
-    fn test_reset_from_step_1_clears_clarifications_and_decisions() {
+    fn test_reset_from_step_1_clears_refinements_and_decisions_preserves_clarifications() {
         let mut conn = create_test_db();
         crate::db::save_workflow_run(&conn, "test-skill", 1, "pending", "domain").unwrap();
         let skill_id = crate::db::get_skill_master_id_in_plugin(
@@ -1616,13 +1832,12 @@ mod reset_artifact_cleanup_tests {
         assert!(has_clarifications(&conn, skill_id));
         assert!(has_decisions(&conn, skill_id));
 
-        // Reset from step 1 should clear both because step 1 reruns
-        // clarifications-producing work and invalidates downstream decisions.
+        // Reset from step 1 should clear refinements and decisions, but keep clarifications.
         super::clear_artifacts_for_step_reset(&conn, "test-skill", 1).unwrap();
 
         assert!(
-            !has_clarifications(&conn, skill_id),
-            "clarifications should be deleted when resetting from step 1"
+            has_clarifications(&conn, skill_id),
+            "clarifications should be preserved when resetting from step 1"
         );
         assert!(
             !has_decisions(&conn, skill_id),
