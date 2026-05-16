@@ -334,7 +334,7 @@ Explicitly document:
 
 Make the repo guidance consistent with the new naming.
 
-- [x] **Step 3: Keep only raw upstream fixture mentions of `agent_id`**
+- [x] **Step 3: Remove stale `agent_id` from active fixtures and helper-fixture wrappers**
 
 Replace stale `agent_id` in runtime fixtures and helper-fixture wrappers with `conversation_id`, matching the current OpenHands-facing code.
 
@@ -407,7 +407,7 @@ rg -n "agent_id|agentId" app/src app/src-tauri docs repo-map.json TEST_MAP.md
 ```
 
 Expected:
-- only archival review notes or historical plan documents remain
+- only archival review notes, historical plan documents, and legacy schema migration history remain
 - no app-owned runtime, persistence, usage, Tauri command, test mock, or design-contract surface still uses `agent_id`
 
 - [x] **Step 5: Commit**

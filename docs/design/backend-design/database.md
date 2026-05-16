@@ -107,8 +107,9 @@ Workflow/refine session lifetimes keyed back to the owning skill.
 ### `conversation_runs`
 
 Per-conversation telemetry for workflow, workspace, refine, evaluator, and test
-activity. This remains app-owned execution telemetry and uses
-`conversation_id` plus `skill_id` as the canonical historical identity.
+activity. This remains app-owned execution telemetry and is keyed by
+`conversation_id` plus `model`, with `skill_id` stored as the canonical skill
+reference and `skill_name` plus `plugin_slug` retained as historical snapshots.
 
 ### `skill_tags`
 
