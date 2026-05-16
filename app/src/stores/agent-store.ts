@@ -554,13 +554,6 @@ export const useAgentStore = create<AgentState>((set) => ({
   addConversationEvent: (agentId, event) =>
     set((state) => {
       const parentToolCallId = getParentToolCallId(event);
-      console.debug(
-        "[agent-store] event=conversation_event_received agent_id=%s event_class=%s tool_call_id=%s parent_tool_call_id=%s",
-        agentId,
-        event.eventClass,
-        event.toolCallId ?? "none",
-        parentToolCallId ?? "none",
-      );
       const run = state.runs[agentId];
       if (!run) {
         console.debug(

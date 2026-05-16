@@ -278,7 +278,6 @@ export async function initAgentStream() {
     // refine-store turn-boundary UI state (e.g. "waiting for input" indicator).
     listen<{ agent_id: string }>("agent-turn-complete", (event) => {
       const { agent_id } = event.payload;
-      console.log("event=turn_complete component=use-agent-stream agent_id=%s", agent_id);
       const agentRun = useAgentStore.getState().runs[agent_id];
       const displayItemEndIndex = agentRun?.displayItems.length ?? null;
       const result = useRefineStore

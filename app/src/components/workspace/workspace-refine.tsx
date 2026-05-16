@@ -168,12 +168,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
         return;
       }
 
-      console.log(
-        "[workspace-refine] send: skill=%s files=%s",
-        activeSkill.name,
-        targetFiles?.join(",") ?? "all",
-      );
-
       runSkillRef.current = activeSkill;
       store.setPendingFollowupMessage(null);
       store.setGitDiff(null);
@@ -251,12 +245,6 @@ export function WorkspaceRefine({ skill }: WorkspaceRefineProps) {
 
     // Clear stopping state when terminal event arrives
     useRefineStore.getState().setStopping(false);
-
-    console.log(
-      "[workspace-refine] agent %s finished: status=%s",
-      activeAgentId,
-      activeRunStatus,
-    );
 
     if (activeRunStatus === "error") {
       toast.error("Agent failed — check the chat for details", {
