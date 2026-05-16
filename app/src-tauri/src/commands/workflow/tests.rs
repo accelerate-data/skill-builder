@@ -3285,6 +3285,7 @@ fn test_format_user_context_includes_intake_json_context() {
 mod materialization {
     use super::*;
     use crate::commands::workflow::guards;
+    use crate::commands::workflow::output_format::extract_workflow_json_from_conversation_state;
 
     fn clarifications_fixture() -> serde_json::Value {
         serde_json::json!({
@@ -3444,6 +3445,76 @@ mod materialization {
             .unwrap()
             .unwrap();
         assert_eq!(refinements.refinement_count, 2);
+    }
+
+    #[test]
+    fn step1_repairs_measuring_pipeline_value_fixture_before_materialization() {
+        let (db, skill_id) = db_with_seeded_skill("rt-step1-repair");
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/fixtures/workflow/measuring-pipeline-value-step1-result_text.json"
+            )),
+        });
+
+        let parsed =
+            extract_workflow_json_from_conversation_state(&state, "detailed research").unwrap();
+        materialize_workflow_step_output_value(&db, &skill_id, 1, &parsed).unwrap();
+
+        let conn = db.0.lock().unwrap();
+        let clarifications = crate::db::workflow_artifacts::read_clarifications(&conn, &skill_id)
+            .unwrap()
+            .unwrap();
+        assert!(clarifications
+            .questions
+            .iter()
+            .any(|q| q.question_id == "Q6"));
+
+        let refinements = crate::db::workflow_artifacts::read_refinements(&conn, &skill_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(refinements.refinement_count, 2);
+        assert_eq!(refinements.section_count, 2);
+        assert!(refinements
+            .questions
+            .iter()
+            .any(|q| q.question_id == "R3.1"));
+        assert!(refinements
+            .questions
+            .iter()
+            .any(|q| q.question_id == "R5.1"));
+    }
+
+    #[test]
+    fn step1_measuring_pipeline_value_fixture_is_repairable_to_expected_shape() {
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/fixtures/workflow/measuring-pipeline-value-step1-result_text.json"
+            )),
+        });
+        let parsed =
+            extract_workflow_json_from_conversation_state(&state, "detailed research").unwrap();
+        assert_eq!(
+            parsed["status"].as_str(),
+            Some("detailed_research_complete")
+        );
+        assert_eq!(
+            parsed["clarifications_json"]["sections"][0]["questions"][0]["id"].as_str(),
+            Some("Q6")
+        );
+        assert_eq!(
+            parsed["refinements_json"]["sections"][0]["questions"][0]["id"].as_str(),
+            Some("R3.1")
+        );
+        assert_eq!(
+            parsed["refinements_json"]["sections"][1]["questions"][0]["id"].as_str(),
+            Some("R5.1")
+        );
     }
 
     #[test]

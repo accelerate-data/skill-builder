@@ -108,6 +108,26 @@ fn parse_research_result_text(
     match serde_json::from_str::<serde_json::Value>(json_text) {
         Ok(parsed) => Ok(parsed),
         Err(parse_error) => {
+            if let Ok(repaired) = jsonrepair_rs::jsonrepair(json_text) {
+                match serde_json::from_str::<serde_json::Value>(&repaired) {
+                    Ok(parsed) if parsed.is_object() => {
+                        let parsed = normalize_repaired_workflow_payload(parsed);
+                        log::warn!(
+                            "[materialize_step] repaired OpenHands {} result_text with jsonrepair-rs",
+                            workflow_label
+                        );
+                        return Ok(parsed);
+                    }
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
+            } else {
+                log::warn!(
+                    "[materialize_step] jsonrepair-rs could not repair OpenHands {} result_text; falling back to object extraction",
+                    workflow_label
+                );
+            }
+
             let mut fallback_object = None;
             for candidate in top_level_json_object_candidates(json_text)
                 .into_iter()
@@ -129,28 +149,6 @@ fn parse_research_result_text(
             }
 
             if let Some(parsed) = fallback_object {
-                return Ok(parsed);
-            }
-
-            let repaired = jsonrepair_rs::jsonrepair(json_text).map_err(|repair_error| {
-                format!(
-                    "OpenHands {workflow_label} result_text invalid JSON: {}; repair failed: {}",
-                    parse_error, repair_error
-                )
-            })?;
-            let parsed = serde_json::from_str::<serde_json::Value>(&repaired).map_err(
-                |repaired_parse_error| {
-                    format!(
-                        "OpenHands {workflow_label} result_text invalid JSON: {}; repaired parse failed: {}",
-                        parse_error, repaired_parse_error
-                    )
-                },
-            )?;
-            if parsed.is_object() {
-                log::warn!(
-                    "[materialize_step] repaired OpenHands {} result_text with jsonrepair-rs",
-                    workflow_label
-                );
                 return Ok(parsed);
             }
 
@@ -357,6 +355,65 @@ fn strip_single_json_markdown_fence(text: &str) -> &str {
     } else {
         inner
     }
+}
+
+fn normalize_repaired_workflow_payload(mut parsed: serde_json::Value) -> serde_json::Value {
+    let Some(root) = parsed.as_object_mut() else {
+        return parsed;
+    };
+
+    hoist_misnested_top_level_member(root, "clarifications_json", "sections");
+    parsed
+}
+
+fn hoist_misnested_top_level_member(
+    root: &mut serde_json::Map<String, serde_json::Value>,
+    container_key: &str,
+    array_key: &str,
+) {
+    let Some((index, key, value)) = root
+        .get(container_key)
+        .and_then(|v| v.as_object())
+        .and_then(|container| container.get(array_key))
+        .and_then(|v| v.as_array())
+        .and_then(|items| find_misnested_top_level_member(items))
+    else {
+        return;
+    };
+    if root.contains_key(&key) {
+        return;
+    }
+
+    let Some(container) = root.get_mut(container_key).and_then(|v| v.as_object_mut()) else {
+        return;
+    };
+    let Some(items) = container.get_mut(array_key).and_then(|v| v.as_array_mut()) else {
+        return;
+    };
+    items.truncate(index);
+    root.insert(key, value);
+}
+
+fn find_misnested_top_level_member(
+    items: &[serde_json::Value],
+) -> Option<(usize, String, serde_json::Value)> {
+    for (index, window) in items.windows(3).enumerate() {
+        let serde_json::Value::String(key) = &window[0] else {
+            continue;
+        };
+        if !key.ends_with("_json") {
+            continue;
+        }
+        if window[1] != serde_json::Value::String(":".to_string()) {
+            continue;
+        }
+        if !window[2].is_object() {
+            continue;
+        }
+        return Some((index, key.clone(), window[2].clone()));
+    }
+
+    None
 }
 
 fn validate_generated_skill_output(
