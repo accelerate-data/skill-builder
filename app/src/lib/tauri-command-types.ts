@@ -323,7 +323,6 @@ export interface TauriCommandMap {
         skillName: string;
         pluginSlug: string;
         conversationId: string;
-        agentId: string | null;
         skillId?: number | null;
       };
     };

@@ -180,8 +180,14 @@ export async function initSessionRuntimeStream() {
       if (message.type === "conversation_state") {
         const conversationState = normalizeConversationStateMessage(message);
         if (conversationState) {
+          if (conversationState.conversationId) {
+            runtimeStore.bindTransportRun(agent_id, conversationState.conversationId);
+            runtimeStore.applyConversationState(
+              conversationState.conversationId,
+              conversationState,
+            );
+          }
           appendCanonicalRuntimeEvent(conversationState);
-          runtimeStore.applyConversationState(agent_id, conversationState);
           if (isTerminalConversationStatus(conversationState.status)) {
             invalidateUsageDataAfterAgentRun().catch((error) => {
               console.warn(

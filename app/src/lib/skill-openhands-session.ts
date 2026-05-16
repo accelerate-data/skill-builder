@@ -63,7 +63,6 @@ export function hydrateSelectedSkillOpenHandsSession(
   store.selectSkill(editableSkill);
   store.setConversationId(session.conversation_id || null);
   store.setAvailableAgents(session.available_agents ?? []);
-  store.setActiveAgentId(null);
   hydrateCanonicalConversationHistory(
     session.conversation_id || null,
     session.restored_transcript_events ?? [],

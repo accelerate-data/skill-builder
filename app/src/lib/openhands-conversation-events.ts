@@ -14,7 +14,6 @@ export interface OpenHandsConversationEvent {
   type: "conversation_event";
   runtime: "openhands";
   conversationId?: string;
-  agentId?: string;
   eventClass: string;
   event: Record<string, unknown>;
   timestamp: number;
@@ -26,7 +25,6 @@ export interface OpenHandsConversationState {
   type: "conversation_state";
   runtime: "openhands";
   conversationId?: string;
-  agentId?: string;
   status: OpenHandsConversationStatus;
   errorDetail?: string;
   resultText?: string;
@@ -75,7 +73,6 @@ export function normalizeConversationEventMessage(
     type: "conversation_event",
     runtime: "openhands",
     conversationId: getString(message, "conversation_id", "conversationId"),
-    agentId: getString(message, "agent_id", "agentId"),
     eventClass,
     event,
     timestamp: getNumber(message, "timestamp") ?? Date.now(),
@@ -99,7 +96,6 @@ export function normalizeConversationStateMessage(
     type: "conversation_state",
     runtime: "openhands",
     conversationId: getString(message, "conversation_id", "conversationId"),
-    agentId: getString(message, "agent_id", "agentId"),
     status,
     errorDetail: getString(message, "error_detail", "errorDetail"),
     resultText: getString(message, "result_text", "resultText"),
@@ -136,10 +132,7 @@ export function buildCanonicalConversationEventEnvelope(
   event: OpenHandsConversationEvent | OpenHandsConversationState,
   fallbackConversationId?: string | null,
 ): ConversationEventEnvelope {
-  const conversationId =
-    event.conversationId ??
-    fallbackConversationId ??
-    event.agentId;
+  const conversationId = event.conversationId ?? fallbackConversationId;
   if (!conversationId) {
     throw new Error("Unable to resolve a canonical conversation identity.");
   }

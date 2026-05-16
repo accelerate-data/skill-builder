@@ -97,6 +97,7 @@ const mockSetGateLoading = vi.fn();
 const mockResetToStep = vi.fn();
 const mockClearRuntimeError = vi.fn();
 const mockSetStopping = vi.fn();
+const mockSetActiveConversationId = vi.fn();
 let mockWorkflowState = {
   workflowSessionId: null as string | null,
   currentStep: 0,
@@ -106,6 +107,7 @@ let mockWorkflowState = {
   isInitializing: false,
   reviewMode: false,
   gateLoading: false,
+  activeConversationId: null as string | null,
   disabledSteps: [] as number[],
   setCurrentStep: mockSetCurrentStep,
   updateStepStatus: mockUpdateStepStatus,
@@ -114,6 +116,7 @@ let mockWorkflowState = {
   setInitializing: mockSetInitializing,
   clearInitializing: mockClearInitializing,
   setGateLoading: mockSetGateLoading,
+  setActiveConversationId: mockSetActiveConversationId,
   resetToStep: mockResetToStep,
   clearRuntimeError: mockClearRuntimeError,
   setDisabledSteps: vi.fn(),
@@ -219,6 +222,7 @@ describe("useWorkflowStateMachine", () => {
       isInitializing: false,
       reviewMode: false,
       gateLoading: false,
+      activeConversationId: null,
       disabledSteps: [],
     };
     mockRestartOpenHandsSession.mockClear();
@@ -459,7 +463,7 @@ describe("useWorkflowStateMachine", () => {
       steps: [{ id: 0, status: "in_progress" }],
       isRunning: true,
     };
-    useSkillStore.getState().setActiveAgentId("agent-finish-1");
+    mockWorkflowState.activeConversationId = "agent-finish-1";
     mockRuns = {
       "agent-finish-1": {
         status: "completed",
@@ -528,7 +532,7 @@ describe("useWorkflowStateMachine", () => {
       ],
       isRunning: true,
     };
-    useSkillStore.getState().setActiveAgentId("agent-generate-1");
+    mockWorkflowState.activeConversationId = "agent-generate-1";
     mockRuns = {
       "agent-generate-1": {
         status: "completed",

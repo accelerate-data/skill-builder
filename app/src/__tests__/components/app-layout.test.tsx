@@ -195,7 +195,6 @@ describe("AppLayout", () => {
       selectedSkill: null,
       conversationId: null,
       availableAgents: [],
-      activeAgentId: null,
     });
     useWorkspaceStore.setState({ activeSurface: "overview" });
     setEvalsRunning(false);
@@ -397,7 +396,7 @@ describe("AppLayout", () => {
         ...state.runs,
         "workflow-agent-1": {
           ...state.runs["workflow-agent-1"],
-          sessionId: "conv-workflow",
+          conversationId: "conv-workflow",
         },
       },
     }));
@@ -423,7 +422,6 @@ describe("AppLayout", () => {
           skillName: "my-skill",
           pluginSlug: "skills",
           conversationId: "conv-workflow",
-          agentId: "workflow-agent-1",
           skillId: null,
         },
       });
@@ -545,9 +543,7 @@ describe("AppLayout", () => {
         is_default_plugin: true,
       },
       conversationId: "conv-workflow-fallback",
-      activeAgentId: "workflow-agent-pending",
     });
-    useSkillStore.getState().setActiveAgentId("workflow-agent-pending");
     useWorkflowStore.getState().setRunning(true);
     useWorkflowStore.getState().setStopping(false);
 
@@ -567,7 +563,6 @@ describe("AppLayout", () => {
           skillName: "my-skill",
           pluginSlug: "skills",
           conversationId: "conv-workflow-fallback",
-          agentId: "workflow-agent-pending",
           skillId: null,
         },
       });
@@ -1112,7 +1107,6 @@ describe("AppLayout", () => {
           skillName: "sales-skill",
           pluginSlug: "skills",
           conversationId: "conv-current",
-          agentId: null,
           skillId: 1,
         },
       });

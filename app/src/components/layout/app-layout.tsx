@@ -105,7 +105,6 @@ export function AppLayout() {
         const workflowStore = useWorkflowStore.getState();
         if (workflowStore.isRunning && !workflowStore.isStopping) {
           const runs = useSessionRuntimeStore.getState().runs;
-          const activeAgentId = useSkillStore.getState().activeAgentId;
           const running = Object.values(runs).find(
             (r): r is typeof r & { skillName: string } =>
               r.status === "running" && r.runSource === "workflow" && !!r.skillName,
@@ -117,8 +116,7 @@ export function AppLayout() {
                 importedSkillsRef.current.find((skill) => skill.skill_name === skillName)?.plugin_slug
               : undefined) ??
             selectedSkill?.plugin_slug;
-          const workflowConversationId = running?.sessionId ?? selectedSkillConversationId;
-          const workflowAgentId = running?.agentId ?? activeAgentId;
+          const workflowConversationId = running?.conversationId ?? selectedSkillConversationId;
 
           if (skillName && pluginSlug && workflowConversationId) {
             logFrontend(
@@ -130,7 +128,6 @@ export function AppLayout() {
               skillName,
               pluginSlug,
               workflowConversationId,
-              workflowAgentId,
             ).catch((err) => {
               console.error("[app-layout] escape: pause workflow conversation failed", err);
               workflowStore.setStopping(false);

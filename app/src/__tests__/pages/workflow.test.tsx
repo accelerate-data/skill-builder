@@ -210,7 +210,7 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
 
 function startActiveRun(agentId: string, model = "sonnet") {
   useAgentStore.getState().startSessionRun(agentId, model);
-  useSkillStore.getState().setActiveAgentId(agentId);
+  useWorkflowStore.getState().setActiveConversationId(agentId);
 }
 
 // Global reset: ensure location state doesn't leak between describe blocks.
@@ -218,7 +218,7 @@ function startActiveRun(agentId: string, model = "sonnet") {
 // every test starts with a clean slate regardless of describe-level setup order.
 beforeEach(() => {
   mockLocation.state = {};
-  useSkillStore.getState().setActiveAgentId(null);
+  useWorkflowStore.getState().setActiveConversationId(null);
   useSkillStore.getState().selectSkill({
     id: 1,
     name: "test-skill",
@@ -589,9 +589,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Simulate: stale agent data from a previous skill
     useAgentStore.getState().startSessionRun("old-agent", "sonnet");
     useAgentStore.getState().completeRun("old-agent", true);
-    useSkillStore.getState().setActiveAgentId("old-agent");
+    useWorkflowStore.getState().setActiveConversationId("old-agent");
 
-    expect(useSkillStore.getState().activeAgentId).toBe("old-agent");
+    expect(useWorkflowStore.getState().activeConversationId).toBe("old-agent");
 
     // Render triggers init effect which should clear agent store
     render(<WorkflowPage />);
@@ -602,7 +602,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // Stale agent data should be cleared — "old-agent" is no longer active
     // (auto-start may have kicked off a new agent, so we check the stale ID is gone)
-    expect(useSkillStore.getState().activeAgentId).not.toBe("old-agent");
+    expect(useWorkflowStore.getState().activeConversationId).not.toBe("old-agent");
     expect(useAgentStore.getState().runs).not.toHaveProperty("old-agent");
   });
 

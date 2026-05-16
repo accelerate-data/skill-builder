@@ -27,7 +27,7 @@ describe("useSessionRuntimeStore", () => {
 
     const run = useSessionRuntimeStore.getState().runs["agent-1"];
     expect(run).toBeDefined();
-    expect(run.agentId).toBe("agent-1");
+    expect(run.conversationId).toBe("agent-1");
     expect(run.model).toBe("sonnet");
     expect(run.status).toBe("running");
     expect(run.startTime).toBeGreaterThanOrEqual(beforeTime);
@@ -52,7 +52,6 @@ describe("useSessionRuntimeStore", () => {
     useSessionRuntimeStore.getState().applyConversationState("agent-1", {
       type: "conversation_state",
       runtime: "openhands",
-      agentId: "agent-1",
       status: "completed",
       timestamp: Date.now(),
       resultText: JSON.stringify({ verdict: "sufficient" }),

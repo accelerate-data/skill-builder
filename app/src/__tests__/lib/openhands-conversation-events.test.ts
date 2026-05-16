@@ -66,7 +66,6 @@ describe("OpenHands conversation event helpers", () => {
     ]);
     expect(events[0]).toMatchObject({
       conversationId: "conv-fixture",
-      agentId: "agent-fixture",
       timestamp: 1_778_000_001,
     });
     expect(events[1].toolCallId).toBe("call-single");
@@ -113,7 +112,6 @@ describe("OpenHands conversation event helpers", () => {
       type: "conversation_state",
       runtime: "openhands",
       conversationId: "conv-result",
-      agentId: "agent-result",
       status: "completed",
       resultText: '```json\n{"verdict":"mixed"}\n```',
       timestamp: 1_778_000_100,

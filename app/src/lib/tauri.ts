@@ -393,7 +393,6 @@ export const pauseOpenHandsSession = (
   skillName: string,
   pluginSlug: string,
   conversationId: string,
-  agentId?: string | null,
   skillId?: number | null,
 ) =>
   invokeCommand("pause_openhands_session", {
@@ -401,7 +400,6 @@ export const pauseOpenHandsSession = (
       skillName,
       pluginSlug,
       conversationId,
-      agentId: agentId ?? null,
       skillId: skillId ?? null,
     },
   })

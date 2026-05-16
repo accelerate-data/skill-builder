@@ -184,7 +184,7 @@ export default function WorkflowPage() {
     resetToStep,
   } = useWorkflowStore();
 
-  const activeAgentId = useSkillStore((s) => s.activeAgentId);
+  const activeConversationId = useWorkflowStore((s) => s.activeConversationId);
   const runtimeRuns = useSessionRuntimeStore((s) => s.runs);
   const selectedSkill = useSkillStore((s) => s.selectedSkill);
   const conversationId = useSkillStore((s) => s.conversationId);
@@ -375,7 +375,7 @@ export default function WorkflowPage() {
 
   const renderContent = () => {
     // 1. Agent running — show streaming output or init spinner
-    if (activeAgentId && conversationId && runtimeRuns[activeAgentId]) {
+    if (activeConversationId && conversationId && runtimeRuns[activeConversationId]) {
       if (isInitializing && activeConversationEventCount === 0) {
         return <AgentInitializingIndicator />;
       }
@@ -660,7 +660,7 @@ export default function WorkflowPage() {
 
             {/* Content area */}
             <div className={`flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in duration-200 ${
-              activeAgentId && runtimeRuns[activeAgentId] ? "" : "p-4"
+              activeConversationId && runtimeRuns[activeConversationId] ? "" : "p-4"
             }`}>
               {renderContent()}
             </div>

@@ -63,7 +63,7 @@ interface ModelUsageBreakdown {
 }
 
 export interface SessionRuntimeRun {
-  agentId: string;
+  conversationId: string;
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
   conversationState?: OpenHandsConversationState;
@@ -91,32 +91,31 @@ export interface SessionRuntimeRun {
 
 interface SessionRuntimeState {
   runs: Record<string, SessionRuntimeRun>;
+  transportConversationIds: Record<string, string>;
   pendingTerminal: Record<string, PendingTerminalEvent>;
   pendingMetadata: Record<string, PendingRuntimeEvent[]>;
-  startSessionRun: (agentId: string, model: string) => void;
+  startSessionRun: (conversationId: string, model: string) => void;
   registerSessionRun: (
-    agentId: string,
+    conversationId: string,
     model: string,
     skillName?: string,
     runSource?: SessionRuntimeRun["runSource"],
     usageSessionId?: string,
   ) => void;
-  applyConversationState: (
-    agentId: string,
-    event: OpenHandsConversationState,
-  ) => void;
-  applyRunConfig: (agentId: string, event: RunConfigEvent) => void;
-  applyRunInit: (agentId: string, event: RunInitEvent) => void;
-  applyTurnUsage: (agentId: string, event: TurnUsageEvent) => void;
-  applyCompaction: (agentId: string, event: CompactionEvent) => void;
-  applyContextWindow: (agentId: string, event: ContextWindowEvent) => void;
-  setPromptSuggestion: (agentId: string, suggestion: string) => void;
+  bindTransportRun: (transportId: string, conversationId: string) => void;
+  applyConversationState: (conversationId: string, event: OpenHandsConversationState) => void;
+  applyRunConfig: (transportId: string, event: RunConfigEvent) => void;
+  applyRunInit: (transportId: string, event: RunInitEvent) => void;
+  applyTurnUsage: (transportId: string, event: TurnUsageEvent) => void;
+  applyCompaction: (transportId: string, event: CompactionEvent) => void;
+  applyContextWindow: (transportId: string, event: ContextWindowEvent) => void;
+  setPromptSuggestion: (transportId: string, suggestion: string) => void;
   completeRun: (
-    agentId: string,
+    transportId: string,
     success: boolean,
     errorDetail?: string,
   ) => void;
-  shutdownRun: (agentId: string) => void;
+  shutdownRun: (transportId: string) => void;
   clearSessionRuns: () => void;
   clearRunsBySource: (source: NonNullable<SessionRuntimeRun["runSource"]>) => void;
 }
@@ -124,12 +123,12 @@ interface SessionRuntimeState {
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 function createBaseRun(
-  agentId: string,
+  conversationId: string,
   model: string,
   overrides: Partial<SessionRuntimeRun> = {},
 ): SessionRuntimeRun {
   return {
-    agentId,
+    conversationId,
     model,
     status: "running",
     startTime: Date.now(),
@@ -143,84 +142,100 @@ function createBaseRun(
 
 function pendingMetadataUpdate(
   state: SessionRuntimeState,
-  agentId: string,
+  transportId: string,
   event: PendingRuntimeEvent,
 ): Partial<SessionRuntimeState> {
-  const existing = state.pendingMetadata[agentId] ?? [];
+  const existing = state.pendingMetadata[transportId] ?? [];
   return {
     pendingMetadata: {
       ...state.pendingMetadata,
-      [agentId]: [...existing, event],
+      [transportId]: [...existing, event],
     },
   };
 }
 
 function queuePendingTerminal(
-  agentId: string,
+  transportId: string,
   status: PendingTerminalStatus,
   errorDetail?: string,
 ) {
   const state = useSessionRuntimeStore.getState();
-  const existing = state.pendingTerminal[agentId];
+  const existing = state.pendingTerminal[transportId];
   if (!existing || existing.status === "shutdown") {
     useSessionRuntimeStore.setState({
       pendingTerminal: {
         ...state.pendingTerminal,
-        [agentId]: { status, errorDetail },
+        [transportId]: { status, errorDetail },
       },
     });
   }
 }
 
-function drainPendingTerminal(agentId: string) {
-  const state = useSessionRuntimeStore.getState();
-  const pending = state.pendingTerminal[agentId];
-  if (!pending || !state.runs[agentId]) return;
+function resolveConversationId(state: SessionRuntimeState, transportId: string): string | null {
+  return state.transportConversationIds[transportId] ?? null;
+}
 
-  const { [agentId]: _removed, ...rest } = state.pendingTerminal;
+function drainPendingTerminal(transportId: string) {
+  const state = useSessionRuntimeStore.getState();
+  const pending = state.pendingTerminal[transportId];
+  const conversationId = resolveConversationId(state, transportId);
+  if (!pending || !conversationId || !state.runs[conversationId]) return;
+
+  const { [transportId]: _removed, ...rest } = state.pendingTerminal;
   useSessionRuntimeStore.setState({ pendingTerminal: rest });
 
   if (pending.status === "shutdown") {
-    useSessionRuntimeStore.getState().shutdownRun(agentId);
+    useSessionRuntimeStore.getState().shutdownRun(transportId);
     return;
   }
   useSessionRuntimeStore
     .getState()
-    .completeRun(agentId, pending.status === "completed", pending.errorDetail);
+    .completeRun(
+      transportId,
+      pending.status === "completed",
+      pending.errorDetail,
+    );
 }
 
-function drainPendingMetadata(agentId: string) {
+function drainPendingMetadata(transportId: string) {
   const state = useSessionRuntimeStore.getState();
-  const pending = state.pendingMetadata[agentId];
-  if (!pending || pending.length === 0 || !state.runs[agentId]) return;
+  const pending = state.pendingMetadata[transportId];
+  const conversationId = resolveConversationId(state, transportId);
+  if (!pending || pending.length === 0 || !conversationId || !state.runs[conversationId]) {
+    return;
+  }
 
-  const { [agentId]: _removed, ...rest } = state.pendingMetadata;
+  const { [transportId]: _removed, ...rest } = state.pendingMetadata;
   useSessionRuntimeStore.setState({ pendingMetadata: rest });
 
   for (const event of pending) {
     const store = useSessionRuntimeStore.getState();
     switch (event._tag) {
       case "run_config":
-        store.applyRunConfig(agentId, event);
+        store.applyRunConfig(transportId, event);
         break;
       case "run_init":
-        store.applyRunInit(agentId, event);
+        store.applyRunInit(transportId, event);
         break;
       case "turn_usage":
-        store.applyTurnUsage(agentId, event);
+        store.applyTurnUsage(transportId, event);
         break;
       case "compaction":
-        store.applyCompaction(agentId, event);
+        store.applyCompaction(transportId, event);
         break;
       case "context_window":
-        store.applyContextWindow(agentId, event);
+        store.applyContextWindow(transportId, event);
         break;
     }
   }
 }
 
 export function resetSessionRuntimeStoreInternals() {
-  useSessionRuntimeStore.setState({ pendingTerminal: {}, pendingMetadata: {} });
+  useSessionRuntimeStore.setState({
+    transportConversationIds: {},
+    pendingTerminal: {},
+    pendingMetadata: {},
+  });
 }
 
 export function formatModelName(model: string): string {
@@ -246,19 +261,20 @@ export function getContextUtilization(run: SessionRuntimeRun): number {
 
 export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
   runs: {},
+  transportConversationIds: {},
   pendingTerminal: {},
   pendingMetadata: {},
 
-  startSessionRun: (agentId, model) => {
+  startSessionRun: (conversationId, model) => {
     const workflow = useWorkflowStore.getState();
     const skillName = workflow.skillName ?? "unknown";
 
     set((state) => {
-      const existing = state.runs[agentId];
+      const existing = state.runs[conversationId];
       return {
         runs: {
           ...state.runs,
-          [agentId]: existing
+          [conversationId]: existing
             ? {
                 ...existing,
                 model,
@@ -269,31 +285,34 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
                   ? existing.status
                   : "running",
               }
-            : createBaseRun(agentId, model, {
+            : createBaseRun(conversationId, model, {
                 skillName,
                 runSource: "workflow",
               }),
         },
+        transportConversationIds: {
+          ...state.transportConversationIds,
+          [conversationId]: conversationId,
+        },
       };
     });
-
-    drainPendingTerminal(agentId);
-    drainPendingMetadata(agentId);
+    drainPendingTerminal(conversationId);
+    drainPendingMetadata(conversationId);
   },
 
   registerSessionRun: (
-    agentId,
+    conversationId,
     model,
     skillName,
     runSource = "workspace",
     usageSessionId,
   ) => {
     set((state) => {
-      const existing = state.runs[agentId];
+      const existing = state.runs[conversationId];
       return {
         runs: {
           ...state.runs,
-          [agentId]: existing
+          [conversationId]: existing
             ? {
                 ...existing,
                 model,
@@ -306,22 +325,37 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
                 runSource,
                 usageSessionId: usageSessionId ?? existing.usageSessionId,
               }
-            : createBaseRun(agentId, model, {
+            : createBaseRun(conversationId, model, {
                 skillName,
                 runSource,
                 usageSessionId,
               }),
         },
+        transportConversationIds: {
+          ...state.transportConversationIds,
+          [conversationId]: conversationId,
+        },
       };
     });
-
-    drainPendingTerminal(agentId);
-    drainPendingMetadata(agentId);
+    drainPendingTerminal(conversationId);
+    drainPendingMetadata(conversationId);
   },
 
-  applyConversationState: (agentId, event) =>
+  bindTransportRun: (transportId, conversationId) => {
+    if (!transportId || !conversationId) return;
+    set((state) => ({
+      transportConversationIds: {
+        ...state.transportConversationIds,
+        [transportId]: conversationId,
+      },
+    }));
+    drainPendingTerminal(transportId);
+    drainPendingMetadata(transportId);
+  },
+
+  applyConversationState: (conversationId, event) =>
     set((state) => {
-      const run = state.runs[agentId];
+      const run = state.runs[conversationId];
       const now = Date.now();
       const nextStatus =
         event.status === "completed"
@@ -343,7 +377,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
         return {
           runs: {
             ...state.runs,
-            [agentId]: createBaseRun(agentId, "unknown", {
+            [conversationId]: createBaseRun(conversationId, "unknown", {
               status: nextStatus,
               conversationState: event,
               endTime: nextEndTime,
@@ -357,7 +391,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
         return {
           runs: {
             ...state.runs,
-            [agentId]: {
+            [conversationId]: {
               ...run,
               conversationState: event,
             },
@@ -368,7 +402,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [conversationId]: {
             ...run,
             status: nextStatus,
             conversationState: event,
@@ -379,20 +413,22 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       };
     }),
 
-  applyRunConfig: (agentId, event) =>
+  applyRunConfig: (transportId, event) =>
     set((state) => {
-      const run = state.runs[agentId];
+      const conversationId = resolveConversationId(state, transportId);
+      const run = conversationId ? state.runs[conversationId] : undefined;
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, {
+        return pendingMetadataUpdate(state, transportId, {
           _tag: "run_config",
           ...event,
         });
       }
+      const key = conversationId as string;
 
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [key]: {
             ...run,
             thinkingEnabled: event.thinkingEnabled,
             agentName: event.agentName ?? run.agentName,
@@ -401,20 +437,22 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       };
     }),
 
-  applyRunInit: (agentId, event) =>
+  applyRunInit: (transportId, event) =>
     set((state) => {
-      const run = state.runs[agentId];
+      const conversationId = resolveConversationId(state, transportId);
+      const run = conversationId ? state.runs[conversationId] : undefined;
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, {
+        return pendingMetadataUpdate(state, transportId, {
           _tag: "run_init",
           ...event,
         });
       }
+      const key = conversationId as string;
 
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [key]: {
             ...run,
             sessionId: event.sessionId,
             model: event.model,
@@ -423,20 +461,22 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       };
     }),
 
-  applyTurnUsage: (agentId, event) =>
+  applyTurnUsage: (transportId, event) =>
     set((state) => {
-      const run = state.runs[agentId];
+      const conversationId = resolveConversationId(state, transportId);
+      const run = conversationId ? state.runs[conversationId] : undefined;
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, {
+        return pendingMetadataUpdate(state, transportId, {
           _tag: "turn_usage",
           ...event,
         });
       }
+      const key = conversationId as string;
 
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [key]: {
             ...run,
             contextHistory: [
               ...run.contextHistory,
@@ -451,20 +491,22 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       };
     }),
 
-  applyCompaction: (agentId, event) =>
+  applyCompaction: (transportId, event) =>
     set((state) => {
-      const run = state.runs[agentId];
+      const conversationId = resolveConversationId(state, transportId);
+      const run = conversationId ? state.runs[conversationId] : undefined;
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, {
+        return pendingMetadataUpdate(state, transportId, {
           _tag: "compaction",
           ...event,
         });
       }
+      const key = conversationId as string;
 
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [key]: {
             ...run,
             compactionEvents: [
               ...run.compactionEvents,
@@ -479,11 +521,12 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       };
     }),
 
-  applyContextWindow: (agentId, event) =>
+  applyContextWindow: (transportId, event) =>
     set((state) => {
-      const run = state.runs[agentId];
+      const conversationId = resolveConversationId(state, transportId);
+      const run = conversationId ? state.runs[conversationId] : undefined;
       if (!run) {
-        return pendingMetadataUpdate(state, agentId, {
+        return pendingMetadataUpdate(state, transportId, {
           _tag: "context_window",
           ...event,
         });
@@ -492,11 +535,12 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       if (event.contextWindow <= 0) {
         return state;
       }
+      const key = conversationId as string;
 
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [key]: {
             ...run,
             contextWindow: event.contextWindow,
           },
@@ -504,26 +548,34 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       };
     }),
 
-  setPromptSuggestion: (agentId, suggestion) =>
+  setPromptSuggestion: (transportId, suggestion) =>
     set((state) => {
-      const run = state.runs[agentId];
+      const conversationId = resolveConversationId(state, transportId);
+      const run = conversationId ? state.runs[conversationId] : undefined;
       if (!run) return {};
+      const key = conversationId as string;
       return {
         runs: {
           ...state.runs,
-          [agentId]: { ...run, promptSuggestion: suggestion },
+          [key]: { ...run, promptSuggestion: suggestion },
         },
       };
     }),
 
-  completeRun: (agentId, success, errorDetail) => {
-    if (!useSessionRuntimeStore.getState().runs[agentId]) {
-      queuePendingTerminal(agentId, success ? "completed" : "error", errorDetail);
+  completeRun: (transportId, success, errorDetail) => {
+    const state = useSessionRuntimeStore.getState();
+    const conversationId = resolveConversationId(state, transportId);
+    if (!conversationId || !state.runs[conversationId]) {
+      queuePendingTerminal(
+        transportId,
+        success ? "completed" : "error",
+        errorDetail,
+      );
       return;
     }
 
     set((state) => {
-      const run = state.runs[agentId];
+      const run = state.runs[conversationId];
       if (!run) return state;
       if (run.status !== "running") {
         const nextErrors = errorDetail ? [errorDetail] : run.resultErrors;
@@ -532,7 +584,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
           return {
             runs: {
               ...state.runs,
-              [agentId]: {
+              [conversationId]: {
                 ...run,
                 resultErrors: nextErrors,
               },
@@ -542,7 +594,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
         return {
           runs: {
             ...state.runs,
-            [agentId]: {
+            [conversationId]: {
               ...run,
               endTime: Date.now(),
               resultErrors: nextErrors,
@@ -554,7 +606,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [conversationId]: {
             ...run,
             status: success ? "completed" : "error",
             endTime: Date.now(),
@@ -565,19 +617,21 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
     });
   },
 
-  shutdownRun: (agentId) => {
-    if (!useSessionRuntimeStore.getState().runs[agentId]) {
-      queuePendingTerminal(agentId, "shutdown");
+  shutdownRun: (transportId) => {
+    const state = useSessionRuntimeStore.getState();
+    const conversationId = resolveConversationId(state, transportId);
+    if (!conversationId || !state.runs[conversationId]) {
+      queuePendingTerminal(transportId, "shutdown");
       return;
     }
 
     set((state) => {
-      const run = state.runs[agentId];
+      const run = state.runs[conversationId];
       if (!run || run.status !== "running") return state;
       return {
         runs: {
           ...state.runs,
-          [agentId]: {
+          [conversationId]: {
             ...run,
             status: "shutdown",
             endTime: Date.now(),
@@ -590,6 +644,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
   clearSessionRuns: () =>
     set({
       runs: {},
+      transportConversationIds: {},
       pendingTerminal: {},
       pendingMetadata: {},
     }),
@@ -599,15 +654,25 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
       runs: Object.fromEntries(
         Object.entries(state.runs).filter(([, run]) => run.runSource !== source),
       ),
+      transportConversationIds: Object.fromEntries(
+        Object.entries(state.transportConversationIds).filter(
+          ([, conversationId]) => {
+            const run = state.runs[conversationId];
+            return run && run.runSource !== source;
+          },
+        ),
+      ),
       pendingTerminal: Object.fromEntries(
-        Object.entries(state.pendingTerminal).filter(([agentId]) => {
-          const run = state.runs[agentId];
+        Object.entries(state.pendingTerminal).filter(([transportId]) => {
+          const conversationId = state.transportConversationIds[transportId];
+          const run = conversationId ? state.runs[conversationId] : undefined;
           return run && run.runSource !== source;
         }),
       ),
       pendingMetadata: Object.fromEntries(
-        Object.entries(state.pendingMetadata).filter(([agentId]) => {
-          const run = state.runs[agentId];
+        Object.entries(state.pendingMetadata).filter(([transportId]) => {
+          const conversationId = state.transportConversationIds[transportId];
+          const run = conversationId ? state.runs[conversationId] : undefined;
           return run && run.runSource !== source;
         }),
       ),

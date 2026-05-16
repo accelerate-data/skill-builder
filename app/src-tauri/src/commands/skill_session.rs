@@ -431,7 +431,6 @@ pub struct PauseOpenHandsSessionInput {
     pub skill_name: String,
     pub plugin_slug: String,
     pub conversation_id: String,
-    pub agent_id: Option<String>,
     /// When provided, the skill lock is released after pausing.
     /// Used by `leaveCurrentSkill` to keep lock ownership in the backend.
     pub skill_id: Option<i64>,
@@ -449,7 +448,6 @@ pub async fn pause_openhands_session(
         skill_name,
         plugin_slug,
         conversation_id,
-        agent_id,
         skill_id,
     } = input;
 
@@ -473,7 +471,7 @@ pub async fn pause_openhands_session(
     let local_closed = crate::agents::tracked_openhands::pause_tracked_openhands_conversation(
         config,
         &conversation_id,
-        agent_id.as_deref(),
+        None,
     )
     .await?;
 

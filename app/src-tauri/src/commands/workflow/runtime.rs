@@ -52,7 +52,7 @@ impl WorkflowStepRunManager {
 
 #[derive(Debug, Clone, Serialize)]
 struct WorkflowStepMaterializedPayload {
-    agent_id: String,
+    conversation_id: String,
     skill_name: String,
     step_id: u32,
     success: bool,
@@ -158,31 +158,42 @@ fn install_workflow_step_materialization_listener(
     let skill_name = skill_name.to_string();
     let skill_id_for_db = skill_id.to_string();
     tokio::spawn(async move {
-        let result = match rx.recv().await {
+        let (conversation_id, result) = match rx.recv().await {
             Some(state) => {
+                let conversation_id = state
+                    .get("conversation_id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string();
                 let db = app_handle.state::<Db>();
                 let workflow_label = workflow_step_log_name(step_id as i32);
-                extract_workflow_json_from_conversation_state(&state, &workflow_label)
-                    .and_then(|payload| {
-                        materialize_workflow_step_output_value(
-                            db.inner(),
-                            &skill_id_for_db,
-                            step_id,
-                            &payload,
-                        )
-                    })
-                    .map_err(|err| {
-                        format!(
-                            "{} materialization failed: {}",
-                            workflow_step_log_name(step_id as i32),
-                            err
-                        )
-                    })
+                (
+                    conversation_id,
+                    extract_workflow_json_from_conversation_state(&state, &workflow_label)
+                        .and_then(|payload| {
+                            materialize_workflow_step_output_value(
+                                db.inner(),
+                                &skill_id_for_db,
+                                step_id,
+                                &payload,
+                            )
+                        })
+                        .map_err(|err| {
+                            format!(
+                                "{} materialization failed: {}",
+                                workflow_step_log_name(step_id as i32),
+                                err
+                            )
+                        }),
+                )
             }
-            None => Err(format!(
-                "{} materialization listener closed",
-                workflow_step_log_name(step_id as i32)
-            )),
+            None => (
+                String::new(),
+                Err(format!(
+                    "{} materialization listener closed",
+                    workflow_step_log_name(step_id as i32)
+                )),
+            ),
         };
 
         app_handle.unlisten(listener_to_remove);
@@ -191,7 +202,7 @@ fn install_workflow_step_materialization_listener(
         }
 
         let payload = WorkflowStepMaterializedPayload {
-            agent_id: agent_id.clone(),
+            conversation_id,
             skill_name,
             step_id,
             success: result.is_ok(),
@@ -214,7 +225,7 @@ fn install_workflow_step_materialization_listener(
 
 /// Core logic for launching a single workflow step via a persistent skill turn.
 /// Builds the prompt, constructs the runtime config, and starts the request.
-/// Returns the agent_id, which is also the OpenHands request_id.
+/// Returns the conversation_id for the started workflow step run.
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     runs: &WorkflowStepRunManager,
@@ -438,7 +449,7 @@ async fn run_workflow_step_inner(
     let start_result =
         dispatch_persistent_skill_turn(app, &agent_id, &settings.plugin_slug, config, runs).await;
 
-    start_result.map_err(|e| {
+    let conversation_id = start_result.map_err(|e| {
         log::error!(
             "[run_workflow_step] Failed to start persistent request for agent={}: {}",
             agent_id,
@@ -453,7 +464,7 @@ async fn run_workflow_step_inner(
         e
     })?;
 
-    Ok(agent_id)
+    Ok(conversation_id)
 }
 
 #[tauri::command]
@@ -622,7 +633,7 @@ pub async fn run_workflow_step(
 
 /// Run the answer-evaluator agent as a persistent skill turn.
 ///
-/// Returns the agent ID for the frontend to subscribe to completion events.
+/// Returns the conversation ID for the frontend to subscribe to completion events.
 #[tauri::command]
 pub async fn run_answer_evaluator(
     app: tauri::AppHandle,
@@ -721,7 +732,7 @@ pub async fn run_answer_evaluator(
         );
     }
 
-    dispatch_persistent_skill_turn(
+    let conversation_id = dispatch_persistent_skill_turn(
         &app,
         &agent_id,
         &settings.plugin_slug,
@@ -741,7 +752,7 @@ pub async fn run_answer_evaluator(
             e
         })?;
 
-    Ok(agent_id)
+    Ok(conversation_id)
 }
 
 /// Cancel a running workflow step request by agent_id.
