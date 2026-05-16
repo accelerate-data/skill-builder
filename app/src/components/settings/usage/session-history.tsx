@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { ChevronUp, ChevronDown, CheckCircle2, XCircle } from "lucide-react"
-import type { AgentRunRecord, UsageByModel } from "@/lib/types"
+import type { ConversationRunRecord, UsageByModel } from "@/lib/types"
 import {
   Card,
   CardContent,
@@ -26,7 +26,7 @@ import {
 } from "./usage-helpers"
 
 interface SessionHistoryProps {
-  agentRuns: AgentRunRecord[]
+  conversationRuns: ConversationRunRecord[]
   byModel: UsageByModel[]
   modelFamilyFilter: string | null
   setModelFamilyFilter: (v: string | null) => void
@@ -38,14 +38,14 @@ interface SessionHistoryProps {
 }
 
 export function SessionHistory({
-  agentRuns, byModel, modelFamilyFilter, setModelFamilyFilter,
+  conversationRuns, byModel, modelFamilyFilter, setModelFamilyFilter,
   stepFilter, setStepFilter, sortCol, sortDir, onSort,
 }: SessionHistoryProps) {
 
   const availableModels = useMemo(() => byModel.map((m) => m.model).sort(), [byModel])
 
   const filteredRuns = useMemo(() => {
-    let rows = agentRuns
+    let rows = conversationRuns
     if (stepFilter !== "all") rows = rows.filter((r) => r.step_id === stepFilter)
     // Model-family filtering is applied at the DB level via query filters.
     return [...rows].sort((a, b) => {
@@ -60,7 +60,7 @@ export function SessionHistory({
       }
       return sortDir === "asc" ? cmp : -cmp
     })
-  }, [agentRuns, stepFilter, sortCol, sortDir])
+  }, [conversationRuns, stepFilter, sortCol, sortDir])
 
   return (
     <Card>
@@ -149,7 +149,7 @@ export function SessionHistory({
                 const isComplete = run.status === "completed"
                 const isCancelled = run.status === "cancelled"
                 return (
-                  <tr key={run.agent_id} className="hover:bg-muted/40 transition-colors">
+                  <tr key={run.conversation_id} className="hover:bg-muted/40 transition-colors">
                     <td className="pl-4 py-2 text-xs text-muted-foreground whitespace-nowrap border-b border-border/50">
                       {formatSessionTime(run.started_at)}
                     </td>

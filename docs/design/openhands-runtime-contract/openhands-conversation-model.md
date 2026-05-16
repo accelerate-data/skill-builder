@@ -49,7 +49,7 @@ This model is shared across Refine, Workflow, Eval Workbench, and throwaway Open
 | Canonical events carry a small app-owned envelope for UI metadata. | The UI needs stable local ids, local status, and display hints without rewriting the underlying OpenHands event. |
 | Projection into display nodes is a pure view layer. | Renderer-facing display nodes should be render outputs, not authoritative state. |
 | Product surfaces render one shared event timeline, not synthetic turn ownership. | The UI already differentiates event types visually, so a flat event stream is sufficient and more robust than inferred turn grouping. |
-| `agentId` may remain in the transport adapter temporarily, but it is not part of the target public model. | The live bridge is still keyed by `agent_id` today, but the new conversation model should be conversation-centric. |
+| `conversationId` is the canonical runtime and transcript identity at every active boundary. | The live bridge, canonical store, and render path are all conversation-centric now. |
 
 ## Canonical Event Model
 
@@ -203,7 +203,7 @@ Important rules:
 
 - The renderer should not need to infer “which turn owns this tool call.”
 - The renderer should not depend on `displayItemStartIndex` slicing.
-- The renderer should not treat `agentId` as the grouping key.
+- The renderer should treat `conversationId` as the grouping key.
 - Live and restored views must use the same canonical event stream and the same display mapping rules.
 - `projectConversationEvents(...)` is the current pure projection boundary from canonical events into renderer-facing `DisplayNode` values.
 
@@ -223,17 +223,9 @@ OpenHands raw events / frontend send acknowledgements
   -> UI rendering
 ```
 
-## Transport Compatibility
+## Transport Contract
 
-The current live event bridge is still keyed by `agent_id` in Tauri events and frontend listeners.
-
-That does not change the target conversation model.
-
-Short-term compatibility rule:
-
-- transport adapters may still use `agent_id` internally to subscribe, route, or normalize events
-- the canonical conversation model remains keyed by `conversationId`
-- `agentId` must not be a first-class public transcript concept
+The live event bridge is keyed by `conversation_id` in Tauri events and frontend listeners.
 
 Current implementation state:
 

@@ -31,18 +31,18 @@ sequenceDiagram
     U->>CMDQ: Send refine message
     CMDQ->>UI: append user bubble + open logical turn
     CMDQ->>CMD: send_refine_message(conversation_id, message)
-    CMD->>L3: send_tracked_openhands_message(agent_id, conversation_id, prompt)
+    CMD->>L3: send_tracked_openhands_message(conversation_id, prompt)
     L3->>L1: send_message_to_openhands_conversation(...)
     alt no live runner for conversation
         L3->>L1: run_openhands_conversation(..., PromptDelivery::AlreadySent)
         L1->>OHS: POST /events
         L1->>OHS: POST /run
         L3-->>CMD: send accepted + run_started = true
-        CMD-->>CMDQ: agent_id, conversation_id, run_started=true
+        CMD-->>CMDQ: conversation_id, run_started=true
         CMDQ->>UI: mark turn accepted + register run + set isRunning=true
     else live runner already active
         L3-->>CMD: send accepted + run_started = false
-        CMD-->>CMDQ: same agent_id, conversation_id, run_started=false
+        CMD-->>CMDQ: same conversation_id, run_started=false
         CMDQ->>UI: mark turn accepted on same live run
     end
 
@@ -67,7 +67,7 @@ sequenceDiagram
 - Refine uses one persistent selected-skill conversation.
 - The first user message for an idle conversation is `send` then `run`.
 - A follow-up message during an active run is `send` only.
-- Follow-up sends reuse the existing `agent_id`; they do not create a second local run.
+- Follow-up sends reuse the existing `conversation_id`; they do not create a second local run.
 - Refine still creates a new logical turn for every user send, even when the same OpenHands run stays active. Later tool calls and outputs are rendered under that turn until the next user send starts the next turn boundary.
 - The UI command lane owns turn creation and send acceptance state; the UI event lane owns inbound runtime events and attaches them to the current turn.
 - The live event stream must not be the only source of truth for whether a user turn exists. A send that is locally accepted by the backend still belongs to a turn even if the next tool or agent event arrives later.

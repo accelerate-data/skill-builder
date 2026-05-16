@@ -218,7 +218,6 @@ export interface SkillSessionInfo {
 }
 
 export interface RefineDispatchResult {
-  agent_id: string;
   conversation_id: string;
   run_started: boolean;
 }
@@ -259,9 +258,11 @@ export interface ReconciliationResult {
   auto_cleaned: number;
 }
 
-export interface AgentRunRecord {
-  agent_id: string;
+export interface ConversationRunRecord {
+  conversation_id: string;
+  skill_id: number;
   skill_name: string;
+  plugin_slug: string;
   step_id: number;
   model: string;
   status: string;
@@ -283,11 +284,12 @@ export interface AgentRunRecord {
 
 export interface WorkflowSessionRecord {
   session_id: string;
+  skill_id: number | null;
   skill_name: string;
   min_step: number;
   max_step: number;
   steps_csv: string;
-  agent_count: number;
+  conversation_count: number;
   total_cost: number;
   total_input_tokens: number;
   total_output_tokens: number;
@@ -574,6 +576,7 @@ export interface DetailedResearchOutput {
   refinement_count: number;
   section_count: number;
   clarifications_json: unknown;
+  refinements_json: unknown;
 }
 
 /** Structured output for the OpenHands decision-confirmation workflow step. */

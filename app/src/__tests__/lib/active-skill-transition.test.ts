@@ -51,7 +51,7 @@ vi.mock("@/stores/skill-store", () => ({
 const agentRunsState = vi.hoisted(() => ({
   runs: {
     "workflow-agent-1": {
-      agentId: "workflow-agent-1",
+      conversationId: "workflow-agent-1",
       status: "running",
       runSource: "workflow",
       skillName: "sales-skill",
@@ -104,7 +104,7 @@ describe("active-skill-transition", () => {
     skillSessionState.activeAgentId = "refine-agent-1";
     agentRunsState.runs = {
       "workflow-agent-1": {
-        agentId: "workflow-agent-1",
+        conversationId: "workflow-agent-1",
         status: "running",
         runSource: "workflow",
         skillName: "sales-skill",

@@ -107,14 +107,14 @@ Core APIs:
 | `shutdown_openhands_server()` | Shut down the Agent Server process during app-exit lifecycle handling. |
 | `start_openhands_session(app, config, saved_conversation_id)` | Resume or create a persistent conversation and return restored events for hydration. |
 | `send_message_to_openhands_conversation(config, conversation_id, prompt)` | Append a user message to an existing conversation without starting a new local run task. |
-| `run_openhands_conversation(app, agent_id, config, conversation_id)` | Start or resume active processing for a conversation and own the live socket/task for that run. |
+| `run_openhands_conversation(app, config, conversation_id, prompt_delivery)` | Start or resume active processing for a conversation and own the live socket/task for that run. |
 | `ask_openhands_agent(config, conversation_id, question)` | Ask the agent a non-authoritative question about the current conversation state without changing product-layer runtime ownership. |
 | `pause_openhands_conversation(config, conversation_id)` | Pause active execution without deleting the conversation. |
 | `delete_openhands_conversation(config, conversation_id)` | Delete a conversation from the OpenHands Agent Server. Used when deleting a skill or after a successful fork. |
 | `fork_openhands_conversation(app, config, source_conversation_id)` | Fork an existing paused conversation into a new conversation ID and return restored events for the fork. |
 
 Raw OpenHands wrappers only handle server, runtime, and conversation concerns.
-They do not take `agent_id`. The raw layer exposes one pause API,
+They take only conversation-centric runtime inputs. The raw layer exposes one pause API,
 `pause_openhands_conversation(config, conversation_id)`, and one delete API,
 `delete_openhands_conversation(config, conversation_id)`. Server shutdown is
 also a raw-layer API, exposed as `shutdown_openhands_server()`, so app-exit
@@ -210,17 +210,17 @@ behavior above the raw conversation/session APIs.
 
 This layer owns:
 
-- app-owned `agent_id`
+- app-tracked conversation run ownership
 - local event routing
 - cancel/task registries
 - timeout cleanup
-- tracked run ownership and tracked throwaway send-and-wait wrappers
+- tracked send and tracked throwaway send-and-wait wrappers
 
 Important rules:
 
-- `agent_id` enters only at this layer.
-- forking a conversation does not create a new `agent_id`.
-- the next live send/run on the fork creates the new tracked `agent_id`.
+- `conversation_id` remains the canonical run identity at this layer.
+- forking a conversation creates a new `conversation_id`.
+- the next live send/run on the fork rebinds local run ownership to that new `conversation_id`.
 - tracked runs stop through pause semantics; this layer does not own separate
   abort/terminate runtime concepts in the target model.
 - a live conversation has one tracked local runner at a time.
@@ -361,7 +361,7 @@ Higher layers should prefer the highest wrapper that matches their intent:
   revision
 - workflow reset/redo should pause the active conversation, reset local product
   state, fork the paused conversation, delete the source conversation, rebind
-  the skill to the fork, and only create a new `agent_id` when the next live
+  the skill to the fork, and only create a new live run when the next
   send/run begins
 - deleting a skill should pause all bound conversations, then delete them from
   the OpenHands server before removing local bookkeeping and filesystem state
@@ -372,7 +372,7 @@ Higher layers should prefer the highest wrapper that matches their intent:
 - direct callers of `agents/openhands_server` should be implementing wrapper
   behavior, not product flows; that module owns only runtime/config/session/
   conversation concerns
-- any wrapper that needs `agent_id`, local listener wiring, cancel signaling,
+- any wrapper that needs local listener wiring, cancel signaling,
   task-handle tracking, or timeout cleanup should live above the raw
   `agents/openhands_server` layer
 
@@ -498,9 +498,8 @@ Important contract properties:
 - persistent conversation ids are stored in `skill_conversations`
 - a completed turn does not destroy the conversation
 - later turns reuse the same session when the saved conversation id is valid
-- a fork creates a new `conversation_id`, deletes the source conversation, and
-  does not itself create a new `agent_id`
-- the next live send/run on the fork creates the new tracked `agent_id`
+- a fork creates a new `conversation_id` and deletes the source conversation
+- the next live send/run on the fork reuses that new canonical `conversation_id`
 
 ## Throwaway Runs
 

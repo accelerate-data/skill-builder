@@ -270,12 +270,11 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Scenario 8: Detailed-research Re-run resets to step 0
+  // Scenario 8: Detailed-research Re-run preserves step 0 and reruns step 1
   // Source: workflow-steps.spec.ts — "resetting step 1 from step 2 via Re-run button"
-  // The Re-run button on step 1 (Detailed Research) must reset to step 0, not step 1.
-  // This guards the special-case: setResetTarget(currentStep === 1 ? 0 : currentStep).
+  // Detailed Research reruns should keep Research completed and restart step 1.
   // ---------------------------------------------------------------------------
-  test("Re-run on Detailed Research resets workflow to step 0", async ({ page }) => {
+  test("Re-run on Detailed Research preserves step 0 and reruns step 1", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, {
       ...WORKFLOW_OVERRIDES,
       get_workflow_state: {
@@ -303,9 +302,9 @@ test.describe("Workflow Smoke", { tag: "@workflow" }, () => {
     // Confirm the reset
     await page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }).click();
 
-    // Must land on step 0 (Research), not step 1 (Detailed Research)
-    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Step 2: Detailed Research")).not.toBeVisible({ timeout: 5_000 });
+    // Must stay on Detailed Research while Research remains preserved.
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Step 1: Research")).not.toBeVisible({ timeout: 5_000 });
   });
 
   // ---------------------------------------------------------------------------

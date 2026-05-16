@@ -431,9 +431,12 @@ fn test_performance_indexes_migration_creates_current_query_indexes() {
     for index_name in [
         "idx_workflow_steps_run_step",
         "idx_workflow_artifacts_run",
-        "idx_agent_runs_session_reset_started",
-        "idx_agent_runs_skill_started",
-        "idx_workflow_sessions_reset_started_skill",
+        "idx_conversation_runs_skill_id",
+        "idx_conversation_runs_workflow_session_id",
+        "idx_conversation_runs_step_id",
+        "idx_conversation_runs_started_at",
+        "idx_workflow_sessions_started_at_skill",
+        "idx_workflow_sessions_skill_id_active",
     ] {
         let exists: i64 = conn
             .query_row(
@@ -1093,7 +1096,7 @@ fn test_delete_workflow_run_preserves_agent_run_usage_history() {
     save_workflow_run(&conn, "my-skill", 0, "pending", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-usage", skill_id, 12345).unwrap();
 
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-usage-1",
         "my-skill",
@@ -1119,7 +1122,7 @@ fn test_delete_workflow_run_preserves_agent_run_usage_history() {
 
     let count_before: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'",
+            "SELECT COUNT(*) FROM conversation_runs WHERE skill_name = 'my-skill'",
             [],
             |row| row.get(0),
         )
@@ -1130,7 +1133,7 @@ fn test_delete_workflow_run_preserves_agent_run_usage_history() {
 
     let count_after: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'",
+            "SELECT COUNT(*) FROM conversation_runs WHERE skill_name = 'my-skill'",
             [],
             |row| row.get(0),
         )
@@ -1634,9 +1637,9 @@ fn test_usage_tracking_migration_is_idempotent() {
 }
 
 #[test]
-fn test_persist_agent_run_inserts_correctly() {
+fn test_persist_conversation_run_inserts_correctly() {
     let conn = create_test_db();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "my-skill",
@@ -1663,7 +1666,7 @@ fn test_persist_agent_run_inserts_correctly() {
     let runs = get_recent_runs(&conn, 10).unwrap();
     assert_eq!(runs.len(), 1);
     let run = &runs[0];
-    assert_eq!(run.agent_id, "agent-1");
+    assert_eq!(run.conversation_id, "agent-1");
     assert_eq!(run.skill_name, "my-skill");
     assert_eq!(run.step_id, 3);
     assert_eq!(run.model, "sonnet");
@@ -1685,9 +1688,9 @@ fn test_persist_agent_run_inserts_correctly() {
 }
 
 #[test]
-fn test_persist_agent_run_without_session_id() {
+fn test_persist_conversation_run_without_session_id() {
     let conn = create_test_db();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "my-skill",
@@ -1717,12 +1720,12 @@ fn test_persist_agent_run_without_session_id() {
 }
 
 #[test]
-fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
+fn test_persist_conversation_run_shutdown_does_not_overwrite_completed() {
     let conn = create_test_db();
     let ws = Some("wf-session-1");
 
     // First persist as completed with real data
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "my-skill",
@@ -1747,7 +1750,7 @@ fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
     .unwrap();
 
     // Then attempt to overwrite with shutdown (partial/zero data)
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "my-skill",
@@ -1780,12 +1783,12 @@ fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
 }
 
 #[test]
-fn test_persist_agent_run_shutdown_overwrites_running() {
+fn test_persist_conversation_run_shutdown_overwrites_running() {
     let conn = create_test_db();
     let ws = Some("wf-session-1");
 
     // First persist as running (agent start)
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "my-skill",
@@ -1810,7 +1813,7 @@ fn test_persist_agent_run_shutdown_overwrites_running() {
     .unwrap();
 
     // Then shutdown with partial data — should succeed
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "my-skill",
@@ -1846,7 +1849,7 @@ fn test_get_usage_summary_correct_aggregates() {
     let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-1");
     create_workflow_session_by_skill_id(&conn, "wf-session-1", skill_id, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -1869,7 +1872,7 @@ fn test_get_usage_summary_correct_aggregates() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-a",
@@ -1893,7 +1896,7 @@ fn test_get_usage_summary_correct_aggregates() {
     )
     .unwrap();
     // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-3",
         "skill-a",
@@ -1939,7 +1942,7 @@ fn test_reset_usage_marks_runs() {
     let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-r");
     create_workflow_session_by_skill_id(&conn, "wf-session-r", skill_id_a, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -1962,7 +1965,7 @@ fn test_reset_usage_marks_runs() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-a",
@@ -1988,7 +1991,7 @@ fn test_reset_usage_marks_runs() {
 
     reset_usage(&conn).unwrap();
 
-    // After reset, summary should show zero (both agent_runs and workflow_sessions are marked)
+    // After reset, summary should show zero (both conversation_runs and workflow_sessions are marked)
     let summary = get_usage_summary(&conn, false, None, None).unwrap();
     assert_eq!(summary.total_runs, 0);
     assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
@@ -2004,7 +2007,7 @@ fn test_reset_usage_marks_runs() {
     // New runs after reset should still be visible
     let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "wf-session-r2", skill_id_b, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-3",
         "skill-b",
@@ -2039,7 +2042,7 @@ fn test_get_usage_by_step_groups_correctly() {
     let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-s");
     create_workflow_session_by_skill_id(&conn, "wf-session-s", skill_id, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -2062,7 +2065,7 @@ fn test_get_usage_by_step_groups_correctly() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-a",
@@ -2085,7 +2088,7 @@ fn test_get_usage_by_step_groups_correctly() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-3",
         "skill-a",
@@ -2130,7 +2133,7 @@ fn test_get_usage_by_model_groups_correctly() {
     let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-m");
     create_workflow_session_by_skill_id(&conn, "wf-session-m", skill_id, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -2153,7 +2156,7 @@ fn test_get_usage_by_model_groups_correctly() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-a",
@@ -2176,7 +2179,7 @@ fn test_get_usage_by_model_groups_correctly() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-3",
         "skill-a",
@@ -2214,14 +2217,14 @@ fn test_get_usage_by_model_groups_correctly() {
 }
 
 #[test]
-fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
+fn test_get_conversation_runs_model_filter_matches_exact_model_substring() {
     // Verify models filtering matches the persisted provider model string directly.
     let conn = create_test_db();
     let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-mf");
     create_workflow_session_by_skill_id(&conn, "wf-session-mf", skill_id, 1000).unwrap();
 
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "run-sonnet",
         "skill-a",
@@ -2244,7 +2247,7 @@ fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "run-opus",
         "skill-a",
@@ -2267,7 +2270,7 @@ fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "run-haiku",
         "skill-a",
@@ -2292,21 +2295,23 @@ fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
     .unwrap();
 
     // No filter: all three returned
-    let all = get_agent_runs(&conn, false, None, None, None, 100).unwrap();
+    let all = get_conversation_runs(&conn, false, None, None, None, 100).unwrap();
     assert_eq!(all.len(), 3);
 
     // Filter exact Opus provider model: only opus row
-    let opus = get_agent_runs(&conn, false, None, None, Some("claude-opus-4-6"), 100).unwrap();
+    let opus =
+        get_conversation_runs(&conn, false, None, None, Some("claude-opus-4-6"), 100).unwrap();
     assert_eq!(opus.len(), 1);
-    assert_eq!(opus[0].agent_id, "run-opus");
+    assert_eq!(opus[0].conversation_id, "run-opus");
 
     // Filter exact Sonnet provider model: only sonnet row
-    let sonnet = get_agent_runs(&conn, false, None, None, Some("claude-sonnet-4-6"), 100).unwrap();
+    let sonnet =
+        get_conversation_runs(&conn, false, None, None, Some("claude-sonnet-4-6"), 100).unwrap();
     assert_eq!(sonnet.len(), 1);
-    assert_eq!(sonnet[0].agent_id, "run-sonnet");
+    assert_eq!(sonnet[0].conversation_id, "run-sonnet");
 
     // Filter exact Haiku provider model: only haiku row
-    let haiku = get_agent_runs(
+    let haiku = get_conversation_runs(
         &conn,
         false,
         None,
@@ -2316,11 +2321,11 @@ fn test_get_agent_runs_model_filter_matches_exact_model_substring() {
     )
     .unwrap();
     assert_eq!(haiku.len(), 1);
-    assert_eq!(haiku[0].agent_id, "run-haiku");
+    assert_eq!(haiku[0].conversation_id, "run-haiku");
 }
 
 #[test]
-fn test_persist_agent_run_stores_model_exactly() {
+fn test_persist_conversation_run_stores_model_exactly() {
     // Runtime callers are responsible for passing the Settings-selected provider
     // model ID. Persistence stores whatever it receives without alias mapping.
     let conn = create_test_db();
@@ -2328,7 +2333,7 @@ fn test_persist_agent_run_stores_model_exactly() {
     let ws = Some("wf-norm");
     create_workflow_session_by_skill_id(&conn, "wf-norm", skill_id, 1000).unwrap();
 
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "a-sonnet",
         "skill-x",
@@ -2351,7 +2356,7 @@ fn test_persist_agent_run_stores_model_exactly() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "a-haiku",
         "skill-x",
@@ -2374,7 +2379,7 @@ fn test_persist_agent_run_stores_model_exactly() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "a-opus",
         "skill-x",
@@ -2398,10 +2403,10 @@ fn test_persist_agent_run_stores_model_exactly() {
     )
     .unwrap();
 
-    let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
+    let runs = get_conversation_runs(&conn, false, None, None, None, 10).unwrap();
     let models: std::collections::HashMap<&str, &str> = runs
         .iter()
-        .map(|r| (r.agent_id.as_str(), r.model.as_str()))
+        .map(|r| (r.conversation_id.as_str(), r.model.as_str()))
         .collect();
 
     assert_eq!(models["a-sonnet"], "sonnet");
@@ -2409,9 +2414,9 @@ fn test_persist_agent_run_stores_model_exactly() {
     assert_eq!(models["a-opus"], "opus");
 
     // model filter works on the exact stored value.
-    let opus = get_agent_runs(&conn, false, None, None, Some("opus"), 10).unwrap();
+    let opus = get_conversation_runs(&conn, false, None, None, Some("opus"), 10).unwrap();
     assert_eq!(opus.len(), 1);
-    assert_eq!(opus[0].agent_id, "a-opus");
+    assert_eq!(opus[0].conversation_id, "a-opus");
 }
 
 #[test]
@@ -2422,19 +2427,19 @@ fn test_migration_32_preserves_existing_models() {
     let skill_id = upsert_skill(&conn, "skill-y", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "wf-mig32", skill_id, 1000).unwrap();
     conn.execute(
-        "INSERT INTO agent_runs (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id)
-         VALUES ('old-sonnet', 'skill-y', 0, 'Sonnet', 'completed', 0.10, 'wf-mig32'),
-                ('old-haiku', 'skill-y', 0, 'haiku', 'completed', 0.02, 'wf-mig32'),
-                ('old-opus', 'skill-y', 0, 'Opus', 'completed', 0.50, 'wf-mig32')",
-        [],
+        "INSERT INTO conversation_runs (conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status, total_cost, workflow_session_id)
+         VALUES ('old-sonnet', ?1, 'skill-y', ?2, 0, 'Sonnet', 'completed', 0.10, 'wf-mig32'),
+                ('old-haiku', ?1, 'skill-y', ?2, 0, 'haiku', 'completed', 0.02, 'wf-mig32'),
+                ('old-opus', ?1, 'skill-y', ?2, 0, 'Opus', 'completed', 0.50, 'wf-mig32')",
+        rusqlite::params![skill_id, crate::skill_paths::DEFAULT_PLUGIN_SLUG],
     ).unwrap();
 
     run_reserved_model_settings_migration(&conn).unwrap();
 
-    let runs = get_agent_runs(&conn, false, None, None, None, 10).unwrap();
+    let runs = get_conversation_runs(&conn, false, None, None, None, 10).unwrap();
     let models: std::collections::HashMap<&str, &str> = runs
         .iter()
-        .map(|r| (r.agent_id.as_str(), r.model.as_str()))
+        .map(|r| (r.conversation_id.as_str(), r.model.as_str()))
         .collect();
 
     assert_eq!(models["old-sonnet"], "Sonnet");
@@ -2443,10 +2448,10 @@ fn test_migration_32_preserves_existing_models() {
 }
 
 #[test]
-fn test_persist_agent_run_auto_creates_workflow_session_for_synthetic_ids() {
+fn test_persist_conversation_run_auto_creates_workflow_session_for_synthetic_ids() {
     let conn = create_test_db();
 
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-r",
         "my-skill",
@@ -2488,7 +2493,7 @@ fn test_persist_agent_run_auto_creates_workflow_session_for_synthetic_ids() {
 fn test_get_usage_by_step_labels_refine_and_test() {
     let conn = create_test_db();
 
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-refine",
         "skill-a",
@@ -2511,7 +2516,7 @@ fn test_get_usage_by_step_labels_refine_and_test() {
         Some("synthetic:refine:skill-a:agent-refine"),
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-test",
         "skill-a",
@@ -2545,7 +2550,7 @@ fn test_get_usage_by_step_labels_refine_and_test() {
 #[test]
 fn test_reset_usage_excludes_from_by_step_and_by_model() {
     let conn = create_test_db();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -2578,7 +2583,7 @@ fn test_reset_usage_excludes_from_by_step_and_by_model() {
     assert!(by_model.is_empty());
 }
 
-// --- Composite PK (agent_id, model) tests ---
+// --- Composite PK (conversation_id, model) tests ---
 
 #[test]
 fn test_composite_pk_allows_same_agent_different_models() {
@@ -2587,8 +2592,8 @@ fn test_composite_pk_allows_same_agent_different_models() {
     let ws = Some("wf-session-cpk");
     create_workflow_session_by_skill_id(&conn, "wf-session-cpk", skill_id, 1000).unwrap();
 
-    // Insert same agent_id with two different models (simulates sub-agent spawning)
-    persist_agent_run(
+    // Insert same conversation_id with two different models (simulates sub-agent spawning)
+    persist_conversation_run(
         &conn,
         "orchestrator-1",
         "skill-a",
@@ -2611,7 +2616,7 @@ fn test_composite_pk_allows_same_agent_different_models() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "orchestrator-1",
         "skill-a",
@@ -2636,7 +2641,7 @@ fn test_composite_pk_allows_same_agent_different_models() {
     .unwrap();
 
     // Both rows should exist
-    let runs = get_session_agent_runs(&conn, "wf-session-cpk").unwrap();
+    let runs = get_session_conversation_runs(&conn, "wf-session-cpk").unwrap();
     assert_eq!(runs.len(), 2);
 
     // Verify distinct stored model IDs; clean-break routing does not normalize aliases.
@@ -2644,8 +2649,8 @@ fn test_composite_pk_allows_same_agent_different_models() {
     assert!(models.contains(&"opus"));
     assert!(models.contains(&"sonnet"));
 
-    // Both should have the same agent_id
-    assert!(runs.iter().all(|r| r.agent_id == "orchestrator-1"));
+    // Both should have the same conversation_id
+    assert!(runs.iter().all(|r| r.conversation_id == "orchestrator-1"));
 
     // get_usage_by_model groups by the exact stored model string.
     let by_model = get_usage_by_model(&conn, false, None, None).unwrap();
@@ -2664,8 +2669,8 @@ fn test_composite_pk_allows_same_agent_different_models() {
 fn test_composite_pk_upsert_same_agent_and_model() {
     let conn = create_test_db();
 
-    // Insert then update same agent_id + model — should replace, not duplicate
-    persist_agent_run(
+    // Insert then update same conversation_id + model — should replace, not duplicate
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -2688,7 +2693,7 @@ fn test_composite_pk_upsert_same_agent_and_model() {
         None,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -2737,14 +2742,14 @@ fn test_composite_pk_migration_is_idempotent() {
 }
 
 #[test]
-fn test_composite_pk_session_agent_count_uses_distinct() {
+fn test_composite_pk_session_conversation_count_uses_distinct() {
     let conn = create_test_db();
     let skill_id = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     let ws = Some("wf-session-distinct");
     create_workflow_session_by_skill_id(&conn, "wf-session-distinct", skill_id, 1000).unwrap();
 
     // Same agent uses two models
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -2767,7 +2772,7 @@ fn test_composite_pk_session_agent_count_uses_distinct() {
         ws,
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -2792,7 +2797,7 @@ fn test_composite_pk_session_agent_count_uses_distinct() {
     .unwrap();
 
     // Different agent, one model
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-a",
@@ -2818,8 +2823,8 @@ fn test_composite_pk_session_agent_count_uses_distinct() {
 
     let sessions = get_recent_workflow_sessions(&conn, 10, false, None, None).unwrap();
     assert_eq!(sessions.len(), 1);
-    // agent_count should be 2 (distinct agents), not 3 (rows)
-    assert_eq!(sessions[0].agent_count, 2);
+    // conversation_count should be 2 (distinct agents), not 3 (rows)
+    assert_eq!(sessions[0].conversation_count, 2);
     // Total cost should sum all three rows
     assert!((sessions[0].total_cost - 0.63).abs() < 1e-10);
 }
@@ -3230,7 +3235,7 @@ fn test_get_usage_summary_hide_cancelled() {
     // Session with real cost
     let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-cost", skill_id_a, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -3257,7 +3262,7 @@ fn test_get_usage_summary_hide_cancelled() {
     // Session with zero cost (cancelled)
     let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-zero", skill_id_b, 2000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-b",
@@ -3293,7 +3298,7 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
     // Session 1
     let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-1", skill_id_a, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -3320,7 +3325,7 @@ fn test_get_recent_workflow_sessions_returns_sessions() {
     // Session 2
     let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-2", skill_id_b, 2000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-b",
@@ -3368,7 +3373,7 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
     // Session with cost
     let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-good", skill_id_a, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1",
         "skill-a",
@@ -3395,7 +3400,7 @@ fn test_get_recent_workflow_sessions_hide_cancelled() {
     // Session with zero cost
     let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-cancelled", skill_id_b, 2000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2",
         "skill-b",
@@ -3431,7 +3436,7 @@ fn test_get_usage_summary_multiple_sessions() {
     // Session 1: two agent runs
     let skill_id_a = upsert_skill(&conn, "skill-a", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-1", skill_id_a, 1000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1a",
         "skill-a",
@@ -3454,7 +3459,7 @@ fn test_get_usage_summary_multiple_sessions() {
         Some("sess-1"),
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-1b",
         "skill-a",
@@ -3481,7 +3486,7 @@ fn test_get_usage_summary_multiple_sessions() {
     // Session 2: one agent run
     let skill_id_b = upsert_skill(&conn, "skill-b", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-2", skill_id_b, 2000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-2a",
         "skill-b",
@@ -3508,7 +3513,7 @@ fn test_get_usage_summary_multiple_sessions() {
     // Session 3: two agent runs
     let skill_id_c = upsert_skill(&conn, "skill-c", "skill-builder", "domain").unwrap();
     create_workflow_session_by_skill_id(&conn, "sess-3", skill_id_c, 3000).unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-3a",
         "skill-c",
@@ -3531,7 +3536,7 @@ fn test_get_usage_summary_multiple_sessions() {
         Some("sess-3"),
     )
     .unwrap();
-    persist_agent_run(
+    persist_conversation_run(
         &conn,
         "agent-3b",
         "skill-c",
@@ -3671,12 +3676,19 @@ fn test_workflow_runs_extended_migration_is_idempotent() {
 fn test_backfill_synthetic_sessions_migration_creates_missing_sessions() {
     let conn = create_test_db();
     save_workflow_run(&conn, "legacy-skill", 0, "completed", "domain").unwrap();
+    let skill_id = get_skill_master_id_in_plugin(
+        &conn,
+        "legacy-skill",
+        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
+    )
+    .unwrap()
+    .unwrap();
 
     conn.execute(
-        "INSERT INTO agent_runs
-         (agent_id, skill_name, step_id, model, status, total_cost, workflow_session_id, started_at, completed_at)
-         VALUES ('legacy-agent-1', 'legacy-skill', -10, 'sonnet', 'completed', 0.25, 'synthetic:refine:legacy-skill:legacy-agent-1', datetime('now') || 'Z', datetime('now') || 'Z')",
-        [],
+        "INSERT INTO conversation_runs
+         (conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status, total_cost, workflow_session_id, started_at, completed_at)
+         VALUES ('legacy-agent-1', ?1, 'legacy-skill', ?2, -10, 'sonnet', 'completed', 0.25, 'synthetic:refine:legacy-skill:legacy-agent-1', datetime('now') || 'Z', datetime('now') || 'Z')",
+        rusqlite::params![skill_id, crate::skill_paths::DEFAULT_PLUGIN_SLUG],
     )
     .unwrap();
 
@@ -4138,7 +4150,7 @@ fn test_fk_backfill_populates_all_child_tables() {
 }
 
 #[test]
-fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
+fn test_get_step_conversation_runs_uses_workflow_run_id_fk() {
     let conn = create_test_db();
 
     // Create skill via save_workflow_run (also creates skills master row).
@@ -4148,8 +4160,8 @@ fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
     // Create a workflow session.
     create_workflow_session_by_skill_id(&conn, "session-1", skill_id, std::process::id()).unwrap();
 
-    // Insert agent run with step_id=3 and status="completed" so it appears in get_step_agent_runs.
-    persist_agent_run(
+    // Insert agent run with step_id=3 and status="completed" so it appears in get_step_conversation_runs.
+    persist_conversation_run(
         &conn,
         "agent-step-1",
         "step-test-skill",
@@ -4173,28 +4185,28 @@ fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
     )
     .unwrap();
 
-    // persist_agent_run does not populate workflow_run_id — backfill it here, mirroring
+    // persist_conversation_run does not populate workflow_run_id — backfill it here, mirroring
     // what run_fk_columns_migration does for pre-existing rows.
     let wr_id = get_workflow_run_id_by_skill_id(&conn, skill_id)
         .unwrap()
         .unwrap();
     conn.execute(
-        "UPDATE agent_runs SET workflow_run_id = ?1 WHERE agent_id = 'agent-step-1'",
+        "UPDATE conversation_runs SET workflow_run_id = ?1 WHERE conversation_id = 'agent-step-1'",
         rusqlite::params![wr_id],
     )
     .unwrap();
 
-    // Call get_step_agent_runs for the correct step — should return 1 run.
-    let runs = get_step_agent_runs(&conn, "step-test-skill", 3).unwrap();
+    // Call get_step_conversation_runs for the correct step — should return 1 run.
+    let runs = get_step_conversation_runs(&conn, "step-test-skill", 3).unwrap();
     assert_eq!(runs.len(), 1, "should find 1 agent run for step 3");
     assert_eq!(runs[0].step_id, 3);
 
     // Wrong step ID — should return empty.
-    let wrong_step = get_step_agent_runs(&conn, "step-test-skill", 99).unwrap();
+    let wrong_step = get_step_conversation_runs(&conn, "step-test-skill", 99).unwrap();
     assert!(wrong_step.is_empty(), "wrong step should return empty vec");
 
     // Nonexistent skill — should return empty (no workflow_run_id found).
-    let no_skill = get_step_agent_runs(&conn, "nonexistent-skill", 3).unwrap();
+    let no_skill = get_step_conversation_runs(&conn, "nonexistent-skill", 3).unwrap();
     assert!(
         no_skill.is_empty(),
         "nonexistent skill should return empty vec"
@@ -4463,24 +4475,25 @@ fn test_migration_34_converts_ghost_running_rows_to_shutdown() {
     // Use create_test_db() to get a fully-migrated schema (through migration 34).
     // Then insert rows and re-run the migration to verify idempotency and correctness.
     let conn = create_test_db();
+    let skill_id = upsert_skill(&conn, "my-skill", "skill-builder", "domain").unwrap();
 
     // Insert a ghost running row (as the old startRun() code would have created)
     conn.execute(
-        "INSERT INTO agent_runs
-         (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
+        "INSERT INTO conversation_runs
+         (conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status, input_tokens, output_tokens,
           total_cost, duration_ms, workflow_session_id)
-         VALUES ('ghost-agent', 'my-skill', 1, 'haiku', 'running', 0, 0, 0.0, 0, 'session-abc')",
-        [],
+         VALUES ('ghost-agent', ?1, 'my-skill', ?2, 1, 'haiku', 'running', 0, 0, 0.0, 0, 'session-abc')",
+        rusqlite::params![skill_id, crate::skill_paths::DEFAULT_PLUGIN_SLUG],
     )
     .unwrap();
 
     // Also insert a completed row — migration must not touch it
     conn.execute(
-        "INSERT INTO agent_runs
-         (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
+        "INSERT INTO conversation_runs
+         (conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status, input_tokens, output_tokens,
           total_cost, duration_ms, workflow_session_id)
-         VALUES ('done-agent', 'my-skill', 1, 'sonnet', 'completed', 100, 50, 0.01, 5000, 'session-abc')",
-        [],
+         VALUES ('done-agent', ?1, 'my-skill', ?2, 1, 'sonnet', 'completed', 100, 50, 0.01, 5000, 'session-abc')",
+        rusqlite::params![skill_id, crate::skill_paths::DEFAULT_PLUGIN_SLUG],
     ).unwrap();
 
     // Run migration 34 directly (simulates running on a DB that already has ghost rows
@@ -4489,7 +4502,7 @@ fn test_migration_34_converts_ghost_running_rows_to_shutdown() {
 
     let ghost_status: String = conn
         .query_row(
-            "SELECT status FROM agent_runs WHERE agent_id = 'ghost-agent'",
+            "SELECT status FROM conversation_runs WHERE conversation_id = 'ghost-agent'",
             [],
             |row| row.get(0),
         )
@@ -4501,7 +4514,7 @@ fn test_migration_34_converts_ghost_running_rows_to_shutdown() {
 
     let done_status: String = conn
         .query_row(
-            "SELECT status FROM agent_runs WHERE agent_id = 'done-agent'",
+            "SELECT status FROM conversation_runs WHERE conversation_id = 'done-agent'",
             [],
             |row| row.get(0),
         )
@@ -4515,7 +4528,7 @@ fn test_migration_34_converts_ghost_running_rows_to_shutdown() {
     run_ghost_running_rows_migration(&conn).unwrap();
     let still_shutdown: String = conn
         .query_row(
-            "SELECT status FROM agent_runs WHERE agent_id = 'ghost-agent'",
+            "SELECT status FROM conversation_runs WHERE conversation_id = 'ghost-agent'",
             [],
             |row| row.get(0),
         )

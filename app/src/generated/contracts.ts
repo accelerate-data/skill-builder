@@ -196,7 +196,7 @@ export type DecisionsOutput = { version: string; metadata: DecisionsMetadata; de
  * Required fields: `status` (const `"detailed_research_complete"`), `refinement_count`,
  * `section_count`, `clarifications_json`, `refinements_json`.
  */
-export type DetailedResearchOutput = { status: string; refinement_count: number; section_count: number; clarifications_json: ClarificationsFile; refinements_json: ClarificationsFile }
+export type DetailedResearchOutput = { status: string; refinement_count: number; section_count: number; clarifications_json: ClarificationsFile; refinements_json: RefinementsFile }
 
 export type GenerateSkillOutput = { status: string; benchmark_path?: string | null; skipped?: boolean | null; commit_summary?: string | null; call_trace?: string[] | null; verifier_result?: VerifierResult | null }
 
@@ -242,6 +242,11 @@ export type RefinementSectionDto = { section_id: number; ordinal: number; title:
  * Full refinements artifact for a skill.
  */
 export type RefinementsDto = { skill_id: string; version: string; refinement_count: number; must_answer_count: number; question_count: number; section_count: number; title: string; scope_recommendation?: boolean | null; scope_reason?: string | null; scope_next_action?: string | null; error_code?: string | null; error_message?: string | null; warning_code?: string | null; warning_message?: string | null; eval_verdict?: string | null; eval_reasoning?: string | null; eval_at?: number | null; eval_answered_count?: number | null; eval_empty_count?: number | null; eval_vague_count?: number | null; eval_contradictory_count?: number | null; created_at: number; updated_at: number; sections: RefinementSectionDto[]; questions: RefinementQuestionDto[]; notes: RefinementNoteDto[] }
+
+/**
+ * Root type for a refinements file.
+ */
+export type RefinementsFile = { version?: string; metadata?: ClarificationsMetadata; sections?: Section[]; notes?: Note[]; answer_evaluator_notes?: Note[] | null }
 
 /**
  * Structured output produced by the OpenHands research workflow step.

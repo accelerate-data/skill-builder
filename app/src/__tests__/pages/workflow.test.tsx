@@ -208,9 +208,9 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
   };
 }
 
-function startActiveRun(agentId: string, model = "sonnet") {
-  useAgentStore.getState().startSessionRun(agentId, model);
-  useWorkflowStore.getState().setActiveConversationId(agentId);
+function startActiveRun(conversationId: string, model = "sonnet") {
+  useAgentStore.getState().startSessionRun(conversationId, model);
+  useWorkflowStore.getState().setActiveConversationId(conversationId);
 }
 
 // Global reset: ensure location state doesn't leak between describe blocks.
@@ -311,7 +311,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       useAgentStore.getState().applyConversationState("agent-1", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-1",
+        conversationId: "agent-1",
         status: "completed",
         resultText: JSON.stringify({
           status: "research_complete",
@@ -780,7 +780,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().applyConversationState("agent-1", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-1",
+        conversationId: "agent-1",
         status: "completed",
         resultText: JSON.stringify({
           status: "research_complete",
@@ -830,7 +830,7 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
       useAgentStore.getState().applyConversationState("agent-2", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-2",
+        conversationId: "agent-2",
         status: "completed",
         resultText: JSON.stringify({
           status: "detailed_research_complete",
@@ -2682,7 +2682,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
       useAgentStore.getState().applyConversationState("agent-decisions", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-decisions",
+        conversationId: "agent-decisions",
         status: "completed",
         resultText: JSON.stringify({
           version: "1",
@@ -2886,7 +2886,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
       useAgentStore.getState().applyConversationState("agent-d", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-d",
+        conversationId: "agent-d",
         status: "completed",
         resultText: JSON.stringify({
           version: "1",
@@ -3022,7 +3022,7 @@ describe("WorkflowPage — guard and disabled-step lifecycle", () => {
       useAgentStore.getState().applyConversationState("agent-r", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-r",
+        conversationId: "agent-r",
         status: "completed",
         resultText: JSON.stringify({
           status: "detailed_research_complete",
@@ -3103,7 +3103,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       useAgentStore.getState().applyConversationState("agent-build", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-build",
+        conversationId: "agent-build",
         status: "completed",
         resultText: JSON.stringify({
           status: "generated",
@@ -3145,7 +3145,7 @@ describe("WorkflowPage — step 3 generate completion (isolated)", () => {
       useAgentStore.getState().applyConversationState("agent-build", {
         type: "conversation_state",
         runtime: "openhands",
-        agentId: "agent-build",
+        conversationId: "agent-build",
         status: "completed",
         resultText: JSON.stringify({
           status: "generated",
@@ -3264,12 +3264,12 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
 
   async function triggerStep1Gate(
     evaluation: Record<string, unknown>,
-    options?: { agentId?: string; success?: boolean },
+    options?: { conversationId?: string; success?: boolean },
   ) {
-    const agentId = options?.agentId ?? "gate-step1-test";
+    const conversationId = options?.conversationId ?? "gate-step1-test";
     const success = options?.success ?? true;
 
-    vi.mocked(runAnswerEvaluator).mockResolvedValue(agentId);
+    vi.mocked(runAnswerEvaluator).mockResolvedValue(conversationId);
 
     useWorkflowStore.getState().initWorkflow("test-skill", 1, "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -3291,11 +3291,11 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
 
     act(() => {
       if (!success) {
-        useAgentStore.getState().startSessionRun(agentId, "haiku");
-        useAgentStore.getState().completeRun(agentId, false);
+        useAgentStore.getState().startSessionRun(conversationId, "haiku");
+        useAgentStore.getState().completeRun(conversationId, false);
         return;
       }
-      useAgentStore.getState().applyConversationState(agentId, {
+      useAgentStore.getState().applyConversationState(conversationId, {
         type: "conversation_state",
         runtime: "openhands",
         status: "completed",
@@ -3471,7 +3471,7 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
       ],
     };
 
-    await triggerStep1Gate(evaluation, { agentId: "gate-step1-revise" });
+    await triggerStep1Gate(evaluation, { conversationId: "gate-step1-revise" });
 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
@@ -3496,7 +3496,7 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
     };
 
     await triggerStep1Gate(evaluation, {
-      agentId: "gate-step1-contradiction-revise",
+      conversationId: "gate-step1-contradiction-revise",
     });
 
     await waitFor(() => {
@@ -3555,7 +3555,7 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
       per_question: [],
     };
 
-    await triggerStep1Gate(evaluation, { agentId: "gate-step1-bad-verdict" });
+    await triggerStep1Gate(evaluation, { conversationId: "gate-step1-bad-verdict" });
 
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
@@ -3577,7 +3577,7 @@ async function triggerGateDialog(evaluation: Record<string, unknown>) {
     };
 
     await triggerStep1Gate(evaluation, {
-      agentId: "gate-step1-error-agent",
+      conversationId: "gate-step1-error-agent",
       success: false,
     });
 

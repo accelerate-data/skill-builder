@@ -30,7 +30,7 @@ sequenceDiagram
     U->>FE: Run workflow step
     FE->>CMD: run_workflow_step(skill_id, skill_name, step_id)
     CMD->>L2: build_skill_creator_config(intent=WorkflowStep)
-    CMD->>L3: send_tracked_openhands_message(agent_id, conversation_id, prompt)
+    CMD->>L3: send_tracked_openhands_message(conversation_id, prompt)
     L3->>L1: send_message_to_openhands_conversation(...)
     alt no live runner for conversation
         L3->>L1: run_openhands_conversation(..., PromptDelivery::AlreadySent)

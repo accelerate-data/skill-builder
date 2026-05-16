@@ -137,7 +137,7 @@
     },
     "rust_types": {
       "path": "app/src-tauri/src/types/",
-      "description": "Shared Rust types split by domain. mod.rs (re-exports), settings.rs (AppSettings, MarketplaceRegistry), github.rs (GitHubUser, DeviceFlowResponse), workflow.rs (WorkflowRunRow, StepConfig, WorkflowStateResponse), skill.rs (SkillSummary, DiscoveredSkill, SkillFileEntry, SkillFileContent), session.rs (selected-skill OpenHands session restore payloads), usage.rs (UsageSummary, AgentRunRecord), startup.rs (ReconciliationResult, startup types), secret.rs (SecretString, ApiKey newtypes with redacted Debug/Display)."
+      "description": "Shared Rust types split by domain. mod.rs (re-exports), settings.rs (AppSettings, MarketplaceRegistry), github.rs (GitHubUser, DeviceFlowResponse), workflow.rs (WorkflowRunRow, StepConfig, WorkflowStateResponse), skill.rs (SkillSummary, DiscoveredSkill, SkillFileEntry, SkillFileContent), session.rs (selected-skill OpenHands session restore payloads), usage.rs (UsageSummary, ConversationRunRecord), startup.rs (ReconciliationResult, startup types), secret.rs (SecretString, ApiKey newtypes with redacted Debug/Display)."
     },
     "rust_support": {
       "path": "app/src-tauri/src/",

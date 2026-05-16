@@ -1,5 +1,5 @@
 import type {
-  AgentRunRecord,
+  ConversationRunRecord,
   AnswerEvaluationOutput,
   AppSettings,
   AvailablePlugin,
@@ -297,11 +297,11 @@ export interface TauriCommandMap {
     };
     result: WorkflowSessionRecord[];
   };
-  get_step_agent_runs: {
+  get_step_conversation_runs: {
     args: { skillId: number; stepId: number };
-    result: AgentRunRecord[];
+    result: ConversationRunRecord[];
   };
-  get_agent_runs: {
+  get_conversation_runs: {
     args: {
       hideCancelled: boolean;
       startDate: string | null;
@@ -309,7 +309,7 @@ export interface TauriCommandMap {
       modelFilter: string | null;
       limit: number;
     };
-    result: AgentRunRecord[];
+    result: ConversationRunRecord[];
   };
   get_usage_by_step: {
     args: {

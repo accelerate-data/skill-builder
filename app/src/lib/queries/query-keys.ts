@@ -17,7 +17,7 @@ export const queryKeys = {
     all: ["usage"] as const,
     summary: (filters: UsageQueryFilters) => ["usage", "summary", filters] as const,
     sessions: (filters: UsageQueryFilters) => ["usage", "sessions", filters] as const,
-    agentRuns: (filters: UsageQueryFilters) => ["usage", "agent-runs", filters] as const,
+    conversationRuns: (filters: UsageQueryFilters) => ["usage", "conversation-runs", filters] as const,
     byStep: (filters: UsageQueryFilters) => ["usage", "by-step", filters] as const,
     byModel: (filters: UsageQueryFilters) => ["usage", "by-model", filters] as const,
     byDay: (filters: UsageQueryFilters) => ["usage", "by-day", filters] as const,

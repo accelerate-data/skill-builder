@@ -1,6 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getAgentRuns,
+  getConversationRuns,
   getRecentWorkflowSessions,
   getUsageByDay,
   getUsageByModel,
@@ -32,9 +32,9 @@ export function useUsageQueries(filters: UsageQueryFilters) {
         queryFn: () => getRecentWorkflowSessions(50, filters.hideCancelled, filters.startDate, filters.skillFilter),
       },
       {
-        queryKey: queryKeys.usage.agentRuns(filters),
+        queryKey: queryKeys.usage.conversationRuns(filters),
         queryFn: () =>
-          getAgentRuns(filters.hideCancelled, filters.startDate, filters.skillFilter, filters.modelFamilyFilter),
+          getConversationRuns(filters.hideCancelled, filters.startDate, filters.skillFilter, filters.modelFamilyFilter),
       },
       {
         queryKey: queryKeys.usage.byStep(filters),
@@ -54,7 +54,7 @@ export function useUsageQueries(filters: UsageQueryFilters) {
   return {
     summary: results[0],
     recentSessions: results[1],
-    agentRuns: results[2],
+    conversationRuns: results[2],
     byStep: results[3],
     byModel: results[4],
     byDay: results[5],

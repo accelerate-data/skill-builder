@@ -38,7 +38,7 @@ export type {
   DeviceFlowResponse,
   GitHubAuthResult,
   GitHubUser,
-  AgentRunRecord,
+  ConversationRunRecord,
   WorkflowSessionRecord,
   UsageSummary,
   UsageByStep,
@@ -373,17 +373,17 @@ export const getRecentWorkflowSessions = (
     skillName: skillName ?? null,
   });
 
-export const getStepAgentRuns = (skillId: number, stepId: number) =>
-  invokeCommand("get_step_agent_runs", { skillId, stepId });
+export const getStepConversationRuns = (skillId: number, stepId: number) =>
+  invokeCommand("get_step_conversation_runs", { skillId, stepId });
 
-export const getAgentRuns = (
+export const getConversationRuns = (
   hideCancelled: boolean = false,
   startDate?: string | null,
   skillName?: string | null,
   modelFilter?: string | null,
   limit: number = 500,
 ) =>
-  invokeCommand("get_agent_runs", {
+  invokeCommand("get_conversation_runs", {
     hideCancelled,
     startDate: startDate ?? null,
     skillName: skillName ?? null,

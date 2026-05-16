@@ -6,7 +6,7 @@ use std::path::Path;
 
 use super::deploy::copy_directory_recursive;
 use super::evaluation::get_step_output_files;
-use super::guards::{make_agent_id, workflow_step_runtime_label};
+use super::guards::workflow_step_runtime_label;
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
     extract_workflow_json_from_conversation_state, materialize_answer_evaluation_output_value,
@@ -2859,14 +2859,6 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
     assert!(prompt.contains("User context:\n## User Context"));
     assert!(prompt.contains("Clarifications JSON:\n{\n  \"sections\": []\n}"));
     assert!(prompt.contains("Do not create directories with mkdir"));
-}
-
-#[test]
-fn test_make_agent_id() {
-    let id = make_agent_id("test-skill", "research");
-    assert!(id.starts_with("test-skill-research-"));
-    let parts: Vec<&str> = id.rsplitn(2, '-').collect();
-    assert!(parts[0].parse::<u128>().is_ok());
 }
 
 #[test]

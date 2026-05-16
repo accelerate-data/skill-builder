@@ -78,6 +78,7 @@ const mockResponses: Record<string, unknown> = {
   update_skill_tags: undefined,
   get_all_tags: [],
   get_clarifications: null,
+  get_refinements: null,
   get_decisions: null,
   save_decisions_edit: undefined,
   read_file: "",
@@ -87,7 +88,10 @@ const mockResponses: Record<string, unknown> = {
   "plugin:opener|open_url": undefined,
   has_running_agents: false,
   run_workflow_step: "conv-001",
-  run_parallel_agents: { agent_id_a: "conv-001", agent_id_b: "conv-002" },
+  run_parallel_agents: {
+    conversation_id_a: "conv-001",
+    conversation_id_b: "conv-002",
+  },
 
 // Workflow state
   get_workflow_state: { run: null, steps: [] },
@@ -167,6 +171,7 @@ const mockResponses: Record<string, unknown> = {
     is_bundled: false,
   },
   delete_imported_skill: undefined,
+  delete_plugin: undefined,
 get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   list_skill_files: [],
   // GitHub import
@@ -213,8 +218,8 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   // Usage
   get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
   get_recent_workflow_sessions: [],
-  get_agent_runs: [],
-  get_session_agent_runs: [],
+  get_conversation_runs: [],
+  get_session_conversation_runs: [],
   get_usage_by_step: [],
   get_usage_by_model: [],
   get_usage_by_day: [],
@@ -230,7 +235,7 @@ get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\n
   end_workflow_session: undefined,
   navigate_back_to_step: undefined,
   preview_step_reset: [],
-  get_step_agent_runs: [],
+  get_step_conversation_runs: [],
   verify_step_output: true,
   read_latest_benchmark: null,
   "plugin:log|log": undefined,

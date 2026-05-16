@@ -377,7 +377,7 @@ describe("SkillListPanel", () => {
       runs: {
         ...state.runs,
         "agent-1": {
-          agentId: "agent-1",
+          conversationId: "agent-1",
           model: "sonnet",
           status: "running",
           startTime: Date.now(),
@@ -417,7 +417,7 @@ describe("SkillListPanel", () => {
       runs: {
         ...state.runs,
         "agent-1": {
-          agentId: "agent-1",
+          conversationId: "agent-1",
           model: "sonnet",
           status: "running",
           startTime: Date.now(),
@@ -451,7 +451,7 @@ describe("SkillListPanel", () => {
       runs: {
         ...state.runs,
         "agent-1": {
-          agentId: "agent-1",
+          conversationId: "agent-1",
           model: "sonnet",
           status: "running",
           startTime: Date.now(),
@@ -644,7 +644,7 @@ describe("SkillListPanel", () => {
       runs: {
         ...state.runs,
         "agent-1": {
-          agentId: "agent-1",
+          conversationId: "agent-1",
           model: "sonnet",
           status: "running",
           startTime: Date.now(),
@@ -870,7 +870,7 @@ describe("SkillListPanel", () => {
       runs: {
         ...state.runs,
         "agent-1": {
-          agentId: "agent-1",
+          conversationId: "agent-1",
           model: "sonnet",
           status: "running",
           startTime: Date.now(),

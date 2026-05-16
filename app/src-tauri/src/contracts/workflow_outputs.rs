@@ -6,6 +6,7 @@
 
 use crate::contracts::clarifications::ClarificationsFile;
 use crate::contracts::decisions::{Decision, DecisionsMetadata};
+use crate::contracts::refinements::RefinementsFile;
 
 // ─── Step 0: Research Agent ──────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ pub struct DetailedResearchOutput {
     pub refinement_count: i64,
     pub section_count: i64,
     pub clarifications_json: ClarificationsFile,
-    pub refinements_json: ClarificationsFile,
+    pub refinements_json: RefinementsFile,
 }
 
 // ─── Step 2: Decision Confirmation ───────────────────────────────────────────

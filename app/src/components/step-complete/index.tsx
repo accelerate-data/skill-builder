@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, FileText, Clock } from "lucide-react";
-import { getStepAgentRuns } from "@/lib/tauri";
-import type { AgentRunRecord } from "@/lib/types";
+import { getStepConversationRuns } from "@/lib/tauri";
+import type { ConversationRunRecord } from "@/lib/types";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
 import { formatElapsed } from "@/lib/utils";
 import { useStepFiles } from "./use-step-files";
@@ -63,14 +63,14 @@ export function WorkflowStepComplete({
   nextStepLabel,
 }: WorkflowStepCompleteProps) {
   // --- Shared data loading ---
-  const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
+  const [conversationRuns, setAgentRuns] = useState<ConversationRunRecord[]>([]);
 
   useEffect(() => {
     if (skillId == null || stepId == null) {
       setAgentRuns([]);
       return;
     }
-    getStepAgentRuns(skillId, stepId)
+    getStepConversationRuns(skillId, stepId)
       .then((runs) => setAgentRuns(runs))
       .catch((err) => console.error("Failed to load agent stats:", err));
   }, [skillId, stepId]);
@@ -90,7 +90,7 @@ export function WorkflowStepComplete({
   // Shared base props for step components
   const baseProps = {
     stepName, isLastStep, reviewMode, nextStepBlocked, nextStepLabel,
-    onNextStep, onClose, onEval, onResetStep, agentRuns, duration,
+    onNextStep, onClose, onEval, onResetStep, conversationRuns, duration,
   };
 
   const clarProps = {

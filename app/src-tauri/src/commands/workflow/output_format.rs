@@ -9,6 +9,7 @@ use crate::commands::workflow_artifacts::{
 };
 use crate::contracts::clarifications::{ClarificationsFile, Question, Section};
 use crate::contracts::decisions::{ContradictoryInputs, Decision, DecisionStatus};
+use crate::contracts::refinements::RefinementsFile;
 use crate::contracts::workflow_artifacts::{
     validate_contradictory_inputs_state, validate_decision_status,
 };
@@ -596,13 +597,13 @@ pub(crate) fn agent_json_to_clarifications_record(
     }
 }
 
-/// Convert a parsed agent `ClarificationsFile` (received as `refinements_json`)
+/// Convert a parsed agent `RefinementsFile` (received as `refinements_json`)
 /// into a `RefinementsRecord` for the new refinements table family.
 ///
 /// Refinements are flat — no recursive `parent_question_id` nesting.
 pub(crate) fn agent_json_to_refinements_record(
     skill_id: &str,
-    file: ClarificationsFile,
+    file: RefinementsFile,
     now_ms: i64,
 ) -> RefinementsRecord {
     let metadata = file.metadata;

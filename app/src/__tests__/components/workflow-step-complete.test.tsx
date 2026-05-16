@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { AgentRunRecord } from "@/lib/types";
+import type { ConversationRunRecord } from "@/lib/types";
 
 // Mock useClarifications — ResearchStepComplete and DetailedResearchStepComplete use TanStack Query
 const mockUseClarifications = vi.hoisted(() => vi.fn());
@@ -115,7 +115,7 @@ const mockSaveDecisionsContent = vi.fn();
 const mockGetDisabledSteps = vi.fn();
 
 vi.mock("@/lib/tauri", () => ({
-  getStepAgentRuns: (...args: unknown[]) => mockGetStepAgentRuns(...args),
+  getStepConversationRuns: (...args: unknown[]) => mockGetStepAgentRuns(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
   getContextFileContent: (...args: unknown[]) =>
     mockGetContextFileContent(...args),
@@ -188,10 +188,12 @@ vi.mock("@/components/research-summary-card", () => ({
 import { WorkflowStepComplete } from "@/components/step-complete";
 import { listSkillFiles } from "@/lib/tauri";
 
-function makeRun(totalCost: number): AgentRunRecord {
+function makeRun(totalCost: number): ConversationRunRecord {
   return {
-    agent_id: "agent-1",
+    conversation_id: "conv-1",
+    skill_id: 42,
     skill_name: "my-skill",
+    plugin_slug: "default",
     step_id: 0,
     model: "claude-sonnet-4-5",
     status: "completed",

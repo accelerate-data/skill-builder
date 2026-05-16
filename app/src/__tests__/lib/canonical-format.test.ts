@@ -71,7 +71,7 @@ describe("Canonical format: OpenHands transcript fixtures", () => {
       it("keeps conversation_state envelopes structurally valid", () => {
         for (const record of records.filter((item) => item.type === "conversation_state")) {
           expect(record.runtime).toBe("openhands");
-          expect(typeof record.agent_id).toBe("string");
+          expect(typeof record.conversation_id).toBe("string");
           expect(typeof record.timestamp).toBe("number");
           expect([
             "starting",

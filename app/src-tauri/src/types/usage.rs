@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct AgentRunRecord {
-    pub agent_id: String,
+pub struct ConversationRunRecord {
+    pub conversation_id: String,
+    pub skill_id: i64,
     pub skill_name: String,
+    pub plugin_slug: String,
     pub step_id: i32,
     pub model: String,
     pub status: String,
@@ -23,11 +25,13 @@ pub struct AgentRunRecord {
     pub completed_at: Option<String>,
 }
 
-impl std::fmt::Debug for AgentRunRecord {
+impl std::fmt::Debug for ConversationRunRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AgentRunRecord")
-            .field("agent_id", &self.agent_id)
+        f.debug_struct("ConversationRunRecord")
+            .field("conversation_id", &self.conversation_id)
+            .field("skill_id", &self.skill_id)
             .field("skill_name", &self.skill_name)
+            .field("plugin_slug", &self.plugin_slug)
             .field("step_id", &self.step_id)
             .field("model", &self.model)
             .field("status", &self.status)
@@ -52,11 +56,12 @@ impl std::fmt::Debug for AgentRunRecord {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WorkflowSessionRecord {
     pub session_id: String,
+    pub skill_id: Option<i64>,
     pub skill_name: String,
     pub min_step: i32,
     pub max_step: i32,
     pub steps_csv: String,
-    pub agent_count: i32,
+    pub conversation_count: i32,
     pub total_cost: f64,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
@@ -71,11 +76,12 @@ impl std::fmt::Debug for WorkflowSessionRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WorkflowSessionRecord")
             .field("session_id", &"[REDACTED]")
+            .field("skill_id", &self.skill_id)
             .field("skill_name", &self.skill_name)
             .field("min_step", &self.min_step)
             .field("max_step", &self.max_step)
             .field("steps_csv", &self.steps_csv)
-            .field("agent_count", &self.agent_count)
+            .field("conversation_count", &self.conversation_count)
             .field("total_cost", &self.total_cost)
             .field("total_input_tokens", &self.total_input_tokens)
             .field("total_output_tokens", &self.total_output_tokens)

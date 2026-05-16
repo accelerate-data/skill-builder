@@ -1,9 +1,8 @@
 use crate::types::{
-    AgentRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord,
+    ConversationRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord,
 };
 use rusqlite::Connection;
 
-use super::skills::get_skill_master_id_in_plugin;
 use super::workflow::get_workflow_run_id_by_skill_id;
 
 pub(crate) fn step_name(step_id: i32) -> String {
@@ -18,10 +17,11 @@ pub(crate) fn step_name(step_id: i32) -> String {
     }
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
-pub fn persist_agent_run(
+pub fn persist_conversation_run(
     conn: &Connection,
-    agent_id: &str,
+    conversation_id: &str,
     skill_name: &str,
     plugin_slug: &str,
     step_id: i32,
@@ -41,13 +41,74 @@ pub fn persist_agent_run(
     session_id: Option<&str>,
     workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
-    // Don't overwrite a completed/error run with shutdown status — the completed
-    // data is more valuable than the partial shutdown snapshot.
+    let skill_id =
+        match super::skills::get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)? {
+            Some(skill_id) => skill_id,
+            None => {
+                super::skills::upsert_skill(conn, skill_name, "skill-builder", "test purpose")?;
+                super::skills::get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?
+                    .ok_or_else(|| {
+                        format!(
+                            "Skill '{}' not found in plugin '{}'",
+                            skill_name, plugin_slug
+                        )
+                    })?
+            }
+        };
+    persist_conversation_run_with_skill_id(
+        conn,
+        conversation_id,
+        skill_id,
+        skill_name,
+        plugin_slug,
+        step_id,
+        model,
+        status,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        total_cost,
+        duration_ms,
+        num_turns,
+        stop_reason,
+        duration_api_ms,
+        tool_use_count,
+        compaction_count,
+        session_id,
+        workflow_session_id,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn persist_conversation_run_with_skill_id(
+    conn: &Connection,
+    conversation_id: &str,
+    skill_id: i64,
+    skill_name: &str,
+    plugin_slug: &str,
+    step_id: i32,
+    model: &str,
+    status: &str,
+    input_tokens: i32,
+    output_tokens: i32,
+    cache_read_tokens: i32,
+    cache_write_tokens: i32,
+    total_cost: f64,
+    duration_ms: i64,
+    num_turns: i32,
+    stop_reason: Option<&str>,
+    duration_api_ms: Option<i64>,
+    tool_use_count: i32,
+    compaction_count: i32,
+    session_id: Option<&str>,
+    workflow_session_id: Option<&str>,
+) -> Result<(), String> {
     if status == "shutdown" {
         let existing_status: Option<String> = conn
             .query_row(
-                "SELECT status FROM agent_runs WHERE agent_id = ?1 AND model = ?2",
-                rusqlite::params![agent_id, model],
+                "SELECT status FROM conversation_runs WHERE conversation_id = ?1 AND model = ?2",
+                rusqlite::params![conversation_id, model],
                 |row| row.get(0),
             )
             .ok();
@@ -59,25 +120,14 @@ pub fn persist_agent_run(
         }
     }
 
-    // Ensure session-backed usage views include this run. For workflow runs this is
-    // idempotent with create_workflow_session; for refine/test synthetic IDs this
-    // creates the required session row on first persist.
     if let Some(ws_id) = workflow_session_id {
-        let skill_master_id = get_skill_master_id_in_plugin(conn, skill_name, plugin_slug)?;
         conn.execute(
             "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid)
              VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![
-                ws_id,
-                skill_name,
-                skill_master_id,
-                std::process::id() as i64
-            ],
+            rusqlite::params![ws_id, skill_name, skill_id, std::process::id() as i64],
         )
         .map_err(|e| e.to_string())?;
 
-        // Synthetic sessions are one run per session; mark them ended on terminal status
-        // so recent sessions show completion timing.
         if ws_id.starts_with("synthetic:") && matches!(status, "completed" | "error" | "shutdown") {
             conn.execute(
                 "UPDATE workflow_sessions
@@ -89,19 +139,22 @@ pub fn persist_agent_run(
         }
     }
 
+    let workflow_run_id = get_workflow_run_id_by_skill_id(conn, skill_id)?;
+
     conn.execute(
-        "INSERT INTO agent_runs
-         (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
-          cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
-          num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
-          session_id, workflow_session_id, started_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-                 ?12, ?13, ?14, ?15, ?16,
-                 ?17, ?18,
-                 datetime('now') || 'Z',
-                 datetime('now') || 'Z')
-         ON CONFLICT(agent_id, model) DO UPDATE SET
+        "INSERT INTO conversation_runs
+         (conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status,
+          input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_cost,
+          session_id, started_at, completed_at, duration_ms, workflow_session_id, num_turns,
+          stop_reason, duration_api_ms, tool_use_count, compaction_count, workflow_run_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                 ?8, ?9, ?10, ?11, ?12,
+                 ?13, datetime('now') || 'Z', datetime('now') || 'Z', ?14, ?15, ?16,
+                 ?17, ?18, ?19, ?20, ?21)
+         ON CONFLICT(conversation_id, model) DO UPDATE SET
+          skill_id = excluded.skill_id,
           skill_name = excluded.skill_name,
+          plugin_slug = excluded.plugin_slug,
           step_id = excluded.step_id,
           status = excluded.status,
           input_tokens = excluded.input_tokens,
@@ -109,18 +162,21 @@ pub fn persist_agent_run(
           cache_read_tokens = excluded.cache_read_tokens,
           cache_write_tokens = excluded.cache_write_tokens,
           total_cost = excluded.total_cost,
+          session_id = excluded.session_id,
+          completed_at = excluded.completed_at,
           duration_ms = excluded.duration_ms,
+          workflow_session_id = excluded.workflow_session_id,
           num_turns = excluded.num_turns,
           stop_reason = excluded.stop_reason,
           duration_api_ms = excluded.duration_api_ms,
           tool_use_count = excluded.tool_use_count,
           compaction_count = excluded.compaction_count,
-          session_id = excluded.session_id,
-          workflow_session_id = excluded.workflow_session_id,
-          completed_at = excluded.completed_at",
+          workflow_run_id = excluded.workflow_run_id",
         rusqlite::params![
-            agent_id,
+            conversation_id,
+            skill_id,
             skill_name,
+            plugin_slug,
             step_id,
             model,
             status,
@@ -129,14 +185,15 @@ pub fn persist_agent_run(
             cache_read_tokens,
             cache_write_tokens,
             total_cost,
+            session_id,
             duration_ms,
+            workflow_session_id,
             num_turns,
             stop_reason,
             duration_api_ms,
             tool_use_count,
             compaction_count,
-            session_id,
-            workflow_session_id,
+            workflow_run_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -163,7 +220,7 @@ pub fn get_usage_summary(
         String::new()
     };
     let having_clause = if hide_cancelled {
-        " HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
+        " HAVING COALESCE(SUM(cr.total_cost), 0) > 0 OR COUNT(DISTINCT cr.conversation_id) = 0"
     } else {
         ""
     };
@@ -172,11 +229,10 @@ pub fn get_usage_summary(
                 COUNT(*),
                 COALESCE(AVG(sub.session_cost), 0.0)
          FROM (
-           SELECT ws.session_id, COALESCE(SUM(ar.total_cost), 0.0) as session_cost
+           SELECT ws.session_id, COALESCE(SUM(cr.total_cost), 0.0) as session_cost
            FROM workflow_sessions ws
-           LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
-                                  AND ar.reset_marker IS NULL
-           WHERE ws.reset_marker IS NULL{date_clause}{skill_clause}
+           LEFT JOIN conversation_runs cr ON cr.workflow_session_id = ws.session_id
+           WHERE 1=1{date_clause}{skill_clause}
            GROUP BY ws.session_id{having_clause}
          ) sub"
     );
@@ -205,8 +261,7 @@ pub fn get_workflow_skill_names(conn: &Connection) -> Result<Vec<String>, String
     let mut stmt = conn
         .prepare(
             "SELECT DISTINCT skill_name FROM workflow_sessions
-         WHERE reset_marker IS NULL
-         ORDER BY skill_name ASC",
+             ORDER BY skill_name ASC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -217,61 +272,41 @@ pub fn get_workflow_skill_names(conn: &Connection) -> Result<Vec<String>, String
 }
 
 #[cfg(test)]
-pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
+pub fn get_recent_runs(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<ConversationRunRecord>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT agent_id, skill_name, step_id, model, status,
+            "SELECT conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status,
                     COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
                     COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
                     COALESCE(num_turns, 0), stop_reason, duration_api_ms,
                     COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
                     session_id, started_at, completed_at
-             FROM agent_runs
-             WHERE reset_marker IS NULL
+             FROM conversation_runs
              ORDER BY completed_at DESC
              LIMIT ?1",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![limit as i64], |row| {
-            Ok(AgentRunRecord {
-                agent_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                step_id: row.get(2)?,
-                model: row.get(3)?,
-                status: row.get(4)?,
-                input_tokens: row.get(5)?,
-                output_tokens: row.get(6)?,
-                cache_read_tokens: row.get(7)?,
-                cache_write_tokens: row.get(8)?,
-                total_cost: row.get(9)?,
-                duration_ms: row.get(10)?,
-                num_turns: row.get(11)?,
-                stop_reason: row.get(12)?,
-                duration_api_ms: row.get(13)?,
-                tool_use_count: row.get(14)?,
-                compaction_count: row.get(15)?,
-                session_id: row.get(16)?,
-                started_at: row.get(17)?,
-                completed_at: row.get(18)?,
-            })
-        })
+        .query_map(rusqlite::params![limit as i64], map_conversation_run_row)
         .map_err(|e| e.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
 }
 
-pub fn get_agent_runs(
+pub fn get_conversation_runs(
     conn: &Connection,
     hide_cancelled: bool,
     start_date: Option<&str>,
     skill_name: Option<&str>,
     model_filter: Option<&str>,
     limit: usize,
-) -> Result<Vec<AgentRunRecord>, String> {
+) -> Result<Vec<ConversationRunRecord>, String> {
     let cost_clause = if hide_cancelled {
         " AND total_cost > 0"
     } else {
@@ -300,16 +335,15 @@ pub fn get_agent_runs(
         String::new()
     };
     let sql = format!(
-        "SELECT agent_id, skill_name, step_id, model, status,
+        "SELECT conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status,
                 COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
                 COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
                 COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
                 COALESCE(num_turns, 0), stop_reason, duration_api_ms,
                 COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
                 session_id, started_at, completed_at
-         FROM agent_runs
-         WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}{model_filter_clause}
+         FROM conversation_runs
+         WHERE workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}{model_filter_clause}
          ORDER BY started_at DESC
          LIMIT ?{p}"
     );
@@ -317,32 +351,10 @@ pub fn get_agent_runs(
     let limit_i64 = limit as i64;
     macro_rules! collect_rows {
         ($params:expr) => {
-            stmt.query_map($params, |row| {
-                Ok(AgentRunRecord {
-                    agent_id: row.get(0)?,
-                    skill_name: row.get(1)?,
-                    step_id: row.get(2)?,
-                    model: row.get(3)?,
-                    status: row.get(4)?,
-                    input_tokens: row.get(5)?,
-                    output_tokens: row.get(6)?,
-                    cache_read_tokens: row.get(7)?,
-                    cache_write_tokens: row.get(8)?,
-                    total_cost: row.get(9)?,
-                    duration_ms: row.get(10)?,
-                    num_turns: row.get(11)?,
-                    stop_reason: row.get(12)?,
-                    duration_api_ms: row.get(13)?,
-                    tool_use_count: row.get(14)?,
-                    compaction_count: row.get(15)?,
-                    session_id: row.get(16)?,
-                    started_at: row.get(17)?,
-                    completed_at: row.get(18)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())
+            stmt.query_map($params, map_conversation_run_row)
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())
         };
     }
     match (start_date, skill_name, model_filter) {
@@ -365,7 +377,7 @@ pub fn get_recent_workflow_sessions(
     skill_name: Option<&str>,
 ) -> Result<Vec<WorkflowSessionRecord>, String> {
     let having_clause = if hide_cancelled {
-        " HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
+        " HAVING COALESCE(SUM(cr.total_cost), 0) > 0 OR COUNT(DISTINCT cr.conversation_id) = 0"
     } else {
         ""
     };
@@ -387,23 +399,23 @@ pub fn get_recent_workflow_sessions(
     let limit_param = format!("?{p}");
     let sql = format!(
         "SELECT ws.session_id,
+                ws.skill_id,
                 ws.skill_name,
-                COALESCE(MIN(ar.step_id), 0),
-                COALESCE(MAX(ar.step_id), 0),
-                COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
-                COUNT(DISTINCT ar.agent_id),
-                COALESCE(SUM(ar.total_cost), 0.0),
-                COALESCE(SUM(ar.input_tokens), 0),
-                COALESCE(SUM(ar.output_tokens), 0),
-                COALESCE(SUM(ar.cache_read_tokens), 0),
-                COALESCE(SUM(ar.cache_write_tokens), 0),
-                COALESCE(SUM(ar.duration_ms), 0),
+                COALESCE(MIN(cr.step_id), 0),
+                COALESCE(MAX(cr.step_id), 0),
+                COALESCE(GROUP_CONCAT(DISTINCT cr.step_id), ''),
+                COUNT(DISTINCT cr.conversation_id),
+                COALESCE(SUM(cr.total_cost), 0.0),
+                COALESCE(SUM(cr.input_tokens), 0),
+                COALESCE(SUM(cr.output_tokens), 0),
+                COALESCE(SUM(cr.cache_read_tokens), 0),
+                COALESCE(SUM(cr.cache_write_tokens), 0),
+                COALESCE(SUM(cr.duration_ms), 0),
                 ws.started_at,
                 ws.ended_at
          FROM workflow_sessions ws
-         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
-                                AND ar.reset_marker IS NULL
-         WHERE ws.reset_marker IS NULL{date_clause}{skill_clause}
+         LEFT JOIN conversation_runs cr ON cr.workflow_session_id = ws.session_id
+         WHERE 1=1{date_clause}{skill_clause}
          GROUP BY ws.session_id{having_clause}
          ORDER BY ws.started_at DESC
          LIMIT {limit_param}"
@@ -414,19 +426,20 @@ pub fn get_recent_workflow_sessions(
             stmt.query_map($params, |row| {
                 Ok(WorkflowSessionRecord {
                     session_id: row.get(0)?,
-                    skill_name: row.get(1)?,
-                    min_step: row.get(2)?,
-                    max_step: row.get(3)?,
-                    steps_csv: row.get(4)?,
-                    agent_count: row.get(5)?,
-                    total_cost: row.get(6)?,
-                    total_input_tokens: row.get(7)?,
-                    total_output_tokens: row.get(8)?,
-                    total_cache_read: row.get(9)?,
-                    total_cache_write: row.get(10)?,
-                    total_duration_ms: row.get(11)?,
-                    started_at: row.get(12)?,
-                    completed_at: row.get(13)?,
+                    skill_id: row.get(1)?,
+                    skill_name: row.get(2)?,
+                    min_step: row.get(3)?,
+                    max_step: row.get(4)?,
+                    steps_csv: row.get(5)?,
+                    conversation_count: row.get(6)?,
+                    total_cost: row.get(7)?,
+                    total_input_tokens: row.get(8)?,
+                    total_output_tokens: row.get(9)?,
+                    total_cache_read: row.get(10)?,
+                    total_cache_write: row.get(11)?,
+                    total_duration_ms: row.get(12)?,
+                    started_at: row.get(13)?,
+                    completed_at: row.get(14)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -443,60 +456,38 @@ pub fn get_recent_workflow_sessions(
 }
 
 #[cfg(test)]
-pub fn get_session_agent_runs(
+pub fn get_session_conversation_runs(
     conn: &Connection,
     session_id: &str,
-) -> Result<Vec<AgentRunRecord>, String> {
+) -> Result<Vec<ConversationRunRecord>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT agent_id, skill_name, step_id, model, status,
+            "SELECT conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status,
                     COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
                     COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
                     COALESCE(num_turns, 0), stop_reason, duration_api_ms,
                     COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
                     session_id, started_at, completed_at
-             FROM agent_runs
+             FROM conversation_runs
              WHERE workflow_session_id = ?1
              ORDER BY started_at ASC",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![session_id], |row| {
-            Ok(AgentRunRecord {
-                agent_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                step_id: row.get(2)?,
-                model: row.get(3)?,
-                status: row.get(4)?,
-                input_tokens: row.get(5)?,
-                output_tokens: row.get(6)?,
-                cache_read_tokens: row.get(7)?,
-                cache_write_tokens: row.get(8)?,
-                total_cost: row.get(9)?,
-                duration_ms: row.get(10)?,
-                num_turns: row.get(11)?,
-                stop_reason: row.get(12)?,
-                duration_api_ms: row.get(13)?,
-                tool_use_count: row.get(14)?,
-                compaction_count: row.get(15)?,
-                session_id: row.get(16)?,
-                started_at: row.get(17)?,
-                completed_at: row.get(18)?,
-            })
-        })
+        .query_map(rusqlite::params![session_id], map_conversation_run_row)
         .map_err(|e| e.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
 }
 
-pub fn get_step_agent_runs_by_skill_id(
+pub fn get_step_conversation_runs_by_skill_id(
     conn: &Connection,
     skill_id: i64,
     step_id: i32,
-) -> Result<Vec<AgentRunRecord>, String> {
+) -> Result<Vec<ConversationRunRecord>, String> {
     let wr_id = match get_workflow_run_id_by_skill_id(conn, skill_id)? {
         Some(id) => id,
         None => return Ok(vec![]),
@@ -504,45 +495,22 @@ pub fn get_step_agent_runs_by_skill_id(
 
     let mut stmt = conn
         .prepare(
-            "SELECT agent_id, skill_name, step_id, model, status,
+            "SELECT conversation_id, skill_id, skill_name, plugin_slug, step_id, model, status,
                     COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
                     COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
                     COALESCE(num_turns, 0), stop_reason, duration_api_ms,
                     COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
                     session_id, started_at, completed_at
-             FROM agent_runs
+             FROM conversation_runs
              WHERE workflow_run_id = ?1 AND step_id = ?2
                AND status IN ('completed', 'error')
-               AND reset_marker IS NULL
              ORDER BY completed_at DESC",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![wr_id, step_id], |row| {
-            Ok(AgentRunRecord {
-                agent_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                step_id: row.get(2)?,
-                model: row.get(3)?,
-                status: row.get(4)?,
-                input_tokens: row.get(5)?,
-                output_tokens: row.get(6)?,
-                cache_read_tokens: row.get(7)?,
-                cache_write_tokens: row.get(8)?,
-                total_cost: row.get(9)?,
-                duration_ms: row.get(10)?,
-                num_turns: row.get(11)?,
-                stop_reason: row.get(12)?,
-                duration_api_ms: row.get(13)?,
-                tool_use_count: row.get(14)?,
-                compaction_count: row.get(15)?,
-                session_id: row.get(16)?,
-                started_at: row.get(17)?,
-                completed_at: row.get(18)?,
-            })
-        })
+        .query_map(rusqlite::params![wr_id, step_id], map_conversation_run_row)
         .map_err(|e| e.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>()
@@ -550,12 +518,12 @@ pub fn get_step_agent_runs_by_skill_id(
 }
 
 #[allow(dead_code)]
-pub fn get_step_agent_runs(
+pub fn get_step_conversation_runs(
     conn: &Connection,
     skill_name: &str,
     step_id: i32,
-) -> Result<Vec<AgentRunRecord>, String> {
-    let s_id = match crate::db::get_skill_master_id_in_plugin(
+) -> Result<Vec<ConversationRunRecord>, String> {
+    let skill_id = match crate::db::get_skill_master_id_in_plugin(
         conn,
         skill_name,
         crate::skill_paths::DEFAULT_PLUGIN_SLUG,
@@ -563,55 +531,7 @@ pub fn get_step_agent_runs(
         Some(id) => id,
         None => return Ok(vec![]),
     };
-    let wr_id = match get_workflow_run_id_by_skill_id(conn, s_id)? {
-        Some(id) => id,
-        None => return Ok(vec![]),
-    };
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT agent_id, skill_name, step_id, model, status,
-                    COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
-                    COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
-                    COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
-                    COALESCE(num_turns, 0), stop_reason, duration_api_ms,
-                    COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
-                    session_id, started_at, completed_at
-             FROM agent_runs
-             WHERE workflow_run_id = ?1 AND step_id = ?2
-               AND status IN ('completed', 'error')
-               AND reset_marker IS NULL
-             ORDER BY completed_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(rusqlite::params![wr_id, step_id], |row| {
-            Ok(AgentRunRecord {
-                agent_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                step_id: row.get(2)?,
-                model: row.get(3)?,
-                status: row.get(4)?,
-                input_tokens: row.get(5)?,
-                output_tokens: row.get(6)?,
-                cache_read_tokens: row.get(7)?,
-                cache_write_tokens: row.get(8)?,
-                total_cost: row.get(9)?,
-                duration_ms: row.get(10)?,
-                num_turns: row.get(11)?,
-                stop_reason: row.get(12)?,
-                duration_api_ms: row.get(13)?,
-                tool_use_count: row.get(14)?,
-                compaction_count: row.get(15)?,
-                session_id: row.get(16)?,
-                started_at: row.get(17)?,
-                completed_at: row.get(18)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+    get_step_conversation_runs_by_skill_id(conn, skill_id, step_id)
 }
 
 pub fn get_usage_by_step(
@@ -640,9 +560,8 @@ pub fn get_usage_by_step(
     };
     let sql = format!(
         "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
-         FROM agent_runs
-         WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
+         FROM conversation_runs
+         WHERE workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
          GROUP BY step_id
          ORDER BY SUM(total_cost) DESC"
     );
@@ -696,13 +615,10 @@ pub fn get_usage_by_model(
         String::new()
     };
     let sql = format!(
-        "SELECT
-           model AS model_filter,
-           COALESCE(SUM(total_cost), 0.0), COUNT(*)
-         FROM agent_runs
-         WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
-         GROUP BY model_filter
+        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM conversation_runs
+         WHERE workflow_session_id IS NOT NULL{cost_clause}{date_clause}{skill_clause}
+         GROUP BY model
          ORDER BY SUM(total_cost) DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -748,19 +664,18 @@ pub fn get_usage_by_day(
         String::new()
     };
     let having_clause = if hide_cancelled {
-        " HAVING COALESCE(SUM(ar.total_cost), 0) > 0"
+        " HAVING COALESCE(SUM(cr.total_cost), 0) > 0"
     } else {
         ""
     };
     let sql = format!(
         "SELECT DATE(ws.started_at),
-                COALESCE(SUM(ar.total_cost), 0.0),
-                COALESCE(SUM(ar.input_tokens + ar.output_tokens), 0),
+                COALESCE(SUM(cr.total_cost), 0.0),
+                COALESCE(SUM(cr.input_tokens + cr.output_tokens), 0),
                 COUNT(DISTINCT ws.session_id)
          FROM workflow_sessions ws
-         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
-                                AND ar.reset_marker IS NULL
-         WHERE ws.reset_marker IS NULL{date_clause}{skill_clause}
+         LEFT JOIN conversation_runs cr ON cr.workflow_session_id = ws.session_id
+         WHERE 1=1{date_clause}{skill_clause}
          GROUP BY DATE(ws.started_at){having_clause}
          ORDER BY DATE(ws.started_at) ASC"
     );
@@ -789,15 +704,37 @@ pub fn get_usage_by_day(
 }
 
 pub fn reset_usage(conn: &Connection) -> Result<(), String> {
-    conn.execute(
-        "UPDATE agent_runs SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "UPDATE workflow_sessions SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM conversation_runs", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM workflow_sessions", [])
+        .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn map_conversation_run_row(
+    row: &rusqlite::Row<'_>,
+) -> Result<ConversationRunRecord, rusqlite::Error> {
+    Ok(ConversationRunRecord {
+        conversation_id: row.get(0)?,
+        skill_id: row.get(1)?,
+        skill_name: row.get(2)?,
+        plugin_slug: row.get(3)?,
+        step_id: row.get(4)?,
+        model: row.get(5)?,
+        status: row.get(6)?,
+        input_tokens: row.get(7)?,
+        output_tokens: row.get(8)?,
+        cache_read_tokens: row.get(9)?,
+        cache_write_tokens: row.get(10)?,
+        total_cost: row.get(11)?,
+        duration_ms: row.get(12)?,
+        num_turns: row.get(13)?,
+        stop_reason: row.get(14)?,
+        duration_api_ms: row.get(15)?,
+        tool_use_count: row.get(16)?,
+        compaction_count: row.get(17)?,
+        session_id: row.get(18)?,
+        started_at: row.get(19)?,
+        completed_at: row.get(20)?,
+    })
 }

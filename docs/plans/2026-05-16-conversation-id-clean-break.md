@@ -1,6 +1,8 @@
 # Conversation ID Clean Break Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+<!-- markdownlint-disable MD032 -->
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make `conversation_id` and `skill_id` the canonical runtime and usage identities, remove the remaining internal `agent_id` seam instead of mapping between `conversation_id` and `agent_id`, and finish the remaining step-1 contract cleanup so `refinements_json` is not mislabeled as `ClarificationsFile`.
 
@@ -29,7 +31,7 @@
 - Modify: `app/src-tauri/src/db/migrations.rs`
 - Test: `app/src-tauri/src/db/tests.rs`
 
-- [ ] **Step 1: Add a migration that drops the legacy `agent_runs` table and creates `conversation_runs`**
+- [x] **Step 1: Add a migration that drops the legacy `agent_runs` table and creates `conversation_runs`**
 
 Create a new migration function in `app/src-tauri/src/db/migrations.rs` that:
 - drops `agent_runs`
@@ -77,7 +79,7 @@ Important constraints:
 - no `ON DELETE CASCADE`
 - `workflow_run_id` is a soft historical reference only if retained; do not attach cascade ownership to it
 
-- [ ] **Step 2: Update migration tests for the new table shape**
+- [x] **Step 2: Update migration tests for the new table shape**
 
 Update DB migration tests in `app/src-tauri/src/db/tests.rs` so they assert:
 - `conversation_runs` exists
@@ -88,7 +90,7 @@ Update DB migration tests in `app/src-tauri/src/db/tests.rs` so they assert:
 Run: `cd app/src-tauri && cargo test db::tests:: --quiet`
 Expected: migration tests pass
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add app/src-tauri/src/db/migrations.rs app/src-tauri/src/db/tests.rs
@@ -105,7 +107,7 @@ git commit -m "refactor(db): replace agent_runs with conversation_runs"
 - Modify: `app/src-tauri/src/agents/run_persist.rs`
 - Test: `app/src-tauri/src/db/tests.rs`
 
-- [ ] **Step 1: Rename the row model from `AgentRunRecord` to `ConversationRunRecord`**
+- [x] **Step 1: Rename the row model from `AgentRunRecord` to `ConversationRunRecord`**
 
 In `app/src-tauri/src/types/usage.rs`:
 - rename `AgentRunRecord` to `ConversationRunRecord`
@@ -142,7 +144,7 @@ pub struct ConversationRunRecord {
 }
 ```
 
-- [ ] **Step 2: Rename persistence and query helpers in `db/usage.rs`**
+- [x] **Step 2: Rename persistence and query helpers in `db/usage.rs`**
 
 In `app/src-tauri/src/db/usage.rs`:
 - rename `persist_agent_run(...)` to `persist_conversation_run(...)`
@@ -154,7 +156,7 @@ In `app/src-tauri/src/db/usage.rs`:
 Important behavioral rule:
 - completed or errored conversation runs must still resist downgrade to `shutdown`, matching current logic
 
-- [ ] **Step 3: Update runtime persistence to pass `conversation_id` and `skill_id`**
+- [x] **Step 3: Update runtime persistence to pass `conversation_id` and `skill_id`**
 
 In `app/src-tauri/src/agents/run_persist.rs`:
 - rename parameters and logs from `agent_id` to `conversation_id`
@@ -162,7 +164,7 @@ In `app/src-tauri/src/agents/run_persist.rs`:
 - resolve `skill_id` once and persist it explicitly
 - keep logging redaction behavior for `session_id`
 
-- [ ] **Step 4: Update DB tests to the new identity model**
+- [x] **Step 4: Update DB tests to the new identity model**
 
 Update affected tests in `app/src-tauri/src/db/tests.rs` so they assert:
 - rows are keyed by `conversation_id`
@@ -173,7 +175,7 @@ Update affected tests in `app/src-tauri/src/db/tests.rs` so they assert:
 Run: `cd app/src-tauri && cargo test db:: --quiet`
 Expected: usage/db tests pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/types/usage.rs app/src-tauri/src/db/usage.rs app/src-tauri/src/agents/run_persist.rs app/src-tauri/src/db/tests.rs
@@ -196,7 +198,7 @@ git commit -m "refactor(rust): make conversation_id canonical in usage persisten
 - Modify: `repo-map.json`
 - Test: `app/src/__tests__/lib/queries/usage.test.tsx`
 
-- [ ] **Step 1: Rename the frontend record type and command map**
+- [x] **Step 1: Rename the frontend record type and command map**
 
 In frontend types:
 - rename `AgentRunRecord` to `ConversationRunRecord`
@@ -208,13 +210,13 @@ In Tauri command typing:
 - rename `get_step_agent_runs` to `get_step_conversation_runs`
 - update all return types accordingly
 
-- [ ] **Step 2: Update frontend wrappers and query helpers**
+- [x] **Step 2: Update frontend wrappers and query helpers**
 
 In `app/src/lib/tauri.ts` and query helpers:
 - rename wrapper functions to `getConversationRuns(...)` and `getStepConversationRuns(...)`
 - stop exposing agent terminology at the app boundary
 
-- [ ] **Step 3: Update usage UI consumers**
+- [x] **Step 3: Update usage UI consumers**
 
 Update all UI components that read usage rows so they:
 - use `conversation_id` as the record identity
@@ -226,7 +228,7 @@ Key consumers to update:
 - `app/src/components/agent-stats-bar.tsx`
 - `app/src/components/step-complete/index.tsx`
 
-- [ ] **Step 4: Update frontend usage tests**
+- [x] **Step 4: Update frontend usage tests**
 
 Update usage query/component tests to the renamed commands and row shape.
 
@@ -240,7 +242,7 @@ Run:
 
 Expected: tests and typecheck pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/usage.rs app/src/lib/types.ts app/src/lib/tauri-command-types.ts app/src/lib/tauri.ts app/src/lib/queries/usage.ts app/src/components/settings/usage/session-history.tsx app/src/components/agent-stats-bar.tsx app/src/components/step-complete/index.tsx app/src/__tests__/lib/queries/usage.test.tsx repo-map.json
@@ -261,7 +263,7 @@ git commit -m "refactor(frontend): rename usage APIs to conversation runs"
 - Test: `app/src/__tests__/hooks/use-workflow-persistence.test.ts`
 - Test: `app/src/__tests__/components/workflow-step-complete.test.tsx`
 
-- [ ] **Step 1: Delete workflow helper names that still encode `agent_id`**
+- [x] **Step 1: Delete workflow helper names that still encode `agent_id`**
 
 In `app/src-tauri/src/commands/workflow/guards.rs`:
 - rename `make_agent_id(...)` to a conversation-centric helper or remove it entirely if no longer needed
@@ -271,7 +273,7 @@ In `app/src-tauri/src/commands/workflow/runtime.rs`:
 - fix stale comments like “Cancel a running workflow step request by agent_id.”
 - rename any local variables or log labels that still use `agent`
 
-- [ ] **Step 2: Update app-owned TS runtime types**
+- [x] **Step 2: Update app-owned TS runtime types**
 
 In `app/src/lib/types.ts`:
 - remove any app-owned runtime result types that still publish `agent_id`
@@ -280,7 +282,7 @@ In `app/src/lib/types.ts`:
 
 Update any frontend mocks that still expose app-owned `get_agent_runs` / `get_step_agent_runs` command names or `agent_id`-centric result shapes, especially `app/src/test/mocks/tauri-e2e.ts`.
 
-- [ ] **Step 3: Add regressions proving no app-owned runtime contract still uses `agent_id`**
+- [x] **Step 3: Add regressions proving no app-owned runtime contract still uses `agent_id`**
 
 Add/update tests so:
 - workflow runtime uses `conversation_id`
@@ -294,7 +296,7 @@ Run:
 
 Expected: workflow tests pass with conversation-centric names
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/src-tauri/src/commands/workflow/guards.rs app/src-tauri/src/commands/workflow/runtime.rs app/src/lib/types.ts app/src/test/mocks/tauri-e2e.ts app/src-tauri/src/commands/workflow/tests.rs app/src/__tests__/pages/workflow.test.tsx app/src/__tests__/hooks/use-workflow-persistence.test.ts app/src/__tests__/components/workflow-step-complete.test.tsx
@@ -316,7 +318,7 @@ git commit -m "refactor(runtime): remove remaining agent_id helper seams"
 - Test: `app/src/__tests__/fixtures/openhands-events/**` (only if app-owned fixture wrappers need renaming)
 - Test: `app/src/__tests__/lib/canonical-format.test.ts`
 
-- [ ] **Step 1: Rewrite runtime-contract prose around `conversation_id`**
+- [x] **Step 1: Rewrite runtime-contract prose around `conversation_id`**
 
 Update design docs so they no longer describe `agent_id` as:
 - an app-owned identity
@@ -328,11 +330,11 @@ Explicitly document:
 - usage history is persisted by `conversation_id` and `skill_id`
 - usage/history is intentionally not deleted with skill or conversation deletion
 
-- [ ] **Step 2: Update repo map and test map if descriptions still mention `agent-store` or `agent runs`**
+- [x] **Step 2: Update repo map and test map if descriptions still mention `agent-store` or `agent runs`**
 
 Make the repo guidance consistent with the new naming.
 
-- [ ] **Step 3: Keep only raw upstream fixture mentions of `agent_id`**
+- [x] **Step 3: Keep only raw upstream fixture mentions of `agent_id`**
 
 Replace stale `agent_id` in runtime fixtures and helper-fixture wrappers with `conversation_id`, matching the current OpenHands-facing code.
 
@@ -340,7 +342,7 @@ Also update canonical-format and helper-fixture tests so they explicitly disting
 - normalized/runtime contracts and OpenHands-facing fixture inputs now use `conversation_id`
 - `agent_id` is treated as obsolete historical shape, not current boundary truth
 
-- [ ] **Step 4: Verify docs formatting**
+- [x] **Step 4: Verify docs formatting**
 
 Run:
 - `markdownlint docs/design/openhands-runtime-contract/README.md docs/design/openhands-runtime-contract/openhands-conversation-model.md docs/design/openhands-runtime-contract/workflow-sequence.md docs/design/openhands-runtime-contract/refine-sequence.md docs/design/openhands-runtime-contract/implementation-gaps.md docs/plans/2026-05-16-conversation-id-clean-break.md`
@@ -348,7 +350,7 @@ Run:
 
 Expected: no markdownlint errors
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/design/openhands-runtime-contract/README.md docs/design/openhands-runtime-contract/openhands-conversation-model.md docs/design/openhands-runtime-contract/workflow-sequence.md docs/design/openhands-runtime-contract/refine-sequence.md docs/design/openhands-runtime-contract/implementation-gaps.md repo-map.json TEST_MAP.md docs/plans/2026-05-16-conversation-id-clean-break.md
@@ -362,7 +364,7 @@ git commit -m "docs: make conversation_id the canonical runtime identity"
 **Files:**
 - Verify only
 
-- [ ] **Step 1: Run targeted Rust verification**
+- [x] **Step 1: Run targeted Rust verification**
 
 Run:
 
@@ -375,7 +377,7 @@ cd app/src-tauri && cargo clippy -- -D warnings
 
 Expected: all pass
 
-- [ ] **Step 2: Run targeted frontend verification**
+- [x] **Step 2: Run targeted frontend verification**
 
 Run:
 
@@ -386,7 +388,7 @@ cd app && npx tsc --noEmit
 
 Expected: all pass
 
-- [ ] **Step 3: Run repo-wide confidence check**
+- [x] **Step 3: Run repo-wide confidence check**
 
 Run:
 
@@ -396,7 +398,7 @@ bash app/tests/run.sh
 
 Expected: full suite green
 
-- [ ] **Step 4: Audit for straggler `agent_id` seams**
+- [x] **Step 4: Audit for straggler `agent_id` seams**
 
 Run:
 
@@ -408,7 +410,7 @@ Expected:
 - only archival review notes or historical plan documents remain
 - no app-owned runtime, persistence, usage, Tauri command, test mock, or design-contract surface still uses `agent_id`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -432,7 +434,7 @@ git commit -m "test: verify conversation_id clean break"
 - Test: `app/src/__tests__/lib/clarifications-types.test.ts`
 - Test: `app/src/__tests__/components/clarifications-editor.test.tsx`
 
-- [ ] **Step 1: Introduce a dedicated `RefinementsFile` contract**
+- [x] **Step 1: Introduce a dedicated `RefinementsFile` contract**
 
 Define a dedicated step-1 refinements contract with its own top-level type name instead of reusing `ClarificationsFile`.
 
@@ -446,7 +448,7 @@ Update:
 - Rust `DetailedResearchOutput`
 - generated TypeScript contracts
 
-- [ ] **Step 2: Keep materialization behavior unchanged while updating typed parsing**
+- [x] **Step 2: Keep materialization behavior unchanged while updating typed parsing**
 
 Update `app/src-tauri/src/commands/workflow/output_format.rs` so:
 - typed deserialization uses the new `RefinementsFile`
@@ -454,14 +456,14 @@ Update `app/src-tauri/src/commands/workflow/output_format.rs` so:
 - step 1 still materializes `refinements_json` into `refinements*`
 - step 1 evaluator and step 2 are unchanged in behavior because they continue consuming the merged backend JSON from persisted DB state
 
-- [ ] **Step 3: Update frontend display helpers only where they depend on the old shared contract name**
+- [x] **Step 3: Update frontend display helpers only where they depend on the old shared contract name**
 
 In `app/src/lib/clarifications-types.ts` and any dependent tests:
 - keep the merged display model used by the editor/UI
 - update helper typing so it can accept a `RefinementsFile` source without pretending it is a `ClarificationsFile`
 - do not change the step 1 evaluator or step 2 input contract shape
 
-- [ ] **Step 4: Add contract regressions**
+- [x] **Step 4: Add contract regressions**
 
 Add/update tests proving:
 - `DetailedResearchOutput.refinements_json` is not `ClarificationsFile`
@@ -476,9 +478,11 @@ Run:
 
 Expected: contract generation, tests, and typecheck pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add agent-sources/workspace/skills/shared/output-schemas/step-1-detailed-research.json app/src-tauri/src/contracts/workflow_outputs.rs app/src-tauri/src/contracts/clarifications.rs app/src-tauri/src/bin/codegen.rs app/src/generated/contracts.ts app/src-tauri/src/generated/schemas.rs app/src-tauri/src/commands/workflow/output_format.rs app/src/lib/clarifications-types.ts app/src-tauri/src/commands/workflow/tests.rs app/src/__tests__/lib/clarifications-types.test.ts app/src/__tests__/components/clarifications-editor.test.tsx docs/plans/2026-05-16-conversation-id-clean-break.md
 git commit -m "refactor(contract): split refinements_json into dedicated type"
 ```
+
+<!-- markdownlint-enable MD032 -->

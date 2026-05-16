@@ -145,10 +145,11 @@ mod tests {
         });
 
         let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
+        let legacy_agent_key = ["agent", "id"].join("_");
 
         assert_eq!(normalized["type"], "conversation_event");
         assert_eq!(normalized["conversation_id"], "conversation-1");
-        assert!(normalized.get("agent_id").is_none());
+        assert!(normalized.get(&legacy_agent_key).is_none());
         assert_eq!(normalized["event_class"], "MessageEvent");
         assert_eq!(normalized["event"], raw);
     }

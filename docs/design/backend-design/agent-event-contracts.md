@@ -17,7 +17,7 @@ Rust routing and emission live in:
 - `app/src-tauri/src/agents/event_router.rs`
 - `app/src-tauri/src/agents/openhands_server/events.rs`
 
-Frontend listener registration now lives in `app/src/hooks/use-session-runtime-stream.ts` for typed runtime metadata and `app/src/hooks/use-conversation-stream.ts` for canonical conversation events.
+Frontend listener registration now lives in `app/src/hooks/use-session-runtime-stream.ts` for typed runtime metadata. Canonical conversation events are normalized into the conversation store from the same conversation-keyed runtime stream.
 
 ## Event Families
 
@@ -30,7 +30,7 @@ Payload:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `agent_id` | `string` | Originating agent |
+| `conversation_id` | `string` | Originating conversation |
 | `message` | `unknown JSON` | Raw runtime message |
 
 ### `agent-exit`
@@ -41,7 +41,7 @@ Payload:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `agent_id` | `string` | Agent that exited |
+| `conversation_id` | `string` | Conversation that exited |
 | `success` | `boolean` | Whether the process exited successfully |
 | `error_detail` | `string?` | Optional terminal error detail |
 
@@ -53,7 +53,7 @@ Payload:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `agent_id` | `string` | Agent that was shut down |
+| `conversation_id` | `string` | Conversation that was shut down |
 
 ### `agent-init-error`
 
@@ -85,7 +85,7 @@ Target payload shape for each of these channels is:
 
 ```text
 {
-  agent_id: string,
+  conversation_id: string,
   timestamp: number,
   type: string,
   ...event-specific fields
@@ -100,43 +100,43 @@ to the frontend.
 ### `agent-run-config`
 
 ```text
-{ agent_id, timestamp, type, thinkingEnabled, agentName? }
+{ conversation_id, timestamp, type, thinkingEnabled, agentName? }
 ```
 
 ### `agent-run-init`
 
 ```text
-{ agent_id, timestamp, type, sessionId, model }
+{ conversation_id, timestamp, type, sessionId, model }
 ```
 
 ### `agent-turn-usage`
 
 ```text
-{ agent_id, timestamp, type, turn, inputTokens, outputTokens }
+{ conversation_id, timestamp, type, turn, inputTokens, outputTokens }
 ```
 
 ### `agent-compaction`
 
 ```text
-{ agent_id, timestamp, type, turn, preTokens, timestamp }
+{ conversation_id, timestamp, type, turn, preTokens, timestamp }
 ```
 
 ### `agent-context-window`
 
 ```text
-{ agent_id, timestamp, type, contextWindow }
+{ conversation_id, timestamp, type, contextWindow }
 ```
 
 ### `agent-session-exhausted`
 
 ```text
-{ agent_id, timestamp, type, sessionId }
+{ conversation_id, timestamp, type, sessionId }
 ```
 
 ### `agent-init-progress`
 
 ```text
-{ agent_id, timestamp, type, stage }
+{ conversation_id, timestamp, type, stage }
 ```
 
 `stage` is one of:
@@ -147,7 +147,7 @@ to the frontend.
 ### `agent-turn-complete`
 
 ```text
-{ agent_id, timestamp, type, streaming }
+{ conversation_id, timestamp, type, streaming }
 ```
 
 ## `run_result` Contract

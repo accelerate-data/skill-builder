@@ -15,7 +15,7 @@ type Props = StepCompleteBaseProps & ClarificationsEditableProps & {
 
 export function DetailedResearchStepComplete(props: Props) {
   const {
-    skillId, agentRuns, reviewMode,
+    skillId, conversationRuns, reviewMode,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval,
     clarificationsEditable, clarificationsData: controlledClarData,
     onClarificationsChange, onClarificationsContinue, onReset, saveStatus, evaluating,
@@ -51,8 +51,8 @@ export function DetailedResearchStepComplete(props: Props) {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
-      {reviewMode && agentRuns.length > 0 && (
-        <div className="shrink-0"><AgentStatsBar runs={agentRuns} /></div>
+      {reviewMode && conversationRuns.length > 0 && (
+        <div className="shrink-0"><AgentStatsBar runs={conversationRuns} /></div>
       )}
       {clarificationsEditable ? (
         <div className="flex-1 min-h-0 overflow-hidden">
