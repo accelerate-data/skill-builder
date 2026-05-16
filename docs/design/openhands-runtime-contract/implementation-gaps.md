@@ -54,16 +54,21 @@ The Refine-specific send/finalize command path has been deleted. Future
 conversation acknowledgement work will be added on the new canonical
 conversation-event surface rather than extending the removed Refine contract.
 
-## 6. The Live Event Bridge Is Still Keyed by `agent_id`
+## 6. Partially Resolved in Task 3: The Live Event Bridge Is Still Keyed by `agent_id`
 
 Target model expects:
 
 - transcript authority keyed by `conversationId`
 - `agentId` to remain a transport detail only if still required
 
-Current Tauri event payloads and frontend listeners are still keyed primarily by `agent_id`.
+Current Tauri event payloads and frontend listeners are still keyed primarily
+by `agent_id`, but Task 3 now bridges those events into canonical backend
+observed events in `conversation-store` using the selected session's
+`conversationId` when the runtime payload does not include one.
 
-This is acceptable as a migration seam, but it means the new conversation model still needs a transport adapter before `agentId` can disappear from frontend public state.
+This keeps `agentId` as a transport concern in the live bridge, but the
+transport seam still exists until the remaining consumers stop depending on the
+legacy `agent-store` path.
 
 Relevant files:
 
@@ -72,7 +77,7 @@ Relevant files:
 - `app/src-tauri/src/agents/event_types.rs`
 - `app/src-tauri/src/types/session.rs`
 
-## 7. Raw OpenHands Payload Retention Is Not Yet the Frontend Transcript Contract
+## 7. Partially Resolved in Task 3: Raw OpenHands Payload Retention Is Not Yet the Only Frontend Transcript Contract
 
 Target model expects:
 
@@ -80,7 +85,11 @@ Target model expects:
 - app-owned envelope metadata to sit around that payload
 - projection to remain reversible and debuggable
 
-Current frontend normalized event handling is useful, but it does not yet define one canonical event envelope that clearly retains:
+The canonical envelope now exists in code and carries the raw OpenHands payload
+plus app-owned metadata. The remaining gap is that legacy projection consumers
+still coexist beside that canonical path.
+
+The migration target still expects one shared transcript contract that clearly retains:
 
 - raw OpenHands payload
 - frontend command payload
@@ -90,8 +99,9 @@ Current frontend normalized event handling is useful, but it does not yet define
 Relevant files:
 
 - `app/src/lib/openhands-conversation-events.ts`
+- `app/src/lib/conversation-event-types.ts`
+- `app/src/stores/conversation-store.ts`
 - `app/src/lib/openhands-event-projection.ts`
-- `app/src/lib/types.ts`
 
 ## 8. Live and Restored Transcript Construction Still Use Different Mental Models
 
@@ -107,8 +117,10 @@ Current code still splits responsibilities between:
 - restored session metadata bootstrap in `skill-openhands-session.ts`
 - agent-run display state in `agent-store`
 
-The old Refine-specific transcript path is gone, but the canonical shared
-conversation event layer still does not exist.
+The old Refine-specific transcript path is gone, and the canonical shared
+conversation event layer now exists for live backend-observed events. Restored
+selected-skill history still has not been hydrated into that same canonical
+store, so live and restored paths still do not fully converge.
 
 Relevant files:
 

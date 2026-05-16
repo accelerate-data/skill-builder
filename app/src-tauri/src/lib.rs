@@ -426,6 +426,7 @@ pub fn run() {
             commands::files::get_selected_skill_content,
             commands::skill_session::select_skill_openhands_session,
             commands::skill_session::pause_openhands_session,
+            commands::conversation::send_conversation_message,
             commands::workflow::evaluation::read_latest_benchmark,
             commands::imported_skills::upload::parse_skill_file,
             commands::imported_skills::upload::import_skill_from_file,

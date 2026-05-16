@@ -406,6 +406,19 @@ export const pauseOpenHandsSession = (
     },
   })
 
+export const sendConversationMessageCommand = (
+  conversationId: string,
+  localEventId: string,
+  message: string,
+) =>
+  invokeCommand("send_conversation_message", {
+    input: {
+      conversationId,
+      localEventId,
+      message,
+    },
+  })
+
 // --- Git History ---
 
 export const getSkillHistory = (

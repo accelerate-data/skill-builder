@@ -124,7 +124,7 @@ git commit -m "refactor: remove legacy refine surface"
 - Test: `app/src/__tests__/stores/conversation-store.test.ts`
 - Test: `app/src/__tests__/lib/conversation-event-projection.test.ts`
 
-- [ ] **Step 1: Define the canonical frontend event envelope**
+- [x] **Step 1: Define the canonical frontend event envelope**
 
 ```ts
 // app/src/lib/conversation-event-types.ts
@@ -152,7 +152,7 @@ export interface ConversationEventEnvelope {
 }
 ```
 
-- [ ] **Step 2: Write ordering tests before the store**
+- [x] **Step 2: Write ordering tests before the store**
 
 ```ts
 // app/src/__tests__/lib/conversation-event-ordering.test.ts
@@ -170,7 +170,7 @@ it("keeps a sending user event in place when it becomes accepted", () => {
 });
 ```
 
-- [ ] **Step 3: Implement the conversation store as the only transcript authority**
+- [x] **Step 3: Implement the conversation store as the only transcript authority**
 
 ```ts
 // app/src/stores/conversation-store.ts
@@ -184,7 +184,7 @@ interface ConversationStoreState {
 }
 ```
 
-- [ ] **Step 4: Add a pure projection layer from canonical events to display nodes**
+- [x] **Step 4: Add a pure projection layer from canonical events to display nodes**
 
 ```ts
 // app/src/lib/conversation-event-projection.ts
@@ -199,7 +199,7 @@ export function projectConversationEvents(events: ConversationEventEnvelope[]): 
 }
 ```
 
-- [ ] **Step 5: Update design docs for the canonical event core**
+- [x] **Step 5: Update design docs for the canonical event core**
 
 ```text
 Update:
@@ -210,7 +210,7 @@ Document the exact canonical event envelope, status transitions, and projection-
 that now exist in code.
 ```
 
-- [ ] **Step 6: Verify Task 2 and commit**
+- [x] **Step 6: Verify Task 2 and commit**
 
 ```bash
 cd app && npx vitest run \
@@ -243,7 +243,7 @@ git commit -m "feat: add canonical conversation event core"
 - Test: `app/src/__tests__/lib/conversation-runtime.test.ts`
 - Test: `app/src-tauri/src/commands/conversation.rs` (inline tests if appropriate)
 
-- [ ] **Step 1: Add conversation-centric frontend helpers**
+- [x] **Step 1: Add conversation-centric frontend helpers**
 
 ```ts
 // app/src/lib/conversation-runtime.ts
@@ -256,7 +256,7 @@ export async function sendConversationMessage(args: {
 }
 ```
 
-- [ ] **Step 2: Add a shared backend command surface for conversation actions**
+- [x] **Step 2: Add a shared backend command surface for conversation actions**
 
 ```rust
 // app/src-tauri/src/commands/conversation.rs
@@ -273,7 +273,7 @@ pub async fn send_conversation_message(
 }
 ```
 
-- [ ] **Step 3: Bridge legacy `agent_id` transport events into canonical backend events**
+- [x] **Step 3: Bridge legacy `agent_id` transport events into canonical backend events**
 
 ```ts
 // app/src/hooks/use-conversation-stream.ts
@@ -287,7 +287,7 @@ useEffect(() => {
 }, []);
 ```
 
-- [ ] **Step 4: Freeze the old helpers as transport-only seams**
+- [x] **Step 4: Freeze the old helpers as transport-only seams**
 
 ```text
 Allowed temporary role:
@@ -300,7 +300,7 @@ Forbidden after this task:
 - new product-level state additions
 ```
 
-- [ ] **Step 5: Update design docs for the new helper boundary**
+- [x] **Step 5: Update design docs for the new helper boundary**
 
 ```text
 Update:

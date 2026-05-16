@@ -579,8 +579,20 @@ frontend event core:
 - `app/src/lib/conversation-event-projection.ts` is the pure display-node
   projection boundary
 
-The legacy `agent-store` / `DisplayItem` path still exists as a migration seam,
-but it is no longer the only model described by the runtime contract.
+Task 3 adds the first conversation-centric helper layer above the existing
+transport seam:
+
+- `app/src/lib/conversation-runtime.ts` is the frontend helper for
+  `send_conversation_message`
+- `app/src-tauri/src/commands/conversation.rs` is the session-based backend
+  command surface for selected-skill conversation sends
+- `app/src/hooks/use-agent-stream.ts` now appends normalized backend-observed
+  events into `conversation-store` while still feeding the legacy projection
+  path
+
+The legacy `agent-store` / `DisplayItem` path still exists as a transport and
+projection seam for current consumers, but transcript authority now has a
+distinct canonical event layer in code.
 
 ### Terminal Result Ownership
 

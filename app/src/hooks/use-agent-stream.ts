@@ -1,10 +1,13 @@
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "@/lib/toast";
 import { useAgentStore } from "@/stores/agent-store";
+import { useConversationStore } from "@/stores/conversation-store";
+import { useSkillStore } from "@/stores/skill-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cache";
 import type { DisplayItem } from "@/lib/display-types";
 import {
+  buildCanonicalConversationEventEnvelope,
   getReasoningText,
   isTerminalConversationStatus,
   normalizeConversationEventMessage,
@@ -63,6 +66,23 @@ const INIT_PROGRESS_MESSAGES: Record<string, string> = {
 let initialized = false;
 let initPromise: Promise<void> | null = null;
 let _unlisteners: Array<() => void> = [];
+
+function selectedConversationId(): string | null {
+  return useSkillStore.getState().conversationId;
+}
+
+function appendCanonicalRuntimeEvent(
+  event: ReturnType<typeof normalizeConversationEventMessage> | ReturnType<typeof normalizeConversationStateMessage>,
+) {
+  if (!event) {
+    return;
+  }
+  const envelope = buildCanonicalConversationEventEnvelope(
+    event,
+    selectedConversationId(),
+  );
+  useConversationStore.getState().appendBackendObservedEvent(envelope);
+}
 
 interface AgentShutdownPayload {
   agent_id: string;
@@ -183,6 +203,7 @@ export async function initAgentStream() {
       if (message.type === "conversation_event") {
         const conversationEvent = normalizeConversationEventMessage(message);
         if (conversationEvent) {
+          appendCanonicalRuntimeEvent(conversationEvent);
           const reasoningText = getReasoningText(conversationEvent);
           console.debug(
             "[use-agent-stream] event=conversation_event agent_id=%s event_class=%s tool_call_id=%s parent_tool_call_id=%s reasoning_len=%d",
@@ -200,6 +221,7 @@ export async function initAgentStream() {
       if (message.type === "conversation_state") {
         const conversationState = normalizeConversationStateMessage(message);
         if (conversationState) {
+          appendCanonicalRuntimeEvent(conversationState);
           console.debug(
             "[use-agent-stream] event=conversation_state agent_id=%s status=%s",
             agent_id,

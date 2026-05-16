@@ -132,9 +132,13 @@ function getConversationEventDisplayKind(
 
 export function buildCanonicalConversationEventEnvelope(
   event: OpenHandsConversationEvent | OpenHandsConversationState,
+  fallbackConversationId?: string | null,
 ): ConversationEventEnvelope {
   const conversationId =
-    event.conversationId ?? event.agentId ?? "unknown-conversation";
+    event.conversationId ??
+    fallbackConversationId ??
+    event.agentId ??
+    "unknown-conversation";
   const eventKey =
     event.type === "conversation_state"
       ? event.status

@@ -52,6 +52,14 @@ void invokeCommand("run_workflow_step", {
   stepId: 1,
 });
 
+void invokeCommand("send_conversation_message", {
+  input: {
+    conversationId: "conv-1",
+    localEventId: "evt-1",
+    message: "hello",
+  },
+});
+
 void invokeCommand("get_workspace_path", {});
 
 // @ts-expect-error get_workspace_path uses the typed no-args convention

@@ -110,6 +110,13 @@ Current Task 2 implementation lives in:
 - `app/src/lib/conversation-event-projection.ts`
 - `app/src/lib/openhands-conversation-events.ts`
 
+Current Task 3 implementation adds the first shared helper boundary above the
+existing transport:
+
+- `app/src/lib/conversation-runtime.ts`
+- `app/src-tauri/src/commands/conversation.rs`
+- `app/src/hooks/use-agent-stream.ts`
+
 ## Event Sources
 
 ### Frontend-Originated Events
@@ -243,6 +250,15 @@ Short-term compatibility rule:
 - the canonical conversation model remains keyed by `conversationId`
 - `agentId` must not be a first-class public transcript concept
 
+Current migration state:
+
+- frontend sends go through `sendConversationMessage(...)` and the typed
+  `send_conversation_message` backend command
+- backend-observed runtime events append into `conversation-store` through
+  `use-agent-stream`
+- `agent-store` still keeps the legacy display projection path for current UI
+  consumers, but that state is now a seam rather than the only transcript model
+
 ## Surface Adoption
 
 ### Refine
@@ -277,6 +293,8 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 | [app/src/stores/conversation-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/conversation-store.ts) | Canonical frontend transcript authority keyed by `conversationId` |
 | [app/src/lib/conversation-event-projection.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-event-projection.ts) | Pure projection from canonical events into renderer-facing display nodes |
 | [app/src/lib/openhands-conversation-events.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/openhands-conversation-events.ts) | Normalization helpers plus backend-to-canonical envelope mapping for OpenHands runtime payloads |
+| [app/src/lib/conversation-runtime.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-runtime.ts) | Frontend send helper for conversation-scoped actions |
+| [app/src-tauri/src/commands/conversation.rs](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src-tauri/src/commands/conversation.rs) | Session-based backend command surface for selected-skill conversation sends |
 | [app/src/stores/agent-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/agent-store.ts) | Existing migration-era runtime store that still owns legacy display projection paths until later tasks move consumers over |
 
 ## Relationship to Existing Design Specs

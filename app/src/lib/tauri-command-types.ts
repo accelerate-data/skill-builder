@@ -328,6 +328,18 @@ export interface TauriCommandMap {
     };
     result: void;
   };
+  send_conversation_message: {
+    args: {
+      input: {
+        conversationId: string;
+        localEventId: string;
+        message: string;
+      };
+    };
+    result:
+      | { accepted: true; error?: null | undefined }
+      | { accepted: false; error: string };
+  };
   get_skill_history: {
     args: { workspacePath: string; skillName: string; pluginSlug: string; limit: number | null };
     result: SkillCommit[];

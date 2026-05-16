@@ -351,9 +351,9 @@ export interface AgentRun {
   agentId: string;
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
-  /** Structured display items from the runtime event stream. */
+  /** Projection-only display state for legacy consumers during the migration. */
   displayItems: DisplayItem[];
-  /** OpenHands-native conversation events for clean-break runtime runs. */
+  /** Transport-scoped OpenHands event cache for legacy projections; not transcript authority. */
   conversationEvents?: OpenHandsConversationEvent[];
   conversationState?: OpenHandsConversationState;
   /** Pending OpenHands ActionEvents awaiting their matching ObservationEvent.
