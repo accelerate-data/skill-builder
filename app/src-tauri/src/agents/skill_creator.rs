@@ -30,6 +30,7 @@ pub enum WorkflowStepKind {
 #[derive(Debug, Clone)]
 pub enum SkillCreatorIntent {
     Refine,
+    SelectedSkillSession,
     WorkflowStep { step: WorkflowStepKind },
     AnswerEvaluator,
     Eval,
@@ -57,6 +58,7 @@ pub struct SkillCreatorRuntimeContext {
 fn intent_task_kind(intent: &SkillCreatorIntent) -> &'static str {
     match intent {
         SkillCreatorIntent::Refine => "refine",
+        SkillCreatorIntent::SelectedSkillSession => "selected_skill_session",
         SkillCreatorIntent::WorkflowStep { step } => match step {
             WorkflowStepKind::Research => "workflow.research",
             WorkflowStepKind::DetailedResearch => "workflow.detailed_research",
@@ -73,6 +75,7 @@ fn intent_task_kind(intent: &SkillCreatorIntent) -> &'static str {
 fn intent_run_source(intent: &SkillCreatorIntent) -> Option<&'static str> {
     match intent {
         SkillCreatorIntent::Refine => Some("refine"),
+        SkillCreatorIntent::SelectedSkillSession => Some("selected-skill-session"),
         SkillCreatorIntent::WorkflowStep { .. } => Some("workflow"),
         SkillCreatorIntent::AnswerEvaluator => Some("gate-eval"),
         SkillCreatorIntent::Eval => Some("scenario-suggest"),
@@ -84,6 +87,9 @@ fn intent_run_source(intent: &SkillCreatorIntent) -> Option<&'static str> {
 fn intent_allowed_tools(intent: &SkillCreatorIntent) -> Vec<String> {
     match intent {
         SkillCreatorIntent::Refine => {
+            vec!["file_editor".to_string(), "terminal".to_string()]
+        }
+        SkillCreatorIntent::SelectedSkillSession => {
             vec!["file_editor".to_string(), "terminal".to_string()]
         }
         SkillCreatorIntent::WorkflowStep { step } => match step {
@@ -118,6 +124,7 @@ fn intent_allowed_tools(intent: &SkillCreatorIntent) -> Vec<String> {
 fn intent_max_turns(intent: &SkillCreatorIntent) -> u32 {
     match intent {
         SkillCreatorIntent::Refine => 500,
+        SkillCreatorIntent::SelectedSkillSession => 500,
         SkillCreatorIntent::WorkflowStep { step } => match step {
             WorkflowStepKind::Research => 50,
             WorkflowStepKind::DetailedResearch => 50,
@@ -134,6 +141,7 @@ fn intent_max_turns(intent: &SkillCreatorIntent) -> u32 {
 fn intent_step_id(intent: &SkillCreatorIntent) -> i32 {
     match intent {
         SkillCreatorIntent::Refine => -10,
+        SkillCreatorIntent::SelectedSkillSession => -12,
         SkillCreatorIntent::WorkflowStep { step } => match step {
             WorkflowStepKind::Research => 0,
             WorkflowStepKind::DetailedResearch => 1,
@@ -150,6 +158,7 @@ fn intent_step_id(intent: &SkillCreatorIntent) -> i32 {
 fn intent_output_format(intent: &SkillCreatorIntent) -> Option<serde_json::Value> {
     match intent {
         SkillCreatorIntent::Refine => None,
+        SkillCreatorIntent::SelectedSkillSession => None,
         SkillCreatorIntent::WorkflowStep { step } => match step {
             WorkflowStepKind::Research => Some(wrap_schema(schemas::RESEARCH_STEP_INLINE_SCHEMA)),
             WorkflowStepKind::DetailedResearch => {
@@ -170,6 +179,7 @@ fn intent_output_format(intent: &SkillCreatorIntent) -> Option<serde_json::Value
 fn intent_mode(intent: &SkillCreatorIntent) -> Option<OpenHandsRuntimeMode> {
     match intent {
         SkillCreatorIntent::Refine => None,
+        SkillCreatorIntent::SelectedSkillSession => None,
         SkillCreatorIntent::WorkflowStep { .. } => None,
         SkillCreatorIntent::AnswerEvaluator => None,
         SkillCreatorIntent::Eval => Some(OpenHandsRuntimeMode::Throwaway),
@@ -181,6 +191,7 @@ fn intent_mode(intent: &SkillCreatorIntent) -> Option<OpenHandsRuntimeMode> {
 fn intent_user_message_suffix(intent: &SkillCreatorIntent) -> Option<String> {
     match intent {
         SkillCreatorIntent::Refine
+        | SkillCreatorIntent::SelectedSkillSession
         | SkillCreatorIntent::WorkflowStep { .. }
         | SkillCreatorIntent::AnswerEvaluator => {
             Some(SKILL_CREATOR_USER_SUFFIX.trim().to_string())
@@ -362,6 +373,33 @@ mod tests {
         assert!(config.skill_dir.contains("default"));
         assert!(config.skill_dir.contains("skills"));
         assert!(config.skill_dir.contains("test-skill"));
+    }
+
+    #[test]
+    fn test_build_skill_creator_config_selected_skill_session_intent() {
+        let config = build_skill_creator_config(SkillCreatorRuntimeContext {
+            app_data_root: "/tmp/app-data".to_string(),
+            skills_root: "/tmp/skills".to_string(),
+            skill_name: "selected-skill".to_string(),
+            plugin_slug: "default".to_string(),
+            prompt: "continue the active session".to_string(),
+            llm: test_llm_config(),
+            intent: SkillCreatorIntent::SelectedSkillSession,
+            skill_dir_override: None,
+        });
+
+        assert_eq!(config.agent_name, Some("skill-creator".to_string()));
+        assert_eq!(config.task_kind, Some("selected_skill_session".to_string()));
+        assert_eq!(config.run_source, Some("selected-skill-session".to_string()));
+        assert_eq!(config.step_id, Some(-12));
+        assert_eq!(config.skill_name, Some("selected-skill".to_string()));
+        assert_eq!(config.plugin_slug, "default");
+        assert_eq!(config.max_turns, Some(500));
+        assert_eq!(
+            config.allowed_tools,
+            Some(vec!["file_editor".to_string(), "terminal".to_string()])
+        );
+        assert!(config.user_message_suffix.is_some());
     }
 
     #[test]

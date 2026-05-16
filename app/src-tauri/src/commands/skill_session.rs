@@ -32,7 +32,7 @@ pub(crate) fn build_pause_runtime_config(
         plugin_slug: plugin_slug.to_string(),
         prompt: String::new(),
         llm: runtime_ctx.llm,
-        intent: SkillCreatorIntent::Refine,
+        intent: SkillCreatorIntent::SelectedSkillSession,
         skill_dir_override: None,
     }))
 }
@@ -343,7 +343,7 @@ pub async fn select_skill_openhands_session(
             plugin_slug: plugin_slug.clone(),
             prompt: String::new(),
             llm: runtime_ctx.llm.clone(),
-            intent: SkillCreatorIntent::Refine,
+            intent: SkillCreatorIntent::SelectedSkillSession,
             skill_dir_override: None,
         });
         let started_session = crate::agents::skill_creator::ensure_skill_session(

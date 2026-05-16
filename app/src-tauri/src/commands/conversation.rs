@@ -137,7 +137,7 @@ pub async fn send_conversation_message(
         plugin_slug: session.plugin_slug.clone(),
         prompt: input.message,
         llm: runtime_ctx.llm,
-        intent: SkillCreatorIntent::Refine,
+        intent: SkillCreatorIntent::SelectedSkillSession,
         skill_dir_override: None,
     });
     config.usage_session_id = Some(session.usage_session_id.clone());
