@@ -75,8 +75,7 @@ export type ClarificationVerdictUpdate = { question_id: string; verdict?: string
  * Full clarifications artifact for a skill.
  * 
  * Mirrors `db::workflow_artifacts::ClarificationsRecord`. Children
- * (`sections`, `questions`, `notes`) are reconstructed by the read path;
- * refinements are nested inside each `ClarificationQuestionDto.refinements`.
+ * (`sections`, `questions`, `notes`) are reconstructed by the read path.
  */
 export type ClarificationsDto = { skill_id: string; version: string; refinement_count: number; must_answer_count: number; question_count: number; section_count: number; title: string; 
 /**
