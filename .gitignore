@@ -9,6 +9,7 @@ node_modules/
 
 # Draft docs (local review only)
 docs/test-strategy.md
+docs/reviews/
 
 # Test results
 app/test-results/
