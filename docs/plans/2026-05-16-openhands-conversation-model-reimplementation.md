@@ -415,7 +415,7 @@ git commit -m "feat: add workspace conversation surface"
 - Test: `app/src/__tests__/pages/workflow.test.tsx`
 - Test: `app/src/__tests__/components/agent-output-panel.test.tsx`
 
-- [ ] **Step 1: Replace workflow transcript rendering with the canonical conversation surface**
+- [x] **Step 1: Replace workflow transcript rendering with the canonical conversation surface**
 
 ```tsx
 // app/src/pages/workflow.tsx
@@ -424,7 +424,7 @@ git commit -m "feat: add workspace conversation surface"
 // Render the canonical event stream directly.
 ```
 
-- [ ] **Step 2: Migrate workflow-side viewers away from agent-store transcript state**
+- [x] **Step 2: Migrate workflow-side viewers away from agent-store transcript state**
 
 ```text
 Review and migrate:
@@ -433,7 +433,7 @@ Review and migrate:
 - app/src/components/workflow-sidebar.tsx
 ```
 
-- [ ] **Step 3: Update design docs for Workflow adoption**
+- [x] **Step 3: Update design docs for Workflow adoption**
 
 ```text
 Update:
@@ -445,7 +445,7 @@ Document Workflow as a consumer of the canonical conversation stream and remove 
 workflow-side transcript assumptions.
 ```
 
-- [ ] **Step 4: Verify the workflow migration PR and commit**
+- [x] **Step 4: Verify the workflow migration PR and commit**
 
 ```bash
 cd app && npx vitest run \
