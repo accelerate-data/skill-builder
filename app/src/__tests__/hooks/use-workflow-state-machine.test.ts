@@ -415,6 +415,26 @@ describe("useWorkflowStateMachine", () => {
     expect(mockRunWorkflowStep).not.toHaveBeenCalled();
   });
 
+  it("performStepReset on step 1 preserves step 0 and reruns step 1", async () => {
+    mockRunWorkflowStep.mockResolvedValueOnce("agent-reset-step-1");
+
+    const { result } = renderHook(() =>
+      useWorkflowStateMachine(defaultOptions),
+    );
+
+    await act(async () => {
+      await result.current.performStepReset(1);
+    });
+
+    expect(mockResetWorkflowStep).toHaveBeenCalledWith(
+      "/workspace",
+      "test-skill",
+      1,
+    );
+    expect(mockResetToStep).toHaveBeenCalledWith(1);
+    expect(mockRunWorkflowStep).toHaveBeenCalledWith(1, "test-skill", 1);
+  });
+
   it("handleStartAgentStep uses overrideStep when provided", async () => {
     mockRunWorkflowStep.mockResolvedValueOnce("agent-override-1");
 

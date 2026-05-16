@@ -111,7 +111,11 @@ function mapClarificationsDtoToFile(dto: ClarificationsDto): ClarificationsFile 
 }
 
 function getEffectiveResetTarget(stepId: number): number {
-  return stepId === 1 ? 0 : stepId;
+  return stepId;
+}
+
+function getDeleteFromStep(stepId: number, preserveTargetStep: boolean): number {
+  return preserveTargetStep ? stepId + 1 : stepId;
 }
 
 interface WorkflowMainHeaderProps {
@@ -529,7 +533,7 @@ export default function WorkflowPage() {
       {/* Reset step dialog — shown when clicking a prior completed step */}
       <ResetStepDialog
         targetStep={resetTarget}
-        deleteFromStep={resetTarget !== null ? resetTarget + 1 : undefined}
+        deleteFromStep={resetTarget !== null ? getDeleteFromStep(resetTarget, true) : undefined}
         workspacePath={workspacePath ?? ""}
         skillName={actualSkillName}
         open={resetTarget !== null}

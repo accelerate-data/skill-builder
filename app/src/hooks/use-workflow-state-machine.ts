@@ -803,11 +803,7 @@ export function useWorkflowStateMachine({
   // --- Step reset ---
 
   const performStepReset = async (stepId: number) => {
-    // Steps 0 (Research) and 1 (Detailed Research) share the same OpenHands
-    // conversation. Resetting step 1 clears the conversation ID from the DB, so
-    // step 1 cannot resume without step 0 first creating a new conversation.
-    // Treat any reset of step 1 as a full reset to step 0.
-    const effectiveStepId = stepId === 1 ? 0 : stepId;
+    const effectiveStepId = stepId;
     logFrontend(
       "info",
       `[performStepReset] resetting step ${stepId}, effectiveStepId=${effectiveStepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`,

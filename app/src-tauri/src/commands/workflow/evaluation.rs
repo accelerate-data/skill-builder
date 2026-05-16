@@ -25,6 +25,14 @@ pub(crate) fn workflow_step_log_name(step_id: i32) -> String {
     crate::db::step_name(step_id)
 }
 
+fn get_delete_from_step(step_id: u32, preserve_target_step: bool) -> u32 {
+    if preserve_target_step {
+        step_id + 1
+    } else {
+        step_id
+    }
+}
+
 /// Collect the saved conversation IDs for a skill (and its legacy default-plugin
 /// entry if the skill moved plugins). Returns (plugin_slug, conversation_id) pairs.
 fn collect_skill_conversation_ids(
@@ -150,11 +158,7 @@ fn navigate_back_to_step_impl(
     // Delete output files for steps from the target onwards.
     // Step 0 is a special case: navigating back to it means a full rerun, so its own
     // workflow artifacts must also be cleared.
-    let delete_from = if target_step_id == 0 {
-        0
-    } else {
-        target_step_id + 1
-    };
+    let delete_from = get_delete_from_step(target_step_id, target_step_id != 0);
     let plugin_slug = crate::db::get_skill_master_any_plugin(conn, skill_name)?
         .map(|m| m.plugin_slug)
         .unwrap_or_else(|| crate::skill_paths::DEFAULT_PLUGIN_SLUG.to_string());
@@ -178,21 +182,10 @@ fn navigate_back_to_step_impl(
         );
     }
     crate::cleanup::delete_step_output_files(skill_name, &plugin_slug, delete_from, skills_path);
+    clear_artifacts_for_step_reset(conn, skill_name, delete_from)?;
 
     if target_step_id == 0 {
         clear_skill_conversation_db_records(conn, &plugin_slug, skill_name)?;
-    }
-
-    // When navigating back to step 1, clear refinements so stale data isn't displayed
-    if target_step_id == 1 {
-        let s_id = crate::db::get_skill_master_id_in_plugin(conn, skill_name, &plugin_slug)?
-            .ok_or_else(|| {
-                format!(
-                    "Skill '{}' not found in plugin '{}'",
-                    skill_name, plugin_slug
-                )
-            })?;
-        clear_artifacts_for_step_reset(conn, &s_id.to_string(), 2)?;
     }
 
     // Reset only steps after the target; target step status is preserved as "completed".
@@ -386,6 +379,10 @@ mod tests {
     use super::{clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records};
     use crate::commands::test_utils::create_test_db;
     use crate::db::Db;
+    use crate::db::workflow_artifacts::{
+        self, ClarificationsRecord, ClarificationSection, ClarificationQuestion, DecisionsRecord,
+        DecisionItem, RefinementsRecord, RefinementSection, RefinementQuestion,
+    };
     use crate::types::StepStatusUpdate;
     use tempfile::tempdir;
 
@@ -644,6 +641,191 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(run.current_step, 0);
+        assert_eq!(run.status, "pending");
+    }
+
+    #[test]
+    fn test_navigate_back_to_step_one_preserves_step_one_artifacts() {
+        let mut conn = create_test_db();
+        let tmp = tempdir().unwrap();
+        let skills_path = tmp.path().join("skills");
+        std::fs::create_dir_all(&skills_path).unwrap();
+
+        let skill_name = "reset-me";
+        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
+
+        let skill_id = crate::db::upsert_skill_in_plugin(
+            &conn,
+            skill_name,
+            "skill-builder",
+            "test",
+            default_slug,
+        )
+        .unwrap();
+        crate::db::save_workflow_run(&conn, skill_name, 2, "completed", "domain").unwrap();
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 0, "completed").unwrap();
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 1, "completed").unwrap();
+        crate::db::save_workflow_step_by_skill_id(&conn, skill_id, 2, "completed").unwrap();
+
+        let tx = conn.transaction().unwrap();
+        workflow_artifacts::upsert_clarifications(
+            &tx,
+            &ClarificationsRecord {
+                skill_id: skill_id.to_string(),
+                version: "1".to_string(),
+                refinement_count: 1,
+                must_answer_count: 1,
+                question_count: 1,
+                section_count: 1,
+                title: "Clarifications".to_string(),
+                scope_recommendation: None,
+                scope_reason: None,
+                scope_next_action: None,
+                error_code: None,
+                error_message: None,
+                warning_code: None,
+                warning_message: None,
+                eval_verdict: None,
+                eval_reasoning: None,
+                eval_at: None,
+                eval_answered_count: None,
+                eval_empty_count: None,
+                eval_vague_count: None,
+                eval_contradictory_count: None,
+                created_at: 0,
+                updated_at: 0,
+                sections: vec![ClarificationSection {
+                    section_id: 1,
+                    ordinal: 0,
+                    title: "Section".to_string(),
+                    description: None,
+                }],
+                questions: vec![ClarificationQuestion {
+                    question_id: "q1".to_string(),
+                    section_id: 1,
+                    parent_question_id: None,
+                    ordinal: 0,
+                    title: "Question".to_string(),
+                    text: "Question text".to_string(),
+                    must_answer: true,
+                    answer_choice: None,
+                    answer_text: None,
+                    recommendation: None,
+                    answer_verdict: None,
+                    answer_verdict_reason: None,
+                    choices: vec![],
+                    refinements: vec![],
+                }],
+                notes: vec![],
+            },
+        )
+        .unwrap();
+        workflow_artifacts::upsert_refinements(
+            &tx,
+            &RefinementsRecord {
+                skill_id: skill_id.to_string(),
+                version: "1".to_string(),
+                refinement_count: 1,
+                must_answer_count: 1,
+                question_count: 1,
+                section_count: 1,
+                title: "Refinements".to_string(),
+                scope_recommendation: None,
+                scope_reason: None,
+                scope_next_action: None,
+                error_code: None,
+                error_message: None,
+                warning_code: None,
+                warning_message: None,
+                eval_verdict: None,
+                eval_reasoning: None,
+                eval_at: None,
+                eval_answered_count: None,
+                eval_empty_count: None,
+                eval_vague_count: None,
+                eval_contradictory_count: None,
+                created_at: 0,
+                updated_at: 0,
+                sections: vec![RefinementSection {
+                    section_id: 1,
+                    ordinal: 0,
+                    title: "Refinement Section".to_string(),
+                    description: None,
+                }],
+                questions: vec![RefinementQuestion {
+                    question_id: "r1".to_string(),
+                    section_id: 1,
+                    ordinal: 0,
+                    title: "Refinement".to_string(),
+                    text: "Refinement text".to_string(),
+                    must_answer: true,
+                    answer_choice: None,
+                    answer_text: None,
+                    recommendation: None,
+                    answer_verdict: None,
+                    answer_verdict_reason: None,
+                    choices: vec![],
+                }],
+                notes: vec![],
+            },
+        )
+        .unwrap();
+        workflow_artifacts::upsert_decisions(
+            &tx,
+            &DecisionsRecord {
+                skill_id: skill_id.to_string(),
+                version: "1".to_string(),
+                round: 1,
+                decision_count: 1,
+                conflicts_resolved: 0,
+                contradictory_inputs_state: None,
+                scope_recommendation: None,
+                created_at: 0,
+                updated_at: 0,
+                items: vec![DecisionItem {
+                    decision_id: "d1".to_string(),
+                    ordinal: 0,
+                    title: "Decision".to_string(),
+                    original_question: "Question".to_string(),
+                    decision: "Yes".to_string(),
+                    implication: "Implication".to_string(),
+                    status: "resolved".to_string(),
+                }],
+            },
+        )
+        .unwrap();
+        tx.commit().unwrap();
+
+        super::navigate_back_to_step_impl(&conn, skills_path.to_str().unwrap(), skill_name, 1)
+            .unwrap();
+
+        assert!(
+            workflow_artifacts::read_clarifications(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some(),
+            "refinements should remain when navigating back to step 1"
+        );
+        assert!(
+            workflow_artifacts::read_decisions(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_none(),
+            "decisions should be cleared when navigating back to step 1"
+        );
+
+        let steps = crate::db::get_workflow_steps_by_skill_id(&conn, skill_id).unwrap();
+        assert_eq!(steps[0].status, "completed");
+        assert_eq!(steps[1].status, "completed");
+        assert_eq!(steps[2].status, "pending");
+
+        let run = crate::db::get_workflow_run_by_skill_id(&conn, skill_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.current_step, 1);
         assert_eq!(run.status, "pending");
     }
 
@@ -1652,7 +1834,8 @@ mod reset_artifact_cleanup_tests {
     use crate::commands::test_utils::create_test_db;
     use crate::db::workflow_artifacts::{
         self, ClarificationQuestion, ClarificationSection, ClarificationsRecord, DecisionItem,
-        DecisionsRecord,
+        DecisionsRecord, RefinementChoice, RefinementQuestion, RefinementSection,
+        RefinementNote, RefinementsRecord,
     };
 
     fn seed_clarifications(conn: &mut rusqlite::Connection, skill_id: i64) {
@@ -1735,6 +1918,69 @@ mod reset_artifact_cleanup_tests {
         tx.commit().unwrap();
     }
 
+    fn seed_refinements(conn: &mut rusqlite::Connection, skill_id: i64) {
+        let record = RefinementsRecord {
+            skill_id: skill_id.to_string(),
+            version: "1".to_string(),
+            refinement_count: 1,
+            must_answer_count: 1,
+            question_count: 1,
+            section_count: 1,
+            title: "Test Refinements".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            sections: vec![RefinementSection {
+                section_id: 1,
+                ordinal: 0,
+                title: "Refinement Scope".to_string(),
+                description: None,
+            }],
+            questions: vec![RefinementQuestion {
+                question_id: "r1".to_string(),
+                section_id: 1,
+                ordinal: 0,
+                title: "What needs refinement?".to_string(),
+                text: "Add more detail.".to_string(),
+                must_answer: true,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![RefinementChoice {
+                    choice_id: "choice-1".to_string(),
+                    ordinal: 0,
+                    text: "More detail".to_string(),
+                    is_other: false,
+                }],
+            }],
+            notes: vec![RefinementNote {
+                note_id: None,
+                ordinal: 0,
+                note_type: "note".to_string(),
+                title: "Refinement Note".to_string(),
+                body: "Persisted refinement note".to_string(),
+            }],
+        };
+        let tx = conn.transaction().unwrap();
+        workflow_artifacts::upsert_refinements(&tx, &record).unwrap();
+        tx.commit().unwrap();
+    }
+
     fn has_clarifications(conn: &rusqlite::Connection, skill_id: i64) -> bool {
         workflow_artifacts::read_clarifications(conn, &skill_id.to_string())
             .unwrap()
@@ -1790,8 +2036,14 @@ mod reset_artifact_cleanup_tests {
         .unwrap();
 
         seed_clarifications(&mut conn, skill_id);
+        seed_refinements(&mut conn, skill_id);
         seed_decisions(&mut conn, skill_id);
         assert!(has_clarifications(&conn, skill_id));
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_some()
+        );
         assert!(has_decisions(&conn, skill_id));
 
         // Reset from step 1 should clear refinements and decisions, but keep clarifications.
@@ -1800,6 +2052,12 @@ mod reset_artifact_cleanup_tests {
         assert!(
             has_clarifications(&conn, skill_id),
             "clarifications should be preserved when resetting from step 1"
+        );
+        assert!(
+            workflow_artifacts::read_refinements(&conn, &skill_id.to_string())
+                .unwrap()
+                .is_none(),
+            "refinements should be deleted when resetting from step 1"
         );
         assert!(
             !has_decisions(&conn, skill_id),
