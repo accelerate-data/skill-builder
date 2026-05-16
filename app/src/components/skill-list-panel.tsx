@@ -49,7 +49,10 @@ import {
 } from "@/lib/queries/skills";
 
 export interface SkillListPanelProps {
-  onSelectSkill?: (name: string, targetSurface?: "overview" | "evals") => Promise<void> | void;
+  onSelectSkill?: (
+    name: string,
+    targetSurface?: "conversation" | "overview" | "evals",
+  ) => Promise<void> | void;
   onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   onCreateSkill?: () => void;
   onCollapse?: () => void;

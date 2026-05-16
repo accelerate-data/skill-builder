@@ -594,6 +594,21 @@ The legacy `agent-store` / `DisplayItem` path still exists as a transport and
 projection seam for current consumers, but transcript authority now has a
 distinct canonical event layer in code.
 
+Task 4 begins the first surface adoption on the workspace side:
+
+- `app/src/components/conversation/conversation-timeline.tsx` and
+  `conversation-event-row.tsx` render a flat canonical timeline from
+  `projectConversationEvents(...)`
+- `app/src/components/workspace/workspace-conversation.tsx` is the clean-slate
+  workspace conversation surface for the selected skill session
+- `app/src/components/layout/app-layout.tsx` now restores workspace skills onto
+  the conversation surface by default when the selected session is rehydrated
+
+Workspace still does not hydrate restored transcript history into
+`conversation-store`, but the session-backed workspace surface now reads from
+the canonical conversation layer instead of the legacy `agent-store`
+transcript path.
+
 ### Terminal Result Ownership
 
 Workflow commands extract terminal `conversation_state.result_text` from a

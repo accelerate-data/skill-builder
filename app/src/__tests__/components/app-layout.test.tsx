@@ -48,7 +48,7 @@ vi.mock("@/components/skill-list-panel", () => ({
     onSelectSkill,
     onActivateSkill,
   }: {
-    onSelectSkill?: (name: string, targetSurface?: "overview" | "evals") => void;
+    onSelectSkill?: (name: string, targetSurface?: "conversation" | "overview" | "evals") => void;
     onActivateSkill?: (name: string, targetSurface?: "workflow" | "workspace") => Promise<void> | void;
   }) => (
     <div data-testid="skill-list-panel">
@@ -124,6 +124,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 import {
   getEvalsRunning,
   getEvalsStopping,
@@ -196,6 +197,7 @@ describe("AppLayout", () => {
       availableAgents: [],
       activeAgentId: null,
     });
+    useWorkspaceStore.setState({ activeSurface: "overview" });
     setEvalsRunning(false);
     setEvalsStopping(false);
     setEvalsCancelHandler(null);
@@ -684,6 +686,7 @@ describe("AppLayout", () => {
     });
 
     expect(useSkillStore.getState().conversationId).toBe("conv-sales");
+    expect(useWorkspaceStore.getState().activeSurface).toBe("conversation");
   });
 
   it("bootstraps an OpenHands session without requiring workspace path", async () => {

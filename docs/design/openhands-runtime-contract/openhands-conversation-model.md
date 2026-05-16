@@ -272,6 +272,27 @@ Target behavior:
 - later runtime activity simply appears after them in the same conversation stream
 - no synthetic turn ownership is required for correctness
 
+### Workspace
+
+Workspace is now the first shipped canonical conversation surface for selected
+skill sessions.
+
+Current behavior:
+
+- the selected session's `conversationId` remains the public transcript key
+- `WorkspaceConversation` renders the canonical conversation timeline through
+  `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat
+  timeline row renderer
+- implicit workspace entry after selected-skill session bootstrap now restores
+  to the conversation surface by default
+
+Current limitation:
+
+- restored selected-skill history is still not replayed into
+  `conversation-store`, so the workspace conversation surface currently shows
+  canonical live events plus frontend sends rather than a fully reconstructed
+  restored transcript
+
 ### Workflow
 
 Workflow may adopt the same canonical event stream underneath step-specific UIs, while still choosing a more structured presentation at the page level.
@@ -295,6 +316,8 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 | [app/src/lib/openhands-conversation-events.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/openhands-conversation-events.ts) | Normalization helpers plus backend-to-canonical envelope mapping for OpenHands runtime payloads |
 | [app/src/lib/conversation-runtime.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-runtime.ts) | Frontend send helper for conversation-scoped actions |
 | [app/src-tauri/src/commands/conversation.rs](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src-tauri/src/commands/conversation.rs) | Session-based backend command surface for selected-skill conversation sends |
+| [app/src/components/conversation/conversation-timeline.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/conversation/conversation-timeline.tsx) | Flat canonical renderer for conversation-store-backed display nodes |
+| [app/src/components/workspace/workspace-conversation.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/workspace/workspace-conversation.tsx) | Clean-slate workspace transcript surface bound to the selected session |
 | [app/src/stores/agent-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/agent-store.ts) | Existing migration-era runtime store that still owns legacy display projection paths until later tasks move consumers over |
 
 ## Relationship to Existing Design Specs

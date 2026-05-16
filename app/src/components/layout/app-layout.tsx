@@ -40,6 +40,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+type WorkspaceTargetSurface = "conversation" | "overview" | "evals";
+
 export function AppLayout() {
   const isConfigured = useSettingsStore((s) => s.isConfigured);
   const { data: builderSkills = [] } = useBuilderSkillsQuery();
@@ -185,7 +187,11 @@ export function AppLayout() {
   );
 
   const activateSkill = useCallback(
-    async (skillId: string, targetSurface?: "workflow" | "workspace") => {
+    async (
+      skillId: string,
+      targetSurface?: "workflow" | "workspace",
+      workspaceSurface: WorkspaceTargetSurface = "conversation",
+    ) => {
       if (lockedSkills.has(Number(skillId))) {
         return;
       }
@@ -206,7 +212,7 @@ export function AppLayout() {
         if (surface === "workflow") {
           navigate({ to: "/workflow/$skillId", params: { skillId } });
         } else {
-          setWorkspaceSurface("overview");
+          setWorkspaceSurface(workspaceSurface);
           navigate({ to: "/workspace/$skillId", params: { skillId } });
         }
         return;
@@ -231,7 +237,7 @@ export function AppLayout() {
       if (surface === "workflow") {
         navigate({ to: "/workflow/$skillId", params: { skillId } });
       } else {
-        setWorkspaceSurface("overview");
+        setWorkspaceSurface(workspaceSurface);
         navigate({ to: "/workspace/$skillId", params: { skillId } });
       }
     },
@@ -248,7 +254,7 @@ export function AppLayout() {
   );
 
   const handleSelectSkill = useCallback(
-    async (skillId: string, targetSurface: "overview" | "evals" = "overview") => {
+    async (skillId: string, targetSurface?: WorkspaceTargetSurface) => {
       if (lockedSkills.has(Number(skillId))) {
         return;
       }
@@ -260,11 +266,12 @@ export function AppLayout() {
         selectedSkill?.name === editableSkill.name &&
         selectedSkill.plugin_slug === editableSkill.plugin_slug &&
         !!selectedSkillConversationId;
+      const requestedWorkspaceSurface = targetSurface ?? "conversation";
 
       if (skillId === selectedWorkspaceSkillId && sessionAlreadyActive) {
         const surface = getSkillSurface(editableSkill);
         if (surface === "workspace") {
-          setWorkspaceSurface(targetSurface);
+          setWorkspaceSurface(requestedWorkspaceSurface);
         }
         const route = surface === "workflow"
           ? { to: "/workflow/$skillId", params: { skillId } }
@@ -280,8 +287,10 @@ export function AppLayout() {
       }
 
       try {
-        setWorkspaceSurface(targetSurface);
-        await activateSkill(skillId);
+        if (getSkillSurface(editableSkill) === "workspace") {
+          setWorkspaceSurface(requestedWorkspaceSurface);
+        }
+        await activateSkill(skillId, undefined, requestedWorkspaceSurface);
       } catch (err) {
         console.error("[app-layout] skill switch cleanup failed", err);
         toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity });

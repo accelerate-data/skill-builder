@@ -81,6 +81,9 @@ vi.mock("@/lib/eval-workbench", async () => {
 vi.mock("@/components/workspace/workspace-overview", () => ({
   WorkspaceOverview: () => <div data-testid="workspace-overview" />,
 }));
+vi.mock("@/components/workspace/workspace-conversation", () => ({
+  WorkspaceConversation: () => <div data-testid="workspace-conversation" />,
+}));
 vi.mock("@/components/workspace/preview-panel", () => ({
   PreviewPanel: () => <div data-testid="preview-panel" />,
 }));
@@ -196,11 +199,22 @@ describe("WorkspaceShell", () => {
   it("Overview tab is active by default", () => {
     render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
 
+    const conversationTab = screen.getByRole("tab", { name: "Conversation" });
     const overviewTab = screen.getByRole("tab", { name: "Overview" });
     const evalWorkbenchTab = screen.getByRole("tab", { name: "Eval Workbench" });
 
+    expect(conversationTab).not.toHaveAttribute("data-state", "active");
     expect(overviewTab).toHaveAttribute("data-state", "active");
     expect(evalWorkbenchTab).not.toBeDisabled();
+  });
+
+  it("renders the conversation surface when selected", () => {
+    useWorkspaceStore.setState({ activeSurface: "conversation" });
+
+    render(<WorkspaceShell skill={baseBuilderSkill} skillType="builder" />);
+
+    expect(screen.getByRole("tab", { name: "Conversation" })).toHaveAttribute("data-state", "active");
+    expect(screen.getByTestId("workspace-conversation")).toBeInTheDocument();
   });
 
   it("keeps eval workbench performance-only with no trigger authoring tab", async () => {

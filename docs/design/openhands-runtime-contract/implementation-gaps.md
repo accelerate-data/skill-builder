@@ -103,7 +103,7 @@ Relevant files:
 - `app/src/stores/conversation-store.ts`
 - `app/src/lib/openhands-event-projection.ts`
 
-## 8. Live and Restored Transcript Construction Still Use Different Mental Models
+## 8. Partially Resolved in Task 4: Live and Restored Transcript Construction Still Use Different Mental Models
 
 Target model expects:
 
@@ -118,28 +118,35 @@ Current code still splits responsibilities between:
 - agent-run display state in `agent-store`
 
 The old Refine-specific transcript path is gone, and the canonical shared
-conversation event layer now exists for live backend-observed events. Restored
-selected-skill history still has not been hydrated into that same canonical
-store, so live and restored paths still do not fully converge.
+conversation event layer now exists for live backend-observed events. Task 4
+also adds a dedicated workspace conversation surface that restores onto the
+selected session's `conversationId` by default.
+
+Restored selected-skill history still has not been hydrated into that same
+canonical store, so live and restored paths still do not fully converge even
+though the workspace surface now reads from the canonical conversation layer.
 
 Relevant files:
 
 - `app/src/hooks/use-agent-stream.ts`
 - `app/src/lib/skill-openhands-session.ts`
+- `app/src/components/workspace/workspace-conversation.tsx`
 - `app/src/stores/agent-store.ts`
 
-## 9. Workflow and Other OpenHands-Backed Surfaces Do Not Yet Share a Canonical Conversation Event Layer
+## 9. Partially Resolved in Task 4: Workflow and Other OpenHands-Backed Surfaces Do Not Yet Share a Canonical Conversation Event Layer
 
 Target model expects one shared conversation/event model across all OpenHands-backed surfaces, even if each surface projects the stream differently.
 
 Current behavior is still surface-specific:
 
-- selected-skill bootstrap only restores session metadata today
-- Workflow has its own transcript path
+- Workspace now has a canonical conversation surface for selected-skill sessions
+- restored selected-skill bootstrap still does not replay canonical history
+- Workflow still has its own transcript path
 - throwaway surfaces often bypass transcript concerns entirely
 
 Relevant files:
 
+- `app/src/components/workspace/workspace-conversation.tsx`
 - `app/src/pages/workflow.tsx`
 - `app/src/components/agent-output-panel.tsx`
 - `app/src-tauri/src/commands/skill/scope_review.rs`
