@@ -12,11 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { isSkillFile, parseFrontmatter } from "@/lib/frontmatter";
 import { normalizeDiffPath } from "@/lib/path-utils";
-import { useRefineStore, isAuthoredSkillFile } from "@/stores/refine-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 import { GitPatchView } from "./git-patch-view";
 
 const REMARK_PLUGINS = [remarkGfm];
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeSanitize];
+
+function isAuthoredSkillFile(filename: string): boolean {
+  return filename === "SKILL.md" || filename.startsWith("references/");
+}
 
 const MarkdownPreview = memo(function MarkdownPreview({ content, filename }: { content: string; filename: string }) {
   const parsed = useMemo(() => {
@@ -47,19 +51,18 @@ export function PreviewPanel() {
   const pendingWidthRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  const skillFiles = useRefineStore((s) => s.skillFiles);
-  const activeFileTab = useRefineStore((s) => s.activeFileTab);
-  const selectedModifiedFile = useRefineStore((s) => s.selectedModifiedFile);
-  const diffMode = useRefineStore((s) => s.diffMode);
-  const gitDiff = useRefineStore((s) => s.gitDiff);
-  const isLoadingFiles = useRefineStore((s) => s.isLoadingFiles);
-  const setDiffMode = useRefineStore((s) => s.setDiffMode);
-  const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
-  const setSelectedModifiedFile = useRefineStore((s) => s.setSelectedModifiedFile);
+  const skillFiles = useWorkspaceStore((s) => s.skillFiles);
+  const activeFileTab = useWorkspaceStore((s) => s.activeFileTab);
+  const selectedModifiedFile = useWorkspaceStore((s) => s.selectedModifiedFile);
+  const diffMode = useWorkspaceStore((s) => s.diffMode);
+  const gitDiff = useWorkspaceStore((s) => s.gitDiff);
+  const isLoadingFiles = useWorkspaceStore((s) => s.isLoadingFiles);
+  const setDiffMode = useWorkspaceStore((s) => s.setDiffMode);
+  const setActiveFileTab = useWorkspaceStore((s) => s.setActiveFileTab);
+  const setSelectedModifiedFile = useWorkspaceStore((s) => s.setSelectedModifiedFile);
 
   const isOpen = !!selectedModifiedFile;
 
-  // Tabs: modified files from the diff, or all authored skill files when browsing.
   const fileTabs = useMemo(() => {
     if (gitDiff && gitDiff.files.length > 0) {
       return gitDiff.files
@@ -79,7 +82,6 @@ export function PreviewPanel() {
     setSelectedModifiedFile(null);
   }, [setSelectedModifiedFile]);
 
-  // Escape to close.
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -89,13 +91,11 @@ export function PreviewPanel() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isOpen, close]);
 
-  // Click outside to close.
   useEffect(() => {
     if (!isOpen) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Skip if clicking the toggle button, a modified-file pill, or a Select popover (portaled outside panel).
-      if (target.closest("[data-file-viewer-toggle]") || target.closest("[data-testid^='refine-modified-file-pill']") || target.closest("[data-slot='select-content']") || target.closest("[role='listbox']")) return;
+      if (target.closest("[data-file-viewer-toggle]") || target.closest("[data-slot='select-content']") || target.closest("[role='listbox']")) return;
       if (panelRef.current && !panelRef.current.contains(target)) {
         close();
       }
@@ -104,14 +104,12 @@ export function PreviewPanel() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [isOpen, close]);
 
-  // Clamp width to container bounds.
   const clampWidth = useCallback((w: number) => {
     const containerWidth = panelRef.current?.parentElement?.clientWidth ?? window.innerWidth;
     const max = Math.floor(containerWidth * MAX_WIDTH_RATIO);
     return Math.min(max, Math.max(MIN_WIDTH, w));
   }, []);
 
-  // Drag-to-resize from left edge.
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setDragging(true);
@@ -162,17 +160,16 @@ export function PreviewPanel() {
   return (
     <div
       ref={panelRef}
-      data-testid="refine-artifact-dropdown"
+      data-testid="skill-file-preview-panel"
       className={`absolute inset-y-0 right-0 z-40 flex flex-col border-l bg-background shadow-lg animate-in slide-in-from-right-4 duration-200 ${dragging ? "select-none" : ""}`}
       style={{ width: `${width}px`, maxWidth: "85%" }}
     >
-      {/* Resize handle */}
       <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize file viewer"
         tabIndex={0}
-        data-testid="refine-file-view-resize-handle"
+        data-testid="skill-file-view-resize-handle"
         className="absolute left-0 top-0 bottom-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-150 hover:bg-primary/30 before:absolute before:-left-1 before:-right-1 before:top-0 before:bottom-0 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onMouseDown={onResizeStart}
         onKeyDown={(e) => {
@@ -186,7 +183,6 @@ export function PreviewPanel() {
           }
         }}
       />
-      {/* Header with tabs + controls */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <FileText className="size-3.5 shrink-0 text-muted-foreground" />
@@ -199,7 +195,7 @@ export function PreviewPanel() {
               }}
             >
               <SelectTrigger
-                data-testid="refine-file-view-title"
+                data-testid="skill-file-view-title"
                 className="h-7 max-w-[280px] gap-1.5 border-none bg-transparent px-1.5 text-sm font-medium shadow-none hover:bg-accent"
               >
                 <SelectValue />
@@ -213,7 +209,7 @@ export function PreviewPanel() {
               </SelectContent>
             </Select>
           ) : (
-            <span data-testid="refine-file-view-title" className="text-sm font-medium">
+            <span data-testid="skill-file-view-title" className="text-sm font-medium">
               {selectedModifiedFile ?? activeFileTab}
             </span>
           )}
@@ -221,7 +217,7 @@ export function PreviewPanel() {
         <div className="flex items-center gap-1">
           {hasDiff && (
             <Button
-              data-testid="refine-diff-toggle"
+              data-testid="skill-diff-toggle"
               variant="ghost"
               size="xs"
               onClick={() => setDiffMode(!diffMode)}
@@ -235,15 +231,14 @@ export function PreviewPanel() {
             type="button"
             variant="ghost"
             size="icon-xs"
-            data-testid="refine-file-view-close"
+            data-testid="skill-file-view-close"
             onClick={close}
           >
             <X className="size-3.5" />
           </Button>
         </div>
       </div>
-      {/* Content */}
-      <div data-testid="refine-file-view" className="min-h-0 flex-1">
+      <div data-testid="skill-file-view" className="min-h-0 flex-1">
         {isLoadingFiles ? (
           <div className="flex flex-col gap-3 p-4">
             <Skeleton className="h-8 w-full" />
@@ -260,7 +255,7 @@ export function PreviewPanel() {
             <MarkdownPreview content={activeFile.content} filename={activeFile.filename} />
           </ScrollArea>
         ) : (
-          <div data-testid="refine-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
+          <div data-testid="skill-preview-missing-file" className="flex h-full items-center justify-center text-sm text-muted-foreground">
             This file is only available in the git diff.
           </div>
         )}

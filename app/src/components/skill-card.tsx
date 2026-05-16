@@ -13,7 +13,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, FlaskConical, Lock, MessageSquare, Pencil, SquarePen, Trash2 } from "lucide-react"
+import { Download, FlaskConical, Lock, Pencil, SquarePen, Trash2 } from "lucide-react"
 import { SkillSourceBadge } from "@/components/skill-source-badge"
 import {
   Tooltip,
@@ -41,7 +41,6 @@ interface SkillCardProps {
   onDownload?: (skill: SkillSummary) => void
   onEdit?: (skill: SkillSummary) => void
   onEditWorkflow?: (skill: SkillSummary) => void
-  onRefine?: (skill: SkillSummary) => void
   onTest?: (skill: SkillSummary) => void
 }
 
@@ -130,7 +129,6 @@ export default function SkillCard({
   onDownload,
   onEdit,
   onEditWorkflow,
-  onRefine,
   onTest,
 }: SkillCardProps) {
   const isImported = skill.skill_source === 'marketplace' || skill.skill_source === 'imported'
@@ -194,14 +192,6 @@ export default function SkillCard({
                 label="Edit workflow"
                 tooltip="Edit workflow"
                 onClick={() => onEditWorkflow?.(skill)}
-              />
-            )}
-            {canDownload && onRefine && !isImported && (
-              <IconAction
-                icon={<MessageSquare className="size-3" />}
-                label="Refine skill"
-                tooltip="Refine"
-                onClick={() => onRefine(skill)}
               />
             )}
             {canDownload && (

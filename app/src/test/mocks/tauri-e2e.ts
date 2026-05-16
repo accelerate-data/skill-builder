@@ -78,8 +78,6 @@ const mockResponses: Record<string, unknown> = {
   get_artifact_content: null,
   save_artifact_content: undefined,
   reset_workflow_step: undefined,
-  // Lifecycle
-  clean_benchmark_snapshot: undefined,
   // Reconciliation
   reconcile_startup: { notifications: [], auto_cleaned: 0 },
   record_reconciliation_cancel: undefined,
@@ -88,19 +86,13 @@ const mockResponses: Record<string, unknown> = {
   release_lock: undefined,
   create_workflow_session: undefined,
   get_locked_skills: [],
-  // Refine page
   select_skill_openhands_session: {
-    conversation_id: "e2e-refine-conversation-001",
+    conversation_id: "e2e-skill-session-001",
     skill_name: "test-skill",
     created_at: new Date().toISOString(),
     available_agents: ["skill-creator"],
     restored_messages: [],
     restored_transcript_events: [],
-  },
-  send_refine_message: {
-    agent_id: "refine-test-skill-e2e-001",
-    conversation_id: "e2e-refine-conversation-001",
-    run_started: true,
   },
   pause_openhands_session: undefined,
   list_refinable_skills: [
@@ -119,16 +111,6 @@ const mockResponses: Record<string, unknown> = {
     { path: "references/checklist.md", content: "# Delivery Checklist\n\n- Validate inputs\n- Log failures\n- Add regression coverage" },
     { path: "references/troubleshooting.md", content: "# Troubleshooting\n\n## Common failures\n\n- Missing configuration\n- Invalid payload shape\n- Timeout during sync" },
   ],
-  finalize_refine_run: {
-    files: [
-      { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
-      { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
-      { path: "references/checklist.md", content: "# Delivery Checklist\n\n- Validate inputs\n- Log failures\n- Add regression coverage" },
-      { path: "references/troubleshooting.md", content: "# Troubleshooting\n\n## Common failures\n\n- Missing configuration\n- Invalid payload shape\n- Timeout during sync" },
-    ],
-    diff: { stat: "no changes", files: [] },
-    commit_sha: null,
-  },
   // Auth
   github_get_user: null,
   github_logout: undefined,

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowStateMachine } from "@/hooks/use-workflow-state-machine";
 import { STEP_CONFIGS } from "@/lib/workflow-step-configs";
 import { restartSkillOpenHandsSession } from "@/lib/skill-openhands-session";
-import { useRefineStore } from "@/stores/refine-store";
+import { useSkillStore } from "@/stores/skill-store";
 
 vi.mock("@/lib/toast", () => ({
   toast: {
@@ -215,7 +215,7 @@ describe("useWorkflowStateMachine", () => {
     vi.clearAllMocks();
     mockActiveAgentId = null;
     mockRuns = {};
-    useRefineStore.getState().clearSession();
+    useSkillStore.getState().clearSelectedSkillSession();
     mockWorkflowState = {
       ...mockWorkflowState,
       workflowSessionId: null,
@@ -364,14 +364,9 @@ describe("useWorkflowStateMachine", () => {
       99,
     );
 
-    const refine = useRefineStore.getState();
-    expect(refine.conversationId).toBe("conv-reset-123");
-    expect(refine.selectedSkill?.name).toBe("test-skill");
-    expect(refine.messages).toHaveLength(2);
-    expect(refine.messages.map((message) => message.role)).toEqual([
-      "user",
-      "agent",
-    ]);
+    const session = useSkillStore.getState();
+    expect(session.conversationId).toBe("conv-reset-123");
+    expect(session.selectedSkill?.name).toBe("test-skill");
   });
 
   it("performStepReset auto-starts the agent immediately after reset", async () => {

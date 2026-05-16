@@ -1,11 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "@/lib/toast";
 import { useAgentStore } from "@/stores/agent-store";
-import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cache";
 import type { DisplayItem } from "@/lib/display-types";
-import type { RefineQuestionPrompt } from "@/stores/refine-store";
 import {
   getReasoningText,
   isTerminalConversationStatus,
@@ -28,14 +26,6 @@ interface AgentMessagePayload {
     type: string;
     item?: DisplayItem;
     [key: string]: unknown;
-  };
-}
-
-interface RefineQuestionMessagePayload extends AgentMessagePayload {
-  message: {
-    type: "refine_question";
-    tool_use_id: string;
-    questions: RefineQuestionPrompt[];
   };
 }
 
@@ -112,9 +102,8 @@ export async function initAgentStream() {
         agent_id,
         sessionId,
       );
-      useRefineStore.getState().setSessionExhausted(true);
       toast.info(
-        "This refine session has reached its limit. Please start a new session to continue.",
+        "Session limit reached. Start a new session to continue.",
       );
     }),
     reg<AgentInitErrorPayload>("agent-init-error", (event) => {
@@ -168,7 +157,7 @@ export async function initAgentStream() {
       );
       useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
     }),
-    reg<AgentMessagePayload | RefineQuestionMessagePayload>("agent-message", (event) => {
+    reg<AgentMessagePayload>("agent-message", (event) => {
       const { agent_id, message } = event.payload;
 
       // Clear the "initializing" spinner on the first message from the agent.
@@ -226,23 +215,6 @@ export async function initAgentStream() {
         }
       }
 
-      if (message.type === "refine_question") {
-        const toolUseId = typeof message.tool_use_id === "string" ? message.tool_use_id : "";
-        const questions = Array.isArray(message.questions) ? message.questions : [];
-        if (toolUseId && questions.length > 0) {
-          const activeAgentId = useAgentStore.getState().activeAgentId;
-          if (activeAgentId === agent_id) {
-            console.warn(
-              "[use-agent-stream] dropping question from workflow agent agent_id=%s",
-              agent_id,
-            );
-          } else {
-            useRefineStore.getState().addQuestionMessage(agent_id, toolUseId, questions);
-          }
-          return;
-        }
-      }
-
       // Prompt suggestions from the SDK (arrives after result).
       if (message.type === "agent_event") {
         const event = message.event as Record<string, unknown> | undefined;
@@ -272,21 +244,6 @@ export async function initAgentStream() {
     reg<AgentShutdownPayload>("agent-shutdown", (event) => {
       useAgentStore.getState().shutdownRun(event.payload.agent_id);
     }),
-    // agent-turn-complete fires at each turn boundary in a streaming refine session.
-    // agent-exit (triggered by the runtime turn_complete handler) already calls
-    // completeRun for the per-turn request. This listener is a hook for future
-    // refine-store turn-boundary UI state (e.g. "waiting for input" indicator).
-    listen<{ agent_id: string }>("agent-turn-complete", (event) => {
-      const { agent_id } = event.payload;
-      const agentRun = useAgentStore.getState().runs[agent_id];
-      const displayItemEndIndex = agentRun?.displayItems.length ?? null;
-      const result = useRefineStore
-        .getState()
-        .advanceAgentTurnQueue(agent_id, displayItemEndIndex);
-      if (useRefineStore.getState().activeAgentId === agent_id) {
-        useRefineStore.getState().setRunning(result.hasRunningTurn);
-      }
-    }).then((u) => { _unlisteners.push(u); }),
     // skill-session-reset fires when a saved conversation is missing and a new one is created.
     listen<{ reason: string; conversation_id: string }>("skill-session-reset", () => {
       toast.warning("Previous session not found — started a new conversation.", { duration: Infinity });

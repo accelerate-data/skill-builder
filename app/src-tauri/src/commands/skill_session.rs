@@ -3,7 +3,7 @@ use crate::agents::skill_creator::{
 };
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
-use crate::types::SkillSessionInfo;
+use crate::types::{ConversationMessage, RestoredConversationEvent, SkillSessionInfo};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -119,22 +119,172 @@ pub(crate) fn resolve_skills_path(db: &Db) -> Result<String, String> {
 fn restore_skill_conversation_state(
     events: &[serde_json::Value],
 ) -> (
-    Vec<crate::types::ConversationMessage>,
-    Vec<crate::types::RestoredConversationEvent>,
+    Vec<ConversationMessage>,
+    Vec<RestoredConversationEvent>,
     usize,
 ) {
-    let restored_messages = crate::commands::refine::events::extract_conversation_messages(events);
-    let restored_transcript_events =
-        crate::commands::refine::events::extract_restored_conversation_events(events);
+    let restored_messages = extract_conversation_messages(events);
+    let restored_transcript_events = extract_restored_conversation_events(events);
     let dispatched_user_turn_count =
-        crate::commands::refine::events::restored_conversation_user_turn_count(
-            &restored_transcript_events,
-        );
+        restored_conversation_user_turn_count(&restored_transcript_events);
     (
         restored_messages,
         restored_transcript_events,
         dispatched_user_turn_count,
     )
+}
+
+fn new_skill_usage_session_id(skill_name: &str) -> String {
+    format!("synthetic:selected-skill:{}:{}", skill_name, uuid::Uuid::new_v4())
+}
+
+fn event_class(raw: &serde_json::Value) -> Option<&str> {
+    raw.get("event_class")
+        .or_else(|| raw.get("eventClass"))
+        .or_else(|| raw.get("kind"))
+        .or_else(|| raw.get("type"))
+        .and_then(|value| value.as_str())
+}
+
+fn inferred_event_class(raw: &serde_json::Value) -> Option<&'static str> {
+    if raw.get("action").is_some() {
+        return Some("ActionEvent");
+    }
+    if raw.get("observation").is_some() {
+        return Some("ObservationEvent");
+    }
+    if matches!(
+        raw.get("source").and_then(|value| value.as_str()),
+        Some("user" | "agent" | "assistant" | "environment")
+    ) && extract_message_text(raw).is_some()
+    {
+        return Some("MessageEvent");
+    }
+    None
+}
+
+fn first_string<'a>(
+    values: impl IntoIterator<Item = Option<&'a serde_json::Value>>,
+) -> Option<&'a str> {
+    values
+        .into_iter()
+        .flatten()
+        .find_map(|value| value.as_str())
+        .filter(|text| !text.trim().is_empty())
+}
+
+fn extract_message_text(raw: &serde_json::Value) -> Option<String> {
+    let llm_message = raw.get("llm_message");
+    first_string([
+        raw.get("message"),
+        raw.get("text"),
+        raw.pointer("/content/0/text"),
+        raw.pointer("/content/0/content"),
+        llm_message.and_then(|value| value.get("message")),
+        llm_message.and_then(|value| value.get("text")),
+        llm_message.and_then(|value| value.pointer("/content/0/text")),
+    ])
+    .map(str::to_string)
+}
+
+fn extract_tool_call_id(raw: &serde_json::Value) -> Option<String> {
+    first_string([
+        raw.get("tool_call_id"),
+        raw.get("toolCallId"),
+        raw.pointer("/action/tool_call_id"),
+        raw.pointer("/action/toolCallId"),
+        raw.pointer("/observation/tool_call_id"),
+        raw.pointer("/observation/toolCallId"),
+        raw.pointer("/tool_calls/0/id"),
+        raw.pointer("/tool_calls/0/tool_call_id"),
+    ])
+    .map(str::to_string)
+}
+
+fn extract_parent_tool_call_id(raw: &serde_json::Value) -> Option<String> {
+    first_string([
+        raw.get("parent_tool_call_id"),
+        raw.get("parentToolCallId"),
+        raw.pointer("/action/parent_tool_call_id"),
+        raw.pointer("/action/parentToolCallId"),
+        raw.pointer("/observation/parent_tool_call_id"),
+        raw.pointer("/observation/parentToolCallId"),
+    ])
+    .map(str::to_string)
+}
+
+fn extract_timestamp_ms(raw: &serde_json::Value) -> i64 {
+    if let Some(timestamp) = raw.get("timestamp") {
+        if let Some(value) = timestamp.as_i64() {
+            return value;
+        }
+        if let Some(value) = timestamp.as_u64() {
+            return value.min(i64::MAX as u64) as i64;
+        }
+        if let Some(value) = timestamp.as_str() {
+            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(value) {
+                return parsed.timestamp_millis();
+            }
+        }
+    }
+    chrono::Utc::now().timestamp_millis()
+}
+
+fn extract_conversation_messages(events: &[serde_json::Value]) -> Vec<ConversationMessage> {
+    events
+        .iter()
+        .filter(|raw| {
+            event_class(raw)
+                .or_else(|| inferred_event_class(raw))
+                .map(|class| class == "MessageEvent")
+                .unwrap_or(false)
+        })
+        .filter_map(|raw| {
+            let role = match raw.get("source").and_then(|value| value.as_str()) {
+                Some("user") => "user",
+                Some("agent") | Some("assistant") => "agent",
+                _ => return None,
+            };
+            let content = extract_message_text(raw)?;
+            Some(ConversationMessage {
+                role: role.to_string(),
+                content,
+            })
+        })
+        .collect()
+}
+
+fn extract_restored_conversation_events(
+    events: &[serde_json::Value],
+) -> Vec<RestoredConversationEvent> {
+    events
+        .iter()
+        .filter_map(|raw| {
+            let event_class = event_class(raw).or_else(|| inferred_event_class(raw))?;
+            Some(RestoredConversationEvent {
+                event_class: event_class.to_string(),
+                event: raw.clone(),
+                timestamp: extract_timestamp_ms(raw),
+                tool_call_id: extract_tool_call_id(raw),
+                parent_tool_call_id: extract_parent_tool_call_id(raw),
+            })
+        })
+        .collect()
+}
+
+fn restored_conversation_user_turn_count(events: &[RestoredConversationEvent]) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            event.event_class == "MessageEvent"
+                && event
+                    .event
+                    .get("source")
+                    .and_then(|value| value.as_str())
+                    .map(|source| source == "user")
+                    .unwrap_or(false)
+        })
+        .count()
 }
 
 pub(crate) fn acquire_or_verify_skill_lock(
@@ -246,9 +396,7 @@ pub async fn select_skill_openhands_session(
             SkillSession {
                 skill_name: skill_name.clone(),
                 plugin_slug: plugin_slug.clone(),
-                usage_session_id: crate::commands::refine::protocol::new_skill_usage_session_id(
-                    &skill_name,
-                ),
+                usage_session_id: new_skill_usage_session_id(&skill_name),
                 conversation_id: Some(active_conversation_id.clone()),
                 current_agent_id: None,
                 dispatched_user_turn_count,

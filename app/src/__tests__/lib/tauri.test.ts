@@ -24,7 +24,6 @@ import {
   removeSkillFromPlugin,
   renameSkill,
   reviewSkillScope,
-  sendRefineMessage,
   selectSkillOpenHandsSession,
   setPluginUpgradeLock,
   updateSkillMetadata,
@@ -107,27 +106,6 @@ describe("VU-1138 typed Tauri wrapper contracts", () => {
       command: "select_skill_openhands_session",
       args: {
         skillId: 42,
-      },
-    },
-    {
-      name: "sendRefineMessage",
-      call: () =>
-        sendRefineMessage(
-          "demo-skill",
-          "analytics-pack",
-          "conv-123",
-          "Update this skill",
-          ["SKILL.md"],
-        ),
-      command: "send_refine_message",
-      args: {
-        input: {
-          skillName: "demo-skill",
-          pluginSlug: "analytics-pack",
-          conversationId: "conv-123",
-          userMessage: "Update this skill",
-          targetFiles: ["SKILL.md"],
-        },
       },
     },
     {

@@ -6,7 +6,6 @@ import { createTestQueryClient } from "@/test/query-test-utils";
 import { queryKeys } from "@/lib/queries/query-keys";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useSkillStore } from "@/stores/skill-store";
-import { useRefineStore } from "@/stores/refine-store";
 import type { SkillSummary } from "@/lib/types";
 
 const mockNavigate = vi.fn();
@@ -83,8 +82,15 @@ function renderWithSkills(skills: SkillSummary[]) {
 describe("SkillListPanel redo restart contract", () => {
   beforeEach(() => {
     useSettingsStore.setState({ workspacePath: "/tmp/workspace" });
-    useSkillStore.setState({ activeSkill: null, lockedSkills: new Set(), latestVersion: null });
-    useRefineStore.getState().clearSession();
+    useSkillStore.setState({
+      activeSkillId: null,
+      lockedSkills: new Set(),
+      latestVersion: null,
+      selectedSkill: null,
+      conversationId: null,
+      availableAgents: [],
+      activeAgentId: null,
+    });
     mockNavigate.mockReset();
 
     tauriMocks.listSkills.mockResolvedValue([]);
@@ -104,7 +110,7 @@ describe("SkillListPanel redo restart contract", () => {
     });
   });
 
-  it("redo recreates the OpenHands session and hydrates refine state before navigation", async () => {
+  it("redo recreates the OpenHands session and hydrates shared skill-session state before navigation", async () => {
     const user = userEvent.setup();
     const skill = makeBuilderSkill("redo-builder");
     tauriMocks.listSkills.mockResolvedValue([skill]);
@@ -130,12 +136,10 @@ describe("SkillListPanel redo restart contract", () => {
       );
     });
 
-    const refine = useRefineStore.getState();
-    expect(refine.selectedSkill?.name).toBe("redo-builder");
-    expect(refine.conversationId).toBe("conv-redo-123");
-    expect(refine.messages).toHaveLength(2);
-    expect(refine.messages[0]?.role).toBe("user");
-    expect(refine.messages[1]?.role).toBe("agent");
+    const skillSession = useSkillStore.getState();
+    expect(skillSession.selectedSkill?.name).toBe("redo-builder");
+    expect(skillSession.conversationId).toBe("conv-redo-123");
+    expect(skillSession.availableAgents).toEqual(["skill-creator"]);
 
     // Navigation is handled by AppLayout via onActivateSkill callback
   });

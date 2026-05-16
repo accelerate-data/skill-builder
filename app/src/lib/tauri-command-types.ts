@@ -14,8 +14,6 @@ import type {
   MarketplaceUpdateResult,
   ModelSettings,
   ReconciliationResult,
-  RefineFinalizeResult,
-  RefineDispatchResult,
   SkillSessionInfo,
   SkillCommit,
   SkillFileContent,
@@ -325,33 +323,9 @@ export interface TauriCommandMap {
         pluginSlug: string;
         conversationId: string;
         agentId: string | null;
+        skillId?: number | null;
       };
     };
-    result: void;
-  };
-  send_refine_message: {
-    args: {
-      input: {
-        skillName: string;
-        pluginSlug: string;
-        conversationId: string | null;
-        userMessage: string;
-        targetFiles: string[] | null;
-      };
-    };
-    result: RefineDispatchResult;
-  };
-  finalize_refine_run: {
-    args: {
-      skillName: string;
-      workspacePath: string;
-      pluginSlug: string;
-      resultPayload: unknown;
-    };
-    result: RefineFinalizeResult;
-  };
-  clean_benchmark_snapshot: {
-    args: { skillName: string; workspacePath: string; pluginSlug: string };
     result: void;
   };
   get_skill_history: {

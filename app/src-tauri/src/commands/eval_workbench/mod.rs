@@ -6,7 +6,6 @@ use crate::agents::skill_creator::{
 };
 use crate::agents::tracked_openhands::OpenHandsThrowawayRunParams;
 use crate::commands::imported_skills::validate_skill_name;
-use crate::commands::refine::content::get_skill_content_inner_for_plugin;
 use crate::commands::skill_session::resolve_skills_path;
 use crate::commands::workflow::{ensure_workspace_prompts, read_initialized_runtime_context};
 use crate::db::Db;
@@ -14,6 +13,14 @@ use crate::skill_paths::validate_skill_content_exists;
 use std::path::Path;
 use tauri::Manager;
 pub use types::{ScenarioDto, ScenarioSummaryDto};
+
+fn get_skill_content_inner_for_plugin(
+    skill_name: &str,
+    skills_path: &str,
+    plugin_slug: &str,
+) -> Result<Vec<crate::types::SkillFileContent>, String> {
+    crate::skill_paths::read_skill_content_by_name(Path::new(skills_path), plugin_slug, skill_name)
+}
 
 const SUGGEST_SCENARIO_PROMPT_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),

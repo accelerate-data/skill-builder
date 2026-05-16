@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import { allowAppExit, gracefulShutdown } from "@/lib/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useRefineStore } from "@/stores/refine-store";
 import { Loader2 } from "lucide-react";
 
 export function CloseGuard() {
@@ -35,9 +34,7 @@ export function CloseGuard() {
   const handleCloseRequested = useCallback(async () => {
     const workflow = useWorkflowStore.getState();
     const agentsRunning =
-      workflow.isRunning ||
-      workflow.gateLoading ||
-      useRefineStore.getState().isRunning;
+      workflow.isRunning || workflow.gateLoading;
 
     if (agentsRunning) {
       setShowDialog(true);

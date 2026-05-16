@@ -6,7 +6,6 @@ import {
 import type { EditableSkill } from "@/lib/types";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
 import { useAgentStore } from "@/stores/agent-store";
-import { useRefineStore } from "@/stores/refine-store";
 import { useSkillStore } from "@/stores/skill-store";
 
 interface ActiveSkillSession {
@@ -22,8 +21,8 @@ interface LeaveCurrentSkillOptions {
 }
 
 function getActiveSkillSession(): ActiveSkillSession | null {
-  const refineStore = useRefineStore.getState();
-  const selectedSkill = refineStore.selectedSkill;
+  const skillStore = useSkillStore.getState();
+  const selectedSkill = skillStore.selectedSkill;
   if (!selectedSkill) {
     return null;
   }
@@ -39,8 +38,8 @@ function getActiveSkillSession(): ActiveSkillSession | null {
     skillId: selectedSkill.id ?? null,
     skillName: selectedSkill.name,
     pluginSlug: selectedSkill.plugin_slug,
-    conversationId: refineStore.conversationId,
-    agentId: runningWorkflow?.agentId ?? refineStore.activeAgentId,
+    conversationId: skillStore.conversationId,
+    agentId: runningWorkflow?.agentId ?? skillStore.activeAgentId,
   };
 }
 
@@ -49,7 +48,7 @@ function clearActiveSkillUiState(): void {
     logPrefix: "active-skill-transition",
     clearSessionId: true,
   });
-  useRefineStore.getState().selectSkill(null);
+  useSkillStore.getState().clearSelectedSkillSession();
   useSkillStore.getState().setActiveSkill(null);
 }
 

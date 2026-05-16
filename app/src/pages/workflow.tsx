@@ -37,7 +37,6 @@ import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useRefineStore } from "@/stores/refine-store";
 import {
   getDisabledSteps,
   resetWorkflowStep,
@@ -186,8 +185,8 @@ export default function WorkflowPage() {
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const refineSelectedSkill = useRefineStore((s) => s.selectedSkill);
-  const conversationId = useRefineStore((s) => s.conversationId);
+  const refineSelectedSkill = useSkillStore((s) => s.selectedSkill);
+  const conversationId = useSkillStore((s) => s.conversationId);
   const activeRunDisplayItemCount = useAgentStore((s) =>
     s.activeAgentId ? (s.runs[s.activeAgentId]?.displayItems.length ?? 0) : 0
   );

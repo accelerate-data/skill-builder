@@ -12,7 +12,6 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "@/lib/toast";
 import { useSkillStore } from "@/stores/skill-store";
 import { useAgentStore } from "@/stores/agent-store";
-import { useRefineStore } from "@/stores/refine-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import {
@@ -47,6 +46,8 @@ export function AppLayout() {
   const { data: importedSkills = [] } = useImportedSkillsQuery();
   const selectedWorkspaceSkillId = useSkillStore((s) => s.activeSkillId);
   const setSelectedWorkspaceSkill = useSkillStore((s) => s.setActiveSkill);
+  const selectedSkill = useSkillStore((s) => s.selectedSkill);
+  const selectedSkillConversationId = useSkillStore((s) => s.conversationId);
   const runs = useAgentStore((s) => s.runs);
   const [evalsRunningReactive, setEvalsRunningReactive] = useState(getEvalsRunning);
   useEffect(() => subscribeEvalsRunning(setEvalsRunningReactive), []);
@@ -54,8 +55,7 @@ export function AppLayout() {
     (r): r is typeof r & { skillName: string } =>
       r.status === "running" && r.runSource === "workflow" && !!r.skillName,
   );
-  const refineRunning = useRefineStore((s) => s.isRunning);
-  const agentRunning = refineRunning || evalsRunningReactive || Boolean(runningWorkflow);
+  const agentRunning = evalsRunningReactive || Boolean(runningWorkflow);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const lockedSkills = useSkillStore((s) => s.lockedSkills);
@@ -100,27 +100,8 @@ export function AppLayout() {
       }
       if (e.key === "Escape") {
         logFrontend("debug", "[app-layout] escape pressed");
-        const refineStore = useRefineStore.getState();
-        if (refineStore.isRunning && !refineStore.isStopping &&
-            refineStore.conversationId && refineStore.selectedSkill) {
-          logFrontend("debug", "[app-layout] escape pausing refine session");
-          refineStore.setStopping(true);
-          pauseOpenHandsSession(
-            refineStore.selectedSkill.name,
-            refineStore.selectedSkill.plugin_slug,
-            refineStore.conversationId,
-            refineStore.activeAgentId,
-          ).catch((err) => {
-            console.error("[app-layout] escape: pause refine conversation failed", err);
-            toast.error(`Failed to pause agent: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
-            refineStore.setStopping(false);
-          });
-          return;
-        }
         const workflowStore = useWorkflowStore.getState();
         if (workflowStore.isRunning && !workflowStore.isStopping) {
-          const selectedSkill = refineStore.selectedSkill;
-          const conversationId = refineStore.conversationId;
           const runs = useAgentStore.getState().runs;
           const activeAgentId = useAgentStore.getState().activeAgentId;
           const running = Object.values(runs).find(
@@ -134,7 +115,7 @@ export function AppLayout() {
                 importedSkillsRef.current.find((skill) => skill.skill_name === skillName)?.plugin_slug
               : undefined) ??
             selectedSkill?.plugin_slug;
-          const workflowConversationId = running?.sessionId ?? conversationId;
+          const workflowConversationId = running?.sessionId ?? selectedSkillConversationId;
           const workflowAgentId = running?.agentId ?? activeAgentId;
 
           if (skillName && pluginSlug && workflowConversationId) {
@@ -215,11 +196,10 @@ export function AppLayout() {
       }
       const { editableSkill } = resolvedSkill;
 
-      const refineStore = useRefineStore.getState();
       const sessionAlreadyActive =
-        refineStore.selectedSkill?.name === editableSkill.name &&
-        refineStore.selectedSkill.plugin_slug === editableSkill.plugin_slug &&
-        !!refineStore.conversationId;
+        selectedSkill?.name === editableSkill.name &&
+        selectedSkill.plugin_slug === editableSkill.plugin_slug &&
+        !!selectedSkillConversationId;
       const surface = targetSurface ?? getSkillSurface(editableSkill);
 
       if (skillId === selectedWorkspaceSkillId && sessionAlreadyActive) {
@@ -258,6 +238,8 @@ export function AppLayout() {
     [
       lockedSkills,
       resolveSkillSelection,
+      selectedSkill,
+      selectedSkillConversationId,
       selectedWorkspaceSkillId,
       setSelectedWorkspaceSkill,
       setWorkspaceSurface,
@@ -266,7 +248,7 @@ export function AppLayout() {
   );
 
   const handleSelectSkill = useCallback(
-    async (skillId: string, targetSurface: "overview" | "refine" | "evals" = "overview") => {
+    async (skillId: string, targetSurface: "overview" | "evals" = "overview") => {
       if (lockedSkills.has(Number(skillId))) {
         return;
       }
@@ -274,11 +256,10 @@ export function AppLayout() {
       const resolvedSkill = resolveSkillSelection(skillId);
       if (!resolvedSkill) return;
       const { editableSkill } = resolvedSkill;
-      const refineStore = useRefineStore.getState();
       const sessionAlreadyActive =
-        refineStore.selectedSkill?.name === editableSkill.name &&
-        refineStore.selectedSkill.plugin_slug === editableSkill.plugin_slug &&
-        !!refineStore.conversationId;
+        selectedSkill?.name === editableSkill.name &&
+        selectedSkill.plugin_slug === editableSkill.plugin_slug &&
+        !!selectedSkillConversationId;
 
       if (skillId === selectedWorkspaceSkillId && sessionAlreadyActive) {
         const surface = getSkillSurface(editableSkill);
@@ -292,9 +273,8 @@ export function AppLayout() {
         return;
       }
 
-      const refineRunning = useRefineStore.getState().isRunning;
       const evalsRunning = getEvalsRunning();
-      if (refineRunning || evalsRunning || runningWorkflow) {
+      if (evalsRunning || runningWorkflow) {
         setPendingSkillSwitch(skillId);
         return;
       }
@@ -311,6 +291,8 @@ export function AppLayout() {
       activateSkill,
       lockedSkills,
       resolveSkillSelection,
+      selectedSkill,
+      selectedSkillConversationId,
       selectedWorkspaceSkillId,
       runningWorkflow,
       setWorkspaceSurface,

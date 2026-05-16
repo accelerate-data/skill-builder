@@ -7,7 +7,7 @@ export function WorkspaceLoadingSkeleton() {
       className="flex h-full flex-col animate-in fade-in duration-150"
     >
       <div className="flex items-center gap-1 border-b px-3 py-1 opacity-40 select-none">
-        {["Overview", "Refine", "Evals"].map((label) => (
+        {["Overview", "Evals"].map((label) => (
           <div
             key={label}
             className="rounded px-3 py-1.5 text-sm text-muted-foreground"

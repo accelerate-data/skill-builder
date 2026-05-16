@@ -3,8 +3,7 @@ import {
   hydrateSelectedSkillOpenHandsSession,
   restartSkillOpenHandsSession,
 } from "@/lib/skill-openhands-session";
-import { useAgentStore, resetAgentStoreInternals } from "@/stores/agent-store";
-import { useRefineStore } from "@/stores/refine-store";
+import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSessionInfo } from "@/lib/types";
 
 const mockSelectSkillOpenHandsSession = vi.fn();
@@ -16,80 +15,18 @@ vi.mock("@/lib/tauri", () => ({
 
 describe("skill-openhands-session", () => {
   beforeEach(() => {
-    useRefineStore.getState().clearSession();
-    useAgentStore.getState().clearRuns();
-    resetAgentStoreInternals();
+    useSkillStore.getState().clearSelectedSkillSession();
     mockSelectSkillOpenHandsSession.mockReset();
   });
 
-  it("hydrates restored transcript events into refine messages and a completed restored run", () => {
+  it("hydrates the selected skill session metadata", () => {
     const session: SkillSessionInfo = {
       conversation_id: "conv-123",
       skill_name: "sales-skill",
       created_at: new Date().toISOString(),
       available_agents: ["skill-creator"],
-      restored_messages: [
-        { role: "user", content: "Tighten the summary" },
-        { role: "agent", content: "Updated the summary." },
-      ],
-      restored_transcript_events: [
-        {
-          event_class: "SystemPromptEvent",
-          event: { event_class: "SystemPromptEvent", message: "system prompt" },
-          timestamp: 1,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "MessageEvent",
-          event: {
-            event_class: "MessageEvent",
-            source: "user",
-            message: "Tighten the summary",
-          },
-          timestamp: 2,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "ActionEvent",
-          event: {
-            event_class: "ActionEvent",
-            action: {
-              tool: "terminal",
-              tool_call_id: "tool-1",
-              arguments: { command: "npm test" },
-            },
-          },
-          timestamp: 3,
-          tool_call_id: "tool-1",
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "ObservationEvent",
-          event: {
-            event_class: "ObservationEvent",
-            observation: {
-              tool_call_id: "tool-1",
-              content: "Tests passed",
-            },
-          },
-          timestamp: 4,
-          tool_call_id: "tool-1",
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "MessageEvent",
-          event: {
-            event_class: "MessageEvent",
-            source: "agent",
-            message: "Updated the summary.",
-          },
-          timestamp: 5,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-      ],
+      restored_messages: [],
+      restored_transcript_events: [],
     };
 
     hydrateSelectedSkillOpenHandsSession(
@@ -97,83 +34,20 @@ describe("skill-openhands-session", () => {
       session,
     );
 
-    const refine = useRefineStore.getState();
-    expect(refine.conversationId).toBe("conv-123");
-    expect(refine.messages).toHaveLength(2);
-    expect(refine.turns).toHaveLength(1);
-    expect(refine.messages[0]?.role).toBe("user");
-    expect(refine.messages[0]?.userText).toBe("Tighten the summary");
-    expect(refine.messages[1]?.role).toBe("agent");
-    expect(refine.messages[1]?.hideTaskSent).toBe(false);
-    expect(refine.turns[0]).toMatchObject({
-      conversationId: "conv-123",
-      status: "completed",
-      displayItemStartIndex: 0,
-    });
-
-    const runs = useAgentStore.getState().runs;
-    const restoredRun = Object.values(runs)[0];
-    expect(restoredRun?.status).toBe("completed");
-    expect(restoredRun?.conversationEvents).toHaveLength(5);
-    expect(restoredRun?.displayItems.length).toBeGreaterThan(0);
+    const sessionState = useSkillStore.getState();
+    expect(sessionState.conversationId).toBe("conv-123");
+    expect(sessionState.selectedSkill?.name).toBe("sales-skill");
+    expect(sessionState.availableAgents).toEqual(["skill-creator"]);
   });
 
-  it("falls back to restored messages when transcript events are unavailable", () => {
-    hydrateSelectedSkillOpenHandsSession(
-      { name: "sales-skill", plugin_slug: "skills", skill_source: "skill-builder" },
-      {
-        conversation_id: "conv-456",
-        skill_name: "sales-skill",
-        created_at: new Date().toISOString(),
-        available_agents: ["skill-creator"],
-        restored_messages: [
-          { role: "user", content: "Tighten the summary" },
-          { role: "agent", content: "Updated the summary." },
-        ],
-        restored_transcript_events: [],
-      },
-    );
-
-    const refine = useRefineStore.getState();
-    expect(refine.messages).toHaveLength(2);
-    expect(refine.turns).toHaveLength(1);
-    expect(refine.messages[1]?.agentText).toBe("Updated the summary.");
-  });
-
-  it("restart hydrates the selected skill session without injecting an extra bootstrap turn", async () => {
+  it("restart hydrates the selected skill session metadata", async () => {
     const session: SkillSessionInfo = {
       conversation_id: "conv-789",
       skill_name: "sales-skill",
       created_at: new Date().toISOString(),
       available_agents: ["skill-creator"],
-      restored_messages: [
-        { role: "user", content: "Tighten the summary" },
-        { role: "agent", content: "Updated the summary." },
-      ],
-      restored_transcript_events: [
-        {
-          event_class: "MessageEvent",
-          event: {
-            event_class: "MessageEvent",
-            source: "user",
-            message: "Tighten the summary",
-          },
-          timestamp: 2,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "MessageEvent",
-          event: {
-            event_class: "MessageEvent",
-            source: "agent",
-            message: "Updated the summary.",
-          },
-          timestamp: 5,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-      ],
+      restored_messages: [],
+      restored_transcript_events: [],
     };
     mockSelectSkillOpenHandsSession.mockResolvedValue(session);
 
@@ -185,101 +59,9 @@ describe("skill-openhands-session", () => {
       42,
     );
 
-    const refine = useRefineStore.getState();
-    expect(refine.conversationId).toBe("conv-789");
-    expect(refine.messages).toHaveLength(2);
-    expect(refine.turns).toHaveLength(1);
-    expect(refine.messages.map((message) => message.role)).toEqual(["user", "agent"]);
-    expect(refine.messages[0]?.userText).toBe("Tighten the summary");
-    expect(refine.messages[1]?.hideTaskSent).toBe(false);
-
-    const runs = Object.values(useAgentStore.getState().runs);
-    expect(runs).toHaveLength(1);
-    expect(runs[0]?.status).toBe("completed");
-  });
-
-  it("hydrates restored transcript events chronologically from persisted OpenHands message shapes", () => {
-    const session: SkillSessionInfo = {
-      conversation_id: "conv-chronological",
-      skill_name: "sales-skill",
-      created_at: new Date().toISOString(),
-      available_agents: ["skill-creator"],
-      restored_messages: [],
-      restored_transcript_events: [
-        {
-          event_class: "MessageEvent",
-          event: {
-            kind: "MessageEvent",
-            source: "assistant",
-            llm_message: {
-              content: [{ type: "text", text: "Second reply" }],
-            },
-          },
-          timestamp: 40,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "MessageEvent",
-          event: {
-            kind: "MessageEvent",
-            source: "user",
-            llm_message: {
-              content: [{ type: "text", text: "First prompt" }],
-            },
-          },
-          timestamp: 10,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "MessageEvent",
-          event: {
-            kind: "MessageEvent",
-            source: "agent",
-            llm_message: {
-              content: [{ type: "text", text: "First reply" }],
-            },
-          },
-          timestamp: 20,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-        {
-          event_class: "MessageEvent",
-          event: {
-            kind: "MessageEvent",
-            source: "user",
-            llm_message: {
-              content: [{ type: "text", text: "Second prompt" }],
-            },
-          },
-          timestamp: 30,
-          tool_call_id: null,
-          parent_tool_call_id: null,
-        },
-      ],
-    };
-
-    hydrateSelectedSkillOpenHandsSession(
-      { name: "sales-skill", plugin_slug: "skills", skill_source: "skill-builder" },
-      session,
-    );
-
-    const refine = useRefineStore.getState();
-    const messages = refine.messages;
-    expect(messages.map((message) => message.role)).toEqual([
-      "user",
-      "agent",
-      "user",
-      "agent",
-    ]);
-    expect(messages[0]?.userText).toBe("First prompt");
-    expect(messages[2]?.userText).toBe("Second prompt");
-    expect(refine.turns).toHaveLength(2);
-    expect(refine.turns.map((turn) => turn.status)).toEqual([
-      "completed",
-      "completed",
-    ]);
+    const sessionState = useSkillStore.getState();
+    expect(sessionState.selectedSkill?.name).toBe("sales-skill");
+    expect(sessionState.conversationId).toBe("conv-789");
+    expect(sessionState.availableAgents).toEqual(["skill-creator"]);
   });
 });

@@ -669,43 +669,6 @@ describe("SkillListPanel", () => {
     expect(onSelectSkill).not.toHaveBeenCalled();
   });
 
-  it("locks other rows while a refine agent is running", () => {
-    const onSelectSkill = vi.fn();
-    const skillA = makeBuilderSkill({ name: "refine-skill", status: "completed" });
-    const skillB = makeBuilderSkill({ name: "other-skill", status: "completed" });
-    setBuilderSkills([skillA, skillB]);
-    useAgentStore.setState((state) => ({
-      runs: {
-        ...state.runs,
-        "agent-refine": {
-          agentId: "agent-refine",
-          model: "sonnet",
-          status: "running",
-          displayItems: [],
-          startTime: Date.now(),
-          contextHistory: [],
-          contextWindow: 200_000,
-          compactionEvents: [],
-          thinkingEnabled: false,
-          skillName: "refine-skill",
-          runSource: "refine",
-        },
-      },
-    }));
-
-    renderWithSkillQueries(<SkillListPanel onSelectSkill={onSelectSkill} />);
-
-    // other-skill should be locked
-    const otherRow = screen.getByText("other-skill").closest('[role="button"]');
-    expect(otherRow?.className).toMatch(/opacity-\[0\.45\]/);
-    expect(otherRow?.className).toMatch(/cursor-not-allowed/);
-
-    // Click should be a no-op
-    fireEvent.click(otherRow!);
-    expect(onSelectSkill).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
-  });
-
   // ── Review action ──────────────────────────────────────────────────────
 
   it("shows Review menu item for completed builder skills and calls onActivateSkill", async () => {
@@ -776,7 +739,6 @@ describe("SkillListPanel", () => {
     expect(screen.getByRole("menuitem", { name: "Redo workflow" })).toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveAttribute("data-variant", "destructive");
@@ -794,7 +756,6 @@ describe("SkillListPanel", () => {
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
@@ -816,7 +777,6 @@ describe("SkillListPanel", () => {
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.getByText("SKILL")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Refine" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Restore version" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
@@ -837,7 +797,6 @@ describe("SkillListPanel", () => {
     expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
     expect(screen.queryByText("SKILL")).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Overview" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Refine" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Restore version" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Redo workflow" })).not.toBeInTheDocument();
