@@ -568,6 +568,20 @@ This contract guarantees that upper layers can reason about:
 Frontend projection is a separate concern and is documented in
 `docs/design/openhands-event-display-projection/README.md`.
 
+Task 2 of the conversation-model reimplementation also adds a new canonical
+frontend event core:
+
+- `app/src/lib/conversation-event-types.ts` defines the app-owned envelope
+- `app/src/lib/conversation-event-ordering.ts` defines the in-place mutation
+  and append ordering rules
+- `app/src/stores/conversation-store.ts` is the new transcript authority keyed
+  by `conversationId`
+- `app/src/lib/conversation-event-projection.ts` is the pure display-node
+  projection boundary
+
+The legacy `agent-store` / `DisplayItem` path still exists as a migration seam,
+but it is no longer the only model described by the runtime contract.
+
 ### Terminal Result Ownership
 
 Workflow commands extract terminal `conversation_state.result_text` from a

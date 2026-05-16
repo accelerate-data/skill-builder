@@ -1,3 +1,8 @@
+import type {
+  ConversationDisplayKind,
+  ConversationEventEnvelope,
+} from "./conversation-event-types";
+
 export type OpenHandsConversationStatus =
   | "starting"
   | "running"
@@ -97,6 +102,56 @@ export function normalizeConversationStateMessage(
     errorDetail: getString(message, "error_detail", "errorDetail"),
     resultText: getString(message, "result_text", "resultText"),
     timestamp: getNumber(message, "timestamp") ?? Date.now(),
+  };
+}
+
+function getConversationEventDisplayKind(
+  event: OpenHandsConversationEvent | OpenHandsConversationState,
+): ConversationDisplayKind {
+  if (event.type === "conversation_state") {
+    return event.status === "error" ? "error" : "state";
+  }
+
+  if (event.eventClass === "MessageEvent") {
+    const source =
+      typeof event.event.source === "string" ? event.event.source : undefined;
+    return source === "user" ? "user_message" : "agent_message";
+  }
+
+  if (event.eventClass === "ObservationEvent") return "tool_result";
+  if (event.eventClass === "ActionEvent") return "tool_call";
+  if (
+    event.eventClass === "AgentErrorEvent" ||
+    event.eventClass === "ConversationErrorEvent"
+  ) {
+    return "error";
+  }
+
+  return "system";
+}
+
+export function buildCanonicalConversationEventEnvelope(
+  event: OpenHandsConversationEvent | OpenHandsConversationState,
+): ConversationEventEnvelope {
+  const conversationId =
+    event.conversationId ?? event.agentId ?? "unknown-conversation";
+  const eventKey =
+    event.type === "conversation_state"
+      ? event.status
+      : event.eventClass || "unknown-event";
+
+  return {
+    eventId: `${conversationId}:${event.type}:${event.timestamp}:${eventKey}`,
+    conversationId,
+    origin: "backend",
+    status: "observed",
+    createdAtMs: event.timestamp,
+    display: {
+      kind: getConversationEventDisplayKind(event),
+    },
+    payload: {
+      rawOpenHandsEvent: event,
+    },
   };
 }
 
