@@ -378,11 +378,11 @@ fn normalize_db_backed_step_statuses(
 mod tests {
     use super::{clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records};
     use crate::commands::test_utils::create_test_db;
-    use crate::db::Db;
     use crate::db::workflow_artifacts::{
-        self, ClarificationsRecord, ClarificationSection, ClarificationQuestion, DecisionsRecord,
-        DecisionItem, RefinementsRecord, RefinementSection, RefinementQuestion,
+        self, ClarificationQuestion, ClarificationSection, ClarificationsRecord, DecisionItem,
+        DecisionsRecord, RefinementQuestion, RefinementSection, RefinementsRecord,
     };
+    use crate::db::Db;
     use crate::types::StepStatusUpdate;
     use tempfile::tempdir;
 
@@ -1834,8 +1834,8 @@ mod reset_artifact_cleanup_tests {
     use crate::commands::test_utils::create_test_db;
     use crate::db::workflow_artifacts::{
         self, ClarificationQuestion, ClarificationSection, ClarificationsRecord, DecisionItem,
-        DecisionsRecord, RefinementChoice, RefinementQuestion, RefinementSection,
-        RefinementNote, RefinementsRecord,
+        DecisionsRecord, RefinementChoice, RefinementNote, RefinementQuestion, RefinementSection,
+        RefinementsRecord,
     };
 
     fn seed_clarifications(conn: &mut rusqlite::Connection, skill_id: i64) {
@@ -1993,11 +1993,7 @@ mod reset_artifact_cleanup_tests {
             .is_some()
     }
 
-    fn count_rows_for_skill(
-        conn: &rusqlite::Connection,
-        table: &str,
-        skill_id: i64,
-    ) -> i64 {
+    fn count_rows_for_skill(conn: &rusqlite::Connection, table: &str, skill_id: i64) -> i64 {
         conn.query_row(
             &format!("SELECT COUNT(*) FROM {table} WHERE skill_id = ?1"),
             rusqlite::params![skill_id],
@@ -2047,11 +2043,26 @@ mod reset_artifact_cleanup_tests {
             !has_decisions(&conn, skill_id),
             "decisions should be deleted when resetting from step 0"
         );
-        assert_eq!(count_rows_for_skill(&conn, "clarification_sections", skill_id), 0);
-        assert_eq!(count_rows_for_skill(&conn, "clarification_questions", skill_id), 0);
-        assert_eq!(count_rows_for_skill(&conn, "refinement_sections", skill_id), 0);
-        assert_eq!(count_rows_for_skill(&conn, "refinement_questions", skill_id), 0);
-        assert_eq!(count_rows_for_skill(&conn, "refinement_choices", skill_id), 0);
+        assert_eq!(
+            count_rows_for_skill(&conn, "clarification_sections", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "clarification_questions", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_sections", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_questions", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_choices", skill_id),
+            0
+        );
         assert_eq!(count_rows_for_skill(&conn, "refinement_notes", skill_id), 0);
         assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
@@ -2105,9 +2116,18 @@ mod reset_artifact_cleanup_tests {
         );
         assert!(count_rows_for_skill(&conn, "clarification_sections", skill_id) > 0);
         assert!(count_rows_for_skill(&conn, "clarification_questions", skill_id) > 0);
-        assert_eq!(count_rows_for_skill(&conn, "refinement_sections", skill_id), 0);
-        assert_eq!(count_rows_for_skill(&conn, "refinement_questions", skill_id), 0);
-        assert_eq!(count_rows_for_skill(&conn, "refinement_choices", skill_id), 0);
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_sections", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_questions", skill_id),
+            0
+        );
+        assert_eq!(
+            count_rows_for_skill(&conn, "refinement_choices", skill_id),
+            0
+        );
         assert_eq!(count_rows_for_skill(&conn, "refinement_notes", skill_id), 0);
         assert_eq!(count_rows_for_skill(&conn, "decision_items", skill_id), 0);
     }
