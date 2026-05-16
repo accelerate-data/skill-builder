@@ -873,6 +873,452 @@ pub fn delete_decisions(conn: &Connection, skill_identifier: &str) -> Result<(),
 }
 
 // ---------------------------------------------------------------------------
+// Refinements structs
+// ---------------------------------------------------------------------------
+
+/// Full refinements record: parent row plus all normalized children.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RefinementsRecord {
+    pub skill_id: String,
+    pub version: String,
+    pub refinement_count: i64,
+    pub must_answer_count: i64,
+    pub question_count: i64,
+    pub section_count: i64,
+    pub title: String,
+    pub scope_recommendation: Option<bool>,
+    pub scope_reason: Option<String>,
+    pub scope_next_action: Option<String>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub warning_code: Option<String>,
+    pub warning_message: Option<String>,
+    pub eval_verdict: Option<String>,
+    pub eval_reasoning: Option<String>,
+    pub eval_at: Option<i64>,
+    pub eval_answered_count: Option<i64>,
+    pub eval_empty_count: Option<i64>,
+    pub eval_vague_count: Option<i64>,
+    pub eval_contradictory_count: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub sections: Vec<RefinementSection>,
+    pub questions: Vec<RefinementQuestion>,
+    pub notes: Vec<RefinementNote>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RefinementSection {
+    pub section_id: i64,
+    pub ordinal: i64,
+    pub title: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RefinementQuestion {
+    pub question_id: String,
+    pub section_id: i64,
+    pub ordinal: i64,
+    pub title: String,
+    pub text: String,
+    pub must_answer: bool,
+    pub answer_choice: Option<String>,
+    pub answer_text: Option<String>,
+    pub recommendation: Option<String>,
+    pub answer_verdict: Option<String>,
+    pub answer_verdict_reason: Option<String>,
+    pub choices: Vec<RefinementChoice>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RefinementChoice {
+    pub choice_id: String,
+    pub ordinal: i64,
+    pub text: String,
+    pub is_other: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RefinementNote {
+    pub note_id: Option<i64>,
+    pub ordinal: i64,
+    pub note_type: String,
+    pub title: String,
+    pub body: String,
+}
+
+// ---------------------------------------------------------------------------
+// Refinements CRUD
+// ---------------------------------------------------------------------------
+
+pub fn upsert_refinements(
+    tx: &Transaction<'_>,
+    record: &RefinementsRecord,
+) -> Result<(), rusqlite::Error> {
+    let skill_identifier = &record.skill_id;
+    let skill_id = resolve_skill_db_id(tx, skill_identifier)?;
+
+    tx.execute(
+        "DELETE FROM refinement_choices WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    tx.execute(
+        "DELETE FROM refinement_questions WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    tx.execute(
+        "DELETE FROM refinement_sections WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    tx.execute(
+        "DELETE FROM refinement_notes WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+
+    tx.execute(
+        "INSERT INTO refinements (
+            skill_id, version, refinement_count, must_answer_count, question_count,
+            section_count, title, scope_recommendation, scope_reason, scope_next_action,
+            error_code, error_message, warning_code, warning_message,
+            eval_verdict, eval_reasoning, eval_at,
+            eval_answered_count, eval_empty_count, eval_vague_count, eval_contradictory_count,
+            created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
+        ON CONFLICT(skill_id) DO UPDATE SET
+            version = excluded.version,
+            refinement_count = excluded.refinement_count,
+            must_answer_count = excluded.must_answer_count,
+            question_count = excluded.question_count,
+            section_count = excluded.section_count,
+            title = excluded.title,
+            scope_recommendation = excluded.scope_recommendation,
+            scope_reason = excluded.scope_reason,
+            scope_next_action = excluded.scope_next_action,
+            error_code = excluded.error_code,
+            error_message = excluded.error_message,
+            warning_code = excluded.warning_code,
+            warning_message = excluded.warning_message,
+            eval_verdict = excluded.eval_verdict,
+            eval_reasoning = excluded.eval_reasoning,
+            eval_at = excluded.eval_at,
+            eval_answered_count = excluded.eval_answered_count,
+            eval_empty_count = excluded.eval_empty_count,
+            eval_vague_count = excluded.eval_vague_count,
+            eval_contradictory_count = excluded.eval_contradictory_count,
+            updated_at = excluded.updated_at",
+        rusqlite::params![
+            skill_id,
+            record.version,
+            record.refinement_count,
+            record.must_answer_count,
+            record.question_count,
+            record.section_count,
+            record.title,
+            opt_bool_to_int(record.scope_recommendation),
+            record.scope_reason,
+            record.scope_next_action,
+            record.error_code,
+            record.error_message,
+            record.warning_code,
+            record.warning_message,
+            record.eval_verdict,
+            record.eval_reasoning,
+            record.eval_at,
+            record.eval_answered_count,
+            record.eval_empty_count,
+            record.eval_vague_count,
+            record.eval_contradictory_count,
+            record.created_at,
+            record.updated_at,
+        ],
+    )?;
+
+    for section in &record.sections {
+        tx.execute(
+            "INSERT INTO refinement_sections (skill_id, section_id, ordinal, title, description)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                skill_id,
+                section.section_id,
+                section.ordinal,
+                section.title,
+                section.description,
+            ],
+        )?;
+    }
+
+    for question in &record.questions {
+        tx.execute(
+            "INSERT INTO refinement_questions (
+                skill_id, question_id, section_id, ordinal,
+                title, text, must_answer, answer_choice, answer_text, recommendation,
+                answer_verdict, answer_verdict_reason
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            rusqlite::params![
+                skill_id,
+                question.question_id,
+                question.section_id,
+                question.ordinal,
+                question.title,
+                question.text,
+                i64::from(question.must_answer),
+                question.answer_choice,
+                question.answer_text,
+                question.recommendation,
+                question.answer_verdict,
+                question.answer_verdict_reason,
+            ],
+        )?;
+
+        for choice in &question.choices {
+            tx.execute(
+                "INSERT INTO refinement_choices (skill_id, question_id, choice_id, ordinal, text, is_other)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    skill_id,
+                    question.question_id,
+                    choice.choice_id,
+                    choice.ordinal,
+                    choice.text,
+                    i64::from(choice.is_other),
+                ],
+            )?;
+        }
+    }
+
+    for note in &record.notes {
+        tx.execute(
+            "INSERT INTO refinement_notes (skill_id, ordinal, type, title, body)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                skill_id,
+                note.ordinal,
+                note.note_type,
+                note.title,
+                note.body
+            ],
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn read_refinements(
+    conn: &Connection,
+    skill_identifier: &str,
+) -> Result<Option<RefinementsRecord>, rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(None);
+    };
+    let parent: Option<RefinementsRecord> = conn
+        .query_row(
+            "SELECT skill_id, version, refinement_count, must_answer_count, question_count,
+                    section_count, title, scope_recommendation, scope_reason, scope_next_action,
+                    error_code, error_message, warning_code, warning_message,
+                    eval_verdict, eval_reasoning, eval_at,
+                    eval_answered_count, eval_empty_count, eval_vague_count, eval_contradictory_count,
+                    created_at, updated_at
+             FROM refinements WHERE skill_id = ?1",
+            rusqlite::params![skill_id],
+            |row| {
+                Ok(RefinementsRecord {
+                    skill_id: skill_identifier.to_string(),
+                    version: row.get(1)?,
+                    refinement_count: row.get(2)?,
+                    must_answer_count: row.get(3)?,
+                    question_count: row.get(4)?,
+                    section_count: row.get(5)?,
+                    title: row.get(6)?,
+                    scope_recommendation: opt_int_to_bool(row.get(7)?),
+                    scope_reason: row.get(8)?,
+                    scope_next_action: row.get(9)?,
+                    error_code: row.get(10)?,
+                    error_message: row.get(11)?,
+                    warning_code: row.get(12)?,
+                    warning_message: row.get(13)?,
+                    eval_verdict: row.get(14)?,
+                    eval_reasoning: row.get(15)?,
+                    eval_at: row.get(16)?,
+                    eval_answered_count: row.get(17)?,
+                    eval_empty_count: row.get(18)?,
+                    eval_vague_count: row.get(19)?,
+                    eval_contradictory_count: row.get(20)?,
+                    created_at: row.get(21)?,
+                    updated_at: row.get(22)?,
+                    sections: Vec::new(),
+                    questions: Vec::new(),
+                    notes: Vec::new(),
+                })
+            },
+        )
+        .optional()?;
+
+    let mut record = match parent {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+
+    let mut stmt = conn.prepare(
+        "SELECT section_id, ordinal, title, description
+         FROM refinement_sections WHERE skill_id = ?1 ORDER BY ordinal, section_id",
+    )?;
+    let sections = stmt
+        .query_map(rusqlite::params![skill_id], |row| {
+            Ok(RefinementSection {
+                section_id: row.get(0)?,
+                ordinal: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    record.sections = sections;
+
+    let mut stmt = conn.prepare(
+        "SELECT question_id, choice_id, ordinal, text, is_other
+         FROM refinement_choices WHERE skill_id = ?1 ORDER BY question_id, ordinal, choice_id",
+    )?;
+    let mut choices_by_question: std::collections::HashMap<String, Vec<RefinementChoice>> =
+        std::collections::HashMap::new();
+    let choice_rows = stmt.query_map(rusqlite::params![skill_id], |row| {
+        let qid: String = row.get(0)?;
+        let choice = RefinementChoice {
+            choice_id: row.get(1)?,
+            ordinal: row.get(2)?,
+            text: row.get(3)?,
+            is_other: row.get::<_, i64>(4)? != 0,
+        };
+        Ok((qid, choice))
+    })?;
+    for row in choice_rows {
+        let (qid, choice) = row?;
+        choices_by_question.entry(qid).or_default().push(choice);
+    }
+
+    let mut stmt = conn.prepare(
+        "SELECT question_id, section_id, ordinal, title, text,
+                must_answer, answer_choice, answer_text, recommendation,
+                answer_verdict, answer_verdict_reason
+         FROM refinement_questions WHERE skill_id = ?1 ORDER BY ordinal, question_id",
+    )?;
+    let questions = stmt
+        .query_map(rusqlite::params![skill_id], |row| {
+            let mut q = RefinementQuestion {
+                question_id: row.get(0)?,
+                section_id: row.get(1)?,
+                ordinal: row.get(2)?,
+                title: row.get(3)?,
+                text: row.get(4)?,
+                must_answer: row.get::<_, i64>(5)? != 0,
+                answer_choice: row.get(6)?,
+                answer_text: row.get(7)?,
+                recommendation: row.get(8)?,
+                answer_verdict: row.get(9)?,
+                answer_verdict_reason: row.get(10)?,
+                choices: Vec::new(),
+            };
+            if let Some(choices) = choices_by_question.remove(&q.question_id) {
+                q.choices = choices;
+            }
+            Ok(q)
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    record.questions = questions;
+
+    let mut stmt = conn.prepare(
+        "SELECT note_id, ordinal, type, title, body
+         FROM refinement_notes WHERE skill_id = ?1 ORDER BY ordinal, note_id",
+    )?;
+    let notes = stmt
+        .query_map(rusqlite::params![skill_id], |row| {
+            Ok(RefinementNote {
+                note_id: Some(row.get(0)?),
+                ordinal: row.get(1)?,
+                note_type: row.get(2)?,
+                title: row.get(3)?,
+                body: row.get(4)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    record.notes = notes;
+
+    Ok(Some(record))
+}
+
+pub fn delete_refinements(conn: &Connection, skill_identifier: &str) -> Result<(), rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
+    conn.execute(
+        "DELETE FROM refinement_choices WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    conn.execute(
+        "DELETE FROM refinement_questions WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    conn.execute(
+        "DELETE FROM refinement_sections WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    conn.execute(
+        "DELETE FROM refinement_notes WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    conn.execute(
+        "DELETE FROM refinements WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    )?;
+    Ok(())
+}
+
+pub fn update_refinement_question_answer(
+    conn: &Connection,
+    skill_identifier: &str,
+    question_id: &str,
+    answer_choice: Option<&str>,
+    answer_text: Option<&str>,
+) -> Result<(), rusqlite::Error> {
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
+    conn.execute(
+        "UPDATE refinement_questions
+         SET answer_choice = ?3, answer_text = ?4
+         WHERE skill_id = ?1 AND question_id = ?2",
+        rusqlite::params![skill_id, question_id, answer_choice, answer_text],
+    )?;
+    Ok(())
+}
+
+pub fn update_refinement_question_verdicts(
+    conn: &mut Connection,
+    skill_identifier: &str,
+    updates: &[(String, Option<String>, Option<String>)],
+) -> Result<(), rusqlite::Error> {
+    if updates.is_empty() {
+        return Ok(());
+    }
+    let Some(skill_id) = resolve_skill_db_id_optional(conn, skill_identifier)? else {
+        return Ok(());
+    };
+    let tx = conn.transaction()?;
+    for (question_id, verdict, reason) in updates {
+        tx.execute(
+            "UPDATE refinement_questions
+             SET answer_verdict = ?3, answer_verdict_reason = ?4
+             WHERE skill_id = ?1 AND question_id = ?2",
+            rusqlite::params![skill_id, question_id, verdict, reason],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1439,5 +1885,136 @@ mod tests {
         assert_eq!(decision_count, 0);
         assert_eq!(choice_count, 0);
         assert_eq!(item_count, 0);
+    }
+
+    #[test]
+    fn roundtrip_refinements_insert_and_read() {
+        let mut conn = create_test_db_for_tests();
+        let skill_id = seed_skill(&conn, "skill-refine-a");
+        let identifier = skill_identifier(skill_id);
+
+        let record = RefinementsRecord {
+            skill_id: identifier.clone(),
+            version: "1".to_string(),
+            refinement_count: 1,
+            must_answer_count: 1,
+            question_count: 2,
+            section_count: 1,
+            title: "Refinements".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            sections: vec![RefinementSection {
+                section_id: 1,
+                ordinal: 0,
+                title: "Scope".to_string(),
+                description: None,
+            }],
+            questions: vec![
+                RefinementQuestion {
+                    question_id: "rq1".to_string(),
+                    section_id: 1,
+                    ordinal: 0,
+                    title: "Refinement Q1".to_string(),
+                    text: "What about X?".to_string(),
+                    must_answer: true,
+                    answer_choice: None,
+                    answer_text: None,
+                    recommendation: None,
+                    answer_verdict: None,
+                    answer_verdict_reason: None,
+                    choices: vec![RefinementChoice {
+                        choice_id: "a".to_string(),
+                        ordinal: 0,
+                        text: "Yes".to_string(),
+                        is_other: false,
+                    }],
+                },
+            ],
+            notes: vec![],
+        };
+
+        let tx = conn.transaction().unwrap();
+        upsert_refinements(&tx, &record).unwrap();
+        tx.commit().unwrap();
+
+        let read_back = read_refinements(&conn, &identifier).unwrap().unwrap();
+        assert_eq!(read_back.skill_id, identifier);
+        assert_eq!(read_back.questions.len(), 1);
+        assert_eq!(read_back.questions[0].choices.len(), 1);
+    }
+
+    #[test]
+    fn delete_refinements_cascades_to_children() {
+        let mut conn = create_test_db_for_tests();
+        let skill_id = seed_skill(&conn, "skill-refine-b");
+        let identifier = skill_identifier(skill_id);
+
+        let record = RefinementsRecord {
+            skill_id: identifier.clone(),
+            version: "1".to_string(),
+            refinement_count: 0,
+            must_answer_count: 0,
+            question_count: 1,
+            section_count: 1,
+            title: "Test".to_string(),
+            scope_recommendation: None,
+            scope_reason: None,
+            scope_next_action: None,
+            error_code: None,
+            error_message: None,
+            warning_code: None,
+            warning_message: None,
+            eval_verdict: None,
+            eval_reasoning: None,
+            eval_at: None,
+            eval_answered_count: None,
+            eval_empty_count: None,
+            eval_vague_count: None,
+            eval_contradictory_count: None,
+            created_at: 1_700_000_000_000,
+            updated_at: 1_700_000_000_000,
+            sections: vec![RefinementSection {
+                section_id: 1,
+                ordinal: 0,
+                title: "S".to_string(),
+                description: None,
+            }],
+            questions: vec![RefinementQuestion {
+                question_id: "rq1".to_string(),
+                section_id: 1,
+                ordinal: 0,
+                title: "Q".to_string(),
+                text: "T".to_string(),
+                must_answer: false,
+                answer_choice: None,
+                answer_text: None,
+                recommendation: None,
+                answer_verdict: None,
+                answer_verdict_reason: None,
+                choices: vec![],
+            }],
+            notes: vec![],
+        };
+
+        let tx = conn.transaction().unwrap();
+        upsert_refinements(&tx, &record).unwrap();
+        tx.commit().unwrap();
+
+        delete_refinements(&conn, &identifier).unwrap();
+        assert!(read_refinements(&conn, &identifier).unwrap().is_none());
     }
 }
