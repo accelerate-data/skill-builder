@@ -8,7 +8,7 @@ The OpenHands conversation-model migration is complete.
 - `session-runtime-store` owns live runtime lifecycle metadata for the selected session without transcript state.
 - `use-session-runtime-stream.ts` bridges transport events into canonical conversation events plus typed runtime lifecycle state.
 - Workspace and Workflow both render canonical conversation activity through `ConversationTimeline`.
-- Legacy `DisplayItem`, `agent-store`, and transcript projection helpers have been removed.
+- Legacy transcript authority seams and migration-era transcript helpers have been removed.
 
 ## Remaining Work
 

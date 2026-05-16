@@ -45,7 +45,7 @@ Companion sequence pages:
 
 **Does not cover**
 
-- frontend projection of normalized events into `DisplayItem`
+- frontend projection of normalized events into renderer-facing `DisplayNode`
 - per-page UX like optimistic activation skeletons or chat rendering
 - low-level tool inclusion policy beyond the contract boundary that accepts
   `allowed_tools`
@@ -590,9 +590,7 @@ transport seam:
   backend-observed events into `conversation-store` and updates
   `session-runtime-store` with runtime lifecycle metadata
 
-The app no longer keeps a parallel `agent-store` / `DisplayItem` transcript
-path. Transcript authority and runtime lifecycle ownership are now split
-cleanly between canonical conversation events and session runtime metadata.
+The app no longer keeps a parallel legacy transcript path. Transcript authority and runtime lifecycle ownership are now split cleanly between canonical conversation events and session runtime metadata.
 
 Task 4 begins the first surface adoption on the workspace side:
 
@@ -613,8 +611,7 @@ Task 5 extends that surface adoption into Workflow:
 - `app/src/pages/workflow.tsx` now renders live workflow transcript activity
   through `ConversationTimeline` keyed by the selected session's
   `conversationId`
-- workflow rendering no longer depends on `runs[agentId].displayItems` for
-  transcript ownership or empty-state detection
+- workflow rendering no longer depends on session-runtime metadata for transcript ownership or empty-state detection
 
 Workflow now uses `session-runtime-store` for run lifecycle/orchestration
 inside the workflow state machine, while transcript rendering reads from the

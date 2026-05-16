@@ -144,7 +144,6 @@ let mockRuns: Record<
   string,
   {
     status: string;
-    displayItems: unknown[];
     totalCost?: number;
     conversationState?: { resultText?: string | null };
   }
@@ -515,29 +514,6 @@ describe("useWorkflowStateMachine", () => {
     mockRuns = {
       "agent-finish-1": {
         status: "completed",
-        displayItems: [
-          {
-            id: "output-agent-finish-1",
-            type: "output",
-            timestamp: Date.now(),
-            outputText: JSON.stringify({
-              status: "research_complete",
-              question_count: 1,
-              research_output: {
-                version: "1",
-                metadata: {
-                  question_count: 0,
-                  section_count: 0,
-                  refinement_count: 0,
-                  must_answer_count: 0,
-                  priority_questions: [],
-                },
-                sections: [],
-                notes: [],
-              },
-            }),
-          },
-        ],
         totalCost: 0,
       },
     };

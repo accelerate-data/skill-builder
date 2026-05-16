@@ -29,7 +29,7 @@ This model is shared across Refine, Workflow, Eval Workbench, and throwaway Open
 - event ordering, acceptance, and failure semantics
 - raw OpenHands payload retention with app-owned display metadata
 - projection from canonical events into UI display models
-- the final steady state after removing `agent-store` / `DisplayItem` transcript authority
+- the final steady state after removing the legacy transcript authority path
 
 **Does not cover**
 
@@ -47,7 +47,7 @@ This model is shared across Refine, Workflow, Eval Workbench, and throwaway Open
 | Frontend-originated events mutate in place to `accepted` or `failed`. | The UI should not reorder accepted messages or reinsert them later based on backend timestamp. |
 | Backend-originated events keep the raw OpenHands-native payload. | Raw payload retention avoids translation drift and keeps replay/debugging possible. |
 | Canonical events carry a small app-owned envelope for UI metadata. | The UI needs stable local ids, local status, and display hints without rewriting the underlying OpenHands event. |
-| Projection into display nodes is a pure view layer. | `DisplayItem`-style structures should be render outputs, not authoritative state. |
+| Projection into display nodes is a pure view layer. | Renderer-facing display nodes should be render outputs, not authoritative state. |
 | Product surfaces render one shared event timeline, not synthetic turn ownership. | The UI already differentiates event types visually, so a flat event stream is sufficient and more robust than inferred turn grouping. |
 | `agentId` may remain in the transport adapter temporarily, but it is not part of the target public model. | The live bridge is still keyed by `agent_id` today, but the new conversation model should be conversation-centric. |
 
@@ -209,8 +209,7 @@ Important rules:
 
 ## Relationship to Current Runtime Structures
 
-Legacy `agent-store` and `DisplayItem` projection are removed. The shipped
-model keeps exactly two frontend authorities:
+The legacy transcript authority path is removed. The shipped model keeps exactly two frontend authorities:
 
 - `conversation-store` for transcript state
 - `session-runtime-store` for selected-session runtime lifecycle metadata
