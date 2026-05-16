@@ -478,7 +478,29 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
     expect(mockUseClarifications).toHaveBeenCalledWith("42");
   });
 
-  it("merges refinement questions into editable Detailed Research data", async () => {
+  it("merges refinement questions into editable Detailed Research data when no controlled DB-backed buffer is provided", async () => {
+    mockUseRefinements.mockReturnValue({
+      data: minimalRefinementsDto,
+      isLoading: false,
+    });
+
+    render(
+      <WorkflowStepComplete
+        {...detailedResearchProps}
+        clarificationsEditable
+        onClarificationsChange={mockOnChange}
+        onClarificationsContinue={mockOnContinue}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clarifications-editor")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("clarifications-data").textContent).toContain("R1.1");
+  });
+
+  it("does not duplicate nested refinements when editable step 1 already has DB-backed controlled data", async () => {
     mockUseRefinements.mockReturnValue({
       data: minimalRefinementsDto,
       isLoading: false,
@@ -494,7 +516,7 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
             title: "Test",
             question_count: 1,
             section_count: 1,
-            refinement_count: 0,
+            refinement_count: 1,
             must_answer_count: 0,
             priority_questions: [],
           },
@@ -511,7 +533,18 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
                   choices: [],
                   answer_choice: null,
                   answer_text: null,
-                  refinements: [],
+                  refinements: [
+                    {
+                      id: "R1.1",
+                      title: "Follow-up question",
+                      must_answer: false,
+                      text: "Need one more detail.",
+                      choices: [],
+                      answer_choice: null,
+                      answer_text: null,
+                      refinements: [],
+                    },
+                  ],
                 },
               ],
             },
@@ -528,7 +561,8 @@ describe("WorkflowStepComplete — clarificationsEditable", () => {
       expect(screen.getByTestId("clarifications-editor")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("clarifications-data").textContent).toContain("R1.1");
+    const payload = screen.getByTestId("clarifications-data").textContent ?? "";
+    expect(payload.match(/R1\.1/g) ?? []).toHaveLength(1);
   });
 });
 

@@ -4,7 +4,6 @@ import { AgentStatsBar } from "@/components/agent-stats-bar";
 import {
   clarificationsDtoToFile,
   mergeClarificationsAndRefinements,
-  type ClarificationsFile,
 } from "@/lib/clarifications-types";
 import { useClarifications, useRefinements } from "@/lib/queries/clarifications";
 import { StepActionBar } from "./step-action-bar";
@@ -13,19 +12,6 @@ import type { StepCompleteBaseProps, ClarificationsEditableProps } from "./step-
 type Props = StepCompleteBaseProps & ClarificationsEditableProps & {
   skillId?: string | null;
 };
-
-function hasRefinementQuestions(
-  data: ClarificationsFile | null | undefined,
-  refinementQuestionIds: Set<string>,
-): boolean {
-  if (!data || refinementQuestionIds.size === 0) return false;
-  const existingIds = new Set(
-    (data.sections ?? []).flatMap((section) =>
-      (section.questions ?? []).map((question) => question.id),
-    ),
-  );
-  return Array.from(refinementQuestionIds).every((id) => existingIds.has(id));
-}
 
 export function DetailedResearchStepComplete(props: Props) {
   const {
@@ -41,13 +27,7 @@ export function DetailedResearchStepComplete(props: Props) {
   const isLoading = clarLoading || refineLoading;
   const clarData = clarDto ? clarificationsDtoToFile(clarDto) : null;
   const mergedData = mergeClarificationsAndRefinements(clarData, refinementsDto ?? null);
-  const refinementQuestionIds = new Set(
-    (refinementsDto?.questions ?? []).map((question) => question.question_id),
-  );
-  const editorData =
-    controlledClarData && hasRefinementQuestions(controlledClarData, refinementQuestionIds)
-      ? controlledClarData
-      : mergeClarificationsAndRefinements(controlledClarData ?? clarData, refinementsDto ?? null);
+  const editorData = controlledClarData ?? mergedData;
 
   if (isLoading) {
     return (
@@ -77,7 +57,7 @@ export function DetailedResearchStepComplete(props: Props) {
       {clarificationsEditable ? (
         <div className="flex-1 min-h-0 overflow-hidden">
           <ClarificationsEditor
-            data={editorData ?? mergedData!}
+            data={editorData!}
             onChange={onClarificationsChange ?? (() => {})}
             onContinue={onClarificationsContinue}
             onReset={onReset}

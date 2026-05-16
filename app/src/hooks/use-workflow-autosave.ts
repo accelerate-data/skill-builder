@@ -16,7 +16,10 @@ interface UseWorkflowAutosaveOptions {
 
 /** Flatten all questions from a ClarificationsFile */
 function flattenQuestions(questions: Question[]): Question[] {
-  return questions;
+  return questions.flatMap((question) => [
+    question,
+    ...flattenQuestions(question.refinements ?? []),
+  ]);
 }
 
 function flattenFileQuestions(data: ClarificationsFile): Question[] {
@@ -27,9 +30,9 @@ function flattenFileQuestions(data: ClarificationsFile): Question[] {
 function buildRefinementQuestionIds(data: ClarificationsFile | null | undefined): Set<string> {
   const ids = new Set<string>();
   for (const section of data?.sections ?? []) {
-    if (section.title === "Refinements") {
-      for (const q of section.questions ?? []) {
-        ids.add(q.id);
+    for (const question of flattenQuestions((section.questions ?? []) as Question[])) {
+      if (question.id.startsWith("R")) {
+        ids.add(question.id);
       }
     }
   }
