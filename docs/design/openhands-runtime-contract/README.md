@@ -579,20 +579,20 @@ frontend event core:
 - `app/src/lib/conversation-event-projection.ts` is the pure display-node
   projection boundary
 
-Task 3 adds the first conversation-centric helper layer above the existing
+Task 3 introduces the shared conversation-centric helper layer above the
 transport seam:
 
 - `app/src/lib/conversation-runtime.ts` is the frontend helper for
   `send_conversation_message`
 - `app/src-tauri/src/commands/conversation.rs` is the session-based backend
   command surface for selected-skill conversation sends
-- `app/src/hooks/use-agent-stream.ts` now appends normalized backend-observed
-  events into `conversation-store` while still feeding the legacy projection
-  path
+- `app/src/hooks/use-session-runtime-stream.ts` appends normalized
+  backend-observed events into `conversation-store` and updates
+  `session-runtime-store` with runtime lifecycle metadata
 
-The legacy `agent-store` / `DisplayItem` path still exists as a transport and
-projection seam for current consumers, but transcript authority now has a
-distinct canonical event layer in code.
+The app no longer keeps a parallel `agent-store` / `DisplayItem` transcript
+path. Transcript authority and runtime lifecycle ownership are now split
+cleanly between canonical conversation events and session runtime metadata.
 
 Task 4 begins the first surface adoption on the workspace side:
 
@@ -616,9 +616,9 @@ Task 5 extends that surface adoption into Workflow:
 - workflow rendering no longer depends on `runs[agentId].displayItems` for
   transcript ownership or empty-state detection
 
-Workflow still uses `agent-store` for run lifecycle/orchestration inside the
-workflow state machine, but transcript rendering now reads from the canonical
-conversation layer rather than the legacy display projection path.
+Workflow now uses `session-runtime-store` for run lifecycle/orchestration
+inside the workflow state machine, while transcript rendering reads from the
+canonical conversation layer.
 
 ### Terminal Result Ownership
 
@@ -711,7 +711,7 @@ required reasoning and required `reason` fields for selected verdicts.
 
 | Doc | Relationship |
 |---|---|
-| `docs/design/openhands-event-display-projection/README.md` | Frontend/store-layer projection of normalized runtime events into `DisplayItem` |
+| `docs/design/openhands-event-display-projection/README.md` | Historical projection doc for the removed pre-canonical display-item path |
 
 ## Key Source Files
 

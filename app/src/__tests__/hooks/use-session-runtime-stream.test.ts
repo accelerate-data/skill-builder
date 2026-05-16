@@ -3,13 +3,13 @@ import { mockListen, resetTauriMocks } from "@/test/mocks/tauri";
 
 type ListenCallback = (event: { payload: unknown }) => void;
 
-describe("use-agent-stream", () => {
+describe("use-session-runtime-stream", () => {
   beforeEach(() => {
     resetTauriMocks();
     vi.resetModules();
   });
 
-  it("bridges legacy agent-keyed runtime events into the canonical conversation store", async () => {
+  it("bridges runtime conversation_state events into canonical conversation and session runtime stores", async () => {
     let agentMessageListener: ListenCallback | undefined;
 
     vi.mocked(mockListen).mockImplementation((event: string, callback: ListenCallback) => {
@@ -20,14 +20,15 @@ describe("use-agent-stream", () => {
     });
 
     const { useConversationStore } = await import("@/stores/conversation-store");
-    const { useAgentStore } = await import("@/stores/agent-store");
+    const { useSessionRuntimeStore } = await import("@/stores/session-runtime-store");
     const { useSkillStore } = await import("@/stores/skill-store");
     useConversationStore.setState({ eventsByConversation: {} });
+    useSessionRuntimeStore.getState().clearSessionRuns();
     useSkillStore.getState().clearSelectedSkillSession();
     useSkillStore.getState().setConversationId("conv-selected");
-    const agentStreamModule = await import("@/hooks/use-agent-stream");
-    await agentStreamModule._resetForTesting();
-    await agentStreamModule.initAgentStream();
+    const runtimeStreamModule = await import("@/hooks/use-session-runtime-stream");
+    await runtimeStreamModule._resetForTesting();
+    await runtimeStreamModule.initSessionRuntimeStream();
 
     expect(agentMessageListener).toBeDefined();
 
@@ -55,7 +56,7 @@ describe("use-agent-stream", () => {
       display: { kind: "state" },
     });
     expect(
-      useAgentStore.getState().runs["selected-skill-agent"]?.conversationState,
+      useSessionRuntimeStore.getState().runs["selected-skill-agent"]?.conversationState,
     ).toMatchObject({
       status: "running",
     });

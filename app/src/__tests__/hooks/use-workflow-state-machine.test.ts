@@ -119,7 +119,6 @@ let mockWorkflowState = {
   setDisabledSteps: vi.fn(),
 };
 
-const mockSetActiveAgent = vi.fn();
 const mockClearRuns = vi.fn();
 const mockClearRunsBySource = vi.fn();
 const mockAgentStartRun = vi.fn();
@@ -128,7 +127,6 @@ const mockSettingsState = vi.hoisted(() => ({
     model_id: "test-settings-model" as string | null,
   },
 }));
-let mockActiveAgentId: string | null = null;
 let mockRuns: Record<
   string,
   {
@@ -153,27 +151,23 @@ vi.mock("@/stores/workflow-store", () => ({
   ),
 }));
 
-vi.mock("@/stores/agent-store", () => ({
-  useAgentStore: Object.assign(
+vi.mock("@/stores/session-runtime-store", () => ({
+  useSessionRuntimeStore: Object.assign(
     vi.fn((selector?: (s: unknown) => unknown) => {
       const state = {
-        activeAgentId: mockActiveAgentId,
         runs: mockRuns,
-        setActiveAgent: mockSetActiveAgent,
-        clearRuns: mockClearRuns,
+        clearSessionRuns: mockClearRuns,
         clearRunsBySource: mockClearRunsBySource,
-        startRun: mockAgentStartRun,
+        startSessionRun: mockAgentStartRun,
       };
       return selector ? selector(state) : state;
     }),
     {
       getState: vi.fn(() => ({
         runs: mockRuns,
-        setActiveAgent: mockSetActiveAgent,
-        clearRuns: mockClearRuns,
+        clearSessionRuns: mockClearRuns,
         clearRunsBySource: mockClearRunsBySource,
-        startRun: mockAgentStartRun,
-        activeAgentId: mockActiveAgentId,
+        startSessionRun: mockAgentStartRun,
       })),
     },
   ),
@@ -213,7 +207,6 @@ describe("useWorkflowStateMachine", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockActiveAgentId = null;
     mockRuns = {};
     useSkillStore.getState().clearSelectedSkillSession();
     mockWorkflowState = {
@@ -466,7 +459,7 @@ describe("useWorkflowStateMachine", () => {
       steps: [{ id: 0, status: "in_progress" }],
       isRunning: true,
     };
-    mockActiveAgentId = "agent-finish-1";
+    useSkillStore.getState().setActiveAgentId("agent-finish-1");
     mockRuns = {
       "agent-finish-1": {
         status: "completed",
@@ -535,11 +528,10 @@ describe("useWorkflowStateMachine", () => {
       ],
       isRunning: true,
     };
-    mockActiveAgentId = "agent-generate-1";
+    useSkillStore.getState().setActiveAgentId("agent-generate-1");
     mockRuns = {
       "agent-generate-1": {
         status: "completed",
-        displayItems: [],
         conversationState: {
           resultText: JSON.stringify({
             status: "generated",

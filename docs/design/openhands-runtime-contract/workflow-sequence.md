@@ -75,4 +75,4 @@ sequenceDiagram
 - Workflow uses the same persistent selected-skill conversation model as the workspace conversation surface.
 - Workflow steps send into the existing conversation and only start a run when no live runner exists.
 - Reset ownership stays at the product-command layer: pause, clear typed artifacts, fork, delete source, then rebind the saved conversation ID.
-- Transcript rendering reads from the canonical `conversation-store` timeline keyed by the selected session `conversationId`, while `agent-store` remains a workflow lifecycle/orchestration seam only.
+- Transcript rendering reads from the canonical `conversation-store` timeline keyed by the selected session `conversationId`, and workflow runtime state uses the session-centric `session-runtime-store` lifecycle surface rather than any legacy `agent-store` transcript seam.

@@ -17,7 +17,7 @@ Rust routing and emission live in:
 - `app/src-tauri/src/agents/event_router.rs`
 - `app/src-tauri/src/agents/openhands_server/events.rs`
 
-Frontend listener registration lives in `app/src/hooks/use-agent-stream.ts`.
+Frontend listener registration now lives in `app/src/hooks/use-session-runtime-stream.ts` for typed runtime metadata and `app/src/hooks/use-conversation-stream.ts` for canonical conversation events.
 
 ## Event Families
 

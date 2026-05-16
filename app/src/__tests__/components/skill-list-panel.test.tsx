@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { useSkillStore } from "@/stores/skill-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore as useAgentStore } from "@/stores/session-runtime-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { SkillSummary, ImportedSkill } from "@/lib/types";
 import { createTestQueryClient } from "@/test/query-test-utils";
@@ -178,7 +178,7 @@ describe("SkillListPanel", () => {
       latestVersion: null,
     });
     useSettingsStore.setState({ workspacePath: "/tmp/workspace" });
-    useAgentStore.getState().clearRuns();
+    useAgentStore.getState().clearSessionRuns();
     mockNavigate.mockClear();
     localStorage.clear();
   });
@@ -380,7 +380,6 @@ describe("SkillListPanel", () => {
           agentId: "agent-1",
           model: "sonnet",
           status: "running",
-          displayItems: [],
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: 200_000,
@@ -421,7 +420,6 @@ describe("SkillListPanel", () => {
           agentId: "agent-1",
           model: "sonnet",
           status: "running",
-          displayItems: [],
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: 200_000,
@@ -456,7 +454,6 @@ describe("SkillListPanel", () => {
           agentId: "agent-1",
           model: "sonnet",
           status: "running",
-          displayItems: [],
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: 200_000,
@@ -650,7 +647,6 @@ describe("SkillListPanel", () => {
           agentId: "agent-1",
           model: "sonnet",
           status: "running",
-          displayItems: [],
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: 200_000,
@@ -877,7 +873,6 @@ describe("SkillListPanel", () => {
           agentId: "agent-1",
           model: "sonnet",
           status: "running",
-          displayItems: [],
           startTime: Date.now(),
           contextHistory: [],
           contextWindow: 200_000,

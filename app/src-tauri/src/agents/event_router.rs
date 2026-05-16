@@ -54,6 +54,14 @@ pub(super) fn route_runtime_message(
         return None;
     }
 
+    if msg_type == "display_item" {
+        log::debug!(
+            "[event:agent-message:{}] skipping legacy display_item payload",
+            agent_id
+        );
+        return None;
+    }
+
     if msg_type == "agent_event" {
         let timestamp = message
             .get("timestamp")
@@ -167,54 +175,11 @@ pub fn handle_runtime_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                     .get("type")
                     .and_then(|t| t.as_str())
                     .unwrap_or("unknown");
-                if msg_type == "display_item" {
-                    let item_type = event
-                        .message
-                        .get("item")
-                        .and_then(|i| i.get("type"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("unknown");
-                    let item_id = event
-                        .message
-                        .get("item")
-                        .and_then(|i| i.get("id"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("unknown");
-                    if item_type == "error" {
-                        let error_content = event
-                            .message
-                            .get("item")
-                            .and_then(|i| i.get("content"))
-                            .map(|c| c.to_string())
-                            .or_else(|| {
-                                event
-                                    .message
-                                    .get("item")
-                                    .and_then(|i| i.get("error"))
-                                    .map(|e| e.to_string())
-                            })
-                            .unwrap_or_default();
-                        log::error!(
-                            "[event:agent-message:{}] display_item type=error id={} detail={}",
-                            agent_id,
-                            item_id,
-                            error_content
-                        );
-                    } else {
-                        log::debug!(
-                            "[event:agent-message:{}] display_item type={} id={}",
-                            agent_id,
-                            item_type,
-                            item_id
-                        );
-                    }
-                } else {
-                    log::debug!(
-                        "[event:agent-message:{}] pass_through type={}",
-                        agent_id,
-                        msg_type
-                    );
-                }
+                log::debug!(
+                    "[event:agent-message:{}] pass_through type={}",
+                    agent_id,
+                    msg_type
+                );
 
                 if let Err(e) = app_handle.emit("agent-message", &event) {
                     log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
@@ -604,6 +569,19 @@ mod tests {
             "type": "system",
             "subtype": "sdk_stderr",
             "data": "diagnostic stderr line"
+        });
+
+        assert!(route_runtime_message("agent-6", message).is_none());
+    }
+
+    #[test]
+    fn route_runtime_message_skips_legacy_display_items() {
+        let message = serde_json::json!({
+            "type": "display_item",
+            "item": {
+                "id": "legacy-item-1",
+                "type": "output"
+            }
         });
 
         assert!(route_runtime_message("agent-6", message).is_none());

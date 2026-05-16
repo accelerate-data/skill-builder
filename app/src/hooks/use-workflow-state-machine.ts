@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSkillStore } from "@/stores/skill-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
@@ -161,9 +162,9 @@ export function useWorkflowStateMachine({
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
   const resetToStep = useWorkflowStore((s) => s.resetToStep);
 
-  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
-  const clearRuns = useAgentStore((s) => s.clearRuns);
-  const agentStartRun = useAgentStore((s) => s.startRun);
+  const setActiveAgentId = useSkillStore((s) => s.setActiveAgentId);
+  const clearSessionRuns = useSessionRuntimeStore((s) => s.clearSessionRuns);
+  const startSessionRun = useSessionRuntimeStore((s) => s.startSessionRun);
 
   // Step switch state (when user clicks sidebar while agent running)
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(
@@ -193,8 +194,8 @@ export function useWorkflowStateMachine({
   const warnedVerifierAgentsRef = useRef<Record<string, true>>({});
 
   // Current state selectors
-  const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const runs = useAgentStore((s) => s.runs);
+  const activeAgentId = useSkillStore((s) => s.activeAgentId);
+  const runs = useSessionRuntimeStore((s) => s.runs);
   const isRunning = useWorkflowStore((s) => s.isRunning);
   const gateLoading = useWorkflowStore((s) => s.gateLoading);
 
@@ -220,7 +221,7 @@ export function useWorkflowStateMachine({
 
   const extractResultPayload = useCallback(
     (agentId: string): unknown | null => {
-      const run = useAgentStore.getState().runs[agentId];
+      const run = useSessionRuntimeStore.getState().runs[agentId];
       if (!run) return null;
       const state = run.conversationState;
       if (state?.resultText) return parseResultTextPayload(state.resultText);
@@ -243,14 +244,14 @@ export function useWorkflowStateMachine({
       updateStepStatus(step, "error");
       setRunning(false);
       setStopping(false);
-      setActiveAgent(null);
+      setActiveAgentId(null);
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
         workflowState.clearInitializing();
       }
       toast.error(message, { duration: Infinity });
     },
-    [setActiveAgent, setRunning, setStopping, updateStepStatus],
+    [setActiveAgentId, setRunning, setStopping, updateStepStatus],
   );
 
   const verifyOutputFiles = useCallback(
@@ -429,7 +430,7 @@ export function useWorkflowStateMachine({
         if (
           pending ||
           (currentSteps[step]?.status === "in_progress" &&
-            useAgentStore.getState().activeAgentId === payload.agentId &&
+            useSkillStore.getState().activeAgentId === payload.agentId &&
             payload.stepId === step)
         ) {
           const failedStep = pending?.step ?? step;
@@ -608,10 +609,10 @@ export function useWorkflowStateMachine({
       const completedGateAgentId = activeAgentId;
       const gateStep = gate.gateStepRef.current;
       gate.gateAgentIdRef.current = null;
-      setActiveAgent(null);
+      setActiveAgentId(null);
 
       if (activeRunStatus === "error") {
-        clearRuns();
+        clearSessionRuns();
         console.warn("[workflow] Gate evaluation failed");
         const stepToRestore =
           gateStep ?? useWorkflowStore.getState().currentStep;
@@ -629,7 +630,7 @@ export function useWorkflowStateMachine({
 
       const evaluationPayload =
         extractResultPayload(completedGateAgentId);
-      clearRuns();
+      clearSessionRuns();
       gate.finishGateEvaluation(evaluationPayload).finally(() => {
         gate.gateStepRef.current = null;
       });
@@ -642,8 +643,8 @@ export function useWorkflowStateMachine({
     setStopping,
     updateStepStatus,
     advanceToNextStep,
-    clearRuns,
-    setActiveAgent,
+    clearSessionRuns,
+    setActiveAgentId,
   ]);
 
   // Watch for workflow step agent completion
@@ -657,7 +658,7 @@ export function useWorkflowStateMachine({
 
     if (activeRunStatus === "completed") {
       const completedAgentId = activeAgentId;
-      setActiveAgent(null);
+      setActiveAgentId(null);
 
       const finish = async () => {
         await resolveWorkflowStepCompletion(completedAgentId, step);
@@ -671,7 +672,7 @@ export function useWorkflowStateMachine({
       updateStepStatus(step, "error");
       setRunning(false);
       setStopping(false);
-      setActiveAgent(null);
+      setActiveAgentId(null);
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
         workflowState.clearInitializing();
@@ -683,7 +684,7 @@ export function useWorkflowStateMachine({
         { duration: Infinity },
       );
     } else if (activeRunStatus === "shutdown") {
-      setActiveAgent(null);
+      setActiveAgentId(null);
       setRunning(false);
       setStopping(false);
       updateStepStatus(step, "pending");
@@ -696,7 +697,7 @@ export function useWorkflowStateMachine({
     updateStepStatus,
     setRunning,
     setStopping,
-    setActiveAgent,
+    setActiveAgentId,
     skillName,
     workspacePath,
     clearInitializing,
@@ -734,7 +735,8 @@ export function useWorkflowStateMachine({
       }
 
       try {
-        clearRuns();
+        clearSessionRuns();
+        useSkillStore.getState().setActiveAgentId(null);
         useWorkflowStore.getState().clearRuntimeError();
         updateStepStatus(targetStep, "in_progress");
         setRunning(true);
@@ -748,7 +750,8 @@ export function useWorkflowStateMachine({
           skillName,
           targetStep,
         );
-        agentStartRun(agentId, model);
+        startSessionRun(agentId, model);
+        useSkillStore.getState().setActiveAgentId(agentId);
       } catch (err) {
         updateStepStatus(targetStep, "error");
         setRunning(false);
@@ -764,21 +767,26 @@ export function useWorkflowStateMachine({
       skillName,
       currentStep,
       gate,
-      clearRuns,
+      clearSessionRuns,
       updateStepStatus,
       setRunning,
       setInitializing,
       clearInitializing,
-      agentStartRun,
+      startSessionRun,
     ],
   );
 
   // --- Step reset ---
 
   const performStepReset = async (stepId: number) => {
+    // Steps 0 (Research) and 1 (Detailed Research) share the same OpenHands
+    // conversation. Resetting step 1 clears the conversation ID from the DB, so
+    // step 1 cannot resume without step 0 first creating a new conversation.
+    // Treat any reset of step 1 as a full reset to step 0.
+    const effectiveStepId = stepId === 1 ? 0 : stepId;
     logFrontend(
       "info",
-      `[performStepReset] resetting step ${stepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`,
+      `[performStepReset] resetting step ${stepId}, effectiveStepId=${effectiveStepId}, isRunning=${useWorkflowStore.getState().isRunning}, reviewMode=${useWorkflowStore.getState().reviewMode}`,
     );
     endActiveSession();
     setPendingAutoStartStep(null);
@@ -787,14 +795,15 @@ export function useWorkflowStateMachine({
     useWorkflowStore.getState().setGateLoading(false);
     if (workspacePath) {
       try {
-        await resetWorkflowStep(workspacePath, skillName, stepId);
+        await resetWorkflowStep(workspacePath, skillName, effectiveStepId);
         await restartOpenHandsSession();
       } catch {
         // best-effort
       }
     }
-    clearRuns();
-    resetToStep(stepId);
+    clearSessionRuns();
+    useSkillStore.getState().setActiveAgentId(null);
+    resetToStep(effectiveStepId);
 
     let disabled: number[] = [];
     if (skillId != null) {
@@ -806,16 +815,16 @@ export function useWorkflowStateMachine({
       }
     }
 
-    if (!disabled.includes(stepId)) {
+    if (!disabled.includes(effectiveStepId)) {
       // Start the agent directly instead of going through the pendingAutoStartStep →
       // useEffect pipeline. The effect-based approach is unreliable here because React 18
       // may batch the Zustand store updates (from resetToStep) with the React state change
       // (setPendingAutoStartStep), causing the effect to fire with stale selector values.
       const { reviewMode: isReview } = useWorkflowStore.getState();
-      const cfg = stepConfigs[stepId];
+      const cfg = stepConfigs[effectiveStepId];
       if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !isReview) {
-        logFrontend("info", `[performStepReset] auto-starting step ${stepId}`);
-        handleStartAgentStep(stepId);
+        logFrontend("info", `[performStepReset] auto-starting step ${effectiveStepId}`);
+        handleStartAgentStep(effectiveStepId);
       }
     }
   };

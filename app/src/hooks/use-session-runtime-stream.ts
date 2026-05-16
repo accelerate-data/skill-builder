@@ -1,11 +1,10 @@
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "@/lib/toast";
-import { useAgentStore } from "@/stores/agent-store";
 import { useConversationStore } from "@/stores/conversation-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useSkillStore } from "@/stores/skill-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cache";
-import type { DisplayItem } from "@/lib/display-types";
 import {
   buildCanonicalConversationEventEnvelope,
   getReasoningText,
@@ -27,7 +26,6 @@ interface AgentMessagePayload {
   agent_id: string;
   message: {
     type: string;
-    item?: DisplayItem;
     [key: string]: unknown;
   };
 }
@@ -53,19 +51,18 @@ interface AgentInitErrorPayload {
   fix_hint: string;
 }
 
-/** Map runtime system event subtypes to user-facing progress messages. */
+interface AgentShutdownPayload {
+  agent_id: string;
+}
+
 const INIT_PROGRESS_MESSAGES: Record<string, string> = {
   init_start: "Loading runtime modules...",
   runtime_ready: "Connecting to API...",
 };
 
-// Module-level singleton subscription.  We subscribe eagerly at import time
-// so the listener is active before any agent can be started.  This eliminates
-// the race condition where Tauri events arrive before a React effect sets up
-// the listener.
 let initialized = false;
 let initPromise: Promise<void> | null = null;
-let _unlisteners: Array<() => void> = [];
+let unlisteners: Array<() => void> = [];
 
 function selectedConversationId(): string | null {
   return useSkillStore.getState().conversationId;
@@ -74,9 +71,8 @@ function selectedConversationId(): string | null {
 function appendCanonicalRuntimeEvent(
   event: ReturnType<typeof normalizeConversationEventMessage> | ReturnType<typeof normalizeConversationStateMessage>,
 ) {
-  if (!event) {
-    return;
-  }
+  if (!event) return;
+
   try {
     const envelope = buildCanonicalConversationEventEnvelope(
       event,
@@ -85,32 +81,27 @@ function appendCanonicalRuntimeEvent(
     useConversationStore.getState().appendBackendObservedEvent(envelope);
   } catch (error) {
     console.warn(
-      "[use-agent-stream] event=canonical_event_skipped reason=%s",
+      "[use-session-runtime-stream] event=canonical_event_skipped reason=%s",
       error instanceof Error ? error.message : String(error),
     );
   }
 }
 
-interface AgentShutdownPayload {
-  agent_id: string;
-}
-
-export async function initAgentStream() {
+export async function initSessionRuntimeStream() {
   if (initialized) return;
   if (initPromise) return initPromise;
 
   function reg<T>(event: string, handler: (e: { payload: T }) => void): Promise<void> {
-    const p = listen<T>(event, handler).then((unlisten) => {
-      _unlisteners.push(unlisten);
+    return listen<T>(event, handler).then((unlisten) => {
+      unlisteners.push(unlisten);
     });
-    return p;
   }
 
   initPromise = Promise.all([
     reg<AgentInitProgressPayload>("agent-init-progress", (event) => {
       const { agent_id, stage } = event.payload;
       console.debug(
-        "[use-agent-stream] event=agent_init_progress component=ipc agent_id=%s stage=%s",
+        "[use-session-runtime-stream] event=agent_init_progress agent_id=%s stage=%s",
         agent_id,
         stage,
       );
@@ -125,13 +116,11 @@ export async function initAgentStream() {
     reg<AgentSessionExhaustedPayload>("agent-session-exhausted", (event) => {
       const { agent_id, sessionId } = event.payload;
       console.debug(
-        "[use-agent-stream] event=agent_session_exhausted component=ipc agent_id=%s session_id=%s",
+        "[use-session-runtime-stream] event=agent_session_exhausted agent_id=%s session_id=%s",
         agent_id,
         sessionId,
       );
-      toast.info(
-        "Session limit reached. Start a new session to continue.",
-      );
+      toast.info("Session limit reached. Start a new session to continue.");
     }),
     reg<AgentInitErrorPayload>("agent-init-error", (event) => {
       const workflowState = useWorkflowStore.getState();
@@ -144,68 +133,34 @@ export async function initAgentStream() {
     }),
     reg<AgentRunConfigPayload>("agent-run-config", (event) => {
       const { agent_id, ...runConfig } = event.payload;
-      console.debug(
-        "[use-agent-stream] event=agent_run_config component=ipc agent_id=%s",
-        agent_id,
-      );
-      useAgentStore.getState().applyRunConfig(agent_id, runConfig);
+      useSessionRuntimeStore.getState().applyRunConfig(agent_id, runConfig);
     }),
     reg<AgentRunInitPayload>("agent-run-init", (event) => {
       const { agent_id, ...runInit } = event.payload;
-      console.debug(
-        "[use-agent-stream] event=agent_run_init component=ipc agent_id=%s",
-        agent_id,
-      );
-      useAgentStore.getState().applyRunInit(agent_id, runInit);
+      useSessionRuntimeStore.getState().applyRunInit(agent_id, runInit);
     }),
     reg<AgentTurnUsagePayload>("agent-turn-usage", (event) => {
       const { agent_id, ...turnUsage } = event.payload;
-      console.debug(
-        "[use-agent-stream] event=agent_turn_usage component=ipc agent_id=%s turn=%d",
-        agent_id,
-        turnUsage.turn,
-      );
-      useAgentStore.getState().applyTurnUsage(agent_id, turnUsage);
+      useSessionRuntimeStore.getState().applyTurnUsage(agent_id, turnUsage);
     }),
     reg<AgentCompactionPayload>("agent-compaction", (event) => {
       const { agent_id, ...compaction } = event.payload;
-      console.debug(
-        "[use-agent-stream] event=agent_compaction component=ipc agent_id=%s turn=%d",
-        agent_id,
-        compaction.turn,
-      );
-      useAgentStore.getState().applyCompaction(agent_id, compaction);
+      useSessionRuntimeStore.getState().applyCompaction(agent_id, compaction);
     }),
     reg<AgentContextWindowPayload>("agent-context-window", (event) => {
       const { agent_id, ...contextWindow } = event.payload;
-      console.debug(
-        "[use-agent-stream] event=agent_context_window component=ipc agent_id=%s",
-        agent_id,
-      );
-      useAgentStore.getState().applyContextWindow(agent_id, contextWindow);
+      useSessionRuntimeStore.getState().applyContextWindow(agent_id, contextWindow);
     }),
     reg<AgentMessagePayload>("agent-message", (event) => {
       const { agent_id, message } = event.payload;
 
-      // Clear the "initializing" spinner on the first message from the agent.
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
         workflowState.clearInitializing();
         workflowState.clearRuntimeError();
       }
 
-      const agentStore = useAgentStore.getState();
-
-      if (message.type === "display_item" && message.item) {
-        console.debug(
-          "[use-agent-stream] event=display_item agent_id=%s item_type=%s item_id=%s",
-          agent_id,
-          message.item.type,
-          message.item.id,
-        );
-        agentStore.addDisplayItem(agent_id, message.item);
-        return;
-      }
+      const runtimeStore = useSessionRuntimeStore.getState();
 
       if (message.type === "conversation_event") {
         const conversationEvent = normalizeConversationEventMessage(message);
@@ -213,14 +168,11 @@ export async function initAgentStream() {
           appendCanonicalRuntimeEvent(conversationEvent);
           const reasoningText = getReasoningText(conversationEvent);
           console.debug(
-            "[use-agent-stream] event=conversation_event agent_id=%s event_class=%s tool_call_id=%s parent_tool_call_id=%s reasoning_len=%d",
+            "[use-session-runtime-stream] event=conversation_event agent_id=%s event_class=%s reasoning_len=%d",
             agent_id,
             conversationEvent.eventClass,
-            conversationEvent.toolCallId ?? "none",
-            conversationEvent.parentToolCallId ?? "none",
             reasoningText?.length ?? 0,
           );
-          agentStore.addConversationEvent(agent_id, conversationEvent);
           return;
         }
       }
@@ -229,74 +181,82 @@ export async function initAgentStream() {
         const conversationState = normalizeConversationStateMessage(message);
         if (conversationState) {
           appendCanonicalRuntimeEvent(conversationState);
-          console.debug(
-            "[use-agent-stream] event=conversation_state agent_id=%s status=%s",
-            agent_id,
-            conversationState.status,
-          );
-          agentStore.applyConversationState(agent_id, conversationState);
+          runtimeStore.applyConversationState(agent_id, conversationState);
           if (isTerminalConversationStatus(conversationState.status)) {
             invalidateUsageDataAfterAgentRun().catch((error) => {
-              console.warn("[use-agent-stream] event=invalidate_usage_failed error=%s", error);
+              console.warn(
+                "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",
+                error,
+              );
             });
           }
           return;
         }
       }
 
-      // Prompt suggestions from the SDK (arrives after result).
       if (message.type === "agent_event") {
-        const event = message.event as Record<string, unknown> | undefined;
-        if (event?.type === "prompt_suggestion" && typeof event.suggestion === "string") {
-          agentStore.setPromptSuggestion(agent_id, event.suggestion);
+        const eventPayload = message.event as Record<string, unknown> | undefined;
+        if (
+          eventPayload?.type === "prompt_suggestion" &&
+          typeof eventPayload.suggestion === "string"
+        ) {
+          runtimeStore.setPromptSuggestion(agent_id, eventPayload.suggestion);
           return;
         }
       }
 
-      // Log unhandled message types at debug level for troubleshooting
       console.debug(
-        "[use-agent-stream] event=unhandled_message agent_id=%s msg_type=%s",
+        "[use-session-runtime-stream] event=unhandled_message agent_id=%s msg_type=%s",
         agent_id,
         message.type,
       );
     }),
     reg<AgentExitPayload>("agent-exit", (event) => {
-      useAgentStore.getState().completeRun(
+      useSessionRuntimeStore.getState().completeRun(
         event.payload.agent_id,
         event.payload.success,
         event.payload.error_detail,
       );
       invalidateUsageDataAfterAgentRun().catch((error) => {
-        console.warn("[use-agent-stream] event=invalidate_usage_failed error=%s", error);
+        console.warn(
+          "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",
+          error,
+        );
       });
     }),
     reg<AgentShutdownPayload>("agent-shutdown", (event) => {
-      useAgentStore.getState().shutdownRun(event.payload.agent_id);
+      useSessionRuntimeStore.getState().shutdownRun(event.payload.agent_id);
     }),
-    // skill-session-reset fires when a saved conversation is missing and a new one is created.
     listen<{ reason: string; conversation_id: string }>("skill-session-reset", () => {
-      toast.warning("Previous session not found — started a new conversation.", { duration: Infinity });
-    }).then((u) => { _unlisteners.push(u); }),
-  ]).then(() => {
-    initialized = true;
-  }).catch((error) => {
-    initPromise = null;
-    initialized = false;
-    throw error;
-  });
+      toast.warning("Previous session not found — started a new conversation.", {
+        duration: Infinity,
+      });
+    }).then((unlisten) => {
+      unlisteners.push(unlisten);
+    }),
+  ])
+    .then(() => {
+      initialized = true;
+    })
+    .catch((error) => {
+      initPromise = null;
+      initialized = false;
+      throw error;
+    });
 
   return initPromise;
 }
 
-// Initialize eagerly on module load
-void initAgentStream().catch((error) => {
-  console.warn("[use-agent-stream] initial listener registration failed: %s", error);
+void initSessionRuntimeStream().catch((error) => {
+  console.warn(
+    "[use-session-runtime-stream] initial listener registration failed: %s",
+    error,
+  );
 });
 
-/** Reset module-level singleton state for tests. */
 export async function _resetForTesting() {
-  await Promise.all(_unlisteners.map((fn) => fn()));
-  _unlisteners = [];
+  await Promise.all(unlisteners.map((fn) => fn()));
+  unlisteners = [];
   initialized = false;
   initPromise = null;
 }

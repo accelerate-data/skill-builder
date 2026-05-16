@@ -9,7 +9,7 @@ import {
 } from "@/lib/eval-workbench";
 import type { ImportedSkill, SkillSummary } from "@/lib/types";
 import { useSettingsStore } from "@/stores/settings-store";
-import { formatModelName } from "@/stores/agent-store";
+import { formatModelName } from "@/stores/session-runtime-store";
 import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
 import {
   getEvalsRunning,

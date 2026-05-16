@@ -18,7 +18,8 @@ const mockSetHydrated = vi.fn();
 const mockSetDisabledSteps = vi.fn();
 const mockSetReviewMode = vi.fn();
 const mockSetPendingNoReviewMode = vi.fn();
-const mockClearRuns = vi.fn();
+const mockClearSessionRuns = vi.fn();
+const mockSetActiveAgentId = vi.fn();
 let mockStoreState = {
   skillName: "",
   hydrated: false,
@@ -45,12 +46,21 @@ vi.mock("@/stores/workflow-store", () => ({
   ),
 }));
 
-vi.mock("@/stores/agent-store", () => ({
-  useAgentStore: Object.assign(
+vi.mock("@/stores/session-runtime-store", () => ({
+  useSessionRuntimeStore: Object.assign(
     vi.fn(() => ({})),
     {
-      getState: vi.fn(() => ({ clearRuns: mockClearRuns })),
+      getState: vi.fn(() => ({ clearSessionRuns: mockClearSessionRuns })),
     }
+  ),
+}));
+
+vi.mock("@/stores/skill-store", () => ({
+  useSkillStore: Object.assign(
+    vi.fn(() => ({})),
+    {
+      getState: vi.fn(() => ({ setActiveAgentId: mockSetActiveAgentId })),
+    },
   ),
 }));
 

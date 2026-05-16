@@ -463,6 +463,15 @@ git commit -m "feat: migrate workflow to conversation timeline"
 
 ## Task 6: Delete Legacy `agent_id`-Centric Public Helpers
 
+**Execution rule:** This task is a clean-break deletion pass. Do not add fallback paths, compatibility shims, dual-write logic, adapter facades that preserve the old transcript contract, or "temporary" public helpers that keep `agent_id`-centric UI behavior alive under a new name.
+
+**Steady-state expectation after this task:**
+
+- canonical transcript authority lives only in `conversation-store`
+- UI rendering reads only from canonical conversation projections and typed workflow/session state
+- any remaining runtime helper below the UI boundary is transport/lifecycle-only and must not expose transcript semantics
+- old `DisplayItem` / `agent-store` transcript contracts are removed rather than wrapped
+
 **Files:**
 
 - Modify/Delete: `app/src/hooks/use-agent-stream.ts`
@@ -482,16 +491,19 @@ git commit -m "feat: migrate workflow to conversation timeline"
 - Test: `app/src/__tests__/hooks/use-agent-stream.test.ts` (delete or rewrite)
 - Test: `app/src/__tests__/stores/agent-store.test.ts` (delete or rewrite)
 
-- [ ] **Step 1: Remove transcript authority from legacy helpers**
+- [x] **Step 1: Remove transcript authority from legacy helpers**
 
 ```text
 Delete or rewrite legacy helpers so they no longer expose:
 - transcript-like displayItems
 - transcript grouping semantics
 - agent-centric public UI contracts
+
+Do not preserve these behaviors behind renamed stores, compatibility wrappers, or
+dual read/write code paths.
 ```
 
-- [ ] **Step 2: Narrow remaining runtime helpers to transport-only concerns**
+- [x] **Step 2: Narrow remaining runtime helpers to transport-only concerns**
 
 ```rust
 // app/src-tauri/src/agents/tracked_openhands.rs
@@ -499,7 +511,13 @@ Delete or rewrite legacy helpers so they no longer expose:
 // the canonical conversation event layer.
 ```
 
-- [ ] **Step 3: Update docs and test maps to the new source of truth**
+```text
+If frontend/runtime lifecycle state still needs to exist after this deletion,
+it must be rebuilt as a conversation/session-centric contract rather than a
+reshaped `agent-store` replacement.
+```
+
+- [x] **Step 3: Update docs and test maps to the new source of truth**
 
 ```text
 Update:
@@ -509,7 +527,7 @@ Update:
 - repo-map.json
 ```
 
-- [ ] **Step 4: Update design docs for legacy-helper removal completion**
+- [x] **Step 4: Update design docs for legacy-helper removal completion**
 
 ```text
 Update:
@@ -521,7 +539,7 @@ Mark the legacy `agent_id`-centric public transcript helpers removed and describ
 conversation-centric steady state.
 ```
 
-- [ ] **Step 5: Verify the full migration and commit**
+- [x] **Step 5: Verify the full migration and commit**
 
 ```bash
 cd app && npm run test:unit

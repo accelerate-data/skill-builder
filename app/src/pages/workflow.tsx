@@ -33,9 +33,9 @@ import { ConversationTimeline } from "@/components/conversation/conversation-tim
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/step-complete";
 import ResetStepDialog from "@/components/reset-step-dialog";
-import "@/hooks/use-agent-stream";
+import "@/hooks/use-session-runtime-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   getDisabledSteps,
@@ -184,7 +184,8 @@ export default function WorkflowPage() {
     resetToStep,
   } = useWorkflowStore();
 
-  const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const activeAgentId = useSkillStore((s) => s.activeAgentId);
+  const runtimeRuns = useSessionRuntimeStore((s) => s.runs);
   const selectedSkill = useSkillStore((s) => s.selectedSkill);
   const conversationId = useSkillStore((s) => s.conversationId);
   const activeConversationEventCount = useConversationEvents(conversationId ?? "").length;
@@ -374,7 +375,7 @@ export default function WorkflowPage() {
 
   const renderContent = () => {
     // 1. Agent running — show streaming output or init spinner
-    if (activeAgentId && conversationId) {
+    if (activeAgentId && conversationId && runtimeRuns[activeAgentId]) {
       if (isInitializing && activeConversationEventCount === 0) {
         return <AgentInitializingIndicator />;
       }
@@ -659,7 +660,7 @@ export default function WorkflowPage() {
 
             {/* Content area */}
             <div className={`flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in duration-200 ${
-              activeAgentId ? "" : "p-4"
+              activeAgentId && runtimeRuns[activeAgentId] ? "" : "p-4"
             }`}>
               {renderContent()}
             </div>

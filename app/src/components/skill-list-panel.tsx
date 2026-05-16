@@ -23,7 +23,7 @@ import { CreatePluginDialog } from "@/components/create-plugin-dialog";
 import { MoveToPluginDialog } from "@/components/move-to-plugin-dialog";
 import { SkillRow } from "@/components/skill-row";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import {
   useUnifiedSkills,
 } from "@/hooks/use-unified-skills";
@@ -92,7 +92,7 @@ export function SkillListPanel({
   const { data: importedSkills = [] } = useImportedSkillsQuery();
   const deleteImportedSkillMutation = useDeleteImportedSkillMutation();
   const invalidateSkillQueries = useInvalidateSkillQueries();
-  const runs = useAgentStore((s) => s.runs);
+  const runs = useSessionRuntimeStore((s) => s.runs);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // Refresh external locks on mount, interval ticks, and window focus

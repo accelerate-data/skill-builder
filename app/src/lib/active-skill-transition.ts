@@ -5,7 +5,7 @@ import {
 } from "@/lib/tauri";
 import type { EditableSkill } from "@/lib/types";
 import { teardownWorkflowSession } from "@/lib/workflow-teardown";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useSkillStore } from "@/stores/skill-store";
 
 interface ActiveSkillSession {
@@ -27,7 +27,7 @@ function getActiveSkillSession(): ActiveSkillSession | null {
     return null;
   }
 
-  const runningWorkflow = Object.values(useAgentStore.getState().runs).find(
+  const runningWorkflow = Object.values(useSessionRuntimeStore.getState().runs).find(
     (run): run is typeof run & { skillName: string } =>
       run.status === "running" &&
       run.runSource === "workflow" &&

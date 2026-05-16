@@ -11,7 +11,7 @@ import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { toast } from "@/lib/toast";
 import { useSkillStore } from "@/stores/skill-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAppStartup } from "@/hooks/use-app-startup";
 import {
@@ -50,7 +50,7 @@ export function AppLayout() {
   const setSelectedWorkspaceSkill = useSkillStore((s) => s.setActiveSkill);
   const selectedSkill = useSkillStore((s) => s.selectedSkill);
   const selectedSkillConversationId = useSkillStore((s) => s.conversationId);
-  const runs = useAgentStore((s) => s.runs);
+  const runs = useSessionRuntimeStore((s) => s.runs);
   const [evalsRunningReactive, setEvalsRunningReactive] = useState(getEvalsRunning);
   useEffect(() => subscribeEvalsRunning(setEvalsRunningReactive), []);
   const runningWorkflow = Object.values(runs).find(
@@ -104,8 +104,8 @@ export function AppLayout() {
         logFrontend("debug", "[app-layout] escape pressed");
         const workflowStore = useWorkflowStore.getState();
         if (workflowStore.isRunning && !workflowStore.isStopping) {
-          const runs = useAgentStore.getState().runs;
-          const activeAgentId = useAgentStore.getState().activeAgentId;
+          const runs = useSessionRuntimeStore.getState().runs;
+          const activeAgentId = useSkillStore.getState().activeAgentId;
           const running = Object.values(runs).find(
             (r): r is typeof r & { skillName: string } =>
               r.status === "running" && r.runSource === "workflow" && !!r.skillName,

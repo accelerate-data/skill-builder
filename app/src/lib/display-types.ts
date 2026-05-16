@@ -3,103 +3,6 @@ import type {
   ConversationEventStatus,
 } from "./conversation-event-types";
 
-/**
- * Canonical frontend DisplayItem type definitions for rendering OpenHands output.
- *
- * READ-ONLY except when intentionally changing the UI contract consumed by the app.
- *
- * @module display-types
- */
-
-// ---------------------------------------------------------------------------
-// DisplayItem — the structured unit of agent output for rendering
-// ---------------------------------------------------------------------------
-
-export type DisplayItemType =
-  | "thinking"
-  | "output"
-  | "tool_call"
-  | "subagent"
-  | "skill"
-  | "result"
-  | "compact_boundary"
-  | "error";
-
-export type ToolStatus = "ok" | "error" | "orphaned" | "pending";
-export type SubagentStatus = "running" | "complete" | "error";
-export type ResultStatus = "success" | "error" | "refusal";
-
-export interface ToolResult {
-  content: string;
-  isError: boolean;
-}
-
-export interface SubagentMetrics {
-  outputTokens: number;
-  turns: number;
-}
-
-export interface DisplayItem {
-  id: string;
-  type: DisplayItemType;
-  timestamp: number;
-  tokenCount?: number;
-
-  // thinking
-  thinkingText?: string;
-
-  // output (text blocks)
-  outputText?: string;
-
-  // tool_call (linked: call → result)
-  toolName?: string;
-  toolInput?: Record<string, unknown>;
-  toolCallId?: string;
-  toolResult?: ToolResult;
-  toolStatus?: ToolStatus;
-  toolDurationMs?: number;
-  toolSummary?: string;
-
-  // skill (invoke_skill tool calls)
-  skillName?: string;
-
-  // subagent (Task tool calls with nested execution)
-  subagentDescription?: string;
-  subagentType?: string;
-  parentToolCallId?: string;
-  subagentItems?: DisplayItem[];
-  subagentMetrics?: SubagentMetrics;
-  subagentStatus?: SubagentStatus;
-  subagentConclusion?: string;
-  /** Name of the last tool invoked by a background sub-agent (from task_progress). */
-  lastToolName?: string;
-
-  // result (completion/error display)
-  outputText_result?: string;
-  resultStatus?: ResultStatus;
-  errorSubtype?: string;
-  /** Display-ready markdown extracted from parsed result payload fields. */
-  resultMarkdown?: string;
-
-  // error
-  errorMessage?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Message classification categories
-// ---------------------------------------------------------------------------
-
-export type MessageCategory = "hardNoise" | "compact" | "system" | "user" | "ai" | "task";
-
-// ---------------------------------------------------------------------------
-// JSONL protocol envelope for display items
-// ---------------------------------------------------------------------------
-
-export interface DisplayItemEnvelope {
-  type: "display_item";
-  item: DisplayItem;
-}
-
 export interface DisplayNode {
   id: string;
   kind: ConversationDisplayKind;
@@ -121,8 +24,4 @@ export interface DisplayNode {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Version tag for structural sync tests
-// ---------------------------------------------------------------------------
-
-export const DISPLAY_TYPES_VERSION = 8;
+export const DISPLAY_TYPES_VERSION = 9;

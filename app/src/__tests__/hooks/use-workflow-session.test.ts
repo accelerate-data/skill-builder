@@ -2,7 +2,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWorkflowSession } from "@/hooks/use-workflow-session";
 
-const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture } = vi.hoisted(() => {
+const { mockWorkflowStoreMock, mockRuntimeStoreMock, leaveGuardCapture } = vi.hoisted(() => {
   let mockWorkflowState = {
     workflowSessionId: "session-uuid-123",
     currentStep: 0,
@@ -25,25 +25,23 @@ const { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapt
     }
   );
 
-  const mockClearRuns = vi.fn();
-  const mockAgentStoreMock = Object.assign(
-    vi.fn(() => ({})),
-    { getState: vi.fn(() => ({ clearRuns: mockClearRuns })) }
-  );
+  const mockRuntimeStoreMock = Object.assign(vi.fn(() => ({})), {
+    getState: vi.fn(() => ({ clearSessionRuns: vi.fn() })),
+  });
 
   const leaveGuardCapture = {
     onLeave: undefined as ((proceed: () => void) => void) | undefined,
   };
 
-  return { mockWorkflowStoreMock, mockAgentStoreMock, mockClearRuns, leaveGuardCapture };
+  return { mockWorkflowStoreMock, mockRuntimeStoreMock, leaveGuardCapture };
 });
 
 vi.mock("@/stores/workflow-store", () => ({
   useWorkflowStore: mockWorkflowStoreMock,
 }));
 
-vi.mock("@/stores/agent-store", () => ({
-  useAgentStore: mockAgentStoreMock,
+vi.mock("@/stores/session-runtime-store", () => ({
+  useSessionRuntimeStore: mockRuntimeStoreMock,
 }));
 
 vi.mock("@/hooks/use-leave-guard", () => ({

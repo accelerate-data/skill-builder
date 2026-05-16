@@ -90,7 +90,7 @@ export const openHandsParallelActionEventRecords = [
         function: {
           name: "read_file",
           arguments: {
-            path: "app/src/__tests__/components/agent-output-panel.test.tsx",
+            path: "app/src/__tests__/components/conversation/conversation-timeline.test.tsx",
           },
         },
       },

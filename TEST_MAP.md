@@ -36,7 +36,7 @@ Use the tables below for cases tooling cannot infer safely.
 |---|---|---|
 | `AGENTS.md`, `CLAUDE.md`, `.claude/rules/**` | `npx markdownlint-cli2 <changed-md-files>` and `bash app/scripts/lint-agent-docs.sh` | Instruction docs only. |
 | `repo-map.json`, `scripts/ci/verify-repo-map.mjs`, `scripts/ci/verify-repo-map.test.mjs` | `cd app && npm run test:repo-map` | Verifies repo-map command/page/store inventory against the filesystem. |
-| `app/src/**` | `cd app && npm run test:unit` | Prefer `npm run test:changed` for narrower local feedback when appropriate. |
+| `app/src/**` | `cd app && npm run test:unit` | Prefer `npm run test:changed` for narrower local feedback when appropriate. Conversation transcript changes must keep `conversation-store` canonical and session-runtime lifecycle state transcript-free. |
 | `app/src/__tests__/guards/**`, `app/src/lib/tauri-command-types.ts`, `app/src/lib/tauri-command-types.typecheck.ts` | `cd app && npm run test:guard` | Also run affected unit tests. |
 | `agent-sources/plugins/**/agents/*.md` | `cd app && npm run test:agents:structural` | Structural validation only by default; live smoke requires explicit approval. |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural`; run the affected OpenCode eval package or smoke subset | Structural plus live automated eval coverage for changed prompt behavior. |

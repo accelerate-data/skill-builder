@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { formatModelName, formatTokenCount } from "@/stores/agent-store";
+import { formatModelName, formatTokenCount } from "@/stores/session-runtime-store";
 import { formatElapsed } from "@/lib/utils";
 import type { AgentRunRecord } from "@/lib/types";
 

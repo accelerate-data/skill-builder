@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useSessionRuntimeStore } from "@/stores/session-runtime-store";
+import { useSkillStore } from "@/stores/skill-store";
 import type { AnswerEvaluationOutput } from "@/lib/types";
 import {
   runAnswerEvaluator,
@@ -68,8 +69,8 @@ export function useWorkflowGate({
   const updateStepStatus = useWorkflowStore((s) => s.updateStepStatus);
   const setGateLoading = useWorkflowStore((s) => s.setGateLoading);
   const setCurrentStep = useWorkflowStore((s) => s.setCurrentStep);
-  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
-  const agentStartRun = useAgentStore((s) => s.startRun);
+  const setActiveAgentId = useSkillStore((s) => s.setActiveAgentId);
+  const startSessionRun = useSessionRuntimeStore((s) => s.startSessionRun);
   const selectedModel = useSettingsStore((s) => s.modelSettings.model_id);
 
   const gateAgentIdRef = useRef<string | null>(null);
@@ -117,8 +118,8 @@ export function useWorkflowGate({
       const agentId = await runAnswerEvaluator(skillId, skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
-      agentStartRun(agentId, model);
-      setActiveAgent(agentId);
+      startSessionRun(agentId, model);
+      setActiveAgentId(agentId);
     } catch (err) {
       console.error("[workflow] Gate evaluation failed to start:", err);
       stayOnCurrentStep(
@@ -132,8 +133,8 @@ export function useWorkflowGate({
     skillName,
     selectedModel,
     setGateLoading,
-    agentStartRun,
-    setActiveAgent,
+    startSessionRun,
+    setActiveAgentId,
     stayOnCurrentStep,
   ]);
 
