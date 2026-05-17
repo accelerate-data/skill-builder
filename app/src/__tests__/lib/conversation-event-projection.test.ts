@@ -122,14 +122,26 @@ describe("conversation-event-projection", () => {
     });
   });
 
-  it("produces first-class Skill, Subagent, and Result rows from real tool semantics", () => {
+  it("renders skill invocation inside activity trace while keeping subagent and result standalone", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("skill-and-subagent"));
 
-    expect(nodes.map((node) => node.kind)).toEqual(["skill", "subagent", "result"]);
+    expect(nodes.map((node) => node.kind)).toEqual(["activity_trace", "subagent", "result"]);
     expect(nodes[0]).toMatchObject({
-      kind: "skill",
-      bodyText:
-        "Load skill-requirements research methodology\n\nSkill content loaded.",
+      kind: "activity_trace",
+      traceItems: [
+        expect.objectContaining({
+          kind: "skill",
+          title: "Skill invocation",
+          summary: "Load skill-requirements research methodology",
+          drawerSections: expect.arrayContaining([
+            expect.objectContaining({
+              title: "Summary",
+              body:
+                "Load skill-requirements research methodology\n\nSkill content loaded.",
+            }),
+          ]),
+        }),
+      ],
     });
     expect(nodes[1]).toMatchObject({
       kind: "subagent",
@@ -288,12 +300,38 @@ describe("conversation-event-projection", () => {
         traceItems: [
           expect.objectContaining({
             kind: "file_activity",
-            summary:
-              "/workspace/shared/schemas.md\n\nRead 140 lines from /workspace/shared/schemas.md.",
+            summary: "/workspace/shared/schemas.md",
+            drawerSections: expect.arrayContaining([
+              expect.objectContaining({
+                title: "Summary",
+                body:
+                  "/workspace/shared/schemas.md\n\nRead 140 lines from /workspace/shared/schemas.md.",
+              }),
+            ]),
           }),
         ],
       },
     ]);
+  });
+
+  it("keeps long file activity details in the drawer while showing only a compact inline summary", () => {
+    const nodes = projectConversationEvents(loadFixtureEnvelopes("terminal-and-file-activity"));
+
+    expect(nodes[2]).toMatchObject({
+      kind: "activity_trace",
+      traceItems: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "file_activity",
+          summary: expect.stringMatching(/^\/Users\/hbanerjee\/skill-builder\//),
+          drawerSections: expect.arrayContaining([
+            expect.objectContaining({
+              title: "Summary",
+              body: expect.stringContaining("Here are the files and directories up to 2 levels deep"),
+            }),
+          ]),
+        }),
+      ]),
+    });
   });
 
   it("renders runtime setup and distinct standalone error rows from fixture-derived events", () => {

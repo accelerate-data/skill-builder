@@ -219,6 +219,46 @@ describe("ConversationEventRow", () => {
     expect(within(drawer).getByText("Viewed schema file")).toBeInTheDocument();
   });
 
+  it("renders skill drawer content as markdown", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-skill-trace",
+          kind: "activity_trace",
+          label: "Activity trace",
+          collapsedByDefault: true,
+          sourceEventIds: ["evt-skill-a"],
+          traceItems: [
+            {
+              id: "skill-1",
+              kind: "skill",
+              title: "Skill invocation",
+              summary: "Load skill-requirements research methodology",
+              badgeLabel: "skill",
+              sourceEventIds: ["evt-skill-a"],
+              drawerTitle: "Skill invocation",
+              drawerSubtitle: "1 items",
+              drawerSections: [
+                {
+                  title: "Summary",
+                  body: "# Researching Skill Requirements\n\n- Capture intent\n- Produce high-value clarification questions",
+                },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Activity trace"));
+    fireEvent.click(screen.getByRole("button", { name: /skill invocation/i }));
+
+    const drawer = screen.getByTestId("activity-trace-drawer");
+    expect(within(drawer).getByRole("heading", { name: "Researching Skill Requirements" })).toBeInTheDocument();
+    expect(within(drawer).getByText("Capture intent")).toBeInTheDocument();
+    expect(within(drawer).getByText("Produce high-value clarification questions")).toBeInTheDocument();
+  });
+
   it("distinguishes tool and subagent errors visually", () => {
     const { rerender } = render(
       <ConversationEventRow

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DisplayNode, DisplayTraceItem } from "@/lib/display-types";
+import { MemoizedMarkdown } from "@/components/agent-items/memoized-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -165,9 +166,18 @@ export function ConversationActivityGroup({
                         <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
                           {section.title}
                         </h3>
-                        <div className="rounded-2xl border border-border bg-white p-4 text-sm leading-7 text-slate-700 whitespace-pre-wrap break-words">
-                          {section.body}
-                        </div>
+                        {selectedItem.kind === "skill" ? (
+                          <div className="rounded-2xl border border-border bg-white p-4 text-sm text-slate-700 break-words">
+                            <MemoizedMarkdown
+                              content={section.body}
+                              className="markdown-body compact max-w-none text-sm leading-7 text-slate-700 [&_*]:break-words"
+                            />
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-border bg-white p-4 text-sm leading-7 text-slate-700 whitespace-pre-wrap break-words">
+                            {section.body}
+                          </div>
+                        )}
                       </section>
                     ))}
                   </div>

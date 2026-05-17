@@ -172,7 +172,6 @@ function collapseTraceNodes(nodes: DisplayNode[]): DisplayNode[] {
     "task_sent",
     "agent_update",
     "runtime_setup",
-    "skill",
     "subagent",
     "result",
     "error",
@@ -328,6 +327,8 @@ function buildSimpleTraceItem(
     extraSections?: DisplayTraceDrawerSection[];
   },
 ): DisplayTraceItem {
+  const timelineSummary =
+    node.kind === "skill" ? buildCompactTraceSummary(options.summary) : options.summary;
   const sections: DisplayTraceDrawerSection[] = [
     { title: "Summary", body: options.summary },
     ...(options.extraSections ?? []),
@@ -337,7 +338,7 @@ function buildSimpleTraceItem(
     id: node.id,
     kind: node.kind as DisplayTraceItem["kind"],
     title: options.title,
-    summary: options.summary,
+    summary: timelineSummary,
     badgeLabel: options.badgeLabel,
     sourceEventIds: node.sourceEventIds,
     interactive: true,
@@ -354,7 +355,7 @@ function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
   const summary =
     node.kind === "reasoning"
       ? buildTimelineReasoningSummary(fullSummary)
-      : fullSummary;
+      : buildCompactTraceSummary(fullSummary);
   const drawerSections: DisplayTraceDrawerSection[] = [
     { title: "Summary", body: fullSummary },
     ...members.map((member, index) => ({
@@ -386,6 +387,21 @@ function buildTimelineReasoningSummary(value: string): string {
   }
 
   return `${candidate.slice(0, 157).trimEnd()}...`;
+}
+
+function buildCompactTraceSummary(value: string): string {
+  const firstParagraph = value.split(/\n\s*\n/, 1)[0]?.replace(/\s+/g, " ").trim();
+  const firstLine = firstParagraph?.split("\n", 1)[0]?.trim();
+  const candidate =
+    firstLine && firstLine.length > 0
+      ? firstLine
+      : value.replace(/\s+/g, " ").trim();
+
+  if (candidate.length <= 140) {
+    return candidate;
+  }
+
+  return `${candidate.slice(0, 137).trimEnd()}...`;
 }
 
 function getLifecycleTitle(value?: string): string {
