@@ -324,9 +324,13 @@ function buildSimpleTraceItem(
 function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
   const members = node.members ?? [];
   const title = node.label ?? GROUP_TITLES[node.kind as GroupedKind];
-  const summary = members[0]?.bodyText ?? node.bodyText ?? `${title} captured`;
+  const fullSummary = members[0]?.bodyText ?? node.bodyText ?? `${title} captured`;
+  const summary =
+    node.kind === "reasoning"
+      ? buildTimelineReasoningSummary(fullSummary)
+      : fullSummary;
   const drawerSections: DisplayTraceDrawerSection[] = [
-    { title: "Summary", body: summary },
+    { title: "Summary", body: fullSummary },
     ...members.map((member, index) => ({
       title: `Item ${index + 1}: ${member.title}`,
       body: member.bodyText ?? member.title,
@@ -345,6 +349,17 @@ function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
     drawerSubtitle: `${members.length} items`,
     drawerSections,
   };
+}
+
+function buildTimelineReasoningSummary(value: string): string {
+  const firstParagraph = value.split(/\n\s*\n/, 1)[0]?.replace(/\s+/g, " ").trim();
+  const candidate = firstParagraph && firstParagraph.length > 0 ? firstParagraph : value.trim();
+
+  if (candidate.length <= 160) {
+    return candidate;
+  }
+
+  return `${candidate.slice(0, 157).trimEnd()}...`;
 }
 
 function getLifecycleTitle(value?: string): string {

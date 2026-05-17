@@ -84,6 +84,43 @@ describe("ConversationEventRow", () => {
     expect(screen.getByText("ls -la")).toBeInTheDocument();
   });
 
+  it("keeps reasoning rows compact in the timeline while preserving full drawer detail", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-reasoning",
+          kind: "activity_trace",
+          label: "Activity trace",
+          sourceEventIds: ["evt-r1"],
+          traceItems: [
+            {
+              id: "reasoning-1",
+              kind: "reasoning",
+              title: "Reasoning",
+              summary: "Let me analyze the current clarifications and the user's answers to determine what gaps remain.",
+              sourceEventIds: ["evt-r1"],
+              drawerTitle: "Reasoning",
+              drawerSubtitle: "1 items",
+              drawerSections: [
+                {
+                  title: "Summary",
+                  body: "Let me analyze the current clarifications and the user's answers to determine what gaps remain.\n\n## Current Answers Summary:\n1. Weighted pipeline...",
+                },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Let me analyze the current clarifications and the user's answers to determine what gaps remain.")).toBeInTheDocument();
+    expect(screen.queryByText(/## Current Answers Summary:/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /reasoning/i }));
+
+    expect(screen.getByTestId("activity-trace-drawer")).toHaveTextContent("## Current Answers Summary:");
+  });
+
   it("opens a right-side inspector drawer when a trace item is clicked", () => {
     render(
       <ConversationEventRow
