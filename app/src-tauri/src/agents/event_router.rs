@@ -1,8 +1,6 @@
 use tauri::Emitter;
 
-use super::event_types::{
-    AgentEvent, AgentExitPayload, RuntimeRunSummary,
-};
+use super::event_types::{AgentEvent, AgentExitPayload, RuntimeRunSummary};
 use super::run_persist::persist_run_summary;
 #[derive(Debug)]
 pub(super) enum RuntimeMessageAction {
