@@ -23,6 +23,13 @@ const TRACE_ICONS: Record<DisplayTraceItem["kind"], string> = {
   subagent_error: "!",
 };
 
+function buildTracePreview(traceItems: DisplayTraceItem[]): string {
+  return traceItems
+    .slice(0, 3)
+    .map((item) => item.title)
+    .join(" · ");
+}
+
 export function ConversationActivityGroup({
   node,
 }: ConversationActivityGroupProps) {
@@ -47,29 +54,53 @@ export function ConversationActivityGroup({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedItem]);
 
+  const tracePreview = buildTracePreview(traceItems);
+
   return (
     <>
       <details
         data-testid="conversation-event-row"
-        className="mr-auto w-full max-w-[92%] overflow-hidden rounded-2xl border border-border bg-stone-50/90 shadow-sm"
+        className="mr-auto w-full max-w-[86%] overflow-hidden rounded-[24px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(250,250,249,0.96),rgba(245,245,244,0.92))] shadow-[0_18px_44px_-34px_rgba(28,25,23,0.28)]"
         open={!node.collapsedByDefault}
       >
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-2.5 hover:bg-stone-100/70">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-4 py-3 hover:bg-stone-100/70">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-800">{node.label ?? "Activity trace"}</p>
-            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              {traceItems.length} trace item{traceItems.length === 1 ? "" : "s"} available in the shared activity timeline.
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="text-[0.95rem] font-semibold tracking-[-0.02em] text-stone-900">
+                {node.label ?? "Activity trace"}
+              </p>
+              <span className="rounded-full border border-stone-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-500">
+                {traceItems.length} item{traceItems.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-stone-500">
+              {tracePreview.length > 0
+                ? tracePreview
+                : `${traceItems.length} trace item${traceItems.length === 1 ? "" : "s"} available in the shared activity timeline.`}
             </p>
           </div>
+          <span className="mt-0.5 text-xs font-semibold uppercase tracking-[0.08em] text-stone-400">
+            Open
+          </span>
         </summary>
-        <div className="border-t border-border bg-white/70 px-2.5 py-2.5">
-          <div className="flex flex-col gap-1.5">
+        <div className="border-t border-stone-200/80 bg-white/70 px-3 py-3">
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {traceItems.slice(0, 4).map((item) => (
+              <span
+                key={`${item.id}:summary-chip`}
+                className="rounded-full border border-stone-200 bg-stone-50/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-500"
+              >
+                {item.title}
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2">
             {traceItems.map((item) =>
               item.interactive ?? Boolean(item.drawerSections?.length) ? (
                 <button
                   key={item.id}
                   type="button"
-                  className="flex w-full items-start justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-stone-50"
+                  className="flex w-full items-start justify-between gap-3 rounded-2xl border border-stone-200/90 bg-white/95 px-3 py-3 text-left transition hover:border-stone-300 hover:bg-stone-50"
                   onClick={() => setSelectedItem(item)}
                 >
                   <TraceItemContent item={item} />
@@ -77,7 +108,7 @@ export function ConversationActivityGroup({
               ) : (
                 <div
                   key={item.id}
-                  className="flex items-start justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5"
+                  className="flex items-start justify-between gap-3 rounded-2xl border border-stone-200/90 bg-white/95 px-3 py-3"
                 >
                   <TraceItemContent item={item} />
                 </div>
@@ -153,18 +184,18 @@ function TraceItemContent({ item }: { item: DisplayTraceItem }) {
   return (
     <>
       <div className="min-w-0">
-        <div className="mb-0.5 flex items-center gap-2">
+        <div className="mb-1 flex items-center gap-2">
           <span
             className={cn(
-              "inline-flex h-5 w-5 flex-none items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-500",
+              "inline-flex h-5 w-5 flex-none items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-[10px] font-semibold text-stone-500",
               item.kind.includes("error") && "border-rose-200 bg-rose-50 text-rose-500",
             )}
           >
             {TRACE_ICONS[item.kind]}
           </span>
-          <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+          <p className="text-sm font-semibold tracking-[-0.02em] text-stone-800">{item.title}</p>
         </div>
-        <p className="text-xs leading-5 text-slate-500 whitespace-pre-wrap break-words">
+        <p className="text-xs leading-5 text-stone-500 whitespace-pre-wrap break-words">
           {item.summary}
         </p>
       </div>

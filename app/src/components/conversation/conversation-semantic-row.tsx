@@ -37,16 +37,18 @@ function getDefaultLabel(kind: DisplayNode["kind"]): string {
 
 function getContainerClass(kind: DisplayNode["kind"], status: DisplayNode["status"]): string {
   if (status === "failed" || kind === "tool_error" || kind === "subagent_error") {
-    return "mr-auto max-w-[90%] border-destructive/40 bg-destructive/5";
+    return "mr-auto max-w-[78%] rounded-2xl border-destructive/40 bg-rose-50/80 shadow-[0_8px_24px_-18px_rgba(190,24,93,0.4)]";
   }
 
   switch (kind) {
     case "task_sent":
-      return "ml-auto max-w-[62%] border-primary/20 bg-primary/5";
+      return "ml-auto max-w-[50%] rounded-[22px] rounded-tr-md border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(232,244,252,0.92))] shadow-[0_14px_36px_-24px_rgba(14,116,144,0.5)]";
     case "agent_update":
-      return "mr-auto max-w-[68%] border-border bg-card";
+      return "mr-auto max-w-[60%] rounded-[22px] rounded-tl-md border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,247,244,0.92))] shadow-[0_18px_44px_-30px_rgba(28,25,23,0.3)]";
+    case "unknown_event":
+      return "mr-auto max-w-[68%] rounded-2xl border-stone-200/80 bg-stone-50/90 shadow-[0_10px_32px_-26px_rgba(28,25,23,0.25)]";
     default:
-      return "mr-auto max-w-[90%] border-border bg-card";
+      return "mr-auto max-w-[78%] rounded-2xl border-stone-200 bg-white/95 shadow-[0_16px_42px_-32px_rgba(28,25,23,0.22)]";
   }
 }
 
@@ -85,13 +87,24 @@ function buildCollapsedPreview(bodyText: string): string {
   return `${normalized.slice(0, 217).trimEnd()}...`;
 }
 
+function looksStructured(bodyText: string): boolean {
+  const trimmed = bodyText.trim();
+  return (
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[") ||
+    trimmed.includes('":{"') ||
+    trimmed.includes('","') ||
+    trimmed.includes('":')
+  );
+}
+
 function shouldShowStatusBadge(node: DisplayNode): boolean {
   if (node.status === "failed" || node.kind === "tool_error" || node.kind === "subagent_error") {
     return true;
   }
 
   if (node.kind === "task_sent") {
-    return node.status === "accepted" || node.status === "sending";
+    return node.status === "sending";
   }
 
   return false;
@@ -104,20 +117,28 @@ export function ConversationSemanticRow({
   const bodyText = node.bodyText ?? "Event captured";
   const collapsible = shouldCollapseBody(node, bodyText);
   const collapsedPreview = useMemo(() => buildCollapsedPreview(bodyText), [bodyText]);
+  const structuredBody = useMemo(() => looksStructured(bodyText), [bodyText]);
   const [expanded, setExpanded] = useState(false);
 
   return (
     <article
       data-testid="conversation-event-row"
       className={cn(
-        "flex flex-col gap-1.5 rounded-lg border px-3 py-2.5",
+        "relative flex flex-col gap-2 border px-3.5 py-3",
         getContainerClass(node.kind, node.status),
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{label}</p>
-          <p className="text-[11px] text-muted-foreground">
+        <div className="min-w-0 space-y-0.5">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <p className="truncate text-[0.95rem] font-semibold tracking-[-0.02em] text-stone-900">
+              {label}
+            </p>
+            <p className="text-[11px] uppercase tracking-[0.08em] text-stone-400">
+              {node.kind === "task_sent" ? "Dispatch" : node.kind === "agent_update" ? "Reply" : ""}
+            </p>
+          </div>
+          <p className="text-[11px] font-medium text-stone-400">
             {new Date(node.createdAtMs).toLocaleTimeString([], {
               hour: "numeric",
               minute: "2-digit",
@@ -139,15 +160,32 @@ export function ConversationSemanticRow({
       </div>
 
       <div className="space-y-1.5">
-        <p className="text-sm leading-6 text-foreground/90 whitespace-pre-wrap break-words">
-          {collapsible && !expanded ? collapsedPreview : bodyText}
-        </p>
+        <div
+          className={cn(
+            "rounded-xl",
+            structuredBody && node.kind === "agent_update"
+              ? "border border-stone-200/80 bg-stone-50/90 px-3 py-2.5"
+              : "px-0 py-0",
+          )}
+        >
+          <p
+            className={cn(
+              "whitespace-pre-wrap break-words text-sm leading-7 text-stone-700",
+              structuredBody && node.kind === "agent_update"
+                ? "font-mono text-[12px] leading-6 text-stone-600"
+                : "tracking-[-0.01em]",
+              node.kind === "task_sent" && "text-[15px] leading-7 text-stone-800",
+            )}
+          >
+            {collapsible && !expanded ? collapsedPreview : bodyText}
+          </p>
+        </div>
         {collapsible ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto w-fit px-0 py-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+            className="h-auto w-fit px-0 py-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400 hover:bg-transparent hover:text-stone-700"
             onClick={() => setExpanded((current) => !current)}
           >
             {expanded ? "Show less" : "Show more"}

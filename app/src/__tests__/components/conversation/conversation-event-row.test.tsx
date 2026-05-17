@@ -34,9 +34,10 @@ describe("ConversationEventRow", () => {
 
     const userRow = screen.getByTestId("conversation-event-row");
     expect(userRow.className).toMatch(/\bml-auto\b/);
-    expect(userRow.className).toMatch(/\bborder-primary\/20\b/);
-    expect(userRow.className).toContain("max-w-[62%]");
-    expect(screen.getByText("accepted")).toBeInTheDocument();
+    expect(userRow.className).toContain("border-sky-200/80");
+    expect(userRow.className).toContain("max-w-[50%]");
+    expect(screen.queryByText("accepted")).not.toBeInTheDocument();
+    expect(screen.queryByText("sending")).not.toBeInTheDocument();
     expect(screen.queryByText("observed")).not.toBeInTheDocument();
 
     rerender(
@@ -52,9 +53,25 @@ describe("ConversationEventRow", () => {
 
     const agentRow = screen.getByTestId("conversation-event-row");
     expect(agentRow.className).toMatch(/\bmr-auto\b/);
-    expect(agentRow.className).toMatch(/\bborder-border\b/);
-    expect(agentRow.className).toContain("max-w-[68%]");
+    expect(agentRow.className).toContain("border-stone-200");
+    expect(agentRow.className).toContain("max-w-[60%]");
     expect(screen.queryByText("observed")).not.toBeInTheDocument();
+  });
+
+  it("shows a pending badge only while a task row is still sending", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-user-pending",
+          kind: "task_sent",
+          status: "sending",
+          bodyText: "Queued user message",
+          sourceEventIds: ["evt-user-pending"],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("sending")).toBeInTheDocument();
   });
 
   it("renders grouped semantic activity with member summaries", () => {
@@ -88,7 +105,7 @@ describe("ConversationEventRow", () => {
     const traceRow = screen.getByTestId("conversation-event-row");
     expect(traceRow).not.toHaveAttribute("open");
     expect(screen.getByText("Activity trace")).toBeInTheDocument();
-    expect(screen.getByText("Terminal activity")).toBeInTheDocument();
+    expect(screen.getAllByText("Terminal activity").length).toBeGreaterThan(0);
     expect(screen.getByText("ls -la")).toBeInTheDocument();
   });
 
