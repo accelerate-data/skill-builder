@@ -14,7 +14,6 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     github_user_avatar: null,
     github_user_email: null,
     marketplace_registries: [],
-    marketplace_initialized: false,
     max_dimensions: 8,
     industry: null,
     function_role: null,

@@ -43,7 +43,6 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (38, run_plugin_ownership_migration),
     (39, run_plugin_upgrade_locked_migration),
     (40, run_documents_migration),
-    (41, run_reset_legacy_tags_migrated),
     (42, run_performance_indexes_migration),
     (43, run_openhands_settings_migration),
     (44, run_eval_workbench_migration),
@@ -131,9 +130,6 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             github_user_login TEXT,
             github_user_avatar TEXT,
             github_user_email TEXT,
-            marketplace_url TEXT,
-            marketplace_initialized INTEGER NOT NULL DEFAULT 0,
-            legacy_tags_migrated INTEGER NOT NULL DEFAULT 0,
             max_dimensions INTEGER NOT NULL DEFAULT 5 CHECK (max_dimensions > 0),
             industry TEXT,
             function_role TEXT,
@@ -2459,37 +2455,6 @@ pub(super) fn run_documents_migration(conn: &Connection) -> Result<(), rusqlite:
         );",
     )?;
     log::info!("migration 40: created documents and document_skills tables");
-    Ok(())
-}
-
-/// Reset `legacy_tags_migrated` so the tag migration re-runs and converts
-/// old marketplace tags (`{slug}/skills/{name}/vX.Y.Z`) to the simplified
-/// layout (`{slug}/{name}/vX.Y.Z`).
-pub(super) fn run_reset_legacy_tags_migrated(conn: &Connection) -> Result<(), rusqlite::Error> {
-    // Settings are stored as JSON in a single row. Read, patch, write back.
-    let json: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'app_settings'",
-            [],
-            |r| r.get(0),
-        )
-        .ok();
-    if let Some(json) = json {
-        if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&json) {
-            if let Some(obj) = val.as_object_mut() {
-                obj.insert(
-                    "legacy_tags_migrated".to_string(),
-                    serde_json::Value::Bool(false),
-                );
-                let updated = serde_json::to_string(&val).unwrap_or(json.clone());
-                conn.execute(
-                    "UPDATE settings SET value = ?1 WHERE key = 'app_settings'",
-                    rusqlite::params![updated],
-                )?;
-            }
-        }
-    }
-    log::info!("migration 41: reset legacy_tags_migrated for marketplace tag migration");
     Ok(())
 }
 

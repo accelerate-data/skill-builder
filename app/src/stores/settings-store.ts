@@ -14,7 +14,6 @@ interface SettingsState {
   githubUserAvatar: string | null;
   githubUserEmail: string | null;
   marketplaceRegistries: MarketplaceRegistry[];
-  marketplaceInitialized: boolean;
   maxDimensions: number;
   industry: string | null;
   functionRole: string | null;
@@ -42,7 +41,6 @@ const initialState = {
   githubUserAvatar: null,
   githubUserEmail: null,
   marketplaceRegistries: [] as MarketplaceRegistry[],
-  marketplaceInitialized: false,
   maxDimensions: 5,
   industry: null,
   functionRole: null,

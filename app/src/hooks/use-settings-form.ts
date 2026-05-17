@@ -98,7 +98,6 @@ export function useSettingsForm() {
       github_user_avatar: storeSnapshot.githubUserAvatar ?? null,
       github_user_email: storeSnapshot.githubUserEmail ?? null,
       marketplace_registries: resolve("marketplaceRegistries", storeSnapshot.marketplaceRegistries ?? []),
-      marketplace_initialized: storeSnapshot.marketplaceInitialized ?? false,
       industry: resolve("industry", industry) || null,
       function_role: resolve("functionRole", functionRole) || null,
       dashboard_view_mode: storeSnapshot.dashboardViewMode ?? null,

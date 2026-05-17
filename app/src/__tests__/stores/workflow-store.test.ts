@@ -349,7 +349,7 @@ describe("useWorkflowStore", () => {
     });
   });
 
-  describe("loadWorkflowState migration safety", () => {
+  describe("loadWorkflowState", () => {
     it("completes all 4 steps (0-3)", () => {
       // Simulate SQLite returning all steps completed
       useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3]);
@@ -365,7 +365,7 @@ describe("useWorkflowStore", () => {
       expect(state.hydrated).toBe(true);
     });
 
-    it("ignores step_id 4, 5, 6, 7 and 8 from legacy SQLite data", () => {
+    it("ignores unknown step ids outside the current workflow", () => {
       useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 4, 5, 6, 7, 8]);
 
       const state = useWorkflowStore.getState();
@@ -377,8 +377,7 @@ describe("useWorkflowStore", () => {
       expect(state.steps).toHaveLength(4);
     });
 
-    it("correctly hydrates partial progress with legacy step_id 8 present", () => {
-      // Steps 0-1 completed in SQLite, plus leftover step 8 from old data
+    it("correctly hydrates partial progress when unknown step ids are present", () => {
       useWorkflowStore.getState().loadWorkflowState([0, 1, 8]);
 
       const state = useWorkflowStore.getState();

@@ -81,7 +81,6 @@ export interface AppSettings {
   github_user_avatar: string | null;
   github_user_email: string | null;
   marketplace_registries: MarketplaceRegistry[];
-  marketplace_initialized: boolean;
   max_dimensions: number;
   industry: string | null;
   function_role: string | null;

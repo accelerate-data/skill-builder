@@ -294,9 +294,7 @@ fn test_settings_migration_57_backfills_typed_tables_and_removes_legacy_blob() {
             "skills_path":"/tmp/skills",
             "marketplace_registries":[
                 {"name":"Default","source_url":"owner/repo","enabled":true}
-            ],
-            "marketplace_initialized":true,
-            "legacy_tags_migrated":true
+            ]
         }"#],
     )
     .unwrap();
@@ -314,8 +312,6 @@ fn test_settings_migration_57_backfills_typed_tables_and_removes_legacy_blob() {
         Some("claude-sonnet-4-5")
     );
     assert_eq!(settings.marketplace_registries.len(), 1);
-    assert!(settings.marketplace_initialized);
-    assert!(settings.legacy_tags_migrated);
     assert_eq!(
         settings.model_settings.provider_overrides["anthropic"]
             .api_key

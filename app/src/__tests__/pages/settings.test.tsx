@@ -349,7 +349,6 @@ const defaultSettings: AppSettings = {
   github_user_avatar: null,
   github_user_email: null,
   marketplace_registries: [],
-  marketplace_initialized: false,
   max_dimensions: 8,
   industry: null,
   function_role: null,
@@ -387,7 +386,6 @@ const populatedSettings: AppSettings = {
   github_user_avatar: null,
   github_user_email: null,
   marketplace_registries: [],
-  marketplace_initialized: false,
   max_dimensions: 8,
   industry: null,
   function_role: null,
@@ -425,7 +423,6 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     githubUserAvatar: settings.github_user_avatar,
     githubUserEmail: settings.github_user_email,
     marketplaceRegistries: settings.marketplace_registries ?? [],
-    marketplaceInitialized: settings.marketplace_initialized ?? false,
     dashboardViewMode: settings.dashboard_view_mode,
   });
 }

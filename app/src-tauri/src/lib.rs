@@ -15,14 +15,10 @@ mod skill_paths;
 mod types;
 
 use std::any::Any;
-use std::fs;
-use std::io;
 use std::panic::PanicHookInfo;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 pub use types::*;
-
-const LEGACY_APP_DATA_DIR_NAME: &str = "com.skillbuilder.app";
 
 #[derive(Clone)]
 pub struct InstanceInfo {
@@ -61,14 +57,6 @@ async fn shutdown_openhands_agent_server_for_exit() {
     }
 }
 
-fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
-    Ok(fs::read_dir(path)?.next().is_none())
-}
-
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
-    crate::fs_utils::copy_dir_recursive(src, dst).map_err(io::Error::other)
-}
-
 fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
     if let Some(message) = payload.downcast_ref::<&'static str>() {
         (*message).to_string()
@@ -102,95 +90,6 @@ fn install_panic_hook() {
         eprintln!("{message}");
         log::error!("{message}");
     }));
-}
-
-/// One-time migration from historical app-local dir to the current bundle identifier path.
-/// This runs before DB/workspace init so existing user state is preserved after identifier changes.
-fn migrate_legacy_app_data_dir(new_data_dir: &Path) {
-    let Some(parent) = new_data_dir.parent() else {
-        log::warn!(
-            "[startup] Could not resolve app data dir parent for migration: {}",
-            new_data_dir.display()
-        );
-        return;
-    };
-
-    let legacy_data_dir = parent.join(LEGACY_APP_DATA_DIR_NAME);
-    if !legacy_data_dir.exists() {
-        return;
-    }
-
-    if new_data_dir.exists() {
-        match dir_is_empty(new_data_dir) {
-            Ok(false) => {
-                log::info!(
-                    "[startup] Skipping legacy app-data migration; target already has data: {}",
-                    new_data_dir.display()
-                );
-                return;
-            }
-            Ok(true) => {
-                if let Err(e) = fs::remove_dir_all(new_data_dir) {
-                    log::warn!(
-                        "[startup] Failed to clear empty target dir before migration {}: {}",
-                        new_data_dir.display(),
-                        e
-                    );
-                    return;
-                }
-            }
-            Err(e) => {
-                log::warn!(
-                    "[startup] Failed to inspect target dir before migration {}: {}",
-                    new_data_dir.display(),
-                    e
-                );
-                return;
-            }
-        }
-    }
-
-    match fs::rename(&legacy_data_dir, new_data_dir) {
-        Ok(()) => {
-            log::info!(
-                "[startup] Migrated legacy app-local data directory from {} to {}",
-                legacy_data_dir.display(),
-                new_data_dir.display()
-            );
-        }
-        Err(rename_err) => {
-            log::warn!(
-                "[startup] Rename migration failed ({} -> {}): {}; trying copy+remove fallback",
-                legacy_data_dir.display(),
-                new_data_dir.display(),
-                rename_err
-            );
-            match copy_dir_recursive(&legacy_data_dir, new_data_dir) {
-                Ok(()) => match fs::remove_dir_all(&legacy_data_dir) {
-                    Ok(()) => {
-                        log::info!(
-                            "[startup] Migrated legacy app-local data directory via copy+remove fallback"
-                        );
-                    }
-                    Err(remove_err) => {
-                        log::warn!(
-                            "[startup] Copied legacy app-local data but failed to remove old dir {}: {}",
-                            legacy_data_dir.display(),
-                            remove_err
-                        );
-                    }
-                },
-                Err(copy_err) => {
-                    log::warn!(
-                        "[startup] Legacy app-local data migration failed during copy ({} -> {}): {}",
-                        legacy_data_dir.display(),
-                        new_data_dir.display(),
-                        copy_err
-                    );
-                }
-            }
-        }
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -273,7 +172,6 @@ pub fn run() {
                 .path()
                 .app_local_data_dir()
                 .expect("failed to resolve app_local_data_dir");
-            migrate_legacy_app_data_dir(&data_dir);
             std::fs::create_dir_all(&data_dir).expect("failed to create data directory");
             app.manage(DataDir(data_dir.clone()));
 
@@ -521,50 +419,6 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_migrate_legacy_app_data_dir_moves_when_target_missing() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let parent = tmp.path();
-        let legacy = parent.join(LEGACY_APP_DATA_DIR_NAME);
-        let new_dir = parent.join("com.vibedata.skill-builder");
-
-        fs::create_dir_all(&legacy).expect("create legacy dir");
-        fs::write(legacy.join("skill-builder.db"), "db").expect("write db");
-
-        migrate_legacy_app_data_dir(&new_dir);
-
-        assert!(new_dir.exists(), "new data dir should exist");
-        assert!(!legacy.exists(), "legacy dir should be moved away");
-        assert!(
-            new_dir.join("skill-builder.db").exists(),
-            "db should be present after migration"
-        );
-    }
-
-    #[test]
-    fn test_migrate_legacy_app_data_dir_skips_when_target_has_data() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let parent = tmp.path();
-        let legacy = parent.join(LEGACY_APP_DATA_DIR_NAME);
-        let new_dir = parent.join("com.vibedata.skill-builder");
-
-        fs::create_dir_all(&legacy).expect("create legacy dir");
-        fs::write(legacy.join("legacy.txt"), "legacy").expect("write legacy file");
-        fs::create_dir_all(&new_dir).expect("create new dir");
-        fs::write(new_dir.join("existing.txt"), "existing").expect("write existing file");
-
-        migrate_legacy_app_data_dir(&new_dir);
-
-        assert!(
-            legacy.exists(),
-            "legacy dir should remain when target is populated"
-        );
-        assert!(
-            new_dir.join("existing.txt").exists(),
-            "existing target content must be preserved"
-        );
-    }
 
     #[test]
     fn test_panic_payload_message_handles_string_payloads() {
