@@ -390,7 +390,6 @@ mod tests {
             "OpenHands .agents layout must be preserved"
         );
     }
-
 }
 
 #[cfg(test)]
