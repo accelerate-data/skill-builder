@@ -177,14 +177,47 @@ export function getReasoningText(
   event: OpenHandsConversationEvent,
 ): string | undefined {
   const llmMessage = asRecord(event.event.llm_message);
-  const values = [
+  const action = asRecord(event.event.action);
+  const toolInput = asRecord(getToolInput(event));
+  const topLevelReasoning = firstText(
     getString(event.event, "reasoning_content"),
     getString(event.event, "reasoningContent"),
     getString(event.event, "reasoning"),
-    getString(event.event, "thought"),
+    getString(action, "reasoning_content", "reasoningContent", "reasoning"),
     getString(llmMessage, "reasoning_content"),
     getString(llmMessage, "reasoningContent"),
     getString(llmMessage, "reasoning"),
+    getString(toolInput, "reasoning_content", "reasoningContent", "reasoning"),
+  );
+  if (topLevelReasoning) {
+    return joinText([
+      topLevelReasoning,
+      getString(action, "thought"),
+      getString(toolInput, "thought"),
+      collectReasoningFromContent(event.event.content),
+      collectReasoningFromContent(llmMessage.content),
+      collectReasoningFromContent(
+        event.event.thinking_blocks ?? event.event.thinkingBlocks,
+      ),
+      collectReasoningFromContent(
+        llmMessage.thinking_blocks ?? llmMessage.thinkingBlocks,
+      ),
+      collectThinkingBlocks(
+        event.event.thinking_blocks ?? event.event.thinkingBlocks,
+      ),
+      collectThinkingBlocks(
+        llmMessage.thinking_blocks ?? llmMessage.thinkingBlocks,
+      ),
+    ]);
+  }
+
+  const values = [
+    getString(event.event, "thought"),
+    getString(action, "thought"),
+    getString(toolInput, "thought"),
+    collectReasoningFromContent(event.event.thought),
+    collectReasoningFromContent(action.thought),
+    collectReasoningFromContent(toolInput.thought),
     collectReasoningFromContent(event.event.content),
     collectReasoningFromContent(llmMessage.content),
     collectThinkingBlocks(
@@ -509,6 +542,9 @@ function collectReasoningFromContentBlock(value: unknown): string | undefined {
   return firstText(
     getString(
       block,
+      "text",
+      "content",
+      "message",
       "reasoning",
       "reasoning_content",
       "reasoningContent",
@@ -628,7 +664,13 @@ function firstText(...values: Array<string | undefined>): string | undefined {
 }
 
 function joinText(values: Array<string | undefined>): string | undefined {
-  const text = values.filter(isNonEmptyString).join("\n\n");
+  const uniqueValues: string[] = [];
+  for (const value of values) {
+    if (!isNonEmptyString(value)) continue;
+    if (uniqueValues.includes(value)) continue;
+    uniqueValues.push(value);
+  }
+  const text = uniqueValues.join("\n\n");
   return trimToUndefined(text);
 }
 

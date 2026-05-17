@@ -155,6 +155,102 @@ describe("conversation-event-projection", () => {
     );
   });
 
+  it("uses thought-array reasoning text instead of placeholder summaries", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-reasoning-fallback",
+        conversationId: "conv-reasoning-fallback",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 1_778_000_301,
+        display: { kind: "tool_call" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-reasoning-fallback",
+            eventClass: "ActionEvent",
+            timestamp: 1_778_000_301,
+            event: {
+              source: "agent",
+              tool_name: "think",
+              tool_call_id: "call-think-2",
+              thought: [
+                {
+                  type: "text",
+                  text: "Let me analyze the current clarification record and identify material gaps.",
+                },
+              ],
+              action: {
+                kind: "ThinkAction",
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: [
+          expect.objectContaining({
+            kind: "reasoning",
+            summary:
+              "Let me analyze the current clarification record and identify material gaps.",
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("uses nested think-action thought text when top-level reasoning fields are blank", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-reasoning-action-fallback",
+        conversationId: "conv-reasoning-action-fallback",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 1_778_000_302,
+        display: { kind: "tool_call" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-reasoning-action-fallback",
+            eventClass: "ActionEvent",
+            timestamp: 1_778_000_302,
+            event: {
+              source: "agent",
+              tool_name: "think",
+              tool_call_id: "call-think-3",
+              reasoning_content: "",
+              thought: [{ type: "text", text: "" }],
+              action: {
+                kind: "ThinkAction",
+                thought:
+                  "Let me carefully analyze every answer for material gaps before constructing the refinements.",
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: [
+          expect.objectContaining({
+            kind: "reasoning",
+            summary:
+              "Let me carefully analyze every answer for material gaps before constructing the refinements.",
+          }),
+        ],
+      },
+    ]);
+  });
+
   it("renders runtime setup and distinct error rows from fixture-derived events", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("system-prompt-and-errors"));
 
