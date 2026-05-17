@@ -2878,7 +2878,8 @@ fn test_delete_step_output_files_from_step_onwards() {
     let skills_tmp = tempfile::tempdir().unwrap();
     let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
     // Create step 3 output (SKILL.md)
@@ -2908,7 +2909,8 @@ fn test_delete_step_output_files_cleans_last_steps() {
     // Deleting from step 2 onwards should clean step 3 (SKILL.md) in skills_path.
     let skills_tmp = tempfile::tempdir().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
 
     // Create SKILL.md in skills_path (step 3 output)
@@ -3121,10 +3123,11 @@ fn test_reset_cleans_workspace_context_files() {
     let skills_path = skills_path_tmp.path().to_str().unwrap();
 
     // Step 3 output
-    let output_dir = skills_path_tmp
-        .path()
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("my-skill");
+    let output_dir = crate::skill_paths::resolve_skill_dir(
+        skills_path_tmp.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "my-skill",
+    );
     std::fs::create_dir_all(&output_dir).unwrap();
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 

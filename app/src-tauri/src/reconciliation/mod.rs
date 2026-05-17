@@ -1,5 +1,6 @@
 mod skill_builder;
 
+use crate::skill_paths::DEFAULT_PLUGIN_SLUG;
 use crate::types::ReconciliationResult;
 use std::path::Path;
 
