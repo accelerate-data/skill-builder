@@ -119,6 +119,33 @@ describe("ConversationEventRow", () => {
     expect(screen.getByText("ls -la")).toBeInTheDocument();
   });
 
+  it("renders runtime setup on the same narrow column and uses the drawer for full prompt content", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-runtime-setup",
+          kind: "runtime_setup",
+          label: "Runtime setup",
+          bodyText: "You are OpenHands agent.\n\n# Instructions\n- Help the user.",
+          sourceEventIds: ["evt-runtime-setup"],
+        })}
+      />,
+    );
+
+    const row = screen.getByTestId("conversation-event-row");
+    expect(row.className).toContain("max-w-[56%]");
+    expect(row).toHaveTextContent("Runtime setup");
+    expect(row).toHaveTextContent("System prompt prepared.");
+    expect(row).not.toHaveTextContent("You are OpenHands agent.");
+
+    fireEvent.click(screen.getByRole("button", { name: /runtime setup/i }));
+
+    const drawer = screen.getByTestId("activity-trace-drawer");
+    expect(within(drawer).getByText("Runtime setup")).toBeInTheDocument();
+    expect(drawer).toHaveTextContent("You are OpenHands agent.");
+    expect(drawer).toHaveTextContent("# Instructions");
+  });
+
   it("collapses long agent updates behind a compact preview", () => {
     render(
       <ConversationEventRow

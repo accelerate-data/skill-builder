@@ -14,6 +14,7 @@ import {
   getMessageText,
   getObservationText,
   getReasoningText,
+  getSystemPromptText,
   getToolCallId,
   getToolInput,
   getToolName,
@@ -491,7 +492,10 @@ function classifyEvent(
         status: event.status,
         createdAtMs: event.createdAtMs,
         label: "Runtime setup",
-        bodyText: getInternalEventSummary(openHandsEvent) ?? "System prompt prepared.",
+        bodyText:
+          getSystemPromptText(openHandsEvent) ??
+          getInternalEventSummary(openHandsEvent) ??
+          "System prompt prepared.",
         collapsedByDefault: true,
         sourceEventIds: [event.eventId],
         rawPayload: rawEvent,

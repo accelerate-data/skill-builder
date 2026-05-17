@@ -403,6 +403,21 @@ export function getInternalEventSummary(
   return undefined;
 }
 
+export function getSystemPromptText(
+  event: OpenHandsConversationEvent,
+): string | undefined {
+  if (event.eventClass !== "SystemPromptEvent") {
+    return undefined;
+  }
+
+  const systemPrompt = asRecord(event.event.system_prompt ?? event.event.systemPrompt);
+
+  return firstText(
+    getString(systemPrompt, "text", "content", "prompt"),
+    getString(event.event, "text", "content", "prompt", "message"),
+  );
+}
+
 export function isInternalOpenHandsEventClass(eventClass: string): boolean {
   return (
     eventClass === "SystemPromptEvent" ||

@@ -344,7 +344,11 @@ describe("conversation-event-projection", () => {
     ]);
     expect(nodes).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "runtime_setup", label: "Runtime setup" }),
+        expect.objectContaining({
+          kind: "runtime_setup",
+          label: "Runtime setup",
+          bodyText: "You are OpenHands agent.",
+        }),
         expect.objectContaining({ kind: "error", label: "Error" }),
         expect.objectContaining({ kind: "subagent_error", label: "Subagent error" }),
       ]),
