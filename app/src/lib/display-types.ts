@@ -13,6 +13,7 @@ export type DisplayNodeKind =
   | "runtime_setup"
   | "lifecycle"
   | "pause"
+  | "error"
   | "tool_error"
   | "subagent_error"
   | "unknown_event";

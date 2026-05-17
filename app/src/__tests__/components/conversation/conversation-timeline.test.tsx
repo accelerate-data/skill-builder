@@ -164,7 +164,7 @@ describe("ConversationTimeline", () => {
     expect(rows).toHaveLength(3);
     expect(rows[0]).toHaveTextContent("Draft the rollout plan");
     expect(rows[1]).toHaveTextContent("Plan drafted and ready for review.");
-    expect(rows[2]).toHaveTextContent("Tool error");
+    expect(rows[2]).toHaveTextContent("Error");
     expect(rows[2]).toHaveTextContent("Session dispatch failed");
     expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("running");
     expect(screen.queryByText("This should stay hidden")).not.toBeInTheDocument();

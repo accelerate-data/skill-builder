@@ -23,7 +23,7 @@ type GroupedKind = Extract<DisplayNodeKind, "terminal_activity" | "file_activity
 
 type SemanticClassification =
   | { type: "suppress" }
-  | { type: "standalone"; node: DisplayNode }
+  | { type: "standalone"; node: DisplayNode; mergeKey?: string }
   | {
       type: "group_member";
       groupKind: GroupedKind;
@@ -137,6 +137,21 @@ export function projectSemanticDisplayNodes(
       continue;
     }
 
+    if (classification.type === "standalone" && classification.mergeKey) {
+      const lastNode = semanticNodes[semanticNodes.length - 1];
+      if (lastNode && lastNode.id === classification.mergeKey) {
+        lastNode.bodyText = combineDistinctText(
+          lastNode.bodyText,
+          classification.node.bodyText,
+        );
+        lastNode.sourceEventIds = [
+          ...lastNode.sourceEventIds,
+          ...classification.node.sourceEventIds,
+        ];
+        continue;
+      }
+    }
+
     flushGroups(event.createdAtMs);
     if (classification.node.kind === "lifecycle") {
       lastLifecycleValue = classification.node.bodyText?.toLowerCase();
@@ -153,6 +168,18 @@ export function projectSemanticDisplayNodes(
 function collapseTraceNodes(nodes: DisplayNode[]): DisplayNode[] {
   const collapsedNodes: DisplayNode[] = [];
   let pendingTraceNodes: DisplayNode[] = [];
+  const standaloneBoundaryKinds = new Set<DisplayNodeKind>([
+    "task_sent",
+    "agent_update",
+    "runtime_setup",
+    "skill",
+    "subagent",
+    "result",
+    "error",
+    "tool_error",
+    "subagent_error",
+    "unknown_event",
+  ]);
 
   const flushTrace = (mode: "boundary" | "final" = "boundary") => {
     if (pendingTraceNodes.length === 0) return;
@@ -198,18 +225,13 @@ function collapseTraceNodes(nodes: DisplayNode[]): DisplayNode[] {
   };
 
   for (const node of nodes) {
-    if (node.kind === "task_sent") {
+    if (standaloneBoundaryKinds.has(node.kind)) {
+      flushTrace();
       collapsedNodes.push(node);
       continue;
     }
 
     if (node.kind === "lifecycle" || node.kind === "pause") {
-      continue;
-    }
-
-    if (node.kind === "agent_update" || node.kind === "unknown_event") {
-      flushTrace();
-      collapsedNodes.push(node);
       continue;
     }
 
@@ -478,7 +500,7 @@ function classifyEvent(
   }
 
   if (openHandsEvent.eventClass === "ConversationErrorEvent") {
-    return errorNode(event, "tool_error", "Tool error");
+    return errorNode(event, "error", "Error");
   }
 
   if (openHandsEvent.eventClass === "AgentErrorEvent") {
@@ -509,18 +531,16 @@ function classifyEvent(
       return groupedToolNode(event, "reasoning", buildReasoningMember(event, openHandsEvent));
     }
     if (toolName === "invoke_skill") {
-      if (openHandsEvent.eventClass === "ObservationEvent") {
-        return { type: "suppress" };
-      }
       return {
         type: "standalone",
         node: {
-          id: event.eventId,
+          id: getStandaloneMergeKey("skill", openHandsEvent),
           kind: "skill",
           status: event.status,
           createdAtMs: event.createdAtMs,
           label: "Skill",
           bodyText:
+            getObservationText(openHandsEvent) ??
             getString(openHandsEvent.event, "summary") ??
             getString(openHandsEvent.event.action, "name") ??
             getString(openHandsEvent.event.observation, "skill_name") ??
@@ -528,28 +548,27 @@ function classifyEvent(
           sourceEventIds: [event.eventId],
           rawPayload: rawEvent,
         },
+        mergeKey: getStandaloneMergeKey("skill", openHandsEvent),
       };
     }
     if (toolName === "task") {
-      if (openHandsEvent.eventClass === "ObservationEvent") {
-        return { type: "suppress" };
-      }
       return {
         type: "standalone",
         node: {
-          id: event.eventId,
+          id: getStandaloneMergeKey("subagent", openHandsEvent),
           kind: "subagent",
           status: event.status,
           createdAtMs: event.createdAtMs,
           label: "Subagent",
           bodyText:
+            getObservationText(openHandsEvent) ??
             getString(openHandsEvent.event.action, "description") ??
             getString(openHandsEvent.event.observation, "subagent") ??
-            getObservationText(openHandsEvent) ??
             "Subagent launched",
           sourceEventIds: [event.eventId],
           rawPayload: rawEvent,
         },
+        mergeKey: getStandaloneMergeKey("subagent", openHandsEvent),
       };
     }
     if (toolName === "finish") {
@@ -569,6 +588,24 @@ function classifyEvent(
           rawPayload: rawEvent,
         },
       };
+    }
+    if (openHandsEvent.eventClass === "ObservationEvent") {
+      const observationText = getObservationText(openHandsEvent);
+      if (observationText) {
+        return {
+          type: "standalone",
+          node: {
+            id: event.eventId,
+            kind: "result",
+            status: event.status,
+            createdAtMs: event.createdAtMs,
+            label: "Tool observation",
+            bodyText: observationText,
+            sourceEventIds: [event.eventId],
+            rawPayload: rawEvent,
+          },
+        };
+      }
     }
   }
 
@@ -611,6 +648,7 @@ function buildFileActivityMember(
 ): DisplayNodeMember {
   const input = getToolInput(openHandsEvent);
   const command = getString(openHandsEvent.event.action, "command");
+  const observationText = getObservationText(openHandsEvent);
   const path =
     getString(openHandsEvent.event.action, "path") ??
     getString(openHandsEvent.event.observation, "path") ??
@@ -621,7 +659,7 @@ function buildFileActivityMember(
   return {
     id: event.eventId,
     title: command ? capitalize(command) : "File activity",
-    bodyText: path ?? getObservationText(openHandsEvent) ?? "File activity captured",
+    bodyText: combineDistinctText(path, observationText) ?? "File activity captured",
     sourceEventIds: [event.eventId],
   };
 }
@@ -673,7 +711,7 @@ function lifecycleNode(
 
 function errorNode(
   event: ConversationEventEnvelope,
-  kind: Extract<DisplayNodeKind, "tool_error" | "subagent_error">,
+  kind: Extract<DisplayNodeKind, "error" | "tool_error" | "subagent_error">,
   label: string,
 ): SemanticClassification {
   const openHandsEvent = event.payload.rawOpenHandsEvent as OpenHandsConversationEvent;
@@ -691,6 +729,13 @@ function errorNode(
       rawPayload: event.payload.rawOpenHandsEvent,
     },
   };
+}
+
+function getStandaloneMergeKey(
+  prefix: "skill" | "subagent",
+  openHandsEvent: OpenHandsConversationEvent,
+): string {
+  return `${prefix}:${getToolCallId(openHandsEvent) ?? `event:${openHandsEvent.timestamp}`}`;
 }
 
 function unknownEventNode(event: ConversationEventEnvelope): SemanticClassification {
@@ -772,6 +817,18 @@ function getString(
   }
 
   return typeof current === "string" ? current : undefined;
+}
+
+function combineDistinctText(...values: Array<string | undefined>): string | undefined {
+  const parts: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    if (parts.includes(trimmed)) continue;
+    parts.push(trimmed);
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
 
 function capitalize(value: string): string {

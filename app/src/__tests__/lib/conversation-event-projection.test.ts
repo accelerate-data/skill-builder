@@ -97,15 +97,20 @@ describe("conversation-event-projection", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("terminal-and-file-activity"));
 
     expect(nodes.map((node) => node.kind)).toEqual([
+      "runtime_setup",
       "task_sent",
       "activity_trace",
       "agent_update",
     ]);
 
-    expect(nodes[1]).toMatchObject({
+    expect(nodes[0]).toMatchObject({
+      kind: "runtime_setup",
+      label: "Runtime setup",
+    });
+
+    expect(nodes[2]).toMatchObject({
       kind: "activity_trace",
       traceItems: expect.arrayContaining([
-        expect.objectContaining({ kind: "runtime_setup", title: "Runtime setup" }),
         expect.objectContaining({ kind: "file_activity", title: "File activity" }),
         expect.objectContaining({ kind: "terminal_activity", title: "Terminal activity" }),
         expect.objectContaining({
@@ -120,14 +125,21 @@ describe("conversation-event-projection", () => {
   it("produces first-class Skill, Subagent, and Result rows from real tool semantics", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("skill-and-subagent"));
 
-    expect(nodes.map((node) => node.kind)).toEqual(["activity_trace"]);
+    expect(nodes.map((node) => node.kind)).toEqual(["skill", "subagent", "result"]);
     expect(nodes[0]).toMatchObject({
-      kind: "activity_trace",
-      traceItems: expect.arrayContaining([
-        expect.objectContaining({ kind: "skill", title: "Skill invocation" }),
-        expect.objectContaining({ kind: "subagent", title: "Subagent invocation" }),
-        expect.objectContaining({ kind: "result", title: "Result" }),
-      ]),
+      kind: "skill",
+      bodyText:
+        "Load skill-requirements research methodology\n\nSkill content loaded.",
+    });
+    expect(nodes[1]).toMatchObject({
+      kind: "subagent",
+      bodyText:
+        "Verify forecasting-revenue skill package\n\n{\"status\":\"pass\",\"findings\":[]}",
+    });
+    expect(nodes[2]).toMatchObject({
+      kind: "result",
+      bodyText:
+        "Verification complete. The skill package passes all review criteria with two minor findings.",
     });
   });
 
@@ -241,16 +253,98 @@ describe("conversation-event-projection", () => {
     ]);
   });
 
-  it("renders runtime setup and distinct error rows from fixture-derived events", () => {
+  it("includes both file path and observation text for file activity", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-file-observation",
+        conversationId: "conv-file-observation",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 1_778_000_400,
+        display: { kind: "tool_result" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-file-observation",
+            eventClass: "ObservationEvent",
+            timestamp: 1_778_000_400,
+            event: {
+              source: "environment",
+              tool_name: "file_editor",
+              observation: {
+                path: "/workspace/shared/schemas.md",
+                content: "Read 140 lines from /workspace/shared/schemas.md.",
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: [
+          expect.objectContaining({
+            kind: "file_activity",
+            summary:
+              "/workspace/shared/schemas.md\n\nRead 140 lines from /workspace/shared/schemas.md.",
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("renders runtime setup and distinct standalone error rows from fixture-derived events", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("system-prompt-and-errors"));
 
-    expect(nodes.map((node) => node.kind)).toEqual(["activity_trace"]);
-    expect(nodes[0]).toMatchObject({
-      traceItems: expect.arrayContaining([
-        expect.objectContaining({ kind: "runtime_setup", title: "Runtime setup" }),
-        expect.objectContaining({ kind: "tool_error", title: "Tool error" }),
-        expect.objectContaining({ kind: "subagent_error", title: "Subagent error" }),
+    expect(nodes.map((node) => node.kind)).toEqual([
+      "runtime_setup",
+      "error",
+      "subagent_error",
+    ]);
+    expect(nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "runtime_setup", label: "Runtime setup" }),
+        expect.objectContaining({ kind: "error", label: "Error" }),
+        expect.objectContaining({ kind: "subagent_error", label: "Subagent error" }),
       ]),
+    );
+  });
+
+  it("renders unmatched observations as visible standalone observation results", () => {
+    const [node] = projectConversationEvents([
+      {
+        eventId: "evt-orphan-observation",
+        conversationId: "conv-orphan-observation",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 1_778_000_500,
+        display: { kind: "tool_result" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-orphan-observation",
+            eventClass: "ObservationEvent",
+            timestamp: 1_778_000_500,
+            event: {
+              source: "environment",
+              tool_name: "custom_tool",
+              observation: {
+                content: "Observation without a matching action.",
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(node).toMatchObject({
+      kind: "result",
+      label: "Tool observation",
+      bodyText: "Observation without a matching action.",
     });
   });
 

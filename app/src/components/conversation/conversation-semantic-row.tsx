@@ -26,6 +26,8 @@ function getDefaultLabel(kind: DisplayNode["kind"]): string {
       return "Lifecycle";
     case "pause":
       return "Paused";
+    case "error":
+      return "Error";
     case "tool_error":
       return "Tool error";
     case "subagent_error":
@@ -36,7 +38,12 @@ function getDefaultLabel(kind: DisplayNode["kind"]): string {
 }
 
 function getContainerClass(kind: DisplayNode["kind"], status: DisplayNode["status"]): string {
-  if (status === "failed" || kind === "tool_error" || kind === "subagent_error") {
+  if (
+    status === "failed" ||
+    kind === "error" ||
+    kind === "tool_error" ||
+    kind === "subagent_error"
+  ) {
     return "mr-auto max-w-[78%] rounded-2xl border-destructive/40 bg-rose-50/80 shadow-[0_8px_24px_-18px_rgba(190,24,93,0.4)]";
   }
 
@@ -99,7 +106,12 @@ function looksStructured(bodyText: string): boolean {
 }
 
 function shouldShowStatusBadge(node: DisplayNode): boolean {
-  if (node.status === "failed" || node.kind === "tool_error" || node.kind === "subagent_error") {
+  if (
+    node.status === "failed" ||
+    node.kind === "error" ||
+    node.kind === "tool_error" ||
+    node.kind === "subagent_error"
+  ) {
     return true;
   }
 

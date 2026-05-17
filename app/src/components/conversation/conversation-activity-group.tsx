@@ -19,6 +19,7 @@ const TRACE_ICONS: Record<DisplayTraceItem["kind"], string> = {
   runtime_setup: "*",
   lifecycle: "o",
   pause: "||",
+  error: "!",
   tool_error: "!",
   subagent_error: "!",
 };

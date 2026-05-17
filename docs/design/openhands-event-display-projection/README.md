@@ -93,20 +93,20 @@ The mapping below is based on the real persisted conversation corpus in `~/Libra
 | `ActionEvent` + `ObservationEvent` for `terminal` | Grouped `Terminal activity` member |
 | `ActionEvent` + `ObservationEvent` for `file_editor` | Grouped `File activity` member |
 | `ActionEvent` + `ObservationEvent` for `think` | Grouped `Reasoning` member, collapsed by default |
-| `ActionEvent` + `ObservationEvent` for `invoke_skill` | Standalone `Skill` row, always visible |
-| `ActionEvent` + `ObservationEvent` for `task` | Standalone `Subagent` row, always visible |
+| `ActionEvent` + `ObservationEvent` for `invoke_skill` | Single standalone `Skill` row, always visible; observation enriches the same row |
+| `ActionEvent` + `ObservationEvent` for `task` | Single standalone `Subagent` row, always visible; observation enriches the same row |
 | `ActionEvent` for `finish` | Standalone `Result` row |
-| `ObservationEvent` without a matching action | Standalone visible result row |
+| `ObservationEvent` without a matching action | Standalone visible `Tool observation` row |
 
 ### System and runtime events
 
 | Event shape | Timeline row |
 |---|---|
 | `SystemPromptEvent` | Collapsed `Runtime setup` row, or a debug disclosure outside the main timeline |
-| `ConversationStateUpdateEvent` with `key: "execution_status"` | Visible lifecycle row only for meaningful transitions |
+| `ConversationStateUpdateEvent` with `key: "execution_status"` | Bottom status bar state, not a timeline row |
 | `ConversationStateUpdateEvent` with `key: "stats"` | Suppressed from the main timeline |
 | `ConversationStateUpdateEvent` with `key: "last_user_message_id"` | Suppressed from the main timeline |
-| `PauseEvent` | `Paused` row |
+| `PauseEvent` | Bottom status bar `Paused` state, not a timeline row |
 | `ConversationErrorEvent` | Standalone `Error` row |
 | `AgentErrorEvent` | Standalone `Tool error` or `Subagent error` row |
 | unknown `kind` or unexpected payload | `Unknown event` row with expandable payload |
@@ -181,9 +181,9 @@ At minimum, grouping resets on:
 
 ### Real child subagents
 
-Nested rendering is allowed only when the event stream provides an explicit relationship via `parentToolCallId`.
+Nested rendering is deferred for live production timeline rendering.
 
-When child events carry `parentToolCallId`, they attach beneath the matching top-level `Subagent` row.
+`parentToolCallId` remains the target correlation field, but current websocket-delivered conversation events are not sufficient to guarantee child-event coverage for subagent internals. Nested subagent rendering therefore requires a second-source enrichment path over persisted events before it becomes part of the production contract.
 
 ### Skill rows
 
@@ -217,9 +217,10 @@ Suppression is allowed only for event classes this document explicitly marks as 
 
 - `ConversationStateUpdateEvent.key === "stats"`
 - `ConversationStateUpdateEvent.key === "last_user_message_id"`
+- lifecycle-only transport state (`execution_status`, `PauseEvent`) when the same state remains accessible through the bottom status bar
 - `SystemPromptEvent` only if runtime setup remains accessible through a dedicated disclosure instead of the main timeline
 
-Repeated `execution_status` churn may be collapsed into a smaller set of meaningful lifecycle rows:
+Repeated `execution_status` churn should update the bottom status bar rather than introducing extra transcript rows:
 
 - `running`
 - `paused`
