@@ -35,6 +35,9 @@ describe("ConversationEventRow", () => {
     const userRow = screen.getByTestId("conversation-event-row");
     expect(userRow.className).toMatch(/\bml-auto\b/);
     expect(userRow.className).toMatch(/\bborder-primary\/20\b/);
+    expect(userRow.className).toContain("max-w-[62%]");
+    expect(screen.getByText("accepted")).toBeInTheDocument();
+    expect(screen.queryByText("observed")).not.toBeInTheDocument();
 
     rerender(
       <ConversationEventRow
@@ -50,6 +53,8 @@ describe("ConversationEventRow", () => {
     const agentRow = screen.getByTestId("conversation-event-row");
     expect(agentRow.className).toMatch(/\bmr-auto\b/);
     expect(agentRow.className).toMatch(/\bborder-border\b/);
+    expect(agentRow.className).toContain("max-w-[68%]");
+    expect(screen.queryByText("observed")).not.toBeInTheDocument();
   });
 
   it("renders grouped semantic activity with member summaries", () => {

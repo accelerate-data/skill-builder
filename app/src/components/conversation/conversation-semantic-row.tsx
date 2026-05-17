@@ -42,9 +42,9 @@ function getContainerClass(kind: DisplayNode["kind"], status: DisplayNode["statu
 
   switch (kind) {
     case "task_sent":
-      return "ml-auto max-w-[85%] border-primary/20 bg-primary/5";
+      return "ml-auto max-w-[62%] border-primary/20 bg-primary/5";
     case "agent_update":
-      return "mr-auto max-w-[90%] border-border bg-card";
+      return "mr-auto max-w-[68%] border-border bg-card";
     default:
       return "mr-auto max-w-[90%] border-border bg-card";
   }
@@ -85,6 +85,18 @@ function buildCollapsedPreview(bodyText: string): string {
   return `${normalized.slice(0, 217).trimEnd()}...`;
 }
 
+function shouldShowStatusBadge(node: DisplayNode): boolean {
+  if (node.status === "failed" || node.kind === "tool_error" || node.kind === "subagent_error") {
+    return true;
+  }
+
+  if (node.kind === "task_sent") {
+    return node.status === "accepted" || node.status === "sending";
+  }
+
+  return false;
+}
+
 export function ConversationSemanticRow({
   node,
 }: ConversationSemanticRowProps) {
@@ -118,9 +130,11 @@ export function ConversationSemanticRow({
               {node.kind.replace(/_/g, " ")}
             </Badge>
           )}
-          <Badge variant={getStatusVariant(node.status)} className="capitalize">
-            {node.status}
-          </Badge>
+          {shouldShowStatusBadge(node) ? (
+            <Badge variant={getStatusVariant(node.status)} className="capitalize">
+              {node.status}
+            </Badge>
+          ) : null}
         </div>
       </div>
 
