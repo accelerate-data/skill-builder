@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_normalize_db_backed_step_statuses_rejects_missing_step0_artifact() {
-        let mut conn = create_test_db();
+        let conn = create_test_db();
         let skill_id =
             crate::db::upsert_skill(&conn, "normalize-missing-step0", "skill-builder", "domain")
                 .unwrap();

@@ -45,7 +45,6 @@ mod tests {
 
     #[test]
     fn test_detect_furthest_step_with_skill_md() {
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 

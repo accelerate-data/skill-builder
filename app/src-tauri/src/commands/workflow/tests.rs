@@ -2874,9 +2874,7 @@ fn test_workflow_step_runtime_label_uses_step_name_slug() {
 fn test_delete_step_output_files_from_step_onwards() {
     // Steps 0-2 are DB-authoritative with no filesystem outputs.
     // Deleting from step 2 onwards should clean only step 3 (SKILL.md).
-    let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
     let skill_dir =
         crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
@@ -2899,7 +2897,6 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     // Should not panic on nonexistent directory
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
-    let nonexistent = std::env::temp_dir().join("nonexistent");
     crate::cleanup::delete_step_output_files("no-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 }
 
