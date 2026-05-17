@@ -7,7 +7,7 @@
  */
 import path from "node:path";
 import { test, expect } from "@playwright/test";
-import { emitTauriEvent, simulateAgentRun, simulateAgentError } from "../helpers/agent-simulator";
+import { simulateAgentRun, simulateAgentError } from "../helpers/agent-simulator";
 import {
   WORKFLOW_OVERRIDES,
   navigateToWorkflowUpdateMode,
