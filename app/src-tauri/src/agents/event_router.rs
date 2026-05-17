@@ -68,14 +68,6 @@ pub(super) fn route_runtime_message(
         return None;
     }
 
-    if msg_type == "display_item" {
-        log::debug!(
-            "[event:agent-message:{}] skipping legacy display_item payload",
-            conversation_id
-        );
-        return None;
-    }
-
     if msg_type == "agent_event" {
         let timestamp = message
             .get("timestamp")
@@ -607,19 +599,6 @@ mod tests {
             "type": "system",
             "subtype": "sdk_stderr",
             "data": "diagnostic stderr line"
-        });
-
-        assert!(route_runtime_message("agent-6", message).is_none());
-    }
-
-    #[test]
-    fn route_runtime_message_skips_legacy_display_items() {
-        let message = serde_json::json!({
-            "type": "display_item",
-            "item": {
-                "id": "legacy-item-1",
-                "type": "output"
-            }
         });
 
         assert!(route_runtime_message("agent-6", message).is_none());

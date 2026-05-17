@@ -18,7 +18,7 @@ The key idea is simple:
 - UI surfaces render that stream with event-type display semantics.
 - Render projections are view models only. They are not the source of truth.
 
-This model is shared across Refine, Workflow, Eval Workbench, and throwaway OpenHands-backed surfaces where a transcript-like experience is needed.
+This model is shared across selected-skill persistent sessions, Workflow, Eval Workbench, and throwaway OpenHands-backed surfaces where a transcript-like experience is needed.
 
 ## Design Scope
 
@@ -48,7 +48,7 @@ This model is shared across Refine, Workflow, Eval Workbench, and throwaway Open
 | Backend-originated events keep the raw OpenHands-native payload. | Raw payload retention avoids translation drift and keeps replay/debugging possible. |
 | Canonical events carry a small app-owned envelope for UI metadata. | The UI needs stable local ids, local status, and display hints without rewriting the underlying OpenHands event. |
 | Projection into display nodes is a pure view layer. | Renderer-facing display nodes should be render outputs, not authoritative state. |
-| Product surfaces render one shared event timeline, not synthetic turn ownership. | The UI already differentiates event types visually, so a flat event stream is sufficient and more robust than inferred turn grouping. |
+| Product surfaces render one shared event timeline, not synthetic turn ownership. | The UI already differentiates event types visually, so a flat event stream is sufficient and more robust than a second turn-grouped transcript model. |
 | `conversationId` is the canonical runtime and transcript identity at every active boundary. | The live bridge, canonical store, and render path are all conversation-centric now. |
 
 ## Canonical Event Model
@@ -182,30 +182,24 @@ The current store implementation encodes those rules in pure helpers:
 - `markEventFailed(...)`
 - `appendObservedEvent(...)`
 
-## Display Semantics
+## Display Projection Boundary
 
-The UI does not invent higher-level chat ownership. It renders the canonical stream using event-type semantics.
+The canonical conversation model stops at the ordered event stream plus its app-owned envelope. Detailed row taxonomy, grouping, suppression, and nesting rules belong to the event-display projection design, not to the runtime contract.
 
-Default display mapping:
+The UI-facing rules are:
 
-| `display.kind` | UI treatment |
-|---|---|
-| `user_message` | right-aligned user bubble |
-| `agent_message` | left-aligned prose block |
-| `tool_call` | tool activity row |
-| `tool_result` | tool output row or inline detail |
-| `subagent` | subagent activity row |
-| `state` | lifecycle/system row |
-| `error` | error row |
-| `system` | non-chat system note |
+- the renderer does not invent higher-level turn ownership
+- the renderer does not depend on `displayItemStartIndex` slicing
+- the renderer treats `conversationId` as the grouping key
+- live and restored views use the same canonical event stream and the same projection boundary
 
-Important rules:
+The detailed target rendering semantics live in:
 
-- The renderer should not need to infer “which turn owns this tool call.”
-- The renderer should not depend on `displayItemStartIndex` slicing.
-- The renderer should treat `conversationId` as the grouping key.
-- Live and restored views must use the same canonical event stream and the same display mapping rules.
-- `projectConversationEvents(...)` is the current pure projection boundary from canonical events into renderer-facing `DisplayNode` values.
+- `docs/design/openhands-event-display-projection/README.md`
+
+The current pure projection boundary from canonical events into renderer-facing `DisplayNode` values is:
+
+- `projectConversationEvents(...)`
 
 ## Relationship to Current Runtime Structures
 
@@ -237,17 +231,6 @@ Current implementation state:
 - legacy `display_item` frontend transcript handling has been removed
 
 ## Surface Adoption
-
-### Refine
-
-Refine is the first intended adopter.
-
-Target behavior:
-
-- free-flow human and agent chat in one flat transcript
-- user sends stay visible immediately as `sending`
-- later runtime activity simply appears after them in the same conversation stream
-- no synthetic turn ownership is required for correctness
 
 ### Workspace
 
@@ -300,9 +283,8 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 | Spec | Relationship |
 |---|---|
 | [README.md](./README.md) | Parent runtime contract; this page defines the conversation/event model that sits under those runtime primitives |
-| [refine-sequence.md](./refine-sequence.md) | Current sequence view; should eventually be revised to describe the shared event stream model instead of logical turn ownership |
+| [selected-skill-conversation-sequence.md](./selected-skill-conversation-sequence.md) | Shared persistent selected-skill conversation sequence, including workflow-specific run and reset behavior |
 | [../openhands-event-display-projection/README.md](../openhands-event-display-projection/README.md) | Existing frontend display projection design; this page changes the source-of-truth boundary underneath it |
-| [implementation-gaps.md](./implementation-gaps.md) | Tracks the concrete migration work needed to reach this model |
 
 ## Open Questions
 
