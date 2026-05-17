@@ -33,9 +33,14 @@ describe("ConversationEventRow", () => {
     );
 
     const userRow = screen.getByTestId("conversation-event-row");
-    expect(userRow.className).toMatch(/\bml-auto\b/);
-    expect(userRow.className).toContain("border-sky-200/70");
-    expect(userRow.className).toContain("max-w-[44%]");
+    const userBubble = userRow.querySelector("article");
+    expect(userBubble).not.toBeNull();
+    expect(userBubble?.className).toMatch(/\bml-auto\b/);
+    expect(userBubble?.className).toContain("border-sky-200/70");
+    expect(userBubble?.className).toContain("max-w-[56%]");
+    expect(userRow.textContent).toMatch(/\d{1,2}:\d{2}\s?[AP]M/i);
+    expect(userRow).toHaveTextContent("You");
+    expect(screen.queryByText("Task sent")).not.toBeInTheDocument();
     expect(screen.queryByText("accepted")).not.toBeInTheDocument();
     expect(screen.queryByText("sending")).not.toBeInTheDocument();
     expect(screen.queryByText("observed")).not.toBeInTheDocument();
@@ -52,9 +57,14 @@ describe("ConversationEventRow", () => {
     );
 
     const agentRow = screen.getByTestId("conversation-event-row");
-    expect(agentRow.className).toMatch(/\bmr-auto\b/);
-    expect(agentRow.className).toContain("border-stone-200");
-    expect(agentRow.className).toContain("max-w-[58%]");
+    const agentBubble = agentRow.querySelector("article");
+    expect(agentBubble).not.toBeNull();
+    expect(agentBubble?.className).toMatch(/\bmr-auto\b/);
+    expect(agentBubble?.className).toContain("border-emerald-200/80");
+    expect(agentBubble?.className).toContain("max-w-[56%]");
+    expect(agentRow.textContent).toMatch(/\d{1,2}:\d{2}\s?[AP]M/i);
+    expect(agentRow).toHaveTextContent("Agent");
+    expect(screen.queryByText("Agent update")).not.toBeInTheDocument();
     expect(screen.queryByText("observed")).not.toBeInTheDocument();
   });
 

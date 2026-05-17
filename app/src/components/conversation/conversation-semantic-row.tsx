@@ -42,9 +42,9 @@ function getContainerClass(kind: DisplayNode["kind"], status: DisplayNode["statu
 
   switch (kind) {
     case "task_sent":
-      return "ml-auto max-w-[44%] rounded-[20px] rounded-tr-md border-sky-200/70 bg-[linear-gradient(180deg,rgba(242,249,255,0.98),rgba(235,245,252,0.9))] shadow-[0_12px_28px_-24px_rgba(14,116,144,0.42)]";
+      return "ml-auto w-full max-w-[56%] rounded-[20px] rounded-tr-md border-sky-200/70 bg-[linear-gradient(180deg,rgba(242,249,255,0.98),rgba(235,245,252,0.9))] shadow-[0_12px_28px_-24px_rgba(14,116,144,0.42)]";
     case "agent_update":
-      return "mr-auto max-w-[58%] rounded-[20px] rounded-tl-md border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(248,247,244,0.94))] shadow-[0_14px_32px_-28px_rgba(28,25,23,0.26)]";
+      return "mr-auto w-full max-w-[56%] rounded-[20px] rounded-tl-md border-emerald-200/80 bg-[linear-gradient(180deg,rgba(243,252,247,0.99),rgba(235,248,240,0.94))] shadow-[0_14px_32px_-28px_rgba(22,101,52,0.2)]";
     case "unknown_event":
       return "mr-auto max-w-[68%] rounded-2xl border-stone-200/80 bg-stone-50/90 shadow-[0_10px_32px_-26px_rgba(28,25,23,0.25)]";
     default:
@@ -119,38 +119,109 @@ export function ConversationSemanticRow({
   const collapsedPreview = useMemo(() => buildCollapsedPreview(bodyText), [bodyText]);
   const structuredBody = useMemo(() => looksStructured(bodyText), [bodyText]);
   const [expanded, setExpanded] = useState(false);
+  const timestamp = new Date(node.createdAtMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const actorLabel =
+    node.kind === "task_sent" ? "You" : node.kind === "agent_update" ? "Agent" : "";
+  const isNarrativeRow = node.kind === "task_sent" || node.kind === "agent_update";
+  const metadataClass =
+    node.kind === "task_sent"
+      ? "ml-auto flex w-full max-w-[56%] justify-end text-right"
+      : "mr-auto flex w-full max-w-[56%] justify-start text-left";
+
+  if (isNarrativeRow) {
+    return (
+      <div data-testid="conversation-event-row" className="flex flex-col gap-1">
+        <div className={metadataClass}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-none">
+            {node.kind === "task_sent" ? (
+              <>
+                <p className="font-medium tracking-[0.08em] text-stone-400">{timestamp}</p>
+                <p className="uppercase tracking-[0.12em] text-stone-400">{actorLabel}</p>
+              </>
+            ) : (
+              <>
+                <p className="uppercase tracking-[0.12em] text-emerald-600">{actorLabel}</p>
+                <p className="font-medium tracking-[0.08em] text-stone-400">{timestamp}</p>
+              </>
+            )}
+            {shouldShowStatusBadge(node) ? (
+              <Badge variant={getStatusVariant(node.status)} className="capitalize">
+                {node.status}
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+
+        <article
+          className={cn(
+            "relative flex flex-col gap-1 border px-2.5 py-1.5",
+            getContainerClass(node.kind, node.status),
+          )}
+        >
+          <div className="space-y-0.5">
+            <div
+              className={cn(
+                "rounded-xl",
+                structuredBody && node.kind === "agent_update"
+                  ? "border border-emerald-200/80 bg-emerald-50/80 px-2 py-1.5"
+                  : "px-0 py-0",
+              )}
+            >
+              <p
+                className={cn(
+                  "whitespace-pre-wrap break-words text-sm leading-6 text-stone-700",
+                  structuredBody && node.kind === "agent_update"
+                    ? "font-mono text-[12px] leading-5 text-emerald-950/80"
+                    : "tracking-[-0.01em]",
+                  node.kind === "task_sent" && "text-sm leading-6 text-stone-800",
+                )}
+              >
+                {collapsible && !expanded ? collapsedPreview : bodyText}
+              </p>
+            </div>
+            {collapsible ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto w-fit px-0 py-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-400 hover:bg-transparent hover:text-stone-700"
+                onClick={() => setExpanded((current) => !current)}
+              >
+                {expanded ? "Show less" : "Show more"}
+              </Button>
+            ) : null}
+          </div>
+        </article>
+      </div>
+    );
+  }
 
   return (
     <article
       data-testid="conversation-event-row"
       className={cn(
-        "relative flex flex-col gap-1.5 border px-3 py-2.5",
+        "relative flex flex-col gap-1 border px-2.5 py-1.5",
         getContainerClass(node.kind, node.status),
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-0.5">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <p className="truncate text-[0.95rem] font-semibold tracking-[-0.02em] text-stone-900">
-              {label}
-            </p>
-            <p className="text-[11px] uppercase tracking-[0.08em] text-stone-400">
-              {node.kind === "task_sent" ? "You" : node.kind === "agent_update" ? "Agent" : ""}
-            </p>
-          </div>
-          <p className="text-[11px] font-medium text-stone-400">
-            {new Date(node.createdAtMs).toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            })}
-          </p>
+        <div className="min-w-0">
+          {
+            <div className="space-y-0.5">
+              <p className="truncate text-[0.95rem] font-semibold tracking-[-0.02em] text-stone-900">
+                {label}
+              </p>
+              <p className="text-[11px] font-medium text-stone-400">{timestamp}</p>
+            </div>
+          }
         </div>
         <div className="flex items-center gap-2">
-          {node.kind === "task_sent" || node.kind === "agent_update" ? null : (
-            <Badge variant="outline" className="capitalize">
-              {node.kind.replace(/_/g, " ")}
-            </Badge>
-          )}
+          <Badge variant="outline" className="capitalize">
+            {node.kind.replace(/_/g, " ")}
+          </Badge>
           {shouldShowStatusBadge(node) ? (
             <Badge variant={getStatusVariant(node.status)} className="capitalize">
               {node.status}
@@ -159,22 +230,22 @@ export function ConversationSemanticRow({
         </div>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         <div
           className={cn(
             "rounded-xl",
             structuredBody && node.kind === "agent_update"
-              ? "border border-stone-200/80 bg-stone-50/90 px-2.5 py-2"
+              ? "border border-stone-200/80 bg-stone-50/90 px-2 py-1.5"
               : "px-0 py-0",
           )}
         >
           <p
             className={cn(
-              "whitespace-pre-wrap break-words text-sm leading-6.5 text-stone-700",
+              "whitespace-pre-wrap break-words text-sm leading-6 text-stone-700",
               structuredBody && node.kind === "agent_update"
-                ? "font-mono text-[12px] leading-5.5 text-stone-600"
+                ? "font-mono text-[12px] leading-5 text-stone-600"
                 : "tracking-[-0.01em]",
-              node.kind === "task_sent" && "text-[15px] leading-6.5 text-stone-800",
+              node.kind === "task_sent" && "text-[15px] leading-6 text-stone-800",
             )}
           >
             {collapsible && !expanded ? collapsedPreview : bodyText}
@@ -185,7 +256,7 @@ export function ConversationSemanticRow({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto w-fit px-0 py-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400 hover:bg-transparent hover:text-stone-700"
+            className="h-auto w-fit px-0 py-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-400 hover:bg-transparent hover:text-stone-700"
             onClick={() => setExpanded((current) => !current)}
           >
             {expanded ? "Show less" : "Show more"}

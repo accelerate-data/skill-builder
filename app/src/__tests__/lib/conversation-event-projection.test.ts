@@ -106,7 +106,6 @@ describe("conversation-event-projection", () => {
       kind: "activity_trace",
       traceItems: expect.arrayContaining([
         expect.objectContaining({ kind: "runtime_setup", title: "Runtime setup" }),
-        expect.objectContaining({ kind: "lifecycle", title: "Conversation running" }),
         expect.objectContaining({ kind: "file_activity", title: "File activity" }),
         expect.objectContaining({ kind: "terminal_activity", title: "Terminal activity" }),
         expect.objectContaining({
@@ -114,7 +113,6 @@ describe("conversation-event-projection", () => {
           title: "Reasoning",
           summary: "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
         }),
-        expect.objectContaining({ kind: "lifecycle", title: "Conversation finished" }),
       ]),
     });
   });
@@ -136,15 +134,7 @@ describe("conversation-event-projection", () => {
   it("suppresses telemetry-only state updates and reduces lifecycle churn", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("lifecycle-and-suppression"));
 
-    expect(nodes.map((node) => node.kind)).toEqual(["task_sent", "activity_trace"]);
-    expect(nodes[1]).toMatchObject({
-      traceItems: expect.arrayContaining([
-        expect.objectContaining({ kind: "lifecycle", title: "Conversation running" }),
-        expect.objectContaining({ kind: "pause", title: "Paused" }),
-        expect.objectContaining({ kind: "lifecycle", title: "Conversation error" }),
-        expect.objectContaining({ kind: "lifecycle", title: "Conversation finished" }),
-      ]),
-    });
+    expect(nodes.map((node) => node.kind)).toEqual(["task_sent"]);
 
     const suppressedIds = nodes.flatMap((node) => node.suppressedEventIds ?? []);
     expect(suppressedIds).toEqual(

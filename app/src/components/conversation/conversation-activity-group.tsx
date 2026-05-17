@@ -60,7 +60,7 @@ export function ConversationActivityGroup({
     <>
       <details
         data-testid="conversation-event-row"
-        className="mr-auto w-full max-w-[82%] overflow-hidden rounded-[22px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(250,250,249,0.95),rgba(246,245,243,0.9))] shadow-[0_12px_24px_-24px_rgba(28,25,23,0.18)]"
+        className="mr-auto w-full max-w-[56%] overflow-hidden rounded-[22px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(250,250,249,0.95),rgba(246,245,243,0.9))] shadow-[0_12px_24px_-24px_rgba(28,25,23,0.18)]"
         open={!node.collapsedByDefault}
       >
         <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-3.5 py-2.5 hover:bg-stone-100/70">

@@ -203,6 +203,10 @@ function collapseTraceNodes(nodes: DisplayNode[]): DisplayNode[] {
       continue;
     }
 
+    if (node.kind === "lifecycle" || node.kind === "pause") {
+      continue;
+    }
+
     if (node.kind === "agent_update" || node.kind === "unknown_event") {
       flushTrace();
       collapsedNodes.push(node);

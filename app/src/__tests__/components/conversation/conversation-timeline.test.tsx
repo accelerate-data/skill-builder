@@ -163,9 +163,10 @@ describe("ConversationTimeline", () => {
     const rows = screen.getAllByTestId("conversation-event-row");
     expect(rows).toHaveLength(3);
     expect(rows[0]).toHaveTextContent("Draft the rollout plan");
-    expect(rows[1]).toHaveTextContent("Activity trace");
-    expect(rows[1]).toHaveTextContent("Conversation running");
-    expect(rows[2]).toHaveTextContent("Plan drafted and ready for review.");
+    expect(rows[1]).toHaveTextContent("Plan drafted and ready for review.");
+    expect(rows[2]).toHaveTextContent("Tool error");
+    expect(rows[2]).toHaveTextContent("Session dispatch failed");
+    expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("running");
     expect(screen.queryByText("This should stay hidden")).not.toBeInTheDocument();
   });
 
@@ -174,5 +175,48 @@ describe("ConversationTimeline", () => {
 
     const emptyState = screen.getByTestId("conversation-timeline-empty");
     expect(within(emptyState).getByText("No conversation activity yet")).toBeInTheDocument();
+  });
+
+  it("shows paused state in the bottom footer when a pause event is the latest runtime signal", () => {
+    useConversationStore.getState().replaceConversationHistory("conv-paused", [
+      makeEvent({
+        eventId: "evt-user",
+        conversationId: "conv-paused",
+        createdAtMs: 1_000,
+        payload: {
+          frontendCommand: {
+            type: "send_message",
+            text: "Wait for review",
+          },
+        },
+      }),
+      makeEvent({
+        eventId: "evt-pause",
+        conversationId: "conv-paused",
+        createdAtMs: 2_000,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "state", label: "State" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-paused",
+            eventClass: "PauseEvent",
+            timestamp: 2_000,
+            event: {
+              reason: "Waiting for review.",
+            },
+          },
+        },
+      }),
+    ]);
+
+    render(<ConversationTimeline conversationId="conv-paused" />);
+
+    expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("paused");
+    expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent(
+      "Waiting for review.",
+    );
   });
 });
