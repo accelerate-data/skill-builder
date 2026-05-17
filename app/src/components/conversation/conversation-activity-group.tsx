@@ -54,30 +54,22 @@ export function ConversationActivityGroup({
         className="mr-auto w-full max-w-[92%] overflow-hidden rounded-2xl border border-border bg-stone-50/90 shadow-sm"
         open={!node.collapsedByDefault}
       >
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-4 py-3 hover:bg-stone-100/70">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-2.5 hover:bg-stone-100/70">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-800">{node.label ?? "Activity trace"}</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
               {traceItems.length} trace item{traceItems.length === 1 ? "" : "s"} available in the shared activity timeline.
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline" className="bg-white/90">
-              collapsed details
-            </Badge>
-            <Badge variant="outline" className="bg-white/90">
-              inline tool activity
-            </Badge>
-          </div>
         </summary>
-        <div className="border-t border-border bg-white/70 px-3 py-3">
-          <div className="flex flex-col gap-2">
+        <div className="border-t border-border bg-white/70 px-2.5 py-2.5">
+          <div className="flex flex-col gap-1.5">
             {traceItems.map((item) =>
               item.interactive ?? Boolean(item.drawerSections?.length) ? (
                 <button
                   key={item.id}
                   type="button"
-                  className="flex w-full items-start justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-3 text-left transition hover:border-slate-300 hover:bg-stone-50"
+                  className="flex w-full items-start justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-stone-50"
                   onClick={() => setSelectedItem(item)}
                 >
                   <TraceItemContent item={item} />
@@ -85,7 +77,7 @@ export function ConversationActivityGroup({
               ) : (
                 <div
                   key={item.id}
-                  className="flex items-start justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-3"
+                  className="flex items-start justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5"
                 >
                   <TraceItemContent item={item} />
                 </div>
@@ -161,7 +153,7 @@ function TraceItemContent({ item }: { item: DisplayTraceItem }) {
   return (
     <>
       <div className="min-w-0">
-        <div className="mb-1 flex items-center gap-2">
+        <div className="mb-0.5 flex items-center gap-2">
           <span
             className={cn(
               "inline-flex h-5 w-5 flex-none items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-500",
@@ -175,11 +167,6 @@ function TraceItemContent({ item }: { item: DisplayTraceItem }) {
         <p className="text-xs leading-5 text-slate-500 whitespace-pre-wrap break-words">
           {item.summary}
         </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Badge variant="outline" className="capitalize">
-          {item.badgeLabel}
-        </Badge>
       </div>
     </>
   );

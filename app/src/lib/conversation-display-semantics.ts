@@ -165,7 +165,7 @@ function collapseTraceNodes(nodes: DisplayNode[]): DisplayNode[] {
       status: "observed",
       createdAtMs: pendingTraceNodes[0].createdAtMs,
       label: "Activity trace",
-      collapsedByDefault: false,
+      collapsedByDefault: true,
       sourceEventIds,
       suppressedEventIds: suppressedEventIds.length > 0 ? suppressedEventIds : undefined,
       traceItems: pendingTraceNodes.map(buildTraceItem),

@@ -59,6 +59,7 @@ describe("ConversationEventRow", () => {
           id: "evt-group",
           kind: "activity_trace",
           label: "Activity trace",
+          collapsedByDefault: true,
           sourceEventIds: ["evt-group-a", "evt-group-b"],
           traceItems: [
             {
@@ -79,9 +80,33 @@ describe("ConversationEventRow", () => {
       />,
     );
 
+    const traceRow = screen.getByTestId("conversation-event-row");
+    expect(traceRow).not.toHaveAttribute("open");
     expect(screen.getByText("Activity trace")).toBeInTheDocument();
     expect(screen.getByText("Terminal activity")).toBeInTheDocument();
     expect(screen.getByText("ls -la")).toBeInTheDocument();
+  });
+
+  it("collapses long agent updates behind a compact preview", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-agent-long",
+          kind: "agent_update",
+          bodyText:
+            "This is the first sentence. This is the second sentence. This is the third sentence that should stay hidden until the card is expanded.\n\nThis paragraph should also stay hidden until expansion.",
+          sourceEventIds: ["evt-agent-long"],
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/This is the first sentence. This is the second sentence./)).toBeInTheDocument();
+    expect(screen.queryByText(/This paragraph should also stay hidden/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /show more/i }));
+
+    expect(screen.getByText(/This paragraph should also stay hidden until expansion./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /show less/i })).toBeInTheDocument();
   });
 
   it("keeps reasoning rows compact in the timeline while preserving full drawer detail", () => {
@@ -91,6 +116,7 @@ describe("ConversationEventRow", () => {
           id: "evt-reasoning",
           kind: "activity_trace",
           label: "Activity trace",
+          collapsedByDefault: true,
           sourceEventIds: ["evt-r1"],
           traceItems: [
             {
@@ -128,6 +154,7 @@ describe("ConversationEventRow", () => {
           id: "evt-trace",
           kind: "activity_trace",
           label: "Activity trace",
+          collapsedByDefault: true,
           sourceEventIds: ["evt-a", "evt-b"],
           traceItems: [
             {
@@ -150,6 +177,7 @@ describe("ConversationEventRow", () => {
 
     expect(screen.queryByTestId("activity-trace-drawer")).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByText("Activity trace"));
     fireEvent.click(screen.getByRole("button", { name: /file activity/i }));
 
     const drawer = screen.getByTestId("activity-trace-drawer");
