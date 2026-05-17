@@ -611,15 +611,21 @@ function buildReasoningMember(
   event: ConversationEventEnvelope,
   openHandsEvent: OpenHandsConversationEvent,
 ): DisplayNodeMember {
+  const observationText = getObservationText(openHandsEvent);
+  const bodyText =
+    getReasoningText(openHandsEvent) ??
+    (isThinkObservationPlaceholder(observationText) ? undefined : observationText);
+
   return {
     id: event.eventId,
     title: "Reasoning checkpoint",
-    bodyText:
-      getReasoningText(openHandsEvent) ??
-      getObservationText(openHandsEvent) ??
-      "Reasoning captured",
+    bodyText,
     sourceEventIds: [event.eventId],
   };
+}
+
+function isThinkObservationPlaceholder(value?: string): boolean {
+  return value?.trim() === "Your thought has been logged.";
 }
 
 function lifecycleNode(

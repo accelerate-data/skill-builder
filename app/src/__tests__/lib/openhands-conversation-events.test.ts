@@ -186,6 +186,36 @@ describe("OpenHands conversation event helpers", () => {
     );
   });
 
+  it("prefers top-level reasoning_content for think actions", () => {
+    const event = normalized({
+      type: "conversation_event",
+      runtime: "openhands",
+      conversation_id: "conv-think",
+      event_class: "ActionEvent",
+      timestamp: 1_778_000_300,
+      event: {
+        source: "agent",
+        tool_name: "think",
+        tool_call_id: "call-think-1",
+        reasoning_content:
+          "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
+        thought: [
+          {
+            type: "text",
+            text: "Let me synthesize the generation brief.",
+          },
+        ],
+        action: {
+          kind: "ThinkAction",
+        },
+      },
+    });
+
+    expect(getReasoningText(event)).toBe(
+      "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
+    );
+  });
+
   it("parses JSON tool arguments when the SDK emits arguments as a string", () => {
     const event = normalized(openHandsParallelActionEventRecords[0]);
 

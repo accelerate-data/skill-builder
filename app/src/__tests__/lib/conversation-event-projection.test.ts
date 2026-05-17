@@ -109,7 +109,11 @@ describe("conversation-event-projection", () => {
         expect.objectContaining({ kind: "lifecycle", title: "Conversation running" }),
         expect.objectContaining({ kind: "file_activity", title: "File activity" }),
         expect.objectContaining({ kind: "terminal_activity", title: "Terminal activity" }),
-        expect.objectContaining({ kind: "reasoning", title: "Reasoning" }),
+        expect.objectContaining({
+          kind: "reasoning",
+          title: "Reasoning",
+          summary: "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
+        }),
         expect.objectContaining({ kind: "lifecycle", title: "Conversation finished" }),
       ]),
     });

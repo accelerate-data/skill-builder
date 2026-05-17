@@ -178,14 +178,13 @@ export function getReasoningText(
 ): string | undefined {
   const llmMessage = asRecord(event.event.llm_message);
   const values = [
-    getString(
-      event.event,
-      "thought",
-      "reasoning",
-      "reasoning_content",
-      "reasoningContent",
-    ),
-    getString(llmMessage, "reasoning", "reasoning_content", "reasoningContent"),
+    getString(event.event, "reasoning_content"),
+    getString(event.event, "reasoningContent"),
+    getString(event.event, "reasoning"),
+    getString(event.event, "thought"),
+    getString(llmMessage, "reasoning_content"),
+    getString(llmMessage, "reasoningContent"),
+    getString(llmMessage, "reasoning"),
     collectReasoningFromContent(event.event.content),
     collectReasoningFromContent(llmMessage.content),
     collectThinkingBlocks(
