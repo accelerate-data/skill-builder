@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { DisplayNode, DisplayTraceItem } from "@/lib/display-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,12 @@ export function ConversationActivityGroup({
   node,
 }: ConversationActivityGroupProps) {
   const [selectedItem, setSelectedItem] = useState<DisplayTraceItem | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const traceItems = node.traceItems ?? [];
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!selectedItem) return undefined;
@@ -89,61 +95,64 @@ export function ConversationActivityGroup({
         </div>
       </details>
 
-      {selectedItem ? (
-        <>
-          <button
-            type="button"
-            aria-label="Close drawer"
-            className="fixed inset-0 z-30 bg-stone-900/20 backdrop-blur-[1px]"
-            onClick={() => setSelectedItem(null)}
-          />
-          <aside
-            data-testid="activity-trace-drawer"
-            className="fixed right-0 top-0 z-40 flex h-screen w-[560px] max-w-[calc(100vw-24px)] flex-col border-l border-border bg-white/95 shadow-2xl backdrop-blur"
-          >
-            <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {selectedItem.drawerTitle ?? selectedItem.title}
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  {selectedItem.drawerSubtitle ?? ""}
-                </p>
-              </div>
-              <Button
+      {selectedItem && isMounted
+        ? createPortal(
+            <>
+              <button
                 type="button"
-                variant="outline"
-                size="icon"
-                className="rounded-full"
                 aria-label="Close drawer"
+                className="fixed inset-0 z-30 bg-stone-900/20 backdrop-blur-[1px]"
                 onClick={() => setSelectedItem(null)}
+              />
+              <aside
+                data-testid="activity-trace-drawer"
+                className="fixed inset-y-0 right-0 z-40 flex h-screen w-[min(720px,100vw)] flex-col border-l border-border bg-white/95 shadow-2xl backdrop-blur"
               >
-                x
-              </Button>
-            </div>
-            <div className="overflow-auto px-5 py-4">
-              <div className="mb-4 flex flex-wrap gap-2">
-                <Badge variant="outline">trace inspection</Badge>
-                <Badge variant="outline" className="capitalize">
-                  {selectedItem.badgeLabel}
-                </Badge>
-              </div>
-              <div className="space-y-5">
-                {(selectedItem.drawerSections ?? []).map((section) => (
-                  <section key={`${selectedItem.id}:${section.title}`}>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
-                      {section.title}
-                    </h3>
-                    <div className="rounded-2xl border border-border bg-white p-4 text-sm leading-7 text-slate-700 whitespace-pre-wrap break-words">
-                      {section.body}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </div>
-          </aside>
-        </>
-      ) : null}
+                <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-900">
+                      {selectedItem.drawerTitle ?? selectedItem.title}
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {selectedItem.drawerSubtitle ?? ""}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full"
+                    aria-label="Close drawer"
+                    onClick={() => setSelectedItem(null)}
+                  >
+                    x
+                  </Button>
+                </div>
+                <div className="overflow-auto px-5 py-4">
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    <Badge variant="outline">trace inspection</Badge>
+                    <Badge variant="outline" className="capitalize">
+                      {selectedItem.badgeLabel}
+                    </Badge>
+                  </div>
+                  <div className="space-y-5">
+                    {(selectedItem.drawerSections ?? []).map((section) => (
+                      <section key={`${selectedItem.id}:${section.title}`}>
+                        <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+                          {section.title}
+                        </h3>
+                        <div className="rounded-2xl border border-border bg-white p-4 text-sm leading-7 text-slate-700 whitespace-pre-wrap break-words">
+                          {section.body}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+            </>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
