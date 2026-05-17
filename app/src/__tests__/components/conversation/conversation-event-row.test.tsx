@@ -316,4 +316,23 @@ describe("ConversationEventRow", () => {
 
     expect(screen.getByText("Subagent error")).toBeInTheDocument();
   });
+
+  it("renders subagent rows on the shared narrow column without a kind pill", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-subagent",
+          kind: "subagent",
+          bodyText:
+            "{\"status\":\"pass\",\"findings\":[]}\n\nVerify generated skill package",
+          sourceEventIds: ["evt-subagent-a", "evt-subagent-b"],
+        })}
+      />,
+    );
+
+    const row = screen.getByTestId("conversation-event-row");
+    expect(row.className).toContain("max-w-[56%]");
+    expect(row).toHaveTextContent("{\"status\":\"pass\",\"findings\":[]}");
+    expect(screen.queryByText("subagent")).not.toBeInTheDocument();
+  });
 });

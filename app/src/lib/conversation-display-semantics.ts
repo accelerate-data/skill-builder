@@ -141,10 +141,16 @@ export function projectSemanticDisplayNodes(
     if (classification.type === "standalone" && classification.mergeKey) {
       const lastNode = semanticNodes[semanticNodes.length - 1];
       if (lastNode && lastNode.id === classification.mergeKey) {
-        lastNode.bodyText = combineDistinctText(
-          lastNode.bodyText,
-          classification.node.bodyText,
-        );
+        lastNode.bodyText =
+          lastNode.kind === "subagent"
+            ? combineDistinctText(
+                classification.node.bodyText,
+                lastNode.bodyText,
+              )
+            : combineDistinctText(
+                lastNode.bodyText,
+                classification.node.bodyText,
+              );
         lastNode.sourceEventIds = [
           ...lastNode.sourceEventIds,
           ...classification.node.sourceEventIds,
@@ -464,6 +470,16 @@ function classifyEvent(
         rawPayload: rawEvent,
       },
     };
+  }
+
+  if (openHandsEvent.eventClass === "conversation_state") {
+    const wrappedStatus =
+      typeof openHandsEvent.event.status === "string"
+        ? openHandsEvent.event.status
+        : undefined;
+    if (wrappedStatus) {
+      return lifecycleNode(event, wrappedStatus, lastLifecycleValue);
+    }
   }
 
   if (openHandsEvent.eventClass === "ConversationStateUpdateEvent") {

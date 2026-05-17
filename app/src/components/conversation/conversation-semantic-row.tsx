@@ -44,18 +44,20 @@ function getContainerClass(kind: DisplayNode["kind"], status: DisplayNode["statu
     kind === "tool_error" ||
     kind === "subagent_error"
   ) {
-    return "mr-auto max-w-[78%] rounded-2xl border-destructive/40 bg-rose-50/80 shadow-[0_8px_24px_-18px_rgba(190,24,93,0.4)]";
+    return "mr-auto max-w-[78%] rounded-2xl border-destructive/40 bg-rose-50/80 shadow-[0_8px_24px_-18px_rgba(190,24,93,0.4)] dark:bg-rose-950/30 dark:shadow-[0_10px_28px_-20px_rgba(244,63,94,0.32)]";
   }
 
   switch (kind) {
     case "task_sent":
-      return "ml-auto w-full max-w-[56%] rounded-[20px] rounded-tr-md border-sky-200/70 bg-[linear-gradient(180deg,rgba(242,249,255,0.98),rgba(235,245,252,0.9))] shadow-[0_12px_28px_-24px_rgba(14,116,144,0.42)]";
+      return "ml-auto w-full max-w-[56%] rounded-[20px] rounded-tr-md border border-sky-200/70 bg-[linear-gradient(180deg,rgba(242,249,255,0.98),rgba(235,245,252,0.9))] shadow-[0_12px_28px_-24px_rgba(14,116,144,0.42)] dark:border-sky-500/25 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.58),rgba(14,58,82,0.74))] dark:shadow-[0_18px_36px_-30px_rgba(14,165,233,0.34)]";
     case "agent_update":
-      return "mr-auto w-full max-w-[56%] rounded-[20px] rounded-tl-md border-emerald-200/80 bg-[linear-gradient(180deg,rgba(243,252,247,0.99),rgba(235,248,240,0.94))] shadow-[0_14px_32px_-28px_rgba(22,101,52,0.2)]";
+      return "mr-auto w-full max-w-[56%] rounded-[20px] rounded-tl-md border border-emerald-200/80 bg-[linear-gradient(180deg,rgba(243,252,247,0.99),rgba(235,248,240,0.94))] shadow-[0_14px_32px_-28px_rgba(22,101,52,0.2)] dark:border-emerald-500/25 dark:bg-[linear-gradient(180deg,rgba(6,78,59,0.56),rgba(20,83,45,0.76))] dark:shadow-[0_18px_36px_-30px_rgba(16,185,129,0.28)]";
+    case "subagent":
+      return "mr-auto w-full max-w-[56%] rounded-2xl border border-border bg-card/95 shadow-[0_16px_42px_-32px_rgba(28,25,23,0.22)] dark:bg-card dark:shadow-[0_18px_36px_-30px_rgba(0,0,0,0.45)]";
     case "unknown_event":
-      return "mr-auto max-w-[68%] rounded-2xl border-stone-200/80 bg-stone-50/90 shadow-[0_10px_32px_-26px_rgba(28,25,23,0.25)]";
+      return "mr-auto w-full max-w-[56%] rounded-2xl border border-border bg-card/95 shadow-[0_10px_32px_-26px_rgba(28,25,23,0.25)] dark:bg-card dark:shadow-[0_18px_36px_-30px_rgba(0,0,0,0.45)]";
     default:
-      return "mr-auto max-w-[78%] rounded-2xl border-stone-200 bg-white/95 shadow-[0_16px_42px_-32px_rgba(28,25,23,0.22)]";
+      return "mr-auto max-w-[78%] rounded-2xl border border-border bg-card/95 shadow-[0_16px_42px_-32px_rgba(28,25,23,0.22)] dark:bg-card dark:shadow-[0_18px_36px_-30px_rgba(0,0,0,0.45)]";
   }
 }
 
@@ -122,6 +124,10 @@ function shouldShowStatusBadge(node: DisplayNode): boolean {
   return false;
 }
 
+function shouldShowKindBadge(node: DisplayNode): boolean {
+  return node.kind !== "subagent";
+}
+
 export function ConversationSemanticRow({
   node,
 }: ConversationSemanticRowProps) {
@@ -150,13 +156,13 @@ export function ConversationSemanticRow({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-none">
             {node.kind === "task_sent" ? (
               <>
-                <p className="font-medium tracking-[0.08em] text-stone-400">{timestamp}</p>
-                <p className="uppercase tracking-[0.12em] text-stone-400">{actorLabel}</p>
+                <p className="font-medium tracking-[0.08em] text-muted-foreground">{timestamp}</p>
+                <p className="uppercase tracking-[0.12em] text-muted-foreground">{actorLabel}</p>
               </>
             ) : (
               <>
-                <p className="uppercase tracking-[0.12em] text-emerald-600">{actorLabel}</p>
-                <p className="font-medium tracking-[0.08em] text-stone-400">{timestamp}</p>
+                <p className="uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-400">{actorLabel}</p>
+                <p className="font-medium tracking-[0.08em] text-muted-foreground">{timestamp}</p>
               </>
             )}
             {shouldShowStatusBadge(node) ? (
@@ -178,17 +184,17 @@ export function ConversationSemanticRow({
               className={cn(
                 "rounded-xl",
                 structuredBody && node.kind === "agent_update"
-                  ? "border border-emerald-200/80 bg-emerald-50/80 px-2 py-1.5"
+                  ? "border border-emerald-200/80 bg-emerald-50/80 px-2 py-1.5 dark:border-emerald-400/20 dark:bg-emerald-950/25"
                   : "px-0 py-0",
               )}
             >
               <p
                 className={cn(
-                  "whitespace-pre-wrap break-words text-sm leading-6 text-stone-700",
+                  "whitespace-pre-wrap break-words text-sm leading-6 text-foreground/88",
                   structuredBody && node.kind === "agent_update"
-                    ? "font-mono text-[12px] leading-5 text-emerald-950/80"
+                    ? "font-mono text-[12px] leading-5 text-emerald-950/80 dark:text-emerald-100/88"
                     : "tracking-[-0.01em]",
-                  node.kind === "task_sent" && "text-sm leading-6 text-stone-800",
+                  node.kind === "task_sent" && "text-sm leading-6 text-slate-800 dark:text-sky-50/92",
                 )}
               >
                 {collapsible && !expanded ? collapsedPreview : bodyText}
@@ -199,7 +205,7 @@ export function ConversationSemanticRow({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-auto w-fit px-0 py-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-400 hover:bg-transparent hover:text-stone-700"
+                className="h-auto w-fit px-0 py-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:bg-transparent hover:text-foreground"
                 onClick={() => setExpanded((current) => !current)}
               >
                 {expanded ? "Show less" : "Show more"}
@@ -221,19 +227,19 @@ export function ConversationSemanticRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {
-            <div className="space-y-0.5">
-              <p className="truncate text-[0.95rem] font-semibold tracking-[-0.02em] text-stone-900">
+          <div className="space-y-0.5">
+              <p className="truncate text-[0.95rem] font-semibold tracking-[-0.02em] text-foreground">
                 {label}
               </p>
-              <p className="text-[11px] font-medium text-stone-400">{timestamp}</p>
-            </div>
-          }
+              <p className="text-[11px] font-medium text-muted-foreground">{timestamp}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="capitalize">
-            {node.kind.replace(/_/g, " ")}
-          </Badge>
+          {shouldShowKindBadge(node) ? (
+            <Badge variant="outline" className="capitalize">
+              {node.kind.replace(/_/g, " ")}
+            </Badge>
+          ) : null}
           {shouldShowStatusBadge(node) ? (
             <Badge variant={getStatusVariant(node.status)} className="capitalize">
               {node.status}
@@ -247,17 +253,17 @@ export function ConversationSemanticRow({
           className={cn(
             "rounded-xl",
             structuredBody && node.kind === "agent_update"
-              ? "border border-stone-200/80 bg-stone-50/90 px-2 py-1.5"
+              ? "border border-border bg-muted/40 px-2 py-1.5"
               : "px-0 py-0",
           )}
         >
           <p
             className={cn(
-              "whitespace-pre-wrap break-words text-sm leading-6 text-stone-700",
+              "whitespace-pre-wrap break-words text-sm leading-6 text-foreground/88",
               structuredBody && node.kind === "agent_update"
-                ? "font-mono text-[12px] leading-5 text-stone-600"
+                ? "font-mono text-[12px] leading-5 text-muted-foreground"
                 : "tracking-[-0.01em]",
-              node.kind === "task_sent" && "text-[15px] leading-6 text-stone-800",
+              node.kind === "task_sent" && "text-[15px] leading-6 text-foreground",
             )}
           >
             {collapsible && !expanded ? collapsedPreview : bodyText}
@@ -268,7 +274,7 @@ export function ConversationSemanticRow({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto w-fit px-0 py-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-400 hover:bg-transparent hover:text-stone-700"
+            className="h-auto w-fit px-0 py-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:bg-transparent hover:text-foreground"
             onClick={() => setExpanded((current) => !current)}
           >
             {expanded ? "Show less" : "Show more"}

@@ -146,7 +146,7 @@ describe("conversation-event-projection", () => {
     expect(nodes[1]).toMatchObject({
       kind: "subagent",
       bodyText:
-        "Verify forecasting-revenue skill package\n\n{\"status\":\"pass\",\"findings\":[]}",
+        "{\"status\":\"pass\",\"findings\":[]}\n\nVerify forecasting-revenue skill package",
     });
     expect(nodes[2]).toMatchObject({
       kind: "result",
@@ -420,5 +420,34 @@ describe("conversation-event-projection", () => {
       kind: "unknown_event",
       sourceEventIds: ["evt-unknown"],
     });
+  });
+
+  it("suppresses restored wrapped conversation_state completion markers", () => {
+    const nodes = projectConversationEvents([
+      makeEvent({
+        eventId: "evt-restored-finished",
+        conversationId: "conv-restored",
+        createdAtMs: 1_000,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "system" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-restored",
+            eventClass: "conversation_state",
+            timestamp: 1_000,
+            event: {
+              type: "conversation_state",
+              status: "completed",
+              result_text: "{\"status\":\"ok\"}",
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(nodes).toEqual([]);
   });
 });
