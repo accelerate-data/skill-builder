@@ -60,20 +60,20 @@ export function ConversationActivityGroup({
     <>
       <details
         data-testid="conversation-event-row"
-        className="mr-auto w-full max-w-[86%] overflow-hidden rounded-[24px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(250,250,249,0.96),rgba(245,245,244,0.92))] shadow-[0_18px_44px_-34px_rgba(28,25,23,0.28)]"
+        className="mr-auto w-full max-w-[82%] overflow-hidden rounded-[22px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(250,250,249,0.95),rgba(246,245,243,0.9))] shadow-[0_12px_24px_-24px_rgba(28,25,23,0.18)]"
         open={!node.collapsedByDefault}
       >
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-4 py-3 hover:bg-stone-100/70">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-3.5 py-2.5 hover:bg-stone-100/70">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <p className="text-[0.95rem] font-semibold tracking-[-0.02em] text-stone-900">
+              <p className="text-[0.92rem] font-semibold tracking-[-0.02em] text-stone-900">
                 {node.label ?? "Activity trace"}
               </p>
               <span className="rounded-full border border-stone-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-500">
                 {traceItems.length} item{traceItems.length === 1 ? "" : "s"}
               </span>
             </div>
-            <p className="mt-1 text-xs leading-5 text-stone-500">
+            <p className="mt-0.5 text-[11px] leading-5 text-stone-500">
               {tracePreview.length > 0
                 ? tracePreview
                 : `${traceItems.length} trace item${traceItems.length === 1 ? "" : "s"} available in the shared activity timeline.`}
@@ -83,8 +83,8 @@ export function ConversationActivityGroup({
             Open
           </span>
         </summary>
-        <div className="border-t border-stone-200/80 bg-white/70 px-3 py-3">
-          <div className="mb-2 flex flex-wrap gap-1.5">
+        <div className="border-t border-stone-200/80 bg-white/70 px-2.5 py-2.5">
+          <div className="mb-1.5 flex flex-wrap gap-1.5">
             {traceItems.slice(0, 4).map((item) => (
               <span
                 key={`${item.id}:summary-chip`}
@@ -94,13 +94,13 @@ export function ConversationActivityGroup({
               </span>
             ))}
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             {traceItems.map((item) =>
               item.interactive ?? Boolean(item.drawerSections?.length) ? (
                 <button
                   key={item.id}
                   type="button"
-                  className="flex w-full items-start justify-between gap-3 rounded-2xl border border-stone-200/90 bg-white/95 px-3 py-3 text-left transition hover:border-stone-300 hover:bg-stone-50"
+                  className="flex w-full items-start justify-between gap-3 rounded-2xl border border-stone-200/90 bg-white/95 px-3 py-2.5 text-left transition hover:border-stone-300 hover:bg-stone-50"
                   onClick={() => setSelectedItem(item)}
                 >
                   <TraceItemContent item={item} />
@@ -108,7 +108,7 @@ export function ConversationActivityGroup({
               ) : (
                 <div
                   key={item.id}
-                  className="flex items-start justify-between gap-3 rounded-2xl border border-stone-200/90 bg-white/95 px-3 py-3"
+                  className="flex items-start justify-between gap-3 rounded-2xl border border-stone-200/90 bg-white/95 px-3 py-2.5"
                 >
                   <TraceItemContent item={item} />
                 </div>

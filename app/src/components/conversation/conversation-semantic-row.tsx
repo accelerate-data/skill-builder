@@ -42,9 +42,9 @@ function getContainerClass(kind: DisplayNode["kind"], status: DisplayNode["statu
 
   switch (kind) {
     case "task_sent":
-      return "ml-auto max-w-[50%] rounded-[22px] rounded-tr-md border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(232,244,252,0.92))] shadow-[0_14px_36px_-24px_rgba(14,116,144,0.5)]";
+      return "ml-auto max-w-[44%] rounded-[20px] rounded-tr-md border-sky-200/70 bg-[linear-gradient(180deg,rgba(242,249,255,0.98),rgba(235,245,252,0.9))] shadow-[0_12px_28px_-24px_rgba(14,116,144,0.42)]";
     case "agent_update":
-      return "mr-auto max-w-[60%] rounded-[22px] rounded-tl-md border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,247,244,0.92))] shadow-[0_18px_44px_-30px_rgba(28,25,23,0.3)]";
+      return "mr-auto max-w-[58%] rounded-[20px] rounded-tl-md border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(248,247,244,0.94))] shadow-[0_14px_32px_-28px_rgba(28,25,23,0.26)]";
     case "unknown_event":
       return "mr-auto max-w-[68%] rounded-2xl border-stone-200/80 bg-stone-50/90 shadow-[0_10px_32px_-26px_rgba(28,25,23,0.25)]";
     default:
@@ -124,7 +124,7 @@ export function ConversationSemanticRow({
     <article
       data-testid="conversation-event-row"
       className={cn(
-        "relative flex flex-col gap-2 border px-3.5 py-3",
+        "relative flex flex-col gap-1.5 border px-3 py-2.5",
         getContainerClass(node.kind, node.status),
       )}
     >
@@ -135,7 +135,7 @@ export function ConversationSemanticRow({
               {label}
             </p>
             <p className="text-[11px] uppercase tracking-[0.08em] text-stone-400">
-              {node.kind === "task_sent" ? "Dispatch" : node.kind === "agent_update" ? "Reply" : ""}
+              {node.kind === "task_sent" ? "You" : node.kind === "agent_update" ? "Agent" : ""}
             </p>
           </div>
           <p className="text-[11px] font-medium text-stone-400">
@@ -159,22 +159,22 @@ export function ConversationSemanticRow({
         </div>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         <div
           className={cn(
             "rounded-xl",
             structuredBody && node.kind === "agent_update"
-              ? "border border-stone-200/80 bg-stone-50/90 px-3 py-2.5"
+              ? "border border-stone-200/80 bg-stone-50/90 px-2.5 py-2"
               : "px-0 py-0",
           )}
         >
           <p
             className={cn(
-              "whitespace-pre-wrap break-words text-sm leading-7 text-stone-700",
+              "whitespace-pre-wrap break-words text-sm leading-6.5 text-stone-700",
               structuredBody && node.kind === "agent_update"
-                ? "font-mono text-[12px] leading-6 text-stone-600"
+                ? "font-mono text-[12px] leading-5.5 text-stone-600"
                 : "tracking-[-0.01em]",
-              node.kind === "task_sent" && "text-[15px] leading-7 text-stone-800",
+              node.kind === "task_sent" && "text-[15px] leading-6.5 text-stone-800",
             )}
           >
             {collapsible && !expanded ? collapsedPreview : bodyText}

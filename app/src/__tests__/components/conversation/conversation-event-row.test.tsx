@@ -34,8 +34,8 @@ describe("ConversationEventRow", () => {
 
     const userRow = screen.getByTestId("conversation-event-row");
     expect(userRow.className).toMatch(/\bml-auto\b/);
-    expect(userRow.className).toContain("border-sky-200/80");
-    expect(userRow.className).toContain("max-w-[50%]");
+    expect(userRow.className).toContain("border-sky-200/70");
+    expect(userRow.className).toContain("max-w-[44%]");
     expect(screen.queryByText("accepted")).not.toBeInTheDocument();
     expect(screen.queryByText("sending")).not.toBeInTheDocument();
     expect(screen.queryByText("observed")).not.toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("ConversationEventRow", () => {
     const agentRow = screen.getByTestId("conversation-event-row");
     expect(agentRow.className).toMatch(/\bmr-auto\b/);
     expect(agentRow.className).toContain("border-stone-200");
-    expect(agentRow.className).toContain("max-w-[60%]");
+    expect(agentRow.className).toContain("max-w-[58%]");
     expect(screen.queryByText("observed")).not.toBeInTheDocument();
   });
 
