@@ -7,11 +7,7 @@
  */
 import path from "node:path";
 import { test, expect } from "@playwright/test";
-import {
-  emitTauriEvent,
-  simulateAgentRun,
-  simulateAgentError,
-} from "../helpers/agent-simulator";
+import { emitTauriEvent, simulateAgentRun, simulateAgentError } from "../helpers/agent-simulator";
 import {
   WORKFLOW_OVERRIDES,
   navigateToWorkflowUpdateMode,
@@ -206,88 +202,6 @@ async function waitForGateEvaluationStart(
 }
 
 test.describe("Transition Gate", { tag: "@workflow" }, () => {
-  test.skip("gate 1 sufficient: auto-advances to detailed research", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
-    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateGateCompletion(page, "sufficient");
-
-    // Gate is fully automatic — no dialog, advances directly to Detailed Research
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test.skip("gate 1 mixed: auto-advances to detailed research", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
-    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateGateCompletion(page, "mixed");
-
-    // mixed verdict with run_research default → no dialog, advances automatically
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test.skip("gate 1 mixed: no gate dialog shown", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE1_OVERRIDES);
-    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateGateCompletion(page, "mixed");
-
-    // Gate is silent — no dialog headings should appear
-    await expect(page.getByRole("heading", { name: "Review Answer Quality" })).not.toBeVisible();
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test.skip("gate 2 insufficient: auto-advances to decisions", async ({ page }) => {
-    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateGateCompletion(page, "insufficient");
-
-    // insufficient verdict with run_research default → no dialog, advances automatically
-    await expect(page.getByText("Step 3: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
-  });
-
-  test.skip("gate 2 revise: stays on detailed research", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_TRACK_INVOKES__ = ["read_file"];
-      (window as unknown as Record<string, unknown>).__TAURI_TRACKED_INVOKES__ = [];
-    });
-    await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-
-    await clickCompleteStep(page);
-    await simulateCustomGateCompletion(page, {
-      verdict: "insufficient",
-      answered_count: 0,
-      empty_count: 2,
-      vague_count: 0,
-      contradictory_count: 0,
-      total_count: 2,
-      gate_decision: "revise",
-      reasoning: "Answers are missing.",
-      per_question: [
-        { question_id: "Q1", verdict: "not_answered" },
-        { question_id: "Q2", verdict: "not_answered" },
-      ],
-    });
-
-    const trackedReadFileCalls = await page.evaluate(() => {
-      const tracked = ((window as unknown as Record<string, unknown>)
-        .__TAURI_TRACKED_INVOKES__ ?? []) as Array<{ cmd: string; args?: { filePath?: string } }>;
-      return tracked
-        .filter((entry) => entry.cmd === "read_file")
-        .map((entry) => entry.args?.filePath ?? null);
-    });
-    expect(trackedReadFileCalls).toContain(WORKSPACE_EVAL_PATH);
-
-    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Step 3: Confirm Decisions")).not.toBeVisible();
-  });
-
   test("gate 2 contradiction-driven revise: stays on detailed research", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE2_OVERRIDES);
     await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
