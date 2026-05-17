@@ -482,6 +482,29 @@ function classifyEvent(
     }
   }
 
+  const nestedEventKind =
+    typeof openHandsEvent.event.kind === "string"
+      ? openHandsEvent.event.kind
+      : typeof openHandsEvent.event.eventClass === "string"
+        ? openHandsEvent.event.eventClass
+        : typeof openHandsEvent.event.event_class === "string"
+          ? openHandsEvent.event.event_class
+          : undefined;
+  if (nestedEventKind === "ConversationStateUpdateEvent") {
+    const nestedKey =
+      typeof openHandsEvent.event.key === "string" ? openHandsEvent.event.key : undefined;
+    const nestedValue =
+      typeof openHandsEvent.event.value === "string" ? openHandsEvent.event.value : undefined;
+
+    if (nestedKey === "stats" || nestedKey === "last_user_message_id") {
+      return { type: "suppress" };
+    }
+    if (nestedKey === "execution_status") {
+      if (nestedValue === "paused") return { type: "suppress" };
+      return lifecycleNode(event, nestedValue ?? "status", lastLifecycleValue);
+    }
+  }
+
   if (openHandsEvent.eventClass === "ConversationStateUpdateEvent") {
     const key =
       typeof openHandsEvent.event.key === "string" ? openHandsEvent.event.key : undefined;

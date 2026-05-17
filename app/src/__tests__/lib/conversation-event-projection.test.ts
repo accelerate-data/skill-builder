@@ -450,4 +450,55 @@ describe("conversation-event-projection", () => {
 
     expect(nodes).toEqual([]);
   });
+
+  it("suppresses wrapped nested conversation state update events for stats and finished markers", () => {
+    const nodes = projectConversationEvents([
+      makeEvent({
+        eventId: "evt-wrapped-stats",
+        conversationId: "conv-restored",
+        createdAtMs: 1_000,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "system" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-restored",
+            eventClass: "UnknownEvent",
+            timestamp: 1_000,
+            event: {
+              kind: "ConversationStateUpdateEvent",
+              key: "stats",
+              value: { usage_to_metrics: {} },
+            },
+          },
+        },
+      }),
+      makeEvent({
+        eventId: "evt-wrapped-finished",
+        conversationId: "conv-restored",
+        createdAtMs: 1_001,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "system" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-restored",
+            eventClass: "UnknownEvent",
+            timestamp: 1_001,
+            event: {
+              kind: "ConversationStateUpdateEvent",
+              key: "execution_status",
+              value: "finished",
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(nodes).toEqual([]);
+  });
 });
