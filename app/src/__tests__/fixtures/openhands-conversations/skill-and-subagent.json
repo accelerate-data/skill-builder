@@ -1,0 +1,109 @@
+{
+  "conversationId": "conv-skill-subagent",
+  "note": "Expect Skill, Subagent, and Result rows from invoke_skill, task, task observation, and finish action events.",
+  "records": [
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-skill-subagent",
+      "event_class": "ActionEvent",
+      "timestamp": 1746912032354,
+      "tool_call_id": "chatcmpl-tool-92fcd595bfad17da",
+      "event": {
+        "source": "agent",
+        "tool_name": "invoke_skill",
+        "tool_call_id": "chatcmpl-tool-92fcd595bfad17da",
+        "summary": "Load skill-requirements research methodology",
+        "action": {
+          "name": "researching-skill-requirements",
+          "kind": "InvokeSkillAction"
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-skill-subagent",
+      "event_class": "ObservationEvent",
+      "timestamp": 1746912032356,
+      "tool_call_id": "chatcmpl-tool-92fcd595bfad17da",
+      "event": {
+        "source": "environment",
+        "tool_name": "invoke_skill",
+        "tool_call_id": "chatcmpl-tool-92fcd595bfad17da",
+        "observation": {
+          "skill_name": "researching-skill-requirements",
+          "content": [
+            {
+              "type": "text",
+              "text": "Skill content loaded."
+            }
+          ],
+          "kind": "InvokeSkillObservation"
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-skill-subagent",
+      "event_class": "ActionEvent",
+      "timestamp": 1747393961736,
+      "tool_call_id": "call_ea75",
+      "event": {
+        "source": "agent",
+        "tool_name": "task",
+        "tool_call_id": "call_ea75",
+        "summary": "Verify forecasting-revenue skill package",
+        "action": {
+          "description": "Verify forecasting-revenue skill package",
+          "subagent_type": "skill-verifier",
+          "kind": "TaskAction"
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-skill-subagent",
+      "event_class": "ObservationEvent",
+      "timestamp": 1747394047213,
+      "tool_call_id": "call_ea75",
+      "event": {
+        "source": "environment",
+        "tool_name": "task",
+        "tool_call_id": "call_ea75",
+        "observation": {
+          "task_id": "task_00000001",
+          "subagent": "skill-verifier",
+          "status": "completed",
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"status\":\"pass\",\"findings\":[]}"
+            }
+          ],
+          "kind": "TaskObservation"
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-skill-subagent",
+      "event_class": "ActionEvent",
+      "timestamp": 1747393759824,
+      "tool_call_id": "call_bead",
+      "event": {
+        "source": "agent",
+        "tool_name": "finish",
+        "tool_call_id": "call_bead",
+        "summary": "Skill package passes verification with minor findings",
+        "action": {
+          "message": "Verification complete. The skill package passes all review criteria with two minor findings.",
+          "kind": "FinishAction"
+        }
+      }
+    }
+  ]
+}

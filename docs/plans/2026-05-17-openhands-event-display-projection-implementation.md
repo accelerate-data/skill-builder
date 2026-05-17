@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` when implementing this plan. Steps use checkbox syntax for tracking.
 
-**Goal:** Replace the current passthrough timeline with a semantic OpenHands event projection that matches the target-state design in `docs/design/openhands-event-display-projection/README.md`, using checked-in fixtures derived from real persisted conversations.
+**Goal:** Replace the current passthrough timeline with a semantic OpenHands event projection that matches the target-state design in `docs/design/openhands-event-display-projection/README.md`, then finish the remaining UI shift to the mockup in `/private/tmp/skill-builder-mockup-captures/activity-trace-drawer-inspector-real-conversation.html`.
 
-**Architecture:** Persisted `conversationEvents` + `conversationState` remain the canonical transcript source → a semantic projection layer classifies, suppresses, groups, and synthesizes display rows → the conversation timeline renders those semantic rows consistently in workflow and workspace.
+**Architecture:** Persisted `conversationEvents` + `conversationState` remain the canonical transcript source → a semantic projection layer classifies, suppresses, groups, and synthesizes display rows → a second projection pass collapses non-narrative semantic rows into per-turn `Activity trace` blocks → the conversation timeline renders a narrative-first `Task sent` / `Activity trace` / `Agent update` flow with a right-side inspector drawer for trace item details.
 
 **Tech Stack:** React, TypeScript, Vitest, Testing Library, checked-in OpenHands conversation fixtures
 
@@ -17,6 +17,9 @@ This plan closes every gap in `docs/design/openhands-event-display-projection/im
 - Gap 3: implement explicit suppression and lifecycle-reduction rules for state updates
 - Gap 4: separate `SystemPromptEvent` from the normal transcript
 - Gap 5: add fixture-driven projection and accounting tests based on real saved conversations
+- Gap 6: collapse intermediate semantic rows into `Activity trace` blocks per user/agent turn
+- Gap 7: replace inline grouped-detail cards with the mockup’s right-side inspector drawer
+- Gap 8: render runtime setup, lifecycle, skill, subagent, terminal, file, reasoning, and error details as trace items with stable drawer sections
 
 ---
 
@@ -318,6 +321,223 @@ or
 - keep it available through a dedicated debug disclosure while suppressing it from the normal transcript
 
 Pick one consistent rule and encode it in tests. The implementation should not dump raw system prompt content into the default narrative flow.
+
+---
+
+### Task 5: Collapse semantic rows into per-turn Activity trace blocks
+
+**Files:**
+
+- Modify: `app/src/lib/display-types.ts`
+- Modify: `app/src/lib/conversation-display-semantics.ts`
+- Modify: `app/src/lib/conversation-event-projection.ts`
+- Modify: `app/src/__tests__/lib/conversation-event-projection.test.ts`
+- Modify: `app/src/__tests__/components/conversation/conversation-timeline.test.tsx`
+
+- [ ] **Step 1: Redefine the display model around narrative rows plus activity traces**
+
+Add an `activity_trace` display node kind plus a trace-item model that can represent:
+
+- `runtime_setup`
+- `lifecycle`
+- `skill`
+- `subagent`
+- `result`
+- `terminal_activity`
+- `file_activity`
+- `reasoning`
+- `tool_error`
+- `subagent_error`
+
+Each trace item must carry:
+
+- stable id
+- summary text for the compact inline row
+- optional drawer title and subtitle
+- drawer sections for detailed inspection
+- source event ids
+- whether the trace item is static or clickable
+
+- [ ] **Step 2: Keep raw semantic classification, then add a second collapse pass**
+
+Do not throw away the semantic classifier. Instead:
+
+- preserve the existing raw semantic node classification pass
+- add a second pass that accumulates non-narrative semantic nodes
+- flush accumulated items into one `activity_trace` block before each `agent_update`
+- preserve `task_sent` and `agent_update` as visible narrative rows
+- flush a trailing trace at conversation end when there is no agent update yet
+
+This collapse pass must handle `SystemPromptEvent` before the first visible user message by carrying that item into the next visible activity trace instead of rendering it as a standalone top-level row.
+
+- [ ] **Step 3: Convert lifecycle and grouped activity into trace items**
+
+Map existing semantic nodes into trace items using mockup-aligned titles:
+
+- `Runtime setup`
+- `Conversation running`
+- `Conversation paused`
+- `Conversation finished`
+- `Conversation error`
+- `Skill invocation`
+- `Subagent invocation`
+- `Terminal activity`
+- `File activity`
+- `Reasoning`
+- `Tool error`
+- `Subagent error`
+
+Grouped file/terminal/reasoning nodes must become single trace items with drawer sections that expose per-member detail. Lifecycle rows must become static trace items rather than drawer launchers.
+
+- [ ] **Step 4: Replace the projection tests with mockup-aligned narrative/trace expectations**
+
+Update fixture-based tests to assert:
+
+- `terminal-and-file-activity` projects to `task_sent`, `activity_trace`, `agent_update`
+- the trace contains runtime, lifecycle, file, terminal, reasoning, and final lifecycle items
+- `skill-and-subagent` projects to a single `activity_trace` when no narrative message frames it
+- lifecycle suppression still accounts for hidden telemetry ids
+- system prompt and errors become trace items rather than standalone top-level rows
+
+- [ ] **Step 5: Commit projection collapse pass**
+
+Verification:
+
+```bash
+cd app && npx vitest run src/__tests__/lib/conversation-event-projection.test.ts src/__tests__/components/conversation/conversation-timeline.test.tsx
+cd app && npx tsc --noEmit
+```
+
+Commit:
+
+```bash
+git add app/src/lib/display-types.ts app/src/lib/conversation-display-semantics.ts app/src/lib/conversation-event-projection.ts app/src/__tests__/lib/conversation-event-projection.test.ts app/src/__tests__/components/conversation/conversation-timeline.test.tsx
+git commit -m "feat: collapse semantic rows into activity traces"
+```
+
+---
+
+### Task 6: Replace inline grouped cards with the inspector drawer UI
+
+**Files:**
+
+- Modify: `app/src/components/conversation/conversation-event-row.tsx`
+- Replace: `app/src/components/conversation/conversation-activity-group.tsx`
+- Modify: `app/src/components/conversation/conversation-semantic-row.tsx`
+- Modify: `app/src/__tests__/components/conversation/conversation-event-row.test.tsx`
+
+- [ ] **Step 1: Render Activity trace as a dedicated trace surface**
+
+Replace the current inline member-card rendering with a trace block that matches the mockup structure:
+
+- `<details>` shell with summary row
+- trace title `Activity trace`
+- trace subtitle showing item counts
+- compact badges like `collapsed details` and `inline tool activity`
+- inline list of trace items inside the expanded body
+
+Keep task and agent rows as narrative cards. The trace surface should visually sit between them as a separate container, not as a generic grouped card.
+
+- [ ] **Step 2: Add clickable trace items plus static lifecycle items**
+
+Render trace items as:
+
+- buttons for clickable items with drawer metadata
+- non-clickable static items for lifecycle/status-only entries
+
+Each item should show:
+
+- icon slot
+- title
+- compact summary text
+- right-side chip for item type
+
+- [ ] **Step 3: Implement the fixed right-side inspector drawer**
+
+Build the drawer behavior from the mockup:
+
+- hidden by default
+- opens on trace-item click
+- fixed on the right side
+- independent vertical scroll
+- backdrop click closes it
+- `Escape` closes it
+- close button closes it
+- content structured into titled sections, not one raw blob
+
+Use the trace item’s `drawerTitle`, `drawerSubtitle`, and `drawerSections` instead of re-parsing raw payloads in the renderer.
+
+- [ ] **Step 4: Add renderer tests for drawer semantics**
+
+Update component tests to assert:
+
+- `activity_trace` renders a summary row and inline trace items
+- clicking a clickable trace item opens the drawer
+- the drawer shows the expected title, subtitle, and section content
+- static lifecycle items do not open the drawer
+- task and agent narrative rows still render with the intended alignment
+
+- [ ] **Step 5: Commit drawer UI**
+
+Verification:
+
+```bash
+cd app && npx vitest run src/__tests__/components/conversation/conversation-event-row.test.tsx
+cd app && npx tsc --noEmit
+```
+
+Commit:
+
+```bash
+git add app/src/components/conversation/conversation-event-row.tsx app/src/components/conversation/conversation-activity-group.tsx app/src/components/conversation/conversation-semantic-row.tsx app/src/__tests__/components/conversation/conversation-event-row.test.tsx
+git commit -m "feat: add activity trace inspector drawer"
+```
+
+---
+
+### Task 7: Add browser-level coverage for drawer interaction semantics
+
+**Files:**
+
+- Create or modify: `app/e2e/workflow/*.spec.ts`
+- Reuse or extend: `app/src/test/mocks/tauri-e2e*.ts`
+- Update if needed: `TEST_MAP.md`
+
+- [ ] **Step 1: Seed one compact mocked transcript that exercises the drawer**
+
+Create one browser-level scenario with:
+
+- `Task sent`
+- an `Activity trace` containing at least one static lifecycle item and one clickable detail item
+- `Agent update`
+
+Do not replay the entire raw conversation folder in Playwright. Keep the scenario minimal and deterministic.
+
+- [ ] **Step 2: Assert drawer interaction semantics in the real browser**
+
+Cover:
+
+- drawer hidden on first render
+- click opens the drawer
+- close button closes it
+- backdrop closes it
+- `Escape` closes it
+- trace summary expand/collapse still works with the drawer present
+
+- [ ] **Step 3: Commit browser coverage**
+
+Verification:
+
+```bash
+cd app && npm run test:e2e -- --grep "activity trace"
+```
+
+Commit:
+
+```bash
+git add app/e2e/workflow
+git commit -m "test: cover activity trace drawer semantics"
+```
 
 - [ ] **Step 4: Add suppression and lifecycle coverage**
 

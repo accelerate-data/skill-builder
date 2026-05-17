@@ -51,6 +51,27 @@ describe("ConversationTimeline", () => {
         },
       }),
       makeEvent({
+        eventId: "evt-state-running",
+        conversationId: "conv-session-1",
+        createdAtMs: 1_500,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "state", label: "State" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-session-1",
+            eventClass: "ConversationStateUpdateEvent",
+            timestamp: 1_500,
+            event: {
+              key: "execution_status",
+              value: "running",
+            },
+          },
+        },
+      }),
+      makeEvent({
         eventId: "evt-agent",
         conversationId: "conv-session-1",
         createdAtMs: 2_000,
@@ -59,7 +80,44 @@ describe("ConversationTimeline", () => {
         display: { kind: "agent_message", label: "OpenHands" },
         payload: {
           rawOpenHandsEvent: {
-            text: "Plan drafted and ready for review.",
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-session-1",
+            eventClass: "MessageEvent",
+            timestamp: 2_000,
+            event: {
+              source: "agent",
+              llm_message: {
+                role: "assistant",
+                content: [
+                  {
+                    type: "text",
+                    text: "Plan drafted and ready for review.",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      }),
+      makeEvent({
+        eventId: "evt-task-state",
+        conversationId: "conv-session-1",
+        createdAtMs: 2_500,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "state", label: "State" },
+        payload: {
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-session-1",
+            eventClass: "ConversationStateUpdateEvent",
+            timestamp: 2_500,
+            event: {
+              key: "last_user_message_id",
+              value: "evt-user",
+            },
           },
         },
       }),
@@ -71,8 +129,17 @@ describe("ConversationTimeline", () => {
         status: "failed",
         display: { kind: "error", label: "Transport" },
         payload: {
-          backendError: {
-            message: "Session dispatch failed",
+          rawOpenHandsEvent: {
+            type: "conversation_event",
+            runtime: "openhands",
+            conversationId: "conv-session-1",
+            eventClass: "ConversationErrorEvent",
+            timestamp: 3_000,
+            event: {
+              error_detail: {
+                message: "Session dispatch failed",
+              },
+            },
           },
         },
       }),
@@ -96,8 +163,9 @@ describe("ConversationTimeline", () => {
     const rows = screen.getAllByTestId("conversation-event-row");
     expect(rows).toHaveLength(3);
     expect(rows[0]).toHaveTextContent("Draft the rollout plan");
-    expect(rows[1]).toHaveTextContent("Plan drafted and ready for review.");
-    expect(rows[2]).toHaveTextContent("Session dispatch failed");
+    expect(rows[1]).toHaveTextContent("Activity trace");
+    expect(rows[1]).toHaveTextContent("Conversation running");
+    expect(rows[2]).toHaveTextContent("Plan drafted and ready for review.");
     expect(screen.queryByText("This should stay hidden")).not.toBeInTheDocument();
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ConversationEventRow } from "@/components/conversation/conversation-event-row";
 import type { DisplayNode } from "@/lib/display-types";
 
@@ -14,25 +14,20 @@ function makeNode(
     kind: overrides.kind,
     status: "observed",
     createdAtMs: 1_000,
-    payload: {},
     ...overrides,
   };
 }
 
 describe("ConversationEventRow", () => {
-  it("renders user messages as right-aligned bubbles and agent messages as left-aligned prose", () => {
+  it("renders task rows as right-aligned narrative rows and agent updates as left-aligned prose", () => {
     const { rerender } = render(
       <ConversationEventRow
         node={makeNode({
           id: "evt-user",
-          kind: "user_message",
+          kind: "task_sent",
           status: "accepted",
-          payload: {
-            frontendCommand: {
-              type: "send_message",
-              text: "User message",
-            },
-          },
+          bodyText: "User message",
+          sourceEventIds: ["evt-user"],
         })}
       />,
     );
@@ -45,12 +40,9 @@ describe("ConversationEventRow", () => {
       <ConversationEventRow
         node={makeNode({
           id: "evt-agent",
-          kind: "agent_message",
-          payload: {
-            rawOpenHandsEvent: {
-              text: "Agent reply",
-            },
-          },
+          kind: "agent_update",
+          bodyText: "Agent reply",
+          sourceEventIds: ["evt-agent"],
         })}
       />,
     );
@@ -60,33 +52,104 @@ describe("ConversationEventRow", () => {
     expect(agentRow.className).toMatch(/\bborder-border\b/);
   });
 
-  it("extracts agent message text from canonical OpenHands payload helpers", () => {
+  it("renders grouped semantic activity with member summaries", () => {
     render(
       <ConversationEventRow
         node={makeNode({
-          id: "evt-agent-content",
-          kind: "agent_message",
-          payload: {
-            rawOpenHandsEvent: {
-              type: "conversation_event",
-              runtime: "openhands",
-              eventClass: "MessageEvent",
-              timestamp: 1_000,
-              event: {
-                source: "agent",
-                content: [
-                  {
-                    type: "text",
-                    text: "Structured agent reply",
-                  },
-                ],
-              },
+          id: "evt-group",
+          kind: "activity_trace",
+          label: "Activity trace",
+          sourceEventIds: ["evt-group-a", "evt-group-b"],
+          traceItems: [
+            {
+              id: "member-1",
+              kind: "terminal_activity",
+              title: "Terminal activity",
+              summary: "ls -la",
+              sourceEventIds: ["evt-group-a", "evt-group-b"],
+              drawerTitle: "Terminal activity",
+              drawerSubtitle: "1 items",
+              drawerSections: [
+                { title: "Summary", body: "ls -la" },
+                { title: "Item 1", body: "ls -la" },
+              ],
             },
-          },
+          ],
         })}
       />,
     );
 
-    expect(screen.getByText("Structured agent reply")).toBeInTheDocument();
+    expect(screen.getByText("Activity trace")).toBeInTheDocument();
+    expect(screen.getByText("Terminal activity")).toBeInTheDocument();
+    expect(screen.getByText("ls -la")).toBeInTheDocument();
+  });
+
+  it("opens a right-side inspector drawer when a trace item is clicked", () => {
+    render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-trace",
+          kind: "activity_trace",
+          label: "Activity trace",
+          sourceEventIds: ["evt-a", "evt-b"],
+          traceItems: [
+            {
+              id: "trace-1",
+              kind: "file_activity",
+              title: "File activity",
+              summary: "Viewed schema file",
+              sourceEventIds: ["evt-a", "evt-b"],
+              drawerTitle: "File activity",
+              drawerSubtitle: "2 items",
+              drawerSections: [
+                { title: "Summary", body: "Viewed schema file" },
+                { title: "Item 1", body: "view path/to/file" },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.queryByTestId("activity-trace-drawer")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /file activity/i }));
+
+    const drawer = screen.getByTestId("activity-trace-drawer");
+    expect(drawer).toBeInTheDocument();
+    expect(within(drawer).getByText("File activity")).toBeInTheDocument();
+    expect(within(drawer).getByText("2 items")).toBeInTheDocument();
+    expect(within(drawer).getByText("Viewed schema file")).toBeInTheDocument();
+  });
+
+  it("distinguishes tool and subagent errors visually", () => {
+    const { rerender } = render(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-tool-error",
+          kind: "tool_error",
+          status: "failed",
+          bodyText: "Tool execution failed",
+          sourceEventIds: ["evt-tool-error"],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-event-row").className).toMatch(/\bborder-destructive\/40\b/);
+    expect(screen.getByText("Tool error")).toBeInTheDocument();
+
+    rerender(
+      <ConversationEventRow
+        node={makeNode({
+          id: "evt-subagent-error",
+          kind: "subagent_error",
+          status: "failed",
+          bodyText: "Subagent crashed",
+          sourceEventIds: ["evt-subagent-error"],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Subagent error")).toBeInTheDocument();
   });
 });
