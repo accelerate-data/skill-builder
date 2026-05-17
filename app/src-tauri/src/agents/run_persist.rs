@@ -2,17 +2,44 @@ use super::event_types::RuntimeRunSummary;
 
 fn persist_run_summary_to_conn(
     conn: &rusqlite::Connection,
-    agent_id: &str,
+    conversation_id: &str,
     summary: &RuntimeRunSummary,
 ) {
     let effective_session_id = summary.usage_session_id.as_deref();
+    let skill_id = match crate::db::get_skill_master_id_in_plugin(
+        conn,
+        &summary.skill_name,
+        &summary.plugin_slug,
+    ) {
+        Ok(Some(skill_id)) => skill_id,
+        Ok(None) => {
+            log::error!(
+                "[persist_run_summary] missing skill row for conversation={} skill={} plugin={}",
+                conversation_id,
+                summary.skill_name,
+                summary.plugin_slug
+            );
+            return;
+        }
+        Err(error) => {
+            log::error!(
+                "[persist_run_summary] failed to resolve skill_id for conversation={} skill={} plugin={}: {}",
+                conversation_id,
+                summary.skill_name,
+                summary.plugin_slug,
+                error
+            );
+            return;
+        }
+    };
 
     // Persist one row per model entry or one aggregate row
     if !summary.model_usage_breakdown.is_empty() {
         for entry in &summary.model_usage_breakdown {
             log::info!(
-                "[persist_run_summary] agent={} skill={} step={} step_id={} model={} status={} cost={:.4}",
-                agent_id,
+                "[persist_run_summary] conversation={} skill_id={} skill={} step={} step_id={} model={} status={} cost={:.4}",
+                conversation_id,
+                skill_id,
                 summary.skill_name,
                 crate::db::step_name(summary.step_id),
                 summary.step_id,
@@ -20,9 +47,10 @@ fn persist_run_summary_to_conn(
                 summary.status,
                 entry.cost
             );
-            if let Err(e) = crate::db::persist_agent_run(
+            if let Err(e) = crate::db::persist_conversation_run_with_skill_id(
                 conn,
-                agent_id,
+                conversation_id,
+                skill_id,
                 &summary.skill_name,
                 &summary.plugin_slug,
                 summary.step_id,
@@ -43,8 +71,8 @@ fn persist_run_summary_to_conn(
                 effective_session_id,
             ) {
                 log::error!(
-                    "[persist_run_summary] Failed to persist for agent={} model={}: {}",
-                    agent_id,
+                    "[persist_run_summary] Failed to persist for conversation={} model={}: {}",
+                    conversation_id,
                     entry.model,
                     e
                 );
@@ -53,8 +81,9 @@ fn persist_run_summary_to_conn(
     } else {
         // Single aggregate row
         log::info!(
-            "[persist_run_summary] agent={} skill={} step={} step_id={} model={} status={} cost={:.4}",
-            agent_id,
+            "[persist_run_summary] conversation={} skill_id={} skill={} step={} step_id={} model={} status={} cost={:.4}",
+            conversation_id,
+            skill_id,
             summary.skill_name,
             crate::db::step_name(summary.step_id),
             summary.step_id,
@@ -62,9 +91,10 @@ fn persist_run_summary_to_conn(
             summary.status,
             summary.total_cost_usd
         );
-        if let Err(e) = crate::db::persist_agent_run(
+        if let Err(e) = crate::db::persist_conversation_run_with_skill_id(
             conn,
-            agent_id,
+            conversation_id,
+            skill_id,
             &summary.skill_name,
             &summary.plugin_slug,
             summary.step_id,
@@ -85,8 +115,8 @@ fn persist_run_summary_to_conn(
             effective_session_id,
         ) {
             log::error!(
-                "[persist_run_summary] Failed to persist aggregate for agent={}: {}",
-                agent_id,
+                "[persist_run_summary] Failed to persist aggregate for conversation={}: {}",
+                conversation_id,
                 e
             );
         }
@@ -96,7 +126,7 @@ fn persist_run_summary_to_conn(
 /// Persist a run summary directly to SQLite (fire-and-forget from the caller's perspective).
 pub fn persist_run_summary(
     app_handle: &tauri::AppHandle,
-    agent_id: &str,
+    conversation_id: &str,
     summary: &RuntimeRunSummary,
 ) {
     use tauri::Manager;
@@ -105,8 +135,8 @@ pub fn persist_run_summary(
         Some(db) => db,
         None => {
             log::error!(
-                "[persist_run_summary] DB state not available for agent={}",
-                agent_id
+                "[persist_run_summary] DB state not available for conversation={}",
+                conversation_id
             );
             return;
         }
@@ -116,15 +146,15 @@ pub fn persist_run_summary(
         Ok(c) => c,
         Err(e) => {
             log::error!(
-                "[persist_run_summary] Failed to acquire DB lock for agent={}: {}",
-                agent_id,
+                "[persist_run_summary] Failed to acquire DB lock for conversation={}: {}",
+                conversation_id,
                 e
             );
             return;
         }
     };
 
-    persist_run_summary_to_conn(&conn, agent_id, summary);
+    persist_run_summary_to_conn(&conn, conversation_id, summary);
 }
 
 #[cfg(test)]
@@ -135,9 +165,17 @@ mod tests {
     #[test]
     fn persist_run_summary_writes_aggregate_row_for_workflow_session() {
         let conn = crate::db::create_test_db_for_tests();
-        crate::db::save_workflow_run(&conn, "demo-skill", 2, "in_progress", "domain").unwrap();
-        let demo_skill_id = crate::db::get_skill_master_id(&conn, "demo-skill")
-            .unwrap()
+        crate::db::ensure_plugin(&conn, "skills", "Skills", "synthetic", None, None, false)
+            .unwrap();
+        let demo_skill_id = crate::db::upsert_skill_in_plugin(
+            &conn,
+            "demo-skill",
+            "skill-builder",
+            "domain",
+            "skills",
+        )
+        .unwrap();
+        crate::db::save_workflow_run_by_skill_id(&conn, demo_skill_id, 2, "in_progress", "domain")
             .unwrap();
         crate::db::create_workflow_session_by_skill_id(&conn, "wf-aggregate", demo_skill_id, 1000)
             .unwrap();
@@ -171,10 +209,10 @@ mod tests {
 
         persist_run_summary_to_conn(&conn, "agent-aggregate", &summary);
 
-        let runs = crate::db::get_session_agent_runs(&conn, "wf-aggregate").unwrap();
+        let runs = crate::db::get_session_conversation_runs(&conn, "wf-aggregate").unwrap();
         assert_eq!(runs.len(), 1);
         let run = &runs[0];
-        assert_eq!(run.agent_id, "agent-aggregate");
+        assert_eq!(run.conversation_id, "agent-aggregate");
         assert_eq!(run.skill_name, "demo-skill");
         assert_eq!(run.step_id, 2);
         assert_eq!(run.model, "settings-model-a");
@@ -189,7 +227,24 @@ mod tests {
     #[test]
     fn persist_run_summary_writes_breakdown_rows_and_falls_back_to_usage_session() {
         let conn = crate::db::create_test_db_for_tests();
-        crate::db::save_workflow_run(&conn, "demo-skill", -10, "in_progress", "domain").unwrap();
+        crate::db::ensure_plugin(&conn, "skills", "Skills", "synthetic", None, None, false)
+            .unwrap();
+        let demo_skill_id = crate::db::upsert_skill_in_plugin(
+            &conn,
+            "demo-skill",
+            "skill-builder",
+            "domain",
+            "skills",
+        )
+        .unwrap();
+        crate::db::save_workflow_run_by_skill_id(
+            &conn,
+            demo_skill_id,
+            -10,
+            "in_progress",
+            "domain",
+        )
+        .unwrap();
 
         let summary = RuntimeRunSummary {
             skill_name: "demo-skill".to_string(),
@@ -238,7 +293,8 @@ mod tests {
         persist_run_summary_to_conn(&conn, "agent-breakdown", &summary);
 
         let runs =
-            crate::db::get_session_agent_runs(&conn, "synthetic:refine:demo-skill:sess-1").unwrap();
+            crate::db::get_session_conversation_runs(&conn, "synthetic:refine:demo-skill:sess-1")
+                .unwrap();
         assert_eq!(runs.len(), 2);
         let models: Vec<_> = runs.iter().map(|run| run.model.as_str()).collect();
         assert!(models.contains(&"settings-model-a"));

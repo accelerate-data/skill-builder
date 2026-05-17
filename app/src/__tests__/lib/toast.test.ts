@@ -34,7 +34,7 @@ describe("toast wrapper", () => {
 
   it("logs debug + forwards toast.error (strips cause/context from sonner options)", async () => {
     vi.resetModules();
-    vi.unmock("@/lib/toast");
+    vi.doUnmock("@/lib/toast");
 
     const { toast } = await import("@/lib/toast");
     const cause = new Error("boom");
@@ -54,7 +54,7 @@ describe("toast wrapper", () => {
 
   it("logs debug + forwards toast.warning", async () => {
     vi.resetModules();
-    vi.unmock("@/lib/toast");
+    vi.doUnmock("@/lib/toast");
 
     const { toast } = await import("@/lib/toast");
 
@@ -69,7 +69,7 @@ describe("toast wrapper", () => {
 
   it("does not silently drop when plugin-log debug rejects", async () => {
     vi.resetModules();
-    vi.unmock("@/lib/toast");
+    vi.doUnmock("@/lib/toast");
 
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockDebug.mockImplementationOnce(() => Promise.reject(new Error("debug write failed")));
@@ -83,4 +83,3 @@ describe("toast wrapper", () => {
     consoleWarn.mockRestore();
   });
 });
-

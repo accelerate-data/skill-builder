@@ -85,7 +85,7 @@ function renderDecisionsStep({ nextStepBlocked = true }: { nextStepBlocked?: boo
       skillId={42}
       skillName={SKILL_NAME}
       stepName="Design Decisions"
-      agentRuns={[]}
+      conversationRuns={[]}
       reviewMode={false}
       isLastStep={false}
       nextStepBlocked={nextStepBlocked}
@@ -142,7 +142,7 @@ describe("DecisionsStepComplete — disabled-steps refresh after decisions save"
       <DecisionsStepComplete
         skillName={undefined}
         stepName="Design Decisions"
-        agentRuns={[]}
+        conversationRuns={[]}
         reviewMode={false}
         isLastStep={false}
         nextStepBlocked={true}

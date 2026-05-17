@@ -29,11 +29,15 @@ mod tests {
 
     #[test]
     fn test_detect_furthest_step_no_skill_md() {
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         // Create workspace dir but no SKILL.md
-        std::fs::create_dir_all(tmp.path().join(SLUG).join("my-skill")).unwrap();
+        std::fs::create_dir_all(crate::skill_paths::resolve_skill_dir(
+            skills_tmp.path(),
+            SLUG,
+            "my-skill",
+        ))
+        .unwrap();
 
         let step = detect_furthest_step(SLUG, "my-skill", skills_path);
         assert_eq!(step, None);
@@ -41,12 +45,12 @@ mod tests {
 
     #[test]
     fn test_detect_furthest_step_with_skill_md() {
-        let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
 
         // Create SKILL.md in skills_path
-        let skill_output = skills_tmp.path().join(SLUG).join("my-skill");
+        let skill_output =
+            crate::skill_paths::resolve_skill_dir(skills_tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&skill_output).unwrap();
         std::fs::write(skill_output.join("SKILL.md"), "# Skill").unwrap();
 
@@ -65,7 +69,7 @@ mod tests {
     #[test]
     fn test_has_skill_output_with_skill_md() {
         let tmp = tempfile::tempdir().unwrap();
-        let output_dir = tmp.path().join(SLUG).join("my-skill");
+        let output_dir = crate::skill_paths::resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(&output_dir).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
@@ -79,7 +83,7 @@ mod tests {
     #[test]
     fn test_has_skill_output_with_references() {
         let tmp = tempfile::tempdir().unwrap();
-        let output_dir = tmp.path().join(SLUG).join("my-skill");
+        let output_dir = crate::skill_paths::resolve_skill_dir(tmp.path(), SLUG, "my-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
 
         assert!(has_skill_output(
@@ -92,7 +96,12 @@ mod tests {
     #[test]
     fn test_has_skill_output_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(tmp.path().join(SLUG).join("my-skill")).unwrap();
+        std::fs::create_dir_all(crate::skill_paths::resolve_skill_dir(
+            tmp.path(),
+            SLUG,
+            "my-skill",
+        ))
+        .unwrap();
 
         assert!(!has_skill_output(
             SLUG,

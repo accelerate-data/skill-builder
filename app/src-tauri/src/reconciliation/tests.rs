@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use super::*;
 use crate::commands::test_utils::create_test_db;
 use crate::commands::workflow::get_step_output_files;

@@ -89,16 +89,6 @@ pub fn skill_library_key(plugin_slug: &str, skill_name: &str) -> String {
     format!("skill-builder:{plugin_slug}:{skill_name}")
 }
 
-fn dedupe_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
-    let mut deduped = Vec::new();
-    for path in paths {
-        if !deduped.iter().any(|existing| existing == &path) {
-            deduped.push(path);
-        }
-    }
-    deduped
-}
-
 /// Resolve the system temp directory used for throwaway runtime work.
 ///
 /// Resolution order:
@@ -161,27 +151,12 @@ pub fn resolve_eval_dir(skills_root: &Path, plugin_slug: &str, skill_name: &str)
     )
 }
 
-pub fn skill_dir_candidates(
-    skills_root: &Path,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Vec<PathBuf> {
-    dedupe_paths([
-        resolve_skill_dir(skills_root, plugin_slug, skill_name),
-        skills_root.join(plugin_slug).join(skill_name),
-        skills_root.join(skill_name),
-    ])
-}
-
 pub fn resolve_existing_skill_dir(
     skills_root: &Path,
     plugin_slug: &str,
     skill_name: &str,
 ) -> PathBuf {
-    skill_dir_candidates(skills_root, plugin_slug, skill_name)
-        .into_iter()
-        .find(|path| path.exists())
-        .unwrap_or_else(|| resolve_skill_dir(skills_root, plugin_slug, skill_name))
+    resolve_skill_dir(skills_root, plugin_slug, skill_name)
 }
 
 /// Check that a skill has published content (SKILL.md or references/ directory).
@@ -224,11 +199,8 @@ pub fn ensure_nested_skill_dir(
     Ok(dir)
 }
 
-/// Enumerate all skill locations under the skills root directory.
-///
-/// Primary scan: `skills_root/{slug}/skills/{name}/` (canonical plugin layout).
-/// Fallbacks: `skills_root/{slug}/{name}/` (legacy nested) and `skills_root/{name}/` (legacy flat).
-/// Deduplicates by (plugin_slug, skill_name).
+/// Enumerate all skill locations under the skills root directory using the
+/// canonical plugin layout: `skills_root/{slug}/skills/{name}/`.
 pub fn enumerate_skill_locations(skills_root: &Path) -> Result<Vec<SkillLocation>, String> {
     if !skills_root.exists() {
         return Ok(vec![]);
@@ -286,118 +258,8 @@ pub fn enumerate_skill_locations(skills_root: &Path) -> Result<Vec<SkillLocation
             }
         }
 
-        // Legacy nested: root/{slug}/{name}/
-        if let Ok(children) = fs::read_dir(&path) {
-            for skill_entry in children.flatten() {
-                let skill_path = skill_entry.path();
-                if !skill_path.is_dir() {
-                    continue;
-                }
-                let skill_name = skill_entry.file_name().to_string_lossy().to_string();
-                if skill_name.starts_with('.')
-                    || skill_name == "skills"
-                    || !is_skill_dir(&skill_path)
-                {
-                    continue;
-                }
-                let key = (name.clone(), skill_name.clone());
-                if seen.insert(key) {
-                    discovered.push(SkillLocation {
-                        plugin_slug: name.clone(),
-                        plugin_display_name: plugin_display_name.clone(),
-                        is_default_plugin: is_default,
-                        skill_name,
-                        dir: skill_path,
-                    });
-                }
-            }
-        }
-
         if found_canonical_skill {
             continue;
-        }
-
-        // Legacy flat: root/{name}/ with SKILL.md directly inside.
-        if is_skill_dir(&path) {
-            let key = (DEFAULT_PLUGIN_SLUG.to_string(), name.clone());
-            if seen.insert(key) {
-                discovered.push(SkillLocation {
-                    plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
-                    plugin_display_name: DEFAULT_PLUGIN_DISPLAY_NAME.to_string(),
-                    is_default_plugin: true,
-                    skill_name: name,
-                    dir: path,
-                });
-            }
-        }
-    }
-
-    discovered.sort_by(|a, b| {
-        a.plugin_slug
-            .cmp(&b.plugin_slug)
-            .then_with(|| a.skill_name.cmp(&b.skill_name))
-    });
-    Ok(discovered)
-}
-
-/// Enumerate skills using the flat and nested layouts (for migration).
-/// Scans `skills_root/{name}/` (legacy flat) and `skills_root/{slug}/{name}/` (nested).
-#[allow(dead_code)]
-pub fn enumerate_skill_locations_legacy(skills_root: &Path) -> Result<Vec<SkillLocation>, String> {
-    if !skills_root.exists() {
-        return Ok(vec![]);
-    }
-
-    let mut discovered = Vec::new();
-    for entry in fs::read_dir(skills_root)
-        .map_err(|e| format!("Failed to read '{}': {}", skills_root.display(), e))?
-    {
-        let entry = entry
-            .map_err(|e| format!("Failed to read entry in '{}': {}", skills_root.display(), e))?;
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || name == "plugins" {
-            continue;
-        }
-
-        if is_skill_dir(&path) {
-            discovered.push(SkillLocation {
-                plugin_slug: DEFAULT_PLUGIN_SLUG.to_string(),
-                plugin_display_name: DEFAULT_PLUGIN_DISPLAY_NAME.to_string(),
-                is_default_plugin: true,
-                skill_name: name,
-                dir: path,
-            });
-            continue;
-        }
-
-        for child in fs::read_dir(&path).map_err(|e| {
-            format!(
-                "Failed to read plugin directory '{}': {}",
-                path.display(),
-                e
-            )
-        })? {
-            let child = child
-                .map_err(|e| format!("Failed to read entry in '{}': {}", path.display(), e))?;
-            let child_path = child.path();
-            if !child_path.is_dir() {
-                continue;
-            }
-            let skill_name = child.file_name().to_string_lossy().to_string();
-            if skill_name.starts_with('.') || !is_skill_dir(&child_path) {
-                continue;
-            }
-            discovered.push(SkillLocation {
-                plugin_slug: name.clone(),
-                plugin_display_name: plugin_display_name(&name),
-                is_default_plugin: false,
-                skill_name,
-                dir: child_path,
-            });
         }
     }
 
@@ -606,22 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_discovers_legacy_plugin_layout() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        let legacy_plugin_skill = tmp.path().join("analytics").join("weekly-report");
-        fs::create_dir_all(&legacy_plugin_skill).unwrap();
-        fs::write(legacy_plugin_skill.join("SKILL.md"), "# plugin").unwrap();
-
-        let locations = enumerate_skill_locations(tmp.path()).unwrap();
-        assert_eq!(locations.len(), 1);
-        assert_eq!(locations[0].plugin_slug, "analytics");
-        assert_eq!(locations[0].skill_name, "weekly-report");
-        assert_eq!(locations[0].dir, legacy_plugin_skill);
-    }
-
-    #[test]
-    fn enumerate_discovers_new_and_legacy_layouts_simultaneously() {
+    fn enumerate_ignores_legacy_flat_and_nested_layouts() {
         let tmp = tempfile::tempdir().unwrap();
 
         // Legacy flat: root/{name}/SKILL.md
@@ -644,29 +491,10 @@ mod tests {
         fs::write(old_plugin_skill.join("SKILL.md"), "# old plugin").unwrap();
 
         let locations = enumerate_skill_locations(tmp.path()).unwrap();
-        assert_eq!(locations.len(), 3);
-        assert_eq!(locations[0].plugin_slug, "analytics");
-        assert_eq!(locations[0].skill_name, "weekly-report");
-        assert_eq!(locations[1].plugin_slug, DEFAULT_PLUGIN_SLUG);
-        assert_eq!(locations[1].skill_name, "legacy-skill");
-        assert_eq!(locations[2].plugin_slug, "reports");
-        assert_eq!(locations[2].skill_name, "weekly-summary");
-    }
-
-    #[test]
-    fn enumerate_legacy_only_scans_flat_and_nested() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        // Nested layout
-        let nested = tmp.path().join("analytics").join("report");
-        fs::create_dir_all(&nested).unwrap();
-        fs::write(nested.join("SKILL.md"), "# nested").unwrap();
-
-        let locations = enumerate_skill_locations_legacy(tmp.path()).unwrap();
         assert_eq!(locations.len(), 1);
         assert_eq!(locations[0].plugin_slug, "analytics");
-        assert_eq!(locations[0].skill_name, "report");
-        assert_eq!(locations[0].dir, nested);
+        assert_eq!(locations[0].skill_name, "weekly-report");
+        assert_eq!(locations[0].dir, plugin_skill);
     }
 
     #[test]

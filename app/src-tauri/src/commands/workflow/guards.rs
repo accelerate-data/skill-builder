@@ -26,16 +26,6 @@ pub(crate) fn check_decisions_guard_db(conn: &rusqlite::Connection, skill_id: &s
     }
 }
 
-/// Generate a unique agent ID from skill name, label, and timestamp.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn make_agent_id(skill_name: &str, label: &str) -> String {
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    format!("{}-{}-{}", skill_name, label, ts)
-}
-
 /// Convert a step config name to a lowercase-hyphenated runtime label.
 pub(crate) fn workflow_step_runtime_label(step: &crate::types::StepConfig) -> String {
     step.name.to_ascii_lowercase().replace(' ', "-")

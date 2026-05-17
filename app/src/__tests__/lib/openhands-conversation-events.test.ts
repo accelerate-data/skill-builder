@@ -76,7 +76,6 @@ describe("OpenHands conversation event helpers", () => {
       type: "conversation_event",
       runtime: "openhands",
       conversation_id: "conv-child",
-      agent_id: "agent-child",
       event_class: "ActionEvent",
       parent_tool_call_id: "call-parent-1",
       timestamp: 1_778_000_090,
@@ -102,7 +101,6 @@ describe("OpenHands conversation event helpers", () => {
       type: "conversation_state",
       runtime: "openhands",
       conversation_id: "conv-result",
-      agent_id: "agent-result",
       status: "completed",
       result_text: '```json\n{"verdict":"mixed"}\n```',
       timestamp: 1_778_000_100,
@@ -123,7 +121,6 @@ describe("OpenHands conversation event helpers", () => {
       type: "conversation_event",
       runtime: "openhands",
       conversation_id: "conv-repeat",
-      agent_id: "agent-repeat",
       event_class: "ActionEvent",
       timestamp: 1_778_000_200,
       event: {

@@ -20,7 +20,6 @@ This doc is the canonical source for:
 - runtime layers and responsibilities
 - core wrapper APIs at each layer
 - raw conversation lifecycle primitives
-- interactive persistent-surface turn ownership
 - raw side-channel inspection primitives
 - persistent versus throwaway session behavior
 - storage roots and canonical path ownership
@@ -29,7 +28,7 @@ This doc is the canonical source for:
 
 Companion sequence pages:
 
-- [Workflow Sequence](./workflow-sequence.md)
+- [Selected-Skill Conversation Sequence](./selected-skill-conversation-sequence.md)
 - [OpenHands Conversation Model](./openhands-conversation-model.md)
 
 ## Design Scope
@@ -60,8 +59,8 @@ Companion sequence pages:
 | Throwaway runs declare tool-access mode. | The backend must know whether a throwaway run is read-only or write-capable before selecting allowed tools. |
 | Conversations are deleted when their owning skill is deleted or after a successful fork. | Conversation history is durable during active use, but the app cleans up persisted conversations when they are no longer referenced: deleting a skill removes all its bound conversations, and forking a conversation deletes the source after the fork succeeds. |
 | Raw conversation APIs mirror the OpenHands send-then-run model. | Sending a user message and starting agent processing are separate operations. That separation is required for send-while-running behavior. |
-| Product surfaces own logical turn boundaries above the raw OpenHands conversation stream. | OpenHands persists one ordered conversation event stream, but it does not provide a product-level per-user turn identifier that a future conversation UI can render directly. Skill Builder must start a new logical turn every time the user sends a message and group subsequent tool/output events under that turn until the next user send. |
-| Persistent interactive surfaces use separate outbound command and inbound event lanes. | User intent should be recorded immediately and independently from runtime event delivery. A future conversation UI should never depend on the live event stream to invent turn boundaries or decide whether a send was accepted. |
+| Persistent interactive surfaces share one canonical conversation stream. | OpenHands persists one ordered conversation event stream per conversation, and Skill Builder renders that stream directly instead of layering a second turn-owned transcript model above it. |
+| User sends and runtime events remain separate concerns. | User intent should be recorded immediately and independently from runtime event delivery, but both become part of the same canonical conversation stream. |
 | `ask_agent` starts at the raw OpenHands layer only. | It is a non-authoritative side-channel inspection capability. How product surfaces use it is intentionally deferred. |
 | App data owns shared OpenHands persistence roots. | Conversations, bash events, logs, DB state, and app-local runtime files belong to app data rather than the user-configured skills tree. |
 | Steps 0-2 are DB-authoritative; step 3 is file-output-authoritative. | Clarifications and decisions are canonical typed records in SQLite; generated skill files remain canonical on disk. |
@@ -107,14 +106,14 @@ Core APIs:
 | `shutdown_openhands_server()` | Shut down the Agent Server process during app-exit lifecycle handling. |
 | `start_openhands_session(app, config, saved_conversation_id)` | Resume or create a persistent conversation and return restored events for hydration. |
 | `send_message_to_openhands_conversation(config, conversation_id, prompt)` | Append a user message to an existing conversation without starting a new local run task. |
-| `run_openhands_conversation(app, agent_id, config, conversation_id)` | Start or resume active processing for a conversation and own the live socket/task for that run. |
+| `run_openhands_conversation(app, config, conversation_id, prompt_delivery)` | Start or resume active processing for a conversation and own the live socket/task for that run. |
 | `ask_openhands_agent(config, conversation_id, question)` | Ask the agent a non-authoritative question about the current conversation state without changing product-layer runtime ownership. |
 | `pause_openhands_conversation(config, conversation_id)` | Pause active execution without deleting the conversation. |
 | `delete_openhands_conversation(config, conversation_id)` | Delete a conversation from the OpenHands Agent Server. Used when deleting a skill or after a successful fork. |
 | `fork_openhands_conversation(app, config, source_conversation_id)` | Fork an existing paused conversation into a new conversation ID and return restored events for the fork. |
 
 Raw OpenHands wrappers only handle server, runtime, and conversation concerns.
-They do not take `agent_id`. The raw layer exposes one pause API,
+They take only conversation-centric runtime inputs. The raw layer exposes one pause API,
 `pause_openhands_conversation(config, conversation_id)`, and one delete API,
 `delete_openhands_conversation(config, conversation_id)`. Server shutdown is
 also a raw-layer API, exposed as `shutdown_openhands_server()`, so app-exit
@@ -210,17 +209,17 @@ behavior above the raw conversation/session APIs.
 
 This layer owns:
 
-- app-owned `agent_id`
+- app-tracked conversation run ownership
 - local event routing
 - cancel/task registries
 - timeout cleanup
-- tracked run ownership and tracked throwaway send-and-wait wrappers
+- tracked send and tracked throwaway send-and-wait wrappers
 
 Important rules:
 
-- `agent_id` enters only at this layer.
-- forking a conversation does not create a new `agent_id`.
-- the next live send/run on the fork creates the new tracked `agent_id`.
+- `conversation_id` remains the canonical run identity at this layer.
+- forking a conversation creates a new `conversation_id`.
+- the next live send/run on the fork rebinds local run ownership to that new `conversation_id`.
 - tracked runs stop through pause semantics; this layer does not own separate
   abort/terminate runtime concepts in the target model.
 - a live conversation has one tracked local runner at a time.
@@ -253,7 +252,7 @@ This is the layer that decides whether a surface is:
 - a throwaway validation/evaluation/scope-review run
 - a typed workflow step that must materialize app-owned outputs
 
-This layer also owns logical turn boundaries for future persistent chat-style surfaces. One selected-skill conversation should stay bound to one live run at a time, and every user send should start a new product turn. The frontend should group later tool/output events under that turn until the next user send starts the next turn.
+This layer owns persistent selected-skill conversation behavior above the raw OpenHands stream. One selected-skill conversation stays bound to one live run at a time, and later product surfaces render the shared canonical conversation stream directly rather than inventing a second logical-turn transcript model.
 
 Persistent interactive surfaces also own two distinct product lanes:
 
@@ -361,7 +360,7 @@ Higher layers should prefer the highest wrapper that matches their intent:
   revision
 - workflow reset/redo should pause the active conversation, reset local product
   state, fork the paused conversation, delete the source conversation, rebind
-  the skill to the fork, and only create a new `agent_id` when the next live
+  the skill to the fork, and only create a new live run when the next
   send/run begins
 - deleting a skill should pause all bound conversations, then delete them from
   the OpenHands server before removing local bookkeeping and filesystem state
@@ -372,7 +371,7 @@ Higher layers should prefer the highest wrapper that matches their intent:
 - direct callers of `agents/openhands_server` should be implementing wrapper
   behavior, not product flows; that module owns only runtime/config/session/
   conversation concerns
-- any wrapper that needs `agent_id`, local listener wiring, cancel signaling,
+- any wrapper that needs local listener wiring, cancel signaling,
   task-handle tracking, or timeout cleanup should live above the raw
   `agents/openhands_server` layer
 
@@ -498,9 +497,8 @@ Important contract properties:
 - persistent conversation ids are stored in `skill_conversations`
 - a completed turn does not destroy the conversation
 - later turns reuse the same session when the saved conversation id is valid
-- a fork creates a new `conversation_id`, deletes the source conversation, and
-  does not itself create a new `agent_id`
-- the next live send/run on the fork creates the new tracked `agent_id`
+- a fork creates a new `conversation_id` and deletes the source conversation
+- the next live send/run on the fork reuses that new canonical `conversation_id`
 
 ## Throwaway Runs
 

@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use super::crud::{
     cleanup_openhands_conversations_with, create_skill_db_records_inner,
     create_skill_filesystem_inner, create_skill_inner, delete_skill_db_records_inner,

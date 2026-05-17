@@ -1,5 +1,5 @@
 import type { ClarificationsFile } from "@/lib/clarifications-types";
-import type { AgentRunRecord } from "@/lib/types";
+import type { ConversationRunRecord } from "@/lib/types";
 
 /** Props shared by all step completion views. */
 export interface StepCompleteBaseProps {
@@ -12,7 +12,7 @@ export interface StepCompleteBaseProps {
   onClose?: () => void;
   onEval?: () => void;
   onResetStep?: () => void;
-  agentRuns: AgentRunRecord[];
+  conversationRuns: ConversationRunRecord[];
   duration?: number;
 }
 

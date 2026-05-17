@@ -793,7 +793,7 @@ pub async fn run_answer_evaluator(
     Ok(conversation_id)
 }
 
-/// Cancel a running workflow step request by agent_id.
+/// Cancel a running workflow step request by conversation_id.
 ///
 /// Cancels an active workflow request. OpenHands requests are killed
 /// through the direct Rust runner registry.

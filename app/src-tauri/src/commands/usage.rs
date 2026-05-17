@@ -1,6 +1,7 @@
 use crate::db::Db;
 use crate::types::{
-    AgentRunRecord, UsageByDay, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord,
+    ConversationRunRecord, UsageByDay, UsageByModel, UsageByStep, UsageSummary,
+    WorkflowSessionRecord,
 };
 
 #[tauri::command]
@@ -158,20 +159,20 @@ pub fn get_recent_workflow_sessions(
 }
 
 #[tauri::command]
-pub fn get_agent_runs(
+pub fn get_conversation_runs(
     db: tauri::State<'_, Db>,
     hide_cancelled: bool,
     start_date: Option<String>,
     skill_name: Option<String>,
     model_filter: Option<String>,
     limit: usize,
-) -> Result<Vec<AgentRunRecord>, String> {
-    log::info!("[get_agent_runs] hide_cancelled={} start_date={:?} skill_name={:?} model_filter={:?} limit={}", hide_cancelled, start_date, skill_name, model_filter, limit);
+) -> Result<Vec<ConversationRunRecord>, String> {
+    log::info!("[get_conversation_runs] hide_cancelled={} start_date={:?} skill_name={:?} model_filter={:?} limit={}", hide_cancelled, start_date, skill_name, model_filter, limit);
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_agent_runs] Failed to acquire DB lock: {}", e);
+        log::error!("[get_conversation_runs] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::get_agent_runs(
+    crate::db::get_conversation_runs(
         &conn,
         hide_cancelled,
         start_date.as_deref(),
@@ -182,22 +183,25 @@ pub fn get_agent_runs(
 }
 
 #[tauri::command]
-pub fn get_step_agent_runs(
+pub fn get_step_conversation_runs(
     db: tauri::State<'_, Db>,
     skill_id: i64,
     step_id: i32,
-) -> Result<Vec<AgentRunRecord>, String> {
+) -> Result<Vec<ConversationRunRecord>, String> {
     log::info!(
-        "[get_step_agent_runs] skill_id={} step={} step_id={}",
+        "[get_step_conversation_runs] skill_id={} step={} step_id={}",
         skill_id,
         crate::db::step_name(step_id),
         step_id
     );
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[get_step_agent_runs] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[get_step_conversation_runs] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
-    crate::db::get_step_agent_runs_by_skill_id(&conn, skill_id, step_id)
+    crate::db::get_step_conversation_runs_by_skill_id(&conn, skill_id, step_id)
 }
 
 #[cfg(test)]
@@ -208,18 +212,18 @@ mod tests {
     /// Creates the skill master and workflow_session rows as side effects.
     fn insert_session_run(
         conn: &rusqlite::Connection,
-        agent_id: &str,
+        conversation_id: &str,
         skill_name: &str,
         step_id: i32,
         status: &str,
         total_cost: f64,
         workflow_session_id: &str,
     ) {
-        // Ensure skill master row exists (required by persist_agent_run FK)
+        // Ensure skill master row exists (required by persist_conversation_run FK)
         crate::db::upsert_skill(conn, skill_name, "skill-builder", "test purpose").unwrap();
-        crate::db::persist_agent_run(
+        crate::db::persist_conversation_run(
             conn,
-            agent_id,
+            conversation_id,
             skill_name,
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             step_id,
@@ -245,15 +249,16 @@ mod tests {
     /// Insert an agent_run without a session (shows in get_recent_runs only).
     fn insert_run(
         conn: &rusqlite::Connection,
-        agent_id: &str,
+        conversation_id: &str,
         skill_name: &str,
         step_id: i32,
         status: &str,
         total_cost: f64,
     ) {
-        crate::db::persist_agent_run(
+        crate::db::upsert_skill(conn, skill_name, "skill-builder", "test purpose").unwrap();
+        crate::db::persist_conversation_run(
             conn,
-            agent_id,
+            conversation_id,
             skill_name,
             crate::skill_paths::DEFAULT_PLUGIN_SLUG,
             step_id,
@@ -283,7 +288,7 @@ mod tests {
 
         let runs = crate::db::get_recent_runs(&conn, 10).unwrap();
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].agent_id, "run-1");
+        assert_eq!(runs[0].conversation_id, "run-1");
         assert_eq!(runs[0].skill_name, "my-skill");
         assert_eq!(runs[0].step_id, 0);
         assert!((runs[0].total_cost - 0.05).abs() < 0.001);
@@ -300,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_usage_clears_agent_runs() {
+    fn test_reset_usage_clears_conversation_runs() {
         let conn = create_test_db_for_tests();
         insert_run(&conn, "run-1", "skill-a", 0, "completed", 0.05);
         insert_run(&conn, "run-2", "skill-b", 0, "completed", 0.10);
@@ -374,7 +379,7 @@ mod tests {
         let conn = create_test_db_for_tests();
         crate::db::upsert_skill(&conn, "skill-a", "skill-builder", "test").unwrap();
         // Insert two model-a runs and one model-b run.
-        crate::db::persist_agent_run(
+        crate::db::persist_conversation_run(
             &conn,
             "run-1",
             "skill-a",
@@ -397,7 +402,7 @@ mod tests {
             Some("ws-1"),
         )
         .unwrap();
-        crate::db::persist_agent_run(
+        crate::db::persist_conversation_run(
             &conn,
             "run-2",
             "skill-a",
@@ -420,7 +425,7 @@ mod tests {
             Some("ws-2"),
         )
         .unwrap();
-        crate::db::persist_agent_run(
+        crate::db::persist_conversation_run(
             &conn,
             "run-3",
             "skill-a",
@@ -473,37 +478,37 @@ mod tests {
     }
 
     #[test]
-    fn test_get_session_agent_runs_filters_by_session() {
+    fn test_get_session_conversation_runs_filters_by_session() {
         let conn = create_test_db_for_tests();
         insert_session_run(&conn, "run-1", "skill-a", 0, "completed", 0.05, "ws-sess-1");
         insert_session_run(&conn, "run-2", "skill-a", 0, "completed", 0.05, "ws-sess-2");
 
-        let runs = crate::db::get_session_agent_runs(&conn, "ws-sess-1").unwrap();
+        let runs = crate::db::get_session_conversation_runs(&conn, "ws-sess-1").unwrap();
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].agent_id, "run-1");
+        assert_eq!(runs[0].conversation_id, "run-1");
     }
 
     #[test]
-    fn test_get_step_agent_runs_filters_by_skill_and_step() {
+    fn test_get_step_conversation_runs_filters_by_skill_and_step() {
         let conn = create_test_db_for_tests();
-        // get_step_agent_runs queries agent_runs by workflow_run_id (not skill_name directly).
+        // get_step_conversation_runs queries conversation_runs by workflow_run_id (not skill_name directly).
         // We must create a workflow_run row for "skill-a" and backfill workflow_run_id.
         crate::db::save_workflow_run(&conn, "skill-a", 0, "in_progress", "test").unwrap();
         insert_session_run(&conn, "run-1", "skill-a", 0, "completed", 0.05, "ws-1");
         insert_session_run(&conn, "run-2", "skill-a", 2, "completed", 0.10, "ws-2");
-        // Backfill workflow_run_id on agent_runs (mirrors the run_fk_columns_migration backfill)
+        // Backfill workflow_run_id on conversation_runs (mirrors the run_fk_columns_migration backfill)
         conn.execute_batch(
-            "UPDATE agent_runs
+            "UPDATE conversation_runs
              SET workflow_run_id = (
-                 SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = agent_runs.skill_name
+                 SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = conversation_runs.skill_name
              )
              WHERE workflow_run_id IS NULL;",
         )
         .unwrap();
 
-        let runs = crate::db::get_step_agent_runs(&conn, "skill-a", 0).unwrap();
+        let runs = crate::db::get_step_conversation_runs(&conn, "skill-a", 0).unwrap();
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].agent_id, "run-1");
+        assert_eq!(runs[0].conversation_id, "run-1");
     }
 
     #[test]
@@ -524,7 +529,7 @@ mod tests {
         insert_run(&conn, "run-1", "skill-a", 0, "completed", 0.10);
 
         // Attempt to overwrite with shutdown status (should be a no-op)
-        crate::db::persist_agent_run(
+        crate::db::persist_conversation_run(
             &conn,
             "run-1",
             "skill-a",

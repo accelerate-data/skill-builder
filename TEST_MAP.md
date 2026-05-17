@@ -134,10 +134,10 @@ format changes covered across producer, fixture, and parser layers.
 
 | Tag | Spec files |
 |---|---|
-| `@dashboard` | `app/e2e/dashboard/dashboard-smoke.spec.ts`, `app/e2e/dashboard/reconciliation.spec.ts`, `app/e2e/dashboard/skill-history.spec.ts`, `app/e2e/dashboard/duplicate-skill-name.spec.ts`, `app/e2e/usage/usage-smoke.spec.ts` |
+| `@dashboard` | `app/e2e/dashboard/dashboard-smoke.spec.ts`, `app/e2e/dashboard/skill-history.spec.ts`, `app/e2e/dashboard/duplicate-skill-name.spec.ts`, `app/e2e/usage/usage-smoke.spec.ts` |
 | `@setup` | `app/e2e/setup/setup-screen.spec.ts`, `app/e2e/setup/startup-error.spec.ts` |
 | `@settings` | `app/e2e/settings/settings.spec.ts`, `app/e2e/settings/github-oauth.spec.ts`, `app/e2e/settings/workspace-reconfigure.spec.ts`, `app/e2e/settings/documents.spec.ts` |
-| `@workflow` | `app/e2e/workflow/workflow-smoke.spec.ts`, `app/e2e/workflow/workflow-gate.spec.ts`, `app/e2e/workflow/display-items.spec.ts`, `app/e2e/workflow/file-viewer.spec.ts` |
+| `@workflow` | `app/e2e/workflow/workflow-smoke.spec.ts`, `app/e2e/workflow/workflow-gate.spec.ts`, `app/e2e/workflow/file-viewer.spec.ts` |
 | `@skills` | `app/e2e/skills-library/skills-library.spec.ts`, `app/e2e/github-import/github-import.spec.ts` |
 | `@evals` | `app/e2e/evals/evals.spec.ts` Mocked Performance-mode browser coverage inside Eval Workbench |
 

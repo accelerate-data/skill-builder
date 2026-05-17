@@ -209,7 +209,7 @@ pub fn delete_workflow_run(
         .ok_or_else(|| format!("Workflow run not found for skill '{}'", skill_name))?;
 
     // Delete workflow-state child rows by FK columns only.
-    // Usage history tables (agent_runs/workflow_sessions) are intentionally retained.
+    // Usage history tables (conversation_runs/workflow_sessions) are intentionally retained.
     conn.execute(
         "DELETE FROM workflow_artifacts WHERE workflow_run_id = ?1",
         rusqlite::params![wr_id],
@@ -469,11 +469,11 @@ pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
     for (session_id, skill_name, pid) in orphans {
         if !check_pid_alive(pid) {
             // Process is dead — close the session with the best available timestamp.
-            // Use the latest agent_runs completed_at for this session, or fall back to started_at.
+            // Use the latest conversation_runs completed_at for this session, or fall back to started_at.
             let fallback_time: Option<String> = conn
                 .query_row(
                     "SELECT COALESCE(
-                        (SELECT MAX(completed_at) FROM agent_runs WHERE session_id = ?1 AND completed_at IS NOT NULL),
+                        (SELECT MAX(completed_at) FROM conversation_runs WHERE session_id = ?1 AND completed_at IS NOT NULL),
                         (SELECT started_at FROM workflow_sessions WHERE session_id = ?1)
                     )",
                     [&session_id],

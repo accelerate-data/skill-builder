@@ -18,7 +18,7 @@ function fileLabel(f: string): string {
 export function FileViewerStepComplete(props: Props) {
   const {
     stepName, fileContents, resolvedFiles, selectedFile, setSelectedFile,
-    agentRuns, reviewMode, duration,
+    conversationRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
   } = props;
 
@@ -29,8 +29,8 @@ export function FileViewerStepComplete(props: Props) {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
-      {reviewMode && agentRuns.length > 0 && (
-        <div className="shrink-0"><AgentStatsBar runs={agentRuns} /></div>
+      {reviewMode && conversationRuns.length > 0 && (
+        <div className="shrink-0"><AgentStatsBar runs={conversationRuns} /></div>
       )}
       {!reviewMode && (
         <div className="flex items-center gap-3 shrink-0">

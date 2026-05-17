@@ -32,7 +32,7 @@ describe("usage queries", () => {
     mockInvokeCommands({
       get_usage_summary: { total_cost: 1, total_runs: 2, avg_cost_per_run: 0.5 },
       get_recent_workflow_sessions: [],
-      get_agent_runs: [],
+      get_conversation_runs: [],
       get_usage_by_step: [],
       get_usage_by_model: [],
       get_usage_by_day: [],

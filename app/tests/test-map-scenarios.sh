@@ -114,9 +114,7 @@ assert_in_test_map  "dashboard smoke spec listed"     "dashboard-smoke.spec.ts"
 assert_in_test_map  "settings spec listed"            "settings.spec.ts"
 assert_in_test_map  "workflow smoke spec listed"      "workflow-smoke.spec.ts"
 assert_in_test_map  "workflow gate spec listed"       "workflow-gate.spec.ts"
-assert_in_test_map  "refine spec listed"              "refine.spec.ts"
 assert_in_test_map  "evals spec listed"               "evals.spec.ts"
-assert_in_test_map  "display items spec listed"       "display-items.spec.ts"
 
 # ===== Summary =====
 

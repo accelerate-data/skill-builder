@@ -1,8 +1,6 @@
 use tauri::Emitter;
 
-use super::event_types::{
-    AgentEvent, AgentExitPayload, AgentInitError, AgentShutdownPayload, RuntimeRunSummary,
-};
+use super::event_types::{AgentEvent, AgentExitPayload, RuntimeRunSummary};
 use super::run_persist::persist_run_summary;
 #[derive(Debug)]
 pub(super) enum RuntimeMessageAction {
@@ -63,14 +61,6 @@ pub(super) fn route_runtime_message(
     {
         log::debug!(
             "[event:agent-message:{}] skipping sdk_stderr diagnostic",
-            conversation_id
-        );
-        return None;
-    }
-
-    if msg_type == "display_item" {
-        log::debug!(
-            "[event:agent-message:{}] skipping legacy display_item payload",
             conversation_id
         );
         return None;
@@ -227,11 +217,6 @@ pub fn handle_runtime_message(app_handle: &tauri::AppHandle, conversation_id: &s
     }
 }
 
-#[allow(dead_code)]
-pub fn handle_runtime_exit(app_handle: &tauri::AppHandle, conversation_id: &str, success: bool) {
-    handle_runtime_exit_with_detail(app_handle, conversation_id, success, None);
-}
-
 pub fn handle_runtime_exit_with_detail(
     app_handle: &tauri::AppHandle,
     conversation_id: &str,
@@ -252,80 +237,6 @@ pub fn handle_runtime_exit_with_detail(
             e
         );
     }
-}
-
-#[allow(dead_code)]
-pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, conversation_id: &str) {
-    log::info!("[event:agent-shutdown:{}]", conversation_id);
-    let payload = AgentShutdownPayload {
-        conversation_id: conversation_id.to_string(),
-    };
-    if let Err(e) = app_handle.emit("agent-shutdown", &payload) {
-        log::warn!(
-            "Failed to emit agent-shutdown for {}: {}",
-            conversation_id,
-            e
-        );
-    }
-}
-
-/// Emit a structured runtime error event (e.g. authentication failure detected
-/// from agent output). Reuses the `agent-init-error` channel so the frontend's
-/// `RuntimeErrorDialog` shows an actionable fix hint.
-#[allow(dead_code)]
-pub fn emit_runtime_error(
-    app_handle: &tauri::AppHandle,
-    error_type: &str,
-    message: &str,
-    fix_hint: &str,
-) {
-    let payload = AgentInitError {
-        error_type: error_type.to_string(),
-        message: message.to_string(),
-        fix_hint: fix_hint.to_string(),
-    };
-    log::error!(
-        "Agent runtime error [{}]: {} | Fix: {}",
-        payload.error_type,
-        payload.message,
-        payload.fix_hint
-    );
-    if let Err(e) = app_handle.emit("agent-init-error", &payload) {
-        log::error!(
-            "Failed to emit agent-init-error [{}]: {}",
-            payload.error_type,
-            e
-        );
-    }
-}
-
-/// Check whether a run_result error subtype indicates an authentication failure.
-#[allow(dead_code)]
-pub fn is_authentication_error(msg: &serde_json::Value) -> bool {
-    if let Some(event) = msg.get("event") {
-        // Check resultSubtype field (set by message-processor)
-        if let Some(subtype) = event.get("resultSubtype").and_then(|s| s.as_str()) {
-            if subtype == "error_authentication" {
-                return true;
-            }
-        }
-        // Check resultErrors array for auth-related strings
-        if let Some(errors) = event.get("resultErrors").and_then(|e| e.as_array()) {
-            for err in errors {
-                if let Some(s) = err.as_str() {
-                    let lower = s.to_lowercase();
-                    if lower.contains("authentication failed")
-                        || lower.contains("invalid api key")
-                        || lower.contains("401 unauthorized")
-                        || lower.contains("status 401")
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
 }
 
 #[cfg(test)]
@@ -613,19 +524,6 @@ mod tests {
     }
 
     #[test]
-    fn route_runtime_message_skips_legacy_display_items() {
-        let message = serde_json::json!({
-            "type": "display_item",
-            "item": {
-                "id": "legacy-item-1",
-                "type": "output"
-            }
-        });
-
-        assert!(route_runtime_message("agent-6", message).is_none());
-    }
-
-    #[test]
     fn route_runtime_message_intercepts_run_result() {
         let message = serde_json::json!({
             "type": "agent_event",
@@ -677,64 +575,5 @@ mod tests {
         });
 
         assert!(route_runtime_message("agent-4", message).is_none());
-    }
-
-    // =========================================================================
-    // is_authentication_error (VU-531)
-    // =========================================================================
-
-    #[test]
-    fn is_authentication_error_detects_error_authentication_subtype() {
-        let msg = serde_json::json!({
-            "type": "agent_event",
-            "event": {
-                "type": "run_result",
-                "status": "error",
-                "resultSubtype": "error_authentication",
-                "resultErrors": ["Authentication failed — check your API key in Settings."]
-            }
-        });
-        assert!(is_authentication_error(&msg));
-    }
-
-    #[test]
-    fn is_authentication_error_detects_auth_string_in_errors() {
-        let msg = serde_json::json!({
-            "type": "agent_event",
-            "event": {
-                "type": "run_result",
-                "status": "error",
-                "resultSubtype": "error_during_execution",
-                "resultErrors": ["401 Unauthorized: invalid api key"]
-            }
-        });
-        assert!(is_authentication_error(&msg));
-    }
-
-    #[test]
-    fn is_authentication_error_returns_false_for_non_auth_errors() {
-        let msg = serde_json::json!({
-            "type": "agent_event",
-            "event": {
-                "type": "run_result",
-                "status": "error",
-                "resultSubtype": "error_max_turns",
-                "resultErrors": ["Agent reached max turns"]
-            }
-        });
-        assert!(!is_authentication_error(&msg));
-    }
-
-    #[test]
-    fn is_authentication_error_returns_false_for_success() {
-        let msg = serde_json::json!({
-            "type": "agent_event",
-            "event": {
-                "type": "run_result",
-                "status": "completed",
-                "resultSubtype": "success"
-            }
-        });
-        assert!(!is_authentication_error(&msg));
     }
 }

@@ -6,7 +6,7 @@ use std::path::Path;
 
 use super::deploy::copy_directory_recursive;
 use super::evaluation::get_step_output_files;
-use super::guards::{make_agent_id, workflow_step_runtime_label};
+use super::guards::workflow_step_runtime_label;
 use super::output_format::{
     answer_evaluator_output_format, extract_research_json_from_conversation_state,
     extract_workflow_json_from_conversation_state, materialize_answer_evaluation_output_value,
@@ -2862,14 +2862,6 @@ fn test_answer_evaluator_prompt_uses_standard_paths() {
 }
 
 #[test]
-fn test_make_agent_id() {
-    let id = make_agent_id("test-skill", "research");
-    assert!(id.starts_with("test-skill-research-"));
-    let parts: Vec<&str> = id.rsplitn(2, '-').collect();
-    assert!(parts[0].parse::<u128>().is_ok());
-}
-
-#[test]
 fn test_workflow_step_runtime_label_uses_step_name_slug() {
     let step = get_step_config(2).expect("step config");
     assert_eq!(workflow_step_runtime_label(&step), "confirm-decisions");
@@ -2882,11 +2874,10 @@ fn test_workflow_step_runtime_label_uses_step_name_slug() {
 fn test_delete_step_output_files_from_step_onwards() {
     // Steps 0-2 are DB-authoritative with no filesystem outputs.
     // Deleting from step 2 onwards should clean only step 3 (SKILL.md).
-    let workspace_tmp = tempfile::tempdir().unwrap();
     let skills_tmp = tempfile::tempdir().unwrap();
-    let workspace = workspace_tmp.path().to_str().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
     // Create step 3 output (SKILL.md)
@@ -2906,7 +2897,6 @@ fn test_delete_step_output_files_nonexistent_dir_is_ok() {
     // Should not panic on nonexistent directory
     let tmp = tempfile::tempdir().unwrap();
     let skills_path = tmp.path().to_str().unwrap();
-    let nonexistent = std::env::temp_dir().join("nonexistent");
     crate::cleanup::delete_step_output_files("no-skill", DEFAULT_PLUGIN_SLUG, 0, skills_path);
 }
 
@@ -2916,7 +2906,8 @@ fn test_delete_step_output_files_cleans_last_steps() {
     // Deleting from step 2 onwards should clean step 3 (SKILL.md) in skills_path.
     let skills_tmp = tempfile::tempdir().unwrap();
     let skills_path = skills_tmp.path().to_str().unwrap();
-    let skill_dir = skills_tmp.path().join(DEFAULT_PLUGIN_SLUG).join("my-skill");
+    let skill_dir =
+        crate::skill_paths::resolve_skill_dir(skills_tmp.path(), DEFAULT_PLUGIN_SLUG, "my-skill");
     std::fs::create_dir_all(&skill_dir).unwrap();
 
     // Create SKILL.md in skills_path (step 3 output)
@@ -3129,10 +3120,11 @@ fn test_reset_cleans_workspace_context_files() {
     let skills_path = skills_path_tmp.path().to_str().unwrap();
 
     // Step 3 output
-    let output_dir = skills_path_tmp
-        .path()
-        .join(DEFAULT_PLUGIN_SLUG)
-        .join("my-skill");
+    let output_dir = crate::skill_paths::resolve_skill_dir(
+        skills_path_tmp.path(),
+        DEFAULT_PLUGIN_SLUG,
+        "my-skill",
+    );
     std::fs::create_dir_all(&output_dir).unwrap();
     std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 

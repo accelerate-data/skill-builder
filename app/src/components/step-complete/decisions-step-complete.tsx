@@ -42,7 +42,7 @@ type Props = StepCompleteBaseProps & {
 
 export function DecisionsStepComplete(props: Props) {
   const {
-    stepName, skillId, agentRuns, reviewMode, duration,
+    stepName, skillId, conversationRuns, reviewMode, duration,
     isLastStep, nextStepBlocked, nextStepLabel, onNextStep, onClose, onEval, onResetStep,
   } = props;
 
@@ -79,14 +79,14 @@ export function DecisionsStepComplete(props: Props) {
 
   const decisionsContent = decisionsDtoToString(decisionsDto);
 
-  const dbDuration = agentRuns.length > 0
-    ? agentRuns.reduce((sum, r) => sum + r.duration_ms, 0)
+  const dbDuration = conversationRuns.length > 0
+    ? conversationRuns.reduce((sum, r) => sum + r.duration_ms, 0)
     : undefined;
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
-      {reviewMode && agentRuns.length > 0 && (
-        <div className="shrink-0"><AgentStatsBar runs={agentRuns} /></div>
+      {reviewMode && conversationRuns.length > 0 && (
+        <div className="shrink-0"><AgentStatsBar runs={conversationRuns} /></div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto pr-4">
         <DecisionsSummaryCard

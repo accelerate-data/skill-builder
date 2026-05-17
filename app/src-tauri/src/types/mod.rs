@@ -34,9 +34,7 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
-        assert!(settings.marketplace_url.is_none());
         assert!(settings.marketplace_registries.is_empty());
-        assert!(!settings.marketplace_initialized);
         assert!(settings.industry.is_none());
         assert!(settings.function_role.is_none());
         assert!(settings.dashboard_view_mode.is_none());
@@ -50,7 +48,6 @@ mod tests {
             github_user_login: Some("testuser".to_string()),
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),
-            marketplace_url: Some("https://github.com/my-org/skills".to_string()),
             marketplace_registries: vec![MarketplaceRegistry {
                 name: "Test".to_string(),
                 source_url: "https://github.com/owner/repo".to_string(),
@@ -67,10 +64,6 @@ mod tests {
             deserialized.skills_path.as_deref(),
             Some("/home/user/output")
         );
-        assert_eq!(
-            deserialized.marketplace_url.as_deref(),
-            Some("https://github.com/my-org/skills")
-        );
         assert_eq!(deserialized.marketplace_registries.len(), 1);
         assert_eq!(deserialized.marketplace_registries[0].name, "Test");
         assert_eq!(
@@ -78,7 +71,6 @@ mod tests {
             "https://github.com/owner/repo"
         );
         assert!(deserialized.marketplace_registries[0].enabled);
-        assert!(!deserialized.marketplace_initialized);
         assert_eq!(deserialized.industry.as_deref(), Some("Financial Services"));
         assert_eq!(
             deserialized.function_role.as_deref(),
@@ -99,9 +91,7 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
-        assert!(settings.marketplace_url.is_none());
         assert!(settings.marketplace_registries.is_empty());
-        assert!(!settings.marketplace_initialized);
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"verbose_logging":true,"extended_context":false,"splash_shown":false}"#;

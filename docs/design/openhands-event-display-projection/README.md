@@ -4,27 +4,27 @@ functional-specs: []
 
 # OpenHands Conversation Timeline
 
-> **Status:** Proposed rewrite for the conversation-events-first rendering model.
+> **Status:** Target state for the conversation-event rendering model.
 > **Runtime prerequisite:** See [../openhands-runtime-contract/README.md](../openhands-runtime-contract/README.md) for session lifecycle, normalized event ingress, and backend ownership of persisted conversation state.
 
 ## Overview
 
-Skill Builder now has a single production conversation UI model for active OpenHands sessions: a **top-to-bottom semantic timeline built directly from conversation events**.
+Skill Builder uses a single production conversation UI model for active OpenHands sessions: a top-to-bottom semantic timeline built directly from canonical conversation events.
 
 The canonical input is `conversationEvents`. The production renderer is `ConversationTimeline`, shared by the Workflow page and the Workspace Conversation surface.
 
-The timeline is **semantic, not generic**:
+The timeline is semantic rather than generic:
 
-- every conversation event is rendered as a meaningful row instead of a raw `"Event captured"` placeholder
-- agent updates, skill activations, and subagent launches are always visible
-- ordinary operational tool traffic can be grouped for readability
+- user intent, agent narration, skill activations, subagent launches, results, and errors are always visible
+- ordinary operational tool traffic is grouped for readability
+- internal telemetry and bookkeeping events are suppressed when they do not improve the transcript
 - unknown or newly introduced event shapes remain visible through fallback rows
 
-The timeline is also **lossless by contract**: grouping and visual weighting are editorial choices, not permission to silently drop events.
+The timeline is also accounted for by contract: grouping and suppression are editorial choices, but every raw event must still be classified explicitly instead of disappearing through an unhandled code path.
 
 ## Production Scope
 
-**Current production consumers**
+**Production consumers**
 
 - `app/src/pages/workflow.tsx`
 - `app/src/components/workspace/workspace-conversation.tsx`
@@ -36,24 +36,21 @@ Both mount the shared `ConversationTimeline` component.
 - historical Refine-era surfaces and contracts
 - converting unrelated non-conversation summaries in the app to conversation-event rendering
 - backend event normalization or OpenHands wire-format cleanup
-- suppression policy beyond the initial "show everything" phase
+- a raw debug transcript that renders every persisted event as a standalone row
 
 ## Goals
 
-- Replace the current generic conversation-event cards with a narrative
-  timeline that still preserves operational transparency.
-- Make every conversation event visible in the first pass.
+- Present active OpenHands conversations as a narrative timeline that still preserves operational transparency.
 - Keep `Skill` and `Subagent` as first-class visible rows.
-- Keep agent updates visible as narrative rows.
-- Preserve debuggability when the runtime evolves by rendering unknown event
-  shapes visibly instead of silently dropping them.
-- Back the renderer with fixture-driven tests over real persisted conversation
-  event folders.
+- Keep assistant updates visible as narrative rows.
+- Group tool traffic without hiding the fact that it happened.
+- Suppress internal telemetry and bookkeeping noise from the normal transcript.
+- Preserve debuggability when the runtime evolves by rendering unknown event shapes visibly instead of silently dropping them.
+- Back the renderer with fixture-driven tests over real persisted conversation event folders.
 
 ## Non-goals
 
 - Recreating a second primary transcript model beside `conversationEvents`
-- Hiding complexity by default in phase 1
 - Inferring causal nesting that the event stream does not actually encode
 - Designing a raw-vs-beautified toggle for production use
 
@@ -66,7 +63,7 @@ The store contract for active OpenHands runs is:
 - raw `conversationEvents`
 - latest `conversationState`
 
-Terminal success or failure is canonical state, not a stored synthetic event. Timeline surfaces may derive a terminal `Result` or `Error` row from `conversationState` for presentation, but that row is a UI-level projection.
+Terminal success or failure is canonical state, not a stored synthetic event. Timeline surfaces may derive terminal `Result` or `Error` narration from `conversationState` for presentation, but that row is a UI-level projection.
 
 Each raw event must be classified into exactly one of these presentation forms:
 
@@ -76,37 +73,70 @@ Each raw event must be classified into exactly one of these presentation forms:
 4. **Explicitly suppressed event**
 5. **Visible unknown/fallback row**
 
-For the first implementation pass, the suppression bucket is intentionally empty. Everything is shown.
+Suppression is allowed only for event classes that this document explicitly marks as internal telemetry or bookkeeping.
 
 ## Event Mapping
+
+The mapping below is based on the real persisted conversation corpus in `~/Library/Application Support/com.vibedata.skill-builder/openhands/conversations`.
 
 ### Message events
 
 | Event shape | Timeline row |
 |---|---|
-| `MessageEvent` with `source: "user"` | `Task sent` / user-message row |
-| `MessageEvent` with `source: "agent"` | `Agent update` row, always visible |
+| `MessageEvent` with `llm_message.role: "user"` | `Task sent` row |
+| `MessageEvent` with `llm_message.role: "assistant"` | `Agent update` row, always visible |
 
 ### Action and observation events
 
 | Event shape | Timeline row |
 |---|---|
-| Ordinary `ActionEvent` + matching `ObservationEvent` | Semantic operational row; can participate in grouped `Tool Activity` presentation |
-| `ActionEvent` for `invoke_skill` | Standalone `Skill` row, always visible |
-| `ActionEvent` for `task` / `task_tool_set` | Standalone `Subagent` row, always visible |
+| `ActionEvent` + `ObservationEvent` for `terminal` | Grouped `Terminal activity` member |
+| `ActionEvent` + `ObservationEvent` for `file_editor` | Grouped `File activity` member |
+| `ActionEvent` + `ObservationEvent` for `think` | Grouped `Reasoning` member, collapsed by default |
+| `ActionEvent` + `ObservationEvent` for `invoke_skill` | Standalone `Skill` row, always visible |
+| `ActionEvent` + `ObservationEvent` for `task` | Standalone `Subagent` row, always visible |
+| `ActionEvent` for `finish` | Standalone `Result` row |
 | `ObservationEvent` without a matching action | Standalone visible result row |
 
 ### System and runtime events
 
 | Event shape | Timeline row |
 |---|---|
-| `SystemPromptEvent` | `Runtime setup` row |
-| `ConversationStateUpdateEvent` | `State update` row |
-| `Condensation*Event` | `Context condensed` row |
+| `SystemPromptEvent` | Collapsed `Runtime setup` row, or a debug disclosure outside the main timeline |
+| `ConversationStateUpdateEvent` with `key: "execution_status"` | Visible lifecycle row only for meaningful transitions |
+| `ConversationStateUpdateEvent` with `key: "stats"` | Suppressed from the main timeline |
+| `ConversationStateUpdateEvent` with `key: "last_user_message_id"` | Suppressed from the main timeline |
 | `PauseEvent` | `Paused` row |
-| latest `conversation_state` success | UI-derived `Result` row when the surface wants terminal narration |
-| latest `conversation_state` error/cancel | UI-derived `Error` row when the surface wants terminal narration |
-| unknown `eventClass` or unexpected payload | `Unknown event` row with expandable payload |
+| `ConversationErrorEvent` | Standalone `Error` row |
+| `AgentErrorEvent` | Standalone `Tool error` or `Subagent error` row |
+| unknown `kind` or unexpected payload | `Unknown event` row with expandable payload |
+
+## Observed Corpus
+
+The current persisted corpus includes these top-level event kinds:
+
+- `ConversationStateUpdateEvent`
+- `ActionEvent`
+- `ObservationEvent`
+- `MessageEvent`
+- `SystemPromptEvent`
+- `PauseEvent`
+- `ConversationErrorEvent`
+- `AgentErrorEvent`
+
+The current tool and state subtypes visible in the corpus are:
+
+- `terminal`
+- `file_editor`
+- `think`
+- `invoke_skill`
+- `task`
+- `finish`
+- `execution_status`
+- `stats`
+- `last_user_message_id`
+
+These observed shapes are the baseline contract for the timeline. Future unknown shapes must fall back visibly instead of disappearing.
 
 ## Grouping Rules
 
@@ -114,7 +144,13 @@ Grouping is purely visual. It does not change event accounting.
 
 ### Allowed grouping
 
-Ordinary tool traffic may be grouped into a `Tool Activity` row when the items belong to the same top-level conversation flow and remain adjacent after semantic row construction.
+Ordinary tool traffic may be grouped into a semantic activity block when the items belong to the same top-level conversation flow and remain adjacent after semantic row construction.
+
+Allowed grouped buckets:
+
+- `Terminal activity`
+- `File activity`
+- `Reasoning`
 
 ### Disallowed grouping
 
@@ -125,6 +161,7 @@ These rows must remain individually visible and must never be absorbed into gene
 - `Subagent`
 - `Result`
 - `Error`
+- `Paused`
 
 ### Group boundaries
 
@@ -138,7 +175,7 @@ At minimum, grouping resets on:
 - subagent rows
 - result rows
 - error rows
-- explicit runtime/system rows
+- explicit runtime or system rows
 
 ## Nesting Rules
 
@@ -159,22 +196,35 @@ In other words:
 
 ## Visibility Contract
 
-This renderer is editorial, not lossy.
+This renderer is editorial and selective, not transcript-dumping.
 
 **Invariant:** every raw conversation event must be accounted for as visible, grouped-visible, nested-visible, or explicitly suppressed.
 
 The renderer must never silently no-op an event because:
 
-- a new `eventClass` was introduced
+- a new event kind was introduced
 - a payload shape drifted
 - a mapper forgot to handle a case
 
 If the renderer cannot confidently classify an event, it must emit a visible fallback row that includes:
 
-- the event class
+- the event kind
 - timestamp
 - compact summary if available
 - expandable raw payload
+
+Suppression is allowed only for event classes this document explicitly marks as non-primary transcript material:
+
+- `ConversationStateUpdateEvent.key === "stats"`
+- `ConversationStateUpdateEvent.key === "last_user_message_id"`
+- `SystemPromptEvent` only if runtime setup remains accessible through a dedicated disclosure instead of the main timeline
+
+Repeated `execution_status` churn may be collapsed into a smaller set of meaningful lifecycle rows:
+
+- `running`
+- `paused`
+- `finished`
+- `error`
 
 ## Fixture-based Test Strategy
 
@@ -197,12 +247,14 @@ Tests should use the existing persisted conversation fixture folders as the sour
 For each fixture:
 
 - every raw event is accounted for
-- `suppressed events = 0` in phase 1
 - `invoke_skill` yields a visible `Skill` row
-- `task` / `task_tool_set` yields a visible `Subagent` row
-- child events with `parentToolCallId` attach to the correct subagent row
-- agent message updates remain visible even around grouped tool activity
-- system and state rows remain visible in the first pass
+- `task` yields a visible `Subagent` row
+- child events with `parentToolCallId` attach to the correct subagent row when present
+- assistant message updates remain visible even around grouped tool activity
+- terminal and file-editor traffic is grouped without losing member accounting
+- `stats` and `last_user_message_id` are suppressed intentionally
+- `execution_status` rows only appear for meaningful lifecycle transitions
+- `ConversationErrorEvent` and `AgentErrorEvent` remain visibly destructive
 - unknown events render visible fallback rows
 
 ### Accounting invariant
@@ -217,28 +269,22 @@ raw event count
   + suppressed events
 ```
 
-For the initial rollout:
+Suppression must remain explicit and test-backed. Any newly suppressed event class must be added to this document and to the fixture assertions.
 
-```text
-suppressed events = 0
-```
-
-Any future suppression policy must change this doc and update the fixture tests explicitly.
-
-## Architecture Impact
+## Renderer Boundaries
 
 ### Shared production renderer
 
-The production conversation surfaces converge on one renderer:
+The production conversation surfaces share one semantic timeline renderer:
 
 - Workflow running state
 - Workspace Conversation tab
 
-The same semantic event classification rules apply to both.
+The same event classification, grouping, suppression, and nesting rules apply to both.
 
-### Relationship to `displayItems`
+### Projection boundary
 
-`displayItems` should be removed from the active OpenHands run path entirely. The timeline contract is based on raw `conversationEvents` plus raw `conversationState`, with semantic row derivation happening in the conversation UI layer.
+The timeline contract starts from raw `conversationEvents` plus raw `conversationState`. Semantic row derivation happens in the conversation UI layer, and renderer-facing display nodes remain projections rather than transcript authority.
 
 ## Key Source Files
 
@@ -251,24 +297,3 @@ The same semantic event classification rules apply to both.
 | `app/src/lib/openhands-conversation-events.ts` | OpenHands event normalization and helper extraction |
 | `app/src/pages/workflow.tsx` | Workflow consumer of `ConversationTimeline` |
 | `app/src/components/workspace/workspace-conversation.tsx` | Workspace Conversation consumer of `ConversationTimeline` |
-
-## Migration Notes
-
-This document replaces the older design direction that treated projected `displayItems` as the primary production transcript path and referenced removed Refine-era consumers.
-
-The new direction is:
-
-- top-to-bottom conversation-event rendering
-- raw `conversationState` retained as state rather than converted into stored synthetic events
-- semantic row construction
-- visible-first event accounting
-- removal of `displayItems` from the active OpenHands transcript path
-- fixture-backed guarantees against silent event loss
-
-## Open Follow-ups
-
-1. Define the later suppression policy once the visible-first timeline has been reviewed against real runs.
-2. Decide whether `ConversationStateUpdateEvent` remains permanently visible or
-   becomes an explicitly suppressed class after the first review pass.
-3. Decide whether grouped tool activity should remain expanded by default in the
-   first implementation or collapse immediately after grouping.

@@ -196,6 +196,8 @@ pub fn delete_step_output_files(
 
 #[cfg(test)]
 mod tests {
+    #![allow(unused_variables)]
+
     use super::*;
     use crate::commands::workflow::get_step_output_files;
     use crate::skill_paths::{resolve_skill_dir, DEFAULT_PLUGIN_SLUG};

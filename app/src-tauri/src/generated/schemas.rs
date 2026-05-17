@@ -844,7 +844,7 @@ pub const DETAILED_RESEARCH_INLINE_SCHEMA: &str = r###"{
     },
     "refinements_json": {
       "additionalProperties": false,
-      "description": "Root type for a clarifications file.",
+      "description": "Root type for a refinements file.",
       "properties": {
         "answer_evaluator_notes": {
           "items": {

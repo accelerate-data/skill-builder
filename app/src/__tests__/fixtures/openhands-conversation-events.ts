@@ -2,7 +2,6 @@ export const openHandsMessageEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "MessageEvent",
   timestamp: 1_778_000_001,
   event: {
@@ -23,7 +22,6 @@ export const openHandsActionEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "ActionEvent",
   timestamp: 1_778_000_002,
   event: {
@@ -55,7 +53,6 @@ export const openHandsParallelActionEventRecords = [
     type: "conversation_event",
     runtime: "openhands",
     conversation_id: "conv-fixture",
-    agent_id: "agent-fixture",
     event_class: "ActionEvent",
     timestamp: 1_778_000_003,
     event: {
@@ -77,7 +74,6 @@ export const openHandsParallelActionEventRecords = [
     type: "conversation_event",
     runtime: "openhands",
     conversation_id: "conv-fixture",
-    agent_id: "agent-fixture",
     event_class: "ActionEvent",
     timestamp: 1_778_000_004,
     event: {
@@ -102,7 +98,6 @@ export const openHandsObservationEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "ObservationEvent",
   timestamp: 1_778_000_005,
   event: {
@@ -118,7 +113,6 @@ export const openHandsUserRejectObservationRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "UserRejectObservation",
   timestamp: 1_778_000_006,
   event: {
@@ -134,7 +128,6 @@ export const openHandsAgentErrorEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "AgentErrorEvent",
   timestamp: 1_778_000_007,
   event: {
@@ -150,7 +143,6 @@ export const openHandsConversationErrorEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "ConversationErrorEvent",
   timestamp: 1_778_000_008,
   event: {
@@ -164,7 +156,6 @@ export const openHandsSystemPromptEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "SystemPromptEvent",
   timestamp: 1_778_000_009,
   event: {
@@ -176,7 +167,6 @@ export const openHandsCondensationSummaryEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "CondensationSummaryEvent",
   timestamp: 1_778_000_010,
   event: {
@@ -188,7 +178,6 @@ export const openHandsCondensationStartEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "CondensationStartEvent",
   timestamp: 1_778_000_014,
   event: {
@@ -200,7 +189,6 @@ export const openHandsConversationStateUpdateEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "ConversationStateUpdateEvent",
   timestamp: 1_778_000_011,
   event: {
@@ -215,7 +203,6 @@ export const openHandsPauseEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "PauseEvent",
   timestamp: 1_778_000_012,
   event: {
@@ -228,7 +215,6 @@ export const openHandsUnknownEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "CustomSdkEvent",
   timestamp: 1_778_000_013,
   event: {
@@ -242,7 +228,6 @@ export const openHandsRawPayloadEventRecord = {
   type: "conversation_event",
   runtime: "openhands",
   conversation_id: "conv-fixture",
-  agent_id: "agent-fixture",
   event_class: "RawFallbackEvent",
   timestamp: 1_778_000_015,
   event: "SDK event string fallback.",

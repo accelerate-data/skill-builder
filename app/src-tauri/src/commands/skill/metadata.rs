@@ -264,7 +264,7 @@ pub(crate) fn rename_skill_inner(
         )
         .map_err(&tx_err)?;
         tx.execute(
-            "UPDATE agent_runs SET skill_name = ?2 WHERE skill_name = ?1",
+            "UPDATE conversation_runs SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
         )
         .map_err(&tx_err)?;

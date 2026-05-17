@@ -66,7 +66,8 @@ export const WORKFLOW_OVERRIDES: Record<string, unknown> = {
   acquire_lock: undefined,
   release_lock: undefined,
   preview_step_reset: [],
-  get_step_agent_runs: [],
+  get_step_conversation_runs: [],
+  get_refinements: null,
   get_clarifications: {
     skill_id: "test-skill",
     version: "1",

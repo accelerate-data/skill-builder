@@ -29,7 +29,7 @@ plugins
     │   └── decision_items
     ├── imported_skills
     ├── workflow_sessions
-    │   └── agent_runs
+    │   └── conversation_runs
     ├── skill_tags
     ├── skill_locks
     ├── skill_conversations
@@ -104,10 +104,12 @@ child of `skills`; it does not define canonical identity.
 
 Workflow/refine session lifetimes keyed back to the owning skill.
 
-### `agent_runs`
+### `conversation_runs`
 
-Per-run telemetry for workflow and refine activity. This remains app-owned
-execution telemetry.
+Per-conversation telemetry for workflow, workspace, refine, evaluator, and test
+activity. This remains app-owned execution telemetry and is keyed by
+`conversation_id` plus `model`, with `skill_id` stored as the canonical skill
+reference and `skill_name` plus `plugin_slug` retained as historical snapshots.
 
 ### `skill_tags`
 

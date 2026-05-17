@@ -43,7 +43,6 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (38, run_plugin_ownership_migration),
     (39, run_plugin_upgrade_locked_migration),
     (40, run_documents_migration),
-    (41, run_reset_legacy_tags_migrated),
     (42, run_performance_indexes_migration),
     (43, run_openhands_settings_migration),
     (44, run_eval_workbench_migration),
@@ -63,6 +62,7 @@ pub(super) const NUMBERED_MIGRATIONS: &[(u32, MigrationFn)] = &[
     (58, run_refinements_tables_migration),
     (59, run_drop_legacy_chat_tables_migration),
     (60, run_workflow_runtime_identity_migration),
+    (61, run_conversation_run_usage_clean_break_migration),
 ];
 
 pub(super) fn table_has_column(
@@ -130,9 +130,6 @@ pub(super) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             github_user_login TEXT,
             github_user_avatar TEXT,
             github_user_email TEXT,
-            marketplace_url TEXT,
-            marketplace_initialized INTEGER NOT NULL DEFAULT 0,
-            legacy_tags_migrated INTEGER NOT NULL DEFAULT 0,
             max_dimensions INTEGER NOT NULL DEFAULT 5 CHECK (max_dimensions > 0),
             industry TEXT,
             function_role TEXT,
@@ -1067,7 +1064,31 @@ pub(super) fn run_skills_soft_delete_migration(conn: &Connection) -> Result<(), 
 pub(super) fn run_backfill_synthetic_sessions_migration(
     conn: &Connection,
 ) -> Result<(), rusqlite::Error> {
-    conn.execute(
+    let has_conversation_runs = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'conversation_runs'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+    let sql = if has_conversation_runs {
+        "INSERT INTO workflow_sessions (session_id, skill_name, skill_id, pid, started_at, ended_at)
+         SELECT
+           ar.workflow_session_id,
+           ar.skill_name,
+           COALESCE(ar.skill_id, s.id),
+           0,
+           MIN(COALESCE(ar.started_at, datetime('now') || 'Z')),
+           MAX(COALESCE(ar.completed_at, ar.started_at, datetime('now') || 'Z'))
+         FROM conversation_runs ar
+         LEFT JOIN skills s ON s.name = ar.skill_name
+         LEFT JOIN workflow_sessions ws ON ws.session_id = ar.workflow_session_id
+         WHERE ar.workflow_session_id IS NOT NULL
+           AND ar.workflow_session_id LIKE 'synthetic:%'
+           AND ws.session_id IS NULL
+         GROUP BY ar.workflow_session_id, ar.skill_name, COALESCE(ar.skill_id, s.id)"
+    } else {
         "INSERT INTO workflow_sessions (session_id, skill_name, skill_id, pid, started_at, ended_at)
          SELECT
            ar.workflow_session_id,
@@ -1083,9 +1104,9 @@ pub(super) fn run_backfill_synthetic_sessions_migration(
            AND ar.workflow_session_id LIKE 'synthetic:%'
            AND ar.reset_marker IS NULL
            AND ws.session_id IS NULL
-         GROUP BY ar.workflow_session_id, ar.skill_name, s.id",
-        [],
-    )?;
+         GROUP BY ar.workflow_session_id, ar.skill_name, s.id"
+    };
+    conn.execute(sql, [])?;
     Ok(())
 }
 
@@ -1121,12 +1142,24 @@ pub(super) fn run_reconciliation_events_migration(
 /// the frontend's startRun(), which wrote a `status='running'` row before any
 /// SDK events arrived.
 pub(super) fn run_ghost_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let updated = conn.execute(
+    let has_conversation_runs = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'conversation_runs'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+    let sql = if has_conversation_runs {
+        "UPDATE conversation_runs
+         SET status = 'shutdown', completed_at = datetime('now') || 'Z'
+         WHERE status = 'running'"
+    } else {
         "UPDATE agent_runs
          SET status = 'shutdown', completed_at = datetime('now') || 'Z'
-         WHERE status = 'running'",
-        [],
-    )?;
+         WHERE status = 'running'"
+    };
+    let updated = conn.execute(sql, [])?;
     log::info!(
         "migration 34: converted {} ghost running rows to shutdown",
         updated
@@ -1372,8 +1405,21 @@ pub(super) fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), ru
 ///   - skill_tags, skill_locks, workflow_sessions: have `skill_id INT FK → skills(id)`
 ///   - imported_skills: has `skill_master_id INT FK → skills(id)`
 pub(super) fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_table = |table: &str| -> bool {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            rusqlite::params![table],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+            > 0
+    };
+
     // Helper to check if a column exists in a table
     let has_column = |table: &str, column: &str| -> bool {
+        if !has_table(table) {
+            return false;
+        }
         conn.prepare(&format!("PRAGMA table_info({})", table))
             .and_then(|mut stmt| {
                 stmt.query_map([], |r| r.get::<_, String>(1))
@@ -1397,7 +1443,7 @@ pub(super) fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite
     }
 
     // --- agent_runs ---
-    if !has_column("agent_runs", "workflow_run_id") {
+    if has_table("agent_runs") && !has_column("agent_runs", "workflow_run_id") {
         conn.execute_batch(
             "ALTER TABLE agent_runs ADD COLUMN workflow_run_id INTEGER REFERENCES workflow_runs(id);",
         )?;
@@ -1431,8 +1477,7 @@ pub(super) fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite
         )?;
     }
 
-    // Backfill all new FK columns in a single transaction
-    conn.execute_batch(
+    let backfill_sql = if has_table("agent_runs") {
         "
         BEGIN;
 
@@ -1479,8 +1524,66 @@ pub(super) fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite
         WHERE skill_master_id IS NULL;
 
         COMMIT;
-    ",
-    )?;
+        "
+    } else {
+        "
+        BEGIN;
+
+        UPDATE workflow_steps
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_steps.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE workflow_artifacts
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_artifacts.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE skill_tags
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = skill_tags.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE skill_locks
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = skill_locks.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE workflow_sessions
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = workflow_sessions.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE imported_skills
+        SET skill_master_id = (
+            SELECT s.id FROM skills s WHERE s.name = imported_skills.skill_name
+        )
+        WHERE skill_master_id IS NULL;
+
+        COMMIT;
+        "
+    };
+    conn.execute_batch(backfill_sql)?;
+
+    if has_table("conversation_runs") && !has_column("conversation_runs", "workflow_run_id") {
+        conn.execute_batch("ALTER TABLE conversation_runs ADD COLUMN workflow_run_id INTEGER;")?;
+    }
+    if has_table("conversation_runs") {
+        conn.execute_batch(
+            "
+            UPDATE conversation_runs
+            SET workflow_run_id = (
+                SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = conversation_runs.skill_name
+            )
+            WHERE workflow_run_id IS NULL;
+            ",
+        )?;
+    }
 
     log::info!("migration 22: added FK columns to child tables and backfilled");
     Ok(())
@@ -2355,37 +2458,6 @@ pub(super) fn run_documents_migration(conn: &Connection) -> Result<(), rusqlite:
     Ok(())
 }
 
-/// Reset `legacy_tags_migrated` so the tag migration re-runs and converts
-/// old marketplace tags (`{slug}/skills/{name}/vX.Y.Z`) to the simplified
-/// layout (`{slug}/{name}/vX.Y.Z`).
-pub(super) fn run_reset_legacy_tags_migrated(conn: &Connection) -> Result<(), rusqlite::Error> {
-    // Settings are stored as JSON in a single row. Read, patch, write back.
-    let json: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'app_settings'",
-            [],
-            |r| r.get(0),
-        )
-        .ok();
-    if let Some(json) = json {
-        if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&json) {
-            if let Some(obj) = val.as_object_mut() {
-                obj.insert(
-                    "legacy_tags_migrated".to_string(),
-                    serde_json::Value::Bool(false),
-                );
-                let updated = serde_json::to_string(&val).unwrap_or(json.clone());
-                conn.execute(
-                    "UPDATE settings SET value = ?1 WHERE key = 'app_settings'",
-                    rusqlite::params![updated],
-                )?;
-            }
-        }
-    }
-    log::info!("migration 41: reset legacy_tags_migrated for marketplace tag migration");
-    Ok(())
-}
-
 pub(super) fn run_performance_indexes_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_workflow_steps_run_step
@@ -3150,5 +3222,74 @@ pub(super) fn run_workflow_runtime_identity_migration(
     )?;
 
     log::info!("migration 60: rebuilt workflow runtime tables around skill_id/workflow_run_id");
+    Ok(())
+}
+
+pub(super) fn run_conversation_run_usage_clean_break_migration(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "
+        DROP INDEX IF EXISTS idx_agent_runs_session_reset_started;
+        DROP INDEX IF EXISTS idx_agent_runs_skill_started;
+        DROP INDEX IF EXISTS idx_workflow_sessions_reset_started_skill;
+        DROP TABLE IF EXISTS agent_runs;
+        DROP TABLE IF EXISTS conversation_runs;
+        DROP TABLE IF EXISTS workflow_sessions;
+
+        CREATE TABLE conversation_runs (
+            conversation_id TEXT NOT NULL,
+            skill_id INTEGER NOT NULL,
+            skill_name TEXT NOT NULL,
+            plugin_slug TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            model TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            total_cost REAL,
+            session_id TEXT,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            completed_at TEXT,
+            cache_read_tokens INTEGER DEFAULT 0,
+            cache_write_tokens INTEGER DEFAULT 0,
+            duration_ms INTEGER,
+            workflow_session_id TEXT,
+            num_turns INTEGER DEFAULT 0,
+            stop_reason TEXT,
+            duration_api_ms INTEGER,
+            tool_use_count INTEGER DEFAULT 0,
+            compaction_count INTEGER DEFAULT 0,
+            workflow_run_id INTEGER,
+            PRIMARY KEY (conversation_id, model)
+        );
+
+        CREATE TABLE workflow_sessions (
+            session_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            ended_at TEXT,
+            skill_id INTEGER
+        );
+
+        CREATE INDEX idx_conversation_runs_skill_id
+            ON conversation_runs(skill_id);
+        CREATE INDEX idx_conversation_runs_workflow_session_id
+            ON conversation_runs(workflow_session_id);
+        CREATE INDEX idx_conversation_runs_step_id
+            ON conversation_runs(step_id);
+        CREATE INDEX idx_conversation_runs_started_at
+            ON conversation_runs(started_at);
+        CREATE INDEX idx_workflow_sessions_started_at_skill
+            ON workflow_sessions(started_at, skill_name);
+        CREATE INDEX idx_workflow_sessions_skill_id_active
+            ON workflow_sessions(skill_id, ended_at);
+        ",
+    )?;
+
+    log::info!(
+        "migration 61: replaced agent_runs with conversation_runs and reset usage history tables"
+    );
     Ok(())
 }

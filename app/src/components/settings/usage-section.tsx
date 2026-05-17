@@ -54,7 +54,7 @@ export function UsageSection() {
   const skillNamesQuery = useUsageSkillNamesQuery()
   const resetUsageMutation = useResetUsageMutation()
   const summary = usage.summary.data ?? null
-  const agentRuns = usage.agentRuns.data ?? []
+  const conversationRuns = usage.conversationRuns.data ?? []
   const byStep = usage.byStep.data ?? []
   const byModel = usage.byModel.data ?? []
   const byDay = usage.byDay.data ?? []
@@ -104,7 +104,7 @@ export function UsageSection() {
     )
   }
 
-  const isEmpty = !summary || (summary.total_runs === 0 && agentRuns.length === 0)
+  const isEmpty = !summary || (summary.total_runs === 0 && conversationRuns.length === 0)
 
   if (isEmpty) {
     return (
@@ -183,7 +183,7 @@ export function UsageSection() {
       </Card>
 
       <SessionHistory
-        agentRuns={agentRuns}
+        conversationRuns={conversationRuns}
         byModel={byModel}
         modelFamilyFilter={modelFamilyFilter}
         setModelFamilyFilter={setModelFamilyFilter}
