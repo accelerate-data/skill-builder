@@ -19,6 +19,7 @@ describe("skill-openhands-session", () => {
     useSkillStore.getState().clearSelectedSkillSession();
     useConversationStore.setState({ eventsByConversation: {} });
     mockSelectSkillOpenHandsSession.mockReset();
+    vi.restoreAllMocks();
   });
 
   it("hydrates the selected skill session metadata", () => {
@@ -162,6 +163,55 @@ describe("skill-openhands-session", () => {
           id: "evt-parity",
           tool_call_id: "tool-1",
         },
+      },
+    });
+  });
+
+  it("skips unrecognized restored events instead of aborting hydration", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session: SkillSessionInfo = {
+      conversation_id: "conv-123",
+      skill_name: "sales-skill",
+      created_at: new Date().toISOString(),
+      available_agents: ["skill-creator"],
+      restored_messages: [],
+      restored_transcript_events: [
+        {
+          kind: "MysteryEvent",
+          id: "evt-bad",
+          timestamp: new Date(500).toISOString(),
+          source: "system",
+        },
+        {
+          kind: "MessageEvent",
+          id: "evt-good",
+          timestamp: new Date(1_000).toISOString(),
+          source: "agent",
+          llm_message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Restored answer" }],
+          },
+        },
+      ] as SkillSessionInfo["restored_transcript_events"],
+    };
+
+    hydrateSelectedSkillOpenHandsSession(
+      { name: "sales-skill", plugin_slug: "skills", skill_source: "skill-builder" },
+      session,
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[skill-openhands-session] Skipping unrecognized restored OpenHands event",
+      expect.objectContaining({ kind: "MysteryEvent", id: "evt-bad" }),
+    );
+    const [restoredEvent] =
+      useConversationStore.getState().eventsByConversation["conv-123"];
+    expect(restoredEvent).toMatchObject({
+      payload: {
+        openHandsEvent: expect.objectContaining({
+          kind: "MessageEvent",
+          id: "evt-good",
+        }),
       },
     });
   });

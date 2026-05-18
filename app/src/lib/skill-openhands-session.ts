@@ -39,18 +39,22 @@ function hydrateCanonicalConversationHistory(
     return;
   }
 
-  const canonicalEvents = restoredTranscriptEvents.map((event) =>
-    {
+  const canonicalEvents = restoredTranscriptEvents
+    .map((event) => {
       const normalized = normalizeOpenHandsEventRecord(event);
       if (!normalized) {
-        throw new Error("Unable to normalize restored OpenHands conversation event.");
+        console.warn(
+          "[skill-openhands-session] Skipping unrecognized restored OpenHands event",
+          event,
+        );
+        return null;
       }
       return buildCanonicalConversationEventEnvelope(normalized, conversationId, {
         conversationId,
         rawEvent: event,
       });
-    },
-  );
+    })
+    .filter((event): event is NonNullable<typeof event> => event !== null);
 
   useConversationStore
     .getState()

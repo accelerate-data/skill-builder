@@ -532,24 +532,7 @@ function classifyEvent(
         },
       };
     }
-    if (openHandsEvent.kind === "ObservationEvent") {
-      const observationText = getObservationText(openHandsEvent);
-      if (observationText) {
-        return {
-          type: "standalone",
-          node: {
-            id: event.eventId,
-            kind: "result",
-            status: event.status,
-            createdAtMs: event.createdAtMs,
-            label: "Tool observation",
-            bodyText: observationText,
-            sourceEventIds: [event.eventId],
-            rawPayload: event.payload.rawOpenHandsEvent,
-          },
-        };
-      }
-    }
+    return traceNode(event, buildToolTraceNode(event, openHandsEvent, "tool_batch"));
   }
 
   return unknownEventNode(event);
@@ -576,10 +559,15 @@ function traceNode(
 function buildToolTraceNode(
   event: ConversationEventEnvelope,
   openHandsEvent: OpenHandsConversationEvent,
-  nodeKind: Extract<TraceNodeKind, "file_activity" | "terminal_activity" | "skill" | "subagent">,
+  nodeKind: Extract<
+    TraceNodeKind,
+    "tool_batch" | "file_activity" | "terminal_activity" | "skill" | "subagent"
+  >,
 ): DisplayNode {
   const member =
-    nodeKind === "file_activity"
+    nodeKind === "tool_batch"
+      ? buildGenericToolActivityMember(event, openHandsEvent)
+      : nodeKind === "file_activity"
       ? buildFileActivityMember(event, openHandsEvent)
       : nodeKind === "terminal_activity"
         ? buildTerminalActivityMember(event, openHandsEvent)
@@ -647,6 +635,34 @@ function buildReasoningNode(
     sourceEventIds: [event.eventId],
     members: [member],
     rawPayload: event.payload.rawOpenHandsEvent,
+  };
+}
+
+function buildGenericToolActivityMember(
+  event: ConversationEventEnvelope,
+  openHandsEvent: OpenHandsConversationEvent,
+): DisplayNodeMember {
+  const actionText =
+    openHandsEvent.kind === "ActionEvent"
+      ? getActionSummary(openHandsEvent) ?? getToolName(openHandsEvent) ?? "Tool call"
+      : undefined;
+  const observationText =
+    openHandsEvent.kind === "ObservationEvent"
+      ? getObservationText(openHandsEvent)
+      : undefined;
+  const errorText =
+    openHandsEvent.kind === "AgentErrorEvent" ? getErrorText(openHandsEvent) : undefined;
+  const toolName = getToolName(openHandsEvent);
+
+  return {
+    id: event.eventId,
+    title: toolName ? `${toolName} activity` : "Tool call",
+    bodyText: actionText ?? observationText ?? errorText ?? "Tool activity captured",
+    actionText,
+    observationText,
+    errorText,
+    thoughtText: getReasoningText(openHandsEvent),
+    sourceEventIds: [event.eventId],
   };
 }
 

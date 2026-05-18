@@ -475,7 +475,7 @@ describe("conversation-event-projection", () => {
     );
   });
 
-  it("renders unmatched observations as visible standalone observation results", () => {
+  it("renders unmatched observations inside activity trace", () => {
     const [node] = projectConversationEvents([
       {
         eventId: "evt-orphan-observation",
@@ -504,9 +504,18 @@ describe("conversation-event-projection", () => {
     ]);
 
     expect(node).toMatchObject({
-      kind: "result",
-      label: "Tool observation",
-      bodyText: "Observation without a matching action.",
+      kind: "activity_trace",
+      traceItems: [
+        expect.objectContaining({
+          kind: "tool_batch",
+          drawerSections: expect.arrayContaining([
+            expect.objectContaining({
+              title: "Observation",
+              body: "Observation without a matching action.",
+            }),
+          ]),
+        }),
+      ],
     });
   });
 
@@ -658,6 +667,53 @@ describe("conversation-event-projection", () => {
       },
     ]);
     expect(nodes.some((node) => node.kind === "tool_error")).toBe(false);
+  });
+
+  it("renders unknown-tool AgentErrorEvent inside activity trace as an error outcome", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-unknown-tool-error",
+        conversationId: "conv-unknown-tool-error",
+        origin: "backend",
+        status: "failed",
+        createdAtMs: 2_500,
+        display: { kind: "error" },
+        payload: {
+          openHandsEvent: {
+            kind: "AgentErrorEvent",
+            id: "err-unknown-1",
+            timestamp: new Date(2_500).toISOString(),
+            source: "agent",
+            tool_name: "mystery_tool",
+            tool_call_id: "call-unknown-1",
+            error: "Unexpected tool failure.",
+          },
+          rawOpenHandsEvent: {
+            kind: "AgentErrorEvent",
+            id: "err-unknown-1",
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: [
+          expect.objectContaining({
+            kind: "tool_batch",
+            title: "Tool calls",
+            drawerSections: expect.arrayContaining([
+              expect.objectContaining({
+                title: "Error",
+                body: "Unexpected tool failure.",
+              }),
+            ]),
+          }),
+        ],
+      },
+    ]);
+    expect(nodes[0]?.kind).not.toBe("unknown_event");
   });
 
   it("groups parallel tool calls by llm_response_id and shows shared thought once", () => {
