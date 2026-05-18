@@ -13,7 +13,6 @@ import {
   getInternalEventSummary,
   getLlmResponseId,
   getMessageText,
-  normalizeConversationEventMessage,
   getObservationText,
   getReasoningText,
   getSystemPromptText,
@@ -229,14 +228,14 @@ function buildSimpleTraceItem(
     sourceEventIds: node.sourceEventIds,
     interactive: true,
     drawerTitle: options.title,
-    drawerSubtitle: options.drawerSubtitle ?? "1 items",
+    drawerSubtitle: options.drawerSubtitle ?? "1 item",
     drawerSections: sections,
   };
 }
 
 function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
   const members = node.members ?? [];
-  const title = node.label ?? TRACE_TITLES[node.kind as TraceNodeKind];
+  const title = node.label ?? getTraceTitle(node.kind);
   const firstMember = members[0];
   const isActionTraceKind =
     node.kind === "tool_batch" ||
@@ -414,9 +413,7 @@ function classifyEvent(
     };
   }
 
-  const openHandsEvent =
-    event.payload.openHandsEvent ??
-    normalizeRawOpenHandsEvent(event.payload.rawOpenHandsEvent);
+  const openHandsEvent = event.payload.openHandsEvent;
   if (!openHandsEvent) {
     return fallbackDisplayKindNode(event);
   }
@@ -542,9 +539,7 @@ function traceNode(
   event: ConversationEventEnvelope,
   node: DisplayNode,
 ): SemanticClassification {
-  const openHandsEvent =
-    event.payload.openHandsEvent ??
-    normalizeRawOpenHandsEvent(event.payload.rawOpenHandsEvent);
+  const openHandsEvent = event.payload.openHandsEvent;
 
   return {
     type: "trace_node",
@@ -924,11 +919,6 @@ function fallbackDisplayKindNode(
   }
 }
 
-function normalizeRawOpenHandsEvent(rawEvent: unknown): OpenHandsConversationEvent | null {
-  if (!rawEvent || typeof rawEvent !== "object") return null;
-  return normalizeConversationEventMessage(rawEvent as Record<string, unknown>);
-}
-
 function findPendingTraceNodeIndex(
   list: PendingTraceNode[],
   classification: Extract<SemanticClassification, { type: "trace_node" }>,
@@ -961,6 +951,20 @@ function findPendingTraceNodeIndex(
   }
 
   return -1;
+}
+
+function getTraceTitle(kind: DisplayNodeKind): string {
+  switch (kind) {
+    case "tool_batch":
+    case "terminal_activity":
+    case "file_activity":
+    case "reasoning":
+    case "skill":
+    case "subagent":
+      return TRACE_TITLES[kind];
+    default:
+      return "Activity";
+  }
 }
 
 function mergePendingTraceNode(
@@ -1016,7 +1020,7 @@ function mergePendingTraceNode(
     node: {
       ...existing.node,
       kind: nextKind,
-      label: TRACE_TITLES[nextKind as TraceNodeKind],
+      label: getTraceTitle(nextKind),
       bodyText:
         existing.node.bodyText ??
         incomingNode.bodyText,
