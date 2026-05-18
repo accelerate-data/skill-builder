@@ -4,7 +4,7 @@ functional-specs: []
 
 # OpenHands Conversation Timeline
 
-> **Status:** Current implementation for the conversation-event rendering model.
+> **Status:** Implemented
 > **Runtime prerequisite:** See [../openhands-runtime-contract/README.md](../openhands-runtime-contract/README.md) for session lifecycle, normalized event ingress, and backend ownership of persisted conversation state.
 
 ## Overview
@@ -28,31 +28,35 @@ Every event received from OpenHands must be converted into one of those event ty
 That applies to both ingress paths:
 
 - live websocket events
-- restore history fetched from
-  `GET /api/v1/conversation/{conversationId}/events/search`
+- restore history fetched from `GET /api/v1/conversation/{conversationId}/events/search`
 
 The TypeScript client exposes runtime guards such as `isMessageEvent` to interpret wire payloads. Skill Builder should follow the same model: normalize raw OpenHands payloads into the TypeScript client event union first, then render from that canonical stream.
 
 ### Where normalization happens
 
-Normalization should happen in Rust at the backend/frontend boundary.
+Normalization is split across two steps:
+
+1. **Rust** (`agents/openhands_server/`) does field-level cleanup — discriminator normalization, falling back to the SDK `kind` field when `event_class` is absent, and stripping wire-transport metadata before the Tauri event is emitted.
+2. **Frontend** `openhands-conversation-events.ts` (`normalizeOpenHandsEventRecord(...)`) does the final normalization into typed `OpenHandsConversationEvent` shapes from the TypeScript client contract. This runs in both `use-session-runtime-stream.ts` (live events) and `skill-openhands-session.ts` (restore history).
 
 Required flow:
 
 ```text
 OpenHands websocket payload or /events/search payload
-  -> Rust normalization to TypeScript client ConversationEvent shape
+  -> Rust field-level cleanup (discriminator normalization)
   -> Tauri event / restore payload to frontend
-  -> frontend transcript + status/toast projection
+  -> normalizeOpenHandsEventRecord() in openhands-conversation-events.ts
+  -> ConversationEventEnvelope in conversation-store
+  -> transcript + status/toast projection
 ```
 
-The frontend should not be responsible for interpreting raw OpenHands transport shapes such as:
+The frontend should not need to interpret raw OpenHands wire-transport shapes such as:
 
 - `eventClass`
 - `conversation_state`
 - generic `event: Record<string, unknown>`
 
-Those are backend normalization concerns. The frontend should consume canonical typed events only.
+Those are Rust normalization concerns. `normalizeOpenHandsEventRecord(...)` is the final typed normalization boundary; downstream code should consume `OpenHandsConversationEvent` shapes only.
 
 ## Production Scope
 
@@ -73,7 +77,7 @@ Both mount the shared `ConversationTimeline` component.
 ## Goals
 
 - Use the OpenHands TypeScript client event union as the canonical frontend/backend boundary for conversation rendering.
-- Normalize both websocket and restore history in Rust into the same event shape before storing them in the frontend transcript.
+- Normalize both websocket and restore history into the same event shape before storing them in the frontend transcript.
 - Show only transcript-worthy events in the visible conversation timeline.
 - Keep operational activity compact by using grouped trace items and a detail drawer.
 - Route internal/control-plane events to dedicated UI handling instead of leaking them into transcript rows.
@@ -146,10 +150,11 @@ These must be handled explicitly but do not render as transcript rows:
 
 ### Runtime error events
 
-These have dedicated runtime error handling outside the transcript:
+These are suppressed from the transcript by `conversation-display-semantics.ts` (same suppress path as hidden internal events) but have dedicated side-effect handling outside the projection layer:
 
 - `ConversationErrorEvent`
-  - show a user-visible error toast
+  - suppressed from transcript rows
+  - `use-session-runtime-stream.ts` routes it to a persistent error toast
   - may also update run-level error state
 
 ### Confirmation events
@@ -173,8 +178,9 @@ The visible order remains:
 
 Activity trace items are editorial projections over transcript events, not new canonical event kinds.
 
-Current trace item kinds used by the renderer are:
+Trace item kinds:
 
+- `tool_batch` — parallel tool-call batch grouped by `llm_response_id`
 - `file_activity`
 - `terminal_activity`
 - `skill`
@@ -201,7 +207,7 @@ Current trace item kinds used by the renderer are:
 |---|---|
 | `ThinkEvent` | grouped `Think` activity item |
 
-Current `ThinkEvent` rendering rules:
+`ThinkEvent` rendering rules:
 
 - the activity-trace title is `Think`
 - the inline summary uses the compact reasoning text
@@ -248,21 +254,21 @@ The activity trace summary shows the action-side intent. The drawer shows the pa
 
 This applies uniformly to all tool-backed `ActionEvent`s. Tool-specific extraction is used only to turn raw `action`, `observation`, and tool error payloads into readable text, not to change the structural model.
 
-Current action-text formatting in the renderer is:
+Action-text formatting:
 
-- `invoke_skill`: `name: <name> action: InvokeSkillAction`
+- `invoke_skill`: `name: <name> action: <kind>` (dynamic value from `action.kind`)
 - `file_editor`: `command: <command> path: <path>`
 - `terminal`: command text
 - `task`: action description
 
 ### Activity trace presentation
 
-The expanded `Activity trace` UI currently behaves as follows:
+The `Activity trace` UI:
 
 - each trace row shows its timestamp
-- the old type-chip strip is not shown
-- the old preview line under the trace header is not shown
-- the old one-character badges per trace row are not shown
+- no type-chip strip
+- no preview line under the trace header
+- no one-character badges per trace row
 
 Drawer items are created in these cases:
 
@@ -303,7 +309,7 @@ That pause acknowledgement must not reset the active workflow step back to `pend
 
 ### Hidden diagnostics
 
-The following are handled but hidden from the transcript unless a future diagnostics surface explicitly opts in:
+The following are handled but not shown in the transcript:
 
 - `CondensationRequest`
 - `Condensation`
@@ -339,8 +345,9 @@ The restore path and websocket path must therefore converge before projection:
 
 ```text
 REST history (/events/search) or websocket event
-  -> Rust normalization to OpenHands TypeScript client ConversationEvent shape
-  -> store
+  -> Rust field-level cleanup
+  -> normalizeOpenHandsEventRecord() in openhands-conversation-events.ts
+  -> ConversationEventEnvelope in conversation-store
   -> project to transcript / status / toast handling
 ```
 

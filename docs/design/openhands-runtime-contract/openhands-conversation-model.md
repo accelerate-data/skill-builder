@@ -9,7 +9,7 @@ functional-specs: [custom-plugin-management]
 
 ## Overview
 
-This page defines the clean-slate conversation model for OpenHands-backed surfaces in Skill Builder. The target model replaces agent-centric frontend authority with one shared conversation event stream that both frontend and backend contribute to.
+This page defines the conversation model for OpenHands-backed surfaces in Skill Builder. One shared conversation event stream is the source of truth, with both frontend and backend contributing to it.
 
 The key idea is simple:
 
@@ -29,7 +29,6 @@ This model is shared across selected-skill persistent sessions, Workflow, Eval W
 - event ordering, acceptance, and failure semantics
 - raw OpenHands payload retention with app-owned display metadata
 - projection from canonical events into UI display models
-- the final steady state after removing the legacy transcript authority path
 
 **Does not cover**
 
@@ -49,7 +48,7 @@ This model is shared across selected-skill persistent sessions, Workflow, Eval W
 | Canonical events carry a small app-owned envelope for UI metadata. | The UI needs stable local ids, local status, and display hints without rewriting the underlying OpenHands event. |
 | Projection into display nodes is a pure view layer. | Renderer-facing display nodes should be render outputs, not authoritative state. |
 | Product surfaces render one shared event timeline, not synthetic turn ownership. | The UI already differentiates event types visually, so a flat event stream is sufficient and more robust than a second turn-grouped transcript model. |
-| `conversationId` is the canonical runtime and transcript identity at every active boundary. | The live bridge, canonical store, and render path are all conversation-centric now. |
+| `conversationId` is the canonical runtime and transcript identity at every active boundary. | The live bridge, canonical store, and render path are all conversation-centric. |
 
 ## Canonical Event Model
 
@@ -66,7 +65,21 @@ type ConversationEventOrigin =
   | "frontend"
   | "backend";
 
-interface CanonicalConversationEvent {
+// Matches ConversationDisplayKind in conversation-event-types.ts.
+// For frontend-originated events this is set at envelope creation.
+// For backend-originated events the projection layer derives display
+// semantics from payload.openHandsEvent.kind via conversation-display-semantics.ts.
+type ConversationDisplayKind =
+  | "user_message"
+  | "agent_message"
+  | "tool_call"
+  | "tool_result"
+  | "subagent"
+  | "state"
+  | "error"
+  | "system";
+
+interface ConversationEventEnvelope {
   eventId: string;
   conversationId: string;
   origin: ConversationEventOrigin;
@@ -75,11 +88,17 @@ interface CanonicalConversationEvent {
   acceptedAtMs?: number | null;
   failedAtMs?: number | null;
   display: {
-    kind: "user_message" | "agent_message" | "tool_call" | "tool_result" | "subagent" | "state" | "error" | "system";
+    kind: ConversationDisplayKind;
     label?: string;
     collapsedByDefault?: boolean;
   };
   payload: {
+    // Strongly-typed normalized OpenHands event. This is the primary field
+    // read by the display projection layer (conversation-display-semantics.ts).
+    openHandsEvent?: OpenHandsConversationEvent;
+    // Correlation metadata (tool_call_id, parent_tool_call_id, raw wire payload).
+    openHandsDiagnostics?: OpenHandsEventDiagnostics;
+    // Retained raw wire shape for replay/debugging.
     rawOpenHandsEvent?: unknown;
     frontendCommand?: {
       type: "send_message";
@@ -99,10 +118,10 @@ Important rules:
 - Every event has a stable local `eventId`.
 - Every event belongs to exactly one `conversationId`.
 - Frontend sends are represented as canonical events, not separate local-only chat state.
-- Backend-originated runtime events retain the raw OpenHands-native payload inside `payload.rawOpenHandsEvent`.
+- Backend-originated runtime events carry the typed normalized payload in `payload.openHandsEvent`; the raw wire shape is retained separately in `payload.rawOpenHandsEvent` for debugging.
 - The canonical event shape may add app-owned display metadata, but it must not lossy-rewrite the raw OpenHands payload.
 
-Current Task 2 implementation lives in:
+Implementation lives in:
 
 - `app/src/lib/conversation-event-types.ts`
 - `app/src/lib/conversation-event-ordering.ts`
@@ -110,7 +129,7 @@ Current Task 2 implementation lives in:
 - `app/src/lib/conversation-event-projection.ts`
 - `app/src/lib/openhands-conversation-events.ts`
 
-Current shared helper boundary above the transport is:
+Shared helper boundary above the transport:
 
 - `app/src/lib/conversation-runtime.ts`
 - `app/src-tauri/src/commands/conversation.rs`
@@ -120,18 +139,11 @@ Current shared helper boundary above the transport is:
 
 ### Frontend-Originated Events
 
-Frontend-originated events are currently limited to user actions that must appear in the transcript:
+Frontend-originated events are user actions that must appear in the transcript:
 
 - send message
 
-Future candidate frontend-originated events may include:
-
-- explicit retry
-- pause requested
-- resume requested
-- answer question
-
-Target behavior for send:
+Send behavior:
 
 1. User submits a message.
 2. Frontend appends a canonical `frontend` event with:
@@ -170,13 +182,13 @@ Ordering rules:
 4. Backend-originated events append in the order the app receives and normalizes them.
 5. Restored persisted conversations must rebuild the same ordering contract.
 
-This means the stream is stable from the user’s perspective:
+This means the stream is stable from the user's perspective:
 
 - no message jumps
 - no reinsertion after acceptance
-- no “missing second message” ambiguity when the backend is still processing later runtime work
+- no "missing second message" ambiguity when the backend is still processing later runtime work
 
-The current store implementation encodes those rules in pure helpers:
+The store implementation encodes those rules in pure helpers:
 
 - `markEventAccepted(...)`
 - `markEventFailed(...)`
@@ -193,22 +205,26 @@ The UI-facing rules are:
 - the renderer treats `conversationId` as the grouping key
 - live and restored views use the same canonical event stream and the same projection boundary
 
-The detailed target rendering semantics live in:
+The detailed rendering semantics live in:
 
 - `docs/design/openhands-event-display-projection/README.md`
 
-The current pure projection boundary from canonical events into renderer-facing `DisplayNode` values is:
+The pure projection boundary from canonical events into renderer-facing `DisplayNode` values is:
 
-- `projectConversationEvents(...)`
+- `projectConversationEvents(...)` in `conversation-event-projection.ts`
 
-## Relationship to Current Runtime Structures
+Event-kind classification (transcript vs. internal vs. suppressed), tool-call pairing, and trace-node construction live in:
 
-The legacy transcript authority path is removed. The shipped model keeps exactly two frontend authorities:
+- `conversation-display-semantics.ts`
+
+## Runtime Structures
+
+Two frontend authorities manage state:
 
 - `conversation-store` for transcript state
 - `session-runtime-store` for selected-session runtime lifecycle metadata
 
-The long-term target shape is:
+The pipeline is:
 
 ```text
 OpenHands raw events / frontend send acknowledgements
@@ -221,39 +237,36 @@ OpenHands raw events / frontend send acknowledgements
 
 The live event bridge is keyed by `conversation_id` in Tauri events and frontend listeners.
 
-Current implementation state:
+Normalization happens in two steps:
 
-- frontend sends go through `sendConversationMessage(...)` and the typed
-  `send_conversation_message` backend command
-- backend-observed runtime events append into `conversation-store` through
-  `use-session-runtime-stream`
+1. Rust (`agents/openhands_server/`) does field-level cleanup — discriminator normalization, falling back to the SDK `kind` field when `event_class` is absent, and stripping wire-transport metadata before the Tauri event is emitted.
+2. Frontend `openhands-conversation-events.ts` (`normalizeOpenHandsEventRecord(...)`) does the final normalization into typed `OpenHandsConversationEvent` shapes from the TypeScript client contract. This runs in both `use-session-runtime-stream.ts` (live events) and `skill-openhands-session.ts` (restore history).
+
+- frontend sends go through `sendConversationMessage(...)` and the typed `send_conversation_message` backend command
+- backend-observed runtime events are normalized and appended into `conversation-store` through `use-session-runtime-stream`
 - transport metadata lives in `session-runtime-store`
-- legacy `display_item` frontend transcript handling has been removed
 
 ## Surface Adoption
 
 ### Workspace
 
-Workspace is now the first shipped canonical conversation surface for selected skill sessions.
+Workspace is the canonical conversation surface for selected skill sessions.
 
-Current behavior:
-
-- the selected session's `conversationId` remains the public transcript key
+- the selected session's `conversationId` is the public transcript key
 - `WorkspaceConversation` renders the canonical conversation timeline through `useConversationEvents(...)`, `projectConversationEvents(...)`, and the flat timeline row renderer
 - selected-session hydration replays `restored_transcript_events` into `conversation-store` as canonical backend-observed events for that `conversationId`
-- implicit workspace entry after selected-skill session bootstrap now restores to the conversation surface by default
+- implicit workspace entry after selected-skill session bootstrap restores to the conversation surface by default
 
 ### Workflow
 
-Workflow now renders live transcript activity from the same canonical event stream while keeping its step-specific page structure.
-
-Current behavior:
+Workflow renders live transcript activity from the same canonical event stream while keeping its step-specific page structure.
 
 - the workflow page renders `ConversationTimeline` for the active selected session `conversationId`
-- workflow initialization still uses a lightweight spinner until canonical conversation events arrive for the active run
+- workflow initialization uses a lightweight spinner until canonical conversation events arrive for the active run
 - completed-step and gate-specific UI remain workflow-specific page concerns layered around the shared conversation stream
 
-Workflow now tracks active run lifecycle through `session-runtime-store`.
+Workflow tracks active run lifecycle through `session-runtime-store`.
+
 Important rule:
 
 - Workflow may project the shared stream differently, but it should not fork the underlying event authority model.
@@ -266,17 +279,18 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 
 | File | Purpose |
 |---|---|
-| [app/src/lib/conversation-event-types.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-event-types.ts) | Canonical event envelope, statuses, origins, and payload metadata |
-| [app/src/lib/conversation-event-ordering.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-event-ordering.ts) | Pure ordering helpers for in-place acceptance/failure mutation and observed-event appends |
-| [app/src/stores/conversation-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/conversation-store.ts) | Canonical frontend transcript authority keyed by `conversationId` |
-| [app/src/lib/conversation-event-projection.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-event-projection.ts) | Pure projection from canonical events into renderer-facing display nodes |
-| [app/src/lib/openhands-conversation-events.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/openhands-conversation-events.ts) | Normalization helpers plus backend-to-canonical envelope mapping for OpenHands runtime payloads |
-| [app/src/lib/conversation-runtime.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/lib/conversation-runtime.ts) | Frontend send helper for conversation-scoped actions |
-| [app/src-tauri/src/commands/conversation.rs](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src-tauri/src/commands/conversation.rs) | Session-based backend command surface for selected-skill conversation sends |
-| [app/src/components/conversation/conversation-timeline.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/conversation/conversation-timeline.tsx) | Flat canonical renderer for conversation-store-backed display nodes |
-| [app/src/components/workspace/workspace-conversation.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/components/workspace/workspace-conversation.tsx) | Clean-slate workspace transcript surface bound to the selected session |
-| [app/src/pages/workflow.tsx](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/pages/workflow.tsx) | Workflow page that now renders canonical conversation activity for the active selected session |
-| [app/src/stores/session-runtime-store.ts](/Users/hbanerjee/src/worktrees/feature/openhands-conversation-redesig/app/src/stores/session-runtime-store.ts) | Session-centric runtime lifecycle store for active selected-skill runs without transcript state |
+| `app/src/lib/conversation-event-types.ts` | Canonical event envelope (`ConversationEventEnvelope`), statuses, origins, and payload metadata |
+| `app/src/lib/conversation-event-ordering.ts` | Pure ordering helpers for in-place acceptance/failure mutation and observed-event appends |
+| `app/src/stores/conversation-store.ts` | Canonical frontend transcript authority keyed by `conversationId` |
+| `app/src/lib/conversation-event-projection.ts` | Pure projection from canonical events into renderer-facing display nodes |
+| `app/src/lib/conversation-display-semantics.ts` | Event-kind classification (transcript, trace, suppressed), tool-call pairing, and trace-node construction |
+| `app/src/lib/openhands-conversation-events.ts` | Normalization helpers (`normalizeOpenHandsEventRecord`) and backend-to-canonical envelope mapping |
+| `app/src/lib/conversation-runtime.ts` | Frontend send helper for conversation-scoped actions |
+| `app/src-tauri/src/commands/conversation.rs` | Session-based backend command surface for selected-skill conversation sends |
+| `app/src/components/conversation/conversation-timeline.tsx` | Flat canonical renderer for conversation-store-backed display nodes |
+| `app/src/components/workspace/workspace-conversation.tsx` | Workspace transcript surface bound to the selected session |
+| `app/src/pages/workflow.tsx` | Workflow page that renders canonical conversation activity for the active selected session |
+| `app/src/stores/session-runtime-store.ts` | Session-centric runtime lifecycle store for active selected-skill runs without transcript state |
 
 ## Relationship to Existing Design Specs
 
@@ -284,10 +298,8 @@ Throwaway runs can also use the canonical event stream if they need transcript r
 |---|---|
 | [README.md](./README.md) | Parent runtime contract; this page defines the conversation/event model that sits under those runtime primitives |
 | [selected-skill-conversation-sequence.md](./selected-skill-conversation-sequence.md) | Shared persistent selected-skill conversation sequence, including workflow-specific run and reset behavior |
-| [../openhands-event-display-projection/README.md](../openhands-event-display-projection/README.md) | Existing frontend display projection design; this page changes the source-of-truth boundary underneath it |
+| [../openhands-event-display-projection/README.md](../openhands-event-display-projection/README.md) | Frontend event rendering and display projection design; defines event classification, tool pairing, trace kinds, and renderer behavior above the canonical event stream defined here |
 
 ## Open Questions
 
-1. `[design]` Whether send acknowledgement should come from a dedicated backend acknowledgement event or from correlation against current command responses.
-2. `[design]` Whether the canonical event stream should be persisted app-side as a normalized cache or always rebuilt from OpenHands conversation history plus local pending state.
-3. `[design]` Whether additional throwaway OpenHands surfaces should also adopt `session-runtime-store`, or keep lighter-weight local runtime state when they do not expose a transcript.
+1. `[design]` Whether additional throwaway OpenHands surfaces should also adopt `session-runtime-store`, or keep lighter-weight local runtime state when they do not expose a transcript.
