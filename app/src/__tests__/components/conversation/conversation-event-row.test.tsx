@@ -220,13 +220,14 @@ describe("ConversationEventRow", () => {
               id: "trace-1",
               kind: "file_activity",
               title: "File activity",
-              summary: "Viewed schema file",
+              summary: "view path/to/file",
               sourceEventIds: ["evt-a", "evt-b"],
               drawerTitle: "File activity",
               drawerSubtitle: "2 items",
               drawerSections: [
                 { title: "Summary", body: "Viewed schema file" },
-                { title: "Item 1", body: "view path/to/file" },
+                { title: "Item 1: Action", body: "view path/to/file" },
+                { title: "Item 1: Observation", body: "Viewed schema file" },
               ],
             },
           ],
@@ -243,7 +244,9 @@ describe("ConversationEventRow", () => {
     expect(drawer).toBeInTheDocument();
     expect(within(drawer).getByText("File activity")).toBeInTheDocument();
     expect(within(drawer).getByText("2 items")).toBeInTheDocument();
-    expect(within(drawer).getByText("Viewed schema file")).toBeInTheDocument();
+    expect(within(drawer).getAllByText("Viewed schema file")).toHaveLength(2);
+    expect(within(drawer).getByText("Item 1: Action")).toBeInTheDocument();
+    expect(within(drawer).getByText("Item 1: Observation")).toBeInTheDocument();
   });
 
   it("renders skill drawer content as markdown", () => {

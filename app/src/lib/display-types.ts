@@ -22,6 +22,8 @@ export interface DisplayNodeMember {
   id: string;
   title: string;
   bodyText?: string;
+  actionText?: string;
+  observationText?: string;
   sourceEventIds: string[];
 }
 
@@ -50,6 +52,9 @@ export interface DisplayNode {
   createdAtMs: number;
   label?: string;
   bodyText?: string;
+  actionText?: string;
+  observationText?: string;
+  thoughtText?: string;
   collapsedByDefault?: boolean;
   sourceEventIds: string[];
   groupedMemberEventIds?: string[];

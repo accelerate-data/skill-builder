@@ -122,6 +122,9 @@ export function projectSemanticDisplayNodes(
           member: {
             ...existing.member,
             bodyText: classification.member.bodyText ?? existing.member.bodyText,
+            actionText: classification.member.actionText ?? existing.member.actionText,
+            observationText:
+              classification.member.observationText ?? existing.member.observationText,
             sourceEventIds: [
               ...existing.member.sourceEventIds,
               ...classification.member.sourceEventIds,
@@ -141,16 +144,24 @@ export function projectSemanticDisplayNodes(
     if (classification.type === "standalone" && classification.mergeKey) {
       const lastNode = semanticNodes[semanticNodes.length - 1];
       if (lastNode && lastNode.id === classification.mergeKey) {
-        lastNode.bodyText =
-          lastNode.kind === "subagent"
-            ? combineDistinctText(
-                classification.node.bodyText,
-                lastNode.bodyText,
-              )
-            : combineDistinctText(
-                lastNode.bodyText,
-                classification.node.bodyText,
-              );
+        if (lastNode.kind === "subagent") {
+          lastNode.actionText = lastNode.actionText ?? lastNode.bodyText;
+          lastNode.observationText =
+            classification.node.observationText ??
+            classification.node.bodyText ??
+            lastNode.observationText;
+          lastNode.thoughtText =
+            lastNode.thoughtText ?? classification.node.thoughtText;
+          lastNode.bodyText =
+            lastNode.observationText ??
+            lastNode.actionText ??
+            lastNode.bodyText;
+        } else {
+          lastNode.bodyText = combineDistinctText(
+            lastNode.bodyText,
+            classification.node.bodyText,
+          );
+        }
         lastNode.sourceEventIds = [
           ...lastNode.sourceEventIds,
           ...classification.node.sourceEventIds,
@@ -179,7 +190,6 @@ function collapseTraceNodes(nodes: DisplayNode[]): DisplayNode[] {
     "task_sent",
     "agent_update",
     "runtime_setup",
-    "subagent",
     "result",
     "error",
     "tool_error",
@@ -286,12 +296,21 @@ function buildTraceItem(node: DisplayNode): DisplayTraceItem {
     case "subagent":
       return buildSimpleTraceItem(node, {
         title: "Subagent invocation",
-        summary: node.bodyText ?? "Subagent launched",
+        summary: node.actionText ?? node.bodyText ?? "Subagent launched",
         badgeLabel: "subagent",
-        drawerSubtitle: node.bodyText ?? "Subagent invocation",
-        extraSections: node.bodyText
-          ? [{ title: "Invocation", body: node.bodyText }]
-          : [],
+        drawerSubtitle: "1 items",
+        extraSections: [
+          ...(node.thoughtText
+            ? [{ title: "Thought", body: node.thoughtText }]
+            : []),
+          {
+            title: "Action",
+            body: node.actionText ?? node.bodyText ?? "Subagent launched",
+          },
+          ...(node.observationText
+            ? [{ title: "Observation", body: node.observationText }]
+            : []),
+        ],
       });
     case "result":
       return buildSimpleTraceItem(node, {
@@ -358,17 +377,48 @@ function buildSimpleTraceItem(
 function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
   const members = node.members ?? [];
   const title = node.label ?? GROUP_TITLES[node.kind as GroupedKind];
-  const fullSummary = members[0]?.bodyText ?? node.bodyText ?? `${title} captured`;
+  const firstMember = members[0];
+  const fullSummary =
+    firstMember?.observationText ??
+    firstMember?.bodyText ??
+    node.bodyText ??
+    `${title} captured`;
   const summary =
     node.kind === "reasoning"
       ? buildTimelineReasoningSummary(fullSummary)
-      : buildCompactTraceSummary(fullSummary);
+      : buildCompactTraceSummary(
+          firstMember?.actionText ?? firstMember?.bodyText ?? fullSummary,
+        );
   const drawerSections: DisplayTraceDrawerSection[] = [
     { title: "Summary", body: fullSummary },
-    ...members.map((member, index) => ({
-      title: `Item ${index + 1}: ${member.title}`,
-      body: member.bodyText ?? member.title,
-    })),
+    ...members.flatMap((member, index) => {
+      if (
+        (node.kind === "file_activity" || node.kind === "terminal_activity") &&
+        (member.actionText || member.observationText)
+      ) {
+        return [
+          {
+            title: `Item ${index + 1}: Action`,
+            body: member.actionText ?? member.title,
+          },
+          {
+            title: `Item ${index + 1}: Observation`,
+            body:
+              member.observationText ??
+              member.bodyText ??
+              member.actionText ??
+              member.title,
+          },
+        ];
+      }
+
+      return [
+        {
+          title: `Item ${index + 1}: ${member.title}`,
+          body: member.bodyText ?? member.title,
+        },
+      ];
+    }),
   ];
 
   return {
@@ -624,6 +674,12 @@ function classifyEvent(
             getString(openHandsEvent.event.action, "description") ??
             getString(openHandsEvent.event.observation, "subagent") ??
             "Subagent launched",
+          actionText:
+            getString(openHandsEvent.event.action, "description") ??
+            getString(openHandsEvent.event, "summary") ??
+            "Subagent launched",
+          observationText: getObservationText(openHandsEvent),
+          thoughtText: getReasoningText(openHandsEvent),
           sourceEventIds: [event.eventId],
           rawPayload: rawEvent,
         },
@@ -690,13 +746,15 @@ function buildTerminalActivityMember(
   event: ConversationEventEnvelope,
   openHandsEvent: OpenHandsConversationEvent,
 ): DisplayNodeMember {
+  const commandText = getCommandText(openHandsEvent);
+  const observationText = getObservationText(openHandsEvent);
+
   return {
     id: event.eventId,
     title: openHandsEvent.eventClass === "ActionEvent" ? "Run command" : "Command output",
-    bodyText:
-      getCommandText(openHandsEvent) ??
-      getObservationText(openHandsEvent) ??
-      "Terminal activity captured",
+    bodyText: commandText ?? observationText ?? "Terminal activity captured",
+    actionText: commandText,
+    observationText,
     sourceEventIds: [event.eventId],
   };
 }
@@ -718,7 +776,9 @@ function buildFileActivityMember(
   return {
     id: event.eventId,
     title: command ? capitalize(command) : "File activity",
-    bodyText: combineDistinctText(path, observationText) ?? "File activity captured",
+    bodyText: path ?? observationText ?? "File activity captured",
+    actionText: path,
+    observationText,
     sourceEventIds: [event.eventId],
   };
 }
