@@ -227,10 +227,20 @@ export async function initSessionRuntimeStream() {
               typeof conversationEvent.value === "string"
                 ? conversationEvent.value
                 : undefined;
-            if (value === "running") {
-              runtimeStore.applyConversationStatus(conversation_id, "running");
-            } else if (value === "paused") {
-              runtimeStore.applyConversationStatus(conversation_id, "paused");
+            switch (value) {
+              case "running":
+                runtimeStore.applyConversationStatus(conversation_id, "running");
+                break;
+              case "paused":
+                runtimeStore.applyConversationStatus(conversation_id, "paused");
+                break;
+              case "error":
+                runtimeStore.applyConversationStatus(conversation_id, "error");
+                break;
+              case "finished":
+              case "completed":
+                runtimeStore.applyConversationStatus(conversation_id, "completed");
+                break;
             }
           }
         } else if (conversationEvent.kind === "FinishEvent") {

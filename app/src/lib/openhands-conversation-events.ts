@@ -79,10 +79,6 @@ export function normalizeOpenHandsEventRecord(
     return normalizeLegacyConversationStateEvent(record);
   }
 
-  if (!getAnyString(record, "kind", "event_class", "eventClass") && isPlainRecord(record.event)) {
-    return normalizeOpenHandsEventRecord(normalizeWrappedEventRecord(record), _diagnostics);
-  }
-
   const kind = normalizeKind(getAnyString(record, "kind", "event_class", "eventClass"));
   if (!kind) return null;
 

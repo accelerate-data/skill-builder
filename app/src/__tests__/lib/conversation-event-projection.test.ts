@@ -197,6 +197,19 @@ describe("conversation-event-projection", () => {
         createdAtMs: 1_778_000_500,
         display: { kind: "tool_call" },
         payload: {
+          openHandsEvent: {
+            kind: "ActionEvent",
+            id: "task-action-1",
+            timestamp: new Date(1_778_000_500).toISOString(),
+            source: "agent",
+            tool_name: "task",
+            tool_call_id: "call-task-1",
+            thought: "Now I'll launch the verifier subagent for pass 1.",
+            action: {
+              description: "Verify generated skill package",
+              kind: "TaskAction",
+            },
+          },
           rawOpenHandsEvent: {
             type: "conversation_event",
             runtime: "openhands",
@@ -230,6 +243,19 @@ describe("conversation-event-projection", () => {
         createdAtMs: 1_778_000_501,
         display: { kind: "tool_result" },
         payload: {
+          openHandsEvent: {
+            kind: "ObservationEvent",
+            id: "task-observation-1",
+            timestamp: new Date(1_778_000_501).toISOString(),
+            source: "environment",
+            tool_name: "task",
+            tool_call_id: "call-task-1",
+            action_id: "task-action-1",
+            observation: {
+              content: [{ type: "text", text: "{\"status\":\"pass\",\"findings\":[]}" }],
+              kind: "TaskObservation",
+            },
+          },
           rawOpenHandsEvent: {
             type: "conversation_event",
             runtime: "openhands",
@@ -302,6 +328,13 @@ describe("conversation-event-projection", () => {
         createdAtMs: 1_778_000_301,
         display: { kind: "reasoning" },
         payload: {
+          openHandsEvent: {
+            kind: "ThinkEvent",
+            id: "think-fallback-1",
+            timestamp: new Date(1_778_000_301).toISOString(),
+            source: "agent",
+            thought: "Let me analyze the current clarification record and identify material gaps.",
+          },
           rawOpenHandsEvent: {
             type: "conversation_event",
             runtime: "openhands",
@@ -386,6 +419,19 @@ describe("conversation-event-projection", () => {
         createdAtMs: 1_778_000_400,
         display: { kind: "tool_result" },
         payload: {
+          openHandsEvent: {
+            kind: "ObservationEvent",
+            id: "file-observation-1",
+            timestamp: new Date(1_778_000_400).toISOString(),
+            source: "environment",
+            tool_name: "file_editor",
+            tool_call_id: "call-file-1",
+            action_id: "file-action-1",
+            observation: {
+              path: "/workspace/shared/schemas.md",
+              content: "Read 140 lines from /workspace/shared/schemas.md.",
+            },
+          },
           rawOpenHandsEvent: {
             type: "conversation_event",
             runtime: "openhands",
@@ -485,6 +531,18 @@ describe("conversation-event-projection", () => {
         createdAtMs: 1_778_000_500,
         display: { kind: "tool_result" },
         payload: {
+          openHandsEvent: {
+            kind: "ObservationEvent",
+            id: "orphan-observation-1",
+            timestamp: new Date(1_778_000_500).toISOString(),
+            source: "environment",
+            tool_name: "custom_tool",
+            tool_call_id: "call-custom-1",
+            action_id: "missing-action-1",
+            observation: {
+              content: "Observation without a matching action.",
+            },
+          },
           rawOpenHandsEvent: {
             type: "conversation_event",
             runtime: "openhands",
@@ -861,36 +919,7 @@ describe("conversation-event-projection", () => {
     });
   });
 
-  it("suppresses restored wrapped conversation_state completion markers", () => {
-    const nodes = projectConversationEvents([
-      makeEvent({
-        eventId: "evt-restored-finished",
-        conversationId: "conv-restored",
-        createdAtMs: 1_000,
-        origin: "backend",
-        status: "observed",
-        display: { kind: "system" },
-        payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-restored",
-            eventClass: "conversation_state",
-            timestamp: 1_000,
-            event: {
-              type: "conversation_state",
-              status: "completed",
-              result_text: "{\"status\":\"ok\"}",
-            },
-          },
-        },
-      }),
-    ]);
-
-    expect(nodes).toEqual([]);
-  });
-
-  it("suppresses wrapped nested conversation state update events for stats and finished markers", () => {
+  it("suppresses canonical conversation state update events for stats and finished markers", () => {
     const nodes = projectConversationEvents([
       makeEvent({
         eventId: "evt-wrapped-stats",
@@ -900,17 +929,13 @@ describe("conversation-event-projection", () => {
         status: "observed",
         display: { kind: "system" },
         payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-restored",
-            eventClass: "UnknownEvent",
-            timestamp: 1_000,
-            event: {
-              kind: "ConversationStateUpdateEvent",
-              key: "stats",
-              value: { usage_to_metrics: {} },
-            },
+          openHandsEvent: {
+            kind: "ConversationStateUpdateEvent",
+            id: "state-stats-1",
+            timestamp: new Date(1_000).toISOString(),
+            source: "environment",
+            key: "stats",
+            value: { usage_to_metrics: {} },
           },
         },
       }),
@@ -922,17 +947,13 @@ describe("conversation-event-projection", () => {
         status: "observed",
         display: { kind: "system" },
         payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-restored",
-            eventClass: "UnknownEvent",
-            timestamp: 1_001,
-            event: {
-              kind: "ConversationStateUpdateEvent",
-              key: "execution_status",
-              value: "finished",
-            },
+          openHandsEvent: {
+            kind: "ConversationStateUpdateEvent",
+            id: "state-finished-1",
+            timestamp: new Date(1_001).toISOString(),
+            source: "environment",
+            key: "execution_status",
+            value: "finished",
           },
         },
       }),

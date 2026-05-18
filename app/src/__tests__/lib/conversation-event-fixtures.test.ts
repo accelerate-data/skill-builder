@@ -74,6 +74,7 @@ describe("conversation-event fixtures", () => {
         "MessageEvent",
         "ActionEvent",
         "ObservationEvent",
+        "ThinkEvent",
         "ConversationStateUpdateEvent",
         "SystemPromptEvent",
         "PauseEvent",
@@ -82,7 +83,7 @@ describe("conversation-event fixtures", () => {
       ]),
     );
     expect(toolNames).toEqual(
-      new Set(["file_editor", "terminal", "think", "invoke_skill", "task", "finish"]),
+      new Set(["file_editor", "terminal", "invoke_skill", "task", "finish"]),
     );
     expect(stateKeys).toEqual(
       new Set(["execution_status", "stats", "last_user_message_id"]),

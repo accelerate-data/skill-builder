@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useConversationEvents } from "@/hooks/use-conversation-stream";
 import { projectConversationEvents } from "@/lib/conversation-event-projection";
-import { normalizeConversationEventMessage } from "@/lib/openhands-conversation-events";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
@@ -57,9 +56,7 @@ function deriveConversationFooterState(events: ReturnType<typeof useConversation
 } {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    const openHandsEvent =
-      event.payload.openHandsEvent ??
-      normalizeRawOpenHandsEvent(event.payload.rawOpenHandsEvent);
+    const openHandsEvent = event.payload.openHandsEvent;
     if (!openHandsEvent) continue;
 
     if (openHandsEvent.kind === "PauseEvent") {
@@ -76,6 +73,7 @@ function deriveConversationFooterState(events: ReturnType<typeof useConversation
         case "paused":
           return { status: "paused", label: "conversation" };
         case "finished":
+        case "completed":
           return { status: "completed", label: "conversation" };
         case "error":
           return { status: "error", label: "conversation" };
@@ -98,9 +96,4 @@ function deriveConversationFooterState(events: ReturnType<typeof useConversation
   }
 
   return { status: "idle", label: "conversation" };
-}
-
-function normalizeRawOpenHandsEvent(rawEvent: unknown) {
-  if (!rawEvent || typeof rawEvent !== "object") return null;
-  return normalizeConversationEventMessage(rawEvent as Record<string, unknown>);
 }

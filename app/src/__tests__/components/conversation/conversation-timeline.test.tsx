@@ -200,4 +200,42 @@ describe("ConversationTimeline", () => {
       "Waiting for review.",
     );
   });
+
+  it("shows completed state from canonical execution_status updates", () => {
+    useConversationStore.getState().replaceConversationHistory("conv-completed", [
+      makeEvent({
+        eventId: "evt-user",
+        conversationId: "conv-completed",
+        createdAtMs: 1_000,
+        payload: {
+          frontendCommand: {
+            type: "send_message",
+            text: "Finish the run",
+          },
+        },
+      }),
+      makeEvent({
+        eventId: "evt-completed",
+        conversationId: "conv-completed",
+        createdAtMs: 2_000,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "state", label: "State" },
+        payload: {
+          openHandsEvent: {
+            kind: "ConversationStateUpdateEvent",
+            id: "state-completed",
+            timestamp: new Date(2_000).toISOString(),
+            source: "environment",
+            key: "execution_status",
+            value: "completed",
+          },
+        },
+      }),
+    ]);
+
+    render(<ConversationTimeline conversationId="conv-completed" />);
+
+    expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("completed");
+  });
 });
