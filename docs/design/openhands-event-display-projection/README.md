@@ -237,6 +237,7 @@ Internal events do not render as transcript rows, but they still have UI obligat
 
 The bottom status bar is driven by:
 
+- `PauseEvent`
 - `ConversationStateUpdateEvent`
 - `FinishEvent`
 
@@ -248,10 +249,15 @@ At minimum it should reflect:
 - `finished`
 - `error`
 
+Pause is a resumable internal runtime state, not a cancelled or terminal step outcome.
+
+When the user presses `Escape`, Skill Builder should issue a pause request for the running workflow conversation. When the OpenHands runtime later emits a `PauseEvent` or a `ConversationStateUpdateEvent` indicating `paused`, the frontend should update the status bar to `paused`.
+
+That pause acknowledgement must not reset the active workflow step back to `pending`, and it must not be coerced into a terminal cancelled or shutdown run state. Step reset is a separate user action, not a side effect of pause acknowledgement.
+
 ### Toasts and runtime error surfaces
 
 - `ConversationErrorEvent` shows a persistent error toast.
-- `AgentErrorEvent` does not show a toast.
 
 ### Hidden diagnostics
 
@@ -316,7 +322,7 @@ Required assertions:
 - websocket-style normalized events and restore-style normalized events produce the same transcript classification
 - transcript-only kinds render visibly
 - internal kinds do not produce transcript rows
-- `ConversationStateUpdateEvent` and `FinishEvent` drive the status bar
+- `PauseEvent`, `ConversationStateUpdateEvent`, and `FinishEvent` drive the status bar
 - `ConversationErrorEvent` drives toast/error behavior
 - `AgentErrorEvent` renders as a transcript-visible tool-call failure and does not toast
 - successful tool calls pair using:

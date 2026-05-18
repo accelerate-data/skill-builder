@@ -101,6 +101,28 @@ Missing target behavior:
   - `ConfirmationRequestEvent`
   - `ConfirmationResponseEvent`
 
+### 3a. Pause acknowledgement is still conflated with terminal cancellation and workflow step reset
+
+Current code:
+
+- [app/src-tauri/src/agents/openhands_server/events.rs](../../../app/src-tauri/src/agents/openhands_server/events.rs)
+- [app/src/stores/session-runtime-store.ts](../../../app/src/stores/session-runtime-store.ts)
+- [app/src/hooks/use-workflow-state-machine.ts](../../../app/src/hooks/use-workflow-state-machine.ts)
+
+The current implementation already sends a pause request when the user presses `Escape`, but the returned pause acknowledgement is normalized and handled incorrectly:
+
+- Rust normalizes `PauseEvent` into `conversation_state(status="cancelled")`
+- the session runtime store maps `cancelled` to run status `shutdown`
+- the workflow state machine treats `shutdown` as step cancellation and resets the in-progress step to `pending`
+
+Missing target behavior:
+
+- `PauseEvent` remains a canonical internal event instead of being collapsed into terminal cancellation
+- `ConversationStateUpdateEvent(value="paused")` and `PauseEvent` are both treated as pause signals for the status bar
+- a pause acknowledgement updates runtime status to `paused`
+- a pause acknowledgement does not reset the active step to `pending`
+- step reset remains an explicit reset action, not a side effect of pause handling
+
 ### 4. The frontend still interprets raw transport shapes instead of consuming canonical typed events only
 
 Current code:
@@ -259,6 +281,7 @@ instead of normalized internal event types.
 Missing target behavior:
 
 - status bar driven by canonical internal events
+- `PauseEvent` and `ConversationStateUpdateEvent(paused)` handled as resumable pause signals rather than terminal cancellation
 - `ConversationStateUpdateEvent` used for lifecycle state
 - `FinishEvent` used as terminal completion signal
 - no dependence on restore-only or transport-only envelope differences
@@ -369,6 +392,6 @@ This gap document is complete when:
 - failed tool calls correlate by `AgentErrorEvent.tool_call_id -> ActionEvent.tool_call_id`
 - parallel tool calls sharing one `llm_response_id` render as one transcript
   batch with per-tool drawer detail
-- `ConversationStateUpdateEvent` and `FinishEvent` drive the status bar
+- `PauseEvent`, `ConversationStateUpdateEvent`, and `FinishEvent` drive the status bar
 - confirmation/reject events are stored but never shown in the transcript
 - tests lock the canonical event contract rather than the old wrapper model

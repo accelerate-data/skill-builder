@@ -28,6 +28,7 @@ Already in code:
 - status footer
 - grouped file, terminal, reasoning, skill, and subagent trace items
 - fixture-backed projection tests for the current wrapper-based model
+- `Escape` already issues a pause request for running workflow conversations via `pause_openhands_session`
 
 Still pending:
 
@@ -39,6 +40,9 @@ Still pending:
   - `ActionEvent` + `AgentErrorEvent`
 - canonical `ThinkEvent` handling
 - contract-based tests for restore/live parity
+- pause acknowledgement semantics:
+  - `PauseEvent` / `ConversationStateUpdateEvent(paused)` should drive the status bar
+  - pause must not be converted into cancelled or shutdown step reset
 
 ---
 
@@ -174,7 +178,7 @@ Only these kinds should produce transcript content:
 
 - [ ] **Step 2: Make internal hidden kinds explicit**
 
-These kinds must be handled but must not render as transcript rows:
+These kinds must be normalized in Rust into the canonical TypeScript event contract, emitted to the frontend, and handled explicitly by frontend control-state logic. They must not render as transcript rows:
 
 - `PauseEvent`
 - `CondensationRequest`
@@ -188,7 +192,7 @@ These kinds must be handled but must not render as transcript rows:
 
 - [ ] **Step 3: Make confirmation/reject handling explicit**
 
-These events should be accepted or stored if received but never shown in the transcript:
+These events must also be normalized in Rust and emitted to the frontend as canonical event kinds. The frontend should explicitly accept or ignore them as non-transcript events; they must never show up in the transcript:
 
 - `UserRejectObservation`
 - `ConfirmationRequestEvent`
@@ -294,12 +298,19 @@ Render reasoning from:
 
 Do not require reasoning to arrive as a tool-backed action/observation pair.
 
-- [ ] **Step 2: Drive the status bar from canonical internal events**
+- [ ] **Step 2: Drive the status bar from canonical internal events, including `PauseEvent`**
+
+Keep the existing `Escape -> pause_openhands_session` request path. The remaining work here is to consume the returned canonical internal events consistently instead of relying on legacy wrapper-specific handling.
 
 Status bar inputs should come from:
 
 - `ConversationStateUpdateEvent`
+- `PauseEvent`
 - `FinishEvent`
+
+`PauseEvent` and `ConversationStateUpdateEvent` should be handled together as status-bar inputs. A user-triggered pause should surface as `paused` from the canonical internal event stream.
+
+Pause acknowledgement must remain resumable runtime state. Do not collapse it into terminal `cancelled` or `shutdown`, and do not reset the active workflow step to `pending` as a side effect of receiving pause-related events.
 
 The status bar should cover:
 
