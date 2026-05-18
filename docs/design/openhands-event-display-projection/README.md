@@ -9,18 +9,50 @@ functional-specs: []
 
 ## Overview
 
-Skill Builder uses a single production conversation UI model for active OpenHands sessions: a top-to-bottom semantic timeline built directly from canonical conversation events.
+Skill Builder uses one production conversation UI model for active OpenHands sessions: a semantic transcript built from the OpenHands TypeScript client event contract.
 
-The canonical input is `conversationEvents`. The production renderer is `ConversationTimeline`, shared by the Workflow page and the Workspace Conversation surface.
+The app should not invent a separate frontend-only event taxonomy. Both websocket-delivered live events and REST-restored history should be normalized into the same event model as:
 
-The timeline is semantic rather than generic:
+- <https://github.com/OpenHands/typescript-client/blob/main/src/events/types.ts>
 
-- user intent, agent narration, skill activations, subagent launches, results, and errors are always visible
-- ordinary operational tool traffic is grouped for readability
-- internal telemetry and bookkeeping events are suppressed when they do not improve the transcript
-- unknown or newly introduced event shapes remain visible through fallback rows
+This design is therefore driven by event `kind`, not by ad hoc `eventClass` strings or renderer-local fallbacks.
 
-The timeline is also accounted for by contract: grouping and suppression are editorial choices, but every raw event must still be classified explicitly instead of disappearing through an unhandled code path.
+## Normalization Boundary
+
+The OpenHands TypeScript client event types are the canonical app-boundary contract:
+
+- <https://github.com/OpenHands/typescript-client/blob/main/src/events/types.ts>
+
+Every event received from OpenHands must be converted into one of those event types before the frontend transcript store sees it.
+
+That applies to both ingress paths:
+
+- live websocket events
+- restore history fetched from
+  `GET /api/v1/conversation/{conversationId}/events/search`
+
+The TypeScript client exposes runtime guards such as `isMessageEvent` to interpret wire payloads. Skill Builder should follow the same model: normalize raw OpenHands payloads into the TypeScript client event union first, then render from that canonical stream.
+
+### Where normalization happens
+
+Normalization should happen in Rust at the backend/frontend boundary.
+
+Required flow:
+
+```text
+OpenHands websocket payload or /events/search payload
+  -> Rust normalization to TypeScript client ConversationEvent shape
+  -> Tauri event / restore payload to frontend
+  -> frontend transcript + status/toast projection
+```
+
+The frontend should not be responsible for interpreting raw OpenHands transport shapes such as:
+
+- `eventClass`
+- `conversation_state`
+- generic `event: Record<string, unknown>`
+
+Those are backend normalization concerns. The frontend should consume canonical typed events only.
 
 ## Production Scope
 
@@ -35,266 +67,276 @@ Both mount the shared `ConversationTimeline` component.
 
 - historical Refine-era surfaces and contracts
 - converting unrelated non-conversation summaries in the app to conversation-event rendering
-- backend event normalization or OpenHands wire-format cleanup
+- changing the OpenHands SDK or TypeScript client itself
 - a raw debug transcript that renders every persisted event as a standalone row
 
 ## Goals
 
-- Present active OpenHands conversations as a narrative timeline that still preserves operational transparency.
-- Keep `Skill` and `Subagent` as first-class visible rows.
-- Keep assistant updates visible as narrative rows.
-- Group tool traffic without hiding the fact that it happened.
-- Suppress internal telemetry and bookkeeping noise from the normal transcript.
-- Preserve debuggability when the runtime evolves by rendering unknown event shapes visibly instead of silently dropping them.
-- Back the renderer with fixture-driven tests over real persisted conversation event folders.
+- Use the OpenHands TypeScript client event union as the canonical frontend/backend boundary for conversation rendering.
+- Normalize both websocket and restore history in Rust into the same event shape before storing them in the frontend transcript.
+- Show only transcript-worthy events in the visible conversation timeline.
+- Keep operational activity compact by using grouped trace items and a detail drawer.
+- Route internal/control-plane events to dedicated UI handling instead of leaking them into transcript rows.
+- Keep unknown event kinds visible through a fallback row instead of silently dropping them.
 
 ## Non-goals
 
-- Recreating a second primary transcript model beside `conversationEvents`
-- Inferring causal nesting that the event stream does not actually encode
-- Designing a raw-vs-beautified toggle for production use
+- Recreating a second primary transcript model beside the OpenHands event model
+- Requiring Python-only event richness for core frontend behavior
+- Treating restore payloads and live websocket payloads as separate UI contracts
 
-## Canonical Rendering Model
+## Canonical Event Contract
 
-`ConversationTimeline` consumes canonical conversation events in chronological order and produces a semantic row sequence.
+The app boundary should mirror the OpenHands TypeScript client `ConversationEvent` union exactly.
 
-The store contract for active OpenHands runs is:
+At minimum, the renderer must recognize these wire-level kinds:
 
-- raw `conversationEvents`
-- latest `conversationState`
+- `MessageEvent`
+- `ActionEvent`
+- `ObservationEvent`
+- `AgentErrorEvent`
+- `SystemPromptEvent`
+- `PauseEvent`
+- `CondensationRequest`
+- `CondensationSummaryEvent`
+- `Condensation`
+- `ConversationStateUpdateEvent`
+- `ConversationErrorEvent`
+- `LLMCompletionLogEvent`
+- `UserRejectObservation`
+- `ConfirmationRequestEvent`
+- `ConfirmationResponseEvent`
+- `TokenEvent`
+- `StuckDetectionEvent`
+- `FinishEvent`
+- `ThinkEvent`
+- `HookExecutionEvent`
 
-Terminal success or failure is canonical state, not a stored synthetic event. Timeline surfaces may derive terminal `Result` or `Error` narration from `conversationState` for presentation, but that row is a UI-level projection.
+The app may preserve richer raw payloads as optional diagnostics metadata, but display behavior must be correct when only the TypeScript client contract is available.
 
-Each raw event must be classified into exactly one of these presentation forms:
+## Event Families
 
-1. **Visible standalone row**
-2. **Visible grouped row member**
-3. **Visible nested subagent row member**
-4. **Explicitly suppressed event**
-5. **Visible unknown/fallback row**
+Skill Builder uses an app-level split between transcript events and internal events.
 
-Suppression is allowed only for event classes that this document explicitly marks as internal telemetry or bookkeeping.
+### Transcript events
 
-## Event Mapping
+These appear in the visible conversation transcript:
 
-The mapping below is based on the real persisted conversation corpus in `~/Library/Application Support/com.vibedata.skill-builder/openhands/conversations`.
+- `MessageEvent`
+- `ActionEvent`
+- `ObservationEvent`
+- `AgentErrorEvent`
+- `SystemPromptEvent`
+- `CondensationSummaryEvent`
+- `ThinkEvent`
+
+### Hidden-but-handled events
+
+These must be handled explicitly but do not render as transcript rows:
+
+- `PauseEvent`
+- `CondensationRequest`
+- `Condensation`
+- `ConversationStateUpdateEvent`
+- `LLMCompletionLogEvent`
+- `TokenEvent`
+- `StuckDetectionEvent`
+- `FinishEvent`
+- `HookExecutionEvent`
+
+### Runtime error events
+
+These have dedicated runtime error handling outside the transcript:
+
+- `ConversationErrorEvent`
+  - show a user-visible error toast
+  - may also update run-level error state
+
+### Confirmation events
+
+These are accepted and stored if received, but are not part of the normal transcript:
+
+- `UserRejectObservation`
+- `ConfirmationRequestEvent`
+- `ConfirmationResponseEvent`
+  - never render in the transcript because Skill Builder does not use user confirmation flows
+
+## Transcript Rendering Model
+
+`ConversationTimeline` consumes canonical conversation events in chronological order and produces a narrative-first row sequence.
+
+The visible order remains:
+
+1. user message
+2. grouped activity trace
+3. agent update
+
+Activity trace items are editorial projections over transcript events, not new canonical event kinds.
 
 ### Message events
 
-| Event shape | Timeline row |
+| Event kind | Transcript presentation |
 |---|---|
 | `MessageEvent` with `llm_message.role: "user"` | `Task sent` row |
-| `MessageEvent` with `llm_message.role: "assistant"` | `Agent update` row, always visible |
+| `MessageEvent` with `llm_message.role: "assistant"` | `Agent update` row |
 
-### Action and observation events
+### System prompt and condensation summary
 
-| Event shape | Timeline row |
+| Event kind | Transcript presentation |
 |---|---|
-| `ActionEvent` + `ObservationEvent` for `terminal` | Grouped `Terminal activity` member |
-| `ActionEvent` + `ObservationEvent` for `file_editor` | Grouped `File activity` member |
-| `ActionEvent` + `ObservationEvent` for `think` | Grouped `Reasoning` member, collapsed by default |
-| `ActionEvent` + `ObservationEvent` for `invoke_skill` | Single standalone `Skill` row, always visible; observation enriches the same row |
-| `ActionEvent` + `ObservationEvent` for `task` | Single standalone `Subagent` row, always visible; observation enriches the same row |
-| `ActionEvent` for `finish` | Standalone `Result` row |
-| `ObservationEvent` without a matching action | Standalone visible `Tool observation` row |
+| `SystemPromptEvent` | `Runtime setup` trace item with drawer |
+| `CondensationSummaryEvent` | visible transcript summary row |
 
-### System and runtime events
+### Think events
 
-| Event shape | Timeline row |
+| Event kind | Transcript presentation |
 |---|---|
-| `SystemPromptEvent` | Collapsed `Runtime setup` row, or a debug disclosure outside the main timeline |
-| `ConversationStateUpdateEvent` with `key: "execution_status"` | Bottom status bar state, not a timeline row |
-| `ConversationStateUpdateEvent` with `key: "stats"` | Suppressed from the main timeline |
-| `ConversationStateUpdateEvent` with `key: "last_user_message_id"` | Suppressed from the main timeline |
-| `PauseEvent` | Bottom status bar `Paused` state, not a timeline row |
-| `ConversationErrorEvent` | Standalone `Error` row |
-| `AgentErrorEvent` | Standalone `Tool error` or `Subagent error` row |
-| unknown `kind` or unexpected payload | `Unknown event` row with expandable payload |
+| `ThinkEvent` | grouped `Reasoning` activity item using `thought` |
 
-## Observed Corpus
+### Tool-backed action/observation pairs
 
-The current persisted corpus includes these top-level event kinds:
+The transcript groups tool activity by LLM response and resolves each tool-backed `ActionEvent` into one of two outcomes:
+
+- success:
+  - paired `ObservationEvent`
+- failure:
+  - correlated `AgentErrorEvent`
+
+Pairing rules:
+
+- success pair primary key: `ObservationEvent.action_id == ActionEvent.id`
+- success pair consistency key: `ObservationEvent.tool_call_id == ActionEvent.tool_call_id`
+- failure correlation key: `AgentErrorEvent.tool_call_id == ActionEvent.tool_call_id`
+- parallel batch key: `ActionEvent.llm_response_id`
+
+Rendering rules:
+
+- all `ActionEvent`s become tool-call units
+- each tool-call unit resolves to either:
+  - `Action` + `Observation`
+  - `Action` + transcript-visible tool-call failure
+- when multiple `ActionEvent`s share the same `llm_response_id`, they form one parallel tool-call batch
+- the main conversation shows the batch-level `thought`
+- the drawer shows the individual paired tool calls within that batch
+- if an `ActionEvent` has no `llm_response_id`, treat it as a one-item batch
+
+The activity trace summary should show the action-side intent. The drawer should show the paired tool-call detail in a standard structure:
+
+- `Thought` when the `ActionEvent` carries it
+- `Action`
+- `Observation` for success
+- `Error` for transcript-visible tool-call failure
+
+This applies uniformly to all tool-backed `ActionEvent`s. Tool-specific extraction is allowed only to turn raw `action`, `observation`, and tool error payloads into readable text, not to change the structural model.
+
+## Internal Event Handling
+
+Internal events do not render as transcript rows, but they still have UI obligations.
+
+### Status bar
+
+The bottom status bar is driven by:
 
 - `ConversationStateUpdateEvent`
-- `ActionEvent`
-- `ObservationEvent`
-- `MessageEvent`
-- `SystemPromptEvent`
-- `PauseEvent`
-- `ConversationErrorEvent`
-- `AgentErrorEvent`
+- `FinishEvent`
 
-The current tool and state subtypes visible in the corpus are:
+At minimum it should reflect:
 
-- `terminal`
-- `file_editor`
-- `think`
-- `invoke_skill`
-- `task`
-- `finish`
-- `execution_status`
-- `stats`
-- `last_user_message_id`
+- `running`
+- `paused`
+- `idle`
+- `finished`
+- `error`
 
-These observed shapes are the baseline contract for the timeline. Future unknown shapes must fall back visibly instead of disappearing.
+### Toasts and runtime error surfaces
 
-## Grouping Rules
+- `ConversationErrorEvent` shows a persistent error toast.
+- `AgentErrorEvent` does not show a toast.
 
-Grouping is purely visual. It does not change event accounting.
+### Hidden diagnostics
 
-### Allowed grouping
+The following are handled but hidden from the transcript unless a future diagnostics surface explicitly opts in:
 
-Ordinary tool traffic may be grouped into a semantic activity block when the items belong to the same top-level conversation flow and remain adjacent after semantic row construction.
+- `CondensationRequest`
+- `Condensation`
+- `LLMCompletionLogEvent`
+- `TokenEvent`
+- `HookExecutionEvent`
+- `StuckDetectionEvent`
 
-Allowed grouped buckets:
+## Unknown Event Contract
 
-- `Terminal activity`
-- `File activity`
-- `Reasoning`
+This renderer is selective, but not allowed to drop unknown transcript-class payloads silently.
 
-### Disallowed grouping
+If the app receives a `ConversationEvent` kind that is not yet specialized and is not listed above as an internal/hidden event, it must emit a visible fallback row containing:
 
-These rows must remain individually visible and must never be absorbed into generic tool grouping:
-
-- `Agent update`
-- `Skill`
-- `Subagent`
-- `Result`
-- `Error`
-- `Paused`
-
-### Group boundaries
-
-Any visible narrative or structural row breaks the current ordinary tool group.
-
-At minimum, grouping resets on:
-
-- user message rows
-- agent update rows
-- skill rows
-- subagent rows
-- result rows
-- error rows
-- explicit runtime or system rows
-
-## Nesting Rules
-
-### Real child subagents
-
-Nested rendering is deferred for live production timeline rendering.
-
-`parentToolCallId` remains the target correlation field, but current websocket-delivered conversation events are not sufficient to guarantee child-event coverage for subagent internals. Nested subagent rendering therefore requires a second-source enrichment path over persisted events before it becomes part of the production contract.
-
-### Skill rows
-
-`invoke_skill` is shown as a visible `Skill` row, but the renderer must not invent nested ownership for subsequent parent-agent tool calls unless the event stream provides an explicit correlation.
-
-In other words:
-
-- skill rows are visible
-- skill rows are not fake parents for unrelated parent-agent activity
-
-## Visibility Contract
-
-This renderer is editorial and selective, not transcript-dumping.
-
-**Invariant:** every raw conversation event must be accounted for as visible, grouped-visible, nested-visible, or explicitly suppressed.
-
-The renderer must never silently no-op an event because:
-
-- a new event kind was introduced
-- a payload shape drifted
-- a mapper forgot to handle a case
-
-If the renderer cannot confidently classify an event, it must emit a visible fallback row that includes:
-
-- the event kind
+- event kind
 - timestamp
 - compact summary if available
 - expandable raw payload
 
-Suppression is allowed only for event classes this document explicitly marks as non-primary transcript material:
+This keeps runtime evolution debuggable.
 
-- `ConversationStateUpdateEvent.key === "stats"`
-- `ConversationStateUpdateEvent.key === "last_user_message_id"`
-- lifecycle-only transport state (`execution_status`, `PauseEvent`) when the same state remains accessible through the bottom status bar
-- `SystemPromptEvent` only if runtime setup remains accessible through a dedicated disclosure instead of the main timeline
+## Restore and Live Parity
 
-Repeated `execution_status` churn should update the bottom status bar rather than introducing extra transcript rows:
+When resuming an existing conversation, the app should fetch history from the OpenHands conversation events API rather than reconstructing transcript state from local memory or local files.
 
-- `running`
-- `paused`
-- `finished`
-- `error`
+Resume history source:
 
-## Fixture-based Test Strategy
+- `GET /api/v1/conversation/{conversationId}/events/search`
 
-Tests should use the existing persisted conversation fixture folders as the source corpus.
+The frontend must render those fetched events using the same semantics as live websocket events.
 
-### Source of truth
-
-- existing checked-in conversation event fixture folders
-- real persisted event JSON files from prior runs, not re-authored synthetic summaries
-
-### Test flow
-
-1. Load raw persisted conversation events from the fixture folder.
-2. Run the same normalization path used by production.
-3. Feed normalized events into the semantic timeline projection.
-4. Assert both row semantics and event accounting.
-
-### Required assertions
-
-For each fixture:
-
-- every raw event is accounted for
-- `invoke_skill` yields a visible `Skill` row
-- `task` yields a visible `Subagent` row
-- child events with `parentToolCallId` attach to the correct subagent row when present
-- assistant message updates remain visible even around grouped tool activity
-- terminal and file-editor traffic is grouped without losing member accounting
-- `stats` and `last_user_message_id` are suppressed intentionally
-- `execution_status` rows only appear for meaningful lifecycle transitions
-- `ConversationErrorEvent` and `AgentErrorEvent` remain visibly destructive
-- unknown events render visible fallback rows
-
-### Accounting invariant
-
-Each fixture must satisfy:
+The restore path and websocket path must therefore converge before projection:
 
 ```text
-raw event count
-  = visible standalone rows
-  + grouped member events
-  + nested subagent member events
-  + suppressed events
+REST history (/events/search) or websocket event
+  -> Rust normalization to OpenHands TypeScript client ConversationEvent shape
+  -> store
+  -> project to transcript / status / toast handling
 ```
 
-Suppression must remain explicit and test-backed. Any newly suppressed event class must be added to this document and to the fixture assertions.
+The UI must not rely on restore-only or Python-only fields for correctness, and resume must not invent transcript rows that would not appear in the live path.
 
-## Renderer Boundaries
+## Contract-based Test Strategy
 
-### Shared production renderer
+Tests should be built from the OpenHands TypeScript client event contract, not from saved event folders on disk.
 
-The production conversation surfaces share one semantic timeline renderer:
+The source of truth for frontend event tests is:
 
-- Workflow running state
-- Workspace Conversation tab
+- <https://github.com/OpenHands/typescript-client/blob/main/src/events/types.ts>
 
-The same event classification, grouping, suppression, and nesting rules apply to both.
+Test fixtures should therefore model canonical wire events by `kind`, using the same shapes the frontend is guaranteed to receive from:
 
-### Projection boundary
+- live websocket delivery
+- resume history fetched from `GET /api/v1/conversation/{conversationId}/events/search`
 
-The timeline contract starts from raw `conversationEvents` plus raw `conversationState`. Semantic row derivation happens in the conversation UI layer, and renderer-facing display nodes remain projections rather than transcript authority.
+Required assertions:
+
+- websocket-style normalized events and restore-style normalized events produce the same transcript classification
+- transcript-only kinds render visibly
+- internal kinds do not produce transcript rows
+- `ConversationStateUpdateEvent` and `FinishEvent` drive the status bar
+- `ConversationErrorEvent` drives toast/error behavior
+- `AgentErrorEvent` renders as a transcript-visible tool-call failure and does not toast
+- successful tool calls pair using:
+  - `ObservationEvent.action_id == ActionEvent.id`
+  - `ObservationEvent.tool_call_id == ActionEvent.tool_call_id`
+- failed tool calls correlate using:
+  - `AgentErrorEvent.tool_call_id == ActionEvent.tool_call_id`
+- parallel tool calls sharing one `llm_response_id` render as one transcript batch with per-tool drawer detail
+- `task` activity shows `Thought`, `Action`, and `Observation` in the drawer
+- tool-backed action/observation pairs render the same standard drawer structure across tools
+- `ThinkEvent` renders as reasoning using only `thought`
+- unknown transcript-capable kinds render fallback rows
 
 ## Key Source Files
 
 | File | Responsibility |
 |---|---|
-| `app/src/components/conversation/conversation-timeline.tsx` | Shared production conversation surface for timeline rendering |
-| `app/src/components/conversation/conversation-event-row.tsx` | Event row shell and semantic event presentation |
-| `app/src/lib/conversation-event-projection.ts` | Conversation-event to timeline-row projection |
-| `app/src/lib/conversation-event-types.ts` | Canonical frontend envelope for conversation events |
 | `app/src/lib/openhands-conversation-events.ts` | OpenHands event normalization and helper extraction |
-| `app/src/pages/workflow.tsx` | Workflow consumer of `ConversationTimeline` |
-| `app/src/components/workspace/workspace-conversation.tsx` | Workspace Conversation consumer of `ConversationTimeline` |
+| `app/src/lib/conversation-event-types.ts` | Canonical frontend envelope for conversation events |
+| `app/src/lib/conversation-display-semantics.ts` | Event-kind classification into transcript, trace, status, and suppression behavior |
+| `app/src/components/conversation/conversation-timeline.tsx` | Shared production conversation surface and status-bar integration |
+| `app/src/hooks/use-session-runtime-stream.ts` | Live websocket event ingestion and toast routing |
+| `app/src/lib/skill-openhands-session.ts` | Restore-history hydration path |
