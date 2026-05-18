@@ -21,7 +21,7 @@ This plan covers only the remaining work. The current semantic timeline UI, acti
 
 ## Current Baseline
 
-Already in code:
+Implemented:
 
 - semantic transcript UI with `Task sent`, `Activity trace`, and `Agent update`
 - right-side drawer for activity details
@@ -29,11 +29,8 @@ Already in code:
 - grouped file, terminal, reasoning, skill, and subagent trace items
 - fixture-backed projection tests for the current wrapper-based model
 - `Escape` already issues a pause request for running workflow conversations via `pause_openhands_session`
-
-Still pending:
-
-- Rust-side normalization to TypeScript client event kinds
-- removal of the frontend’s dependency on `eventClass`, `conversation_state`, and generic `event` blobs
+- Rust-side normalization to TypeScript client event kinds for live websocket and restore-history payloads
+- frontend consumption of canonical typed events instead of wrapper-first transport envelopes
 - transcript/internal family split by canonical event kind
 - action success/failure outcome modeling:
   - `ActionEvent` + `ObservationEvent`
@@ -41,8 +38,8 @@ Still pending:
 - canonical `ThinkEvent` handling
 - contract-based tests for restore/live parity
 - pause acknowledgement semantics:
-  - `PauseEvent` / `ConversationStateUpdateEvent(paused)` should drive the status bar
-  - pause must not be converted into cancelled or shutdown step reset
+  - `PauseEvent` / `ConversationStateUpdateEvent(paused)` drive the status bar
+  - pause is resumable and does not reset the active step to `pending`
 
 ---
 
@@ -54,7 +51,7 @@ Still pending:
 - Modify: `app/src/lib/openhands-conversation-events.ts`
 - Test: `app/src/__tests__/lib/openhands-conversation-events.test.ts`
 
-- [ ] **Step 1: Introduce app-local TypeScript types that mirror the OpenHands client contract**
+- [x] **Step 1: Introduce app-local TypeScript types that mirror the OpenHands client contract**
 
 Define local event interfaces that track the OpenHands TypeScript client `ConversationEvent` union by `kind`.
 
@@ -81,7 +78,7 @@ Required kinds:
 - `ThinkEvent`
 - `HookExecutionEvent`
 
-- [ ] **Step 2: Remove the frontend-facing dependency on `eventClass` wrappers**
+- [x] **Step 2: Remove the frontend-facing dependency on `eventClass` wrappers**
 
 Replace the current frontend-facing wrapper assumptions:
 
@@ -92,11 +89,11 @@ Replace the current frontend-facing wrapper assumptions:
 
 The canonical frontend payload must instead carry typed event `kind`.
 
-- [ ] **Step 3: Keep optional diagnostics payloads separate from the canonical contract**
+- [x] **Step 3: Keep optional diagnostics payloads separate from the canonical contract**
 
 Preserve raw payload access only as optional diagnostics metadata. Do not require Python-only or persistence-only fields for correctness.
 
-- [ ] **Step 4: Lock the canonical type set with unit tests**
+- [x] **Step 4: Lock the canonical type set with unit tests**
 
 Add or update tests to assert that the normalization layer produces the expected `kind`-based contract and no longer depends on `eventClass` to decide event family.
 
@@ -121,11 +118,11 @@ cd app && npx tsc --noEmit
 - Test: `app/src/__tests__/lib/skill-openhands-session.test.ts`
 - Test: `app/src/__tests__/hooks/use-session-runtime-stream.test.ts`
 
-- [ ] **Step 1: Normalize websocket events in Rust**
+- [x] **Step 1: Normalize websocket events in Rust**
 
 When OpenHands websocket payloads arrive, convert them in Rust into one canonical event shape matching the TypeScript client event contract before emitting them through Tauri.
 
-- [ ] **Step 2: Normalize restore history in Rust**
+- [x] **Step 2: Normalize restore history in Rust**
 
 When resume history is fetched from:
 
@@ -133,7 +130,7 @@ When resume history is fetched from:
 
 convert those payloads in Rust into the same canonical event kinds used for websocket delivery.
 
-- [ ] **Step 3: Ensure the frontend no longer interprets raw transport envelopes**
+- [x] **Step 3: Ensure the frontend no longer interprets raw transport envelopes**
 
 Update the frontend ingestion path so it consumes already-normalized typed events instead of branching on:
 
@@ -141,7 +138,7 @@ Update the frontend ingestion path so it consumes already-normalized typed event
 - `message.type === "conversation_state"`
 - `eventClass`
 
-- [ ] **Step 4: Prove restore/live parity at the boundary**
+- [x] **Step 4: Prove restore/live parity at the boundary**
 
 Add tests asserting that equivalent websocket and `/events/search` payloads arrive at the frontend in the same canonical shape.
 
@@ -164,7 +161,7 @@ cd app && npx tsc --noEmit
 - Test: `app/src/__tests__/lib/conversation-event-projection.test.ts`
 - Test: `app/src/__tests__/components/conversation/conversation-timeline.test.tsx`
 
-- [ ] **Step 1: Make transcript-visible kinds explicit**
+- [x] **Step 1: Make transcript-visible kinds explicit**
 
 Only these kinds should produce transcript content:
 
@@ -176,7 +173,7 @@ Only these kinds should produce transcript content:
 - `CondensationSummaryEvent`
 - `ThinkEvent`
 
-- [ ] **Step 2: Make internal hidden kinds explicit**
+- [x] **Step 2: Make internal hidden kinds explicit**
 
 These kinds must be normalized in Rust into the canonical TypeScript event contract, emitted to the frontend, and handled explicitly by frontend control-state logic. They must not render as transcript rows:
 
@@ -190,7 +187,7 @@ These kinds must be normalized in Rust into the canonical TypeScript event contr
 - `FinishEvent`
 - `HookExecutionEvent`
 
-- [ ] **Step 3: Make confirmation/reject handling explicit**
+- [x] **Step 3: Make confirmation/reject handling explicit**
 
 These events must also be normalized in Rust and emitted to the frontend as canonical event kinds. The frontend should explicitly accept or ignore them as non-transcript events; they must never show up in the transcript:
 
@@ -198,7 +195,7 @@ These events must also be normalized in Rust and emitted to the frontend as cano
 - `ConfirmationRequestEvent`
 - `ConfirmationResponseEvent`
 
-- [ ] **Step 4: Keep fallback rows only for transcript-capable unknown kinds**
+- [x] **Step 4: Keep fallback rows only for transcript-capable unknown kinds**
 
 Do not show fallback transcript rows for known internal kinds.
 
@@ -221,7 +218,7 @@ cd app && npx tsc --noEmit
 - Test: `app/src/__tests__/lib/conversation-event-projection.test.ts`
 - Test: `app/src/__tests__/components/conversation/conversation-event-row.test.tsx`
 
-- [ ] **Step 1: Model successful tool calls as `ActionEvent` + `ObservationEvent`**
+- [x] **Step 1: Model successful tool calls as `ActionEvent` + `ObservationEvent`**
 
 Pair successful tool calls using:
 
@@ -230,7 +227,7 @@ Pair successful tool calls using:
 - consistency key:
   - `ObservationEvent.tool_call_id == ActionEvent.tool_call_id`
 
-- [ ] **Step 2: Model failed tool calls as `ActionEvent` + `AgentErrorEvent`**
+- [x] **Step 2: Model failed tool calls as `ActionEvent` + `AgentErrorEvent`**
 
 Correlate tool-call failures using:
 
@@ -238,7 +235,7 @@ Correlate tool-call failures using:
 
 `AgentErrorEvent` remains transcript-visible and must not toast.
 
-- [ ] **Step 3: Group parallel tool calls by `llm_response_id`**
+- [x] **Step 3: Group parallel tool calls by `llm_response_id`**
 
 When multiple actions share one `llm_response_id`:
 
@@ -248,7 +245,7 @@ When multiple actions share one `llm_response_id`:
 
 If an action has no `llm_response_id`, treat it as a one-item batch.
 
-- [ ] **Step 4: Use one standard drawer structure for tool outcomes**
+- [x] **Step 4: Use one standard drawer structure for tool outcomes**
 
 For all tool-backed action outcomes, the drawer should use:
 
@@ -259,7 +256,7 @@ For all tool-backed action outcomes, the drawer should use:
 
 Tool-specific logic is allowed only for extracting readable text from raw payloads.
 
-- [ ] **Step 5: Remove remaining structural special-casing**
+- [x] **Step 5: Remove remaining structural special-casing**
 
 Retain tool-specific text extraction for:
 
@@ -290,7 +287,7 @@ cd app && npx tsc --noEmit
 - Test: `app/src/__tests__/components/conversation/conversation-timeline.test.tsx`
 - Test: `app/src/__tests__/hooks/use-session-runtime-stream.test.ts`
 
-- [ ] **Step 1: Implement `ThinkEvent` as the canonical reasoning path**
+- [x] **Step 1: Implement `ThinkEvent` as the canonical reasoning path**
 
 Render reasoning from:
 
@@ -298,7 +295,7 @@ Render reasoning from:
 
 Do not require reasoning to arrive as a tool-backed action/observation pair.
 
-- [ ] **Step 2: Drive the status bar from canonical internal events, including `PauseEvent`**
+- [x] **Step 2: Drive the status bar from canonical internal events, including `PauseEvent`**
 
 Keep the existing `Escape -> pause_openhands_session` request path. The remaining work here is to consume the returned canonical internal events consistently instead of relying on legacy wrapper-specific handling.
 
@@ -320,7 +317,7 @@ The status bar should cover:
 - `finished`
 - `error`
 
-- [ ] **Step 3: Move `ConversationErrorEvent` fully to runtime error handling**
+- [x] **Step 3: Move `ConversationErrorEvent` fully to runtime error handling**
 
 `ConversationErrorEvent` should:
 
@@ -347,15 +344,15 @@ cd app && npx tsc --noEmit
 - Modify: `app/src/__tests__/fixtures/openhands-conversations/**`
 - Create or modify additional fixtures as needed under `app/src/__tests__/fixtures/`
 
-- [ ] **Step 1: Replace wrapper-model tests with `kind`-based fixtures**
+- [x] **Step 1: Replace wrapper-model tests with `kind`-based fixtures**
 
 Test fixtures should model canonical TypeScript client event kinds, not repo-local wrapper shapes.
 
-- [ ] **Step 2: Add restore/live parity tests**
+- [x] **Step 2: Add restore/live parity tests**
 
 Prove that equivalent websocket and `/events/search` payloads normalize to the same canonical event kinds and produce the same transcript projection.
 
-- [ ] **Step 3: Add action success/failure coverage**
+- [x] **Step 3: Add action success/failure coverage**
 
 Tests must cover:
 
@@ -364,7 +361,7 @@ Tests must cover:
 - `AgentErrorEvent.tool_call_id` correlation
 - `llm_response_id` batch grouping
 
-- [ ] **Step 4: Add canonical family coverage**
+- [x] **Step 4: Add canonical family coverage**
 
 Tests must cover:
 
@@ -390,15 +387,15 @@ cd app && npx tsc --noEmit
 - Modify: `docs/design/openhands-event-display-projection/implementation-gaps.md`
 - Modify: `docs/design/README.md` only if index wording drifts
 
-- [ ] **Step 1: Update the design doc only for implementation-driven drift**
+- [x] **Step 1: Update the design doc only for implementation-driven drift**
 
 Do not rewrite architecture casually. Only patch the design if implementation uncovers a real contract difference.
 
-- [ ] **Step 2: Reduce or remove closed gaps**
+- [x] **Step 2: Reduce or remove closed gaps**
 
 As implementation lands, prune completed items from `implementation-gaps.md` instead of leaving stale completed gaps in place.
 
-- [ ] **Step 3: Verify docs stay lint-clean**
+- [x] **Step 3: Verify docs stay lint-clean**
 
 **Verification:**
 
@@ -427,6 +424,6 @@ This plan is complete when:
 - `AgentErrorEvent` correlates to the failed action by `tool_call_id`
 - `ConversationErrorEvent` shows a persistent toast and does not render in the transcript
 - `ThinkEvent` is the canonical reasoning path
-- status bar is driven by `ConversationStateUpdateEvent` and `FinishEvent`
+- status bar is driven by `ConversationStateUpdateEvent`, `PauseEvent`, and `FinishEvent`
 - restore and live paths produce the same transcript semantics
 - tests lock the contract-based event model and replace the old wrapper-based assumptions
