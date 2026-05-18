@@ -194,11 +194,11 @@ export interface ConversationMessage {
 }
 
 export interface RestoredConversationEvent {
-  event_class: string;
-  event: Record<string, unknown>;
-  timestamp: number;
-  tool_call_id?: string | null;
-  parent_tool_call_id?: string | null;
+  kind: OpenHandsConversationEvent["kind"];
+  id: string;
+  timestamp: string;
+  source?: OpenHandsConversationEvent["source"];
+  [key: string]: unknown;
 }
 
 export interface ConversationMessage {
@@ -752,3 +752,4 @@ export interface EvalCompleteEvent {
   iteration: number;
   results: string[];
 }
+import type { OpenHandsConversationEvent } from "@/lib/conversation-event-types";

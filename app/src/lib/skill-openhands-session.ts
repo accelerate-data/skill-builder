@@ -1,5 +1,8 @@
 import { selectSkillOpenHandsSession } from "@/lib/tauri";
-import { buildCanonicalConversationEventEnvelope } from "@/lib/openhands-conversation-events";
+import {
+  buildCanonicalConversationEventEnvelope,
+  normalizeOpenHandsEventRecord,
+} from "@/lib/openhands-conversation-events";
 import type {
   EditableSkill,
   RestoredConversationEvent,
@@ -37,16 +40,16 @@ function hydrateCanonicalConversationHistory(
   }
 
   const canonicalEvents = restoredTranscriptEvents.map((event) =>
-    buildCanonicalConversationEventEnvelope({
-      type: "conversation_event",
-      runtime: "openhands",
-      conversationId,
-      eventClass: event.event_class,
-      event: event.event,
-      timestamp: event.timestamp,
-      toolCallId: event.tool_call_id ?? undefined,
-      parentToolCallId: event.parent_tool_call_id ?? undefined,
-    }),
+    {
+      const normalized = normalizeOpenHandsEventRecord(event);
+      if (!normalized) {
+        throw new Error("Unable to normalize restored OpenHands conversation event.");
+      }
+      return buildCanonicalConversationEventEnvelope(normalized, conversationId, {
+        conversationId,
+        rawEvent: event,
+      });
+    },
   );
 
   useConversationStore

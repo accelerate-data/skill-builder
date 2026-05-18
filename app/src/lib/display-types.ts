@@ -24,6 +24,8 @@ export interface DisplayNodeMember {
   bodyText?: string;
   actionText?: string;
   observationText?: string;
+  errorText?: string;
+  thoughtText?: string;
   sourceEventIds: string[];
 }
 
@@ -64,4 +66,4 @@ export interface DisplayNode {
   rawPayload?: unknown;
 }
 
-export const DISPLAY_TYPES_VERSION = 11;
+export const DISPLAY_TYPES_VERSION = 12;

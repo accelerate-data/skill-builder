@@ -717,6 +717,9 @@ export function useWorkflowStateMachine({
       setStopping(false);
       updateStepStatus(step, "pending");
       toast.info("Step cancelled");
+    } else if (activeRunStatus === "paused") {
+      setRunning(false);
+      setStopping(false);
     }
   }, [
     activeRunStatus,

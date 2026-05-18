@@ -11,11 +11,8 @@ pub struct ConversationMessage {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RestoredConversationEvent {
-    pub event_class: String,
+    #[serde(flatten)]
     pub event: serde_json::Value,
-    pub timestamp: i64,
-    pub tool_call_id: Option<String>,
-    pub parent_tool_call_id: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

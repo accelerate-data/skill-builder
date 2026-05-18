@@ -7,8 +7,6 @@ import type {
   RunInitEvent,
   TurnUsageEvent,
 } from "@/lib/agent-events";
-import type { OpenHandsConversationState } from "@/lib/openhands-conversation-events";
-import { isTerminalConversationStatus } from "@/lib/openhands-conversation-events";
 import { formatProviderModelId } from "@/lib/models";
 
 type PendingTerminalStatus = "completed" | "error" | "shutdown";
@@ -62,11 +60,19 @@ interface ModelUsageBreakdown {
   cost: number;
 }
 
+export interface RuntimeConversationState {
+  type: "conversation_state";
+  status: "starting" | "running" | "completed" | "error" | "cancelled" | "paused";
+  errorDetail?: string | null;
+  resultText?: string | null;
+  timestamp: number;
+}
+
 export interface SessionRuntimeRun {
   conversationId: string;
   model: string;
-  status: "running" | "completed" | "error" | "shutdown";
-  conversationState?: OpenHandsConversationState;
+  status: "running" | "paused" | "completed" | "error" | "shutdown";
+  conversationState?: RuntimeConversationState;
   startTime: number;
   endTime?: number;
   totalCost?: number;
@@ -103,7 +109,20 @@ interface SessionRuntimeState {
     usageSessionId?: string,
   ) => void;
   bindTransportRun: (transportId: string, conversationId: string) => void;
-  applyConversationState: (conversationId: string, event: OpenHandsConversationState) => void;
+  applyConversationState: (conversationId: string, event: RuntimeConversationState) => void;
+  applyConversationStatus: (
+    transportId: string,
+    status: RuntimeConversationState["status"],
+    errorDetail?: string | null,
+  ) => void;
+  applyRunResult: (
+    transportId: string,
+    payload: {
+      status: "completed" | "error";
+      resultText?: string | null;
+      resultErrors?: string[] | null;
+    },
+  ) => void;
   applyRunConfig: (transportId: string, event: RunConfigEvent) => void;
   applyRunInit: (transportId: string, event: RunInitEvent) => void;
   applyTurnUsage: (transportId: string, event: TurnUsageEvent) => void;
@@ -138,6 +157,10 @@ function createBaseRun(
     thinkingEnabled: false,
     ...overrides,
   };
+}
+
+function isTerminalConversationStatus(status: RuntimeConversationState["status"]): boolean {
+  return status === "completed" || status === "error" || status === "cancelled";
 }
 
 function pendingMetadataUpdate(
@@ -280,7 +303,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
                 model,
                 skillName,
                 status: (
-                  ["completed", "error", "shutdown"] as string[]
+                  ["completed", "error", "shutdown", "paused"] as string[]
                 ).includes(existing.status)
                   ? existing.status
                   : "running",
@@ -318,7 +341,7 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
                 model,
                 skillName: skillName ?? existing.skillName,
                 status: (
-                  ["completed", "error", "shutdown"] as string[]
+                  ["completed", "error", "shutdown", "paused"] as string[]
                 ).includes(existing.status)
                   ? existing.status
                   : "running",
@@ -364,6 +387,8 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
             ? "error"
             : event.status === "cancelled"
               ? "shutdown"
+              : event.status === "paused"
+                ? "paused"
               : "running";
       const nextEndTime = isTerminalConversationStatus(event.status)
         ? (run?.endTime ?? now)
@@ -412,6 +437,40 @@ export const useSessionRuntimeStore = create<SessionRuntimeState>((set) => ({
         },
       };
     }),
+
+  applyConversationStatus: (transportId, status, errorDetail) => {
+    const state = useSessionRuntimeStore.getState();
+    const conversationId = resolveConversationId(state, transportId);
+    if (!conversationId) return;
+    useSessionRuntimeStore.getState().applyConversationState(conversationId, {
+      type: "conversation_state",
+      status,
+      errorDetail: errorDetail ?? null,
+      resultText: state.runs[conversationId]?.conversationState?.resultText ?? null,
+      timestamp: Date.now(),
+    });
+  },
+
+  applyRunResult: (transportId, payload) => {
+    const state = useSessionRuntimeStore.getState();
+    const conversationId = resolveConversationId(state, transportId);
+    if (!conversationId) {
+      queuePendingTerminal(
+        transportId,
+        payload.status === "completed" ? "completed" : "error",
+        payload.resultErrors?.[0],
+      );
+      return;
+    }
+
+    useSessionRuntimeStore.getState().applyConversationState(conversationId, {
+      type: "conversation_state",
+      status: payload.status,
+      errorDetail: payload.resultErrors?.[0] ?? null,
+      resultText: payload.resultText ?? null,
+      timestamp: Date.now(),
+    });
+  },
 
   applyRunConfig: (transportId, event) =>
     set((state) => {

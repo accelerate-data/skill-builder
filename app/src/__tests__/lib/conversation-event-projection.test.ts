@@ -148,12 +148,11 @@ describe("conversation-event-projection", () => {
         expect.objectContaining({
           kind: "skill",
           title: "Skill invocation",
-          summary: "Load skill-requirements research methodology",
+          summary: "researching-skill-requirements",
           drawerSections: expect.arrayContaining([
             expect.objectContaining({
               title: "Summary",
-              body:
-                "Load skill-requirements research methodology\n\nSkill content loaded.",
+              body: "researching-skill-requirements",
             }),
           ]),
         }),
@@ -465,11 +464,7 @@ describe("conversation-event-projection", () => {
   it("renders runtime setup and distinct standalone error rows from fixture-derived events", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("system-prompt-and-errors"));
 
-    expect(nodes.map((node) => node.kind)).toEqual([
-      "runtime_setup",
-      "error",
-      "subagent_error",
-    ]);
+    expect(nodes.map((node) => node.kind)).toEqual(["runtime_setup", "subagent_error"]);
     expect(nodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -477,7 +472,6 @@ describe("conversation-event-projection", () => {
           label: "Runtime setup",
           bodyText: "You are OpenHands agent.",
         }),
-        expect.objectContaining({ kind: "error", label: "Error" }),
         expect.objectContaining({ kind: "subagent_error", label: "Subagent error" }),
       ]),
     );

@@ -1,4 +1,5 @@
 import type { ConversationEventEnvelope } from "./conversation-event-types";
+import type { OpenHandsConversationEvent } from "./conversation-event-types";
 import type {
   DisplayNode,
   DisplayNodeKind,
@@ -6,12 +7,12 @@ import type {
   DisplayTraceDrawerSection,
   DisplayTraceItem,
 } from "./display-types";
-import type { OpenHandsConversationEvent, OpenHandsConversationState } from "./openhands-conversation-events";
 import {
   getCommandText,
   getErrorText,
   getInternalEventSummary,
   getMessageText,
+  normalizeConversationEventMessage,
   getObservationText,
   getReasoningText,
   getSystemPromptText,
@@ -49,7 +50,6 @@ export function projectSemanticDisplayNodes(
 ): DisplayNode[] {
   const semanticNodes: DisplayNode[] = [];
   let pendingSuppressedEventIds: string[] = [];
-  let lastLifecycleValue: string | undefined;
 
   const emitNode = (node: DisplayNode) => {
     if (pendingSuppressedEventIds.length > 0) {
@@ -93,7 +93,7 @@ export function projectSemanticDisplayNodes(
   };
 
   for (const event of events) {
-    const classification = classifyEvent(event, lastLifecycleValue);
+    const classification = classifyEvent(event);
     if (classification.type === "suppress") {
       const lastNode = semanticNodes[semanticNodes.length - 1];
       if (lastNode) {
@@ -125,6 +125,8 @@ export function projectSemanticDisplayNodes(
             actionText: classification.member.actionText ?? existing.member.actionText,
             observationText:
               classification.member.observationText ?? existing.member.observationText,
+            errorText: classification.member.errorText ?? existing.member.errorText,
+            thoughtText: classification.member.thoughtText ?? existing.member.thoughtText,
             sourceEventIds: [
               ...existing.member.sourceEventIds,
               ...classification.member.sourceEventIds,
@@ -145,17 +147,28 @@ export function projectSemanticDisplayNodes(
       const lastNode = semanticNodes[semanticNodes.length - 1];
       if (lastNode && lastNode.id === classification.mergeKey) {
         if (lastNode.kind === "subagent") {
-          lastNode.actionText = lastNode.actionText ?? lastNode.bodyText;
+          lastNode.actionText =
+            lastNode.actionText ??
+            classification.node.actionText ??
+            lastNode.bodyText;
           lastNode.observationText =
             classification.node.observationText ??
             classification.node.bodyText ??
             lastNode.observationText;
           lastNode.thoughtText =
             lastNode.thoughtText ?? classification.node.thoughtText;
-          lastNode.bodyText =
-            lastNode.observationText ??
+          lastNode.bodyText = lastNode.actionText ?? lastNode.bodyText;
+        } else if (lastNode.kind === "skill") {
+          lastNode.thoughtText = lastNode.thoughtText ?? classification.node.thoughtText;
+          lastNode.actionText =
             lastNode.actionText ??
+            classification.node.actionText ??
             lastNode.bodyText;
+          lastNode.observationText =
+            classification.node.observationText ??
+            classification.node.bodyText ??
+            lastNode.observationText;
+          lastNode.bodyText = lastNode.actionText ?? lastNode.bodyText;
         } else {
           lastNode.bodyText = combineDistinctText(
             lastNode.bodyText,
@@ -171,11 +184,6 @@ export function projectSemanticDisplayNodes(
     }
 
     flushGroups(event.createdAtMs);
-    if (classification.node.kind === "lifecycle") {
-      lastLifecycleValue = classification.node.bodyText?.toLowerCase();
-    } else if (classification.node.kind === "pause") {
-      lastLifecycleValue = undefined;
-    }
     emitNode(classification.node);
   }
 
@@ -300,9 +308,6 @@ function buildTraceItem(node: DisplayNode): DisplayTraceItem {
         badgeLabel: "subagent",
         drawerSubtitle: "1 items",
         extraSections: [
-          ...(node.thoughtText
-            ? [{ title: "Thought", body: node.thoughtText }]
-            : []),
           {
             title: "Action",
             body: node.actionText ?? node.bodyText ?? "Subagent launched",
@@ -357,6 +362,7 @@ function buildSimpleTraceItem(
     node.kind === "skill" ? buildCompactTraceSummary(options.summary) : options.summary;
   const sections: DisplayTraceDrawerSection[] = [
     { title: "Summary", body: options.summary },
+    ...(node.thoughtText ? [{ title: "Thought", body: node.thoughtText }] : []),
     ...(options.extraSections ?? []),
   ];
 
@@ -392,24 +398,35 @@ function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
   const drawerSections: DisplayTraceDrawerSection[] = [
     { title: "Summary", body: fullSummary },
     ...members.flatMap((member, index) => {
-      if (
-        (node.kind === "file_activity" || node.kind === "terminal_activity") &&
-        (member.actionText || member.observationText)
-      ) {
-        return [
-          {
+      if (member.actionText || member.observationText || member.errorText || member.thoughtText) {
+        const sections: DisplayTraceDrawerSection[] = [];
+        if (member.thoughtText) {
+          sections.push({
+            title: `Item ${index + 1}: Thought`,
+            body: member.thoughtText,
+          });
+        }
+        if (member.actionText) {
+          sections.push({
             title: `Item ${index + 1}: Action`,
-            body: member.actionText ?? member.title,
-          },
-          {
+            body: member.actionText,
+          });
+        }
+        if (member.observationText) {
+          sections.push({
             title: `Item ${index + 1}: Observation`,
-            body:
-              member.observationText ??
-              member.bodyText ??
-              member.actionText ??
-              member.title,
-          },
-        ];
+            body: member.observationText,
+          });
+        }
+        if (member.errorText) {
+          sections.push({
+            title: `Item ${index + 1}: Error`,
+            body: member.errorText,
+          });
+        }
+        if (sections.length > 0) {
+          return sections;
+        }
       }
 
       return [
@@ -468,7 +485,6 @@ function getLifecycleTitle(value?: string): string {
 
 function classifyEvent(
   event: ConversationEventEnvelope,
-  lastLifecycleValue?: string,
 ): SemanticClassification {
   if (event.origin === "frontend" && event.payload.frontendCommand) {
     return {
@@ -485,27 +501,15 @@ function classifyEvent(
     };
   }
 
-  const rawEvent = event.payload.rawOpenHandsEvent;
-  if (!rawEvent || typeof rawEvent !== "object") {
+  const openHandsEvent =
+    event.payload.openHandsEvent ??
+    normalizeRawOpenHandsEvent(event.payload.rawOpenHandsEvent);
+  if (!openHandsEvent) {
     return fallbackDisplayKindNode(event);
   }
 
-  const openHandsEvent = rawEvent as OpenHandsConversationEvent | OpenHandsConversationState;
-  if (
-    !("type" in openHandsEvent) ||
-    typeof (openHandsEvent as { type?: unknown }).type !== "string"
-  ) {
-    return fallbackDisplayKindNode(event);
-  }
-  if (openHandsEvent.type === "conversation_state") {
-    return lifecycleNode(event, openHandsEvent.status, lastLifecycleValue);
-  }
-
-  if (openHandsEvent.eventClass === "MessageEvent") {
-    const source =
-      typeof openHandsEvent.event.source === "string"
-        ? openHandsEvent.event.source
-        : undefined;
+  if (openHandsEvent.kind === "MessageEvent") {
+    const source = getMessageSource(openHandsEvent);
 
     return {
       type: "standalone",
@@ -517,62 +521,12 @@ function classifyEvent(
         label: source === "user" ? "Task sent" : "Agent update",
         bodyText: getMessageText(openHandsEvent) ?? "Message captured",
         sourceEventIds: [event.eventId],
-        rawPayload: rawEvent,
+        rawPayload: event.payload.rawOpenHandsEvent,
       },
     };
   }
 
-  if (openHandsEvent.eventClass === "conversation_state") {
-    const wrappedStatus =
-      typeof openHandsEvent.event.status === "string"
-        ? openHandsEvent.event.status
-        : undefined;
-    if (wrappedStatus) {
-      return lifecycleNode(event, wrappedStatus, lastLifecycleValue);
-    }
-  }
-
-  const nestedEventKind =
-    typeof openHandsEvent.event.kind === "string"
-      ? openHandsEvent.event.kind
-      : typeof openHandsEvent.event.eventClass === "string"
-        ? openHandsEvent.event.eventClass
-        : typeof openHandsEvent.event.event_class === "string"
-          ? openHandsEvent.event.event_class
-          : undefined;
-  if (nestedEventKind === "ConversationStateUpdateEvent") {
-    const nestedKey =
-      typeof openHandsEvent.event.key === "string" ? openHandsEvent.event.key : undefined;
-    const nestedValue =
-      typeof openHandsEvent.event.value === "string" ? openHandsEvent.event.value : undefined;
-
-    if (nestedKey === "stats" || nestedKey === "last_user_message_id") {
-      return { type: "suppress" };
-    }
-    if (nestedKey === "execution_status") {
-      if (nestedValue === "paused") return { type: "suppress" };
-      return lifecycleNode(event, nestedValue ?? "status", lastLifecycleValue);
-    }
-  }
-
-  if (openHandsEvent.eventClass === "ConversationStateUpdateEvent") {
-    const key =
-      typeof openHandsEvent.event.key === "string" ? openHandsEvent.event.key : undefined;
-    const value =
-      typeof openHandsEvent.event.value === "string" ? openHandsEvent.event.value : undefined;
-
-    if (key === "stats" || key === "last_user_message_id") {
-      return { type: "suppress" };
-    }
-    if (key === "execution_status") {
-      if (value === "paused") return { type: "suppress" };
-      return lifecycleNode(event, value ?? "status", lastLifecycleValue);
-    }
-
-    return unknownEventNode(event);
-  }
-
-  if (openHandsEvent.eventClass === "SystemPromptEvent") {
+  if (openHandsEvent.kind === "SystemPromptEvent") {
     return {
       type: "standalone",
       node: {
@@ -587,45 +541,88 @@ function classifyEvent(
           "System prompt prepared.",
         collapsedByDefault: true,
         sourceEventIds: [event.eventId],
-        rawPayload: rawEvent,
+        rawPayload: event.payload.rawOpenHandsEvent,
       },
     };
   }
 
-  if (openHandsEvent.eventClass === "PauseEvent") {
+  if (openHandsEvent.kind === "CondensationSummaryEvent") {
     return {
       type: "standalone",
       node: {
         id: event.eventId,
-        kind: "pause",
+        kind: "result",
         status: event.status,
         createdAtMs: event.createdAtMs,
-        label: "Paused",
-        bodyText: getInternalEventSummary(openHandsEvent) ?? "Conversation paused.",
+        label: "Condensation summary",
+        bodyText: getInternalEventSummary(openHandsEvent) ?? "Conversation summary updated.",
         sourceEventIds: [event.eventId],
-        rawPayload: rawEvent,
+        rawPayload: event.payload.rawOpenHandsEvent,
       },
     };
   }
 
-  if (openHandsEvent.eventClass === "ConversationErrorEvent") {
-    return errorNode(event, "error", "Error");
+  if (
+    openHandsEvent.kind === "PauseEvent" ||
+    openHandsEvent.kind === "ConversationStateUpdateEvent" ||
+    openHandsEvent.kind === "LLMCompletionLogEvent" ||
+    openHandsEvent.kind === "CondensationRequest" ||
+    openHandsEvent.kind === "Condensation" ||
+    openHandsEvent.kind === "TokenEvent" ||
+    openHandsEvent.kind === "StuckDetectionEvent" ||
+    openHandsEvent.kind === "FinishEvent" ||
+    openHandsEvent.kind === "HookExecutionEvent" ||
+    openHandsEvent.kind === "ConversationErrorEvent" ||
+    openHandsEvent.kind === "UserRejectObservation" ||
+    openHandsEvent.kind === "ConfirmationRequestEvent" ||
+    openHandsEvent.kind === "ConfirmationResponseEvent"
+  ) {
+    return { type: "suppress" };
   }
 
-  if (openHandsEvent.eventClass === "AgentErrorEvent") {
-    const toolName = getToolName(openHandsEvent);
-    return errorNode(
-      event,
-      toolName === "task" ? "subagent_error" : "tool_error",
-      toolName === "task" ? "Subagent error" : "Tool error",
-    );
+  if (openHandsEvent.kind === "ThinkEvent") {
+    return groupedToolNode(event, "reasoning", buildReasoningMember(event, openHandsEvent));
   }
 
   if (
-    openHandsEvent.eventClass === "ActionEvent" ||
-    openHandsEvent.eventClass === "ObservationEvent"
+    openHandsEvent.kind === "ActionEvent" ||
+    openHandsEvent.kind === "ObservationEvent" ||
+    openHandsEvent.kind === "AgentErrorEvent"
   ) {
     const toolName = getToolName(openHandsEvent);
+    if (openHandsEvent.kind === "AgentErrorEvent" && toolName === "task") {
+      return {
+        type: "standalone",
+        node: {
+          id: event.eventId,
+          kind: "subagent_error",
+          status: "failed",
+          createdAtMs: event.createdAtMs,
+          label: "Subagent error",
+          bodyText: getErrorText(openHandsEvent) ?? "Subagent failed",
+          sourceEventIds: [event.eventId],
+          rawPayload: event.payload.rawOpenHandsEvent,
+        },
+      };
+    }
+    if (openHandsEvent.kind === "AgentErrorEvent" && toolName) {
+      return {
+        type: "standalone",
+        node: {
+          id: event.eventId,
+          kind: "tool_error",
+          status: "failed",
+          createdAtMs: event.createdAtMs,
+          label: "Tool error",
+          bodyText: getErrorText(openHandsEvent) ?? "Tool execution failed",
+          sourceEventIds: [event.eventId],
+          rawPayload: event.payload.rawOpenHandsEvent,
+        },
+      };
+    }
+    if (toolName === "think") {
+      return groupedToolNode(event, "reasoning", buildReasoningMember(event, openHandsEvent));
+    }
     if (toolName === "file_editor") {
       return groupedToolNode(event, "file_activity", buildFileActivityMember(event, openHandsEvent));
     }
@@ -636,10 +633,12 @@ function classifyEvent(
         buildTerminalActivityMember(event, openHandsEvent),
       );
     }
-    if (toolName === "think") {
-      return groupedToolNode(event, "reasoning", buildReasoningMember(event, openHandsEvent));
-    }
     if (toolName === "invoke_skill") {
+      const actionText = getActionSummary(openHandsEvent) ?? "Skill invoked";
+      const observationText =
+        openHandsEvent.kind === "ObservationEvent"
+          ? getObservationText(openHandsEvent)
+          : undefined;
       return {
         type: "standalone",
         node: {
@@ -648,19 +647,22 @@ function classifyEvent(
           status: event.status,
           createdAtMs: event.createdAtMs,
           label: "Skill",
-          bodyText:
-            getObservationText(openHandsEvent) ??
-            getString(openHandsEvent.event, "summary") ??
-            getString(openHandsEvent.event.action, "name") ??
-            getString(openHandsEvent.event.observation, "skill_name") ??
-            "Skill invoked",
+          bodyText: actionText,
+          actionText,
+          observationText,
+          thoughtText: getReasoningText(openHandsEvent),
           sourceEventIds: [event.eventId],
-          rawPayload: rawEvent,
+          rawPayload: event.payload.rawOpenHandsEvent,
         },
         mergeKey: getStandaloneMergeKey("skill", openHandsEvent),
       };
     }
     if (toolName === "task") {
+      const actionText = getActionSummary(openHandsEvent) ?? "Subagent launched";
+      const observationText =
+        openHandsEvent.kind === "ObservationEvent"
+          ? getObservationText(openHandsEvent)
+          : undefined;
       return {
         type: "standalone",
         node: {
@@ -669,19 +671,12 @@ function classifyEvent(
           status: event.status,
           createdAtMs: event.createdAtMs,
           label: "Subagent",
-          bodyText:
-            getObservationText(openHandsEvent) ??
-            getString(openHandsEvent.event.action, "description") ??
-            getString(openHandsEvent.event.observation, "subagent") ??
-            "Subagent launched",
-          actionText:
-            getString(openHandsEvent.event.action, "description") ??
-            getString(openHandsEvent.event, "summary") ??
-            "Subagent launched",
-          observationText: getObservationText(openHandsEvent),
+          bodyText: actionText,
+          actionText,
+          observationText,
           thoughtText: getReasoningText(openHandsEvent),
           sourceEventIds: [event.eventId],
-          rawPayload: rawEvent,
+          rawPayload: event.payload.rawOpenHandsEvent,
         },
         mergeKey: getStandaloneMergeKey("subagent", openHandsEvent),
       };
@@ -696,15 +691,14 @@ function classifyEvent(
           createdAtMs: event.createdAtMs,
           label: "Result",
           bodyText:
-            getString(openHandsEvent.event.action, "message") ??
-            getString(openHandsEvent.event, "summary") ??
+            getActionSummary(openHandsEvent) ??
             "Result available",
           sourceEventIds: [event.eventId],
-          rawPayload: rawEvent,
+          rawPayload: event.payload.rawOpenHandsEvent,
         },
       };
     }
-    if (openHandsEvent.eventClass === "ObservationEvent") {
+    if (openHandsEvent.kind === "ObservationEvent") {
       const observationText = getObservationText(openHandsEvent);
       if (observationText) {
         return {
@@ -717,7 +711,7 @@ function classifyEvent(
             label: "Tool observation",
             bodyText: observationText,
             sourceEventIds: [event.eventId],
-            rawPayload: rawEvent,
+            rawPayload: event.payload.rawOpenHandsEvent,
           },
         };
       }
@@ -748,13 +742,16 @@ function buildTerminalActivityMember(
 ): DisplayNodeMember {
   const commandText = getCommandText(openHandsEvent);
   const observationText = getObservationText(openHandsEvent);
+  const errorText = getErrorText(openHandsEvent);
 
   return {
     id: event.eventId,
-    title: openHandsEvent.eventClass === "ActionEvent" ? "Run command" : "Command output",
-    bodyText: commandText ?? observationText ?? "Terminal activity captured",
+    title: openHandsEvent.kind === "ActionEvent" ? "Run command" : "Command output",
+    bodyText: commandText ?? observationText ?? errorText ?? "Terminal activity captured",
     actionText: commandText,
     observationText,
+    errorText,
+    thoughtText: getReasoningText(openHandsEvent),
     sourceEventIds: [event.eventId],
   };
 }
@@ -764,11 +761,21 @@ function buildFileActivityMember(
   openHandsEvent: OpenHandsConversationEvent,
 ): DisplayNodeMember {
   const input = getToolInput(openHandsEvent);
-  const command = getString(openHandsEvent.event.action, "command");
+  const command =
+    openHandsEvent.kind === "ActionEvent"
+      ? getString(openHandsEvent.action, "command")
+      : openHandsEvent.kind === "ObservationEvent"
+        ? getString(openHandsEvent.observation, "command")
+        : undefined;
   const observationText = getObservationText(openHandsEvent);
+  const errorText = getErrorText(openHandsEvent);
   const path =
-    getString(openHandsEvent.event.action, "path") ??
-    getString(openHandsEvent.event.observation, "path") ??
+    (openHandsEvent.kind === "ActionEvent"
+      ? getString(openHandsEvent.action, "path")
+      : undefined) ??
+    (openHandsEvent.kind === "ObservationEvent"
+      ? getString(openHandsEvent.observation, "path")
+      : undefined) ??
     (typeof input === "object" && input && "path" in input
       ? getString(input as Record<string, unknown>, "path")
       : undefined);
@@ -776,9 +783,11 @@ function buildFileActivityMember(
   return {
     id: event.eventId,
     title: command ? capitalize(command) : "File activity",
-    bodyText: path ?? observationText ?? "File activity captured",
+    bodyText: path ?? observationText ?? errorText ?? "File activity captured",
     actionText: path,
     observationText,
+    errorText,
+    thoughtText: getReasoningText(openHandsEvent),
     sourceEventIds: [event.eventId],
   };
 }
@@ -796,6 +805,7 @@ function buildReasoningMember(
     id: event.eventId,
     title: "Reasoning checkpoint",
     bodyText,
+    thoughtText: getReasoningText(openHandsEvent),
     sourceEventIds: [event.eventId],
   };
 }
@@ -804,50 +814,35 @@ function isThinkObservationPlaceholder(value?: string): boolean {
   return value?.trim() === "Your thought has been logged.";
 }
 
-function lifecycleNode(
-  event: ConversationEventEnvelope,
-  value: string,
-  lastLifecycleValue?: string,
-): SemanticClassification {
-  const normalized = value.toLowerCase();
-  if (lastLifecycleValue === normalized) {
-    return { type: "suppress" };
-  }
-
-  return {
-    type: "standalone",
-    node: {
-      id: event.eventId,
-      kind: "lifecycle",
-      status: event.status,
-      createdAtMs: event.createdAtMs,
-      label: "Lifecycle",
-      bodyText: capitalize(normalized),
-      sourceEventIds: [event.eventId],
-    },
-  };
+function getMessageSource(event: OpenHandsConversationEvent): string | undefined {
+  if (event.kind !== "MessageEvent") return undefined;
+  const llmMessage = event.llm_message as { role?: unknown };
+  if (llmMessage.role === "user") return "user";
+  if (llmMessage.role === "assistant") return "agent";
+  return event.source;
 }
 
-function errorNode(
-  event: ConversationEventEnvelope,
-  kind: Extract<DisplayNodeKind, "error" | "tool_error" | "subagent_error">,
-  label: string,
-): SemanticClassification {
-  const openHandsEvent = event.payload.rawOpenHandsEvent as OpenHandsConversationEvent;
+function getActionSummary(event: OpenHandsConversationEvent): string | undefined {
+  if (event.kind === "ActionEvent") {
+    return (
+      getFirstString(event.action, "description", "name", "message", "command", "path") ??
+      getCommandText(event)
+    );
+  }
 
-  return {
-    type: "standalone",
-    node: {
-      id: event.eventId,
-      kind,
-      status: "failed",
-      createdAtMs: event.createdAtMs,
-      label,
-      bodyText: getErrorText(openHandsEvent) ?? "Error captured",
-      sourceEventIds: [event.eventId],
-      rawPayload: event.payload.rawOpenHandsEvent,
-    },
-  };
+  if (event.kind === "ObservationEvent") {
+    return (
+      getFirstString(event.observation, "skill_name", "subagent", "command", "path") ??
+      getString(event.observation, "message") ??
+      getToolName(event)
+    );
+  }
+
+  if (event.kind === "AgentErrorEvent") {
+    return getToolName(event);
+  }
+
+  return undefined;
 }
 
 function getStandaloneMergeKey(
@@ -901,7 +896,7 @@ function fallbackDisplayKindNode(
           createdAtMs: event.createdAtMs,
           label: "Agent update",
           bodyText:
-            getString(event.payload.rawOpenHandsEvent, "text", "message", "content") ??
+            getFirstString(event.payload.rawOpenHandsEvent, "text", "message", "content") ??
             "Message captured",
           sourceEventIds: [event.eventId],
           rawPayload: event.payload.rawOpenHandsEvent,
@@ -915,11 +910,16 @@ function fallbackDisplayKindNode(
 function getToolCallIdFromEnvelope(
   event: ConversationEventEnvelope,
 ): string | undefined {
-  const rawEvent = event.payload.rawOpenHandsEvent;
-  if (!rawEvent || typeof rawEvent !== "object") return undefined;
-
-  const openHandsEvent = rawEvent as OpenHandsConversationEvent;
+  const openHandsEvent =
+    event.payload.openHandsEvent ??
+    normalizeRawOpenHandsEvent(event.payload.rawOpenHandsEvent);
+  if (!openHandsEvent) return undefined;
   return getToolCallId(openHandsEvent);
+}
+
+function normalizeRawOpenHandsEvent(rawEvent: unknown): OpenHandsConversationEvent | null {
+  if (!rawEvent || typeof rawEvent !== "object") return null;
+  return normalizeConversationEventMessage(rawEvent as Record<string, unknown>);
 }
 
 function getString(
@@ -936,6 +936,14 @@ function getString(
   }
 
   return typeof current === "string" ? current : undefined;
+}
+
+function getFirstString(value: unknown, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const resolved = getString(value, key);
+    if (resolved) return resolved;
+  }
+  return undefined;
 }
 
 function combineDistinctText(...values: Array<string | undefined>): string | undefined {

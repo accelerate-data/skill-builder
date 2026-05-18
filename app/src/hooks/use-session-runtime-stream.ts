@@ -8,10 +8,9 @@ import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cac
 import {
   buildCanonicalConversationEventEnvelope,
   getReasoningText,
-  isTerminalConversationStatus,
   normalizeConversationEventMessage,
-  normalizeConversationStateMessage,
 } from "@/lib/openhands-conversation-events";
+import type { OpenHandsConversationEvent } from "@/lib/conversation-event-types";
 import type {
   CompactionEvent,
   ContextWindowEvent,
@@ -57,6 +56,13 @@ interface AgentExitPayload {
   error_detail?: string;
 }
 
+interface AgentRunResultPayload {
+  conversation_id: string;
+  status: "completed" | "error";
+  resultText?: string | null;
+  resultErrors?: string[] | null;
+}
+
 type AgentInitProgressPayload = {
   conversation_id: string;
   timestamp: number;
@@ -90,17 +96,17 @@ function selectedConversationId(): string | null {
 }
 
 function appendCanonicalRuntimeEvent(
-  event:
-    | ReturnType<typeof normalizeConversationEventMessage>
-    | ReturnType<typeof normalizeConversationStateMessage>,
+  conversationId: string,
+  event: OpenHandsConversationEvent | null,
+  rawEvent?: unknown,
 ) {
   if (!event) return;
 
   try {
-    const envelope = buildCanonicalConversationEventEnvelope(
-      event,
-      selectedConversationId(),
-    );
+    const envelope = buildCanonicalConversationEventEnvelope(event, selectedConversationId(), {
+      conversationId,
+      rawEvent,
+    });
     useConversationStore.getState().appendBackendObservedEvent(envelope);
   } catch (error) {
     console.warn(
@@ -196,45 +202,45 @@ export async function initSessionRuntimeStream() {
 
       const runtimeStore = useSessionRuntimeStore.getState();
 
-      if (message.type === "conversation_event") {
-        const conversationEvent = normalizeConversationEventMessage(message);
-        if (conversationEvent) {
-          appendCanonicalRuntimeEvent(conversationEvent);
-          const reasoningText = getReasoningText(conversationEvent);
-          console.debug(
-            "[use-session-runtime-stream] event=conversation_event conversation_id=%s event_class=%s reasoning_len=%d",
-            conversation_id,
-            conversationEvent.eventClass,
-            reasoningText?.length ?? 0,
-          );
-          return;
-        }
-      }
+      const conversationEvent = normalizeConversationEventMessage(message);
+      if (conversationEvent) {
+        runtimeStore.bindTransportRun(conversation_id, conversation_id);
+        appendCanonicalRuntimeEvent(conversation_id, conversationEvent, message);
+        const reasoningText = getReasoningText(conversationEvent);
+        console.debug(
+          "[use-session-runtime-stream] event=conversation_event conversation_id=%s kind=%s reasoning_len=%d",
+          conversation_id,
+          conversationEvent.kind,
+          reasoningText?.length ?? 0,
+        );
 
-      if (message.type === "conversation_state") {
-        const conversationState = normalizeConversationStateMessage(message);
-        if (conversationState) {
-          if (conversationState.conversationId) {
-            runtimeStore.bindTransportRun(
-              conversation_id,
-              conversationState.conversationId,
-            );
-            runtimeStore.applyConversationState(
-              conversationState.conversationId,
-              conversationState,
-            );
+        if (conversationEvent.kind === "PauseEvent") {
+          runtimeStore.applyConversationStatus(conversation_id, "paused");
+        } else if (conversationEvent.kind === "ConversationStateUpdateEvent") {
+          if (conversationEvent.key === "execution_status") {
+            const value =
+              typeof conversationEvent.value === "string"
+                ? conversationEvent.value
+                : undefined;
+            if (value === "running") {
+              runtimeStore.applyConversationStatus(conversation_id, "running");
+            } else if (value === "paused") {
+              runtimeStore.applyConversationStatus(conversation_id, "paused");
+            }
           }
-          appendCanonicalRuntimeEvent(conversationState);
-          if (isTerminalConversationStatus(conversationState.status)) {
-            invalidateUsageDataAfterAgentRun().catch((error) => {
-              console.warn(
-                "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",
-                error,
-              );
-            });
-          }
-          return;
+        } else if (conversationEvent.kind === "FinishEvent") {
+          runtimeStore.applyConversationStatus(conversation_id, "completed");
+        } else if (conversationEvent.kind === "ConversationErrorEvent") {
+          runtimeStore.applyConversationStatus(
+            conversation_id,
+            "error",
+            conversationEvent.detail,
+          );
+          toast.error(conversationEvent.detail || "Conversation failed", {
+            duration: Infinity,
+          });
         }
+        return;
       }
 
       if (message.type === "agent_event") {
@@ -267,6 +273,19 @@ export async function initSessionRuntimeStream() {
           event.payload.success,
           event.payload.error_detail,
         );
+      invalidateUsageDataAfterAgentRun().catch((error) => {
+        console.warn(
+          "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",
+          error,
+        );
+      });
+    }),
+    reg<AgentRunResultPayload>("agent-run-result", (event) => {
+      useSessionRuntimeStore.getState().applyRunResult(event.payload.conversation_id, {
+        status: event.payload.status,
+        resultText: event.payload.resultText ?? null,
+        resultErrors: event.payload.resultErrors ?? null,
+      });
       invalidateUsageDataAfterAgentRun().catch((error) => {
         console.warn(
           "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",

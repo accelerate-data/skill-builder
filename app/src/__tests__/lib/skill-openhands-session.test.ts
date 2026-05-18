@@ -51,20 +51,24 @@ describe("skill-openhands-session", () => {
       restored_messages: [],
       restored_transcript_events: [
         {
-          event_class: "MessageEvent",
-          event: {
-            source: "agent",
-            message: "Restored answer",
+          kind: "MessageEvent",
+          id: "evt-1",
+          timestamp: new Date(1_000).toISOString(),
+          source: "agent",
+          llm_message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Restored answer" }],
           },
-          timestamp: 1_000,
         },
         {
-          event_class: "ObservationEvent",
-          event: {
-            observation: "Observed tool output",
-          },
-          timestamp: 2_000,
+          kind: "ObservationEvent",
+          id: "evt-2",
+          timestamp: new Date(2_000).toISOString(),
+          source: "environment",
+          tool_name: "terminal",
           tool_call_id: "tool-1",
+          action_id: "evt-action",
+          observation: "Observed tool output",
         },
       ],
     };
@@ -84,16 +88,13 @@ describe("skill-openhands-session", () => {
         createdAtMs: 1_000,
         display: { kind: "agent_message" },
         payload: {
+          openHandsEvent: {
+            kind: "MessageEvent",
+            id: "evt-1",
+          },
           rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-123",
-            eventClass: "MessageEvent",
-            event: {
-              source: "agent",
-              message: "Restored answer",
-            },
-            timestamp: 1_000,
+            kind: "MessageEvent",
+            id: "evt-1",
           },
         },
       },
@@ -104,16 +105,15 @@ describe("skill-openhands-session", () => {
         createdAtMs: 2_000,
         display: { kind: "tool_result" },
         payload: {
+          openHandsEvent: {
+            kind: "ObservationEvent",
+            id: "evt-2",
+            tool_call_id: "tool-1",
+          },
           rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-123",
-            eventClass: "ObservationEvent",
-            event: {
-              observation: "Observed tool output",
-            },
-            timestamp: 2_000,
-            toolCallId: "tool-1",
+            kind: "ObservationEvent",
+            id: "evt-2",
+            tool_call_id: "tool-1",
           },
         },
       },

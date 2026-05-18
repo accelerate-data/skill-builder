@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useConversationEvents } from "@/hooks/use-conversation-stream";
 import { projectConversationEvents } from "@/lib/conversation-event-projection";
+import { normalizeConversationEventMessage } from "@/lib/openhands-conversation-events";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RunStatusFooter, type FooterDisplayStatus } from "@/components/run-status-footer";
@@ -56,55 +57,19 @@ function deriveConversationFooterState(events: ReturnType<typeof useConversation
 } {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    const rawEvent = event.payload.rawOpenHandsEvent;
-    if (!rawEvent || typeof rawEvent !== "object") continue;
+    const openHandsEvent =
+      event.payload.openHandsEvent ??
+      normalizeRawOpenHandsEvent(event.payload.rawOpenHandsEvent);
+    if (!openHandsEvent) continue;
 
-    const message = rawEvent as {
-      type?: unknown;
-      status?: unknown;
-      errorDetail?: unknown;
-      error_detail?: unknown;
-      eventClass?: unknown;
-      event?: Record<string, unknown>;
-    };
-
-    if (message.type === "conversation_state") {
-      const status = typeof message.status === "string" ? message.status : undefined;
-      switch (status) {
-        case "starting":
-          return { status: "initializing", label: "conversation" };
-        case "running":
-          return { status: "running", label: "conversation" };
-        case "completed":
-          return { status: "completed", label: "conversation" };
-        case "error":
-          return {
-            status: "error",
-            label: "conversation",
-            errorText:
-              typeof message.errorDetail === "string"
-                ? message.errorDetail
-                : typeof message.error_detail === "string"
-                  ? message.error_detail
-                  : null,
-          };
-        case "cancelled":
-          return { status: "paused", label: "conversation" };
-      }
+    if (openHandsEvent.kind === "PauseEvent") {
+      return { status: "paused", label: openHandsEvent.reason ?? "conversation" };
     }
 
-    if (typeof message.eventClass !== "string") continue;
-    if (message.eventClass === "PauseEvent") {
-      const reason =
-        typeof message.event?.reason === "string" ? message.event.reason : undefined;
-      return { status: "paused", label: reason ?? "conversation" };
-    }
-
-    if (message.eventClass === "ConversationStateUpdateEvent") {
-      const key = typeof message.event?.key === "string" ? message.event.key : undefined;
+    if (openHandsEvent.kind === "ConversationStateUpdateEvent") {
+      if (openHandsEvent.key !== "execution_status") continue;
       const value =
-        typeof message.event?.value === "string" ? message.event.value : undefined;
-      if (key !== "execution_status" || !value) continue;
+        typeof openHandsEvent.value === "string" ? openHandsEvent.value : undefined;
       switch (value) {
         case "running":
           return { status: "running", label: "conversation" };
@@ -118,7 +83,24 @@ function deriveConversationFooterState(events: ReturnType<typeof useConversation
           return { status: "idle", label: "conversation" };
       }
     }
+
+    if (openHandsEvent.kind === "FinishEvent") {
+      return { status: "completed", label: "conversation" };
+    }
+
+    if (openHandsEvent.kind === "ConversationErrorEvent") {
+      return {
+        status: "error",
+        label: "conversation",
+        errorText: openHandsEvent.detail,
+      };
+    }
   }
 
   return { status: "idle", label: "conversation" };
+}
+
+function normalizeRawOpenHandsEvent(rawEvent: unknown) {
+  if (!rawEvent || typeof rawEvent !== "object") return null;
+  return normalizeConversationEventMessage(rawEvent as Record<string, unknown>);
 }
