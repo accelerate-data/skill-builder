@@ -11,6 +11,7 @@ interface ConversationActivityGroupProps {
 }
 
 const TRACE_ICONS: Record<DisplayTraceItem["kind"], string> = {
+  tool_batch: "T",
   skill: "S",
   subagent: "A",
   result: "R",

@@ -757,25 +757,17 @@ describe("conversation-event-projection", () => {
         kind: "activity_trace",
         traceItems: expect.arrayContaining([
           expect.objectContaining({
-            kind: "reasoning",
+            kind: "tool_batch",
             summary: "I should inspect the schema and test file in parallel before editing.",
-          }),
-          expect.objectContaining({
-            kind: "file_activity",
             drawerSections: expect.arrayContaining([
               expect.objectContaining({ title: "Item 1: Action", body: "/tmp/schema.md" }),
               expect.objectContaining({ title: "Item 1: Observation", body: "Read 40 lines." }),
-            ]),
-          }),
-          expect.objectContaining({
-            kind: "terminal_activity",
-            drawerSections: expect.arrayContaining([
               expect.objectContaining({
-                title: "Item 1: Action",
+                title: "Item 2: Action",
                 body: "npm test -- conversation",
               }),
               expect.objectContaining({
-                title: "Item 1: Observation",
+                title: "Item 2: Observation",
                 body: "Tests passed.",
               }),
             ]),

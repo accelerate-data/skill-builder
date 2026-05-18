@@ -4,6 +4,7 @@ export type DisplayNodeKind =
   | "task_sent"
   | "agent_update"
   | "activity_trace"
+  | "tool_batch"
   | "skill"
   | "subagent"
   | "result"
@@ -26,6 +27,8 @@ export interface DisplayNodeMember {
   observationText?: string;
   errorText?: string;
   thoughtText?: string;
+  toolCallId?: string;
+  actionEventId?: string;
   sourceEventIds: string[];
 }
 

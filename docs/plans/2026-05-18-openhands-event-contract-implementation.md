@@ -26,7 +26,7 @@ Implemented:
 - semantic transcript UI with `Task sent`, `Activity trace`, and `Agent update`
 - right-side drawer for activity details
 - status footer
-- grouped file, terminal, reasoning, skill, and subagent trace items
+- chronological `Activity trace` collapse for transcript-visible non-message events
 - fixture-backed projection tests for the current wrapper-based model
 - `Escape` already issues a pause request for running workflow conversations via `pause_openhands_session`
 - Rust-side normalization to TypeScript client event kinds for live websocket and restore-history payloads
@@ -401,6 +401,55 @@ As implementation lands, prune completed items from `implementation-gaps.md` ins
 
 ```bash
 markdownlint docs/design/openhands-event-display-projection/README.md docs/design/openhands-event-display-projection/implementation-gaps.md docs/plans/2026-05-18-openhands-event-contract-implementation.md
+```
+
+---
+
+### Task 8: Simplify the activity trace to chronological event order
+
+**Files:**
+
+- Modify: `app/src/lib/conversation-display-semantics.ts`
+- Modify: `app/src/lib/display-types.ts`
+- Modify: `app/src/components/conversation/conversation-activity-group.tsx`
+- Test: `app/src/__tests__/lib/conversation-event-projection.test.ts`
+- Test: `app/src/__tests__/components/conversation/conversation-timeline.test.tsx`
+- Test: `app/src/__tests__/components/conversation/conversation-event-row.test.tsx`
+
+- [x] **Step 1: Remove type-bucket grouping from `Activity trace`**
+
+Do not regroup trace content by `reasoning`, `file_activity`, `terminal_activity`, `skill`, or `subagent`.
+
+`Activity trace` is only a collapsible presentation bucket for transcript-visible non-message events.
+
+- [x] **Step 2: Preserve chronological order**
+
+Render trace items in event order.
+
+The only collapse rule inside the trace is:
+
+- `ActionEvent`s with the same `llm_response_id` collapse into one trace item
+
+Unrelated events must not be merged just because they share a display kind.
+
+- [x] **Step 3: Keep `ThinkEvent` inside `Activity trace`**
+
+`ThinkEvent` remains transcript-visible, but it renders as a single chronological trace item rather than a separate type-grouped lane.
+
+- [x] **Step 4: Keep action outcomes paired without changing chronological order**
+
+Within a trace item:
+
+- `ObservationEvent.action_id == ActionEvent.id` is the primary success pairing rule
+- `AgentErrorEvent.tool_call_id == ActionEvent.tool_call_id` is the failure pairing rule
+
+Pairing is for one displayed trace item only. It must not trigger broader regrouping by tool type.
+
+**Verification:**
+
+```bash
+cd app && npx vitest run src/__tests__/lib/conversation-event-projection.test.ts src/__tests__/components/conversation/conversation-timeline.test.tsx src/__tests__/components/conversation/conversation-event-row.test.tsx
+cd app && npx tsc --noEmit
 ```
 
 ---

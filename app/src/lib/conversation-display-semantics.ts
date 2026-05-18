@@ -22,47 +22,39 @@ import {
   getToolName,
 } from "./openhands-conversation-events";
 
-type GroupedKind = Extract<
+type TraceNodeKind = Extract<
   DisplayNodeKind,
-  "terminal_activity" | "file_activity" | "reasoning" | "skill" | "subagent"
+  "tool_batch" | "terminal_activity" | "file_activity" | "reasoning" | "skill" | "subagent"
 >;
 
 type SemanticClassification =
   | { type: "suppress" }
   | { type: "standalone"; node: DisplayNode; mergeKey?: string }
   | {
-      type: "group_member";
-      groupKind: GroupedKind;
-      member: DisplayNodeMember;
+      type: "trace_node";
+      node: DisplayNode;
       toolCallId?: string;
       actionEventId?: string;
       actionId?: string;
       llmResponseId?: string;
-      reasoningText?: string;
     };
 
-interface PendingGroupedMember {
+interface PendingTraceNode {
+  node: DisplayNode;
   toolCallId?: string;
   actionEventId?: string;
+  actionId?: string;
   llmResponseId?: string;
-  member: DisplayNodeMember;
 }
 
-const GROUP_TITLES: Record<GroupedKind, string> = {
+const TRACE_TITLES: Record<TraceNodeKind, string> = {
+  tool_batch: "Tool calls",
   terminal_activity: "Terminal activity",
   file_activity: "File activity",
   reasoning: "Reasoning",
   skill: "Skill invocation",
   subagent: "Subagent invocation",
 };
-
-const TRACE_ITEM_ORDER: GroupedKind[] = [
-  "reasoning",
-  "file_activity",
-  "terminal_activity",
-  "skill",
-  "subagent",
-];
 
 export function projectSemanticDisplayNodes(
   events: ConversationEventEnvelope[],
@@ -80,37 +72,28 @@ export function projectSemanticDisplayNodes(
     }
     semanticNodes.push(node);
   };
+  let pendingTraceNodes: PendingTraceNode[] = [];
 
-  const flushGroupedNodes = (
-    groupedMembers: Partial<Record<GroupedKind, PendingGroupedMember[]>>,
-    createdAtMs: number,
-  ) => {
-    for (const groupKind of TRACE_ITEM_ORDER) {
-      const members = groupedMembers[groupKind];
-      if (!members || members.length === 0) continue;
+  const flushTrace = (createdAtMs: number) => {
+    if (pendingTraceNodes.length === 0) return;
 
-      const allEventIds = members.flatMap((entry) => entry.member.sourceEventIds);
-      emitNode({
-        id: `group:${groupKind}:${allEventIds[0]}`,
-        kind: groupKind,
-        status: "observed",
-        createdAtMs,
-        label: GROUP_TITLES[groupKind],
-        collapsedByDefault: groupKind === "reasoning",
-        sourceEventIds: allEventIds,
-        groupedMemberEventIds: allEventIds,
-        members: members.map((entry) => entry.member),
-      });
-    }
-  };
-
-  let pendingGroups: Partial<Record<GroupedKind, PendingGroupedMember[]>> = {};
-  let pendingReasoningResponseIds = new Set<string>();
-
-  const flushGroups = (createdAtMs: number) => {
-    flushGroupedNodes(pendingGroups, createdAtMs);
-    pendingGroups = {};
-    pendingReasoningResponseIds = new Set<string>();
+    const flattenedNodes = pendingTraceNodes.map((entry) => entry.node);
+    const sourceEventIds = flattenedNodes.flatMap((node) => node.sourceEventIds);
+    const suppressedEventIds = flattenedNodes.flatMap(
+      (node) => node.suppressedEventIds ?? [],
+    );
+    emitNode({
+      id: `trace:${flattenedNodes[0].id}`,
+      kind: "activity_trace",
+      status: "observed",
+      createdAtMs,
+      label: "Activity trace",
+      collapsedByDefault: true,
+      sourceEventIds,
+      suppressedEventIds: suppressedEventIds.length > 0 ? suppressedEventIds : undefined,
+      traceItems: flattenedNodes.map(buildTraceItem),
+    });
+    pendingTraceNodes = [];
   };
 
   for (const event of events) {
@@ -128,59 +111,20 @@ export function projectSemanticDisplayNodes(
       continue;
     }
 
-    if (classification.type === "group_member") {
-      if (
-        classification.llmResponseId &&
-        classification.reasoningText &&
-        !pendingReasoningResponseIds.has(classification.llmResponseId)
-      ) {
-        const reasoningMembers = pendingGroups.reasoning ?? [];
-        reasoningMembers.push({
-          llmResponseId: classification.llmResponseId,
-          member: {
-            id: `reasoning:${classification.llmResponseId}:${event.eventId}`,
-            title: "Reasoning checkpoint",
-            bodyText: classification.reasoningText,
-            thoughtText: classification.reasoningText,
-            sourceEventIds: [event.eventId],
-          },
-        });
-        pendingGroups.reasoning = reasoningMembers;
-        pendingReasoningResponseIds.add(classification.llmResponseId);
-      }
-
-      const list = pendingGroups[classification.groupKind] ?? [];
-      const existingIndex = findExistingGroupedMemberIndex(list, classification);
-
+    if (classification.type === "trace_node") {
+      const existingIndex = findPendingTraceNodeIndex(pendingTraceNodes, classification);
       if (existingIndex >= 0) {
-        const existing = list[existingIndex];
-        list[existingIndex] = {
-          toolCallId: classification.toolCallId ?? existing.toolCallId,
-          actionEventId: classification.actionEventId ?? existing.actionEventId,
-          llmResponseId: classification.llmResponseId ?? existing.llmResponseId,
-          member: {
-            ...existing.member,
-            bodyText: classification.member.bodyText ?? existing.member.bodyText,
-            actionText: classification.member.actionText ?? existing.member.actionText,
-            observationText:
-              classification.member.observationText ?? existing.member.observationText,
-            errorText: classification.member.errorText ?? existing.member.errorText,
-            thoughtText: classification.member.thoughtText ?? existing.member.thoughtText,
-            sourceEventIds: [
-              ...existing.member.sourceEventIds,
-              ...classification.member.sourceEventIds,
-            ],
-          },
-        };
+        const existing = pendingTraceNodes[existingIndex];
+        pendingTraceNodes[existingIndex] = mergePendingTraceNode(existing, classification);
       } else {
-        list.push({
+        pendingTraceNodes.push({
+          node: classification.node,
           toolCallId: classification.toolCallId,
           actionEventId: classification.actionEventId,
+          actionId: classification.actionId,
           llmResponseId: classification.llmResponseId,
-          member: classification.member,
         });
       }
-      pendingGroups[classification.groupKind] = list;
       continue;
     }
 
@@ -196,91 +140,18 @@ export function projectSemanticDisplayNodes(
       }
     }
 
-    flushGroups(event.createdAtMs);
+    flushTrace(event.createdAtMs);
     emitNode(classification.node);
   }
 
-  flushGroups(events.length > 0 ? events[events.length - 1].createdAtMs : Date.now());
-  return collapseTraceNodes(semanticNodes);
-}
-
-function collapseTraceNodes(nodes: DisplayNode[]): DisplayNode[] {
-  const collapsedNodes: DisplayNode[] = [];
-  let pendingTraceNodes: DisplayNode[] = [];
-  const standaloneBoundaryKinds = new Set<DisplayNodeKind>([
-    "task_sent",
-    "agent_update",
-    "runtime_setup",
-    "result",
-    "error",
-    "tool_error",
-    "subagent_error",
-    "unknown_event",
-  ]);
-
-  const flushTrace = (mode: "boundary" | "final" = "boundary") => {
-    if (pendingTraceNodes.length === 0) return;
-
-    const sourceEventIds = pendingTraceNodes.flatMap((node) => node.sourceEventIds);
-    const suppressedEventIds = pendingTraceNodes.flatMap((node) => node.suppressedEventIds ?? []);
-    const traceNode: DisplayNode = {
-      id: `trace:${pendingTraceNodes[0].id}`,
-      kind: "activity_trace",
-      status: "observed",
-      createdAtMs: pendingTraceNodes[0].createdAtMs,
-      label: "Activity trace",
-      collapsedByDefault: true,
-      sourceEventIds,
-      suppressedEventIds: suppressedEventIds.length > 0 ? suppressedEventIds : undefined,
-      traceItems: pendingTraceNodes.map(buildTraceItem),
-    };
-
-    const previousNode = collapsedNodes[collapsedNodes.length - 1];
-    const previousTraceNode = collapsedNodes[collapsedNodes.length - 2];
-    if (
-      mode === "final" &&
-      previousNode?.kind === "agent_update" &&
-      previousTraceNode?.kind === "activity_trace"
-    ) {
-      previousTraceNode.sourceEventIds = [
-        ...previousTraceNode.sourceEventIds,
-        ...traceNode.sourceEventIds,
-      ];
-      previousTraceNode.suppressedEventIds = [
-        ...(previousTraceNode.suppressedEventIds ?? []),
-        ...(traceNode.suppressedEventIds ?? []),
-      ];
-      previousTraceNode.traceItems = [
-        ...(previousTraceNode.traceItems ?? []),
-        ...(traceNode.traceItems ?? []),
-      ];
-    } else {
-      collapsedNodes.push(traceNode);
-    }
-
-    pendingTraceNodes = [];
-  };
-
-  for (const node of nodes) {
-    if (standaloneBoundaryKinds.has(node.kind)) {
-      flushTrace();
-      collapsedNodes.push(node);
-      continue;
-    }
-
-    if (node.kind === "lifecycle" || node.kind === "pause") {
-      continue;
-    }
-
-    pendingTraceNodes.push(node);
-  }
-
-  flushTrace("final");
-  return collapsedNodes;
+  flushTrace(events.length > 0 ? events[events.length - 1].createdAtMs : Date.now());
+  return semanticNodes;
 }
 
 function buildTraceItem(node: DisplayNode): DisplayTraceItem {
   switch (node.kind) {
+    case "tool_batch":
+      return buildGroupedTraceItem(node);
     case "runtime_setup":
       return buildSimpleTraceItem(node, {
         title: "Runtime setup",
@@ -312,18 +183,6 @@ function buildTraceItem(node: DisplayNode): DisplayTraceItem {
         title: "Result",
         summary: node.bodyText ?? "Result available",
         badgeLabel: "result",
-      });
-    case "tool_error":
-      return buildSimpleTraceItem(node, {
-        title: "Tool error",
-        summary: node.bodyText ?? "Tool execution failed",
-        badgeLabel: "error",
-      });
-    case "subagent_error":
-      return buildSimpleTraceItem(node, {
-        title: "Subagent error",
-        summary: node.bodyText ?? "Subagent failed",
-        badgeLabel: "error",
       });
     case "file_activity":
     case "terminal_activity":
@@ -374,9 +233,10 @@ function buildSimpleTraceItem(
 
 function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
   const members = node.members ?? [];
-  const title = node.label ?? GROUP_TITLES[node.kind as GroupedKind];
+  const title = node.label ?? TRACE_TITLES[node.kind as TraceNodeKind];
   const firstMember = members[0];
   const fullSummary =
+    (node.kind === "tool_batch" ? node.thoughtText : undefined) ??
     firstMember?.observationText ??
     firstMember?.bodyText ??
     node.bodyText ??
@@ -385,10 +245,16 @@ function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
     node.kind === "reasoning"
       ? buildTimelineReasoningSummary(fullSummary)
       : buildCompactTraceSummary(
-          firstMember?.actionText ?? firstMember?.bodyText ?? fullSummary,
+          (node.kind === "tool_batch" ? node.thoughtText : undefined) ??
+            firstMember?.actionText ??
+            firstMember?.bodyText ??
+            fullSummary,
         );
   const drawerSections: DisplayTraceDrawerSection[] = [
     { title: "Summary", body: fullSummary },
+    ...(node.thoughtText && node.kind !== "reasoning"
+      ? [{ title: "Thought", body: node.thoughtText }]
+      : []),
     ...members.flatMap((member, index) => {
       if (member.actionText || member.observationText || member.errorText || member.thoughtText) {
         const sections: DisplayTraceDrawerSection[] = [];
@@ -573,7 +439,7 @@ function classifyEvent(
   }
 
   if (openHandsEvent.kind === "ThinkEvent") {
-    return groupedToolNode(event, "reasoning", buildReasoningMember(event, openHandsEvent));
+    return traceNode(event, buildReasoningNode(event, openHandsEvent));
   }
 
   if (
@@ -583,23 +449,25 @@ function classifyEvent(
   ) {
     const toolName = getToolName(openHandsEvent);
     if (toolName === "think") {
-      return groupedToolNode(event, "reasoning", buildReasoningMember(event, openHandsEvent));
+      if (openHandsEvent.kind === "ObservationEvent") {
+        const observationText = getObservationText(openHandsEvent);
+        if (!observationText || isThinkObservationPlaceholder(observationText)) {
+          return { type: "suppress" };
+        }
+      }
+      return traceNode(event, buildReasoningNode(event, openHandsEvent));
     }
     if (toolName === "file_editor") {
-      return groupedToolNode(event, "file_activity", buildFileActivityMember(event, openHandsEvent));
+      return traceNode(event, buildToolTraceNode(event, openHandsEvent, "file_activity"));
     }
     if (toolName === "terminal") {
-      return groupedToolNode(
-        event,
-        "terminal_activity",
-        buildTerminalActivityMember(event, openHandsEvent),
-      );
+      return traceNode(event, buildToolTraceNode(event, openHandsEvent, "terminal_activity"));
     }
     if (toolName === "invoke_skill") {
-      return groupedToolNode(event, "skill", buildSkillActivityMember(event, openHandsEvent));
+      return traceNode(event, buildToolTraceNode(event, openHandsEvent, "skill"));
     }
     if (toolName === "task") {
-      return groupedToolNode(event, "subagent", buildSubagentActivityMember(event, openHandsEvent));
+      return traceNode(event, buildToolTraceNode(event, openHandsEvent, "subagent"));
     }
     if (toolName === "finish") {
       return {
@@ -641,35 +509,95 @@ function classifyEvent(
   return unknownEventNode(event);
 }
 
-function groupedToolNode(
+function traceNode(
   event: ConversationEventEnvelope,
-  groupKind: GroupedKind,
-  member: DisplayNodeMember,
+  node: DisplayNode,
 ): SemanticClassification {
   const openHandsEvent =
     event.payload.openHandsEvent ??
     normalizeRawOpenHandsEvent(event.payload.rawOpenHandsEvent);
 
   return {
-    type: "group_member",
-    groupKind,
+    type: "trace_node",
+    node,
     toolCallId: openHandsEvent ? getToolCallId(openHandsEvent) : undefined,
-    actionEventId:
-      openHandsEvent?.kind === "ActionEvent" ? openHandsEvent.id : undefined,
-    actionId:
-      openHandsEvent?.kind === "ObservationEvent"
+    actionEventId: openHandsEvent?.kind === "ActionEvent" ? openHandsEvent.id : undefined,
+    actionId: openHandsEvent?.kind === "ObservationEvent" ? openHandsEvent.action_id : undefined,
+    llmResponseId: openHandsEvent?.kind === "ActionEvent" ? getLlmResponseId(openHandsEvent) : undefined,
+  };
+}
+
+function buildToolTraceNode(
+  event: ConversationEventEnvelope,
+  openHandsEvent: OpenHandsConversationEvent,
+  nodeKind: Extract<TraceNodeKind, "file_activity" | "terminal_activity" | "skill" | "subagent">,
+): DisplayNode {
+  const member =
+    nodeKind === "file_activity"
+      ? buildFileActivityMember(event, openHandsEvent)
+      : nodeKind === "terminal_activity"
+        ? buildTerminalActivityMember(event, openHandsEvent)
+        : nodeKind === "skill"
+          ? buildSkillActivityMember(event, openHandsEvent)
+          : buildSubagentActivityMember(event, openHandsEvent);
+  const memberId =
+    openHandsEvent.kind === "ActionEvent"
+      ? openHandsEvent.id
+      : openHandsEvent.kind === "ObservationEvent"
         ? openHandsEvent.action_id
-        : undefined,
-    llmResponseId:
-      openHandsEvent?.kind === "ActionEvent" ? getLlmResponseId(openHandsEvent) : undefined,
-    reasoningText:
-      openHandsEvent?.kind === "ActionEvent"
-        ? getReasoningText(openHandsEvent)
-        : undefined,
-    member: {
-      ...member,
-      sourceEventIds: [event.eventId],
-    },
+        : getToolCallId(openHandsEvent) ?? event.eventId;
+  const normalizedMember = {
+    ...member,
+    id: memberId,
+    thoughtText:
+      openHandsEvent.kind === "ActionEvent" && openHandsEvent.llm_response_id
+        ? undefined
+        : member.thoughtText,
+    toolCallId: getToolCallId(openHandsEvent),
+    actionEventId:
+      openHandsEvent.kind === "ActionEvent"
+        ? openHandsEvent.id
+        : openHandsEvent.kind === "ObservationEvent"
+          ? openHandsEvent.action_id
+          : undefined,
+  };
+
+  return {
+    id: buildTraceNodeId(event, openHandsEvent, nodeKind),
+    kind: nodeKind,
+    status: event.status,
+    createdAtMs: event.createdAtMs,
+    label: TRACE_TITLES[nodeKind],
+    bodyText:
+      normalizedMember.actionText ??
+      normalizedMember.observationText ??
+      normalizedMember.errorText ??
+      normalizedMember.bodyText ??
+      TRACE_TITLES[nodeKind],
+    thoughtText: openHandsEvent.kind === "ActionEvent" ? getReasoningText(openHandsEvent) : undefined,
+    sourceEventIds: [event.eventId],
+    members: [normalizedMember],
+    rawPayload: event.payload.rawOpenHandsEvent,
+  };
+}
+
+function buildReasoningNode(
+  event: ConversationEventEnvelope,
+  openHandsEvent: OpenHandsConversationEvent,
+): DisplayNode {
+  const member = buildReasoningMember(event, openHandsEvent);
+  const bodyText = member.bodyText ?? "Reasoning captured";
+  return {
+    id: buildTraceNodeId(event, openHandsEvent, "reasoning"),
+    kind: "reasoning",
+    status: event.status,
+    createdAtMs: event.createdAtMs,
+    label: TRACE_TITLES.reasoning,
+    bodyText,
+    thoughtText: bodyText,
+    sourceEventIds: [event.eventId],
+    members: [member],
+    rawPayload: event.payload.rawOpenHandsEvent,
   };
 }
 
@@ -905,32 +833,135 @@ function normalizeRawOpenHandsEvent(rawEvent: unknown): OpenHandsConversationEve
   return normalizeConversationEventMessage(rawEvent as Record<string, unknown>);
 }
 
-function findExistingGroupedMemberIndex(
-  list: PendingGroupedMember[],
-  classification: Extract<SemanticClassification, { type: "group_member" }>,
+function findPendingTraceNodeIndex(
+  list: PendingTraceNode[],
+  classification: Extract<SemanticClassification, { type: "trace_node" }>,
 ): number {
+  if (classification.node.kind === "reasoning") {
+    return -1;
+  }
+
+  if (classification.llmResponseId) {
+    const byResponseId = list.findIndex(
+      (entry) => entry.llmResponseId === classification.llmResponseId,
+    );
+    if (byResponseId >= 0) return byResponseId;
+  }
+
   if (classification.actionId) {
-    const byActionId = list.findIndex(
-      (entry) => entry.actionEventId === classification.actionId,
+    const byActionId = list.findIndex((entry) =>
+      entry.node.members?.some((member) => member.id === classification.actionId) ||
+      entry.actionEventId === classification.actionId,
     );
     if (byActionId >= 0) return byActionId;
   }
 
-  if (classification.actionEventId) {
-    const byOwnActionId = list.findIndex(
-      (entry) => entry.actionEventId === classification.actionEventId,
-    );
-    if (byOwnActionId >= 0) return byOwnActionId;
-  }
-
   if (classification.toolCallId) {
-    const byToolCallId = list.findIndex(
-      (entry) => entry.toolCallId === classification.toolCallId,
+    const byToolCallId = list.findIndex((entry) =>
+      entry.node.members?.some((member) => member.id === classification.toolCallId) ||
+      entry.toolCallId === classification.toolCallId,
     );
     if (byToolCallId >= 0) return byToolCallId;
   }
 
   return -1;
+}
+
+function mergePendingTraceNode(
+  existing: PendingTraceNode,
+  classification: Extract<SemanticClassification, { type: "trace_node" }>,
+): PendingTraceNode {
+  const incomingNode = classification.node;
+  if (existing.node.kind === "reasoning" || incomingNode.kind === "reasoning") {
+    return {
+      ...existing,
+      node: {
+        ...existing.node,
+        bodyText: combineDistinctText(existing.node.bodyText, incomingNode.bodyText),
+        thoughtText: combineDistinctText(existing.node.thoughtText, incomingNode.thoughtText),
+        sourceEventIds: [...existing.node.sourceEventIds, ...incomingNode.sourceEventIds],
+      },
+    };
+  }
+
+  const existingMembers = existing.node.members ?? [];
+  const incomingMember = incomingNode.members?.[0];
+  if (!incomingMember) {
+    return existing;
+  }
+  const memberIndex = findExistingMemberIndex(existingMembers, classification);
+  const nextMembers = [...existingMembers];
+  if (memberIndex >= 0) {
+    const current = nextMembers[memberIndex];
+    nextMembers[memberIndex] = {
+      ...current,
+      bodyText: incomingMember.bodyText ?? current.bodyText,
+      actionText: incomingMember.actionText ?? current.actionText,
+      observationText: incomingMember.observationText ?? current.observationText,
+      errorText: incomingMember.errorText ?? current.errorText,
+      thoughtText: incomingMember.thoughtText ?? current.thoughtText,
+      sourceEventIds: [...current.sourceEventIds, ...incomingMember.sourceEventIds],
+    };
+  } else {
+    nextMembers.push(incomingMember);
+  }
+
+  const nextKind =
+    existing.llmResponseId &&
+    nextMembers.length > 1
+      ? "tool_batch"
+      : classification.node.kind;
+
+  return {
+    toolCallId: classification.toolCallId ?? existing.toolCallId,
+    actionEventId: classification.actionEventId ?? existing.actionEventId,
+    actionId: classification.actionId ?? existing.actionId,
+    llmResponseId: classification.llmResponseId ?? existing.llmResponseId,
+    node: {
+      ...existing.node,
+      kind: nextKind,
+      label: TRACE_TITLES[nextKind as TraceNodeKind],
+      bodyText:
+        existing.node.bodyText ??
+        incomingNode.bodyText,
+      thoughtText: existing.node.thoughtText ?? incomingNode.thoughtText,
+      sourceEventIds: [...existing.node.sourceEventIds, ...incomingNode.sourceEventIds],
+      members: nextMembers,
+    },
+  };
+}
+
+function findExistingMemberIndex(
+  members: DisplayNodeMember[],
+  classification: Extract<SemanticClassification, { type: "trace_node" }>,
+): number {
+  if (classification.actionId) {
+    const byActionId = members.findIndex(
+      (member) => member.actionEventId === classification.actionId || member.id === classification.actionId,
+    );
+    if (byActionId >= 0) return byActionId;
+  }
+  if (classification.toolCallId) {
+    const byToolCallId = members.findIndex(
+      (member) => member.toolCallId === classification.toolCallId || member.id === classification.toolCallId,
+    );
+    if (byToolCallId >= 0) return byToolCallId;
+  }
+  return -1;
+}
+
+function buildTraceNodeId(
+  event: ConversationEventEnvelope,
+  openHandsEvent: OpenHandsConversationEvent,
+  nodeKind: TraceNodeKind,
+): string {
+  if (openHandsEvent.kind === "ActionEvent" && openHandsEvent.llm_response_id) {
+    return `trace-batch:${openHandsEvent.llm_response_id}`;
+  }
+  if (openHandsEvent.kind === "ObservationEvent") {
+    return `trace-action:${openHandsEvent.action_id}`;
+  }
+  return `trace:${nodeKind}:${event.eventId}`;
 }
 
 function getString(
