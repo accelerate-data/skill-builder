@@ -399,14 +399,6 @@ export function getReasoningText(
   }
 
   if (event.kind === "ActionEvent") {
-    if (event.tool_name === "think" && isNonEmptyString(event.thought)) {
-      return trimToUndefined(event.thought.split(/\n\s*\n/, 1)[0] ?? event.thought);
-    }
-
-    if (event.tool_name === "think") {
-      return undefined;
-    }
-
     return firstText(
       trimToUndefined(event.thought ?? ""),
       getString(event.action, "thought"),

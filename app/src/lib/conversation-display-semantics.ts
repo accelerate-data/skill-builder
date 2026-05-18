@@ -503,15 +503,6 @@ function classifyEvent(
     openHandsEvent.kind === "AgentErrorEvent"
   ) {
     const toolName = getToolName(openHandsEvent);
-    if (toolName === "think") {
-      if (openHandsEvent.kind === "ObservationEvent") {
-        const observationText = getObservationText(openHandsEvent);
-        if (!observationText || isThinkObservationPlaceholder(observationText)) {
-          return { type: "suppress" };
-        }
-      }
-      return traceNode(event, buildReasoningNode(event, openHandsEvent));
-    }
     if (toolName === "file_editor") {
       return traceNode(event, buildToolTraceNode(event, openHandsEvent, "file_activity"));
     }
@@ -734,13 +725,9 @@ function buildReasoningMember(
   event: ConversationEventEnvelope,
   openHandsEvent: OpenHandsConversationEvent,
 ): DisplayNodeMember {
-  const observationText = getObservationText(openHandsEvent);
   const reasoningText = getReasoningText(openHandsEvent);
   const thoughtText = getReasoningThoughtText(openHandsEvent);
-  const bodyText =
-    reasoningText ??
-    thoughtText ??
-    (isThinkObservationPlaceholder(observationText) ? undefined : observationText);
+  const bodyText = reasoningText ?? thoughtText;
 
   return {
     id: event.eventId,
@@ -752,11 +739,7 @@ function buildReasoningMember(
 }
 
 function getReasoningLabel(openHandsEvent: OpenHandsConversationEvent): string {
-  if (
-    openHandsEvent.kind === "ThinkEvent" ||
-    (openHandsEvent.kind === "ActionEvent" && openHandsEvent.tool_name === "think") ||
-    (openHandsEvent.kind === "ObservationEvent" && openHandsEvent.tool_name === "think")
-  ) {
+  if (openHandsEvent.kind === "ThinkEvent") {
     return "Think";
   }
 
@@ -768,10 +751,6 @@ function getReasoningThoughtText(
 ): string | undefined {
   if (openHandsEvent.kind === "ThinkEvent") {
     return openHandsEvent.thought;
-  }
-
-  if (openHandsEvent.kind === "ActionEvent" && openHandsEvent.tool_name === "think") {
-    return getString(openHandsEvent.action, "thought");
   }
 
   return undefined;
@@ -829,10 +808,6 @@ function buildSubagentActivityMember(
     thoughtText: getReasoningText(openHandsEvent),
     sourceEventIds: [event.eventId],
   };
-}
-
-function isThinkObservationPlaceholder(value?: string): boolean {
-  return value?.trim() === "Your thought has been logged.";
 }
 
 function getMessageSource(event: OpenHandsConversationEvent): string | undefined {

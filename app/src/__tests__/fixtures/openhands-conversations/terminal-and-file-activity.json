@@ -140,46 +140,11 @@
       "type": "conversation_event",
       "runtime": "openhands",
       "conversation_id": "conv-terminal-file",
-      "event_class": "ActionEvent",
+      "event_class": "ThinkEvent",
       "timestamp": 1746912202778,
-      "tool_call_id": "chatcmpl-tool-ba5a44c6ec424b75",
       "event": {
         "source": "agent",
-        "tool_name": "think",
-        "tool_call_id": "chatcmpl-tool-ba5a44c6ec424b75",
-        "reasoning_content": "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
-        "thought": [
-          {
-            "type": "text",
-            "text": "Let me synthesize the generation brief."
-          }
-        ],
-        "action": {
-          "kind": "ThinkAction"
-        }
-      }
-    },
-    {
-      "type": "conversation_event",
-      "runtime": "openhands",
-      "conversation_id": "conv-terminal-file",
-      "event_class": "ObservationEvent",
-      "timestamp": 1746912202780,
-      "tool_call_id": "chatcmpl-tool-ba5a44c6ec424b75",
-      "event": {
-        "source": "environment",
-        "tool_name": "think",
-        "tool_call_id": "chatcmpl-tool-ba5a44c6ec424b75",
-        "observation": {
-          "content": [
-            {
-              "type": "text",
-              "text": "Your thought has been logged."
-            }
-          ],
-          "is_error": false,
-          "kind": "ThinkObservation"
-        }
+        "thought": "Let me synthesize the generation brief from the confirmed decisions and then create the skill package."
       }
     },
     {

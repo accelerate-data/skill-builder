@@ -195,28 +195,17 @@ describe("OpenHands conversation event helpers", () => {
     );
   });
 
-  it("prefers top-level reasoning_content for think actions", () => {
+  it("uses ThinkEvent thought text as reasoning text", () => {
     const event = normalized({
       type: "conversation_event",
       runtime: "openhands",
       conversation_id: "conv-think",
-      event_class: "ActionEvent",
+      event_class: "ThinkEvent",
       timestamp: 1_778_000_300,
       event: {
         source: "agent",
-        tool_name: "think",
-        tool_call_id: "call-think-1",
-        reasoning_content:
+        thought:
           "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
-        thought: [
-          {
-            type: "text",
-            text: "Let me synthesize the generation brief.",
-          },
-        ],
-        action: {
-          kind: "ThinkAction",
-        },
       },
     });
 
@@ -225,57 +214,21 @@ describe("OpenHands conversation event helpers", () => {
     );
   });
 
-  it("falls back to thought content arrays when reasoning_content is absent", () => {
+  it("returns ThinkEvent thought text verbatim when present", () => {
     const event = normalized({
       type: "conversation_event",
       runtime: "openhands",
       conversation_id: "conv-think-fallback",
-      event_class: "ActionEvent",
+      event_class: "ThinkEvent",
       timestamp: 1_778_000_301,
       event: {
         source: "agent",
-        tool_name: "think",
-        tool_call_id: "call-think-2",
-        thought: [
-          {
-            type: "text",
-            text: "Let me analyze the current clarification record and identify material gaps.",
-          },
-        ],
-        action: {
-          kind: "ThinkAction",
-        },
+        thought: "Let me analyze the current clarification record and identify material gaps.",
       },
     });
 
     expect(getReasoningText(event)).toBe(
       "Let me analyze the current clarification record and identify material gaps.",
-    );
-  });
-
-  it("falls back to nested action thought text when top-level reasoning fields are blank", () => {
-    const event = normalized({
-      type: "conversation_event",
-      runtime: "openhands",
-      conversation_id: "conv-think-action-fallback",
-      event_class: "ActionEvent",
-      timestamp: 1_778_000_302,
-      event: {
-        source: "agent",
-        tool_name: "think",
-        tool_call_id: "call-think-3",
-        reasoning_content: "",
-        thought: [{ type: "text", text: "" }],
-        action: {
-          kind: "ThinkAction",
-          thought:
-            "Let me carefully analyze every answer for material gaps before constructing the refinements.",
-        },
-      },
-    });
-
-    expect(getReasoningText(event)).toBe(
-      "Let me carefully analyze every answer for material gaps before constructing the refinements.",
     );
   });
 
