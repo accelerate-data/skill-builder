@@ -120,6 +120,52 @@ describe("skill-openhands-session", () => {
     ]);
   });
 
+  it("restored history uses the same canonical envelope shape as live canonical events", () => {
+    const timestamp = new Date(3_000).toISOString();
+    const session: SkillSessionInfo = {
+      conversation_id: "conv-123",
+      skill_name: "sales-skill",
+      created_at: new Date().toISOString(),
+      available_agents: ["skill-creator"],
+      restored_messages: [],
+      restored_transcript_events: [
+        {
+          kind: "ObservationEvent",
+          id: "evt-parity",
+          timestamp,
+          source: "environment",
+          tool_name: "terminal",
+          tool_call_id: "tool-1",
+          action_id: "evt-action",
+          observation: "Observed tool output",
+        },
+      ],
+    };
+
+    hydrateSelectedSkillOpenHandsSession(
+      { name: "sales-skill", plugin_slug: "skills", skill_source: "skill-builder" },
+      session,
+    );
+
+    const [restoredEnvelope] =
+      useConversationStore.getState().eventsByConversation["conv-123"];
+
+    expect(restoredEnvelope).toMatchObject({
+      conversationId: "conv-123",
+      origin: "backend",
+      status: "observed",
+      createdAtMs: 3_000,
+      display: { kind: "tool_result" },
+      payload: {
+        openHandsEvent: {
+          kind: "ObservationEvent",
+          id: "evt-parity",
+          tool_call_id: "tool-1",
+        },
+      },
+    });
+  });
+
   it("restart hydrates the selected skill session metadata", async () => {
     const session: SkillSessionInfo = {
       conversation_id: "conv-789",

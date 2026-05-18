@@ -9,13 +9,13 @@ describe("use-session-runtime-stream", () => {
     vi.resetModules();
   });
 
-  it("bridges runtime conversation_state events into canonical conversation and session runtime stores", async () => {
-    let agentMessageListener: ListenCallback | undefined;
+  it("bridges canonical backend conversation events into conversation and session runtime stores", async () => {
+    let agentConversationEventListener: ListenCallback | undefined;
 
     vi.mocked(mockListen).mockImplementation(
       (event: string, callback: ListenCallback) => {
-        if (event === "agent-message") {
-          agentMessageListener = callback;
+        if (event === "agent-conversation-event") {
+          agentConversationEventListener = callback;
         }
         return Promise.resolve(vi.fn());
       },
@@ -35,17 +35,18 @@ describe("use-session-runtime-stream", () => {
     await runtimeStreamModule._resetForTesting();
     await runtimeStreamModule.initSessionRuntimeStream();
 
-    expect(agentMessageListener).toBeDefined();
+    expect(agentConversationEventListener).toBeDefined();
 
-    agentMessageListener?.({
+    agentConversationEventListener?.({
       payload: {
         conversation_id: "conv-selected",
-        message: {
-          type: "conversation_state",
-          runtime: "openhands",
-          conversation_id: "conv-selected",
-          status: "running",
-          timestamp: 1_778_000_100,
+        event: {
+          kind: "ConversationStateUpdateEvent",
+          id: "evt-running",
+          timestamp: new Date(1_778_000_100).toISOString(),
+          source: "environment",
+          key: "execution_status",
+          value: "running",
         },
       },
     });

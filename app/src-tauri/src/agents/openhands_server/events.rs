@@ -107,6 +107,12 @@ pub fn is_pause_acknowledgement(raw: &serde_json::Value) -> bool {
     )
 }
 
+pub fn canonicalize_frontend_conversation_event(
+    raw: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    canonicalize_conversation_event(raw).or_else(|| canonicalize_legacy_conversation_state(raw))
+}
+
 pub fn normalize_terminal_state(
     conversation_id: &str,
     status: &str,
@@ -161,6 +167,75 @@ fn normalize_execution_status(status: Option<&str>) -> Option<&'static str> {
         Some("error" | "failed" | "failure" | "stuck") => Some("error"),
         Some("cancelled" | "canceled" | "stopped") => Some("cancelled"),
         _ => None,
+    }
+}
+
+fn canonicalize_legacy_conversation_state(
+    raw: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    if raw.get("type").and_then(|value| value.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    let status = raw.get("status").and_then(|value| value.as_str())?;
+    let timestamp = match raw.get("timestamp") {
+        Some(serde_json::Value::String(value)) => value.clone(),
+        Some(serde_json::Value::Number(value)) => value
+            .as_i64()
+            .and_then(chrono::DateTime::from_timestamp_millis)
+            .unwrap_or_else(chrono::Utc::now)
+            .to_rfc3339(),
+        _ => chrono::Utc::now().to_rfc3339(),
+    };
+    let id = raw
+        .get("id")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            format!(
+                "legacy_state_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4().simple()
+            )
+        });
+
+    match status {
+        "completed" | "finished" => Some(serde_json::json!({
+            "id": id,
+            "kind": "FinishEvent",
+            "timestamp": timestamp,
+            "source": "environment",
+            "message": raw.get("result_text").and_then(|v| v.as_str())
+                .or_else(|| raw.get("resultText").and_then(|v| v.as_str()))
+                .unwrap_or(""),
+            "success": true,
+        })),
+        "error" => Some(serde_json::json!({
+            "id": id,
+            "kind": "ConversationErrorEvent",
+            "timestamp": timestamp,
+            "source": "environment",
+            "code": "conversation_error",
+            "detail": raw.get("error_detail").and_then(|v| v.as_str())
+                .or_else(|| raw.get("errorDetail").and_then(|v| v.as_str()))
+                .unwrap_or("OpenHands runtime run failed"),
+        })),
+        "paused" => Some(serde_json::json!({
+            "id": id,
+            "kind": "PauseEvent",
+            "timestamp": timestamp,
+            "source": "user",
+            "reason": raw.get("error_detail").and_then(|v| v.as_str())
+                .or_else(|| raw.get("errorDetail").and_then(|v| v.as_str())),
+        })),
+        other => Some(serde_json::json!({
+            "id": id,
+            "kind": "ConversationStateUpdateEvent",
+            "timestamp": timestamp,
+            "source": "environment",
+            "key": "execution_status",
+            "value": other,
+        })),
     }
 }
 

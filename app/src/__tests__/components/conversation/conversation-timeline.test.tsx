@@ -58,16 +58,13 @@ describe("ConversationTimeline", () => {
         status: "observed",
         display: { kind: "state", label: "State" },
         payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-session-1",
-            eventClass: "ConversationStateUpdateEvent",
-            timestamp: 1_500,
-            event: {
-              key: "execution_status",
-              value: "running",
-            },
+          openHandsEvent: {
+            kind: "ConversationStateUpdateEvent",
+            id: "state-running",
+            timestamp: new Date(1_500).toISOString(),
+            source: "environment",
+            key: "execution_status",
+            value: "running",
           },
         },
       }),
@@ -79,23 +76,19 @@ describe("ConversationTimeline", () => {
         status: "observed",
         display: { kind: "agent_message", label: "OpenHands" },
         payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-session-1",
-            eventClass: "MessageEvent",
-            timestamp: 2_000,
-            event: {
-              source: "agent",
-              llm_message: {
-                role: "assistant",
-                content: [
-                  {
-                    type: "text",
-                    text: "Plan drafted and ready for review.",
-                  },
-                ],
-              },
+          openHandsEvent: {
+            kind: "MessageEvent",
+            id: "agent-message",
+            timestamp: new Date(2_000).toISOString(),
+            source: "agent",
+            llm_message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Plan drafted and ready for review.",
+                },
+              ],
             },
           },
         },
@@ -108,16 +101,13 @@ describe("ConversationTimeline", () => {
         status: "observed",
         display: { kind: "state", label: "State" },
         payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-session-1",
-            eventClass: "ConversationStateUpdateEvent",
-            timestamp: 2_500,
-            event: {
-              key: "last_user_message_id",
-              value: "evt-user",
-            },
+          openHandsEvent: {
+            kind: "ConversationStateUpdateEvent",
+            id: "state-last-user",
+            timestamp: new Date(2_500).toISOString(),
+            source: "environment",
+            key: "last_user_message_id",
+            value: "evt-user",
           },
         },
       }),
@@ -129,17 +119,13 @@ describe("ConversationTimeline", () => {
         status: "failed",
         display: { kind: "error", label: "Transport" },
         payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-session-1",
-            eventClass: "ConversationErrorEvent",
-            timestamp: 3_000,
-            event: {
-              error_detail: {
-                message: "Session dispatch failed",
-              },
-            },
+          openHandsEvent: {
+            kind: "ConversationErrorEvent",
+            id: "conversation-error",
+            timestamp: new Date(3_000).toISOString(),
+            source: "environment",
+            code: "dispatch_failed",
+            detail: "Session dispatch failed",
           },
         },
       }),
@@ -196,15 +182,12 @@ describe("ConversationTimeline", () => {
         status: "observed",
         display: { kind: "state", label: "State" },
         payload: {
-          rawOpenHandsEvent: {
-            type: "conversation_event",
-            runtime: "openhands",
-            conversationId: "conv-paused",
-            eventClass: "PauseEvent",
-            timestamp: 2_000,
-            event: {
-              reason: "Waiting for review.",
-            },
+          openHandsEvent: {
+            kind: "PauseEvent",
+            id: "pause-1",
+            timestamp: new Date(2_000).toISOString(),
+            source: "environment",
+            reason: "Waiting for review.",
           },
         },
       }),

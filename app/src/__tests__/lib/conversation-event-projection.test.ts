@@ -151,7 +151,7 @@ describe("conversation-event-projection", () => {
           summary: "researching-skill-requirements",
           drawerSections: expect.arrayContaining([
             expect.objectContaining({
-              title: "Summary",
+              title: "Item 1: Action",
               body: "researching-skill-requirements",
             }),
           ]),
@@ -162,15 +162,11 @@ describe("conversation-event-projection", () => {
           summary: "Verify forecasting-revenue skill package",
           drawerSections: expect.arrayContaining([
             expect.objectContaining({
-              title: "Summary",
+              title: "Item 1: Action",
               body: "Verify forecasting-revenue skill package",
             }),
             expect.objectContaining({
-              title: "Action",
-              body: "Verify forecasting-revenue skill package",
-            }),
-            expect.objectContaining({
-              title: "Observation",
+              title: "Item 1: Observation",
               body: "{\"status\":\"pass\",\"findings\":[]}",
             }),
           ]),
@@ -257,15 +253,15 @@ describe("conversation-event-projection", () => {
             summary: "Verify generated skill package",
             drawerSections: expect.arrayContaining([
               expect.objectContaining({
-                title: "Thought",
+                title: "Item 1: Thought",
                 body: "Now I'll launch the verifier subagent for pass 1.",
               }),
               expect.objectContaining({
-                title: "Action",
+                title: "Item 1: Action",
                 body: "Verify generated skill package",
               }),
               expect.objectContaining({
-                title: "Observation",
+                title: "Item 1: Observation",
                 body: "{\"status\":\"pass\",\"findings\":[]}",
               }),
             ]),
@@ -422,17 +418,13 @@ describe("conversation-event-projection", () => {
             kind: "file_activity",
             summary: "/workspace/shared/schemas.md",
             drawerSections: expect.arrayContaining([
-              expect.objectContaining({
-                title: "Summary",
-                body: "Read 140 lines from /workspace/shared/schemas.md.",
-              }),
-              expect.objectContaining({
-                title: "Item 1: Action",
-                body: "/workspace/shared/schemas.md",
-              }),
-              expect.objectContaining({
-                title: "Item 1: Observation",
-                body: "Read 140 lines from /workspace/shared/schemas.md.",
+            expect.objectContaining({
+              title: "Summary",
+              body: "Read 140 lines from /workspace/shared/schemas.md.",
+            }),
+            expect.objectContaining({
+              title: "Item 1: Observation",
+              body: "Read 140 lines from /workspace/shared/schemas.md.",
               }),
             ]),
           }),
@@ -461,10 +453,10 @@ describe("conversation-event-projection", () => {
     });
   });
 
-  it("renders runtime setup and distinct standalone error rows from fixture-derived events", () => {
+  it("renders runtime setup and keeps tool-call failures inside activity trace", () => {
     const nodes = projectConversationEvents(loadFixtureEnvelopes("system-prompt-and-errors"));
 
-    expect(nodes.map((node) => node.kind)).toEqual(["runtime_setup", "subagent_error"]);
+    expect(nodes.map((node) => node.kind)).toEqual(["runtime_setup", "activity_trace"]);
     expect(nodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -472,7 +464,20 @@ describe("conversation-event-projection", () => {
           label: "Runtime setup",
           bodyText: "You are OpenHands agent.",
         }),
-        expect.objectContaining({ kind: "subagent_error", label: "Subagent error" }),
+        expect.objectContaining({
+          kind: "activity_trace",
+          traceItems: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "subagent",
+              drawerSections: expect.arrayContaining([
+                expect.objectContaining({
+                  title: "Item 1: Error",
+                  body: "A restart occurred while this tool was in progress.",
+                }),
+              ]),
+            }),
+          ]),
+        }),
       ]),
     );
   });
@@ -510,6 +515,274 @@ describe("conversation-event-projection", () => {
       label: "Tool observation",
       bodyText: "Observation without a matching action.",
     });
+  });
+
+  it("pairs observations to actions by action_id even when tool_call_id differs", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-file-action",
+        conversationId: "conv-action-id",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 1_000,
+        display: { kind: "tool_call" },
+        payload: {
+          openHandsEvent: {
+            kind: "ActionEvent",
+            id: "action-1",
+            timestamp: new Date(1_000).toISOString(),
+            source: "agent",
+            tool_name: "file_editor",
+            tool_call_id: "call-action",
+            action: { command: "view", path: "/tmp/README.md" },
+          },
+          rawOpenHandsEvent: {
+            kind: "ActionEvent",
+            id: "action-1",
+          },
+        },
+      },
+      {
+        eventId: "evt-file-observation",
+        conversationId: "conv-action-id",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 1_001,
+        display: { kind: "tool_result" },
+        payload: {
+          openHandsEvent: {
+            kind: "ObservationEvent",
+            id: "obs-1",
+            timestamp: new Date(1_001).toISOString(),
+            source: "environment",
+            tool_name: "file_editor",
+            tool_call_id: "call-observation-mismatch",
+            action_id: "action-1",
+            observation: {
+              command: "view",
+              path: "/tmp/README.md",
+              content: "Read 20 lines.",
+            },
+          },
+          rawOpenHandsEvent: {
+            kind: "ObservationEvent",
+            id: "obs-1",
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: [
+          expect.objectContaining({
+            kind: "file_activity",
+            drawerSections: expect.arrayContaining([
+              expect.objectContaining({
+                title: "Item 1: Action",
+                body: "/tmp/README.md",
+              }),
+              expect.objectContaining({
+                title: "Item 1: Observation",
+                body: "Read 20 lines.",
+              }),
+            ]),
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("keeps tool-call failures inside activity trace as action-plus-error outcomes", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-terminal-action",
+        conversationId: "conv-tool-error",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 2_000,
+        display: { kind: "tool_call" },
+        payload: {
+          openHandsEvent: {
+            kind: "ActionEvent",
+            id: "action-err-1",
+            timestamp: new Date(2_000).toISOString(),
+            source: "agent",
+            tool_name: "terminal",
+            tool_call_id: "call-err-1",
+            action: { command: "npm test" },
+          },
+          rawOpenHandsEvent: {
+            kind: "ActionEvent",
+            id: "action-err-1",
+          },
+        },
+      },
+      {
+        eventId: "evt-terminal-error",
+        conversationId: "conv-tool-error",
+        origin: "backend",
+        status: "failed",
+        createdAtMs: 2_001,
+        display: { kind: "error" },
+        payload: {
+          openHandsEvent: {
+            kind: "AgentErrorEvent",
+            id: "err-1",
+            timestamp: new Date(2_001).toISOString(),
+            source: "agent",
+            tool_name: "terminal",
+            tool_call_id: "call-err-1",
+            error: "Command exited with code 1.",
+          },
+          rawOpenHandsEvent: {
+            kind: "AgentErrorEvent",
+            id: "err-1",
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: [
+          expect.objectContaining({
+            kind: "terminal_activity",
+            drawerSections: expect.arrayContaining([
+              expect.objectContaining({
+                title: "Item 1: Action",
+                body: "npm test",
+              }),
+              expect.objectContaining({
+                title: "Item 1: Error",
+                body: "Command exited with code 1.",
+              }),
+            ]),
+          }),
+        ],
+      },
+    ]);
+    expect(nodes.some((node) => node.kind === "tool_error")).toBe(false);
+  });
+
+  it("groups parallel tool calls by llm_response_id and shows shared thought once", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-batch-action-1",
+        conversationId: "conv-parallel-batch",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 3_000,
+        display: { kind: "tool_call" },
+        payload: {
+          openHandsEvent: {
+            kind: "ActionEvent",
+            id: "action-batch-1",
+            timestamp: new Date(3_000).toISOString(),
+            source: "agent",
+            tool_name: "file_editor",
+            tool_call_id: "call-batch-1",
+            llm_response_id: "resp-batch-1",
+            thought: "I should inspect the schema and test file in parallel before editing.",
+            action: { command: "view", path: "/tmp/schema.md" },
+          },
+        },
+      },
+      {
+        eventId: "evt-batch-action-2",
+        conversationId: "conv-parallel-batch",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 3_001,
+        display: { kind: "tool_call" },
+        payload: {
+          openHandsEvent: {
+            kind: "ActionEvent",
+            id: "action-batch-2",
+            timestamp: new Date(3_001).toISOString(),
+            source: "agent",
+            tool_name: "terminal",
+            tool_call_id: "call-batch-2",
+            llm_response_id: "resp-batch-1",
+            action: { command: "npm test -- conversation" },
+          },
+        },
+      },
+      {
+        eventId: "evt-batch-observation-1",
+        conversationId: "conv-parallel-batch",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 3_002,
+        display: { kind: "tool_result" },
+        payload: {
+          openHandsEvent: {
+            kind: "ObservationEvent",
+            id: "obs-batch-1",
+            timestamp: new Date(3_002).toISOString(),
+            source: "environment",
+            tool_name: "file_editor",
+            tool_call_id: "call-batch-1",
+            action_id: "action-batch-1",
+            observation: { path: "/tmp/schema.md", content: "Read 40 lines." },
+          },
+        },
+      },
+      {
+        eventId: "evt-batch-observation-2",
+        conversationId: "conv-parallel-batch",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 3_003,
+        display: { kind: "tool_result" },
+        payload: {
+          openHandsEvent: {
+            kind: "ObservationEvent",
+            id: "obs-batch-2",
+            timestamp: new Date(3_003).toISOString(),
+            source: "environment",
+            tool_name: "terminal",
+            tool_call_id: "call-batch-2",
+            action_id: "action-batch-2",
+            observation: { command: "npm test -- conversation", content: "Tests passed." },
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "reasoning",
+            summary: "I should inspect the schema and test file in parallel before editing.",
+          }),
+          expect.objectContaining({
+            kind: "file_activity",
+            drawerSections: expect.arrayContaining([
+              expect.objectContaining({ title: "Item 1: Action", body: "/tmp/schema.md" }),
+              expect.objectContaining({ title: "Item 1: Observation", body: "Read 40 lines." }),
+            ]),
+          }),
+          expect.objectContaining({
+            kind: "terminal_activity",
+            drawerSections: expect.arrayContaining([
+              expect.objectContaining({
+                title: "Item 1: Action",
+                body: "npm test -- conversation",
+              }),
+              expect.objectContaining({
+                title: "Item 1: Observation",
+                body: "Tests passed.",
+              }),
+            ]),
+          }),
+        ]),
+      },
+    ]);
   });
 
   it("keeps unknown raw event shapes visible instead of dropping them", () => {

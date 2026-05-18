@@ -8,7 +8,7 @@ import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cac
 import {
   buildCanonicalConversationEventEnvelope,
   getReasoningText,
-  normalizeConversationEventMessage,
+  normalizeOpenHandsEventRecord,
 } from "@/lib/openhands-conversation-events";
 import type { OpenHandsConversationEvent } from "@/lib/conversation-event-types";
 import type {
@@ -27,6 +27,11 @@ interface AgentMessagePayload {
     type: string;
     [key: string]: unknown;
   };
+}
+
+interface AgentConversationEventPayload {
+  conversation_id: string;
+  event: OpenHandsConversationEvent | Record<string, unknown>;
 }
 
 type AgentRunConfigPayload = {
@@ -191,8 +196,8 @@ export async function initSessionRuntimeStream() {
         .getState()
         .applyContextWindow(conversation_id, contextWindow);
     }),
-    reg<AgentMessagePayload>("agent-message", (event) => {
-      const { conversation_id, message } = event.payload;
+    reg<AgentConversationEventPayload>("agent-conversation-event", (event) => {
+      const { conversation_id, event: rawEvent } = event.payload;
 
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
@@ -202,10 +207,10 @@ export async function initSessionRuntimeStream() {
 
       const runtimeStore = useSessionRuntimeStore.getState();
 
-      const conversationEvent = normalizeConversationEventMessage(message);
+      const conversationEvent = normalizeOpenHandsEventRecord(rawEvent);
       if (conversationEvent) {
         runtimeStore.bindTransportRun(conversation_id, conversation_id);
-        appendCanonicalRuntimeEvent(conversation_id, conversationEvent, message);
+        appendCanonicalRuntimeEvent(conversation_id, conversationEvent, rawEvent);
         const reasoningText = getReasoningText(conversationEvent);
         console.debug(
           "[use-session-runtime-stream] event=conversation_event conversation_id=%s kind=%s reasoning_len=%d",
@@ -242,6 +247,10 @@ export async function initSessionRuntimeStream() {
         }
         return;
       }
+    }),
+    reg<AgentMessagePayload>("agent-message", (event) => {
+      const { conversation_id, message } = event.payload;
+      const runtimeStore = useSessionRuntimeStore.getState();
 
       if (message.type === "agent_event") {
         const eventPayload = message.event as
@@ -258,12 +267,6 @@ export async function initSessionRuntimeStream() {
           return;
         }
       }
-
-      console.debug(
-        "[use-session-runtime-stream] event=unhandled_message conversation_id=%s msg_type=%s",
-        conversation_id,
-        message.type,
-      );
     }),
     reg<AgentExitPayload>("agent-exit", (event) => {
       useSessionRuntimeStore
