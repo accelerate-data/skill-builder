@@ -4,7 +4,7 @@ functional-specs: []
 
 # OpenHands Conversation Timeline
 
-> **Status:** Target state for the conversation-event rendering model.
+> **Status:** Current implementation for the conversation-event rendering model.
 > **Runtime prerequisite:** See [../openhands-runtime-contract/README.md](../openhands-runtime-contract/README.md) for session lifecycle, normalized event ingress, and backend ownership of persisted conversation state.
 
 ## Overview
@@ -173,6 +173,14 @@ The visible order remains:
 
 Activity trace items are editorial projections over transcript events, not new canonical event kinds.
 
+Current trace item kinds used by the renderer are:
+
+- `file_activity`
+- `terminal_activity`
+- `skill`
+- `subagent`
+- `reasoning`
+
 ### Message events
 
 | Event kind | Transcript presentation |
@@ -191,7 +199,17 @@ Activity trace items are editorial projections over transcript events, not new c
 
 | Event kind | Transcript presentation |
 |---|---|
-| `ThinkEvent` | grouped `Reasoning` activity item using `thought` |
+| `ThinkEvent` | grouped `Think` activity item |
+
+Current `ThinkEvent` rendering rules:
+
+- the activity-trace title is `Think`
+- the inline summary uses the compact reasoning text
+- the drawer shows:
+  - `Reasoning` when a reasoning text field is present
+  - `Thought` when a distinct thought field is present
+- absent fields are omitted
+- duplicate fallback sections are not rendered
 
 ### Tool-backed action/observation pairs
 
@@ -216,18 +234,42 @@ Rendering rules:
   - `Action` + `Observation`
   - `Action` + transcript-visible tool-call failure
 - when multiple `ActionEvent`s share the same `llm_response_id`, they form one parallel tool-call batch
-- the main conversation shows the batch-level `thought`
+- the main conversation shows the batch-level `thought` when present
+- if no batch-level thought is present, the trace summary falls back to a compact `tool_name: action` string built from the first action in the batch
 - the drawer shows the individual paired tool calls within that batch
 - if an `ActionEvent` has no `llm_response_id`, treat it as a one-item batch
 
-The activity trace summary should show the action-side intent. The drawer should show the paired tool-call detail in a standard structure:
+The activity trace summary shows the action-side intent. The drawer shows the paired tool-call detail in a standard structure:
 
 - `Thought` when the `ActionEvent` carries it
 - `Action`
 - `Observation` for success
 - `Error` for transcript-visible tool-call failure
 
-This applies uniformly to all tool-backed `ActionEvent`s. Tool-specific extraction is allowed only to turn raw `action`, `observation`, and tool error payloads into readable text, not to change the structural model.
+This applies uniformly to all tool-backed `ActionEvent`s. Tool-specific extraction is used only to turn raw `action`, `observation`, and tool error payloads into readable text, not to change the structural model.
+
+Current action-text formatting in the renderer is:
+
+- `invoke_skill`: `name: <name> action: InvokeSkillAction`
+- `file_editor`: `command: <command> path: <path>`
+- `terminal`: command text
+- `task`: action description
+
+### Activity trace presentation
+
+The expanded `Activity trace` UI currently behaves as follows:
+
+- each trace row shows its timestamp
+- the old type-chip strip is not shown
+- the old preview line under the trace header is not shown
+- the old one-character badges per trace row are not shown
+
+Drawer items are created in these cases:
+
+- one parallel tool-call batch grouped by `llm_response_id`
+- one standalone tool-call item when no sibling action shares that `llm_response_id`
+- one `ThinkEvent`
+- one `SystemPromptEvent`
 
 ## Internal Event Handling
 
@@ -333,7 +375,7 @@ Required assertions:
 - parallel tool calls sharing one `llm_response_id` render as one transcript batch with per-tool drawer detail
 - `task` activity shows `Thought`, `Action`, and `Observation` in the drawer
 - tool-backed action/observation pairs render the same standard drawer structure across tools
-- `ThinkEvent` renders as reasoning using only `thought`
+- `ThinkEvent` renders as a `Think` activity item with only the sections backed by present fields
 - unknown transcript-capable kinds render fallback rows
 
 ## Key Source Files
