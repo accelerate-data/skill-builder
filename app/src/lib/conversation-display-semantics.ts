@@ -166,6 +166,7 @@ function buildTraceItem(node: DisplayNode): DisplayTraceItem {
         title,
         summary: title,
         badgeLabel: "status",
+        createdAtMs: node.createdAtMs,
         sourceEventIds: node.sourceEventIds,
       };
     }
@@ -176,6 +177,7 @@ function buildTraceItem(node: DisplayNode): DisplayTraceItem {
         title: "Paused",
         summary: node.bodyText ?? "Conversation paused.",
         badgeLabel: "status",
+        createdAtMs: node.createdAtMs,
         sourceEventIds: node.sourceEventIds,
       };
     case "result":
@@ -223,6 +225,7 @@ function buildSimpleTraceItem(
     title: options.title,
     summary: timelineSummary,
     badgeLabel: options.badgeLabel,
+    createdAtMs: node.createdAtMs,
     sourceEventIds: node.sourceEventIds,
     interactive: true,
     drawerTitle: options.title,
@@ -235,8 +238,18 @@ function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
   const members = node.members ?? [];
   const title = node.label ?? TRACE_TITLES[node.kind as TraceNodeKind];
   const firstMember = members[0];
+  const isActionTraceKind =
+    node.kind === "tool_batch" ||
+    node.kind === "file_activity" ||
+    node.kind === "terminal_activity" ||
+    node.kind === "skill" ||
+    node.kind === "subagent";
+  const topLevelActionSummary = buildToolActionSummary(
+    firstMember?.toolName,
+    firstMember?.actionText ?? firstMember?.bodyText,
+  );
   const fullSummary =
-    (node.kind === "tool_batch" ? node.thoughtText : undefined) ??
+    (isActionTraceKind ? node.thoughtText : undefined) ??
     firstMember?.observationText ??
     firstMember?.bodyText ??
     node.bodyText ??
@@ -245,51 +258,82 @@ function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
     node.kind === "reasoning"
       ? buildTimelineReasoningSummary(fullSummary)
       : buildCompactTraceSummary(
-          (node.kind === "tool_batch" ? node.thoughtText : undefined) ??
+          (isActionTraceKind ? node.thoughtText : undefined) ??
+            topLevelActionSummary ??
             firstMember?.actionText ??
             firstMember?.bodyText ??
             fullSummary,
         );
+  const reasoningSections =
+    node.kind === "reasoning"
+      ? [
+          ...(node.reasoningText
+            ? [{ title: "Reasoning", body: node.reasoningText }]
+            : []),
+          ...(node.thoughtText &&
+          (!node.reasoningText || node.thoughtText !== node.reasoningText)
+            ? [{ title: "Thought", body: node.thoughtText }]
+            : []),
+        ]
+      : [];
   const drawerSections: DisplayTraceDrawerSection[] = [
-    { title: "Summary", body: fullSummary },
-    ...(node.thoughtText && node.kind !== "reasoning"
+    ...(node.kind === "reasoning"
+      ? reasoningSections
+      : !isActionTraceKind
+      ? [{ title: "Summary", body: fullSummary }]
+      : []),
+    ...(node.thoughtText &&
+    node.kind !== "reasoning"
       ? [{ title: "Thought", body: node.thoughtText }]
       : []),
     ...members.flatMap((member, index) => {
       if (member.actionText || member.observationText || member.errorText || member.thoughtText) {
         const sections: DisplayTraceDrawerSection[] = [];
-        if (member.thoughtText) {
+        const prefix = members.length > 1 ? `Item ${index + 1}: ` : "";
+        const includeMemberThought =
+          Boolean(member.thoughtText) &&
+          node.kind !== "reasoning" &&
+          (!isActionTraceKind || members.length > 1 || member.thoughtText !== node.thoughtText);
+        if (includeMemberThought) {
+          const thoughtText = member.thoughtText;
+          if (!thoughtText) {
+            return sections;
+          }
           sections.push({
-            title: `Item ${index + 1}: Thought`,
-            body: member.thoughtText,
+            title: `${prefix}Thought`,
+            body: thoughtText,
           });
         }
         if (member.actionText) {
           sections.push({
-            title: `Item ${index + 1}: Action`,
+            title: `${prefix}Action`,
             body: member.actionText,
           });
         }
         if (member.observationText) {
           sections.push({
-            title: `Item ${index + 1}: Observation`,
+            title: `${prefix}Observation`,
             body: member.observationText,
           });
         }
         if (member.errorText) {
           sections.push({
-            title: `Item ${index + 1}: Error`,
+            title: `${prefix}Error`,
             body: member.errorText,
           });
         }
         if (sections.length > 0) {
           return sections;
         }
+
+        if (node.kind === "reasoning") {
+          return [];
+        }
       }
 
       return [
         {
-          title: `Item ${index + 1}: ${member.title}`,
+          title: `${members.length > 1 ? `Item ${index + 1}: ` : ""}${member.title}`,
           body: member.bodyText ?? member.title,
         },
       ];
@@ -302,6 +346,7 @@ function buildGroupedTraceItem(node: DisplayNode): DisplayTraceItem {
     title,
     summary,
     badgeLabel: node.kind.replace(/_/g, " "),
+    createdAtMs: node.createdAtMs,
     sourceEventIds: node.sourceEventIds,
     interactive: true,
     drawerTitle: title,
@@ -334,6 +379,16 @@ function buildCompactTraceSummary(value: string): string {
   }
 
   return `${candidate.slice(0, 137).trimEnd()}...`;
+}
+
+function buildToolActionSummary(
+  toolName?: string,
+  actionText?: string,
+): string | undefined {
+  const trimmedAction = actionText?.trim();
+  if (!trimmedAction) return undefined;
+  const trimmedToolName = toolName?.trim();
+  return trimmedToolName ? `${trimmedToolName}: ${trimmedAction}` : trimmedAction;
 }
 
 function getLifecycleTitle(value?: string): string {
@@ -549,6 +604,7 @@ function buildToolTraceNode(
   const normalizedMember = {
     ...member,
     id: memberId,
+    toolName: getToolName(openHandsEvent),
     thoughtText:
       openHandsEvent.kind === "ActionEvent" && openHandsEvent.llm_response_id
         ? undefined
@@ -586,15 +642,17 @@ function buildReasoningNode(
   openHandsEvent: OpenHandsConversationEvent,
 ): DisplayNode {
   const member = buildReasoningMember(event, openHandsEvent);
+  const reasoningText = getReasoningText(openHandsEvent);
   const bodyText = member.bodyText ?? "Reasoning captured";
   return {
     id: buildTraceNodeId(event, openHandsEvent, "reasoning"),
     kind: "reasoning",
     status: event.status,
     createdAtMs: event.createdAtMs,
-    label: TRACE_TITLES.reasoning,
+    label: getReasoningLabel(openHandsEvent),
     bodyText,
-    thoughtText: bodyText,
+    reasoningText,
+    thoughtText: member.thoughtText,
     sourceEventIds: [event.eventId],
     members: [member],
     rawPayload: event.payload.rawOpenHandsEvent,
@@ -653,12 +711,18 @@ function buildFileActivityMember(
     (typeof input === "object" && input && "path" in input
       ? getString(input as Record<string, unknown>, "path")
       : undefined);
+  const actionText =
+    openHandsEvent.kind === "ActionEvent"
+      ? [command ? `command: ${command}` : undefined, path ? `path: ${path}` : undefined]
+          .filter((value): value is string => Boolean(value))
+          .join(" ")
+      : undefined;
 
   return {
     id: event.eventId,
     title: command ? capitalize(command) : "File activity",
     bodyText: path ?? observationText ?? errorText ?? "File activity captured",
-    actionText: openHandsEvent.kind === "ActionEvent" ? path : undefined,
+    actionText: actionText || undefined,
     observationText,
     errorText,
     thoughtText: getReasoningText(openHandsEvent),
@@ -671,17 +735,46 @@ function buildReasoningMember(
   openHandsEvent: OpenHandsConversationEvent,
 ): DisplayNodeMember {
   const observationText = getObservationText(openHandsEvent);
+  const reasoningText = getReasoningText(openHandsEvent);
+  const thoughtText = getReasoningThoughtText(openHandsEvent);
   const bodyText =
-    getReasoningText(openHandsEvent) ??
+    reasoningText ??
+    thoughtText ??
     (isThinkObservationPlaceholder(observationText) ? undefined : observationText);
 
   return {
     id: event.eventId,
-    title: "Reasoning checkpoint",
+    title: getReasoningLabel(openHandsEvent),
     bodyText,
-    thoughtText: getReasoningText(openHandsEvent),
+    thoughtText,
     sourceEventIds: [event.eventId],
   };
+}
+
+function getReasoningLabel(openHandsEvent: OpenHandsConversationEvent): string {
+  if (
+    openHandsEvent.kind === "ThinkEvent" ||
+    (openHandsEvent.kind === "ActionEvent" && openHandsEvent.tool_name === "think") ||
+    (openHandsEvent.kind === "ObservationEvent" && openHandsEvent.tool_name === "think")
+  ) {
+    return "Think";
+  }
+
+  return TRACE_TITLES.reasoning;
+}
+
+function getReasoningThoughtText(
+  openHandsEvent: OpenHandsConversationEvent,
+): string | undefined {
+  if (openHandsEvent.kind === "ThinkEvent") {
+    return openHandsEvent.thought;
+  }
+
+  if (openHandsEvent.kind === "ActionEvent" && openHandsEvent.tool_name === "think") {
+    return getString(openHandsEvent.action, "thought");
+  }
+
+  return undefined;
 }
 
 function buildSkillActivityMember(
@@ -752,6 +845,18 @@ function getMessageSource(event: OpenHandsConversationEvent): string | undefined
 
 function getActionSummary(event: OpenHandsConversationEvent): string | undefined {
   if (event.kind === "ActionEvent") {
+    if (event.tool_name === "invoke_skill") {
+      const actionName = getString(event.action, "name");
+      const actionKind = getString(event.action, "kind");
+      const parts = [
+        actionName ? `name: ${actionName}` : undefined,
+        actionKind ? `action: ${actionKind}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      if (parts.length > 0) {
+        return parts.join(" ");
+      }
+    }
+
     return (
       getFirstString(event.action, "description", "name", "message", "command", "path") ??
       getCommandText(event)

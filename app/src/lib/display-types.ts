@@ -22,6 +22,7 @@ export type DisplayNodeKind =
 export interface DisplayNodeMember {
   id: string;
   title: string;
+  toolName?: string;
   bodyText?: string;
   actionText?: string;
   observationText?: string;
@@ -43,6 +44,7 @@ export interface DisplayTraceItem {
   title: string;
   summary: string;
   badgeLabel: string;
+  createdAtMs: number;
   sourceEventIds: string[];
   interactive?: boolean;
   drawerTitle?: string;
@@ -57,6 +59,7 @@ export interface DisplayNode {
   createdAtMs: number;
   label?: string;
   bodyText?: string;
+  reasoningText?: string;
   actionText?: string;
   observationText?: string;
   thoughtText?: string;

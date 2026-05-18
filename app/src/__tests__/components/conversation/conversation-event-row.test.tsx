@@ -99,6 +99,7 @@ describe("ConversationEventRow", () => {
               kind: "terminal_activity",
               title: "Terminal activity",
               summary: "ls -la",
+              createdAtMs: 1_000,
               sourceEventIds: ["evt-group-a", "evt-group-b"],
               drawerTitle: "Terminal activity",
               drawerSubtitle: "1 items",
@@ -181,14 +182,15 @@ describe("ConversationEventRow", () => {
             {
               id: "reasoning-1",
               kind: "reasoning",
-              title: "Reasoning",
+              title: "Think",
               summary: "Let me analyze the current clarifications and the user's answers to determine what gaps remain.",
+              createdAtMs: 1_000,
               sourceEventIds: ["evt-r1"],
-              drawerTitle: "Reasoning",
+              drawerTitle: "Think",
               drawerSubtitle: "1 items",
               drawerSections: [
                 {
-                  title: "Summary",
+                  title: "Reasoning",
                   body: "Let me analyze the current clarifications and the user's answers to determine what gaps remain.\n\n## Current Answers Summary:\n1. Weighted pipeline...",
                 },
               ],
@@ -201,7 +203,7 @@ describe("ConversationEventRow", () => {
     expect(screen.getByText("Let me analyze the current clarifications and the user's answers to determine what gaps remain.")).toBeInTheDocument();
     expect(screen.queryByText(/## Current Answers Summary:/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /reasoning/i }));
+    fireEvent.click(screen.getByRole("button", { name: /think/i }));
 
     expect(screen.getByTestId("activity-trace-drawer")).toHaveTextContent("## Current Answers Summary:");
   });
@@ -221,6 +223,7 @@ describe("ConversationEventRow", () => {
               kind: "file_activity",
               title: "File activity",
               summary: "view path/to/file",
+              createdAtMs: 1_000,
               sourceEventIds: ["evt-a", "evt-b"],
               drawerTitle: "File activity",
               drawerSubtitle: "2 items",
@@ -265,6 +268,7 @@ describe("ConversationEventRow", () => {
               title: "Skill invocation",
               summary: "Load skill-requirements research methodology",
               badgeLabel: "skill",
+              createdAtMs: 1_000,
               sourceEventIds: ["evt-skill-a"],
               drawerTitle: "Skill invocation",
               drawerSubtitle: "1 items",

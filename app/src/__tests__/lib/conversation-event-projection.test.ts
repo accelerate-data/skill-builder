@@ -114,24 +114,26 @@ describe("conversation-event-projection", () => {
         expect.objectContaining({
           kind: "file_activity",
           title: "File activity",
-          summary: "/Users/hbanerjee/skill-builder/default/skills/measuring-pipeline-value",
+          summary:
+            "file_editor: command: view path: /Users/hbanerjee/skill-builder/default/skills/measuring-pipeline-value",
           drawerSections: expect.arrayContaining([
-            expect.objectContaining({ title: "Item 1: Action" }),
-            expect.objectContaining({ title: "Item 1: Observation" }),
+            expect.objectContaining({ title: "Action" }),
+            expect.objectContaining({ title: "Observation" }),
           ]),
         }),
         expect.objectContaining({
           kind: "terminal_activity",
           title: "Terminal activity",
-          summary: "ls -la /Users/hbanerjee/skill-builder/default/skills/measuring-pipeline-value",
+          summary:
+            "terminal: ls -la /Users/hbanerjee/skill-builder/default/skills/measuring-pipeline-value",
           drawerSections: expect.arrayContaining([
-            expect.objectContaining({ title: "Item 1: Action" }),
-            expect.objectContaining({ title: "Item 1: Observation" }),
+            expect.objectContaining({ title: "Action" }),
+            expect.objectContaining({ title: "Observation" }),
           ]),
         }),
         expect.objectContaining({
           kind: "reasoning",
-          title: "Reasoning",
+          title: "Think",
           summary: "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
         }),
       ]),
@@ -148,25 +150,30 @@ describe("conversation-event-projection", () => {
         expect.objectContaining({
           kind: "skill",
           title: "Skill invocation",
-          summary: "researching-skill-requirements",
+          summary:
+            "invoke_skill: name: researching-skill-requirements action: InvokeSkillAction",
           drawerSections: expect.arrayContaining([
             expect.objectContaining({
-              title: "Item 1: Action",
-              body: "researching-skill-requirements",
+              title: "Action",
+              body: "name: researching-skill-requirements action: InvokeSkillAction",
+            }),
+            expect.objectContaining({
+              title: "Observation",
+              body: "Skill content loaded.",
             }),
           ]),
         }),
         expect.objectContaining({
           kind: "subagent",
           title: "Subagent invocation",
-          summary: "Verify forecasting-revenue skill package",
+          summary: "task: Verify forecasting-revenue skill package",
           drawerSections: expect.arrayContaining([
             expect.objectContaining({
-              title: "Item 1: Action",
+              title: "Action",
               body: "Verify forecasting-revenue skill package",
             }),
             expect.objectContaining({
-              title: "Item 1: Observation",
+              title: "Observation",
               body: "{\"status\":\"pass\",\"findings\":[]}",
             }),
           ]),
@@ -250,18 +257,18 @@ describe("conversation-event-projection", () => {
         traceItems: [
           expect.objectContaining({
             kind: "subagent",
-            summary: "Verify generated skill package",
+            summary: "Now I'll launch the verifier subagent for pass 1.",
             drawerSections: expect.arrayContaining([
               expect.objectContaining({
-                title: "Item 1: Thought",
+                title: "Thought",
                 body: "Now I'll launch the verifier subagent for pass 1.",
               }),
               expect.objectContaining({
-                title: "Item 1: Action",
+                title: "Action",
                 body: "Verify generated skill package",
               }),
               expect.objectContaining({
-                title: "Item 1: Observation",
+                title: "Observation",
                 body: "{\"status\":\"pass\",\"findings\":[]}",
               }),
             ]),
@@ -326,6 +333,7 @@ describe("conversation-event-projection", () => {
         traceItems: [
           expect.objectContaining({
             kind: "reasoning",
+            title: "Think",
             summary:
               "Let me analyze the current clarification record and identify material gaps.",
           }),
@@ -373,8 +381,64 @@ describe("conversation-event-projection", () => {
         traceItems: [
           expect.objectContaining({
             kind: "reasoning",
+            title: "Think",
             summary:
               "Let me carefully analyze every answer for material gaps before constructing the refinements.",
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("shows think items as Think and splits reasoning from thought in the drawer", () => {
+    const nodes = projectConversationEvents([
+      {
+        eventId: "evt-think-split",
+        conversationId: "conv-think-split",
+        origin: "backend",
+        status: "observed",
+        createdAtMs: 1_778_000_303,
+        display: { kind: "tool_call" },
+        payload: {
+          openHandsEvent: {
+            kind: "ActionEvent",
+            id: "think-action-1",
+            timestamp: new Date(1_778_000_303).toISOString(),
+            source: "agent",
+            tool_name: "think",
+            tool_call_id: "call-think-split",
+            thought:
+              "Now I have the schema and semantic invariants. Let me apply the researching-skill-requirements skill to determine the right clarification questions.",
+            action: {
+              kind: "ThinkAction",
+              thought:
+                "Now I need to construct the final JSON object for Step 0 research.",
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(nodes).toMatchObject([
+      {
+        kind: "activity_trace",
+        traceItems: [
+          expect.objectContaining({
+            kind: "reasoning",
+            title: "Think",
+            summary:
+              "Now I have the schema and semantic invariants. Let me apply the researching-skill-requirements skill to determine the right clarification questions.",
+            drawerSections: expect.arrayContaining([
+              expect.objectContaining({
+                title: "Reasoning",
+                body:
+                  "Now I have the schema and semantic invariants. Let me apply the researching-skill-requirements skill to determine the right clarification questions.",
+              }),
+              expect.objectContaining({
+                title: "Thought",
+                body: "Now I need to construct the final JSON object for Step 0 research.",
+              }),
+            ]),
           }),
         ],
       },
@@ -416,15 +480,11 @@ describe("conversation-event-projection", () => {
         traceItems: [
           expect.objectContaining({
             kind: "file_activity",
-            summary: "/workspace/shared/schemas.md",
+            summary: "file_editor: /workspace/shared/schemas.md",
             drawerSections: expect.arrayContaining([
-            expect.objectContaining({
-              title: "Summary",
-              body: "Read 140 lines from /workspace/shared/schemas.md.",
-            }),
-            expect.objectContaining({
-              title: "Item 1: Observation",
-              body: "Read 140 lines from /workspace/shared/schemas.md.",
+              expect.objectContaining({
+                title: "Observation",
+                body: "Read 140 lines from /workspace/shared/schemas.md.",
               }),
             ]),
           }),
@@ -441,10 +501,12 @@ describe("conversation-event-projection", () => {
       traceItems: expect.arrayContaining([
         expect.objectContaining({
           kind: "file_activity",
-          summary: expect.stringMatching(/^\/Users\/hbanerjee\/skill-builder\//),
+          summary: expect.stringMatching(
+            /^file_editor: command: view path: \/Users\/hbanerjee\/skill-builder\//,
+          ),
           drawerSections: expect.arrayContaining([
             expect.objectContaining({
-              title: "Summary",
+              title: "Observation",
               body: expect.stringContaining("Here are the files and directories up to 2 levels deep"),
             }),
           ]),
@@ -471,7 +533,7 @@ describe("conversation-event-projection", () => {
               kind: "subagent",
               drawerSections: expect.arrayContaining([
                 expect.objectContaining({
-                  title: "Item 1: Error",
+                  title: "Error",
                   body: "A restart occurred while this tool was in progress.",
                 }),
               ]),
@@ -580,11 +642,11 @@ describe("conversation-event-projection", () => {
             kind: "file_activity",
             drawerSections: expect.arrayContaining([
               expect.objectContaining({
-                title: "Item 1: Action",
-                body: "/tmp/README.md",
+                title: "Action",
+                body: "command: view path: /tmp/README.md",
               }),
               expect.objectContaining({
-                title: "Item 1: Observation",
+                title: "Observation",
                 body: "Read 20 lines.",
               }),
             ]),
@@ -652,11 +714,11 @@ describe("conversation-event-projection", () => {
             kind: "terminal_activity",
             drawerSections: expect.arrayContaining([
               expect.objectContaining({
-                title: "Item 1: Action",
+                title: "Action",
                 body: "npm test",
               }),
               expect.objectContaining({
-                title: "Item 1: Error",
+                title: "Error",
                 body: "Command exited with code 1.",
               }),
             ]),
@@ -760,7 +822,10 @@ describe("conversation-event-projection", () => {
             kind: "tool_batch",
             summary: "I should inspect the schema and test file in parallel before editing.",
             drawerSections: expect.arrayContaining([
-              expect.objectContaining({ title: "Item 1: Action", body: "/tmp/schema.md" }),
+              expect.objectContaining({
+                title: "Item 1: Action",
+                body: "command: view path: /tmp/schema.md",
+              }),
               expect.objectContaining({ title: "Item 1: Observation", body: "Read 40 lines." }),
               expect.objectContaining({
                 title: "Item 2: Action",

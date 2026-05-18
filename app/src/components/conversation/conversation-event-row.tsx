@@ -26,6 +26,7 @@ export function ConversationEventRow({ node }: ConversationEventRowProps) {
               title: node.label ?? "Runtime setup",
               summary: "System prompt prepared.",
               badgeLabel: "setup",
+              createdAtMs: node.createdAtMs,
               sourceEventIds: node.sourceEventIds,
               interactive: true,
               drawerTitle: node.label ?? "Runtime setup",

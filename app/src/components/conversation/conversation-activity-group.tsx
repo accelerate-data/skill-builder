@@ -4,33 +4,16 @@ import type { DisplayNode, DisplayTraceItem } from "@/lib/display-types";
 import { MemoizedMarkdown } from "@/components/agent-items/memoized-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 interface ConversationActivityGroupProps {
   node: DisplayNode;
 }
 
-const TRACE_ICONS: Record<DisplayTraceItem["kind"], string> = {
-  tool_batch: "T",
-  skill: "S",
-  subagent: "A",
-  result: "R",
-  terminal_activity: ">",
-  file_activity: "F",
-  reasoning: ".",
-  runtime_setup: "*",
-  lifecycle: "o",
-  pause: "||",
-  error: "!",
-  tool_error: "!",
-  subagent_error: "!",
-};
-
-function buildTracePreview(traceItems: DisplayTraceItem[]): string {
-  return traceItems
-    .slice(0, 3)
-    .map((item) => item.title)
-    .join(" · ");
+function formatTraceTimestamp(createdAtMs: number): string {
+  return new Date(createdAtMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export function ConversationActivityGroup({
@@ -57,8 +40,6 @@ export function ConversationActivityGroup({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedItem]);
 
-  const tracePreview = buildTracePreview(traceItems);
-
   return (
     <>
       <details
@@ -76,27 +57,12 @@ export function ConversationActivityGroup({
                 {traceItems.length} item{traceItems.length === 1 ? "" : "s"}
               </span>
             </div>
-            <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
-              {tracePreview.length > 0
-                ? tracePreview
-                : `${traceItems.length} trace item${traceItems.length === 1 ? "" : "s"} available in the shared activity timeline.`}
-            </p>
           </div>
           <span className="mt-0.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Open
           </span>
         </summary>
         <div className="border-t border-border bg-background/55 px-2.5 py-2.5 dark:bg-background/20">
-          <div className="mb-1.5 flex flex-wrap gap-1.5">
-            {traceItems.slice(0, 4).map((item) => (
-              <span
-                key={`${item.id}:summary-chip`}
-                className="rounded-full border border-border bg-muted/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-              >
-                {item.title}
-              </span>
-            ))}
-          </div>
           <div className="flex flex-col gap-1.5">
             {traceItems.map((item) =>
               item.interactive ?? Boolean(item.drawerSections?.length) ? (
@@ -193,19 +159,16 @@ export function ConversationActivityGroup({
 }
 
 function TraceItemContent({ item }: { item: DisplayTraceItem }) {
+  const timestamp = formatTraceTimestamp(item.createdAtMs);
+
   return (
     <>
       <div className="min-w-0">
-        <div className="mb-1 flex items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex h-5 w-5 flex-none items-center justify-center rounded-full border border-border bg-muted/55 text-[10px] font-semibold text-muted-foreground",
-              item.kind.includes("error") && "border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/35 dark:bg-rose-950/35 dark:text-rose-300",
-            )}
-          >
-            {TRACE_ICONS[item.kind]}
-          </span>
+        <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <p className="text-sm font-semibold tracking-[-0.02em] text-foreground">{item.title}</p>
+          <p className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground">
+            {timestamp}
+          </p>
         </div>
         <p className="text-xs leading-5 text-muted-foreground whitespace-pre-wrap break-words">
           {item.summary}
