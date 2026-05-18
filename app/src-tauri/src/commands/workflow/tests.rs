@@ -3690,6 +3690,27 @@ mod materialization {
     }
 
     #[test]
+    fn step0_analyzing_sales_pipeline_fixture_reproduces_materialization_type_error() {
+        let (db, skill_id) = db_with_seeded_skill("rt-step0-analyzing-sales-pipeline");
+        let state = serde_json::json!({
+            "type": "conversation_state",
+            "status": "completed",
+            "result_text": include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/fixtures/workflow/analyzing-sales-pipeline-step0-result_text.json"
+            )),
+        });
+
+        let parsed = extract_workflow_json_from_conversation_state(&state, "research").unwrap();
+        let err = materialize_workflow_step_output_value(&db, &skill_id, 0, &parsed).unwrap_err();
+
+        assert!(
+            err.contains("invalid type: integer `3`, expected a string"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn step0_then_step1_overwrites() {
         let (db, skill_id) = db_with_seeded_skill("rt-overwrite");
 
