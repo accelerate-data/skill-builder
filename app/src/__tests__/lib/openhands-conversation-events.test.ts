@@ -45,9 +45,15 @@ function normalized(
 
 describe("OpenHands conversation event helpers", () => {
   it("normalizes all realistic fixture records", () => {
-    const events = openHandsConversationEventRecords.map(normalized);
+    const supportedRecords = openHandsConversationEventRecords.filter(
+      (record) =>
+        !["CustomSdkEvent", "RawFallbackEvent"].includes(
+          (record.event_class as string | undefined) ?? "",
+        ),
+    );
+    const events = supportedRecords.map(normalized);
 
-    expect(events.map((event) => event.eventClass)).toEqual([
+    expect(events.map((event) => event.kind)).toEqual([
       "MessageEvent",
       "ActionEvent",
       "ActionEvent",
@@ -57,18 +63,13 @@ describe("OpenHands conversation event helpers", () => {
       "AgentErrorEvent",
       "ConversationErrorEvent",
       "SystemPromptEvent",
-      "CondensationStartEvent",
+      "CondensationRequest",
       "CondensationSummaryEvent",
       "ConversationStateUpdateEvent",
       "PauseEvent",
-      "CustomSdkEvent",
-      "RawFallbackEvent",
     ]);
-    expect(events[0]).toMatchObject({
-      conversationId: "conv-fixture",
-      timestamp: 1_778_000_001,
-    });
-    expect(events[1].toolCallId).toBe("call-single");
+    expect(events[0].timestamp).toBe(new Date(1_778_000_001).toISOString());
+    expect(getToolCallId(events[1])).toBe("call-single");
   });
 
   it("normalizes top-level and raw parent tool call ids", () => {
@@ -92,8 +93,12 @@ describe("OpenHands conversation event helpers", () => {
       },
     });
 
-    expect(event.toolCallId).toBe("call-child-1");
-    expect(event.parentToolCallId).toBe("call-parent-1");
+    expect(getToolCallId(event)).toBe("call-child-1");
+    const envelope = buildCanonicalConversationEventEnvelope(event, "conv-child", {
+      conversationId: "conv-child",
+      parentToolCallId: "call-parent-1",
+    });
+    expect(envelope.payload.openHandsDiagnostics?.parentToolCallId).toBe("call-parent-1");
   });
 
   it("preserves terminal result text", () => {
@@ -136,8 +141,12 @@ describe("OpenHands conversation event helpers", () => {
       },
     });
 
-    const first = buildCanonicalConversationEventEnvelope(event);
-    const second = buildCanonicalConversationEventEnvelope(event);
+    const first = buildCanonicalConversationEventEnvelope(event, "conv-repeat", {
+      conversationId: "conv-repeat",
+    });
+    const second = buildCanonicalConversationEventEnvelope(event, "conv-repeat", {
+      conversationId: "conv-repeat",
+    });
 
     expect(first.eventId).not.toBe(second.eventId);
     expect(first.eventId).toContain("conv-repeat");
@@ -183,6 +192,43 @@ describe("OpenHands conversation event helpers", () => {
     });
     expect(getReasoningText(event)).toBe(
       "Need the helper source before editing.\n\nUse a focused read before patching.",
+    );
+  });
+
+  it("uses ThinkEvent thought text as reasoning text", () => {
+    const event = normalized({
+      type: "conversation_event",
+      runtime: "openhands",
+      conversation_id: "conv-think",
+      event_class: "ThinkEvent",
+      timestamp: 1_778_000_300,
+      event: {
+        source: "agent",
+        thought:
+          "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
+      },
+    });
+
+    expect(getReasoningText(event)).toBe(
+      "Let me synthesize the generation brief from the confirmed decisions and then create the skill package.",
+    );
+  });
+
+  it("returns ThinkEvent thought text verbatim when present", () => {
+    const event = normalized({
+      type: "conversation_event",
+      runtime: "openhands",
+      conversation_id: "conv-think-fallback",
+      event_class: "ThinkEvent",
+      timestamp: 1_778_000_301,
+      event: {
+        source: "agent",
+        thought: "Let me analyze the current clarification record and identify material gaps.",
+      },
+    });
+
+    expect(getReasoningText(event)).toBe(
+      "Let me analyze the current clarification record and identify material gaps.",
     );
   });
 
@@ -234,8 +280,8 @@ describe("OpenHands conversation event helpers", () => {
       "Paused: Waiting for user input.",
     );
     expect(
-      getInternalEventSummary(normalized(openHandsUnknownEventRecord)),
-    ).toBeUndefined();
+      normalizeConversationEventMessage(openHandsUnknownEventRecord),
+    ).toBeNull();
   });
 
   it("groups only consecutive action events with the same non-empty llm_response_id", () => {
@@ -267,9 +313,6 @@ describe("OpenHands conversation event helpers", () => {
     expect(grouped[2]).toEqual({ type: "event", event: unrelatedAction });
 
     expect(events[0]).toBe(firstParallel);
-    expect(firstParallel.event).toBe(
-      openHandsParallelActionEventRecords[0].event,
-    );
   });
 
   it("falls back to useful JSON for non-string payloads", () => {
@@ -277,8 +320,6 @@ describe("OpenHands conversation event helpers", () => {
   });
 
   it("preserves non-object SDK event payload fallbacks", () => {
-    const event = normalized(openHandsRawPayloadEventRecord);
-
-    expect(event.event).toEqual({ raw: "SDK event string fallback." });
+    expect(normalizeConversationEventMessage(openHandsRawPayloadEventRecord)).toBeNull();
   });
 });

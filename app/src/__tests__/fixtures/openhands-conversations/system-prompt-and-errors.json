@@ -1,0 +1,47 @@
+{
+  "conversationId": "conv-system-errors",
+  "note": "Expect Runtime setup, Tool error, and Subagent error rows, with unsupported shapes still eligible for unknown fallback rows in projection tests.",
+  "records": [
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-system-errors",
+      "event_class": "SystemPromptEvent",
+      "timestamp": 1747056626223,
+      "event": {
+        "source": "agent",
+        "system_prompt": {
+          "type": "text",
+          "text": "You are OpenHands agent."
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-system-errors",
+      "event_class": "ConversationErrorEvent",
+      "timestamp": 1747170913479,
+      "event": {
+        "code": "LLMBadRequestError",
+        "error_detail": {
+          "message": "LLM Provider NOT provided. Pass in the LLM provider you are trying to call."
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-system-errors",
+      "event_class": "AgentErrorEvent",
+      "timestamp": 1747393723200,
+      "event": {
+        "source": "agent",
+        "tool_name": "task",
+        "error": {
+          "message": "A restart occurred while this tool was in progress."
+        }
+      }
+    }
+  ]
+}

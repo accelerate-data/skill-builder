@@ -24,7 +24,7 @@ import {
   getToolInput,
   getToolName,
   groupConversationActionEvents,
-  isInternalOpenHandsEventClass,
+  isInternalOpenHandsEventKind,
   stringifyEventPayload,
 } from "@/lib/openhands-conversation-events";
 
@@ -72,9 +72,7 @@ function EventShell({
 }
 
 function getEventSource(event: OpenHandsConversationEvent): string | undefined {
-  return typeof event.event.source === "string"
-    ? event.event.source
-    : undefined;
+  return typeof event.source === "string" ? event.source : undefined;
 }
 
 function MarkdownText({ text }: { text: string }) {
@@ -109,7 +107,7 @@ function MessageEventView({ event }: { event: OpenHandsConversationEvent }) {
       {text ? (
         <MarkdownText text={text} />
       ) : (
-        <PayloadBlock value={event.event} />
+        <PayloadBlock value={event} />
       )}
     </EventShell>
   );
@@ -161,7 +159,7 @@ function ActionEventView({ event }: { event: OpenHandsConversationEvent }) {
         </div>
       )}
       {input !== undefined && <PayloadBlock value={input} />}
-      {!hasReadableContent && <PayloadBlock value={event.event} />}
+      {!hasReadableContent && <PayloadBlock value={event} />}
     </EventShell>
   );
 }
@@ -182,7 +180,7 @@ function ObservationEventView({
       {text ? (
         <MarkdownText text={text} />
       ) : (
-        <PayloadBlock value={event.event} />
+        <PayloadBlock value={event} />
       )}
     </EventShell>
   );
@@ -213,7 +211,7 @@ function ErrorEventView({
       {text ? (
         <MarkdownText text={text} />
       ) : (
-        <PayloadBlock value={event.event} />
+        <PayloadBlock value={event} />
       )}
     </EventShell>
   );
@@ -282,13 +280,13 @@ function InternalEventView({ event }: { event: OpenHandsConversationEvent }) {
   return (
     <EventShell
       icon={<Pause className="size-3.5" />}
-      title={event.eventClass}
+      title={event.kind}
       source={getEventSource(event)}
     >
       {summary ? (
         <MarkdownText text={summary} />
       ) : (
-        <PayloadBlock value={event.event} />
+        <PayloadBlock value={event} />
       )}
     </EventShell>
   );
@@ -298,10 +296,10 @@ function UnknownEventView({ event }: { event: OpenHandsConversationEvent }) {
   return (
     <EventShell
       icon={<Braces className="size-3.5" />}
-      title={event.eventClass}
+      title={event.kind}
       source={getEventSource(event)}
     >
-      <PayloadBlock value={event.event} />
+      <PayloadBlock value={event} />
     </EventShell>
   );
 }
@@ -311,7 +309,7 @@ function ConversationEventView({
 }: {
   event: OpenHandsConversationEvent;
 }) {
-  switch (event.eventClass) {
+  switch (event.kind) {
     case "MessageEvent":
       return <MessageEventView event={event} />;
     case "ActionEvent":
@@ -324,7 +322,7 @@ function ConversationEventView({
     case "ConversationErrorEvent":
       return <ErrorEventView event={event} title="Conversation Error" />;
     default:
-      if (isInternalOpenHandsEventClass(event.eventClass)) {
+      if (isInternalOpenHandsEventKind(event.kind)) {
         return <InternalEventView event={event} />;
       }
       return <UnknownEventView event={event} />;
@@ -371,7 +369,7 @@ export const ConversationEventList = memo(function ConversationEventList({
           key={
             item.type === "parallel_action_group"
               ? `parallel-${item.llmResponseId}-${index}`
-              : `${item.event.conversationId ?? "conversation"}-${item.event.timestamp}-${index}`
+              : `${item.event.id}-${item.event.timestamp}-${index}`
           }
           className="min-w-0 w-full animate-message-in"
         >

@@ -4,6 +4,7 @@ export type FooterDisplayStatus =
   | "idle"
   | "initializing"
   | "running"
+  | "paused"
   | "stopping"
   | "completed"
   | "error";
@@ -34,6 +35,10 @@ const statusDot: Record<
     className: "animate-pulse",
     style: { background: "var(--color-pacific)" },
   },
+  paused: {
+    className: "",
+    style: { background: "var(--color-amber)" },
+  },
   stopping: {
     className: "animate-pulse",
     style: { background: "var(--color-amber)" },
@@ -49,6 +54,7 @@ const statusLabels: Record<FooterDisplayStatus, string> = {
   idle: "ready",
   initializing: "initializing…",
   running: "running…",
+  paused: "paused",
   stopping: "stopping…",
   completed: "completed",
   error: "error",

@@ -3,42 +3,117 @@ pub fn normalize_server_event(
     conversation_id: &str,
     raw: &serde_json::Value,
 ) -> serde_json::Value {
-    if let Some(status) = terminal_status(raw) {
-        return normalize_terminal_state(conversation_id, status, raw);
-    }
-
-    serde_json::json!({
-        "type": "conversation_event",
-        "runtime": "openhands",
-        "conversation_id": conversation_id,
-        "tool_call_id": extract_tool_call_id(raw),
-        "parent_tool_call_id": raw
-            .get("parent_tool_call_id")
-            .or_else(|| raw.get("parentToolCallId"))
-            .cloned(),
-        "event_class": raw
-            .get("event_class")
-            .or_else(|| raw.get("eventClass"))
-            .or_else(|| raw.get("kind"))
-            .and_then(|value| value.as_str())
-            .unwrap_or_else(|| raw.get("type").and_then(|value| value.as_str()).unwrap_or("event")),
-        "event": raw,
-        "timestamp": chrono::Utc::now().timestamp_millis(),
+    canonicalize_conversation_event(raw).unwrap_or_else(|| {
+        serde_json::json!({
+            "id": format!(
+                "evt_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4().simple()
+            ),
+            "kind": "UnknownEvent",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "source": "environment",
+            "message": format!(
+                "Unsupported OpenHands event while normalizing conversation '{}'",
+                conversation_id
+            ),
+        })
     })
 }
 
-fn extract_tool_call_id(raw: &serde_json::Value) -> Option<serde_json::Value> {
-    raw.get("tool_call_id")
-        .or_else(|| raw.get("toolCallId"))
-        .or_else(|| raw.pointer("/tool_call/id"))
-        .or_else(|| raw.pointer("/action/tool_call_id"))
-        .or_else(|| raw.pointer("/action/toolCallId"))
-        .or_else(|| raw.pointer("/observation/tool_call_id"))
-        .or_else(|| raw.pointer("/observation/toolCallId"))
-        .cloned()
+pub fn canonicalize_conversation_event(raw: &serde_json::Value) -> Option<serde_json::Value> {
+    let mut event = raw.as_object()?.clone();
+    let kind = raw_event_kind(raw)?;
+
+    event.insert("kind".to_string(), serde_json::Value::String(kind.to_string()));
+
+    if event
+        .get("tool_call_id")
+        .and_then(|value| value.as_str())
+        .is_none()
+    {
+        if let Some(tool_call_id) = raw.pointer("/tool_call/id").and_then(|value| value.as_str()) {
+            event.insert(
+                "tool_call_id".to_string(),
+                serde_json::Value::String(tool_call_id.to_string()),
+            );
+        }
+    }
+
+    if event.get("id").and_then(|value| value.as_str()).is_none() {
+        event.insert(
+            "id".to_string(),
+            serde_json::Value::String(format!(
+                "evt_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4().simple()
+            )),
+        );
+    }
+
+    match event.get("timestamp") {
+        Some(serde_json::Value::String(_)) => {}
+        Some(serde_json::Value::Number(number)) => {
+            if let Some(value) = number.as_i64() {
+                event.insert(
+                    "timestamp".to_string(),
+                    serde_json::Value::String(
+                        chrono::DateTime::from_timestamp_millis(value)
+                            .unwrap_or_else(chrono::Utc::now)
+                            .to_rfc3339(),
+                    ),
+                );
+            } else if let Some(value) = number.as_u64() {
+                event.insert(
+                    "timestamp".to_string(),
+                    serde_json::Value::String(
+                        chrono::DateTime::from_timestamp_millis(value.min(i64::MAX as u64) as i64)
+                            .unwrap_or_else(chrono::Utc::now)
+                            .to_rfc3339(),
+                    ),
+                );
+            }
+        }
+        _ => {
+            event.insert(
+                "timestamp".to_string(),
+                serde_json::Value::String(chrono::Utc::now().to_rfc3339()),
+            );
+        }
+    }
+
+    if event.get("source").and_then(|value| value.as_str()).is_none() {
+        event.insert(
+            "source".to_string(),
+            serde_json::Value::String(default_event_source(kind).to_string()),
+        );
+    }
+
+    Some(serde_json::Value::Object(event))
 }
 
-fn normalize_terminal_state(
+pub fn is_pause_acknowledgement(raw: &serde_json::Value) -> bool {
+    if raw_event_kind(raw) == Some("PauseEvent") {
+        return true;
+    }
+
+    matches!(
+        (
+            raw_event_kind(raw),
+            raw.get("key").and_then(|value| value.as_str()),
+            raw.get("value").and_then(|value| value.as_str())
+        ),
+        (Some("ConversationStateUpdateEvent"), Some("execution_status"), Some("paused"))
+    )
+}
+
+pub fn canonicalize_frontend_conversation_event(
+    raw: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    canonicalize_conversation_event(raw).or_else(|| canonicalize_legacy_conversation_state(raw))
+}
+
+pub fn normalize_terminal_state(
     conversation_id: &str,
     status: &str,
     raw: &serde_json::Value,
@@ -55,7 +130,7 @@ fn normalize_terminal_state(
     })
 }
 
-fn terminal_status(raw: &serde_json::Value) -> Option<&'static str> {
+pub fn terminal_status(raw: &serde_json::Value) -> Option<&'static str> {
     let status = raw
         .get("status")
         .or_else(|| raw.pointer("/state/status"))
@@ -65,7 +140,7 @@ fn terminal_status(raw: &serde_json::Value) -> Option<&'static str> {
         return Some(status);
     }
 
-    if is_conversation_state_update(raw)
+    if matches!(raw_event_kind(raw), Some("ConversationStateUpdateEvent"))
         && matches!(
             raw.get("key").and_then(|value| value.as_str()),
             Some("status" | "execution_status")
@@ -81,14 +156,7 @@ fn terminal_status(raw: &serde_json::Value) -> Option<&'static str> {
     match raw.get("type").and_then(|value| value.as_str()) {
         Some("run_completed" | "conversation_completed") => Some("completed"),
         Some("run_failed" | "conversation_failed" | "error") => Some("error"),
-        Some(
-            "run_cancelled"
-            | "run_canceled"
-            | "run_paused"
-            | "conversation_paused"
-            | "PauseEvent"
-            | "pause_event",
-        ) => Some("cancelled"),
+        Some("run_cancelled" | "run_canceled") => Some("cancelled"),
         _ => None,
     }
 }
@@ -97,20 +165,99 @@ fn normalize_execution_status(status: Option<&str>) -> Option<&'static str> {
     match status {
         Some("completed" | "complete" | "success" | "succeeded" | "finished") => Some("completed"),
         Some("error" | "failed" | "failure" | "stuck") => Some("error"),
-        Some("cancelled" | "canceled" | "paused" | "pause" | "stopped") => Some("cancelled"),
+        Some("cancelled" | "canceled" | "stopped") => Some("cancelled"),
         _ => None,
     }
 }
 
-fn is_conversation_state_update(raw: &serde_json::Value) -> bool {
-    matches!(
-        raw.get("event_class")
-            .or_else(|| raw.get("eventClass"))
-            .or_else(|| raw.get("kind"))
-            .or_else(|| raw.get("type"))
-            .and_then(|value| value.as_str()),
-        Some("ConversationStateUpdateEvent" | "conversation_state_update")
-    )
+fn canonicalize_legacy_conversation_state(
+    raw: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    if raw.get("type").and_then(|value| value.as_str()) != Some("conversation_state") {
+        return None;
+    }
+
+    let status = raw.get("status").and_then(|value| value.as_str())?;
+    let timestamp = match raw.get("timestamp") {
+        Some(serde_json::Value::String(value)) => value.clone(),
+        Some(serde_json::Value::Number(value)) => value
+            .as_i64()
+            .and_then(chrono::DateTime::from_timestamp_millis)
+            .unwrap_or_else(chrono::Utc::now)
+            .to_rfc3339(),
+        _ => chrono::Utc::now().to_rfc3339(),
+    };
+    let id = raw
+        .get("id")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            format!(
+                "legacy_state_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4().simple()
+            )
+        });
+
+    match status {
+        "completed" | "finished" => Some(serde_json::json!({
+            "id": id,
+            "kind": "FinishEvent",
+            "timestamp": timestamp,
+            "source": "environment",
+            "message": raw.get("result_text").and_then(|v| v.as_str())
+                .or_else(|| raw.get("resultText").and_then(|v| v.as_str()))
+                .unwrap_or(""),
+            "success": true,
+        })),
+        "error" => Some(serde_json::json!({
+            "id": id,
+            "kind": "ConversationErrorEvent",
+            "timestamp": timestamp,
+            "source": "environment",
+            "code": "conversation_error",
+            "detail": raw.get("error_detail").and_then(|v| v.as_str())
+                .or_else(|| raw.get("errorDetail").and_then(|v| v.as_str()))
+                .unwrap_or("OpenHands runtime run failed"),
+        })),
+        "paused" => Some(serde_json::json!({
+            "id": id,
+            "kind": "PauseEvent",
+            "timestamp": timestamp,
+            "source": "user",
+            "reason": raw.get("error_detail").and_then(|v| v.as_str())
+                .or_else(|| raw.get("errorDetail").and_then(|v| v.as_str())),
+        })),
+        other => Some(serde_json::json!({
+            "id": id,
+            "kind": "ConversationStateUpdateEvent",
+            "timestamp": timestamp,
+            "source": "environment",
+            "key": "execution_status",
+            "value": other,
+        })),
+    }
+}
+
+fn raw_event_kind(raw: &serde_json::Value) -> Option<&str> {
+    raw.get("kind")
+        .or_else(|| raw.get("event_class"))
+        .or_else(|| raw.get("eventClass"))
+        .or_else(|| raw.get("type"))
+        .and_then(|value| value.as_str())
+        .map(|kind| match kind {
+            "conversation_state_update" => "ConversationStateUpdateEvent",
+            other => other,
+        })
+}
+
+fn default_event_source(kind: &str) -> &'static str {
+    match kind {
+        "PauseEvent" => "user",
+        "HookExecutionEvent" => "hook",
+        "MessageEvent" | "ActionEvent" | "AgentErrorEvent" | "ThinkEvent" => "agent",
+        _ => "environment",
+    }
 }
 
 fn result_text(raw: &serde_json::Value) -> Option<String> {
@@ -147,11 +294,10 @@ mod tests {
         let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
         let legacy_agent_key = ["agent", "id"].join("_");
 
-        assert_eq!(normalized["type"], "conversation_event");
-        assert_eq!(normalized["conversation_id"], "conversation-1");
         assert!(normalized.get(&legacy_agent_key).is_none());
-        assert_eq!(normalized["event_class"], "MessageEvent");
-        assert_eq!(normalized["event"], raw);
+        assert_eq!(normalized["kind"], "MessageEvent");
+        assert_eq!(normalized["source"], "agent");
+        assert_eq!(normalized["message"], "working");
     }
 
     #[test]
@@ -169,7 +315,7 @@ mod tests {
 
         let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
 
-        assert_eq!(normalized["event_class"], "ActionEvent");
+        assert_eq!(normalized["kind"], "ActionEvent");
     }
 
     #[test]
@@ -185,6 +331,7 @@ mod tests {
 
         let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
 
+        assert_eq!(normalized["kind"], "ActionEvent");
         assert_eq!(normalized["tool_call_id"], "call_child");
         assert!(normalized["parent_tool_call_id"].is_null());
     }
@@ -197,7 +344,7 @@ mod tests {
             "result": {"text": "done", "structured_output": {"ok": true}}
         });
 
-        let normalized = normalize_server_event("agent-1", "conversation-1", &raw);
+        let normalized = normalize_terminal_state("conversation-1", "completed", &raw);
 
         assert_eq!(normalized["type"], "conversation_state");
         assert_eq!(normalized["status"], "completed");
@@ -207,9 +354,9 @@ mod tests {
 
     #[test]
     fn normalizes_error_and_cancelled_terminal_states() {
-        let error = normalize_server_event(
-            "agent-1",
+        let error = normalize_terminal_state(
             "conversation-1",
+            "error",
             &serde_json::json!({
                 "type": "run_failed",
                 "status": "error",
@@ -220,20 +367,20 @@ mod tests {
         assert_eq!(error["status"], "error");
         assert_eq!(error["error_detail"], "boom");
 
-        let cancelled = normalize_server_event(
-            "agent-1",
+        let cancelled = normalize_terminal_state(
             "conversation-1",
+            "cancelled",
             &serde_json::json!({
-                "type": "run_paused",
-                "status": "paused",
-                "reason": "user requested pause"
+                "type": "run_cancelled",
+                "status": "cancelled",
+                "reason": "user requested cancel"
             }),
         );
         assert_eq!(cancelled["type"], "conversation_state");
         assert_eq!(cancelled["status"], "cancelled");
-        assert_eq!(cancelled["error_detail"], "user requested pause");
+        assert_eq!(cancelled["error_detail"], "user requested cancel");
 
-        // PauseEvent is the SDK's real user action event; must be treated as terminal cancelled.
+        // PauseEvent stays canonical and is handled as resumable pause state.
         let pause_event = normalize_server_event(
             "agent-1",
             "conversation-1",
@@ -243,8 +390,8 @@ mod tests {
                 "source": "user"
             }),
         );
-        assert_eq!(pause_event["type"], "conversation_state");
-        assert_eq!(pause_event["status"], "cancelled");
+        assert_eq!(pause_event["kind"], "PauseEvent");
+        assert_eq!(pause_event["source"], "user");
     }
 
     #[test]
@@ -258,8 +405,9 @@ mod tests {
                 "value": "finished"
             }),
         );
-        assert_eq!(finished["type"], "conversation_state");
-        assert_eq!(finished["status"], "completed");
+        assert_eq!(finished["kind"], "ConversationStateUpdateEvent");
+        assert_eq!(finished["key"], "status");
+        assert_eq!(finished["value"], "finished");
 
         let stuck = normalize_server_event(
             "agent-1",
@@ -270,7 +418,8 @@ mod tests {
                 "value": "stuck"
             }),
         );
-        assert_eq!(stuck["type"], "conversation_state");
-        assert_eq!(stuck["status"], "error");
+        assert_eq!(stuck["kind"], "ConversationStateUpdateEvent");
+        assert_eq!(stuck["key"], "execution_status");
+        assert_eq!(stuck["value"], "stuck");
     }
 }

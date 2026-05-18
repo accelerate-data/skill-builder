@@ -20,7 +20,9 @@ use tokio_tungstenite::tungstenite::Message;
 pub use types::{OpenHandsRuntimeRequest, StartConversationRequest};
 
 use self::client::OpenHandsServerClient;
-use self::events::normalize_server_event;
+use self::events::{
+    is_pause_acknowledgement, normalize_server_event, normalize_terminal_state, terminal_status,
+};
 use self::process::{
     ensure_agent_server as ensure_agent_server_process, extract_terminal_error_from_stderr,
     stderr_tail_snapshot,
@@ -502,14 +504,13 @@ fn collect_live_child_subagent_events(
             }
             let normalized =
                 normalize_server_event(conversation_id, &child.conversation_id, &linked_child);
-            if normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_event")
-            {
+            if normalized.get("kind").and_then(|value| value.as_str()) != Some("UnknownEvent") {
                 log::debug!(
-                    "[openhands-agent-server:{}] live_subagent_emit child_conversation={} parent_tool_call_id={} event_class={} tool_call_id={} raw_kind={}",
+                    "[openhands-agent-server:{}] live_subagent_emit child_conversation={} parent_tool_call_id={} kind={} tool_call_id={} raw_kind={}",
                     conversation_id,
                     child.conversation_id,
                     parent_tool_call_id,
-                    normalized.get("event_class").and_then(|value| value.as_str()).unwrap_or("unknown"),
+                    normalized.get("kind").and_then(|value| value.as_str()).unwrap_or("unknown"),
                     normalized.get("tool_call_id").map(|value| value.to_string()).unwrap_or_else(|| "null".to_string()),
                     linked_child.get("kind").and_then(|value| value.as_str()).unwrap_or("unknown")
                 );
@@ -1236,6 +1237,7 @@ async fn run_conversation_task_inner(
     };
 
     let mut cancel_pending = false;
+    let mut pause_acknowledged = false;
 
     while terminal_state.is_none() {
         tokio::select! {
@@ -1254,8 +1256,9 @@ async fn run_conversation_task_inner(
                     task.conversation_id,
                     task.conversation_id
                 );
-                // Continue reading the WebSocket — the server will stream back a PauseEvent
-                // which normalize_server_event maps to conversation_state(status="cancelled").
+                // Continue reading the WebSocket. Pause acknowledgement should surface as
+                // canonical PauseEvent / ConversationStateUpdateEvent(paused), not as a
+                // terminal cancelled state.
                 cancel_pending = true;
             }
             message = ws_read.next() => {
@@ -1306,19 +1309,24 @@ async fn run_conversation_task_inner(
                 record_subagent_launch(&raw, &pending_subagent_launches);
                 let normalized =
                     normalize_server_event(&task.conversation_id, &task.conversation_id, &raw);
-                let is_terminal = normalized
-                    .get("type")
-                    .and_then(|value| value.as_str())
-                    == Some("conversation_state");
-                if is_terminal {
-                    terminal_state = Some(normalized);
+                super::events::handle_runtime_message(
+                    &task.app,
+                    &task.conversation_id,
+                    &normalized.to_string(),
+                );
+
+                if cancel_pending && is_pause_acknowledgement(&raw) {
+                    pause_acknowledged = true;
                     break;
-                } else {
-                    super::events::handle_runtime_message(
-                        &task.app,
+                }
+
+                if let Some(status) = terminal_status(&raw) {
+                    terminal_state = Some(normalize_terminal_state(
                         &task.conversation_id,
-                        &normalized.to_string(),
-                    );
+                        status,
+                        &raw,
+                    ));
+                    break;
                 }
             }
         }
@@ -1335,6 +1343,35 @@ async fn run_conversation_task_inner(
         }
     }
 
+    if pause_acknowledged {
+        return Ok(());
+    }
+
+    if cancel_pending && terminal_state.is_none() {
+        log::warn!(
+            "[openhands-agent-server:{}] pause_without_ack conversation_id={} action=emit_synthetic_pause",
+            task.conversation_id,
+            task.conversation_id
+        );
+        let pause_event = serde_json::json!({
+            "id": format!(
+                "pause_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4().simple()
+            ),
+            "kind": "PauseEvent",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "source": "user",
+            "reason": "Pause requested before the server emitted an acknowledgement",
+        });
+        super::events::handle_runtime_message(
+            &task.app,
+            &task.conversation_id,
+            &pause_event.to_string(),
+        );
+        return Ok(());
+    }
+
     let mut terminal_state = match terminal_state {
         Some(state) if terminal_state_needs_final_response(&state) => {
             match fetch_final_response_state(&task.client, &task.conversation_id, Some(state)).await
@@ -1344,7 +1381,6 @@ async fn run_conversation_task_inner(
             }
         }
         Some(state) => state,
-        None if cancel_pending => build_cancelled_state(&task.conversation_id),
         None => recover_terminal_state_after_socket_failure(task, socket_error.as_deref()).await,
     };
 
@@ -1363,18 +1399,6 @@ async fn run_conversation_task_inner(
     } else {
         None
     };
-    if cancel_pending {
-        let terminal_status = terminal_state
-            .get("status")
-            .and_then(|value| value.as_str())
-            .unwrap_or("unknown");
-        log::info!(
-            "[openhands-agent-server:{}] pause_terminal_outcome status={} conversation_id={}",
-            task.conversation_id,
-            terminal_status,
-            task.conversation_id
-        );
-    }
     emit_openhands_run_result(&task.app, &terminal_state, &task.summary_context);
     super::events::handle_runtime_message(
         &task.app,
@@ -1470,9 +1494,8 @@ fn recover_terminal_state_from_events(
     events: &[serde_json::Value],
 ) -> Option<serde_json::Value> {
     events.iter().rev().find_map(|raw| {
-        let normalized = normalize_server_event(conversation_id, conversation_id, raw);
-        (normalized.get("type").and_then(|value| value.as_str()) == Some("conversation_state"))
-            .then_some(normalized)
+        terminal_status(raw)
+            .map(|status| normalize_terminal_state(conversation_id, status, raw))
     })
 }
 
@@ -1490,22 +1513,6 @@ fn build_socket_closed_state(conversation_id: &str, error_detail: &str) -> serde
         "status": "error",
         "timestamp": chrono::Utc::now().timestamp_millis(),
         "error_detail": error_detail,
-        "result_text": null,
-    })
-}
-
-/// Build a synthetic `cancelled` terminal state when the user cancelled and
-/// the WebSocket closed without a follow-up `PauseEvent`. Without this the
-/// loop falls through to `build_socket_closed_state` and surfaces the cancel
-/// as `status: "error"`, which is wrong — the user explicitly cancelled.
-fn build_cancelled_state(conversation_id: &str) -> serde_json::Value {
-    serde_json::json!({
-        "type": "conversation_state",
-        "runtime": "openhands",
-        "conversation_id": conversation_id,
-        "status": "cancelled",
-        "timestamp": chrono::Utc::now().timestamp_millis(),
-        "error_detail": "User cancelled before the server emitted a PauseEvent",
         "result_text": null,
     })
 }
@@ -1834,27 +1841,17 @@ mod tests {
     }
 
     #[test]
-    fn socket_close_after_user_cancel_surfaces_as_cancelled_not_error() {
-        // The cancel-after-pause race: the user cancelled, we issued
-        // pause_conversation, but the WS closed without a follow-up
-        // PauseEvent. Without this fallback the user would see the cancel
-        // surface as `status: "error"` — which is a UX regression on a
-        // user-driven cancel.
-        let state = build_cancelled_state("conversation-1");
+    fn paused_state_update_is_not_recovered_as_terminal_state() {
+        let recovered = recover_terminal_state_from_events(
+            "conversation-1",
+            &[serde_json::json!({
+                "event_class": "ConversationStateUpdateEvent",
+                "key": "execution_status",
+                "value": "paused"
+            })],
+        );
 
-        assert_eq!(
-            state.get("type").and_then(|v| v.as_str()),
-            Some("conversation_state")
-        );
-        assert_eq!(
-            state.get("status").and_then(|v| v.as_str()),
-            Some("cancelled")
-        );
-        assert!(state
-            .get("error_detail")
-            .and_then(|v| v.as_str())
-            .unwrap()
-            .contains("cancelled"));
+        assert!(recovered.is_none());
     }
 
     #[test]
@@ -2609,8 +2606,8 @@ mod tests {
         .expect("load linked child events");
 
         assert_eq!(restored.len(), 2);
-        assert_eq!(restored[0]["event_class"], "MessageEvent");
-        assert_eq!(restored[1]["event_class"], "ActionEvent");
+        assert_eq!(restored[0]["kind"], "MessageEvent");
+        assert_eq!(restored[1]["kind"], "ActionEvent");
         assert!(restored.iter().all(|event| {
             event
                 .get("parent_tool_call_id")

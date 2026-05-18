@@ -8,10 +8,9 @@ import { invalidateUsageDataAfterAgentRun } from "@/lib/queries/agent-stream-cac
 import {
   buildCanonicalConversationEventEnvelope,
   getReasoningText,
-  isTerminalConversationStatus,
-  normalizeConversationEventMessage,
-  normalizeConversationStateMessage,
+  normalizeOpenHandsEventRecord,
 } from "@/lib/openhands-conversation-events";
+import type { OpenHandsConversationEvent } from "@/lib/conversation-event-types";
 import type {
   CompactionEvent,
   ContextWindowEvent,
@@ -28,6 +27,11 @@ interface AgentMessagePayload {
     type: string;
     [key: string]: unknown;
   };
+}
+
+interface AgentConversationEventPayload {
+  conversation_id: string;
+  event: OpenHandsConversationEvent | Record<string, unknown>;
 }
 
 type AgentRunConfigPayload = {
@@ -55,6 +59,13 @@ interface AgentExitPayload {
   conversation_id: string;
   success: boolean;
   error_detail?: string;
+}
+
+interface AgentRunResultPayload {
+  conversation_id: string;
+  status: "completed" | "error";
+  resultText?: string | null;
+  resultErrors?: string[] | null;
 }
 
 type AgentInitProgressPayload = {
@@ -90,17 +101,17 @@ function selectedConversationId(): string | null {
 }
 
 function appendCanonicalRuntimeEvent(
-  event:
-    | ReturnType<typeof normalizeConversationEventMessage>
-    | ReturnType<typeof normalizeConversationStateMessage>,
+  conversationId: string,
+  event: OpenHandsConversationEvent | null,
+  rawEvent?: unknown,
 ) {
   if (!event) return;
 
   try {
-    const envelope = buildCanonicalConversationEventEnvelope(
-      event,
-      selectedConversationId(),
-    );
+    const envelope = buildCanonicalConversationEventEnvelope(event, selectedConversationId(), {
+      conversationId,
+      rawEvent,
+    });
     useConversationStore.getState().appendBackendObservedEvent(envelope);
   } catch (error) {
     console.warn(
@@ -185,8 +196,8 @@ export async function initSessionRuntimeStream() {
         .getState()
         .applyContextWindow(conversation_id, contextWindow);
     }),
-    reg<AgentMessagePayload>("agent-message", (event) => {
-      const { conversation_id, message } = event.payload;
+    reg<AgentConversationEventPayload>("agent-conversation-event", (event) => {
+      const { conversation_id, event: rawEvent } = event.payload;
 
       const workflowState = useWorkflowStore.getState();
       if (workflowState.isInitializing) {
@@ -196,46 +207,60 @@ export async function initSessionRuntimeStream() {
 
       const runtimeStore = useSessionRuntimeStore.getState();
 
-      if (message.type === "conversation_event") {
-        const conversationEvent = normalizeConversationEventMessage(message);
-        if (conversationEvent) {
-          appendCanonicalRuntimeEvent(conversationEvent);
-          const reasoningText = getReasoningText(conversationEvent);
-          console.debug(
-            "[use-session-runtime-stream] event=conversation_event conversation_id=%s event_class=%s reasoning_len=%d",
-            conversation_id,
-            conversationEvent.eventClass,
-            reasoningText?.length ?? 0,
-          );
-          return;
-        }
-      }
+      const conversationEvent = normalizeOpenHandsEventRecord(rawEvent);
+      if (conversationEvent) {
+        runtimeStore.bindTransportRun(conversation_id, conversation_id);
+        appendCanonicalRuntimeEvent(conversation_id, conversationEvent, rawEvent);
+        const reasoningText = getReasoningText(conversationEvent);
+        console.debug(
+          "[use-session-runtime-stream] event=conversation_event conversation_id=%s kind=%s reasoning_len=%d",
+          conversation_id,
+          conversationEvent.kind,
+          reasoningText?.length ?? 0,
+        );
 
-      if (message.type === "conversation_state") {
-        const conversationState = normalizeConversationStateMessage(message);
-        if (conversationState) {
-          if (conversationState.conversationId) {
-            runtimeStore.bindTransportRun(
-              conversation_id,
-              conversationState.conversationId,
-            );
-            runtimeStore.applyConversationState(
-              conversationState.conversationId,
-              conversationState,
-            );
+        if (conversationEvent.kind === "PauseEvent") {
+          runtimeStore.applyConversationStatus(conversation_id, "paused");
+        } else if (conversationEvent.kind === "ConversationStateUpdateEvent") {
+          if (conversationEvent.key === "execution_status") {
+            const value =
+              typeof conversationEvent.value === "string"
+                ? conversationEvent.value
+                : undefined;
+            switch (value) {
+              case "running":
+                runtimeStore.applyConversationStatus(conversation_id, "running");
+                break;
+              case "paused":
+                runtimeStore.applyConversationStatus(conversation_id, "paused");
+                break;
+              case "error":
+                runtimeStore.applyConversationStatus(conversation_id, "error");
+                break;
+              case "finished":
+              case "completed":
+                runtimeStore.applyConversationStatus(conversation_id, "completed");
+                break;
+            }
           }
-          appendCanonicalRuntimeEvent(conversationState);
-          if (isTerminalConversationStatus(conversationState.status)) {
-            invalidateUsageDataAfterAgentRun().catch((error) => {
-              console.warn(
-                "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",
-                error,
-              );
-            });
-          }
-          return;
+        } else if (conversationEvent.kind === "FinishEvent") {
+          runtimeStore.applyConversationStatus(conversation_id, "completed");
+        } else if (conversationEvent.kind === "ConversationErrorEvent") {
+          runtimeStore.applyConversationStatus(
+            conversation_id,
+            "error",
+            conversationEvent.detail,
+          );
+          toast.error(conversationEvent.detail || "Conversation failed", {
+            duration: Infinity,
+          });
         }
+        return;
       }
+    }),
+    reg<AgentMessagePayload>("agent-message", (event) => {
+      const { conversation_id, message } = event.payload;
+      const runtimeStore = useSessionRuntimeStore.getState();
 
       if (message.type === "agent_event") {
         const eventPayload = message.event as
@@ -252,12 +277,6 @@ export async function initSessionRuntimeStream() {
           return;
         }
       }
-
-      console.debug(
-        "[use-session-runtime-stream] event=unhandled_message conversation_id=%s msg_type=%s",
-        conversation_id,
-        message.type,
-      );
     }),
     reg<AgentExitPayload>("agent-exit", (event) => {
       useSessionRuntimeStore
@@ -267,6 +286,19 @@ export async function initSessionRuntimeStream() {
           event.payload.success,
           event.payload.error_detail,
         );
+      invalidateUsageDataAfterAgentRun().catch((error) => {
+        console.warn(
+          "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",
+          error,
+        );
+      });
+    }),
+    reg<AgentRunResultPayload>("agent-run-result", (event) => {
+      useSessionRuntimeStore.getState().applyRunResult(event.payload.conversation_id, {
+        status: event.payload.status,
+        resultText: event.payload.resultText ?? null,
+        resultErrors: event.payload.resultErrors ?? null,
+      });
       invalidateUsageDataAfterAgentRun().catch((error) => {
         console.warn(
           "[use-session-runtime-stream] event=invalidate_usage_failed error=%s",

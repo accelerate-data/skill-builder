@@ -1,6 +1,7 @@
 use crate::agents::skill_creator::{
     build_skill_creator_config, SkillCreatorIntent, SkillCreatorRuntimeContext,
 };
+use crate::agents::openhands_server::events::canonicalize_conversation_event;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::types::{ConversationMessage, RestoredConversationEvent, SkillSessionInfo};
@@ -142,31 +143,6 @@ fn new_skill_usage_session_id(skill_name: &str) -> String {
     )
 }
 
-fn event_class(raw: &serde_json::Value) -> Option<&str> {
-    raw.get("event_class")
-        .or_else(|| raw.get("eventClass"))
-        .or_else(|| raw.get("kind"))
-        .or_else(|| raw.get("type"))
-        .and_then(|value| value.as_str())
-}
-
-fn inferred_event_class(raw: &serde_json::Value) -> Option<&'static str> {
-    if raw.get("action").is_some() {
-        return Some("ActionEvent");
-    }
-    if raw.get("observation").is_some() {
-        return Some("ObservationEvent");
-    }
-    if matches!(
-        raw.get("source").and_then(|value| value.as_str()),
-        Some("user" | "agent" | "assistant" | "environment")
-    ) && extract_message_text(raw).is_some()
-    {
-        return Some("MessageEvent");
-    }
-    None
-}
-
 fn first_string<'a>(
     values: impl IntoIterator<Item = Option<&'a serde_json::Value>>,
 ) -> Option<&'a str> {
@@ -191,65 +167,18 @@ fn extract_message_text(raw: &serde_json::Value) -> Option<String> {
     .map(str::to_string)
 }
 
-fn extract_tool_call_id(raw: &serde_json::Value) -> Option<String> {
-    first_string([
-        raw.get("tool_call_id"),
-        raw.get("toolCallId"),
-        raw.pointer("/action/tool_call_id"),
-        raw.pointer("/action/toolCallId"),
-        raw.pointer("/observation/tool_call_id"),
-        raw.pointer("/observation/toolCallId"),
-        raw.pointer("/tool_calls/0/id"),
-        raw.pointer("/tool_calls/0/tool_call_id"),
-    ])
-    .map(str::to_string)
-}
-
-fn extract_parent_tool_call_id(raw: &serde_json::Value) -> Option<String> {
-    first_string([
-        raw.get("parent_tool_call_id"),
-        raw.get("parentToolCallId"),
-        raw.pointer("/action/parent_tool_call_id"),
-        raw.pointer("/action/parentToolCallId"),
-        raw.pointer("/observation/parent_tool_call_id"),
-        raw.pointer("/observation/parentToolCallId"),
-    ])
-    .map(str::to_string)
-}
-
-fn extract_timestamp_ms(raw: &serde_json::Value) -> i64 {
-    if let Some(timestamp) = raw.get("timestamp") {
-        if let Some(value) = timestamp.as_i64() {
-            return value;
-        }
-        if let Some(value) = timestamp.as_u64() {
-            return value.min(i64::MAX as u64) as i64;
-        }
-        if let Some(value) = timestamp.as_str() {
-            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(value) {
-                return parsed.timestamp_millis();
-            }
-        }
-    }
-    chrono::Utc::now().timestamp_millis()
-}
-
 fn extract_conversation_messages(events: &[serde_json::Value]) -> Vec<ConversationMessage> {
     events
         .iter()
-        .filter(|raw| {
-            event_class(raw)
-                .or_else(|| inferred_event_class(raw))
-                .map(|class| class == "MessageEvent")
-                .unwrap_or(false)
-        })
+        .filter_map(canonicalize_conversation_event)
         .filter_map(|raw| {
-            let role = match raw.get("source").and_then(|value| value.as_str()) {
+            let llm_message = raw.get("llm_message")?;
+            let role = match llm_message.get("role").and_then(|value| value.as_str()) {
                 Some("user") => "user",
-                Some("agent") | Some("assistant") => "agent",
+                Some("assistant") => "agent",
                 _ => return None,
             };
-            let content = extract_message_text(raw)?;
+            let content = extract_message_text(&raw)?;
             Some(ConversationMessage {
                 role: role.to_string(),
                 content,
@@ -263,16 +192,8 @@ fn extract_restored_conversation_events(
 ) -> Vec<RestoredConversationEvent> {
     events
         .iter()
-        .filter_map(|raw| {
-            let event_class = event_class(raw).or_else(|| inferred_event_class(raw))?;
-            Some(RestoredConversationEvent {
-                event_class: event_class.to_string(),
-                event: raw.clone(),
-                timestamp: extract_timestamp_ms(raw),
-                tool_call_id: extract_tool_call_id(raw),
-                parent_tool_call_id: extract_parent_tool_call_id(raw),
-            })
-        })
+        .filter_map(canonicalize_conversation_event)
+        .map(|event| RestoredConversationEvent { event })
         .collect()
 }
 
@@ -280,12 +201,16 @@ fn restored_conversation_user_turn_count(events: &[RestoredConversationEvent]) -
     events
         .iter()
         .filter(|event| {
-            event.event_class == "MessageEvent"
+            event
+                .event
+                .get("kind")
+                .and_then(|value| value.as_str())
+                == Some("MessageEvent")
                 && event
                     .event
-                    .get("source")
+                    .pointer("/llm_message/role")
                     .and_then(|value| value.as_str())
-                    .map(|source| source == "user")
+                    .map(|role| role == "user")
                     .unwrap_or(false)
         })
         .count()

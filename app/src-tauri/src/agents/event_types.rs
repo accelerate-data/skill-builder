@@ -6,6 +6,12 @@ pub struct AgentEvent {
     pub message: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanonicalConversationEventPayload {
+    pub conversation_id: String,
+    pub event: serde_json::Value,
+}
+
 /// Payload emitted as the `agent-exit` Tauri event when a runtime agent process terminates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentExitPayload {

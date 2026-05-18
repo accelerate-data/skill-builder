@@ -1,0 +1,119 @@
+{
+  "conversationId": "conv-lifecycle-suppression",
+  "note": "Expect last_user_message_id and stats to be suppressed, running/finished/error lifecycle rows reduced, and PauseEvent rendered explicitly.",
+  "records": [
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "MessageEvent",
+      "timestamp": 1747392600000,
+      "event": {
+        "source": "user",
+        "llm_message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Please continue."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "ConversationStateUpdateEvent",
+      "timestamp": 1747392600010,
+      "event": {
+        "key": "last_user_message_id",
+        "value": "92180f35-c635-4523-9852-c379feca3f39"
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "ConversationStateUpdateEvent",
+      "timestamp": 1747392600020,
+      "event": {
+        "key": "execution_status",
+        "value": "running"
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "ConversationStateUpdateEvent",
+      "timestamp": 1747392600030,
+      "event": {
+        "key": "stats",
+        "value": {
+          "usage_to_metrics": {
+            "workflow": {
+              "model_name": "openai/glm-5.1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "ConversationStateUpdateEvent",
+      "timestamp": 1747392600040,
+      "event": {
+        "key": "execution_status",
+        "value": "paused"
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "PauseEvent",
+      "timestamp": 1747392600050,
+      "event": {
+        "source": "user",
+        "reason": "Waiting for review."
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "ConversationStateUpdateEvent",
+      "timestamp": 1747392600060,
+      "event": {
+        "key": "execution_status",
+        "value": "running"
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "ConversationStateUpdateEvent",
+      "timestamp": 1747392600070,
+      "event": {
+        "key": "execution_status",
+        "value": "error"
+      }
+    },
+    {
+      "type": "conversation_event",
+      "runtime": "openhands",
+      "conversation_id": "conv-lifecycle-suppression",
+      "event_class": "ConversationStateUpdateEvent",
+      "timestamp": 1747392600080,
+      "event": {
+        "key": "execution_status",
+        "value": "finished"
+      }
+    }
+  ]
+}

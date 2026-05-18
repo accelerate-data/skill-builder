@@ -9,13 +9,13 @@ describe("use-session-runtime-stream", () => {
     vi.resetModules();
   });
 
-  it("bridges runtime conversation_state events into canonical conversation and session runtime stores", async () => {
-    let agentMessageListener: ListenCallback | undefined;
+  it("bridges canonical backend conversation events into conversation and session runtime stores", async () => {
+    let agentConversationEventListener: ListenCallback | undefined;
 
     vi.mocked(mockListen).mockImplementation(
       (event: string, callback: ListenCallback) => {
-        if (event === "agent-message") {
-          agentMessageListener = callback;
+        if (event === "agent-conversation-event") {
+          agentConversationEventListener = callback;
         }
         return Promise.resolve(vi.fn());
       },
@@ -35,17 +35,18 @@ describe("use-session-runtime-stream", () => {
     await runtimeStreamModule._resetForTesting();
     await runtimeStreamModule.initSessionRuntimeStream();
 
-    expect(agentMessageListener).toBeDefined();
+    expect(agentConversationEventListener).toBeDefined();
 
-    agentMessageListener?.({
+    agentConversationEventListener?.({
       payload: {
         conversation_id: "conv-selected",
-        message: {
-          type: "conversation_state",
-          runtime: "openhands",
-          conversation_id: "conv-selected",
-          status: "running",
-          timestamp: 1_778_000_100,
+        event: {
+          kind: "ConversationStateUpdateEvent",
+          id: "evt-running",
+          timestamp: new Date(1_778_000_100).toISOString(),
+          source: "environment",
+          key: "execution_status",
+          value: "running",
         },
       },
     });
@@ -65,6 +66,96 @@ describe("use-session-runtime-stream", () => {
         ?.conversationState,
     ).toMatchObject({
       status: "running",
+    });
+  });
+
+  it("maps execution_status=error into session runtime error state", async () => {
+    let agentConversationEventListener: ListenCallback | undefined;
+
+    vi.mocked(mockListen).mockImplementation(
+      (event: string, callback: ListenCallback) => {
+        if (event === "agent-conversation-event") {
+          agentConversationEventListener = callback;
+        }
+        return Promise.resolve(vi.fn());
+      },
+    );
+
+    const { useSessionRuntimeStore } =
+      await import("@/stores/session-runtime-store");
+    const { useSkillStore } = await import("@/stores/skill-store");
+    useSessionRuntimeStore.getState().clearSessionRuns();
+    useSkillStore.getState().clearSelectedSkillSession();
+    useSkillStore.getState().setConversationId("conv-selected");
+    const runtimeStreamModule =
+      await import("@/hooks/use-session-runtime-stream");
+    await runtimeStreamModule._resetForTesting();
+    await runtimeStreamModule.initSessionRuntimeStream();
+
+    agentConversationEventListener?.({
+      payload: {
+        conversation_id: "conv-selected",
+        event: {
+          kind: "ConversationStateUpdateEvent",
+          id: "evt-error",
+          timestamp: new Date(1_778_000_101).toISOString(),
+          source: "environment",
+          key: "execution_status",
+          value: "error",
+        },
+      },
+    });
+
+    expect(
+      useSessionRuntimeStore.getState().runs["conv-selected"]
+        ?.conversationState,
+    ).toMatchObject({
+      status: "error",
+    });
+  });
+
+  it("maps execution_status=completed into session runtime completed state", async () => {
+    let agentConversationEventListener: ListenCallback | undefined;
+
+    vi.mocked(mockListen).mockImplementation(
+      (event: string, callback: ListenCallback) => {
+        if (event === "agent-conversation-event") {
+          agentConversationEventListener = callback;
+        }
+        return Promise.resolve(vi.fn());
+      },
+    );
+
+    const { useSessionRuntimeStore } =
+      await import("@/stores/session-runtime-store");
+    const { useSkillStore } = await import("@/stores/skill-store");
+    useSessionRuntimeStore.getState().clearSessionRuns();
+    useSkillStore.getState().clearSelectedSkillSession();
+    useSkillStore.getState().setConversationId("conv-selected");
+    const runtimeStreamModule =
+      await import("@/hooks/use-session-runtime-stream");
+    await runtimeStreamModule._resetForTesting();
+    await runtimeStreamModule.initSessionRuntimeStream();
+
+    agentConversationEventListener?.({
+      payload: {
+        conversation_id: "conv-selected",
+        event: {
+          kind: "ConversationStateUpdateEvent",
+          id: "evt-completed",
+          timestamp: new Date(1_778_000_102).toISOString(),
+          source: "environment",
+          key: "execution_status",
+          value: "completed",
+        },
+      },
+    });
+
+    expect(
+      useSessionRuntimeStore.getState().runs["conv-selected"]
+        ?.conversationState,
+    ).toMatchObject({
+      status: "completed",
     });
   });
 });

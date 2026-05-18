@@ -1,6 +1,9 @@
 use tauri::Emitter;
 
-use super::event_types::{AgentEvent, AgentExitPayload, RuntimeRunSummary};
+use super::event_types::{
+    AgentEvent, AgentExitPayload, CanonicalConversationEventPayload, RuntimeRunSummary,
+};
+use super::openhands_server::events::canonicalize_frontend_conversation_event;
 use super::run_persist::persist_run_summary;
 #[derive(Debug)]
 pub(super) enum RuntimeMessageAction {
@@ -207,6 +210,22 @@ pub fn handle_runtime_message(app_handle: &tauri::AppHandle, conversation_id: &s
                         conversation_id,
                         e
                     );
+                }
+
+                if let Some(canonical_event) =
+                    canonicalize_frontend_conversation_event(&event.message)
+                {
+                    let payload = CanonicalConversationEventPayload {
+                        conversation_id: event.conversation_id.clone(),
+                        event: canonical_event,
+                    };
+                    if let Err(e) = app_handle.emit("agent-conversation-event", &payload) {
+                        log::warn!(
+                            "Failed to emit agent-conversation-event for {}: {}",
+                            conversation_id,
+                            e
+                        );
+                    }
                 }
             }
             None => {}

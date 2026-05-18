@@ -1,5 +1,8 @@
 import { selectSkillOpenHandsSession } from "@/lib/tauri";
-import { buildCanonicalConversationEventEnvelope } from "@/lib/openhands-conversation-events";
+import {
+  buildCanonicalConversationEventEnvelope,
+  normalizeOpenHandsEventRecord,
+} from "@/lib/openhands-conversation-events";
 import type {
   EditableSkill,
   RestoredConversationEvent,
@@ -36,18 +39,22 @@ function hydrateCanonicalConversationHistory(
     return;
   }
 
-  const canonicalEvents = restoredTranscriptEvents.map((event) =>
-    buildCanonicalConversationEventEnvelope({
-      type: "conversation_event",
-      runtime: "openhands",
-      conversationId,
-      eventClass: event.event_class,
-      event: event.event,
-      timestamp: event.timestamp,
-      toolCallId: event.tool_call_id ?? undefined,
-      parentToolCallId: event.parent_tool_call_id ?? undefined,
-    }),
-  );
+  const canonicalEvents = restoredTranscriptEvents
+    .map((event) => {
+      const normalized = normalizeOpenHandsEventRecord(event);
+      if (!normalized) {
+        console.warn(
+          "[skill-openhands-session] Skipping unrecognized restored OpenHands event",
+          event,
+        );
+        return null;
+      }
+      return buildCanonicalConversationEventEnvelope(normalized, conversationId, {
+        conversationId,
+        rawEvent: event,
+      });
+    })
+    .filter((event): event is NonNullable<typeof event> => event !== null);
 
   useConversationStore
     .getState()
