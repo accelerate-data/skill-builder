@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface EventDisplayRowProps {
@@ -91,11 +91,11 @@ export function EventDisplayRow({
         )}
 
         {expandable && (
-          <ChevronRight
+          <ChevronDown
             data-testid="row-chevron"
             className={cn(
               "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
-              expanded && "rotate-90",
+              !expanded && "-rotate-90",
             )}
           />
         )}
