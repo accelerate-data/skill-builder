@@ -7,6 +7,7 @@ interface EventDisplayRowProps {
   labelColor: string;
   label: string;
   summary: string;
+  icon?: ReactNode;
   italic?: boolean;
   tokenCount?: number;
   durationMs?: number;
@@ -20,6 +21,7 @@ export function EventDisplayRow({
   labelColor,
   label,
   summary,
+  icon,
   italic,
   tokenCount,
   durationMs,
@@ -41,6 +43,16 @@ export function EventDisplayRow({
         style={{ background: bg }}
         onClick={expandable ? () => setExpanded((e) => !e) : undefined}
       >
+        {icon && (
+          <span
+            data-testid="row-icon"
+            className="shrink-0 flex items-center"
+            style={{ color: labelColor }}
+          >
+            {icon}
+          </span>
+        )}
+
         <span
           className="font-semibold uppercase tracking-wide shrink-0"
           style={{ color: labelColor, fontSize: "11px" }}

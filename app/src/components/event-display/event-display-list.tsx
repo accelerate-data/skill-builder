@@ -1,8 +1,24 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import {
+  AlertCircle,
+  Bot,
+  Brain,
+  FileEdit,
+  Layers,
+  MessageSquare,
+  RefreshCw,
+  Settings,
+  Sparkles,
+  Terminal,
+  User,
+  Wrench,
+} from "lucide-react";
 import type { DisplayNode, DisplayNodeMember } from "@/lib/display-types";
 import { EventDisplayRow } from "./event-display-row";
 import { TaoPanel } from "./tao-panel";
 import { MemoizedMarkdown } from "@/components/agent-items/memoized-markdown";
+
+const ICON_CLASS = "size-3.5";
 
 const WINDOW_SIZE = 100;
 const TOOL_KINDS = new Set<DisplayNode["kind"]>([
@@ -75,6 +91,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
         <EventDisplayRow
           bg="var(--chat-question-bg)"
           labelColor="var(--chat-question-border)"
+          icon={<User className={ICON_CLASS} />}
           label="Message"
           summary={long ? truncate(body, 120) : body}
           defaultExpanded={false}
@@ -93,6 +110,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
         <EventDisplayRow
           bg="var(--chat-subagent-bg)"
           labelColor="var(--chat-subagent-border)"
+          icon={<MessageSquare className={ICON_CLASS} />}
           label="Output"
           summary={truncate(node.bodyText ?? "", 120)}
           status={statusDot(node)}
@@ -107,6 +125,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
         <EventDisplayRow
           bg="var(--chat-thinking-bg)"
           labelColor="var(--chat-thinking-border)"
+          icon={<Brain className={ICON_CLASS} />}
           label="Think"
           summary={node.reasoningText ?? node.thoughtText ?? node.bodyText ?? ""}
           italic
@@ -126,6 +145,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
         <EventDisplayRow
           bg="var(--muted)"
           labelColor="var(--muted-foreground)"
+          icon={<Settings className={ICON_CLASS} />}
           label="Runtime setup"
           summary={node.label ?? "System prompt"}
           defaultExpanded={false}
@@ -141,6 +161,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
         <EventDisplayRow
           bg="var(--muted)"
           labelColor="var(--muted-foreground)"
+          icon={<RefreshCw className={ICON_CLASS} />}
           label="Condensation"
           summary={node.label ?? "Condensation summary"}
         >
@@ -157,6 +178,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
         <EventDisplayRow
           bg="var(--chat-error-bg)"
           labelColor="var(--chat-error-border)"
+          icon={<AlertCircle className={ICON_CLASS} />}
           label={errorLabel}
           summary={node.bodyText ?? node.label ?? "Error"}
           status="error"
@@ -173,6 +195,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
         <EventDisplayRow
           bg="var(--chat-error-bg)"
           labelColor="var(--chat-error-border)"
+          icon={<AlertCircle className={ICON_CLASS} />}
           label="Tool error"
           summary={node.bodyText ?? node.label ?? "Tool error"}
           status="error"
@@ -206,6 +229,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
 function ToolRow({ node }: { node: DisplayNode }) {
   const members = node.members ?? [];
   const toolCount = members.length || 1;
+  const isParallel = toolCount > 1;
   const label = toolCount === 1 ? "1 tool" : `${toolCount} tools`;
 
   const summary =
@@ -221,6 +245,7 @@ function ToolRow({ node }: { node: DisplayNode }) {
     <EventDisplayRow
       bg="var(--chat-tool-bg)"
       labelColor="var(--chat-tool-border)"
+      icon={toolIcon(node, members, isParallel)}
       label={label}
       summary={summary ?? ""}
       status={statusDot(node)}
@@ -321,6 +346,42 @@ function buildObservationText(members: DisplayNodeMember[]): string | undefined 
 function buildErrorText(members: DisplayNodeMember[]): string | undefined {
   const parts = members.map((m) => m.errorText).filter(Boolean);
   return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+function toolIcon(
+  node: DisplayNode,
+  members: DisplayNodeMember[],
+  isParallel: boolean,
+): ReactNode {
+  if (isParallel) return <Layers className={ICON_CLASS} />;
+  switch (node.kind) {
+    case "file_activity":
+      return <FileEdit className={ICON_CLASS} />;
+    case "terminal_activity":
+      return <Terminal className={ICON_CLASS} />;
+    case "skill":
+      return <Sparkles className={ICON_CLASS} />;
+    case "subagent":
+      return <Bot className={ICON_CLASS} />;
+    default:
+      return iconForToolName(members[0]?.toolName);
+  }
+}
+
+function iconForToolName(name: string | undefined): ReactNode {
+  if (!name) return <Wrench className={ICON_CLASS} />;
+  const lower = name.toLowerCase();
+  if (lower.includes("file") || lower.includes("edit") || lower.includes("read") || lower.includes("write")) {
+    return <FileEdit className={ICON_CLASS} />;
+  }
+  if (lower.includes("terminal") || lower.includes("bash") || lower.includes("shell") || lower.includes("exec")) {
+    return <Terminal className={ICON_CLASS} />;
+  }
+  if (lower.includes("skill")) return <Sparkles className={ICON_CLASS} />;
+  if (lower.includes("task") || lower.includes("subagent") || lower.includes("agent")) {
+    return <Bot className={ICON_CLASS} />;
+  }
+  return <Wrench className={ICON_CLASS} />;
 }
 
 function statusDot(node: DisplayNode): "running" | "done" | "error" | undefined {
