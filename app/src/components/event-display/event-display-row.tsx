@@ -29,7 +29,8 @@ export function EventDisplayRow({
   defaultExpanded = true,
   children,
 }: EventDisplayRowProps) {
-  const expandable = children !== undefined;
+  const expandable =
+    children !== undefined && children !== null && children !== false && children !== true;
   const [expanded, setExpanded] = useState(expandable ? defaultExpanded : false);
 
   return (

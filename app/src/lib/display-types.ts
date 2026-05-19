@@ -11,7 +11,6 @@ export type DisplayNodeKind =
   | "file_activity"
   | "reasoning"
   | "runtime_setup"
-  | "lifecycle"
   | "pause"
   | "error"
   | "tool_error"

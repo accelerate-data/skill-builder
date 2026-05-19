@@ -164,15 +164,6 @@ describe("EventDisplayList", () => {
     expect(screen.getByText("Runtime setup")).toBeInTheDocument();
   });
 
-  it("renders a lifecycle node with 'Condensation' label", () => {
-    render(
-      <EventDisplayList
-        nodes={[makeNode({ id: "n1", kind: "lifecycle", bodyText: "Summary" })]}
-      />,
-    );
-    expect(screen.getByText("Condensation")).toBeInTheDocument();
-  });
-
   it("renders an error node with 'Error' label", () => {
     render(
       <EventDisplayList

@@ -28,7 +28,7 @@ type TraceNodeKind = Extract<
 
 type SemanticClassification =
   | { type: "suppress" }
-  | { type: "standalone"; node: DisplayNode; mergeKey?: string }
+  | { type: "standalone"; node: DisplayNode }
   | {
       type: "trace_node";
       node: DisplayNode;
@@ -112,18 +112,6 @@ export function projectSemanticDisplayNodes(
       continue;
     }
 
-    if (classification.type === "standalone" && classification.mergeKey) {
-      const lastNode = semanticNodes[semanticNodes.length - 1];
-      if (lastNode && lastNode.id === classification.mergeKey) {
-        lastNode.bodyText = combineDistinctText(lastNode.bodyText, classification.node.bodyText);
-        lastNode.sourceEventIds = [
-          ...lastNode.sourceEventIds,
-          ...classification.node.sourceEventIds,
-        ];
-        continue;
-      }
-    }
-
     flushTrace();
     emitNode(classification.node);
   }
@@ -187,7 +175,6 @@ function classifyEvent(
           getSystemPromptText(openHandsEvent) ??
           getInternalEventSummary(openHandsEvent) ??
           "System prompt prepared.",
-        collapsedByDefault: true,
         sourceEventIds: [event.eventId],
         rawPayload: event.payload.rawOpenHandsEvent,
       },

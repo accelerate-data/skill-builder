@@ -6,7 +6,6 @@ import {
   FileEdit,
   Layers,
   MessageSquare,
-  RefreshCw,
   Settings,
   Sparkles,
   Terminal,
@@ -145,19 +144,6 @@ function NodeRow({ node }: { node: DisplayNode }) {
           label="Runtime setup"
           summary={node.label ?? "System prompt"}
           defaultExpanded={false}
-        >
-          <PlainTextBody>{node.bodyText}</PlainTextBody>
-        </EventDisplayRow>
-      );
-
-    case "lifecycle":
-      return (
-        <EventDisplayRow
-          bg="var(--muted)"
-          labelColor="var(--muted-foreground)"
-          icon={<RefreshCw className={ICON_CLASS} />}
-          label="Condensation"
-          summary={node.label ?? "Condensation summary"}
         >
           <PlainTextBody>{node.bodyText}</PlainTextBody>
         </EventDisplayRow>
