@@ -127,15 +127,11 @@ function NodeRow({ node }: { node: DisplayNode }) {
           labelColor="var(--chat-thinking-border)"
           icon={<Brain className={ICON_CLASS} />}
           label="Think"
-          summary={node.reasoningText ?? node.thoughtText ?? node.bodyText ?? ""}
+          summary={reasoningBody ?? node.bodyText ?? ""}
           italic
           defaultExpanded={false}
         >
-          {reasoningBody && (
-            <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-              {reasoningBody}
-            </div>
-          )}
+          {reasoningBody && <PlainTextBody>{reasoningBody}</PlainTextBody>}
         </EventDisplayRow>
       );
     }
@@ -150,9 +146,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
           summary={node.label ?? "System prompt"}
           defaultExpanded={false}
         >
-          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-            {node.bodyText}
-          </div>
+          <PlainTextBody>{node.bodyText}</PlainTextBody>
         </EventDisplayRow>
       );
 
@@ -165,30 +159,24 @@ function NodeRow({ node }: { node: DisplayNode }) {
           label="Condensation"
           summary={node.label ?? "Condensation summary"}
         >
-          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-            {node.bodyText}
-          </div>
+          <PlainTextBody>{node.bodyText}</PlainTextBody>
         </EventDisplayRow>
       );
 
     case "error":
-    case "subagent_error": {
-      const errorLabel = node.kind === "error" ? "Error" : "Subagent error";
+    case "subagent_error":
       return (
         <EventDisplayRow
           bg="var(--chat-error-bg)"
           labelColor="var(--chat-error-border)"
           icon={<AlertCircle className={ICON_CLASS} />}
-          label={errorLabel}
+          label={node.kind === "error" ? "Error" : "Subagent error"}
           summary={node.bodyText ?? node.label ?? "Error"}
           status="error"
         >
-          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-            {node.bodyText}
-          </div>
+          <PlainTextBody>{node.bodyText}</PlainTextBody>
         </EventDisplayRow>
       );
-    }
 
     case "tool_error":
       return (
@@ -264,6 +252,14 @@ function ToolRow({ node }: { node: DisplayNode }) {
 function maybeFormatJson(text: string | undefined): string | undefined {
   if (!text) return text;
   return tryFormatJson(text) ?? text;
+}
+
+function PlainTextBody({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+      {children}
+    </div>
+  );
 }
 
 function OutputBody({ content }: { content: string }) {
