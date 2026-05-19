@@ -295,24 +295,22 @@ describe("EventDisplayList", () => {
     expect(screen.getByText("1 tool")).toBeInTheDocument();
   });
 
-  it("renders a result node with 'Result' label", () => {
-    render(
+  it("suppresses result nodes and renders nothing", () => {
+    const { container } = render(
       <EventDisplayList
         nodes={[makeNode({ id: "n1", kind: "result", bodyText: "Conversation summary updated." })]}
       />,
     );
-    expect(screen.getByText("Result")).toBeInTheDocument();
-    expect(screen.getByText("Conversation summary updated.")).toBeInTheDocument();
+    expect(container.querySelector("[data-testid='row-header']")).toBeNull();
   });
 
-  it("renders a pause node with 'Paused' label", () => {
-    render(
+  it("suppresses pause nodes and renders nothing", () => {
+    const { container } = render(
       <EventDisplayList
         nodes={[makeNode({ id: "n1", kind: "pause", bodyText: "Conversation paused." })]}
       />,
     );
-    expect(screen.getByText("Paused")).toBeInTheDocument();
-    expect(screen.getByText("Conversation paused.")).toBeInTheDocument();
+    expect(container.querySelector("[data-testid='row-header']")).toBeNull();
   });
 
   it("shows all member action texts in parallel tool batch T/A/O panel", () => {

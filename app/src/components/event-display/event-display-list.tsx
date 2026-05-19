@@ -13,16 +13,21 @@ const TOOL_KINDS = new Set<DisplayNode["kind"]>([
   "skill",
   "subagent",
 ]);
+const SUPPRESSED_KINDS = new Set<DisplayNode["kind"]>(["result", "pause"]);
 
 interface EventDisplayListProps {
   nodes: DisplayNode[];
 }
 
 export function EventDisplayList({ nodes }: EventDisplayListProps) {
-  const hidden = Math.max(0, nodes.length - WINDOW_SIZE);
-  const items = useMemo(
-    () => buildItems(nodes.slice(-WINDOW_SIZE)),
+  const visibleNodes = useMemo(
+    () => nodes.filter((node) => !SUPPRESSED_KINDS.has(node.kind)),
     [nodes],
+  );
+  const hidden = Math.max(0, visibleNodes.length - WINDOW_SIZE);
+  const items = useMemo(
+    () => buildItems(visibleNodes.slice(-WINDOW_SIZE)),
+    [visibleNodes],
   );
 
   return (
@@ -171,26 +176,6 @@ function NodeRow({ node }: { node: DisplayNode }) {
             error={node.bodyText}
           />
         </EventDisplayRow>
-      );
-
-    case "result":
-      return (
-        <EventDisplayRow
-          bg="var(--muted)"
-          labelColor="var(--muted-foreground)"
-          label="Result"
-          summary={node.bodyText ?? node.label ?? "Result"}
-        />
-      );
-
-    case "pause":
-      return (
-        <EventDisplayRow
-          bg="var(--muted)"
-          labelColor="var(--muted-foreground)"
-          label="Paused"
-          summary={node.bodyText ?? node.label ?? "Conversation paused"}
-        />
       );
 
     default: {
