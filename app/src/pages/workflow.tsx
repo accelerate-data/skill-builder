@@ -29,7 +29,7 @@ import {
 import { ReviewModeToggle } from "@/components/review-mode-toggle";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
-import { ConversationTimeline } from "@/components/conversation/conversation-timeline";
+import { EventDisplayTimeline } from "@/components/event-display/event-display-timeline";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/step-complete";
 import ResetStepDialog from "@/components/reset-step-dialog";
@@ -388,7 +388,7 @@ export default function WorkflowPage() {
       if (isInitializing && activeConversationEventCount === 0) {
         return <AgentInitializingIndicator />;
       }
-      return <ConversationTimeline conversationId={conversationId} />;
+      return <EventDisplayTimeline conversationId={conversationId} />;
     }
 
     // 2. Agent initializing (no ID yet)

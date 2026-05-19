@@ -3,7 +3,6 @@ import type { ConversationEventStatus } from "./conversation-event-types";
 export type DisplayNodeKind =
   | "task_sent"
   | "agent_update"
-  | "activity_trace"
   | "tool_batch"
   | "skill"
   | "subagent"
@@ -12,8 +11,8 @@ export type DisplayNodeKind =
   | "file_activity"
   | "reasoning"
   | "runtime_setup"
-  | "lifecycle"
   | "pause"
+  | "turn_end"
   | "error"
   | "tool_error"
   | "subagent_error"
@@ -33,25 +32,6 @@ export interface DisplayNodeMember {
   sourceEventIds: string[];
 }
 
-export interface DisplayTraceDrawerSection {
-  title: string;
-  body: string;
-}
-
-export interface DisplayTraceItem {
-  id: string;
-  kind: Exclude<DisplayNodeKind, "task_sent" | "agent_update" | "activity_trace" | "unknown_event">;
-  title: string;
-  summary: string;
-  badgeLabel: string;
-  createdAtMs: number;
-  sourceEventIds: string[];
-  interactive?: boolean;
-  drawerTitle?: string;
-  drawerSubtitle?: string;
-  drawerSections?: DisplayTraceDrawerSection[];
-}
-
 export interface DisplayNode {
   id: string;
   kind: DisplayNodeKind;
@@ -68,8 +48,7 @@ export interface DisplayNode {
   groupedMemberEventIds?: string[];
   suppressedEventIds?: string[];
   members?: DisplayNodeMember[];
-  traceItems?: DisplayTraceItem[];
   rawPayload?: unknown;
 }
 
-export const DISPLAY_TYPES_VERSION = 12;
+export const DISPLAY_TYPES_VERSION = 14;

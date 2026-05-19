@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ConversationTimeline } from "@/components/conversation/conversation-timeline";
+import { EventDisplayTimeline } from "@/components/event-display/event-display-timeline";
 import { useSkillStore } from "@/stores/skill-store";
 
 interface WorkspaceConversationProps {
@@ -35,7 +35,7 @@ export function WorkspaceConversation({ skillName }: WorkspaceConversationProps)
           </CardDescription>
         </CardHeader>
       </Card>
-      <ConversationTimeline conversationId={conversationId} />
+      <EventDisplayTimeline conversationId={conversationId} />
     </div>
   );
 }

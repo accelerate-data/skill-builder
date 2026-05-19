@@ -71,25 +71,6 @@ fn clear_skill_conversation_db_records(
     Ok(())
 }
 
-/// Clear only the legacy default-plugin conversation row after a non-default
-/// plugin skill has been rebound to a new conversation ID. This preserves the
-/// active plugin's current binding while removing stale compatibility state.
-fn clear_legacy_skill_conversation_db_records(
-    conn: &rusqlite::Connection,
-    plugin_slug: &str,
-    skill_name: &str,
-) -> Result<(), String> {
-    if plugin_slug == crate::skill_paths::DEFAULT_PLUGIN_SLUG {
-        return Ok(());
-    }
-
-    crate::db::clear_skill_conversation_id(
-        conn,
-        crate::skill_paths::DEFAULT_PLUGIN_SLUG,
-        skill_name,
-    )
-}
-
 /// Delete stale clarifications and decisions based on which step is being reset.
 /// Steps re-run = from_step_id and all subsequent steps.
 /// - from_step_id 0: full rerun → delete clarifications, decisions, and refinements
@@ -376,7 +357,7 @@ fn normalize_db_backed_step_statuses(
 
 #[cfg(test)]
 mod tests {
-    use super::{clear_legacy_skill_conversation_db_records, clear_skill_conversation_db_records};
+    use super::clear_skill_conversation_db_records;
     use crate::commands::test_utils::create_test_db;
     use crate::db::workflow_artifacts::{
         self, ClarificationQuestion, ClarificationSection, ClarificationsRecord, DecisionItem,
@@ -925,106 +906,6 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_does_not_delete_conversation_storage_before_fork() {
-        // Verify that the reset path does not delete conversation directories
-        // from disk before the fork operation. The conversation dir must remain
-        // intact so the fork can source from it.
-        let conn = create_test_db();
-        let tmp = tempdir().unwrap();
-        let skill_name = "reset-storage-test";
-        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
-            .unwrap();
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-persisted")
-            .unwrap();
-
-        // Simulate a conversation directory that must survive until fork completes
-        let sentinel = tmp
-            .path()
-            .join(default_slug)
-            .join("skills")
-            .join(skill_name)
-            .join("conversations")
-            .join("sentinel.txt");
-        std::fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
-        std::fs::write(&sentinel, b"still here after reset").unwrap();
-
-        assert!(
-            sentinel.exists(),
-            "conversation storage must exist before reset"
-        );
-
-        // Clear conversation DB records (part of reset) — must not touch filesystem
-        clear_skill_conversation_db_records(&conn, default_slug, skill_name).unwrap();
-
-        assert!(
-            sentinel.exists(),
-            "conversation directory must not be deleted by reset before fork"
-        );
-    }
-
-    #[test]
-    fn test_reset_fork_and_rebind_updates_conversation_id() {
-        // Verify the DB path of the fork-and-rebind sequence:
-        // 1. save_skill_conversation_id rebinds the skill to the fork ID
-        // 2. reset cleanup must not delete the new fork binding
-        let conn = create_test_db();
-        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let skill_name = "fork-rebind-test";
-
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
-            .unwrap();
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-original")
-            .unwrap();
-
-        // Simulate fork: rebind skill to new conversation ID
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-forked")
-            .unwrap();
-
-        // After rebind, the skill should point to the fork ID
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            Some("conv-forked".to_string()),
-            "skill should be rebound to fork conversation ID"
-        );
-    }
-
-    #[test]
-    fn test_reset_rebind_clears_only_legacy_default_plugin_record() {
-        let conn = create_test_db();
-        crate::db::ensure_plugin(&conn, "skills", "Skills", "synthetic", None, None, false)
-            .unwrap();
-
-        let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
-        let plugin_slug = "skills";
-        let skill_name = "legacy-record-reset-test";
-
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", plugin_slug)
-            .unwrap();
-        crate::db::upsert_skill_in_plugin(&conn, skill_name, "skill-builder", "test", default_slug)
-            .unwrap();
-
-        crate::db::save_skill_conversation_id(&conn, default_slug, skill_name, "conv-legacy")
-            .unwrap();
-        crate::db::save_skill_conversation_id(&conn, plugin_slug, skill_name, "conv-forked")
-            .unwrap();
-
-        clear_legacy_skill_conversation_db_records(&conn, plugin_slug, skill_name).unwrap();
-
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, plugin_slug, skill_name).unwrap(),
-            Some("conv-forked".to_string()),
-            "reset should preserve the new binding for the active plugin"
-        );
-        assert_eq!(
-            crate::db::get_skill_conversation_id(&conn, default_slug, skill_name).unwrap(),
-            None,
-            "reset should clear only the stale legacy default-plugin record"
-        );
-    }
-
-    #[test]
     fn test_collect_skill_conversation_ids_includes_active_and_legacy_plugin_records() {
         let conn = create_test_db();
         let default_slug = crate::skill_paths::DEFAULT_PLUGIN_SLUG;
@@ -1276,7 +1157,7 @@ pub async fn reset_workflow_step(
     }
 
     // Reset steps in SQLite (files, artifacts, DB steps) — does NOT delete conversation storage.
-    let active_conversation_id_for_fork = {
+    {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         clear_artifacts_for_step_reset(&conn, &skill_name, from_step_id)?;
         let s_id = crate::db::get_skill_master_id_in_plugin(&conn, &skill_name, &plugin_slug)?
@@ -1298,81 +1179,31 @@ pub async fn reset_workflow_step(
                 &run.purpose,
             )?;
         }
+    }
 
-        // Grab the first active conversation ID for the fork (before releasing the lock)
-        conversation_ids.first().map(|(_, id)| id.clone())
-    };
-
-    // Fork the conversation and rebind the skill to the fork ID.
-    // Use the first active conversation as the fork source.
-    // After fork succeeds, the source conversation is deleted from the OpenHands server.
-    let _forked_conversation_id = if let Some(ref active_conversation_id) =
-        active_conversation_id_for_fork
-    {
-        if let Ok(config) = pause_config.clone() {
-            match crate::agents::openhands_server::fork_openhands_conversation(
-                &app_handle,
-                config.clone(),
-                active_conversation_id,
-            )
-            .await
-            {
-                Ok(forked) => {
-                    log::info!(
-                        "[reset_workflow_step] forked conversation {} -> {}",
-                        active_conversation_id,
-                        forked.conversation_id
-                    );
-                    // Delete the source conversation from the OpenHands server
-                    if let Err(error) =
-                        crate::agents::openhands_server::delete_openhands_conversation(
-                            config.clone(),
-                            active_conversation_id,
-                        )
-                        .await
-                    {
-                        log::warn!(
-                            "[reset_workflow_step] failed to delete source conversation {}: {}",
-                            active_conversation_id,
-                            error
-                        );
-                    }
-                    // Rebind the skill to the fork conversation ID
-                    let conn = db.0.lock().map_err(|e| e.to_string())?;
-                    crate::db::save_skill_conversation_id(
-                        &conn,
-                        &plugin_slug,
-                        &skill_name,
-                        &forked.conversation_id,
-                    )?;
-                    // Clear only a stale legacy default-plugin record, preserving
-                    // the newly rebound conversation for the active plugin.
-                    clear_legacy_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
-                    Some(forked.conversation_id)
-                }
-                Err(error) => {
+    // Reset to step 0 (and "Redo workflow") deletes the conversation entirely so the
+    // next session start creates a fresh transcript. Resets to any later step preserve
+    // the conversation: the agent re-runs the step inside the existing transcript.
+    if from_step_id == 0 {
+        for (_, conv_id) in &conversation_ids {
+            if let Ok(config) = pause_config.clone() {
+                if let Err(error) = crate::agents::openhands_server::delete_openhands_conversation(
+                    config,
+                    conv_id,
+                )
+                .await
+                {
                     log::warn!(
-                        "[reset_workflow_step] failed to fork conversation {}: {}",
-                        active_conversation_id,
+                        "[reset_workflow_step] failed to delete conversation {}: {}",
+                        conv_id,
                         error
                     );
-                    None
                 }
             }
-        } else {
-            log::warn!(
-                "[reset_workflow_step] pause config resolution failed, skipping fork for skill '{}'",
-                skill_name
-            );
-            None
         }
-    } else {
-        log::info!(
-            "[reset_workflow_step] no active conversation to fork for skill '{}'",
-            skill_name
-        );
-        None
-    };
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        clear_skill_conversation_db_records(&conn, &plugin_slug, &skill_name)?;
+    }
 
     Ok(())
 }

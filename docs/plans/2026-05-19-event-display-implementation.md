@@ -863,6 +863,64 @@ describe("EventDisplayList", () => {
     expect(screen.getByText(/path: out\.txt/)).toBeInTheDocument();
     expect(screen.getByText("OBSERVATION")).toBeInTheDocument();
   });
+
+  it("renders a skill node as a tool row with '1 tool' label", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "skill",
+            members: [
+              {
+                id: "m1",
+                title: "invoke_skill",
+                toolName: "invoke_skill",
+                actionText: "name: my-skill action: run",
+                observationText: "skill result",
+                sourceEventIds: ["n1"],
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("1 tool")).toBeInTheDocument();
+    expect(screen.getByText("ACTION")).toBeInTheDocument();
+  });
+
+  it("renders a subagent node as a tool row with '1 tool' label", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "subagent",
+            members: [
+              {
+                id: "m1",
+                title: "task",
+                toolName: "task",
+                actionText: "Draft the report",
+                observationText: "report drafted",
+                sourceEventIds: ["n1"],
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("1 tool")).toBeInTheDocument();
+  });
+
+  it("suppresses result nodes and renders nothing", () => {
+    const { container } = render(
+      <EventDisplayList
+        nodes={[makeNode({ id: "n1", kind: "result", bodyText: "Done" })]}
+      />,
+    );
+    expect(container.querySelector("[data-testid='row-header']")).toBeNull();
+  });
 });
 ```
 
@@ -890,6 +948,8 @@ const TOOL_KINDS = new Set<DisplayNode["kind"]>([
   "tool_batch",
   "file_activity",
   "terminal_activity",
+  "skill",
+  "subagent",
 ]);
 
 interface EventDisplayListProps {
@@ -1049,6 +1109,10 @@ function NodeRow({ node }: { node: DisplayNode }) {
           />
         </EventDisplayRow>
       );
+
+    case "result":
+    case "pause":
+      return null;
 
     default: {
       const ts = new Date(node.createdAtMs).toLocaleTimeString();

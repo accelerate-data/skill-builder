@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { ConversationTimeline } from "@/components/conversation/conversation-timeline";
+import { EventDisplayTimeline } from "@/components/event-display/event-display-timeline";
 import { useConversationStore } from "@/stores/conversation-store";
 import type { ConversationEventEnvelope } from "@/lib/conversation-event-types";
 
@@ -17,21 +17,15 @@ function makeEvent(
     origin: "frontend",
     status: "accepted",
     createdAtMs: overrides.createdAtMs,
-    display: {
-      kind: "user_message",
-      label: "You",
-    },
+    display: { kind: "user_message", label: "You" },
     payload: {
-      frontendCommand: {
-        type: "send_message",
-        text: "hello",
-      },
+      frontendCommand: { type: "send_message", text: "hello" },
     },
     ...overrides,
   };
 }
 
-describe("ConversationTimeline", () => {
+describe("EventDisplayTimeline", () => {
   beforeEach(() => {
     useConversationStore.setState({ eventsByConversation: {} });
   });
@@ -44,10 +38,7 @@ describe("ConversationTimeline", () => {
         createdAtMs: 1_000,
         display: { kind: "user_message", label: "You" },
         payload: {
-          frontendCommand: {
-            type: "send_message",
-            text: "Draft the rollout plan",
-          },
+          frontendCommand: { type: "send_message", text: "Draft the rollout plan" },
         },
       }),
       makeEvent({
@@ -83,31 +74,8 @@ describe("ConversationTimeline", () => {
             source: "agent",
             llm_message: {
               role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text: "Plan drafted and ready for review.",
-                },
-              ],
+              content: [{ type: "text", text: "Plan drafted and ready for review." }],
             },
-          },
-        },
-      }),
-      makeEvent({
-        eventId: "evt-task-state",
-        conversationId: "conv-session-1",
-        createdAtMs: 2_500,
-        origin: "backend",
-        status: "observed",
-        display: { kind: "state", label: "State" },
-        payload: {
-          openHandsEvent: {
-            kind: "ConversationStateUpdateEvent",
-            id: "state-last-user",
-            timestamp: new Date(2_500).toISOString(),
-            source: "environment",
-            key: "last_user_message_id",
-            value: "evt-user",
           },
         },
       }),
@@ -136,29 +104,27 @@ describe("ConversationTimeline", () => {
         conversationId: "conv-session-2",
         createdAtMs: 500,
         payload: {
-          frontendCommand: {
-            type: "send_message",
-            text: "This should stay hidden",
-          },
+          frontendCommand: { type: "send_message", text: "This should stay hidden" },
         },
       }),
     ]);
 
-    render(<ConversationTimeline conversationId="conv-session-1" />);
+    render(<EventDisplayTimeline conversationId="conv-session-1" />);
 
-    const rows = screen.getAllByTestId("conversation-event-row");
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("Draft the rollout plan");
-    expect(rows[1]).toHaveTextContent("Plan drafted and ready for review.");
+    expect(screen.getByText("Draft the rollout plan")).toBeInTheDocument();
+    // Agent message renders both a header summary and expanded markdown body — match either.
+    expect(
+      screen.getAllByText("Plan drafted and ready for review.").length,
+    ).toBeGreaterThan(0);
     expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("error");
     expect(screen.queryByText("This should stay hidden")).not.toBeInTheDocument();
   });
 
   it("shows an empty state when the selected session has no canonical events yet", () => {
-    render(<ConversationTimeline conversationId="conv-empty" />);
-
+    render(<EventDisplayTimeline conversationId="conv-empty" />);
     const emptyState = screen.getByTestId("conversation-timeline-empty");
     expect(within(emptyState).getByText("No conversation activity yet")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-status-footer")).toBeInTheDocument();
   });
 
   it("shows paused state in the bottom footer when a pause event is the latest runtime signal", () => {
@@ -168,10 +134,7 @@ describe("ConversationTimeline", () => {
         conversationId: "conv-paused",
         createdAtMs: 1_000,
         payload: {
-          frontendCommand: {
-            type: "send_message",
-            text: "Wait for review",
-          },
+          frontendCommand: { type: "send_message", text: "Wait for review" },
         },
       }),
       makeEvent({
@@ -193,7 +156,7 @@ describe("ConversationTimeline", () => {
       }),
     ]);
 
-    render(<ConversationTimeline conversationId="conv-paused" />);
+    render(<EventDisplayTimeline conversationId="conv-paused" />);
 
     expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("paused");
     expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent(
@@ -208,10 +171,7 @@ describe("ConversationTimeline", () => {
         conversationId: "conv-completed",
         createdAtMs: 1_000,
         payload: {
-          frontendCommand: {
-            type: "send_message",
-            text: "Finish the run",
-          },
+          frontendCommand: { type: "send_message", text: "Finish the run" },
         },
       }),
       makeEvent({
@@ -234,8 +194,35 @@ describe("ConversationTimeline", () => {
       }),
     ]);
 
-    render(<ConversationTimeline conversationId="conv-completed" />);
+    render(<EventDisplayTimeline conversationId="conv-completed" />);
 
     expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("completed");
+  });
+
+  it("does not render a transcript row for internal events like PauseEvent", () => {
+    useConversationStore.getState().replaceConversationHistory("conv-pause-only", [
+      makeEvent({
+        eventId: "evt-pause",
+        conversationId: "conv-pause-only",
+        createdAtMs: 1_000,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "state", label: "State" },
+        payload: {
+          openHandsEvent: {
+            kind: "PauseEvent",
+            id: "pause-1",
+            timestamp: new Date(1_000).toISOString(),
+            source: "environment",
+            reason: "Waiting for review.",
+          },
+        },
+      }),
+    ]);
+
+    render(<EventDisplayTimeline conversationId="conv-pause-only" />);
+
+    expect(screen.getByTestId("conversation-timeline-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("paused");
   });
 });

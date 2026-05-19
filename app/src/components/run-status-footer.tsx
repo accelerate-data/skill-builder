@@ -131,7 +131,7 @@ export function RunStatusFooter({
         </>
       ) : null}
 
-      {tokenCount && isFinished ? (
+      {tokenCount ? (
         <>
           <Dot />
           <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
