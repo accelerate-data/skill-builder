@@ -108,8 +108,8 @@ vi.mock("@/components/clarifications-editor", () => ({
 vi.mock("@/components/workflow-sidebar", () => ({
   WorkflowSidebar: vi.fn(() => <div data-testid="workflow-sidebar" />),
 }));
-vi.mock("@/components/conversation/conversation-timeline", () => ({
-  ConversationTimeline: ({ conversationId }: { conversationId: string }) => (
+vi.mock("@/components/event-display/event-display-timeline", () => ({
+  EventDisplayTimeline: ({ conversationId }: { conversationId: string }) => (
     <div data-testid="conversation-timeline">{conversationId}</div>
   ),
 }));
