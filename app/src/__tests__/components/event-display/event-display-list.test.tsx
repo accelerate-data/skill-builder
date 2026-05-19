@@ -261,6 +261,60 @@ describe("EventDisplayList", () => {
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("renders a skill node via ToolRow with tool label", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "skill",
+            members: [
+              { id: "m1", title: "invoke_skill", toolName: "invoke_skill", sourceEventIds: ["n1"] },
+            ],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("1 tool")).toBeInTheDocument();
+  });
+
+  it("renders a subagent node via ToolRow with tool label", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "subagent",
+            members: [
+              { id: "m1", title: "task", toolName: "task", sourceEventIds: ["n1"] },
+            ],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("1 tool")).toBeInTheDocument();
+  });
+
+  it("renders a result node with 'Result' label", () => {
+    render(
+      <EventDisplayList
+        nodes={[makeNode({ id: "n1", kind: "result", bodyText: "Conversation summary updated." })]}
+      />,
+    );
+    expect(screen.getByText("Result")).toBeInTheDocument();
+    expect(screen.getByText("Conversation summary updated.")).toBeInTheDocument();
+  });
+
+  it("renders a pause node with 'Paused' label", () => {
+    render(
+      <EventDisplayList
+        nodes={[makeNode({ id: "n1", kind: "pause", bodyText: "Conversation paused." })]}
+      />,
+    );
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByText("Conversation paused.")).toBeInTheDocument();
+  });
+
   it("shows all member action texts in parallel tool batch T/A/O panel", () => {
     render(
       <EventDisplayList

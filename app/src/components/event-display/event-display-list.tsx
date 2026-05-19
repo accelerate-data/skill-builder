@@ -10,6 +10,8 @@ const TOOL_KINDS = new Set<DisplayNode["kind"]>([
   "tool_batch",
   "file_activity",
   "terminal_activity",
+  "skill",
+  "subagent",
 ]);
 
 interface EventDisplayListProps {
@@ -18,9 +20,10 @@ interface EventDisplayListProps {
 
 export function EventDisplayList({ nodes }: EventDisplayListProps) {
   const hidden = Math.max(0, nodes.length - WINDOW_SIZE);
-  const visible = nodes.slice(-WINDOW_SIZE);
-
-  const items = useMemo(() => buildItems(visible), [visible]);
+  const items = useMemo(
+    () => buildItems(nodes.slice(-WINDOW_SIZE)),
+    [nodes],
+  );
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -168,6 +171,26 @@ function NodeRow({ node }: { node: DisplayNode }) {
             error={node.bodyText}
           />
         </EventDisplayRow>
+      );
+
+    case "result":
+      return (
+        <EventDisplayRow
+          bg="var(--muted)"
+          labelColor="var(--muted-foreground)"
+          label="Result"
+          summary={node.bodyText ?? node.label ?? "Result"}
+        />
+      );
+
+    case "pause":
+      return (
+        <EventDisplayRow
+          bg="var(--muted)"
+          labelColor="var(--muted-foreground)"
+          label="Paused"
+          summary={node.bodyText ?? node.label ?? "Conversation paused"}
+        />
       );
 
     default: {
