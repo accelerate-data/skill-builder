@@ -65,7 +65,7 @@ Those are Rust normalization concerns. `normalizeOpenHandsEventRecord(...)` is t
 - `app/src/pages/workflow.tsx`
 - `app/src/components/workspace/workspace-conversation.tsx`
 
-Both mount the shared `ConversationTimeline` component.
+Both mount the shared `EventDisplayTimeline` component.
 
 **Out of scope**
 
@@ -79,7 +79,7 @@ Both mount the shared `ConversationTimeline` component.
 - Use the OpenHands TypeScript client event union as the canonical frontend/backend boundary for conversation rendering.
 - Normalize both websocket and restore history into the same event shape before storing them in the frontend transcript.
 - Show only transcript-worthy events in the visible conversation timeline.
-- Keep operational activity compact by using grouped trace items and a detail drawer.
+- Keep operational activity compact using tinted activity-log rows with inline T/A/O expansion.
 - Route internal/control-plane events to dedicated UI handling instead of leaking them into transcript rows.
 - Keep unknown event kinds visible through a fallback row instead of silently dropping them.
 
@@ -168,63 +168,85 @@ These are accepted and stored if received, but are not part of the normal transc
 
 ## Transcript Rendering Model
 
-`ConversationTimeline` consumes canonical conversation events in chronological order and produces a narrative-first row sequence.
+`EventDisplayTimeline` consumes canonical conversation events in chronological order and renders each transcript-worthy event as a compact, collapsible tinted row — an activity-log style panel. There are no chat bubbles and no slide-out drawers.
 
-The visible order remains:
+The visible order is:
 
-1. user message
-2. grouped activity trace
-3. agent update
+1. user message row
+2. agent activity rows (think, tools, condensation)
+3. agent output row
 
-Activity trace items are editorial projections over transcript events, not new canonical event kinds.
+A labelled turn divider is inserted between consecutive interaction cycles. A new turn starts whenever a `task_sent` row follows an `agent_update` row. Turn numbering is 1-based per conversation.
 
-Trace item kinds:
+### Row anatomy
 
-- `tool_batch` — parallel tool-call batch grouped by `llm_response_id`
-- `file_activity`
-- `terminal_activity`
-- `skill`
-- `subagent`
-- `reasoning`
+Every transcript row is a single horizontal strip:
+
+```text
+[tinted bg] [icon] [LABEL] [summary ···] [tok] [dur] [●] [›]
+```
+
+- **tinted background** — faint `--chat-*-bg` CSS token; colour encodes event type without a border
+- **label** — bold 11 px type name in `--chat-*-border` colour
+- **summary** — truncated muted description; italic for Think rows
+- **tok** — token-count badge (monospace, tinted); shown only on Think and Output rows
+- **dur** — elapsed time (monospace, muted); shown only on tool-group rows
+- **●** — 6 px status dot: `--color-seafoam` when done, `--color-pacific` pulsing when running, `--destructive` on error
+- **›** — chevron that rotates 90° when expanded; absent on non-expandable rows
+
+### Event kind → row mapping
+
+| OpenHands event kind | DisplayNode kind | Row label | Background token | Label colour token |
+|---|---|---|---|---|
+| `MessageEvent` (role: user) | `task_sent` | Message | `--chat-question-bg` | `--chat-question-border` |
+| `MessageEvent` (role: assistant) | `agent_update` | Output | `--chat-subagent-bg` | `--chat-subagent-border` |
+| `ThinkEvent` | `reasoning` | Think | `--chat-thinking-bg` | `--chat-thinking-border` |
+| `ActionEvent` / `ObservationEvent` batch | `tool_batch`, `activity_trace`, `file_activity`, `terminal_activity` | N tools / 1 tool | `--chat-tool-bg` | `--chat-tool-border` |
+| `SystemPromptEvent` | `runtime_setup` | Runtime setup | `--muted` | `--muted-foreground` |
+| `CondensationSummaryEvent` | `lifecycle` | Condensation | `--muted` | `--muted-foreground` |
+| `AgentErrorEvent` (standalone) | `error` | Error | `--chat-error-bg` | `--chat-error-border` |
+| tool-call failure (`AgentErrorEvent` correlated) | `tool_error` | Tool error | `--chat-error-bg` | `--chat-error-border` |
+| unknown transcript kind | `unknown_event` | Unknown | `--muted` | `--muted-foreground` |
+
+`runtime_setup` rows are collapsed by default. All other rows are expanded by default or non-expandable.
 
 ### Message events
 
-| Event kind | Transcript presentation |
-|---|---|
-| `MessageEvent` with `llm_message.role: "user"` | `Task sent` row |
-| `MessageEvent` with `llm_message.role: "assistant"` | `Agent update` row |
+| Event kind | Row label | Expandable |
+|---|---|---|
+| `MessageEvent` with `llm_message.role: "user"` | Message | No |
+| `MessageEvent` with `llm_message.role: "assistant"` | Output | Yes (full markdown body via `MemoizedMarkdown`) |
 
 ### System prompt and condensation summary
 
-| Event kind | Transcript presentation |
-|---|---|
-| `SystemPromptEvent` | `Runtime setup` trace item with drawer |
-| `CondensationSummaryEvent` | visible transcript summary row |
+| Event kind | Row label | Expandable |
+|---|---|---|
+| `SystemPromptEvent` | Runtime setup | Yes (system prompt text); collapsed by default |
+| `CondensationSummaryEvent` | Condensation | Yes (summary body) |
 
 ### Think events
 
-| Event kind | Transcript presentation |
-|---|---|
-| `ThinkEvent` | grouped `Think` activity item |
+| Event kind | Row label | Expandable |
+|---|---|---|
+| `ThinkEvent` | Think | Yes; collapsed by default |
 
 `ThinkEvent` rendering rules:
 
-- the activity-trace title is `Think`
-- the inline summary uses the compact reasoning text
-- the drawer shows:
-  - `Reasoning` when a reasoning text field is present
-  - `Thought` when a distinct thought field is present
-- absent fields are omitted
-- duplicate fallback sections are not rendered
+- the row label is `Think`
+- the inline summary uses the compact reasoning text; italic
+- the token count badge is shown when present
+- expanding the row shows an inline panel with:
+  - a `Reasoning` section when a reasoning text field is present
+  - a `Thought` section when a distinct thought field is present
+  - absent sections are omitted; no empty placeholders
+  - duplicate fallback sections are not rendered
 
 ### Tool-backed action/observation pairs
 
 The transcript groups tool activity by LLM response and resolves each tool-backed `ActionEvent` into one of two outcomes:
 
-- success:
-  - paired `ObservationEvent`
-- failure:
-  - correlated `AgentErrorEvent`
+- success: paired `ObservationEvent`
+- failure: correlated `AgentErrorEvent`
 
 Pairing rules:
 
@@ -236,23 +258,34 @@ Pairing rules:
 Rendering rules:
 
 - all `ActionEvent`s become tool-call units
-- each tool-call unit resolves to either:
-  - `Action` + `Observation`
-  - `Action` + transcript-visible tool-call failure
-- when multiple `ActionEvent`s share the same `llm_response_id`, they form one parallel tool-call batch
-- the main conversation shows the batch-level `thought` when present
-- if no batch-level thought is present, the trace summary falls back to a compact `tool_name: action` string built from the first action in the batch
-- the drawer shows the individual paired tool calls within that batch
-- if an `ActionEvent` has no `llm_response_id`, treat it as a one-item batch
+- each tool-call unit resolves to either `Action` + `Observation` (success) or `Action` + `Error` (failure)
+- when multiple `ActionEvent`s share the same `llm_response_id`, they form one parallel tool-call batch rendered as a single row labelled `N tools`
+- when an `ActionEvent` has no `llm_response_id`, treat it as a one-item batch labelled `1 tool`
+- the row summary lists tool names joined by ` · `
+- when a batch-level thought is present, it is used as the row summary
+- when no batch-level thought is present, the summary falls back to a compact `tool_name: action` string built from the first action in the batch
 
-The activity trace summary shows the action-side intent. The drawer shows the paired tool-call detail in a standard structure:
+Expanding a tool-group row shows an inline T/A/O panel with three colour-banded sections:
 
-- `Thought` when the `ActionEvent` carries it
-- `Action`
-- `Observation` for success
-- `Error` for transcript-visible tool-call failure
+```text
+┌─ THOUGHT  (--chat-thinking-bg)  ─────────────────────────┐
+│  Batch-level thought text when present                   │
+│  (from ActionEvent reasoning / thought field)            │
+├─ ACTION   (--chat-tool-bg)   ────────────────────────────┤
+│  Formatted action text, one line per parallel call       │
+├─ OBSERVATION  (--chat-result-bg)  ───────────────────────┤  ← success
+│  Tool result text                                        │
+│  — OR —                                                  │
+├─ ERROR  (--chat-error-bg)  ──────────────────────────────┤  ← failure
+│  AgentErrorEvent message text                            │
+└──────────────────────────────────────────────────────────┘
+```
 
-This applies uniformly to all tool-backed `ActionEvent`s. Tool-specific extraction is used only to turn raw `action`, `observation`, and tool error payloads into readable text, not to change the structural model.
+- absent sections are omitted
+- the `OBSERVATION` and `ERROR` sections are mutually exclusive per tool-call unit
+- for a parallel batch, each tool-call unit's Action + Observation/Error is listed sequentially within the ACTION and OBSERVATION/ERROR sections
+
+This structure applies uniformly to all tool-backed `ActionEvent`s. Tool-specific extraction is used only to format action text, not to change the structural model.
 
 Action-text formatting:
 
@@ -260,22 +293,6 @@ Action-text formatting:
 - `file_editor`: `command: <command> path: <path>`
 - `terminal`: command text
 - `task`: action description
-
-### Activity trace presentation
-
-The `Activity trace` UI:
-
-- each trace row shows its timestamp
-- no type-chip strip
-- no preview line under the trace header
-- no one-character badges per trace row
-
-Drawer items are created in these cases:
-
-- one parallel tool-call batch grouped by `llm_response_id`
-- one standalone tool-call item when no sibling action shares that `llm_response_id`
-- one `ThinkEvent`
-- one `SystemPromptEvent`
 
 ## Internal Event Handling
 
@@ -379,9 +396,9 @@ Required assertions:
   - `ObservationEvent.tool_call_id == ActionEvent.tool_call_id`
 - failed tool calls correlate using:
   - `AgentErrorEvent.tool_call_id == ActionEvent.tool_call_id`
-- parallel tool calls sharing one `llm_response_id` render as one transcript batch with per-tool drawer detail
-- `task` activity shows `Thought`, `Action`, and `Observation` in the drawer
-- tool-backed action/observation pairs render the same standard drawer structure across tools
+- parallel tool calls sharing one `llm_response_id` render as one transcript batch with per-tool inline T/A/O detail
+- `task` activity shows `Thought`, `Action`, and `Observation` in the inline T/A/O panel
+- tool-backed action/observation pairs render the same standard inline T/A/O panel across tools
 - `ThinkEvent` renders as a `Think` activity item with only the sections backed by present fields
 - unknown transcript-capable kinds render fallback rows
 
@@ -392,6 +409,6 @@ Required assertions:
 | `app/src/lib/openhands-conversation-events.ts` | OpenHands event normalization and helper extraction |
 | `app/src/lib/conversation-event-types.ts` | Canonical frontend envelope for conversation events |
 | `app/src/lib/conversation-display-semantics.ts` | Event-kind classification into transcript, trace, status, and suppression behavior |
-| `app/src/components/conversation/conversation-timeline.tsx` | Shared production conversation surface and status-bar integration |
+| `app/src/components/event-display/event-display-timeline.tsx` | Shared production conversation surface and status-bar integration |
 | `app/src/hooks/use-session-runtime-stream.ts` | Live websocket event ingestion and toast routing |
 | `app/src/lib/skill-openhands-session.ts` | Restore-history hydration path |
