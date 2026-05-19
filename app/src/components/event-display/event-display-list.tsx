@@ -6,7 +6,6 @@ import { MemoizedMarkdown } from "@/components/agent-items/memoized-markdown";
 
 const WINDOW_SIZE = 100;
 const TOOL_KINDS = new Set<DisplayNode["kind"]>([
-  "activity_trace",
   "tool_batch",
   "file_activity",
   "terminal_activity",
@@ -69,15 +68,25 @@ function NodeRow({ node }: { node: DisplayNode }) {
   if (TOOL_KINDS.has(node.kind)) return <ToolRow node={node} />;
 
   switch (node.kind) {
-    case "task_sent":
+    case "task_sent": {
+      const body = node.bodyText ?? "";
+      const long = body.length > 120 || body.includes("\n");
       return (
         <EventDisplayRow
           bg="var(--chat-question-bg)"
           labelColor="var(--chat-question-border)"
           label="Message"
-          summary={node.bodyText ?? ""}
-        />
+          summary={long ? truncate(body, 120) : body}
+          defaultExpanded={false}
+        >
+          {long && (
+            <div className="px-3 py-2 text-xs text-foreground whitespace-pre-wrap break-words">
+              {body}
+            </div>
+          )}
+        </EventDisplayRow>
       );
+    }
 
     case "agent_update":
       return (
@@ -88,9 +97,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
           summary={truncate(node.bodyText ?? "", 120)}
           status={statusDot(node)}
         >
-          <div className="px-3 py-2 prose prose-sm max-w-none">
-            <MemoizedMarkdown content={node.bodyText ?? ""} />
-          </div>
+          <OutputBody content={node.bodyText ?? ""} />
         </EventDisplayRow>
       );
 
@@ -106,7 +113,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
           defaultExpanded={false}
         >
           {reasoningBody && (
-            <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+            <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
               {reasoningBody}
             </div>
           )}
@@ -123,7 +130,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
           summary={node.label ?? "System prompt"}
           defaultExpanded={false}
         >
-          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
             {node.bodyText}
           </div>
         </EventDisplayRow>
@@ -137,7 +144,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
           label="Condensation"
           summary={node.label ?? "Condensation summary"}
         >
-          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
             {node.bodyText}
           </div>
         </EventDisplayRow>
@@ -154,7 +161,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
           summary={node.bodyText ?? node.label ?? "Error"}
           status="error"
         >
-          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
             {node.bodyText}
           </div>
         </EventDisplayRow>
@@ -187,7 +194,7 @@ function NodeRow({ node }: { node: DisplayNode }) {
           label="Unknown"
           summary={`${node.label ?? node.kind} · ${ts}`}
         >
-          <pre className="px-3 py-2 text-xs text-muted-foreground overflow-x-auto">
+          <pre className="px-3 py-2 text-xs font-mono text-muted-foreground overflow-x-auto">
             {JSON.stringify(node.rawPayload ?? { kind: node.kind }, null, 2)}
           </pre>
         </EventDisplayRow>
@@ -205,11 +212,9 @@ function ToolRow({ node }: { node: DisplayNode }) {
     node.thoughtText ??
     (members.length > 0
       ? members.map((m) => m.toolName ?? m.title).join(" · ")
-      : node.actionText ?? "");
+      : node.actionText ?? node.label ?? "");
 
-  const thought = node.thoughtText ?? node.reasoningText ?? members[0]?.thoughtText;
-  const action = buildActionText(node, members);
-  const observation = node.observationText ?? buildObservationText(members);
+  const observationRaw = node.observationText ?? buildObservationText(members);
   const error = buildErrorText(members);
 
   return (
@@ -219,15 +224,50 @@ function ToolRow({ node }: { node: DisplayNode }) {
       label={label}
       summary={summary ?? ""}
       status={statusDot(node)}
+      defaultExpanded={false}
     >
       <TaoPanel
-        thought={thought}
-        action={action}
-        observation={error ? undefined : observation}
+        thought={node.thoughtText ?? node.reasoningText ?? members[0]?.thoughtText}
+        action={buildActionText(node, members)}
+        observation={error ? undefined : maybeFormatJson(observationRaw)}
         error={error}
       />
     </EventDisplayRow>
   );
+}
+
+function maybeFormatJson(text: string | undefined): string | undefined {
+  if (!text) return text;
+  return tryFormatJson(text) ?? text;
+}
+
+function OutputBody({ content }: { content: string }) {
+  const json = tryFormatJson(content);
+  if (json) {
+    return (
+      <pre className="px-3 py-2 text-xs font-mono text-foreground whitespace-pre-wrap break-words overflow-x-auto">
+        {json}
+      </pre>
+    );
+  }
+  return (
+    <div className="px-3 py-2 text-xs leading-relaxed text-foreground font-sans break-words">
+      <MemoizedMarkdown content={content} />
+    </div>
+  );
+}
+
+function tryFormatJson(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if (!((first === "{" && last === "}") || (first === "[" && last === "]"))) return null;
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return null;
+  }
 }
 
 function buildActionText(node: DisplayNode, members: DisplayNodeMember[]): string | undefined {
