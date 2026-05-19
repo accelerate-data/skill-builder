@@ -124,6 +124,7 @@ describe("EventDisplayTimeline", () => {
     render(<EventDisplayTimeline conversationId="conv-empty" />);
     const emptyState = screen.getByTestId("conversation-timeline-empty");
     expect(within(emptyState).getByText("No conversation activity yet")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-status-footer")).toBeInTheDocument();
   });
 
   it("shows paused state in the bottom footer when a pause event is the latest runtime signal", () => {

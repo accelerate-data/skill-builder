@@ -17,10 +17,10 @@ export function EventDisplayTimeline({ conversationId }: EventDisplayTimelinePro
 
   if (nodes.length === 0) {
     return (
-      <Card className="flex min-h-0 flex-1">
+      <Card className="flex min-h-0 flex-1 flex-col gap-0">
         <CardContent
           data-testid="conversation-timeline-empty"
-          className="flex h-full items-center justify-center text-sm text-muted-foreground"
+          className="flex flex-1 items-center justify-center text-sm text-muted-foreground"
         >
           No conversation activity yet
         </CardContent>
