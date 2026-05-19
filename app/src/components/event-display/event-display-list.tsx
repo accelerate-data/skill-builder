@@ -69,14 +69,21 @@ interface ListItem {
 
 function buildItems(nodes: DisplayNode[]): ListItem[] {
   let turnNumber = 1;
-  let lastKind: DisplayNode["kind"] | null = null;
-  return nodes.map((node) => {
-    const showDivider = node.kind === "task_sent" && lastKind === "agent_update";
-    if (showDivider) turnNumber += 1;
-    const item: ListItem = { node, showDivider, turnNumber };
-    lastKind = node.kind;
-    return item;
-  });
+  let pendingTurnEnd = false;
+  const items: ListItem[] = [];
+  for (const node of nodes) {
+    if (node.kind === "turn_end") {
+      pendingTurnEnd = true;
+      continue;
+    }
+    const showDivider = node.kind === "task_sent" && pendingTurnEnd;
+    if (showDivider) {
+      turnNumber += 1;
+      pendingTurnEnd = false;
+    }
+    items.push({ node, showDivider, turnNumber });
+  }
+  return items;
 }
 
 function NodeRow({ node }: { node: DisplayNode }) {

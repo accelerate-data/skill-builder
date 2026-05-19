@@ -111,7 +111,21 @@ describe("EventDisplayList", () => {
     expect(screen.getByText("read_file · write_file")).toBeInTheDocument();
   });
 
-  it("inserts a turn divider when task_sent follows agent_update", () => {
+  it("inserts a turn divider when task_sent follows a turn_end marker", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({ id: "n1", kind: "task_sent", bodyText: "First message" }),
+          makeNode({ id: "n2", kind: "agent_update", bodyText: "First reply" }),
+          makeNode({ id: "n3", kind: "turn_end" }),
+          makeNode({ id: "n4", kind: "task_sent", bodyText: "Second message" }),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("turn-divider")).toBeInTheDocument();
+  });
+
+  it("does not insert a turn divider when task_sent follows agent_update without turn_end", () => {
     render(
       <EventDisplayList
         nodes={[
@@ -121,7 +135,19 @@ describe("EventDisplayList", () => {
         ]}
       />,
     );
-    expect(screen.getByTestId("turn-divider")).toBeInTheDocument();
+    expect(screen.queryByTestId("turn-divider")).not.toBeInTheDocument();
+  });
+
+  it("does not render the turn_end node as a row", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({ id: "n1", kind: "task_sent", bodyText: "First message" }),
+          makeNode({ id: "n2", kind: "turn_end" }),
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/turn end/i)).not.toBeInTheDocument();
   });
 
   it("does not insert a turn divider before the first task_sent", () => {

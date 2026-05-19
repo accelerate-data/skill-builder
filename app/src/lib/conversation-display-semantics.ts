@@ -197,6 +197,21 @@ function classifyEvent(
     };
   }
 
+  if (openHandsEvent.kind === "FinishEvent") {
+    return {
+      type: "standalone",
+      node: {
+        id: event.eventId,
+        kind: "turn_end",
+        status: event.status,
+        createdAtMs: event.createdAtMs,
+        label: "Turn end",
+        sourceEventIds: [event.eventId],
+        rawPayload: event.payload.rawOpenHandsEvent,
+      },
+    };
+  }
+
   if (
     openHandsEvent.kind === "PauseEvent" ||
     openHandsEvent.kind === "ConversationStateUpdateEvent" ||
@@ -205,7 +220,6 @@ function classifyEvent(
     openHandsEvent.kind === "Condensation" ||
     openHandsEvent.kind === "TokenEvent" ||
     openHandsEvent.kind === "StuckDetectionEvent" ||
-    openHandsEvent.kind === "FinishEvent" ||
     openHandsEvent.kind === "HookExecutionEvent" ||
     openHandsEvent.kind === "ConversationErrorEvent" ||
     openHandsEvent.kind === "UserRejectObservation" ||

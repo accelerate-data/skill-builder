@@ -12,6 +12,7 @@ export type DisplayNodeKind =
   | "reasoning"
   | "runtime_setup"
   | "pause"
+  | "turn_end"
   | "error"
   | "tool_error"
   | "subagent_error"
@@ -50,4 +51,4 @@ export interface DisplayNode {
   rawPayload?: unknown;
 }
 
-export const DISPLAY_TYPES_VERSION = 13;
+export const DISPLAY_TYPES_VERSION = 14;
