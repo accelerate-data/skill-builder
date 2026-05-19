@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface EventDisplayRowProps {
@@ -41,7 +42,7 @@ export function EventDisplayRow({
         onClick={expandable ? () => setExpanded((e) => !e) : undefined}
       >
         <span
-          className="font-bold uppercase tracking-wide shrink-0"
+          className="font-semibold uppercase tracking-wide shrink-0"
           style={{ color: labelColor, fontSize: "11px" }}
         >
           {label}
@@ -90,21 +91,18 @@ export function EventDisplayRow({
         )}
 
         {expandable && (
-          <span
+          <ChevronRight
             data-testid="row-chevron"
             className={cn(
-              "shrink-0 text-muted-foreground transition-transform duration-150",
+              "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
               expanded && "rotate-90",
             )}
-            style={{ fontSize: "10px" }}
-          >
-            ›
-          </span>
+          />
         )}
       </div>
 
       {expandable && expanded && (
-        <div style={{ background: bg }} className="border-t border-black/5">
+        <div style={{ background: bg }} className="border-t border-border">
           {children}
         </div>
       )}

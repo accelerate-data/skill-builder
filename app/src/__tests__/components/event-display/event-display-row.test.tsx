@@ -89,6 +89,19 @@ describe("EventDisplayRow", () => {
     expect(screen.queryByText(/tok/)).not.toBeInTheDocument();
   });
 
+  it("does not show token badge when tokenCount is 0", () => {
+    render(
+      <EventDisplayRow
+        bg={BG}
+        labelColor={LABEL_COLOR}
+        label="Think"
+        summary="reasoning"
+        tokenCount={0}
+      />,
+    );
+    expect(screen.queryByText(/tok/)).not.toBeInTheDocument();
+  });
+
   it("shows duration when durationMs is greater than 0", () => {
     render(
       <EventDisplayRow
