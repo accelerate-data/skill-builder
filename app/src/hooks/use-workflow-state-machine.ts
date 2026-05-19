@@ -682,7 +682,15 @@ export function useWorkflowStateMachine({
 
     const { steps: currentSteps, currentStep: step } =
       useWorkflowStore.getState();
-    if (currentSteps[step]?.status !== "in_progress") return;
+    const stepStatus = currentSteps[step]?.status;
+    if (stepStatus !== "in_progress" && stepStatus !== "waiting_for_user") return;
+
+    // Agent resumed from paused — restore in_progress so the step spinner returns.
+    if (stepStatus === "waiting_for_user" && activeRunStatus === "running") {
+      updateStepStatus(step, "in_progress");
+      setRunning(true);
+      return;
+    }
 
     if (activeRunStatus === "completed") {
       const completedConversationId = activeConversationId;
@@ -720,6 +728,7 @@ export function useWorkflowStateMachine({
     } else if (activeRunStatus === "paused") {
       setRunning(false);
       setStopping(false);
+      updateStepStatus(step, "waiting_for_user");
     }
   }, [
     activeRunStatus,
