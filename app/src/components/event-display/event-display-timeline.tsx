@@ -27,6 +27,8 @@ export function EventDisplayTimeline({ conversationId }: EventDisplayTimelinePro
         <RunStatusFooter
           status={footerState.status}
           label={footerState.label}
+          model={footerState.model}
+          tokenCount={footerState.tokenCount}
           errorText={footerState.errorText}
           testId="conversation-status-footer"
         />
@@ -44,6 +46,8 @@ export function EventDisplayTimeline({ conversationId }: EventDisplayTimelinePro
       <RunStatusFooter
         status={footerState.status}
         label={footerState.label}
+        model={footerState.model}
+        tokenCount={footerState.tokenCount}
         errorText={footerState.errorText}
         testId="conversation-status-footer"
       />
@@ -51,51 +55,103 @@ export function EventDisplayTimeline({ conversationId }: EventDisplayTimelinePro
   );
 }
 
-function deriveConversationFooterState(events: ReturnType<typeof useConversationEvents>): {
+interface FooterState {
   status: FooterDisplayStatus;
   label?: string | null;
+  model?: string | null;
+  tokenCount?: string | null;
   errorText?: string | null;
-} {
+}
+
+function deriveConversationFooterState(
+  events: ReturnType<typeof useConversationEvents>,
+): FooterState {
+  let model: string | undefined;
+  let totalTokens = 0;
+  let status: FooterDisplayStatus | undefined;
+  let label: string | undefined;
+  let errorText: string | undefined;
+
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     const openHandsEvent = event.payload.openHandsEvent;
     if (!openHandsEvent) continue;
 
+    if (openHandsEvent.kind === "TokenEvent") {
+      totalTokens +=
+        (openHandsEvent.prompt_token_ids?.length ?? 0) +
+        (openHandsEvent.response_token_ids?.length ?? 0);
+      continue;
+    }
+
+    if (!model && openHandsEvent.kind === "LLMCompletionLogEvent" && openHandsEvent.model_name) {
+      model = openHandsEvent.model_name;
+      continue;
+    }
+
+    if (status) continue;
+
     if (openHandsEvent.kind === "PauseEvent") {
-      return { status: "paused", label: openHandsEvent.reason ?? "conversation" };
+      status = "paused";
+      label = openHandsEvent.reason ?? "conversation";
+      continue;
     }
 
     if (openHandsEvent.kind === "ConversationStateUpdateEvent") {
       if (openHandsEvent.key !== "execution_status") continue;
       const value =
         typeof openHandsEvent.value === "string" ? openHandsEvent.value : undefined;
-      switch (value) {
-        case "running":
-          return { status: "running", label: "conversation" };
-        case "paused":
-          return { status: "paused", label: "conversation" };
-        case "finished":
-        case "completed":
-          return { status: "completed", label: "conversation" };
-        case "error":
-          return { status: "error", label: "conversation" };
-        case "idle":
-          return { status: "idle", label: "conversation" };
+      const mapped = mapExecutionStatus(value);
+      if (mapped) {
+        status = mapped;
+        label = "conversation";
       }
+      continue;
     }
 
     if (openHandsEvent.kind === "FinishEvent") {
-      return { status: "completed", label: "conversation" };
+      status = "completed";
+      label = "conversation";
+      continue;
     }
 
     if (openHandsEvent.kind === "ConversationErrorEvent") {
-      return {
-        status: "error",
-        label: "conversation",
-        errorText: openHandsEvent.detail,
-      };
+      status = "error";
+      label = "conversation";
+      errorText = openHandsEvent.detail;
+      continue;
     }
   }
 
-  return { status: "idle", label: "conversation" };
+  return {
+    status: status ?? "idle",
+    label: label ?? "conversation",
+    model: model ?? null,
+    tokenCount: totalTokens > 0 ? formatTokenCount(totalTokens) : null,
+    errorText: errorText ?? null,
+  };
+}
+
+function mapExecutionStatus(value: string | undefined): FooterDisplayStatus | undefined {
+  switch (value) {
+    case "running":
+      return "running";
+    case "paused":
+      return "paused";
+    case "finished":
+    case "completed":
+      return "completed";
+    case "error":
+      return "error";
+    case "idle":
+      return "idle";
+    default:
+      return undefined;
+  }
+}
+
+function formatTokenCount(n: number): string {
+  if (n < 1_000) return String(n);
+  if (n < 1_000_000) return `${(n / 1_000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }
