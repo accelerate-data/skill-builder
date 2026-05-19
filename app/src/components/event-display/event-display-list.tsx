@@ -245,7 +245,7 @@ function OutputBody({ content }: { content: string }) {
   const json = tryFormatJson(content);
   if (json) {
     return (
-      <pre className="px-3 py-2 text-xs font-mono text-foreground whitespace-pre-wrap break-words overflow-x-auto">
+      <pre className="px-3 py-2 max-h-96 text-xs font-mono text-foreground whitespace-pre-wrap break-words overflow-auto">
         {json}
       </pre>
     );
@@ -258,16 +258,54 @@ function OutputBody({ content }: { content: string }) {
 }
 
 function tryFormatJson(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const first = trimmed[0];
-  const last = trimmed[trimmed.length - 1];
-  if (!((first === "{" && last === "}") || (first === "[" && last === "]"))) return null;
+  const candidate = extractJsonCandidate(text);
+  if (!candidate) return null;
   try {
-    return JSON.stringify(JSON.parse(trimmed), null, 2);
+    return JSON.stringify(JSON.parse(candidate), null, 2);
   } catch {
     return null;
   }
+}
+
+function extractJsonCandidate(text: string): string | null {
+  let trimmed = text.trim();
+  if (!trimmed) return null;
+
+  // Strip ```json ... ``` or ``` ... ``` fences
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+  if (fenceMatch) {
+    trimmed = fenceMatch[1].trim();
+  }
+
+  if (!trimmed) return null;
+  const first = trimmed[0];
+  if (first !== "{" && first !== "[") return null;
+  const open = first;
+  const close = open === "{" ? "}" : "]";
+
+  // Find the balanced closing brace/bracket, respecting strings.
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < trimmed.length; i += 1) {
+    const ch = trimmed[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === open) depth += 1;
+    else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) return trimmed.slice(0, i + 1);
+    }
+  }
+  return null;
 }
 
 function buildActionText(node: DisplayNode, members: DisplayNodeMember[]): string | undefined {
