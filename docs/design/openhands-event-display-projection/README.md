@@ -1,5 +1,5 @@
 ---
-functional-specs: []
+functional-specs: [custom-plugin-management]
 ---
 
 # OpenHands Conversation Timeline
@@ -166,6 +166,18 @@ These are accepted and stored if received, but are not part of the normal transc
 - `ConfirmationResponseEvent`
   - never render in the transcript because Skill Builder does not use user confirmation flows
 
+## Design
+
+### Visual
+
+**Light mode**
+
+![Light mode](./assets/event-display-light.png)
+
+**Dark mode**
+
+![Dark mode](./assets/event-display-dark.png)
+
 ## Transcript Rendering Model
 
 `EventDisplayTimeline` consumes canonical conversation events in chronological order and renders each transcript-worthy event as a compact, collapsible tinted row — an activity-log style panel. There are no chat bubbles and no slide-out drawers.
@@ -235,11 +247,7 @@ Every transcript row is a single horizontal strip:
 - the row label is `Think`
 - the inline summary uses the compact reasoning text; italic
 - the token count badge is shown when present
-- expanding the row shows an inline panel with:
-  - a `Reasoning` section when a reasoning text field is present
-  - a `Thought` section when a distinct thought field is present
-  - absent sections are omitted; no empty placeholders
-  - duplicate fallback sections are not rendered
+- expanding the row shows the best available reasoning text: `reasoningText` when present, falling back to `thoughtText`; absent = nothing shown
 
 ### Tool-backed action/observation pairs
 
@@ -261,9 +269,8 @@ Rendering rules:
 - each tool-call unit resolves to either `Action` + `Observation` (success) or `Action` + `Error` (failure)
 - when multiple `ActionEvent`s share the same `llm_response_id`, they form one parallel tool-call batch rendered as a single row labelled `N tools`
 - when an `ActionEvent` has no `llm_response_id`, treat it as a one-item batch labelled `1 tool`
-- the row summary lists tool names joined by ` · `
 - when a batch-level thought is present, it is used as the row summary
-- when no batch-level thought is present, the summary falls back to a compact `tool_name: action` string built from the first action in the batch
+- when no batch-level thought is present, the summary lists tool names joined by ` · `
 
 Expanding a tool-group row shows an inline T/A/O panel with three colour-banded sections:
 
@@ -399,7 +406,7 @@ Required assertions:
 - parallel tool calls sharing one `llm_response_id` render as one transcript batch with per-tool inline T/A/O detail
 - `task` activity shows `Thought`, `Action`, and `Observation` in the inline T/A/O panel
 - tool-backed action/observation pairs render the same standard inline T/A/O panel across tools
-- `ThinkEvent` renders as a `Think` activity item with only the sections backed by present fields
+- `ThinkEvent` renders as a `Think` activity item showing `reasoningText` when present, falling back to `thoughtText`; expansion is empty when both are absent
 - unknown transcript-capable kinds render fallback rows
 
 ## Key Source Files

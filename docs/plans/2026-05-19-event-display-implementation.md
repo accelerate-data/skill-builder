@@ -572,7 +572,7 @@ git commit -m "feat: add TaoPanel inline thought/action/observation expansion pa
 ```tsx
 // app/src/__tests__/components/event-display/event-display-list.test.tsx
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { EventDisplayList } from "@/components/event-display/event-display-list";
 import type { DisplayNode } from "@/lib/display-types";
 
@@ -763,6 +763,106 @@ describe("EventDisplayList", () => {
     );
     expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
+
+  it("renders a tool_error node with 'Tool error' label", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "tool_error",
+            actionText: "cat missing.txt",
+            bodyText: "File not found",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Tool error")).toBeInTheDocument();
+  });
+
+  it("shows error text in tool_error T/A/O panel when expanded", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "tool_error",
+            actionText: "cat missing.txt",
+            bodyText: "File not found",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("ERROR")).toBeInTheDocument();
+    expect(screen.getByText("File not found")).toBeInTheDocument();
+  });
+
+  it("shows reasoningText in Think row expansion", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "reasoning",
+            reasoningText: "Let me think step by step",
+          }),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("row-header"));
+    expect(screen.getByText("Let me think step by step")).toBeInTheDocument();
+  });
+
+  it("falls back to thoughtText in Think row expansion when reasoningText is absent", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "reasoning",
+            thoughtText: "Thought without reasoning",
+          }),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("row-header"));
+    expect(screen.getByText("Thought without reasoning")).toBeInTheDocument();
+  });
+
+  it("shows all member action texts in parallel tool batch T/A/O panel", () => {
+    render(
+      <EventDisplayList
+        nodes={[
+          makeNode({
+            id: "n1",
+            kind: "tool_batch",
+            members: [
+              {
+                id: "m1",
+                title: "read_file",
+                toolName: "read_file",
+                actionText: "path: README.md",
+                observationText: "file content A",
+                sourceEventIds: ["n1"],
+              },
+              {
+                id: "m2",
+                title: "write_file",
+                toolName: "write_file",
+                actionText: "path: out.txt",
+                observationText: "file content B",
+                sourceEventIds: ["n1"],
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("ACTION")).toBeInTheDocument();
+    expect(screen.getByText(/path: README\.md/)).toBeInTheDocument();
+    expect(screen.getByText(/path: out\.txt/)).toBeInTheDocument();
+    expect(screen.getByText("OBSERVATION")).toBeInTheDocument();
+  });
 });
 ```
 
@@ -866,7 +966,8 @@ function NodeRow({ node }: { node: DisplayNode }) {
         </EventDisplayRow>
       );
 
-    case "reasoning":
+    case "reasoning": {
+      const reasoningBody = node.reasoningText ?? node.thoughtText;
       return (
         <EventDisplayRow
           bg="var(--chat-thinking-bg)"
@@ -874,17 +975,16 @@ function NodeRow({ node }: { node: DisplayNode }) {
           label="Think"
           summary={node.reasoningText ?? node.thoughtText ?? node.bodyText ?? ""}
           italic
-          tokenCount={undefined}
           defaultExpanded={false}
         >
-          <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
-            {node.reasoningText && <p>{node.reasoningText}</p>}
-            {node.thoughtText && node.thoughtText !== node.reasoningText && (
-              <p className="mt-2">{node.thoughtText}</p>
-            )}
-          </div>
+          {reasoningBody && (
+            <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+              {reasoningBody}
+            </div>
+          )}
         </EventDisplayRow>
       );
+    }
 
     case "runtime_setup":
       return (
@@ -950,19 +1050,21 @@ function NodeRow({ node }: { node: DisplayNode }) {
         </EventDisplayRow>
       );
 
-    default:
+    default: {
+      const ts = new Date(node.createdAtMs).toLocaleTimeString();
       return (
         <EventDisplayRow
           bg="var(--muted)"
           labelColor="var(--muted-foreground)"
           label="Unknown"
-          summary={node.label ?? node.kind}
+          summary={`${node.label ?? node.kind} · ${ts}`}
         >
           <pre className="px-3 py-2 text-xs text-muted-foreground overflow-x-auto">
             {JSON.stringify(node.rawPayload ?? { kind: node.kind }, null, 2)}
           </pre>
         </EventDisplayRow>
       );
+    }
   }
 }
 
@@ -1279,6 +1381,34 @@ describe("EventDisplayTimeline", () => {
     render(<EventDisplayTimeline conversationId="conv-completed" />);
 
     expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("completed");
+  });
+
+  it("does not render a transcript row for internal events like PauseEvent", () => {
+    useConversationStore.getState().replaceConversationHistory("conv-pause-only", [
+      makeEvent({
+        eventId: "evt-pause",
+        conversationId: "conv-pause-only",
+        createdAtMs: 1_000,
+        origin: "backend",
+        status: "observed",
+        display: { kind: "state", label: "State" },
+        payload: {
+          openHandsEvent: {
+            kind: "PauseEvent",
+            id: "pause-1",
+            timestamp: new Date(1_000).toISOString(),
+            source: "environment",
+            reason: "Waiting for review.",
+          },
+        },
+      }),
+    ]);
+
+    render(<EventDisplayTimeline conversationId="conv-pause-only" />);
+
+    // PauseEvent is internal — drives status footer only, no transcript row
+    expect(screen.getByTestId("conversation-timeline-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-status-footer")).toHaveTextContent("paused");
   });
 });
 ```
