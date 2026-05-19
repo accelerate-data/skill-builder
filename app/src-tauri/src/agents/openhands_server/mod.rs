@@ -972,54 +972,6 @@ pub async fn pause_openhands_conversation(
     Ok(())
 }
 
-#[derive(Debug, Clone)]
-pub struct ForkedOpenHandsSession {
-    pub conversation_id: String,
-    #[allow(dead_code)]
-    pub restored_events: Vec<serde_json::Value>,
-}
-
-pub async fn fork_openhands_conversation(
-    _app: &tauri::AppHandle,
-    config: OpenHandsRuntimeConfig,
-    source_conversation_id: &str,
-) -> Result<ForkedOpenHandsSession, String> {
-    let request = OpenHandsRuntimeRequest::try_from_runtime_config(&config)?;
-    let server =
-        ensure_agent_server_process(Duration::from_secs(60), Path::new(&request.app_data_root))
-            .await?;
-    let client = OpenHandsServerClient::new(
-        server.base_url().parse::<reqwest::Url>().map_err(|e| {
-            OpenHandsRuntimeError::Operation {
-                operation: "parse OpenHands Agent Server base URL",
-                detail: e.to_string(),
-            }
-            .to_string()
-        })?,
-        Some(server.session_api_key.clone()),
-    );
-
-    let forked = client
-        .fork_conversation(source_conversation_id)
-        .await
-        .map_err(|e| {
-            OpenHandsRuntimeError::Operation {
-                operation: "fork OpenHands Agent Server conversation",
-                detail: e.to_string(),
-            }
-            .to_string()
-        })?;
-
-    let new_conversation_id = extract_conversation_id(&forked)?;
-
-    let events = client.list_all_events(&new_conversation_id).await?;
-
-    Ok(ForkedOpenHandsSession {
-        conversation_id: new_conversation_id,
-        restored_events: events,
-    })
-}
-
 pub async fn send_message_to_openhands_conversation(
     config: OpenHandsRuntimeConfig,
     conversation_id: &str,

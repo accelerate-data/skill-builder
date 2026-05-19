@@ -60,14 +60,6 @@ impl OpenHandsServerClient {
         .build()
     }
 
-    pub fn build_fork_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
-        self.request(
-            Method::POST,
-            &format!("api/conversations/{conversation_id}/fork"),
-        )
-        .build()
-    }
-
     pub fn build_pause_request(&self, conversation_id: &str) -> Result<Request, reqwest::Error> {
         self.request(
             Method::POST,
@@ -170,16 +162,6 @@ impl OpenHandsServerClient {
             return Ok(None);
         }
         Ok(Some(Self::json_success(response, &label).await?))
-    }
-
-    pub async fn fork_conversation(
-        &self,
-        conversation_id: &str,
-    ) -> Result<serde_json::Value, String> {
-        let request = self
-            .build_fork_request(conversation_id)
-            .map_err(Self::request_error)?;
-        self.execute_json(request).await
     }
 
     pub async fn pause_conversation(&self, conversation_id: &str) -> Result<(), String> {
@@ -587,10 +569,6 @@ mod tests {
             "/api/conversations/abc/pause"
         );
         assert_eq!(
-            client.build_fork_request("abc").unwrap().url().path(),
-            "/api/conversations/abc/fork"
-        );
-        assert_eq!(
             client.build_delete_request("abc").unwrap().url().path(),
             "/api/conversations/abc"
         );
@@ -752,41 +730,4 @@ mod tests {
         server.await.unwrap();
     }
 
-    #[tokio::test]
-    async fn fork_conversation_returns_json_response() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut request = [0_u8; 2048];
-            let n = stream.read(&mut request).await.unwrap();
-            let request_text = String::from_utf8_lossy(&request[..n]);
-            assert!(
-                request_text.starts_with("POST /api/conversations/conv-src/fork"),
-                "expected POST fork request, got: {request_text}"
-            );
-            let body = br#"{"conversation_id":"conv-forked"}"#;
-            stream
-                .write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
-                        body.len()
-                    )
-                    .as_bytes(),
-                )
-                .await
-                .unwrap();
-            stream.write_all(body).await.unwrap();
-        });
-
-        let client = OpenHandsServerClient::new(
-            format!("http://{addr}").parse().unwrap(),
-            Some("session-key".to_string()),
-        );
-
-        let result = client.fork_conversation("conv-src").await.unwrap();
-        assert_eq!(result["conversation_id"], "conv-forked");
-
-        server.await.unwrap();
-    }
 }
